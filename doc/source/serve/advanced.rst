@@ -1,5 +1,5 @@
 =====================================
-Advanced Topics, Configurations & FAQ
+Advanced Topics, Configurations, & FAQ
 =====================================
 
 Ray Serve has a number of knobs and tools for you to tune for your particular workload. 
@@ -7,7 +7,7 @@ All Ray Serve advanced options and topics are covered on this page aside from th
 fundamentals of :doc:`deployment`. For a more hands on take, please check out the :ref:`serve-tutorials`.
 
 There are a number of things you'll likely want to do with your serving application including
-scaling out, splitting traffic, or batching input for better response performance. To do all of this,
+scaling out, splitting traffic, or batching input for better performance. To do all of this,
 you will create a ``BackendConfig``, a configuration object that you'll use to set 
 the properties of a particular backend.
 
@@ -52,7 +52,10 @@ following:
 Batching to improve performance
 ===============================
 
-You can also have Ray Serve batch requests for performance. You'll configure this in the backend config.
+You can also have Ray Serve batch requests for performance. In order to do use this feature, you need to:
+1. Set the `max_batch_size` in the `BackendConfig`.
+2. Modify your backend implementation to accept a list of requests and return a list of responses instead of handling a single request.
+
 
 .. code-block:: python
 
@@ -61,10 +64,11 @@ You can also have Ray Serve batch requests for performance. You'll configure thi
           self.count = 0
 
       @serve.accept_batch
-      def __call__(self, flask_request):
-          self.count += 1
-          batch_size = serve.context.batch_size
-          return [self.count] * batch_size
+      def __call__(self, requests):
+          responses = []
+              for request in requests:
+                  responses.append(request.json())
+          return responses
 
   serve.create_endpoint("counter1", "/increment")
 
@@ -123,7 +127,7 @@ See :doc:`deployment` for information about how to deploy serve.
 How do I delete a backend?
 --------------------------
 
-To delete a backend, we can use `serve.delete_backend`.
+To delete a backend, you can use `serve.delete_backend`.
 Note that the backend must not be use by any endpoints in order to be delete.
 Once a backend is deleted, its tag can be reused.
 

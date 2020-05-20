@@ -3,24 +3,24 @@ Deploying Ray Serve
 ===================
 
 In the :doc:`key-concepts`, you saw some of the basics of how to write serve applications.
-This section will dive a bit deeper into how Ray Serve runs on a Ray Cluster and how you're able 
+This section will dive a bit deeper into how Ray Serve runs on a Ray cluster and how you're able 
 to deploy and update your serve application over time.
 
-To deploy a Ray Serve Application (and cluster) you're going to need several things.
+To deploy a Ray Serve application (and cluster) you're going to need several things.
 
-1. A Running Ray Cluster (you can deploy one on your local machine for testing).
-2. A Ray Serve Cluster To learn more about Ray Clusters see :doc:`../cluster-index`.
-3. Your Ray Serve Endpoint(s) and Backend(s).
+1. A running Ray cluster (you can deploy one on your local machine for testing).
+2. A Ray Serve cluster To learn more about Ray clusters see :doc:`../cluster-index`.
+3. Your Ray Serve endpoint(s) and backend(s).
 
 .. contents:: Deploying Ray Serve
 
 .. _serve-deploy-tutorial:
 
-Deploying a model with Ray Serve
+Deploying a Model with Ray Serve
 ================================
 
 Let's get started deploying our first Ray Serve application. The first thing you'll need
-to do is start a Ray cluster, you can do that using the Ray autoscaler, but in our case
+to do is start a Ray cluster. You can do that using the Ray autoscaler, but in our case
 we'll create it on our local machine. To learn more about Ray Clusters see :doc:`../cluster-index`.
 
 Starting the Cluster
@@ -50,7 +50,7 @@ As discussed in other :doc:`tutorials/index`, we can use any framework to build 
 you'll just want to have the ability to persist these models to disk.
 
 Now that we've trained that model and saved it to disk (keep in mind this could also be a service like S3),
-we'll need to create our servable model.
+we'll need to create a backend to serve the model.
 
 Creating a Model and Serving it
 -------------------------------
@@ -62,7 +62,7 @@ on that cluster(``serve.init(...)``).
 
 
 You can see that defining the model is straightforward and simple, we're simply instantiating
-the model like we might a typical python class.
+the model like we might a typical Python class.
 
 Configuring our model to accept traffic is specified via ``.set_traffic`` after we created
 a backend in serve for our model (and versioned it with a string).
@@ -71,8 +71,8 @@ a backend in serve for our model (and versioned it with a string).
     :start-after: __doc_create_deploy_begin__
     :end-before: __doc_create_deploy_end__
 
-What serve does when we run this code is store the model as a Ray Actor 
-and route traffic to it as the endpoint is queried, in this case, over HTTP.
+What serve does when we run this code is store the model as a Ray actor 
+and route traffic to it as the endpoint is queried, in this case over HTTP.
 
 Let's now query our endpoint to see the result.
 
@@ -89,7 +89,7 @@ We'll use the requests library to query our endpoint and be able to get a result
 Now that we defined a model and have it running on our Ray cluster. Let's proceed with updating
 this model with a new set of code.
 
-Updating Your Model Over time
+Updating Your Model Over Time
 =============================
 
 Updating our model is as simple as deploying the first one. While the code snippet includes 
@@ -112,7 +112,7 @@ these two models.
 
 While this is a simple operation, you may want to see :ref:`serve-split-traffic` for more information. 
 One thing you may want to consider as well is
-:ref:`session-affinity` which gives you the ability to route specific users to specific models or model 
+:ref:`session-affinity` which gives you the ability to ensure that queries from users/clients always get mapped to the same backend.
 versions.
 
 Now that we're up and running serving two models in production, let's query 

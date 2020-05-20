@@ -9,7 +9,7 @@ To follow along, you'll need to make the necessary imports.
 .. code-block:: python
 
   from ray import serve
-  serve.init() # initializes serve and Ray
+  serve.init() # Initializes Ray and Ray Serve.
 
 .. _serve-endpoint:
 
@@ -47,7 +47,7 @@ might need to maintain some state (like a model).
 For both functions and classes (that take as input Flask Requests), you'll need to 
 define them as backends to Ray Serve.
 
-It's important to note that Ray Serve places these backends in individual workers, which are replicas of the model.
+It's important to note that Ray Serve places these backends in individual worker processes, which are replicas of the model.
 
 .. code-block:: python
   
@@ -83,4 +83,3 @@ Once we've done that, we can now query our endpoint via HTTP (we use `requests` 
   
   import requests
   print(requests.get("http://127.0.0.1:8000/-/routes", timeout=0.5).text)
-
