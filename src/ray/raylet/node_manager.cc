@@ -876,12 +876,12 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     for (auto const &task : removed_tasks) {
       const TaskSpecification &spec = task.GetTaskSpecification();
       const ActorTableData &actor_table_data = actor_registration.GetTableData();
-      RayActorError error(
+      RayActorException ex(
           ErrorType_Name(ErrorType::ACTOR_DIED), spec.GetLanguage(), spec.JobId(),
           WorkerID::FromBinary(actor_table_data.address().worker_id()), spec.TaskId(),
           spec.ActorId(), actor_table_data.address().ip_address(), __FILE__, __LINE__,
           __FUNCTION__);
-      TreatTaskAsFailed(task, error);
+      TreatTaskAsFailed(task, ex);
     }
   } else if (actor_registration.GetState() == ActorTableData::RESTARTING) {
     RAY_LOG(DEBUG) << "Actor is being restarted: " << actor_id;
@@ -1334,12 +1334,12 @@ void NodeManager::ProcessDisconnectClientMessage(
         Task task;
         if (local_queues_.RemoveTask(task_id, &task)) {
           const TaskSpecification &spec = task.GetTaskSpecification();
-          RayWorkerError error(ErrorType_Name(ErrorType::WORKER_DIED), spec.GetLanguage(),
-                               spec.JobId(), worker->WorkerId(), spec.TaskId(),
-                               ActorID::Nil(), worker->GetOwnerAddress().ip_address(),
-                               worker->GetProcess().GetId(), __FILE__, __LINE__,
-                               __FUNCTION__);
-          TreatTaskAsFailed(task, error);
+          RayWorkerException ex(
+              ErrorType_Name(ErrorType::WORKER_DIED), spec.GetLanguage(), spec.JobId(),
+              worker->WorkerId(), spec.TaskId(), ActorID::Nil(),
+              worker->GetOwnerAddress().ip_address(), worker->GetProcess().GetId(),
+              __FILE__, __LINE__, __FUNCTION__);
+          TreatTaskAsFailed(task, ex);
         }
       }
 
@@ -2080,10 +2080,10 @@ bool NodeManager::CheckDependencyManagerInvariant() const {
   return true;
 }
 
-void NodeManager::TreatTaskAsFailed(const Task &task, const RayError &error) {
+void NodeManager::TreatTaskAsFailed(const Task &task, const RayException &exception) {
   const TaskSpecification &spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Treating task " << spec.TaskId() << " as failed because of error "
-                 << ErrorType_Name(error.Type()) << ".";
+                 << ErrorType_Name(exception.ErrorType()) << ".";
   // If this was an actor creation task that tried to resume from a checkpoint,
   // then erase it here since the task did not finish.
   if (spec.IsActorCreationTask()) {
@@ -2104,7 +2104,7 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const RayError &error) {
     objects_to_fail.push_back(spec.ReturnId(i).ToPlasmaId());
   }
   const JobID job_id = task.GetTaskSpecification().JobId();
-  MarkObjectsAsFailed(error, objects_to_fail, job_id);
+  MarkObjectsAsFailed(exception, objects_to_fail, job_id);
   task_dependency_manager_.TaskCanceled(spec.TaskId());
   // Notify the task dependency manager that we no longer need this task's
   // object dependencies. TODO(swang): Ideally, we would check the return value
@@ -2114,13 +2114,13 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const RayError &error) {
   task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId());
 }
 
-void NodeManager::MarkObjectsAsFailed(const RayError &error,
+void NodeManager::MarkObjectsAsFailed(const RayException &exception,
                                       const std::vector<plasma::ObjectID> objects_to_fail,
                                       const JobID &job_id) {
-  const std::string meta = std::to_string(static_cast<int>(error.Type()));
+  const std::string meta = std::to_string(static_cast<int>(exception.ErrorType()));
   for (const auto &object_id : objects_to_fail) {
     arrow::Status status =
-        store_client_.CreateAndSeal(object_id, error.Serialize(), meta);
+        store_client_.CreateAndSeal(object_id, exception.Serialize(), meta);
     if (!status.ok() && !plasma::IsPlasmaObjectExists(status)) {
       // If we failed to save the error code, log a warning and push an error message
       // to the driver.
@@ -2168,11 +2168,11 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
               // before, so the object has been lost. Mark the task as failed to
               // prevent any tasks that depend on this object from hanging.
               const TaskSpecification &spec = task.GetTaskSpecification();
-              RayObjectError error(ErrorType_Name(ErrorType::OBJECT_UNRECONSTRUCTABLE),
-                                   spec.GetLanguage(), spec.JobId(), spec.TaskId(),
-                                   spec.ActorId(), object_id, __FILE__, __LINE__,
-                                   __FUNCTION__);
-              TreatTaskAsFailed(task, error);
+              RayObjectException ex(ErrorType_Name(ErrorType::OBJECT_UNRECONSTRUCTABLE),
+                                    spec.GetLanguage(), spec.JobId(), spec.TaskId(),
+                                    spec.ActorId(), object_id, __FILE__, __LINE__,
+                                    __FUNCTION__);
+              TreatTaskAsFailed(task, ex);
               *task_marked_as_failed = true;
             }
           }
@@ -2207,12 +2207,12 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
         // If this actor is dead, either because the actor process is dead
         // or because its residing node is dead, treat this task as failed.
         const ActorTableData &actor_table_data = actor_entry->second.GetTableData();
-        RayActorError error(
+        RayActorException ex(
             ErrorType_Name(ErrorType::ACTOR_DIED), spec.GetLanguage(), spec.JobId(),
             WorkerID::FromBinary(actor_table_data.address().worker_id()), spec.TaskId(),
             spec.ActorId(), actor_table_data.address().ip_address(), __FILE__, __LINE__,
             __FUNCTION__);
-        TreatTaskAsFailed(task, error);
+        TreatTaskAsFailed(task, ex);
       } else {
         // If this actor is alive, check whether this actor is local.
         auto node_manager_id = actor_entry->second.GetNodeManagerId();
@@ -2914,10 +2914,10 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
                  "allocation via "
               << "ray.init(redis_max_memory=<max_memory_bytes>).";
           RAY_LOG(WARNING) << error_message.str();
-          RayObjectError error(error_message.str(), Language::CPP, JobID::Nil(), task_id,
-                               ActorID::Nil(), required_object_id.ToPlasmaId(), __FILE__,
-                               __LINE__, __FUNCTION__);
-          MarkObjectsAsFailed(error, {required_object_id.ToPlasmaId()}, JobID::Nil());
+          RayObjectException ex(error_message.str(), Language::CPP, JobID::Nil(), task_id,
+                                ActorID::Nil(), required_object_id.ToPlasmaId(), __FILE__,
+                                __LINE__, __FUNCTION__);
+          MarkObjectsAsFailed(ex, {required_object_id.ToPlasmaId()}, JobID::Nil());
         }
       }));
 }
@@ -2955,10 +2955,10 @@ void NodeManager::ResubmitTask(const Task &task, const ObjectID &required_object
                                   task.GetTaskSpecification().JobId());
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     const TaskSpecification &spec = task.GetTaskSpecification();
-    RayObjectError error(error_message.str(), spec.GetLanguage(), spec.JobId(),
-                         spec.TaskId(), ActorID::Nil(), required_object_id.ToPlasmaId(),
-                         __FILE__, __LINE__, __FUNCTION__);
-    MarkObjectsAsFailed(error, {required_object_id.ToPlasmaId()},
+    RayObjectException ex(error_message.str(), spec.GetLanguage(), spec.JobId(),
+                          spec.TaskId(), ActorID::Nil(), required_object_id.ToPlasmaId(),
+                          __FILE__, __LINE__, __FUNCTION__);
+    MarkObjectsAsFailed(ex, {required_object_id.ToPlasmaId()},
                         task.GetTaskSpecification().JobId());
     return;
   }
