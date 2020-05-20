@@ -533,7 +533,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                  const uint8_t *message_data);
 
   /// Handle the case where an actor is disconnected, determine whether this
-  /// actor needs to be reconstructed and then update actor table.
+  /// actor needs to be restarted and then update actor table.
   /// This function needs to be called either when actor process dies or when
   /// a node dies.
   ///

@@ -1,105 +1,58 @@
 import logging
 
-from ray.tune.track.session import TrackSession as _TrackSession
+from ray.tune import session
 
 logger = logging.getLogger(__name__)
 
 _session = None
+warned = False
+
+
+def _deprecation_warning(call=None, alternative_call=None, soft=True):
+    msg = "tune.track is now deprecated."
+    if call and alternative_call:
+        msg = "tune.track.{} is now deprecated.".format(call)
+        msg += " Use `tune.{}` instead.".format(alternative_call)
+    global warned
+    if soft:
+        msg += " This warning will throw an error in a future version of Ray."
+        if not warned:
+            logger.warning(msg)
+            warned = True
+    else:
+        raise DeprecationWarning(msg)
 
 
 def get_session():
-    global _session
-    if not _session:
-        raise ValueError("Session not detected. Try `track.init()`?")
-    return _session
+    _deprecation_warning(soft=False)
 
 
 def init(ignore_reinit_error=True, **session_kwargs):
-    """Initializes the global trial context for this process.
-
-    This creates a TrackSession object and the corresponding hooks for logging.
-
-    Examples:
-        >>> from ray.tune import track
-        >>> track.init()
-    """
-    global _session
-
-    if _session:
-        # TODO(ng): would be nice to stack crawl at creation time to report
-        # where that initial trial was created, and that creation line
-        # info is helpful to keep around anyway.
-        reinit_msg = "A session already exists in the current context."
-        if ignore_reinit_error:
-            if not _session.is_tune_session:
-                logger.warning(reinit_msg)
-            return
-        else:
-            raise ValueError(reinit_msg)
-
-    _session = _TrackSession(**session_kwargs)
+    _deprecation_warning(soft=False)
 
 
 def shutdown():
-    """Cleans up the trial and removes it from the global context."""
-
-    global _session
-    if _session:
-        _session.close()
-    _session = None
+    _deprecation_warning(soft=False)
 
 
 def log(**kwargs):
-    """Logs all keyword arguments.
-
-    .. code-block:: python
-
-        import time
-        from ray import tune
-        from ray.tune import track
-
-        def run_me(config):
-            for iter in range(100):
-                time.sleep(1)
-                track.log(hello="world", ray="tune")
-
-        analysis = tune.run(run_me)
-
-    Args:
-        **kwargs: Any key value pair to be logged by Tune. Any of these
-            metrics can be used for early stopping or optimization.
-    """
-    _session = get_session()
-    return _session.log(**kwargs)
+    _deprecation_warning(call="log", alternative_call="report", soft=True)
+    session.report(**kwargs)
 
 
 def trial_dir():
-    """Returns the directory where trial results are saved.
-
-    This includes json data containing the session's parameters and metrics.
-    """
-    _session = get_session()
-    return _session.logdir
+    _deprecation_warning(
+        call="trial_dir", alternative_call="get_trial_dir", soft=True)
+    return session.get_trial_dir()
 
 
 def trial_name():
-    """Trial name for the corresponding trial of this Trainable.
-
-    This is not set if not using Tune.
-    """
-    _session = get_session()
-    return _session.trial_name
+    _deprecation_warning(
+        call="trial_name", alternative_call="get_trial_name", soft=True)
+    return session.get_trial_name()
 
 
 def trial_id():
-    """Trial id for the corresponding trial of this Trainable.
-
-    This is not set if not using Tune.
-    """
-    _session = get_session()
-    return _session.trial_id
-
-
-__all__ = [
-    "session", "log", "trial_dir", "init", "shutdown", "trial_name", "trial_id"
-]
+    _deprecation_warning(
+        call="trial_id", alternative_call="get_trial_id", soft=True)
+    return session.get_trial_id()

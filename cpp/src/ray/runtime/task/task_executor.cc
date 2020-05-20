@@ -40,7 +40,7 @@ void TaskExecutor::Invoke(const TaskSpecification &task_spec,
     data = (*exec_function)(dynamic_library_base_addr,
                             std::stoul(typed_descriptor->FunctionOffset()), args);
   }
-  runtime->Put(std::move(data), task_spec.ReturnId(0, ray::TaskTransportType::RAYLET));
+  runtime->Put(std::move(data), task_spec.ReturnId(0));
 }
 }  // namespace api
 }  // namespace ray

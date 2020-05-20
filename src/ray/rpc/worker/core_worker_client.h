@@ -112,9 +112,12 @@ class CoreWorkerClientInterface {
   /// Push an actor task directly from worker to worker.
   ///
   /// \param[in] request The request message.
+  /// \param[in] skip_queue Whether to skip the task queue. This will send the
+  /// task for execution immediately.
   /// \param[in] callback The callback function that handles reply.
   /// \return if the rpc call succeeds
   virtual ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request,
+                                    bool skip_queue,
                                     const ClientCallback<PushTaskReply> &callback) {
     return Status::NotImplemented("");
   }
@@ -244,16 +247,19 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   RPC_CLIENT_METHOD(CoreWorkerService, PlasmaObjectReady, grpc_client_, override)
 
-  ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request,
+  ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request, bool skip_queue,
                             const ClientCallback<PushTaskReply> &callback) override {
-    request->set_sequence_number(request->task_spec().actor_task_spec().actor_counter());
+    if (skip_queue) {
+      // Set this value so that the actor does not skip any tasks when
+      // processing this request. We could also set it to max_finished_seq_no_,
+      // but we just set it to the default of -1 to avoid taking the lock.
+      request->set_client_processed_up_to(-1);
+      return INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, callback,
+                             grpc_client_);
+    }
+
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      if (request->task_spec().caller_id() != cur_caller_id_) {
-        // We are running a new task, reset the seq no counter.
-        max_finished_seq_no_ = -1;
-        cur_caller_id_ = request->task_spec().caller_id();
-      }
       send_queue_.push_back(std::make_pair(std::move(request), callback));
     }
     SendRequests();
@@ -331,10 +337,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   /// The max sequence number we have processed responses for.
   int64_t max_finished_seq_no_ GUARDED_BY(mutex_) = -1;
-
-  /// The task id we are currently sending requests for. When this changes,
-  /// the max finished seq no counter is reset.
-  std::string cur_caller_id_;
 };
 
 }  // namespace rpc

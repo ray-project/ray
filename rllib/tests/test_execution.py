@@ -53,6 +53,22 @@ def test_concurrently(ray_start_regular_shared):
     assert c.take(6) == [1, 4, 2, 5, 3, 6]
 
 
+def test_concurrently_weighted(ray_start_regular_shared):
+    a = iter_list([1, 1, 1])
+    b = iter_list([2, 2, 2])
+    c = iter_list([3, 3, 3])
+    c = Concurrently(
+        [a, b, c], mode="round_robin", round_robin_weights=[3, 1, 2])
+    assert c.take(9) == [1, 1, 1, 2, 3, 3, 2, 3, 2]
+
+    a = iter_list([1, 1, 1])
+    b = iter_list([2, 2, 2])
+    c = iter_list([3, 3, 3])
+    c = Concurrently(
+        [a, b, c], mode="round_robin", round_robin_weights=[1, 1, "*"])
+    assert c.take(9) == [1, 2, 3, 3, 3, 1, 2, 1, 2]
+
+
 def test_concurrently_output(ray_start_regular_shared):
     a = iter_list([1, 2, 3])
     b = iter_list([4, 5, 6])

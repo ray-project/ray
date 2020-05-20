@@ -1,6 +1,7 @@
+#include "ray/common/task/task_spec.h"
+
 #include <sstream>
 
-#include "ray/common/task/task_spec.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -104,10 +105,8 @@ size_t TaskSpecification::NumArgs() const { return message_->args_size(); }
 
 size_t TaskSpecification::NumReturns() const { return message_->num_returns(); }
 
-ObjectID TaskSpecification::ReturnId(size_t return_index,
-                                     TaskTransportType transport_type) const {
-  return ObjectID::ForTaskReturn(TaskId(), return_index + 1,
-                                 static_cast<uint8_t>(transport_type));
+ObjectID TaskSpecification::ReturnId(size_t return_index) const {
+  return ObjectID::ForTaskReturn(TaskId(), return_index + 1);
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
@@ -189,9 +188,9 @@ ActorID TaskSpecification::ActorCreationId() const {
   return ActorID::FromBinary(message_->actor_creation_task_spec().actor_id());
 }
 
-uint64_t TaskSpecification::MaxActorReconstructions() const {
+int64_t TaskSpecification::MaxActorRestarts() const {
   RAY_CHECK(IsActorCreationTask());
-  return message_->actor_creation_task_spec().max_actor_reconstructions();
+  return message_->actor_creation_task_spec().max_actor_restarts();
 }
 
 std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
@@ -206,6 +205,10 @@ TaskID TaskSpecification::CallerId() const {
 
 const rpc::Address &TaskSpecification::CallerAddress() const {
   return message_->caller_address();
+}
+
+WorkerID TaskSpecification::CallerWorkerId() const {
+  return WorkerID::FromBinary(message_->caller_address().worker_id());
 }
 
 // === Below are getter methods specific to actor tasks.
@@ -234,7 +237,7 @@ ObjectID TaskSpecification::PreviousActorTaskDummyObjectId() const {
 
 ObjectID TaskSpecification::ActorDummyObject() const {
   RAY_CHECK(IsActorTask() || IsActorCreationTask());
-  return ReturnId(NumReturns() - 1, TaskTransportType::RAYLET);
+  return ReturnId(NumReturns() - 1);
 }
 
 int TaskSpecification::MaxActorConcurrency() const {
@@ -266,7 +269,7 @@ std::string TaskSpecification::DebugString() const {
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
-           << ", max_reconstructions=" << MaxActorReconstructions()
+           << ", max_restarts=" << MaxActorRestarts()
            << ", max_concurrency=" << MaxActorConcurrency()
            << ", is_asyncio_actor=" << IsAsyncioActor()
            << ", is_detached=" << IsDetachedActor() << "}";

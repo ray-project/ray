@@ -189,6 +189,12 @@ class JobInfoAccessor {
       const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
       const StatusCallback &done) = 0;
 
+  /// Get all job info from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finished.
+  /// \return Status
+  virtual Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) = 0;
+
  protected:
   JobInfoAccessor() = default;
 };
