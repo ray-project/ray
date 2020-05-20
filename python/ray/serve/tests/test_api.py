@@ -391,6 +391,11 @@ def test_cluster_name():
 
 
 def test_parallel_start(serve_instance):
+    # Test the ability to start multiple replicas in parallel.
+    # In the past, when Serve scale up a backend, it does so one by one and
+    # wait for each replica to initialize. This test avoid this by preventing
+    # the first replica to finish initialization unless the second replica is
+    # also started.
     @ray.remote
     class Barrier:
         def __init__(self, release_on):
