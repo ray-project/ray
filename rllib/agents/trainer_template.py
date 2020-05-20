@@ -7,6 +7,7 @@ from ray.rllib.execution.train_ops import TrainOneStep
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.deprecation import deprecation_warning
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,7 @@ def build_trainer(
                 validate_config(config)
 
             if get_initial_state:
+                deprecation_warning("get_initial_state", "execution_plan")
                 self.state = get_initial_state(self)
             else:
                 self.state = {}
@@ -104,6 +106,7 @@ def build_trainer(
                 before_init(self)
             # Creating all workers (excluding evaluation workers).
             if make_workers and not execution_plan:
+                deprecation_warning("make_workers", "execution_plan")
                 self.workers = make_workers(self, env_creator, self._policy,
                                             config)
             else:
@@ -115,6 +118,7 @@ def build_trainer(
             self.execution_plan = execution_plan
 
             if make_policy_optimizer:
+                deprecation_warning("make_policy_optimizer", "execution_plan")
                 self.optimizer = make_policy_optimizer(self.workers, config)
             else:
                 assert execution_plan is not None
@@ -128,6 +132,7 @@ def build_trainer(
                 return self._train_exec_impl()
 
             if before_train_step:
+                deprecation_warning("before_train_step", "execution_plan")
                 before_train_step(self)
             prev_steps = self.optimizer.num_steps_sampled
 
@@ -137,6 +142,8 @@ def build_trainer(
                 fetches = self.optimizer.step()
                 optimizer_steps_this_iter += 1
                 if after_optimizer_step:
+                    deprecation_warning("after_optimizer_step",
+                                        "execution_plan")
                     after_optimizer_step(self, fetches)
                 if (time.time() - start >= self.config["min_iter_time_s"]
                         and self.optimizer.num_steps_sampled - prev_steps >=
@@ -144,6 +151,7 @@ def build_trainer(
                     break
 
             if collect_metrics_fn:
+                deprecation_warning("collect_metrics_fn", "execution_plan")
                 res = collect_metrics_fn(self)
             else:
                 res = self.collect_metrics()
@@ -154,15 +162,12 @@ def build_trainer(
                 info=res.get("info", {}))
 
             if after_train_result:
+                deprecation_warning("after_train_result", "execution_plan")
                 after_train_result(self, res)
             return res
 
         def _train_exec_impl(self):
-            if before_train_step:
-                logger.debug("Ignoring before_train_step callback")
             res = next(self.train_exec_impl)
-            if after_train_result:
-                logger.debug("Ignoring after_train_result callback")
             return res
 
         @override(Trainer)
