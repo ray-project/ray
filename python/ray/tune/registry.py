@@ -3,9 +3,10 @@ from types import FunctionType
 
 import ray
 import ray.cloudpickle as pickle
-
 from ray.experimental.internal_kv import _internal_kv_initialized, \
     _internal_kv_get, _internal_kv_put
+from ray.tune.error import TuneError
+
 
 TRAINABLE_CLASS = "trainable_class"
 ENV_CREATOR = "env_creator"
@@ -21,19 +22,21 @@ logger = logging.getLogger(__name__)
 
 
 def has_trainable(trainable_name):
+    #global _global_registry
     return _global_registry.contains(TRAINABLE_CLASS, trainable_name)
 
 
 def get_trainable_cls(trainable_name):
+    #global _global_registry
     validate_trainable(trainable_name)
     return _global_registry.get(TRAINABLE_CLASS, trainable_name)
 
 
 def validate_trainable(trainable_name):
     if not has_trainable(trainable_name):
-        # Make sure rllib agents are registered
-        from ray import rllib  # noqa: F401
-        from ray.tune.error import TuneError
+        # Make sure everything rllib-related is registered.
+        from ray.rllib import _register_all
+        _register_all()
         if not has_trainable(trainable_name):
             raise TuneError("Unknown trainable: " + trainable_name)
 
@@ -137,5 +140,8 @@ class _Registry:
         self._to_flush.clear()
 
 
+#try:
+#    _ = _global_registry
+#except NameError:
 _global_registry = _Registry()
 ray.worker._post_init_hooks.append(_global_registry.flush_values)
