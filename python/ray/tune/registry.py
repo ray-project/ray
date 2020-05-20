@@ -7,7 +7,6 @@ from ray.experimental.internal_kv import _internal_kv_initialized, \
     _internal_kv_get, _internal_kv_put
 from ray.tune.error import TuneError
 
-
 TRAINABLE_CLASS = "trainable_class"
 ENV_CREATOR = "env_creator"
 RLLIB_MODEL = "rllib_model"
@@ -22,12 +21,10 @@ logger = logging.getLogger(__name__)
 
 
 def has_trainable(trainable_name):
-    #global _global_registry
     return _global_registry.contains(TRAINABLE_CLASS, trainable_name)
 
 
 def get_trainable_cls(trainable_name):
-    #global _global_registry
     validate_trainable(trainable_name)
     return _global_registry.get(TRAINABLE_CLASS, trainable_name)
 
@@ -140,8 +137,5 @@ class _Registry:
         self._to_flush.clear()
 
 
-#try:
-#    _ = _global_registry
-#except NameError:
 _global_registry = _Registry()
 ray.worker._post_init_hooks.append(_global_registry.flush_values)
