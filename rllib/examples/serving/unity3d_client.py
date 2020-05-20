@@ -1,3 +1,4 @@
+import numpy as np
 #import gym
 
 
@@ -37,6 +38,17 @@ parser.add_argument(
     default=9999,
     help="Stop once the specified reward is reached.")
 
+
+def _get_step_results(unity_env, brain_name):
+    env_state = unity_env._env_state[brain_name]
+    # [0] = DecisionSteps
+    s = env_state[0].obs[0]  # [0] = TODO: (sven): Only use 1st obs comp for now.
+    r = env_state[0].reward  # rewards vector
+    # [1] = TerminalSteps
+    d = env_state[1].agent_id  # Agent dones indices.
+    return s, r, d
+
+
 if __name__ == "__main__":
     args = parser.parse_args()
 
@@ -51,8 +63,8 @@ if __name__ == "__main__":
 
     client = PolicyClient(
         "http://localhost:9900", inference_mode=args.inference_mode)
-
     eid = client.start_episode(training_enabled=not args.no_train)
+
     # Reset to set a first observation.
     unity_env.reset()
     # Get brain name.
@@ -60,21 +72,30 @@ if __name__ == "__main__":
     num_agents = len(unity_env._env_state[brain_name][0].agent_id)
     obs_batch = unity_env._env_state[brain_name][0].obs[0]  # <- only take 0th component (assume observations are single-component obs).
     obs_batch = [obs_batch[i] for i in range(len(obs_batch))]
-    rewards = 0.0
+    episode_rewards = [0.0 for _ in range(len(obs_batch))]
 
     while True:
         action = client.get_action(eid, obs_batch)
-        unity_env.set_actions(brain_name, action)
-        obs, reward, done, info = unity_env.step()  # TODO:
-        #unity_env.
-        rewards += reward
-        client.log_returns(eid, reward, info=info)
-        if done:
+        # Convert per-env + per-agent actions into Unity-readable action
+        # vector.
+        unity_actions = np.array([action[i]["agent0"] for i in range(len(action))])
+        unity_env.set_actions(brain_name, unity_actions)
+        unity_env.step()
+        obs_batch, rewards, dones = _get_step_results(unity_env, brain_name)
+        if len(rewards) != 0:
+            episode_rewards += rewards
+            client.log_returns(eid, rewards)
+        if any(dones):
+            print("Agents {} are done.".format(dones))
             print("Total reward:", rewards)
-            if rewards >= args.stop_at_reward:
-                print("Target reward achieved, exiting")
+            if any(episode_rewards >= args.stop_reward):
+                print("Target reward achieved, exiting.")
                 exit(0)
-            rewards = 0.0
+            # Reset episode rewards for done agents.
+            for i in dones:
+                episode_rewards[i] = 0.0
             client.end_episode(eid, obs)
             obs = unity_env.reset()
             eid = client.start_episode(training_enabled=not args.no_train)
+
+

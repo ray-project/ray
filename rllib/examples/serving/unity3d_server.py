@@ -29,16 +29,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
 
-    register_env("fake_unity",
-                 lambda c: VectorEnv.wrap(
-                     make_env=lambda c: RandomEnv(c),
-                     existing_envs=None,
-                     num_envs=12,
-                     env_config={
-                         "action_space": Box(-1.0, 1.0, (2,)),
-                         "observation_space": Box(float("-inf"), float("inf"),
-                                                  (8,)),
-                     }))
+    register_env("fake_unity", lambda c: RandomEnv(c))
 
     connector_config = {
         # Use the connector server to generate experiences.
@@ -58,6 +49,12 @@ if __name__ == "__main__":
             connector_config, **{
                 "sample_batch_size": 64,
                 "train_batch_size": 256,
+                "num_envs_per_worker": 12,
+                "env_config": {
+                    "action_space": Box(-1.0, 1.0, (2,)),
+                    "observation_space": Box(float("-inf"), float("inf"),
+                                             (8,)),
+                },
             }))
 
     checkpoint_path = CHECKPOINT_FILE.format("PPO")  #args.run)

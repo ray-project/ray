@@ -352,7 +352,7 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
                 summarize(unfiltered_obs)))
             logger.info("Info return from env: {}".format(summarize(infos)))
 
-        # Process observations and prepare for policy evaluation
+        # Process observations and prepare for policy evaluation.
         t1 = time.time()
         active_envs, to_eval, outputs = _process_observations(
             worker, base_env, policies, batch_builder_pool, active_episodes,

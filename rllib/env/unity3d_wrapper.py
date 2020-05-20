@@ -2,11 +2,11 @@ from gym.spaces import Box, Dict, Tuple
 import numpy as np
 from mlagents_envs.environment import UnityEnvironment
 
-from ray.rllib.env.remote_vector_env import RemoteVectorEnv, \
-    _RemoteMultiAgentEnv, _RemoteSingleAgentEnv
+from ray.rllib.env.remote_multi_agent_vector_env import \
+    RemoteMultiAgentVectorEnv
 
 
-class Unity3DWrapper(RemoteVectorEnv):
+class Unity3DWrapper(RemoteMultiAgentVectorEnv):
     """A Unity3D single instance acting as a RemoteVectorEnv.
 
     Note: Communication between Unity and Python takes place over an open
@@ -30,8 +30,6 @@ class Unity3DWrapper(RemoteVectorEnv):
             timeout_wait (int): Time (in seconds) to wait for connection from environment.
             #train_mode (bool): Whether to run in training mode, speeding up the simulation. Default: True.
         """
-        assert multiagent is False,\
-            "Multiagent for Unity3D Envs not supported yet!"
 
         # Factory function to create one UnityEnvironment (with possibly
         # many parallel sub-envs within the same scene (vectorized)).

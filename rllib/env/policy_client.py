@@ -103,12 +103,12 @@ class PolicyClient:
         if self.local:
             self._update_local_policy()
             return self.env.get_action(episode_id, observation)
-
-        return self._send({
-            "command": PolicyClient.GET_ACTION,
-            "observation": observation,
-            "episode_id": episode_id,
-        })["action"]
+        else:
+            return self._send({
+                "command": PolicyClient.GET_ACTION,
+                "observation": observation,
+                "episode_id": episode_id,
+            })["action"]
 
     @PublicAPI
     def log_action(self, episode_id, observation, action):
@@ -257,7 +257,7 @@ class _LocalInferenceThread(threading.Thread):
             logger.info("Error: inference worker thread died!", e)
 
 
-def auto_wrap_external(real_env_creator):
+def auto_wrap_external(real_env_creator, num_envs=None):
     """Wrap an environment in the ExternalEnv interface if needed.
 
     Args:
@@ -280,7 +280,7 @@ def auto_wrap_external(real_env_creator):
             class ExternalEnvWrapper(external_cls):
                 def __init__(self, real_env):
                     super().__init__(real_env.action_space,
-                                     real_env.observation_space)
+                                     real_env.observation_space, num_envs=num_envs)
 
                 def run(self):
                     # Since we are calling methods on this class in the
@@ -307,7 +307,7 @@ def create_embedded_rollout_worker(kwargs, send_fn):
     del kwargs["input_creator"]
     logger.info("Creating rollout worker with kwargs={}".format(kwargs))
     real_env_creator = kwargs["env_creator"]
-    kwargs["env_creator"] = auto_wrap_external(real_env_creator)
+    kwargs["env_creator"] = auto_wrap_external(real_env_creator, num_envs=kwargs["num_envs"])
 
     rollout_worker = RolloutWorker(**kwargs)
     inference_thread = _LocalInferenceThread(rollout_worker, send_fn)

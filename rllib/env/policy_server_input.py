@@ -173,6 +173,7 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
                 assert inference_thread.is_alive()
                 response["action"] = child_rollout_worker.env.get_action(
                     args["episode_id"], args["observation"])
+                logger.info("Got action {}".format(response["action"]))
             elif command == PolicyClient.LOG_ACTION:
                 assert inference_thread.is_alive()
                 child_rollout_worker.env.log_action(

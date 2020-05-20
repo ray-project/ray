@@ -106,9 +106,9 @@ class BaseEnv:
                         "num_envs > 1.")
                 env = _ExternalEnvToBaseEnv(env, multiagent=True)
             elif isinstance(env, ExternalEnv):
-                if num_envs != 1:
-                    raise ValueError(
-                        "ExternalEnv does not currently support num_envs > 1.")
+                #if num_envs != 1:
+                #    raise ValueError(
+                #        "ExternalEnv does not currently support num_envs > 1.")
                 env = _ExternalEnvToBaseEnv(env)
             elif isinstance(env, VectorEnv):
                 env = _VectorEnvToBaseEnv(env)
@@ -237,6 +237,9 @@ class _ExternalEnvToBaseEnv(BaseEnv):
         if self.multiagent:
             for env_id, actions in action_dict.items():
                 self.external_env._episodes[env_id].action_queue.put(actions)
+        elif self.external_env.num_envs > 1:
+            next(iter(self.external_env._episodes.values())).action_queue.put(
+                action_dict)
         else:
             for env_id, action in action_dict.items():
                 self.external_env._episodes[env_id].action_queue.put(
@@ -247,20 +250,40 @@ class _ExternalEnvToBaseEnv(BaseEnv):
         off_policy_actions = {}
         for eid, episode in self.external_env._episodes.copy().items():
             data = episode.get_data()
-            cur_done = episode.cur_done_dict[
-                "__all__"] if self.multiagent else episode.cur_done
-            if cur_done:
+
+            if self.multiagent:
+                all_done = episode.cur_dones["__all__"]
+            elif self.external_env.num_envs > 1:
+                all_done = all(episode.cur_dones)
+            else:
+                all_done = episode.cur_dones
+
+            if all_done:
                 del self.external_env._episodes[eid]
+
             if data:
-                if self.prep:
-                    all_obs[eid] = self.prep.transform(data["obs"])
+                if self.external_env.num_envs > 1:
+                    for i in range(self.external_env.num_envs):
+                        if self.prep:
+                            all_obs[i] = self.prep.transform(data["obs"][i])
+                        else:
+                            all_obs[i] = data["obs"][i]
+                        all_rewards[i] = data["reward"][i]
+                        all_dones[i] = data["done"][i]
+                        all_infos[i] = data["info"]
+                        if "off_policy_action" in data:
+                            off_policy_actions[i] = data["off_policy_action"][i]
                 else:
-                    all_obs[eid] = data["obs"]
-                all_rewards[eid] = data["reward"]
-                all_dones[eid] = data["done"]
-                all_infos[eid] = data["info"]
-                if "off_policy_action" in data:
-                    off_policy_actions[eid] = data["off_policy_action"]
+                    if self.prep:
+                        all_obs[eid] = self.prep.transform(data["obs"])
+                    else:
+                        all_obs[eid] = data["obs"]
+                    all_rewards[eid] = data["reward"]
+                    all_dones[eid] = data["done"]
+                    all_infos[eid] = data["info"]
+                    if "off_policy_action" in data:
+                        off_policy_actions[eid] = data["off_policy_action"]
+
         if self.multiagent:
             # ensure a consistent set of keys
             # rely on all_obs having all possible keys for now
