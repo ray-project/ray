@@ -41,8 +41,7 @@ Backends are the logical structures for your business logic or models and
 how you specify what should happen when an endpoint is queried.
 To define a backend, first you must define the "handler" or the business logic you'd like to respond with. 
 The input to this request will be a `Flask Request object <https://flask.palletsprojects.com/en/1.1.x/api/?highlight=request#flask.Request>`_.
-Once you define the function (or class) that will handle a request. 
-You'd use a function when your response is stateless and a class when you
+Use a function when your response is stateless and a class when you
 might need to maintain some state (like a model). 
 For both functions and classes (that take as input Flask Requests), you'll need to 
 define them as backends to Ray Serve.
