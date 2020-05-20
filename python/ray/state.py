@@ -296,7 +296,7 @@ class GlobalState:
         """
         locations = []
         for location in object_location_info.locations:
-            locations.append(location.manager)
+            locations.append(ray.utils.binary_to_hex(location.manager))
 
         object_info = {
             "ObjectID": ray.utils.binary_to_hex(object_location_info.object_id),

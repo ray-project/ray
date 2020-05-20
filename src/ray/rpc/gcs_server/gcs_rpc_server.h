@@ -273,6 +273,7 @@ class ObjectInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     OBJECT_INFO_SERVICE_RPC_HANDLER(GetObjectLocations);
+    OBJECT_INFO_SERVICE_RPC_HANDLER(GetAllObjectLocations);
     OBJECT_INFO_SERVICE_RPC_HANDLER(AddObjectLocation);
     OBJECT_INFO_SERVICE_RPC_HANDLER(RemoveObjectLocation);
   }
