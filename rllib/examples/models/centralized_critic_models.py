@@ -2,7 +2,7 @@ from gym.spaces import Box
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
+from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
@@ -161,14 +161,17 @@ class YetAnotherTorchCentralizedCriticModel(TorchModelV2, nn.Module):
 
         self.value_model = TorchFC(obs_space, action_space, 1, model_config,
                                    name + "_vf")
+        self._model_in = None
 
     def forward(self, input_dict, state, seq_lens):
-        self._value_out, _ = self.value_model({
-            "obs": input_dict["obs_flat"]
-        }, state, seq_lens)
+        # Store model-input for possible `value_function()` call.
+        self._model_in = [input_dict["obs_flat"], state, seq_lens]
         return self.action_model({
             "obs": input_dict["obs"]["own_obs"]
         }, state, seq_lens)
 
     def value_function(self):
-        return torch.reshape(self._value_out, [-1])
+        value_out, _ = self.value_model({
+            "obs": self._model_in[0]
+        }, self._model_in[1], self._model_in[2])
+        return torch.reshape(value_out, [-1])

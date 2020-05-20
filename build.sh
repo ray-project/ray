@@ -121,35 +121,45 @@ fi
 # Now we build everything.
 BUILD_DIR="$ROOT_DIR/build/"
 if [ ! -d "${BUILD_DIR}" ]; then
-mkdir -p "${BUILD_DIR}"
+  mkdir -p "${BUILD_DIR}"
 fi
 
 pushd "$BUILD_DIR"
 
-
-WORK_DIR=`mktemp -d`
-pushd $WORK_DIR
-git clone https://github.com/suquark/pickle5-backport
-pushd pickle5-backport
-  git checkout 8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72
-  CC=gcc "$PYTHON_EXECUTABLE" setup.py --quiet bdist_wheel
-  unzip -q -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
-popd
-popd
-
-
-if [ -z "$SKIP_THIRDPARTY_INSTALL" ]; then
-    CC=gcc "$PYTHON_EXECUTABLE" -m pip install -q psutil setproctitle \
-            --target="$ROOT_DIR/python/ray/thirdparty_files"
-fi
-
-export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
 
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
   "$BAZEL_EXECUTABLE" build //java:ray_java_pkg --verbose_failures
 fi
 
 if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
+  pickle5_available=0
+  pickle5_path="$ROOT_DIR/python/ray/pickle5_files"
+  # Check if the current Python alrady has pickle5 (either comes with newer Python versions, or has been installed by us before).
+  check_pickle5_command="import sys\nif sys.version_info < (3, 8, 2): import pickle5;"
+  if PYTHONPATH="$pickle5_path:$PYTHONPATH" "$PYTHON_EXECUTABLE" -s -c "exec(\"$check_pickle5_command\")" 2>/dev/null; then
+    pickle5_available=1
+  fi
+  if [ 1 -ne "${pickle5_available}" ]; then
+    # Install pickle5-backport.
+    TEMP_DIR="$(mktemp -d)"
+    pushd "$TEMP_DIR"
+    curl -f -s -L -R -o "pickle5-backport.zip" "https://github.com/suquark/pickle5-backport/archive/8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72.zip"
+    unzip pickle5-backport.zip
+    pushd pickle5-backport-8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72
+      CC=gcc "$PYTHON_EXECUTABLE" setup.py --quiet bdist_wheel
+      unzip -q -o dist/*.whl -d "$pickle5_path"
+    popd
+    popd
+    rm -rf "$TEMP_DIR"
+  fi
+
+  if [ -z "$SKIP_THIRDPARTY_INSTALL" ]; then
+      CC=gcc "$PYTHON_EXECUTABLE" -m pip install -q psutil setproctitle \
+              --target="$ROOT_DIR/python/ray/thirdparty_files"
+  fi
+
+  export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
+
   "$BAZEL_EXECUTABLE" build //:ray_pkg --verbose_failures
 fi
 

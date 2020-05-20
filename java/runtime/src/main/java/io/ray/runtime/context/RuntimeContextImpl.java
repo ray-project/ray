@@ -32,7 +32,7 @@ public class RuntimeContextImpl implements RuntimeContext {
   }
 
   @Override
-  public boolean wasCurrentActorReconstructed() {
+  public boolean wasCurrentActorRestarted() {
     TaskType currentTaskType = runtime.getWorkerContext().getCurrentTaskType();
     Preconditions.checkState(currentTaskType == TaskType.ACTOR_CREATION_TASK,
         "This method can only be called from an actor creation task.");
@@ -40,7 +40,7 @@ public class RuntimeContextImpl implements RuntimeContext {
       return false;
     }
 
-    return runtime.getGcsClient().wasCurrentActorReconstructed(getCurrentActorId());
+    return runtime.getGcsClient().wasCurrentActorRestarted(getCurrentActorId());
   }
 
   @Override

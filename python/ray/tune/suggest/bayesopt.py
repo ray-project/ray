@@ -12,10 +12,19 @@ logger = logging.getLogger(__name__)
 
 
 class BayesOptSearch(Searcher):
-    """A wrapper around BayesOpt to provide trial suggestions.
+    """Uses fmfn/BayesianOptimization to optimize hyperparameters.
 
-    Requires BayesOpt to be installed. You can install BayesOpt with the
-    command: ``pip install bayesian-optimization``.
+    fmfn/BayesianOptimization is a library for Bayesian Optimization. More
+    info can be found here: https://github.com/fmfn/BayesianOptimization.
+
+    You will need to install fmfn/BayesianOptimization via the following:
+
+    .. code-block:: bash
+
+        pip install bayesian-optimization
+
+    This algorithm requires setting a search space using the
+    `BayesianOptimization search space specification`_.
 
     Parameters:
         space (dict): Continuous search space. Parameters will be sampled from
@@ -23,9 +32,14 @@ class BayesOptSearch(Searcher):
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        utility_kwargs (dict): Parameters to define the utility function. Must
-            provide values for the keys `kind`, `kappa`, and `xi`.
+        utility_kwargs (dict): Parameters to define the utility function.
+            The default value is a dictionary with three keys:
+            - kind: ucb (Upper Confidence Bound)
+            - kappa: 2.576
+            - xi: 0.0
         random_state (int): Used to initialize BayesOpt.
+        analysis (ExperimentAnalysis): Optionally, the previous analysis
+            to integrate.
         verbose (int): Sets verbosity level for BayesOpt packages.
         max_concurrent: Deprecated.
         use_early_stopped_trials: Deprecated.
@@ -52,13 +66,30 @@ class BayesOptSearch(Searcher):
                  utility_kwargs=None,
                  random_state=1,
                  verbose=0,
+                 analysis=None,
                  max_concurrent=None,
                  use_early_stopped_trials=None):
+        """Instantiate new BayesOptSearch object.
+
+        Parameters:
+            space (dict): Continuous search space.
+                Parameters will be sampled from
+                this space which will be used to run trials.
+            metric (str): The training result objective value attribute.
+            mode (str): One of {min, max}. Determines whether objective is
+                minimizing or maximizing the metric attribute.
+            utility_kwargs (dict): Parameters to define the utility function.
+                Must provide values for the keys `kind`, `kappa`, and `xi`.
+            random_state (int): Used to initialize BayesOpt.
+            analysis (ExperimentAnalysis): Optionally, the previous analysis
+                to integrate.
+            verbose (int): Sets verbosity level for BayesOpt packages.
+            max_concurrent: Deprecated.
+            use_early_stopped_trials: Deprecated.
+        """
         assert byo is not None, (
             "BayesOpt must be installed!. You can install BayesOpt with"
             " the command: `pip install bayesian-optimization`.")
-        assert utility_kwargs is not None, (
-            "Must define arguments for the utility function!")
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
         self.max_concurrent = max_concurrent
         super(BayesOptSearch, self).__init__(
@@ -66,6 +97,15 @@ class BayesOptSearch(Searcher):
             mode=mode,
             max_concurrent=max_concurrent,
             use_early_stopped_trials=use_early_stopped_trials)
+
+        if utility_kwargs is None:
+            # The defaults arguments are the same
+            # as in the package BayesianOptimization
+            utility_kwargs = dict(
+                kind="ucb",
+                kappa=2.576,
+                xi=0.0,
+            )
 
         if mode == "max":
             self._metric_op = 1.
@@ -77,6 +117,8 @@ class BayesOptSearch(Searcher):
             f=None, pbounds=space, verbose=verbose, random_state=random_state)
 
         self.utility = byo.UtilityFunction(**utility_kwargs)
+        if analysis is not None:
+            self.register_analysis(analysis)
 
     def suggest(self, trial_id):
         if self.max_concurrent:
@@ -87,6 +129,21 @@ class BayesOptSearch(Searcher):
         self._live_trial_mapping[trial_id] = new_trial
 
         return copy.deepcopy(new_trial)
+
+    def register_analysis(self, analysis):
+        """Integrate the given analysis into the gaussian process.
+
+        Parameters
+        ------------------
+        analysis (ExperimentAnalysis): Optionally, the previous analysis
+            to integrate.
+        """
+        for (_, report), params in zip(analysis.dataframe().iterrows(),
+                                       analysis.get_all_configs().values()):
+            # We add the obtained results to the
+            # gaussian process optimizer
+            self.optimizer.register(
+                params=params, target=self._metric_op * report[self._metric])
 
     def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial."""

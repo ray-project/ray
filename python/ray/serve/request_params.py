@@ -21,13 +21,15 @@ class RequestMetadata:
                  request_context,
                  relative_slo_ms=None,
                  absolute_slo_ms=None,
-                 call_method="__call__"):
+                 call_method="__call__",
+                 shard_key=None):
 
         self.endpoint = endpoint
         self.request_context = request_context
         self.relative_slo_ms = relative_slo_ms
         self.absolute_slo_ms = absolute_slo_ms
         self.call_method = call_method
+        self.shard_key = shard_key
 
     def adjust_relative_slo_ms(self) -> float:
         """Normalize the input latency objective to absolute timestamp.

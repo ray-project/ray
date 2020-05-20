@@ -76,6 +76,20 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeToFinishedJobs(
   return status;
 }
 
+Status ServiceBasedJobInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<rpc::JobTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting all job info.";
+  RAY_CHECK(callback);
+  rpc::GetAllJobInfoRequest request;
+  client_impl_->GetGcsRpcClient().GetAllJobInfo(
+      request, [callback](const Status &status, const rpc::GetAllJobInfoReply &reply) {
+        auto result = VectorFromProtobuf(reply.job_info_list());
+        callback(status, result);
+        RAY_LOG(DEBUG) << "Finished getting all job info.";
+      });
+  return Status::OK();
+}
+
 ServiceBasedActorInfoAccessor::ServiceBasedActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
