@@ -20,10 +20,14 @@ To scale out a backend to multiple workers, simplify configure the number of rep
 
 .. code-block:: python
 
-  config = {"num_replicas": 2}
+  config = {"num_replicas": 10}
   serve.create_backend("my_scaled_endpoint_backend", handle_request, config=config)
 
-This will scale out the number of workers that can accept requests.
+  # scale it back down...
+  config = {"num_replicas": 2}
+  serve.set_backend_config("my_scaled_endpoint_backend", handle_request, config=config)
+
+This will scale up or down the number of workers that can accept requests.
 
 Using Resources (CPUs, GPUs)
 ============================
@@ -37,8 +41,8 @@ following:
 
 .. code-block:: python
 
-  options = {"num_gpus": 1}
-  serve.create_backend("my_gpu_backend", handle_request, ray_actor_options=options)
+  config = {"num_gpus": 1}
+  serve.create_backend("my_gpu_backend", handle_request, ray_actor_options=config)
 
 .. note::
 
@@ -124,8 +128,8 @@ How do I deploy serve?
 
 See :doc:`deployment` for information about how to deploy serve.
 
-How do I delete a backend?
---------------------------
+How do I delete backends and endpoints?
+---------------------------------------
 
 To delete a backend, you can use `serve.delete_backend`.
 Note that the backend must not be use by any endpoints in order to be delete.
@@ -134,3 +138,12 @@ Once a backend is deleted, its tag can be reused.
 .. code-block:: python
 
   serve.delete_backend("simple_backend")
+
+
+To delete a endpoint, you can use `serve.delete_endpoint`.
+Note that the endpoint will no longer work and return a 404 when queried.
+Once a endpoint is deleted, its tag can be reused.
+
+.. code-block:: python
+
+  serve.delete_endpoint("simple_endpoint")

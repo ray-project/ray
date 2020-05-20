@@ -140,10 +140,10 @@ Deployment FAQ
 Best practices for local development
 ------------------------------------
 
-One thing you likely noticed is that we never have to declare a ``while True`` loop or 
-something to keep the process running. While this is an option if you're going to 
-do some iterative development, you specify a Ray cluster like we did in :ref:`serve-deploy-tutorial`.
-To learn more about Ray Clusters see :doc:`../cluster-index`.
+One thing you may notice is that we never have to declare a ``while True`` loop or 
+something to keep the Ray Serve process running. In general, we don't recommend using forever loops and therefore 
+opt for launching a Ray Cluster locally. Specify a Ray cluster like we did in :ref:`serve-deploy-tutorial`.
+To learn more, in general, about Ray Clusters see :doc:`../cluster-index`.
 
 
 Deploying Multiple Serve Clusters on a Single Ray Cluster
