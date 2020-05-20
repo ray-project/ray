@@ -727,9 +727,9 @@ def _fetch_atari_metrics(base_env):
 
 
 def unbatch_actions(action_batches):
-    """Converts action_batches from list of batches to batch of lists.
+    """Converts `action_batches` from a list of batches to a batch of lists.
 
-    Input: Struct of batches:
+    Input: Struct of different batches (each batch has size=3):
         {"a": [1, 2, 3], "b": ([4, 5, 6], [7.0, 8.0, 9.0])}
     Output: Batch (list) of structs (each of these structs representing a
         single action):
