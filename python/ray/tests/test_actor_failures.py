@@ -15,6 +15,8 @@ from ray.test_utils import (relevant_errors, wait_for_condition,
                             wait_for_errors, wait_for_pid_to_exit,
                             generate_internal_config_map)
 
+SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
+
 
 @pytest.fixture
 def ray_checkpointable_actor_cls(request):
@@ -153,7 +155,7 @@ def test_actor_restart():
     pid = ray.get(actor.get_pid.remote())
     results = [actor.increase.remote() for _ in range(100)]
     # Kill actor process, while the above task is still being executed.
-    os.kill(pid, signal.SIGKILL)
+    os.kill(pid, SIGKILL)
     # Make sure that all tasks were executed in order before the actor's death.
     res = results.pop(0)
     i = 1
@@ -194,7 +196,7 @@ def test_actor_restart():
     # kill actor process one more time.
     results = [actor.increase.remote() for _ in range(100)]
     pid = ray.get(actor.get_pid.remote())
-    os.kill(pid, signal.SIGKILL)
+    os.kill(pid, SIGKILL)
     # The actor has exceeded max restarts, and this task should fail.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
@@ -235,7 +237,7 @@ def test_actor_restart_with_retry():
     pid = ray.get(actor.get_pid.remote())
     results = [actor.increase.remote() for _ in range(100)]
     # Kill actor process, while the above task is still being executed.
-    os.kill(pid, signal.SIGKILL)
+    os.kill(pid, SIGKILL)
     # Check that none of the tasks failed and the actor is restarted.
     seq = list(range(1, 101))
     results = ray.get(results)
@@ -255,7 +257,7 @@ def test_actor_restart_with_retry():
     # kill actor process one more time.
     results = [actor.increase.remote() for _ in range(100)]
     pid = ray.get(actor.get_pid.remote())
-    os.kill(pid, signal.SIGKILL)
+    os.kill(pid, SIGKILL)
     # The actor has exceeded max restarts, and this task should fail.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
@@ -351,7 +353,7 @@ def test_actor_restart_without_task(ray_start_regular):
     pid = ray.get(actor.get_pid.remote())
 
     p = probe.remote()
-    os.kill(pid, signal.SIGKILL)
+    os.kill(pid, SIGKILL)
     ray.get(p)
     assert wait_for_condition(lambda: not actor_resource_available())
 
@@ -507,7 +509,7 @@ def test_multiple_actor_restart(ray_start_cluster_head):
 def kill_actor(actor):
     """A helper function that kills an actor process."""
     pid = ray.get(actor.get_pid.remote())
-    os.kill(pid, signal.SIGKILL)
+    os.kill(pid, SIGKILL)
     wait_for_pid_to_exit(pid)
 
 

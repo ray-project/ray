@@ -9,16 +9,16 @@ In particular, we show:
 - How to load the model from PyTorch's pre-trained modelzoo.
 - How to parse the JSON request, transform the payload and evaluated in the model.
 
-Please see the :ref:`overview <rayserve-overview>` to learn more general information about RayServe.
+Please see the :ref:`overview <rayserve-overview>` to learn more general information about Ray Serve.
 
-This tutorial requires Pytorch and Torchvision installed in your system. RayServe
+This tutorial requires Pytorch and Torchvision installed in your system. Ray Serve
 is :ref:`framework agnostic <serve_frameworks>` and work with any version of PyTorch.
 
 .. code-block:: bash
 
     pip install torch torchvision
 
-Let's import RayServe and some other helpers.
+Let's import Ray Serve and some other helpers.
 
 .. literalinclude:: ../../../../python/ray/serve/examples/doc/tutorial_pytorch.py
     :start-after: __doc_import_begin__
@@ -32,7 +32,7 @@ The ``__call__`` method will be invoked per request.
     :start-after: __doc_define_servable_begin__
     :end-before: __doc_define_servable_end__
 
-Now that we've defined our services, let's deploy the model to RayServe. We will
+Now that we've defined our services, let's deploy the model to Ray Serve. We will
 define an :ref:`endpoint <serve-endpoint>` for the route representing the digit classifier task, a
 :ref:`backend <serve-backend>` correspond the physical implementation, and connect them together.
 
