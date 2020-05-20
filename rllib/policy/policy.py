@@ -3,12 +3,12 @@ import gym
 import numpy as np
 from typing import Any
 
-from ray.rllib.evaluation.sampler import unbatch_actions
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.space_utils import get_base_struct_from_space
+from ray.rllib.utils.space_utils import get_base_struct_from_space, \
+    unbatch
 
 tree = try_import_tree()
 
@@ -169,7 +169,7 @@ class Policy(metaclass=ABCMeta):
             explore=explore,
             timestep=timestep)
 
-        single_action = unbatch_actions(batched_action)
+        single_action = unbatch(batched_action)
         assert len(single_action) == 1
         single_action = single_action[0]
 
