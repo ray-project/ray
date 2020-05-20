@@ -379,10 +379,18 @@ def test_profiling_info_endpoint(shutdown_only):
     assert profiling_stats is not None
 
 
+# This variable is used inside test_memory_dashboard.
+# It is defined as a global variable to be used across all nested test
+# functions. We use it because memory table is updated every one second,
+# and we need to have a way to verify if the test is running with a fresh
+# new memory table.
+prev_memory_table = MemoryTable([]).__dict__()["group"]
+
+
 def test_memory_dashboard(shutdown_only):
     """Test Memory table.
 
-    These tests are motivated by this document.
+    These tests verify examples in this document.
     https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory
     """
     addresses = ray.init(num_cpus=2)
@@ -394,12 +402,20 @@ def test_memory_dashboard(shutdown_only):
         return memory_table["result"]
 
     def memory_table_ready():
+        """Wait until the new fresh memory table is ready."""
+        global prev_memory_table
         memory_table = get_memory_table()
-        return len(memory_table["group"]) > 0
+        from pprint import pprint
+        print("Current")
+        pprint(memory_table)
+        print("Prev")
+        pprint(prev_memory_table)
+        is_ready = memory_table["group"] != prev_memory_table
+        prev_memory_table = memory_table["group"]
+        return is_ready
 
     def stop_memory_table():
         requests.get(webui_url + "/api/stop_memory_table").json()
-        time.sleep(1.0)
 
     def test_local_reference():
         @ray.remote
@@ -407,8 +423,8 @@ def test_memory_dashboard(shutdown_only):
             return arg
 
         # a and b are local references.
-        a = ray.put(None)
-        b = f.remote(None)
+        a = ray.put(None)  # Noqa F841
+        b = f.remote(None)  # Noqa F841
 
         wait_for_condition(memory_table_ready)
         memory_table = get_memory_table()
@@ -423,15 +439,13 @@ def test_memory_dashboard(shutdown_only):
                 assert (
                     entry["reference_type"] == ReferenceType.LOCAL_REFERENCE)
         stop_memory_table()
-        del a
-        del b
         return True
 
     def test_object_pineed_in_memory():
         import numpy as np
 
         a = ray.put(np.zeros(1))
-        b = ray.get(a)
+        b = ray.get(a)  # Noqa F841
         del a
 
         wait_for_condition(memory_table_ready)
@@ -447,16 +461,15 @@ def test_memory_dashboard(shutdown_only):
                 assert (
                     entry["reference_type"] == ReferenceType.PINNED_IN_MEMORY)
         stop_memory_table()
-        del b
         return True
 
     def test_pending_task_references():
         @ray.remote
         def f(arg):
-            time.sleep(2)
+            time.sleep(1)
 
-        a = ray.put(None)
-        b = f.remote(a)
+        a = ray.put(None)  # Noqa F841
+        b = f.remote(a)  # Noqa F841
 
         wait_for_condition(memory_table_ready)
         memory_table = get_memory_table()
@@ -465,18 +478,20 @@ def test_memory_dashboard(shutdown_only):
         assert summary["total_pinned_in_memory"] == 1
         assert summary["total_used_by_pending_task"] == 1
         assert summary["total_local_ref_count"] == 1
+        # Make sure the function f is done before going to the next test.
+        # Otherwise, the memory table will be corrupted because the
+        # task f won't be done when the next test is running.
+        ray.get(b)
         stop_memory_table()
-        del a
-        del b
         return True
 
     def test_serialized_object_id_reference():
         @ray.remote
         def f(arg):
-            time.sleep(2)
+            time.sleep(1)
 
-        a = ray.put(None)
-        b = f.remote([a])
+        a = ray.put(None)  # Noqa F841
+        b = f.remote([a])  # Noqa F841
 
         wait_for_condition(memory_table_ready)
         memory_table = get_memory_table()
@@ -485,14 +500,16 @@ def test_memory_dashboard(shutdown_only):
         assert summary["total_pinned_in_memory"] == 0
         assert summary["total_used_by_pending_task"] == 1
         assert summary["total_local_ref_count"] == 2
+        # Make sure the function f is done before going to the next test.
+        # Otherwise, the memory table will be corrupted because the
+        # task f won't be done when the next test is running.
+        ray.get(b)
         stop_memory_table()
-        del a
-        del b
         return True
 
     def test_caputed_object_id_reference():
         a = ray.put(None)
-        b = ray.put([a])
+        b = ray.put([a])  # Noqa F841
         del a
 
         wait_for_condition(memory_table_ready)
@@ -503,7 +520,6 @@ def test_memory_dashboard(shutdown_only):
         assert summary["total_used_by_pending_task"] == 0
         assert summary["total_local_ref_count"] == 1
         stop_memory_table()
-        del b
         return True
 
     def test_actor_handle_reference():
@@ -511,9 +527,9 @@ def test_memory_dashboard(shutdown_only):
         class Actor:
             pass
 
-        a = Actor.remote()
-        b = Actor.remote()
-        c = Actor.remote()
+        a = Actor.remote()  # Noqa F841
+        b = Actor.remote()  # Noqa F841
+        c = Actor.remote()  # Noqa F841
 
         wait_for_condition(memory_table_ready)
         memory_table = get_memory_table()
@@ -528,11 +544,11 @@ def test_memory_dashboard(shutdown_only):
             for entry in table["entries"]:
                 assert (entry["reference_type"] == ReferenceType.ACTOR_HANDLE)
         stop_memory_table()
-        del a
-        del b
-        del c
         return True
 
+    # These tests should be retried because it takes at least one second
+    # to get the fresh new memory table. It is because memory table is updated
+    # Whenever raylet and node info is renewed which takes 1 second.
     assert (wait_for_condition(
         test_local_reference, timeout=30000, retry_interval_ms=1000) is True)
 
@@ -736,26 +752,22 @@ def test_memory_table_summary():
         build_local_reference_entry(),
         build_local_reference_entry()
     ]
-    memory_table = MemoryTable()
-    for entry in entries:
-        memory_table.insert_entry(entry)
-    memory_table.setup()
+    memory_table = MemoryTable([entry for entry in entries])
     assert len(memory_table.group) == 1
-    assert memory_table.summary.total_actor_handles == 1
-    assert memory_table.summary.total_captured_in_objects == 1
-    assert memory_table.summary.total_local_ref_count == 2
-    assert memory_table.summary.total_object_size == len(entries) * OBJECT_SIZE
-    assert memory_table.summary.total_pinned_in_memory == 1
-    assert memory_table.summary.total_used_by_pending_task == 1
+    assert memory_table.summary["total_actor_handles"] == 1
+    assert memory_table.summary["total_captured_in_objects"] == 1
+    assert memory_table.summary["total_local_ref_count"] == 2
+    assert memory_table.summary[
+        "total_object_size"] == len(entries) * OBJECT_SIZE
+    assert memory_table.summary["total_pinned_in_memory"] == 1
+    assert memory_table.summary["total_used_by_pending_task"] == 1
 
 
 def test_memory_table_sort_by_pid():
     unsort = [1, 3, 2]
     entries = [build_entry(pid=pid) for pid in unsort]
-    memory_table = MemoryTable()
-    for entry in entries:
-        memory_table.insert_entry(entry)
-    memory_table.setup(sort_by_type=SortingType.PID)
+    memory_table = MemoryTable(
+        [entry for entry in entries], sort_by_type=SortingType.PID)
     sort = sorted(unsort)
     for pid, entry in zip(sort, memory_table.table):
         assert pid == entry.pid
@@ -769,10 +781,8 @@ def test_memory_table_sort_by_reference_type():
     entries = [
         build_entry(reference_type=reference_type) for reference_type in unsort
     ]
-    memory_table = MemoryTable()
-    for entry in entries:
-        memory_table.insert_entry(entry)
-    memory_table.setup(sort_by_type=SortingType.REFERENCE_TYPE)
+    memory_table = MemoryTable(
+        [entry for entry in entries], sort_by_type=SortingType.REFERENCE_TYPE)
     sort = sorted(unsort)
     for reference_type, entry in zip(sort, memory_table.table):
         assert reference_type == entry.reference_type
@@ -781,10 +791,8 @@ def test_memory_table_sort_by_reference_type():
 def test_memory_table_sort_by_object_size():
     unsort = [312, 214, -1, 1244, 642]
     entries = [build_entry(object_size=object_size) for object_size in unsort]
-    memory_table = MemoryTable()
-    for entry in entries:
-        memory_table.insert_entry(entry)
-    memory_table.setup(sort_by_type=SortingType.OBJECT_SIZE)
+    memory_table = MemoryTable(
+        [entry for entry in entries], sort_by_type=SortingType.OBJECT_SIZE)
     sort = sorted(unsort)
     for object_size, entry in zip(sort, memory_table.table):
         assert object_size == entry.object_size
@@ -799,11 +807,7 @@ def test_group_by():
         build_entry(node_address=node_first, pid=2),
         build_entry(node_address=node_first, pid=1)
     ]
-    memory_table = MemoryTable()
-    for entry in entries:
-        memory_table.insert_entry(entry)
-    # this will group by node address and sort by pid.
-    memory_table.setup()
+    memory_table = MemoryTable([entry for entry in entries])
 
     # Make sure it is correctly grouped
     assert node_first in memory_table.group

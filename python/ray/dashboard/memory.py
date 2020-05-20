@@ -1,10 +1,20 @@
 import base64
-import typing
 
 from collections import defaultdict
 from enum import Enum
+from typing import Dict, List
 
 import ray
+
+from ray._raylet import (TaskID, ActorID, JobID)
+
+# These values are used to calculate if objectIDs are actor handles.
+TASKID_BYTES_SIZE = TaskID.size()
+ACTORID_BYTES_SIZE = ActorID.size()
+JOBID_BYTES_SIZE = JobID.size()
+# We need to multiply 2 because we need bits size instead of bytes size.
+TASKID_RANDOM_BITS_SIZE = (TASKID_BYTES_SIZE - ACTORID_BYTES_SIZE) * 2
+ACTORID_RANDOM_BITS_SIZE = (ACTORID_BYTES_SIZE - JOBID_BYTES_SIZE) * 2
 
 
 def decode_object_id_if_needed(object_id: str) -> bytes:
@@ -61,7 +71,7 @@ class MemoryTableEntry:
         # reference info
         self.local_ref_count = int(object_ref.get("localRefCount", 0))
         self.pinned_in_memory = bool(object_ref.get("pinnedInMemory", False))
-        self.submittedd_task_ref_count = int(
+        self.submitted_task_ref_count = int(
             object_ref.get("submittedTaskRefCount", 0))
         self.contained_in_owned = [
             ray.ObjectID(decode_object_id_if_needed(object_id))
@@ -70,8 +80,10 @@ class MemoryTableEntry:
         self.reference_type = self._get_reference_type()
 
     def is_valid(self) -> bool:
+        # If the entry doesn't have a reference type or some invalid state,
+        # (e.g., no object ID presented), it is considered invalid.
         if (not self.pinned_in_memory and self.local_ref_count == 0
-                and self.submittedd_task_ref_count == 0
+                and self.submitted_task_ref_count == 0
                 and len(self.contained_in_owned) == 0):
             return False
         elif self.object_id.is_nil():
@@ -79,7 +91,7 @@ class MemoryTableEntry:
         else:
             return True
 
-    def group_key(self, group_by_type: GroupByType):
+    def group_key(self, group_by_type: GroupByType) -> str:
         if group_by_type == GroupByType.NODE_ADDRESS:
             return self.node_address
         else:
@@ -91,7 +103,7 @@ class MemoryTableEntry:
             return ReferenceType.ACTOR_HANDLE
         if self.pinned_in_memory:
             return ReferenceType.PINNED_IN_MEMORY
-        elif self.submittedd_task_ref_count > 0:
+        elif self.submitted_task_ref_count > 0:
             return ReferenceType.USED_BY_PENDING_TASK
         elif self.local_ref_count > 0:
             return ReferenceType.LOCAL_REFERENCE
@@ -102,14 +114,16 @@ class MemoryTableEntry:
 
     def _is_object_id_actor_handle(self) -> bool:
         object_id_hex = self.object_id.hex()
-        random_bits = object_id_hex[:16]
-        actor_random_bits = object_id_hex[16:24]
 
         # random (8B) | ActorID(6B) | flag (2B) | index (6B)
         # ActorID(6B) == ActorRandomByte(4B) + JobID(2B)
         # If random bytes are all 'f', but ActorRandomBytes
         # are not all 'f', that means it is an actor creation
         # task, which is an actor handle.
+        random_bits = object_id_hex[:TASKID_RANDOM_BITS_SIZE]
+        actor_random_bits = object_id_hex[TASKID_RANDOM_BITS_SIZE:
+                                          TASKID_RANDOM_BITS_SIZE +
+                                          ACTORID_RANDOM_BITS_SIZE]
         if (random_bits == "f" * 16 and not actor_random_bits == "f" * 8):
             return True
         else:
@@ -125,7 +139,7 @@ class MemoryTableEntry:
             "call_site": self.call_site,
             "local_ref_count": self.local_ref_count,
             "pinned_in_memory": self.pinned_in_memory,
-            "submittedd_task_ref_count": self.submittedd_task_ref_count,
+            "submitted_task_ref_count": self.submitted_task_ref_count,
             "contained_in_owned": [
                 object_id.hex() for object_id in self.contained_in_owned
             ],
@@ -139,76 +153,71 @@ class MemoryTableEntry:
         return str(self.__dict__())
 
 
-class MemoryTableSummary:
-    def __init__(self):
-        self.total_object_size = 0
-        self.total_local_ref_count = 0
-        self.total_pinned_in_memory = 0
-        self.total_used_by_pending_task = 0
-        self.total_captured_in_objects = 0
-        self.total_actor_handles = 0
-
-    def summarize(self, table: typing.List[MemoryTableEntry]):
-        for entry in table:
-            if entry.object_size > 0:
-                self.total_object_size += entry.object_size
-            if entry.reference_type == ReferenceType.LOCAL_REFERENCE:
-                self.total_local_ref_count += 1
-            elif entry.reference_type == ReferenceType.PINNED_IN_MEMORY:
-                self.total_pinned_in_memory += 1
-            elif entry.reference_type == ReferenceType.USED_BY_PENDING_TASK:
-                self.total_used_by_pending_task += 1
-            elif entry.reference_type == ReferenceType.CAPTURED_IN_OBJECT:
-                self.total_captured_in_objects += 1
-            elif entry.reference_type == ReferenceType.ACTOR_HANDLE:
-                self.total_actor_handles += 1
-
-    def __dict__(self):
-        return {
-            "total_object_size": self.total_object_size,
-            "total_local_ref_count": self.total_local_ref_count,
-            "total_pinned_in_memory": self.total_pinned_in_memory,
-            "total_used_by_pending_task": self.total_used_by_pending_task,
-            "total_captured_in_objects": self.total_captured_in_objects,
-            "total_actor_handles": self.total_actor_handles
-        }
-
-    def __str__(self):
-        return str(self.__dict__())
-
-
 class MemoryTable:
-    def __init__(self):
-        self.table: typing.List[MemoryTableEntry] = []
+    def __init__(self,
+                 entries: List[MemoryTableEntry],
+                 group_by_type: GroupByType = GroupByType.NODE_ADDRESS,
+                 sort_by_type: SortingType = SortingType.PID):
+        self.table: List[MemoryTableEntry] = entries
         # Group is a list of memory tables grouped by a group key.
-        self.group: typing.Dict[str, MemoryTable] = self._get_resetted_group()
-        self.summary: MemoryTableSummary = MemoryTableSummary()
+        self.group: Dict[str, MemoryTable] = {}
+        self.summary: dict = defaultdict(int)
+        if group_by_type and sort_by_type:
+            self.setup(group_by_type, sort_by_type)
+        elif group_by_type:
+            self._group_by(group_by_type)
+        elif sort_by_type:
+            self._sort_by(sort_by_type)
 
-    def insert_entry(self, entry: MemoryTableEntry):
-        """Insert a new memory table entry to the table."""
-        self.table.append(entry)
-
-    def setup(self,
-              *,
-              group_by_type: GroupByType = GroupByType.NODE_ADDRESS,
-              sort_by_type: SortingType = SortingType.PID):
+    def setup(self, group_by_type: GroupByType, sort_by_type: SortingType):
         """Setup memory table.
 
         This will sort entries first and gruop them after.
         Sort order will be still kept.
         """
-        self.sort_by(sort_by_type).group_by(group_by_type)
+        self._sort_by(sort_by_type)._group_by(group_by_type)
         for group_memory_table in self.group.values():
             group_memory_table.summarize()
         self.summarize()
+        return self
+
+    def insert_entry(self, entry: MemoryTableEntry):
+        self.table.append(entry)
 
     def summarize(self):
         # Reset summary.
-        self.summary = MemoryTableSummary()
-        self.summary.summarize(self.table)
+        total_object_size = 0
+        total_local_ref_count = 0
+        total_pinned_in_memory = 0
+        total_used_by_pending_task = 0
+        total_captured_in_objects = 0
+        total_actor_handles = 0
+
+        for entry in self.table:
+            if entry.object_size > 0:
+                total_object_size += entry.object_size
+            if entry.reference_type == ReferenceType.LOCAL_REFERENCE:
+                total_local_ref_count += 1
+            elif entry.reference_type == ReferenceType.PINNED_IN_MEMORY:
+                total_pinned_in_memory += 1
+            elif entry.reference_type == ReferenceType.USED_BY_PENDING_TASK:
+                total_used_by_pending_task += 1
+            elif entry.reference_type == ReferenceType.CAPTURED_IN_OBJECT:
+                total_captured_in_objects += 1
+            elif entry.reference_type == ReferenceType.ACTOR_HANDLE:
+                total_actor_handles += 1
+
+        self.summary = {
+            "total_object_size": total_object_size,
+            "total_local_ref_count": total_local_ref_count,
+            "total_pinned_in_memory": total_pinned_in_memory,
+            "total_used_by_pending_task": total_used_by_pending_task,
+            "total_captured_in_objects": total_captured_in_objects,
+            "total_actor_handles": total_actor_handles
+        }
         return self
 
-    def sort_by(self, sorting_type: SortingType):
+    def _sort_by(self, sorting_type: SortingType):
         if sorting_type == SortingType.PID:
             self.table.sort(key=lambda entry: entry.pid)
         elif sorting_type == SortingType.OBJECT_SIZE:
@@ -220,35 +229,41 @@ class MemoryTable:
                 "Give sorting type: {} is invalid.".format(sorting_type))
         return self
 
-    def group_by(self, group_by_type: GroupByType):
+    def _group_by(self, group_by_type: GroupByType):
         """Group entries and summarize the result.
 
         NOTE: Each group is another MemoryTable.
         """
-        self.group = self._get_resetted_group()
+        # Reset group
+        self.group = {}
+
+        # Build entries per group.
+        group = defaultdict(list)
         for entry in self.table:
-            self.group[entry.group_key(group_by_type)].insert_entry(entry)
+            group[entry.group_key(group_by_type)].append(entry)
+
+        # Build a group table.
+        for group_key, entries in group.items():
+            self.group[group_key] = MemoryTable(
+                entries, group_by_type=None, sort_by_type=None)
         for group_key, group_memory_table in self.group.items():
             group_memory_table.summarize()
         return self
 
     def __dict__(self):
         return {
-            "summary": self.summary.__dict__(),
+            "summary": self.summary,
             "group": {
                 group_key: {
                     "entries": group_memory_table.get_entries(),
-                    "summary": group_memory_table.summary.__dict__()
+                    "summary": group_memory_table.summary
                 }
                 for group_key, group_memory_table in self.group.items()
             }
         }
 
-    def get_entries(self):
+    def get_entries(self) -> List[dict]:
         return [entry.__dict__() for entry in self.table]
-
-    def _get_resetted_group(self):
-        return defaultdict(MemoryTable)
 
     def __repr__(self):
         return str(self.__dict__())
@@ -257,8 +272,8 @@ class MemoryTable:
         return self.__repr__()
 
 
-def construct_memory_table(workers_info_by_node: dict):
-    memory_table = MemoryTable()
+def construct_memory_table(workers_info_by_node: dict) -> MemoryTable:
+    memory_table_entries = []
     for node_id, worker_infos in workers_info_by_node.items():
         for worker_info in worker_infos:
             pid = worker_info["pid"]
@@ -274,7 +289,7 @@ def construct_memory_table(workers_info_by_node: dict):
                     is_driver=is_driver,
                     pid=pid)
                 if memory_table_entry.is_valid():
-                    memory_table.insert_entry(memory_table_entry)
-    memory_table.setup(
-        group_by_type=GroupByType.NODE_ADDRESS, sort_by_type=SortingType.PID)
+                    memory_table_entries.append(memory_table_entry)
+
+    memory_table = MemoryTable(memory_table_entries)
     return memory_table

@@ -127,7 +127,7 @@ class DashboardController(BaseDashboardController):
             redis_address, redis_password=redis_password)
         if Analysis is not None:
             self.tune_stats = TuneCollector(2.0)
-        self.memory_table = MemoryTable()
+        self.memory_table = MemoryTable([])
 
     def _construct_raylet_info(self):
         D = self.raylet_stats.get_raylet_stats()
@@ -241,7 +241,8 @@ class DashboardController(BaseDashboardController):
         return self.memory_table
 
     def stop_collecting_memory_table_info(self):
-        self.memory_table = MemoryTable()
+        # Reset memory table.
+        self.memory_table = MemoryTable([])
         self.raylet_stats.include_memory_info = False
 
     def tune_info(self):
