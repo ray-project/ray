@@ -396,7 +396,7 @@ class GlobalState:
         for node_info_item in node_table:
             item = gcs_utils.GcsNodeInfo.FromString(node_info_item)
             node_info = {
-                "NodeID": item.node_id,
+                "NodeID": ray.utils.binary_to_hex(item.node_id),
                 "Alive": item.state ==
                 gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE"),
                 "NodeManagerAddress": item.node_manager_address,
@@ -406,6 +406,8 @@ class GlobalState:
                 "ObjectStoreSocketName": item.object_store_socket_name,
                 "RayletSocketName": item.raylet_socket_name
             }
+            node_info["Resources"] = _parse_resource_table(
+                self.redis_client, node_id) if node_inf["Alive"] else {}
             results.append(node_info)
         return results
 

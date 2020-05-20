@@ -32,6 +32,7 @@ public class GcsClient {
   private RedisClient primary;
 
   private List<RedisClient> shards;
+  private GlobalStateAccessor globalStateAccessor;
 
   public GcsClient(String redisAddress, String redisPassword) {
     primary = new RedisClient(redisAddress, redisPassword);
@@ -49,12 +50,12 @@ public class GcsClient {
     shards = shardAddresses.stream().map((byte[] address) -> {
       return new RedisClient(new String(address), redisPassword);
     }).collect(Collectors.toList());
+    globalStateAccessor = new GlobalStateAccessor(redisAddress, redisPassword);
+    globalStateAccessor.connect();
   }
 
   public List<NodeInfo> getAllNodeInfo() {
-    final String prefix = TablePrefix.CLIENT.toString();
-    final byte[] key = ArrayUtils.addAll(prefix.getBytes(), UniqueId.NIL.getBytes());
-    List<byte[]> results = primary.lrange(key, 0, -1);
+    List<byte[]> results = globalStateAccessor.getAllNodeInfo();
 
     if (results == null) {
       return new ArrayList<>();
