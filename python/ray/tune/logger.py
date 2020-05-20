@@ -78,7 +78,7 @@ class MLFLowLogger(Logger):
     """
 
     def _init(self):
-        logger_config = self.config.get("logger_config")
+        logger_config = self.config.get("logger_config", {})
         from mlflow.tracking import MlflowClient
         client = MlflowClient(
             tracking_uri=logger_config.get("mlflow_tracking_uri"),
