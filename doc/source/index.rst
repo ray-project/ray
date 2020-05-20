@@ -6,7 +6,7 @@ What is Ray?
 Getting Started with Ray
 ------------------------
 
-Checkout :ref:`gentle-intro` to learn more about Ray or jump to :ref:`overview-libs` to learn
+Checkout :ref:`gentle-intro` to learn more about Ray to learn
 more about the ecosystem of libraries built on top of Ray to enable things like distributed hyperparameter tuning,
 Reinforcement Learning, and distributed training.
 
@@ -101,15 +101,14 @@ Getting Involved
 
 
 .. toctree::
-   :maxdepth: -2
+   :maxdepth: -1
    :caption: Overview of Ray
 
-   overview/index.rst
-   overview/ecosystem.rst
+   ray-overview/index.rst
    installation.rst
 
 .. toctree::
-   :maxdepth: -2
+   :maxdepth: -1
    :caption: Ray Core
 
    walkthrough.rst
