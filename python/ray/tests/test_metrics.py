@@ -507,7 +507,7 @@ def test_memory_dashboard(shutdown_only):
         stop_memory_table()
         return True
 
-    def test_caputed_object_id_reference():
+    def test_captured_object_id_reference():
         a = ray.put(None)
         b = ray.put([a])  # Noqa F841
         del a
