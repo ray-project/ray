@@ -65,21 +65,28 @@ def from_range(n: int, num_shards: int = 2,
 def from_iterators(generators: List[Iterable[T]],
                    repeat: bool = False,
                    name=None) -> "ParallelIterator[T]":
-    """Create a parallel iterator from a set of iterators.
+    """Create a parallel iterator from a list of iterables.
+    An iterable can be a conatiner (list, str, tuple, set, etc.),
+    a generator, or a custom class that implements __iter__ or __getitem__.
 
-    An actor will be created for each iterator.
+    An actor will be created for each iterable.
 
     Examples:
         >>> # Create using a list of generators.
         >>> from_iterators([range(100), range(100)])
 
-        >>> # Equivalent to the above.
-        >>> from_iterators([lambda: range(100), lambda: range(100)])
+        >>> # Certain generators are not serializable.
+        >>> from_iterators([(x for x in range(100))])
+        ... TypeError: can't pickle generator objects
+
+        >>> # So use lambda functions instead.
+        >>> # Lambda functions are serializable.
+        >>> from_iterators([lambda: (x for x in range(100))])
 
     Args:
-        generators (list): A list of Python generator objects or lambda
-            functions that produced a generator when called. We allow lambda
-            functions since the generator itself might not be serializable,
+        generators (list): A list of Python iterables or lambda
+            functions that produce an iterable when called. We allow lambda
+            functions since certain generators might not be serializable,
             but a lambda that returns it can be.
         repeat (bool): Whether to cycle over the iterators forever.
         name (str): Optional name to give the iterator.
@@ -189,9 +196,9 @@ class ParallelIterator(Generic[T]):
     def for_each(self, fn: Callable[[T], U], max_concurrency=1,
                  resources=None) -> "ParallelIterator[U]":
         """Remotely apply fn to each item in this iterator, at most `max_concurrency`
-        at a time.
+        at a time per shard.
 
-        If `max_concurrency` == 1 then `fn` will be executed serially by the
+        If `max_concurrency` == 1 then `fn` will be executed serially by each
         shards
 
         `max_concurrency` should be used to achieve a high degree of
@@ -201,7 +208,7 @@ class ParallelIterator(Generic[T]):
         necessarily finish first)
 
         A performance note: When executing concurrently, this function
-        maintains its own internal buffer. If `async_queue_depth` is `n` and
+        maintains its own internal buffer. If `num_async` is `n` and
         max_concur is `k` then the total number of buffered objects could be up
         to `n + k - 1`
 
@@ -467,7 +474,7 @@ class ParallelIterator(Generic[T]):
             batch_ms (int): Batches items for batch_ms milliseconds
                 on each shard before retrieving it.
                 Increasing batch_ms increases latency but improves throughput.
-                If this value is 0, then items are returned as soon as they are ready.
+                If this value is 0, then items are returned immediately.
             num_async (int): The max number of async requests in flight
                 per actor. Increasing this improves the amount of pipeline
                 parallelism in the iterator.
@@ -541,7 +548,7 @@ class ParallelIterator(Generic[T]):
     def union(self, other: "ParallelIterator[T]") -> "ParallelIterator[T]":
         """Return an iterator that is the union of this and the other."""
         if not isinstance(other, ParallelIterator):
-            raise ValueError(
+            raise TypeError(
                 "other must be of type ParallelIterator, got {}".format(
                     type(other)))
         actor_sets = []
@@ -599,13 +606,13 @@ class ParallelIterator(Generic[T]):
             batch_ms (int): Batches items for batch_ms milliseconds
                 before retrieving it.
                 Increasing batch_ms increases latency but improves throughput.
-                If this value is 0, then items are returned as soon as they are ready.
+                If this value is 0, then items are returned immediately.
             num_async (int): The max number of requests in flight.
                 Increasing this improves the amount of pipeline
                 parallelism in the iterator.
         """
         if num_async < 1:
-            raise ValueError("queue depth must be positive")
+            raise ValueError("num async must be positive")
         if batch_ms < 0:
             raise ValueError("batch time must be positive")
         a, t = None, None
@@ -968,7 +975,10 @@ class LocalIterator(Generic[T]):
                         yield _NextValueNotReady()
                     else:
                         if len(queues[i]) == 0:
-                            fill_next(timeout)
+                            try:
+                                fill_next(timeout)
+                            except StopIteration:
+                                return
                         yield queues[i].popleft()
 
             return gen
@@ -1046,7 +1056,7 @@ class ParallelIteratorWorker(object):
         Subclasses must call this init function.
 
         Args:
-            item_generator (obj): A Python generator objects or lambda function
+            item_generator (obj): A Python iterable or lambda function
                 that produces a generator when called. We allow lambda
                 functions since the generator itself might not be serializable,
                 but a lambda that returns it can be.
@@ -1063,7 +1073,13 @@ class ParallelIteratorWorker(object):
 
             def cycle():
                 while True:
-                    it = make_iterator()
+                    it = iter(make_iterator())
+                    if it is item_generator:
+                        raise ValueError(
+                            "Cannot iterate over {} multiple times." +
+                            "Please pass in the base iterable or" +
+                            "lambda: {} instead.".format(
+                                item_generator, item_generator))
                     for item in it:
                         yield item
 
