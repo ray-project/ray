@@ -1,6 +1,6 @@
-======================================
-Configurations, Advanced Topics, & FAQ
-======================================
+=====================================
+Advanced Topics, Configurations & FAQ
+=====================================
 
 Ray Serve has a number of knobs and tools for you to tune for your particular workload. 
 All Ray Serve advanced options and topics are covered on this page aside from the 
@@ -108,3 +108,25 @@ The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or `
   # Specifying the shard key in a call made via serve handle.
   handle = serve.get_handle("api_endpoint")
   handler.options(shard_key=session_id).remote(args)
+
+
+.. _serve-faq:
+
+Ray Serve FAQ
+=============
+
+How do I deploy serve?
+----------------------
+
+See :doc:`deployment` for information about how to deploy serve.
+
+How do I delete a backend?
+--------------------------
+
+To delete a backend, we can use `serve.delete_backend`.
+Note that the backend must not be use by any endpoints in order to be delete.
+Once a backend is deleted, its tag can be reused.
+
+.. code-block:: python
+
+  serve.delete_backend("simple_backend")

@@ -87,7 +87,7 @@ If you plan on running on multiple machines, Ray Serve will serve you well.
 What's next?
 ============
 
-Check out the :doc:`key-concepts`, learn more about :doc:`advanced`, 
+Check out the :doc:`key-concepts`, learn more about :doc:`advanced`, look at the :ref:`serve-faq`,
 or head over to the :doc:`tutorials/index` to get started building your Ray Serve Applications.
 
 
