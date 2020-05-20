@@ -20,6 +20,8 @@
 #include <functional>
 #include <string>
 
+#include <boost/optional.hpp>
+
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "ray/util/util.h"
@@ -39,6 +41,9 @@ static const int64_t SHOULD_CHECK_MESSAGE_ORDER = 123450000;
 /// \return Whether the condition is met.
 bool WaitForCondition(std::function<bool()> condition, int timeout_ms);
 
+/// Used to kill process whose pid is stored in `socket_name.id` file.
+void KillProcessBySocketName(std::string socket_name);
+
 // A helper function to return a random task id.
 TaskID RandomTaskId();
 
@@ -56,16 +61,61 @@ extern std::string REDIS_MODULE_LIBRARY_PATH;
 /// Ports of redis server.
 extern std::vector<int> REDIS_SERVER_PORTS;
 
-/// Test helper class, it will start redis server before the test runs,
-/// and stop redis server after the test is completed.
-class RedisServiceManagerForTest : public ::testing::Test {
+/// Path to object store executable binary.
+extern std::string STORE_EXEC_PATH;
+
+/// Path to gcs server executable binary.
+extern std::string GCS_SERVER_EXEC_PATH;
+
+/// Path to raylet executable binary.
+extern std::string RAYLET_EXEC_PATH;
+/// Path to mock worker executable binary. Required by raylet.
+extern std::string MOCK_WORKER_EXEC_PATH;
+/// Path to raylet monitor executable binary.
+extern std::string RAYLET_MONITOR_EXEC_PATH;
+
+//--------------------------------------------------------------------------------
+// COMPONENT MANAGEMENT CLASSES FOR TEST CASES
+//--------------------------------------------------------------------------------
+/// Test cases can use it to 1) start redis server(s), 2) stop redis server(s) and 3)
+/// flush all redis servers.
+class RedisServiceManagerForTest {
  public:
-  static void SetUpTestCase();
+  static void StartUpRedisServers(std::vector<int> redis_server_ports);
+  static void ShutDownRedisServers();
+  static void FlushAllRedisServers();
+
+ private:
   static int StartUpRedisServer(int port);
-  static void TearDownTestCase();
   static void ShutDownRedisServer(int port);
-  static void FlushAll();
   static void FlushRedisServer(int port);
+};
+
+/// Test cases can use it to 1) start object store and 2) stop object store.
+class ObjectStoreManagerForTest {
+ public:
+  static std::string StartStore(
+      const boost::optional<std::string> &socket_name = boost::none);
+  static void StopStore(const std::string &store_socket_name);
+};
+
+/// Test cases can use it to 1) start gcs server and 2) stop gcs server.
+class GcsServerManagerForTest {
+ public:
+  static std::string StartGcsServer(std::string redis_address);
+  static void StopGcsServer(std::string gcs_server_socket_name);
+};
+
+/// Test cases can use it to 1) start raylet and 2) stop raylet.
+class RayletManagerForTest {
+ public:
+  static std::string StartRaylet(std::string store_socket_name,
+                                 std::string node_ip_address, int port,
+                                 std::string redis_address, std::string resource);
+  static void StopRaylet(std::string raylet_socket_name);
+
+  static std::string StartRayletMonitor(std::string redis_address);
+  static void StopRayletMonitor(std::string raylet_monitor_socket_name);
 };
 
 }  // namespace ray

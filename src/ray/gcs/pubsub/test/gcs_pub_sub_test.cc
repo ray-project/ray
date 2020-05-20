@@ -20,7 +20,12 @@
 
 namespace ray {
 
-class GcsPubSubTest : public RedisServiceManagerForTest {
+class GcsPubSubTest : public ::testing::Test {
+ public:
+  GcsPubSubTest() { RedisServiceManagerForTest::StartUpRedisServers(std::vector<int>()); }
+
+  virtual ~GcsPubSubTest() { RedisServiceManagerForTest::ShutDownRedisServers(); }
+
  protected:
   virtual void SetUp() override {
     thread_io_service_.reset(new std::thread([this] {

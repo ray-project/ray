@@ -31,11 +31,13 @@ namespace ray {
 namespace gcs {
 
 template <typename ID, typename Data>
-class AccessorTestBase : public RedisServiceManagerForTest {
+class AccessorTestBase : public ::testing::Test {
  public:
-  AccessorTestBase() {}
+  AccessorTestBase() {
+    RedisServiceManagerForTest::StartUpRedisServers(std::vector<int>());
+  }
 
-  virtual ~AccessorTestBase() {}
+  virtual ~AccessorTestBase() { RedisServiceManagerForTest::ShutDownRedisServers(); }
 
   virtual void SetUp() {
     GenTestData();

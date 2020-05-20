@@ -21,7 +21,16 @@
 
 namespace ray {
 
-class GlobalStateAccessorTest : public RedisServiceManagerForTest {
+class GlobalStateAccessorTest : public ::testing::Test {
+ public:
+  GlobalStateAccessorTest() {
+    RedisServiceManagerForTest::StartUpRedisServers(std::vector<int>());
+  }
+
+  virtual ~GlobalStateAccessorTest() {
+    RedisServiceManagerForTest::ShutDownRedisServers();
+  }
+
  protected:
   void SetUp() override {
     config.grpc_server_port = 0;
@@ -67,7 +76,7 @@ class GlobalStateAccessorTest : public RedisServiceManagerForTest {
     gcs_client_->Disconnect();
     global_state_->Disconnect();
     global_state_.reset();
-    FlushAll();
+    RedisServiceManagerForTest::FlushAllRedisServers();
   }
 
   bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms) {

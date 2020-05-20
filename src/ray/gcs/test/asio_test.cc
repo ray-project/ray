@@ -46,7 +46,12 @@ void GetCallback(redisAsyncContext *c, void *r, void *privdata) {
   io_service.stop();
 }
 
-class RedisAsioTest : public RedisServiceManagerForTest {};
+class RedisAsioTest : public ::testing::Test {
+ public:
+  RedisAsioTest() { RedisServiceManagerForTest::StartUpRedisServers(std::vector<int>()); }
+
+  virtual ~RedisAsioTest() { RedisServiceManagerForTest::ShutDownRedisServers(); }
+};
 
 TEST_F(RedisAsioTest, TestRedisCommands) {
   redisAsyncContext *ac = redisAsyncConnect("127.0.0.1", REDIS_SERVER_PORTS.front());

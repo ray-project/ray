@@ -22,9 +22,11 @@ namespace ray {
 
 class RedisGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
  public:
-  static void SetUpTestCase() { RedisServiceManagerForTest::SetUpTestCase(); }
+  static void SetUpTestCase() {
+    RedisServiceManagerForTest::StartUpRedisServers(std::vector<int>());
+  }
 
-  static void TearDownTestCase() { RedisServiceManagerForTest::TearDownTestCase(); }
+  static void TearDownTestCase() { RedisServiceManagerForTest::ShutDownRedisServers(); }
 
   void SetUp() override {
     gcs::RedisClientOptions options("127.0.0.1", REDIS_SERVER_PORTS.front(), "", true);

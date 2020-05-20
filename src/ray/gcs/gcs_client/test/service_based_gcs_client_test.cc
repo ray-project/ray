@@ -22,7 +22,16 @@
 
 namespace ray {
 
-class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
+class ServiceBasedGcsClientTest : public ::testing::Test {
+ public:
+  ServiceBasedGcsClientTest() {
+    RedisServiceManagerForTest::StartUpRedisServers(std::vector<int>());
+  }
+
+  virtual ~ServiceBasedGcsClientTest() {
+    RedisServiceManagerForTest::ShutDownRedisServers();
+  }
+
  protected:
   void SetUp() override {
     config.grpc_server_port = 0;
@@ -60,7 +69,7 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     thread_io_service_->join();
     thread_gcs_server_->join();
     gcs_client_->Disconnect();
-    FlushAll();
+    RedisServiceManagerForTest::FlushAllRedisServers();
   }
 
   bool SubscribeToFinishedJobs(

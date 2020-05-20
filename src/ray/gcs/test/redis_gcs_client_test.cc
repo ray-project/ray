@@ -42,15 +42,17 @@ inline JobID NextJobID() {
   return JobID::FromInt(++counter);
 }
 
-class TestGcs : public RedisServiceManagerForTest {
+class TestGcs : public ::testing::Test {
  public:
   TestGcs(CommandType command_type) : num_callbacks_(0), command_type_(command_type) {
+    RedisServiceManagerForTest::StartUpRedisServers(std::vector<int>());
     job_id_ = NextJobID();
   }
 
   virtual ~TestGcs() {
     // Clear all keys in the GCS.
     flushall_redis();
+    RedisServiceManagerForTest::ShutDownRedisServers();
   };
 
   virtual void Start() = 0;

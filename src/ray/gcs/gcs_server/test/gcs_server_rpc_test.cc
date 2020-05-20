@@ -20,8 +20,12 @@
 
 namespace ray {
 
-class GcsServerTest : public RedisServiceManagerForTest {
+class GcsServerTest : public ::testing::Test {
  public:
+  GcsServerTest() { RedisServiceManagerForTest::StartUpRedisServers(std::vector<int>()); }
+
+  virtual ~GcsServerTest() { RedisServiceManagerForTest::ShutDownRedisServers(); }
+
   void SetUp() override {
     gcs::GcsServerConfig config;
     config.grpc_server_port = 0;
