@@ -84,8 +84,8 @@ std::vector<std::string> GlobalStateAccessor::GetAllProfileInfo() {
   std::vector<std::string> profile_table_data;
   std::promise<bool> promise;
   auto on_done = [&profile_table_data, &promise](
-                     const Status &status,
-                     const std::vector<rpc::ProfileTableData> &result) {
+      const Status &status,
+      const std::vector<rpc::ProfileTableData> &result) {
     RAY_CHECK_OK(status);
     for (auto &data : result) {
       profile_table_data.push_back(data.SerializeAsString());
@@ -95,6 +95,43 @@ std::vector<std::string> GlobalStateAccessor::GetAllProfileInfo() {
   RAY_CHECK_OK(gcs_client_->Stats().AsyncGetAll(on_done));
   promise.get_future().get();
   return profile_table_data;
+}
+
+std::vector<std::string> GlobalStateAccessor::GetAllObjectInfo() {
+  std::vector<std::string> all_object_info;
+  std::promise<bool> promise;
+  auto on_done = [&all_object_info, &promise](
+                     const Status &status,
+                     const std::vector<rpc::ObjectLocationInfo> &result) {
+    RAY_CHECK_OK(status);
+    for (auto &data : result) {
+      all_object_info.push_back(data.SerializeAsString());
+    }
+    promise.set_value(true);
+  };
+  RAY_CHECK_OK(gcs_client_->Objects().AsyncGetAll(on_done));
+  promise.get_future().get();
+  return all_object_info;
+}
+
+std::string GlobalStateAccessor::GetObjectInfo(const ObjectID &object_id) {
+  std::string object_info;
+  std::promise<bool> promise;
+  auto on_done = [object_id, &object_info, &promise](
+                     const Status &status,
+                     const std::vector<rpc::ObjectTableData> &result) {
+    RAY_CHECK_OK(status);
+    rpc::ObjectLocationInfo object_location_info;
+    object_location_info.set_object_id(object_id.Binary());
+    for (auto &data : result) {
+      object_location_info.add_locations()->CopyFrom(data);
+    }
+    object_info = object_location_info.SerializeAsString();
+    promise.set_value(true);
+  };
+  RAY_CHECK_OK(gcs_client_->Objects().AsyncGetLocations(object_id, on_done));
+  promise.get_future().get();
+  return object_info;
 }
 
 }  // namespace gcs

@@ -243,6 +243,10 @@ class ObjectInfoGcsServiceHandler {
                                         GetObjectLocationsReply *reply,
                                         SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleGetAllObjectLocations(const GetAllObjectLocationsRequest &request,
+                                           GetAllObjectLocationsReply *reply,
+                                           SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleAddObjectLocation(const AddObjectLocationRequest &request,
                                        AddObjectLocationReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;

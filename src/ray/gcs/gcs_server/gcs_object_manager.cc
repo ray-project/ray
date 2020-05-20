@@ -36,6 +36,25 @@ void GcsObjectManager::HandleGetObjectLocations(
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
+void GcsObjectManager::HandleGetAllObjectLocations(
+    const rpc::GetAllObjectLocationsRequest &request,
+    rpc::GetAllObjectLocationsReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Getting all object locations.";
+  absl::MutexLock lock(&mutex_);
+  for (auto &item : object_to_locations_) {
+    rpc::ObjectLocationInfo object_location_info;
+    object_location_info.set_object_id(item.first.Binary());
+    for (auto &node_id : item.second) {
+      rpc::ObjectTableData object_table_data;
+      object_table_data.set_manager(node_id.Binary());
+      object_location_info.add_locations()->CopyFrom(object_table_data);
+    }
+    reply->add_object_location_info_list()->CopyFrom(object_location_info);
+  }
+  RAY_LOG(DEBUG) << "Finished getting all object locations.";
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
 void GcsObjectManager::HandleAddObjectLocation(
     const rpc::AddObjectLocationRequest &request, rpc::AddObjectLocationReply *reply,
     rpc::SendReplyCallback send_reply_callback) {

@@ -42,6 +42,10 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
                                 rpc::GetObjectLocationsReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleGetAllObjectLocations(const rpc::GetAllObjectLocationsRequest &request,
+                                   rpc::GetAllObjectLocationsReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleAddObjectLocation(const rpc::AddObjectLocationRequest &request,
                                rpc::AddObjectLocationReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;

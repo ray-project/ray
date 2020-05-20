@@ -1,3 +1,7 @@
+from ray.includes.unique_ids cimport (
+    CObjectID
+)
+
 from ray.includes.global_state_accessor cimport (
     CGlobalStateAccessor,
 )
@@ -25,3 +29,12 @@ cdef class GlobalStateAccessor:
 
     def get_profile_table(self):
         return self.inner.get().GetAllProfileInfo()
+
+    def get_object_table(self):
+        return self.inner.get().GetAllObjectInfo()
+
+    def get_object_info(self, object_id):
+        object_info = self.inner.get().GetObjectInfo(CObjectID.FromBinary(object_id.binary()))
+        if object_info.strip() == '':
+            return None
+        return object_info
