@@ -874,14 +874,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
     auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
     for (auto const &task : removed_tasks) {
-      const TaskSpecification &spec = task.GetTaskSpecification();
-      const ActorTableData &actor_table_data = actor_registration.GetTableData();
-      RayActorException ex(
-          ErrorType_Name(ErrorType::ACTOR_DIED), spec.GetLanguage(), spec.JobId(),
-          WorkerID::FromBinary(actor_table_data.address().worker_id()), spec.TaskId(),
-          spec.ActorId(), actor_table_data.address().ip_address(), __FILE__, __LINE__,
-          __FUNCTION__);
-      TreatTaskAsFailed(task, ex);
+      TreatTaskAsFailed(task, ErrorType::ACTOR_DIED);
     }
   } else if (actor_registration.GetState() == ActorTableData::RESTARTING) {
     RAY_LOG(DEBUG) << "Actor is being restarted: " << actor_id;
@@ -1333,13 +1326,7 @@ void NodeManager::ProcessDisconnectClientMessage(
       if (actor_id.IsNil()) {
         Task task;
         if (local_queues_.RemoveTask(task_id, &task)) {
-          const TaskSpecification &spec = task.GetTaskSpecification();
-          RayWorkerException ex(
-              ErrorType_Name(ErrorType::WORKER_DIED), spec.GetLanguage(), spec.JobId(),
-              worker->WorkerId(), spec.TaskId(), ActorID::Nil(),
-              worker->GetOwnerAddress().ip_address(), worker->GetProcess().GetId(),
-              __FILE__, __LINE__, __FUNCTION__);
-          TreatTaskAsFailed(task, ex);
+          TreatTaskAsFailed(task, ErrorType::WORKER_DIED);
         }
       }
 
@@ -2080,10 +2067,10 @@ bool NodeManager::CheckDependencyManagerInvariant() const {
   return true;
 }
 
-void NodeManager::TreatTaskAsFailed(const Task &task, const RayException &exception) {
+void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_type) {
   const TaskSpecification &spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Treating task " << spec.TaskId() << " as failed because of error "
-                 << ErrorType_Name(exception.ErrorType()) << ".";
+                 << ErrorType_Name(error_type) << ".";
   // If this was an actor creation task that tried to resume from a checkpoint,
   // then erase it here since the task did not finish.
   if (spec.IsActorCreationTask()) {
@@ -2104,7 +2091,7 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const RayException &except
     objects_to_fail.push_back(spec.ReturnId(i).ToPlasmaId());
   }
   const JobID job_id = task.GetTaskSpecification().JobId();
-  MarkObjectsAsFailed(exception, objects_to_fail, job_id);
+  MarkObjectsAsFailed(error_type, objects_to_fail, job_id);
   task_dependency_manager_.TaskCanceled(spec.TaskId());
   // Notify the task dependency manager that we no longer need this task's
   // object dependencies. TODO(swang): Ideally, we would check the return value
@@ -2114,13 +2101,12 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const RayException &except
   task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId());
 }
 
-void NodeManager::MarkObjectsAsFailed(const RayException &exception,
+void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
                                       const std::vector<plasma::ObjectID> objects_to_fail,
                                       const JobID &job_id) {
-  const std::string meta = std::to_string(static_cast<int>(exception.ErrorType()));
+  const std::string meta = std::to_string(static_cast<int>(error_type));
   for (const auto &object_id : objects_to_fail) {
-    arrow::Status status =
-        store_client_.CreateAndSeal(object_id, exception.Serialize(), meta);
+    arrow::Status status = store_client_.CreateAndSeal(object_id, "", meta);
     if (!status.ok() && !plasma::IsPlasmaObjectExists(status)) {
       // If we failed to save the error code, log a warning and push an error message
       // to the driver.
@@ -2167,12 +2153,7 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
               // The object does not exist on any nodes but has been created
               // before, so the object has been lost. Mark the task as failed to
               // prevent any tasks that depend on this object from hanging.
-              const TaskSpecification &spec = task.GetTaskSpecification();
-              RayObjectException ex(ErrorType_Name(ErrorType::OBJECT_UNRECONSTRUCTABLE),
-                                    spec.GetLanguage(), spec.JobId(), spec.TaskId(),
-                                    spec.ActorId(), object_id, __FILE__, __LINE__,
-                                    __FUNCTION__);
-              TreatTaskAsFailed(task, ex);
+              TreatTaskAsFailed(task, ErrorType::OBJECT_UNRECONSTRUCTABLE);
               *task_marked_as_failed = true;
             }
           }
@@ -2206,13 +2187,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       if (actor_entry->second.GetState() == ActorTableData::DEAD) {
         // If this actor is dead, either because the actor process is dead
         // or because its residing node is dead, treat this task as failed.
-        const ActorTableData &actor_table_data = actor_entry->second.GetTableData();
-        RayActorException ex(
-            ErrorType_Name(ErrorType::ACTOR_DIED), spec.GetLanguage(), spec.JobId(),
-            WorkerID::FromBinary(actor_table_data.address().worker_id()), spec.TaskId(),
-            spec.ActorId(), actor_table_data.address().ip_address(), __FILE__, __LINE__,
-            __FUNCTION__);
-        TreatTaskAsFailed(task, ex);
+        TreatTaskAsFailed(task, ErrorType::ACTOR_DIED);
       } else {
         // If this actor is alive, check whether this actor is local.
         auto node_manager_id = actor_entry->second.GetNodeManagerId();
@@ -2906,18 +2881,14 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
           const Task task = lineage_cache_.GetTaskOrDie(task_id);
           ResubmitTask(task, required_object_id);
         } else {
-          std::ostringstream error_message;
-          error_message
+          RAY_LOG(WARNING)
               << "Metadata of task " << task_id
               << " not found in either GCS or lineage cache. It may have been evicted "
               << "by the redis LRU configuration. Consider increasing the memory "
                  "allocation via "
               << "ray.init(redis_max_memory=<max_memory_bytes>).";
-          RAY_LOG(WARNING) << error_message.str();
-          RayObjectException ex(error_message.str(), Language::CPP, JobID::Nil(), task_id,
-                                ActorID::Nil(), required_object_id.ToPlasmaId(), __FILE__,
-                                __LINE__, __FUNCTION__);
-          MarkObjectsAsFailed(ex, {required_object_id.ToPlasmaId()}, JobID::Nil());
+          MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
+                              {required_object_id.ToPlasmaId()}, JobID::Nil());
         }
       }));
 }
@@ -2954,11 +2925,8 @@ void NodeManager::ResubmitTask(const Task &task, const ObjectID &required_object
         gcs::CreateErrorTableData(type, error_message.str(), current_time_ms(),
                                   task.GetTaskSpecification().JobId());
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
-    const TaskSpecification &spec = task.GetTaskSpecification();
-    RayObjectException ex(error_message.str(), spec.GetLanguage(), spec.JobId(),
-                          spec.TaskId(), ActorID::Nil(), required_object_id.ToPlasmaId(),
-                          __FILE__, __LINE__, __FUNCTION__);
-    MarkObjectsAsFailed(ex, {required_object_id.ToPlasmaId()},
+    MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
+                        {required_object_id.ToPlasmaId()},
                         task.GetTaskSpecification().JobId());
     return;
   }

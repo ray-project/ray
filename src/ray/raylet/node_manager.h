@@ -23,7 +23,6 @@
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/common/task/task.h"
 #include "ray/common/ray_object.h"
-#include "ray/common/ray_exception.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/scheduling_resources.h"
@@ -223,15 +222,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// the local queue.
   ///
   /// \param task The task to fail.
-  /// \param exception The exception that caused this task to fail.
+  /// \param error_type The type of the error that caused this task to fail.
   /// \return Void.
-  void TreatTaskAsFailed(const Task &task, const RayException &exception);
+  void TreatTaskAsFailed(const Task &task, const ErrorType &error_type);
   /// Mark the specified objects as failed with the given error type.
   ///
-  /// \param exception The exception that caused this task to fail.
+  /// \param error_type The type of the error that caused this task to fail.
   /// \param object_ids The object ids to store error messages into.
   /// \param job_id The optional job to push errors to if the writes fail.
-  void MarkObjectsAsFailed(const RayException &exception,
+  void MarkObjectsAsFailed(const ErrorType &error_type,
                            const std::vector<plasma::ObjectID> object_ids,
                            const JobID &job_id);
   /// This is similar to TreatTaskAsFailed, but it will only mark the task as
