@@ -138,8 +138,6 @@ Status RedisClient::Connect(std::vector<boost::asio::io_service *> io_services) 
   Attach();
 
   is_connected_ = true;
-  RAY_LOG(INFO) << "RedisClient connected.";
-
   return Status::OK();
 }
 

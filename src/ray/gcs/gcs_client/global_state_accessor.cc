@@ -22,8 +22,6 @@ namespace gcs {
 GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
                                          const std::string &redis_password,
                                          bool is_test) {
-  RAY_LOG(INFO) << "Redis server address = " << redis_address
-                << ", is test flag = " << is_test;
   std::vector<std::string> address;
   boost::split(address, redis_address, boost::is_any_of(":"));
   RAY_CHECK(address.size() == 2);
