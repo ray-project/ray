@@ -64,7 +64,7 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
   }
 
   void RestartGcsServer() {
-    RAY_LOG(INFO) << "Initializing GCS service, port = " << gcs_server_->GetPort();
+    RAY_LOG(INFO) << "Stopping GCS service, port = " << gcs_server_->GetPort();
     gcs_server_->Stop();
     thread_gcs_server_->join();
 
@@ -813,6 +813,7 @@ TEST_F(ServiceBasedGcsClientTest, TestErrorInfo) {
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestJobTableReSubscribe) {
+  // Test that subscription of the job table can still work when GCS server restarts.
   JobID job_id = JobID::FromInt(1);
   auto job_table_data = Mocker::GenJobTableData(job_id);
 

@@ -386,7 +386,7 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
 }
 
 Status ServiceBasedActorInfoAccessor::AsyncReSubscribe() {
-  RAY_LOG(INFO) << "Actor info resubscribe once.";
+  RAY_LOG(INFO) << "Reestablishing subscription for actor info.";
   if (subscribe_all_operation_ != nullptr) {
     RAY_CHECK_OK(subscribe_all_operation_(nullptr));
   }

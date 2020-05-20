@@ -244,6 +244,11 @@ class GcsRpcClient {
 
   ClientCallManager &client_call_manager_;
   std::function<std::pair<std::string, int>()> get_server_address_;
+  /// This function is triggered when RPC request is called.
+  /// We will ping the address of the GCS server, and if it is valid, this function will
+  /// be called. Currently, we will subscribe to GCS again in this function. If the
+  /// function call succeeds but the connection of GCS server fails, it will try again and
+  /// subscription function needs to be idempotent.
   std::function<void()> reconnected_callback_;
 
   /// The gRPC-generated stub.
