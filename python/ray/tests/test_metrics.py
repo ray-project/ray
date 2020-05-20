@@ -566,7 +566,7 @@ def test_memory_dashboard(shutdown_only):
         retry_interval_ms=1000) is True)
 
     assert (wait_for_condition(
-        test_caputed_object_id_reference,
+        test_captured_object_id_reference,
         timeout=30000,
         retry_interval_ms=1000) is True)
 
