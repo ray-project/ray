@@ -1194,10 +1194,6 @@ def connect(node,
 
     worker.lock = threading.RLock()
 
-    # Create an object for interfacing with the global state.
-    ray.state.state._initialize_global_state(
-        node.redis_address, redis_password=node.redis_password)
-
     driver_name = ""
     log_stdout_file_name = ""
     log_stderr_file_name = ""
@@ -1267,6 +1263,12 @@ def connect(node,
         log_stdout_file_name,
         log_stderr_file_name,
     )
+
+    # Create an object for interfacing with the global state.
+    # Note, global state should be intialized after `CoreWorker`, because it will
+    # use glog, which is intialized in `CoreWorker`.
+    ray.state.state._initialize_global_state(
+        node.redis_address, redis_password=node.redis_password)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
