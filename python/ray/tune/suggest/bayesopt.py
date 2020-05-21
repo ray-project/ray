@@ -151,18 +151,15 @@ class BayesOptSearch(Searcher):
                                        analysis.get_all_configs().values()):
             # We add the obtained results to the
             # gaussian process optimizer
-            self.optimizer.register(
-                params=params, target=self._metric_op * report[self._metric])
+            self._process_result(params, report)
 
     def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial."""
-        if result:
-            if self._random_search_steps:
+        if result is not None:
+            if self._random_search_steps > 0:
                 self._cached_results.append(self._live_trial_mapping[trial_id], result)
-                if len(self._cached_results) < self._random_search_steps:
-                    return
-                else:
-                    self._random_search_steps = 0
+                self._random_search_steps -= 1
+                if self._random_search_steps == 0:
                     for param, result in self._cached_results:
                         self._process_result(param, result)
             else:
