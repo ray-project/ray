@@ -24,6 +24,7 @@ from ray._raylet import (
     MessagePackSerializer,
     MessagePackSerializedObject,
     RawSerializedObject,
+    RayException,
 )
 
 logger = logging.getLogger(__name__)
@@ -271,7 +272,9 @@ class SerializationContext:
             # independent.
             if error_type == ErrorType.Value("TASK_EXECUTION_EXCEPTION"):
                 obj = self._deserialize_msgpack_data(data, metadata)
-                assert isinstance(obj, RayTaskError)
+                obj = ray.RayException.from_binary(obj)
+                obj = obj.python_exception()
+                assert isinstance(obj, RayException)
                 return obj
             elif error_type == ErrorType.Value("WORKER_DIED"):
                 return RayWorkerError()
@@ -392,6 +395,7 @@ class SerializationContext:
             if isinstance(value, RayTaskError):
                 metadata = str(ErrorType.Value(
                     "TASK_EXECUTION_EXCEPTION")).encode("ascii")
+                value = RayException(value).binary()
             else:
                 metadata = ray_constants.OBJECT_METADATA_TYPE_PYTHON
 
