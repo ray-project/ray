@@ -323,6 +323,23 @@ class ServeMaster:
         await worker_handle.ready.remote()
         return worker_handle
 
+    async def _start_replica(self, backend_tag, replica_tag):
+        # NOTE(edoakes): the replicas may already be created if we
+        # failed after creating them but before writing a
+        # checkpoint.
+        try:
+            worker_handle = ray.util.get_actor(replica_tag)
+        except ValueError:
+            worker_handle = await self._start_backend_worker(
+                backend_tag, replica_tag)
+
+        self.replicas[backend_tag].append(replica_tag)
+        self.workers[backend_tag][replica_tag] = worker_handle
+
+        # Register the worker with the router.
+        await self.router.add_new_worker.remote(backend_tag, replica_tag,
+                                                worker_handle)
+
     async def _start_pending_replicas(self):
         """Starts the pending backend replicas in self.replicas_to_start.
 
@@ -332,22 +349,14 @@ class ServeMaster:
 
         Clears self.replicas_to_start.
         """
+        replica_started_futures = []
         for backend_tag, replicas_to_create in self.replicas_to_start.items():
             for replica_tag in replicas_to_create:
-                # NOTE(edoakes): the replicas may already be created if we
-                # failed after creating them but before writing a checkpoint.
-                try:
-                    worker_handle = ray.util.get_actor(replica_tag)
-                except ValueError:
-                    worker_handle = await self._start_backend_worker(
-                        backend_tag, replica_tag)
+                replica_started_futures.append(
+                    self._start_replica(backend_tag, replica_tag))
 
-                self.replicas[backend_tag].append(replica_tag)
-                self.workers[backend_tag][replica_tag] = worker_handle
-
-                # Register the worker with the router.
-                await self.router.add_new_worker.remote(
-                    backend_tag, replica_tag, worker_handle)
+        # Wait on all creation task futures together.
+        await asyncio.gather(*replica_started_futures)
 
         self.replicas_to_start.clear()
 
