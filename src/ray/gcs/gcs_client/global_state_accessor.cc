@@ -121,12 +121,14 @@ std::string GlobalStateAccessor::GetObjectInfo(const ObjectID &object_id) {
                      const Status &status,
                      const std::vector<rpc::ObjectTableData> &result) {
     RAY_CHECK_OK(status);
-    rpc::ObjectLocationInfo object_location_info;
-    object_location_info.set_object_id(object_id.Binary());
-    for (auto &data : result) {
-      object_location_info.add_locations()->CopyFrom(data);
+    if (!result.empty()) {
+      rpc::ObjectLocationInfo object_location_info;
+      object_location_info.set_object_id(object_id.Binary());
+      for (auto &data : result) {
+        object_location_info.add_locations()->CopyFrom(data);
+      }
+      object_info = object_location_info.SerializeAsString();
     }
-    object_info = object_location_info.SerializeAsString();
     promise.set_value(true);
   };
   RAY_CHECK_OK(gcs_client_->Objects().AsyncGetLocations(object_id, on_done));
