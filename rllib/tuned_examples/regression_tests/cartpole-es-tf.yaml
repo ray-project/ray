@@ -3,7 +3,7 @@ cartpole-es-tf:
     run: ES
     stop:
         episode_reward_mean: 150
-        timesteps_total: 400000
+        timesteps_total: 500000
     config:
         use_pytorch: false
         num_workers: 2

@@ -18,8 +18,8 @@ from ray.rllib.offline import InputReader
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.space_utils import flatten_to_single_ndarray, unbatch
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils.space_utils import flatten_to_single_ndarray
 
 tree = try_import_tree()
 
@@ -688,7 +688,7 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
         if clip_actions:
             actions = clip_action(actions, policy.action_space_struct)
         # Split action-component batches into single action rows.
-        actions = unbatch_actions(actions)
+        actions = unbatch(actions)
         for i, action in enumerate(actions):
             env_id = eval_data[i].env_id
             agent_id = eval_data[i].agent_id
@@ -724,43 +724,6 @@ def _fetch_atari_metrics(base_env):
         for eps_rew, eps_len in monitor.next_episode_results():
             atari_out.append(RolloutMetrics(eps_len, eps_rew))
     return atari_out
-
-
-def unbatch_actions(action_batches):
-    """Converts action_batches from list of batches to batch of lists.
-
-    Input: Struct of batches:
-        {"a": [1, 2, 3], "b": ([4, 5, 6], [7.0, 8.0, 9.0])}
-    Output: Batch (list) of structs (each of these structs representing a
-        single action):
-        [
-            {"a": 1, "b": (4, 7.0)},  <- action 1
-            {"a": 2, "b": (5, 8.0)},  <- action 2
-            {"a": 3, "b": (6, 9.0)},  <- action 3
-        ]
-
-    Args:
-        action_batches (any): The list of action-component batches. Each item
-            in this list represents the batch for a single action component
-            (in case action is Tuple/Dict), meaning the list is already
-            flattened.
-            Alternatively, `action_batches` may also simply be a batch of
-            primitive actions (non Tuple/Dict).
-
-    Returns:
-        List[List[action-components]]: The list of action rows. Each item
-            in the returned list represents a single (maybe complex) action.
-    """
-    flat_action_batches = tree.flatten(action_batches)
-
-    out = []
-    for batch_pos in range(len(flat_action_batches[0])):
-        out.append(
-            tree.unflatten_as(action_batches, [
-                flat_action_batches[i][batch_pos]
-                for i in range(len(flat_action_batches))
-            ]))
-    return out
 
 
 def _to_column_format(rnn_state_rows):

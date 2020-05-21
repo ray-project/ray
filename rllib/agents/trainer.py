@@ -591,7 +591,7 @@ class Trainer(Trainable):
             if tf and not tf.executing_eagerly():
                 return tf.Graph().as_default()
             else:
-                return open("/dev/null")  # fake a no-op scope
+                return open(os.devnull)  # fake a no-op scope
 
         with get_scope():
             self._init(self.config, self.env_creator)
