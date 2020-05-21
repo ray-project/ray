@@ -15,9 +15,10 @@ Ray accomplishes this mission by:
 2. Enabling end users to parallelize single machine code, with little to zero code changes.
 3. Including a large ecosystem of applications, libraries, and tools on top of the core Ray to enable complex applications. 
 
-**Ray Core** is the primarily framework for building and Running Distributed Applications.
+**Ray Core** provides the simple primitives for application building.
 
-On top of that are several fundamental libraries for solving problems in machine learning:
+On top of **Ray Core** are several libraries for solving problems in machine learning:
+
 - :ref:`tune-index`
 - :ref:`rllib-index`
 - :ref:`sgd-index`
@@ -25,6 +26,6 @@ On top of that are several fundamental libraries for solving problems in machine
 
 Ray also has a number of other community contributed libraries:
 
-- :doc:`pandas_on_ray`
-- :doc:`joblib`
-- :doc:`multiprocessing`
+- :doc:`../pandas_on_ray`
+- :doc:`../joblib`
+- :doc:`../multiprocessing`

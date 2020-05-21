@@ -37,9 +37,9 @@ Parallelizing Python Classes with Ray Actors
 ==============================================
 
 Ray provides actors to allow you to parallelize an instance of a class in Python.
-When you instantiate a class that is a Ray actor, Ray will automatically distribute
-that actor onto the Ray cluster and manage that state on your behalf. All you as a 
-user need to do is call the class using the ``remote`` method call.
+When you instantiate a class that is a Ray actor, Ray will start a remote instance 
+of that class in the cluster. This actor can then execute remote method calls and 
+maintain its own internal state.
 
 .. code-block:: python
 

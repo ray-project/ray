@@ -9,6 +9,36 @@ Getting Started with Ray
 Check out :ref:`gentle-intro` to learn more about Ray and its ecosystem of libraries that enable things like distributed hyperparameter tuning,
 reinforcement learning, and distributed training.
 
+Ray uses Tasks (functions) and Actors (Classes) to allow you to parallelize your Python code:
+
+.. code-block:: python
+
+    import ray
+    ray.init()
+
+    @ray.remote
+    def f(x):
+        return x * x
+
+    futures = [f.remote(i) for i in range(4)]
+    print(ray.get(futures)) # [0, 1, 4, 9]
+
+    @ray.remote
+    class Counter(object):
+        def __init__(self):
+            self.n = 0
+
+        def increment(self):
+            self.n += 1
+
+        def read(self):
+            return self.n
+
+    counters = [Counter.remote() for i in range(4)]
+    [c.increment.remote() for c in counters]
+    futures = [c.read.remote() for c in counters]
+    print(ray.get(futures)) # [1, 1, 1, 1]
+
 The Ray Community
 -----------------
 
@@ -29,7 +59,7 @@ More Information
 Here are some talks, papers, and press coverage involving Ray and its libraries. Please raise an issue if any of the below links are broken!
 
 Blog and Press
-~~~~~~~~~~~~~~
+--------------
 
   - `Modern Parallel and Distributed Python: A Quick Tutorial on Ray <https://towardsdatascience.com/modern-parallel-and-distributed-python-a-quick-tutorial-on-ray-99f8d70369b8>`_
   - `Why Every Python Developer Will Love Ray <https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/>`_
@@ -51,7 +81,7 @@ Blog and Press
 .. _`Ray Blog`: https://ray-project.github.io/
 
 Talks (Videos)
-~~~~~~~~~~~~~~
+--------------
 
  - `Programming at any Scale with Ray | SF Python Meetup Sept 2019 <https://www.youtube.com/watch?v=LfpHyIXBhlE>`_
  - `Ray for Reinforcement Learning | Data Council 2019 <https://www.youtube.com/watch?v=Ayc0ca150HI>`_
@@ -63,13 +93,14 @@ Talks (Videos)
  - `Tune: Distributed Hyperparameter Search | RISECamp 2018 <https://www.youtube.com/watch?v=38Yd_dXW51Q>`_
 
 Slides
-~~~~~~
+------
+
 - `Talk given at UC Berkeley DS100 <https://docs.google.com/presentation/d/1sF5T_ePR9R6fAi2R6uxehHzXuieme63O2n_5i9m7mVE/edit?usp=sharing>`_
 - `Talk given in October 2019 <https://docs.google.com/presentation/d/13K0JsogYQX3gUCGhmQ1PQ8HILwEDFysnq0cI2b88XbU/edit?usp=sharing>`_
 - [Tune] `Talk given at RISECamp 2019 <https://docs.google.com/presentation/d/1v3IldXWrFNMK-vuONlSdEuM82fuGTrNUDuwtfx4axsQ/edit?usp=sharing>`_
 
 Academic Papers
-~~~~~~~~~~~~~~~
+---------------
 
 - `Ray paper`_
 - `Ray HotOS paper`_
