@@ -406,6 +406,7 @@ class GlobalState:
                 "ObjectStoreSocketName": item.object_store_socket_name,
                 "RayletSocketName": item.raylet_socket_name
             }
+            node_info["alive"] = node_info["Alive"]
             node_info["Resources"] = _parse_resource_table(
                 self.redis_client,
                 node_info["NodeID"]) if node_info["Alive"] else {}
