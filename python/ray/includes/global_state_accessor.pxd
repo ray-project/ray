@@ -10,4 +10,4 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         c_bool Connect()
         void Disconnect()
         c_vector[c_string] GetAllJobInfo()
-
+        c_vector[c_string] GetAllProfileInfo()

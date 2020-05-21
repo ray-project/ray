@@ -1068,6 +1068,21 @@ Status ServiceBasedStatsInfoAccessor::AsyncAddProfileData(
   return Status::OK();
 }
 
+Status ServiceBasedStatsInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<rpc::ProfileTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting all profile info.";
+  RAY_CHECK(callback);
+  rpc::GetAllProfileInfoRequest request;
+  client_impl_->GetGcsRpcClient().GetAllProfileInfo(
+      request,
+      [callback](const Status &status, const rpc::GetAllProfileInfoReply &reply) {
+        auto result = VectorFromProtobuf(reply.profile_info_list());
+        callback(status, result);
+        RAY_LOG(DEBUG) << "Finished getting all job info.";
+      });
+  return Status::OK();
+}
+
 ServiceBasedErrorInfoAccessor::ServiceBasedErrorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}

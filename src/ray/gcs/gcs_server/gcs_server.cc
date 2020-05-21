@@ -229,7 +229,7 @@ std::unique_ptr<rpc::TaskInfoHandler> GcsServer::InitTaskInfoHandler() {
 
 std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {
   return std::unique_ptr<rpc::DefaultStatsHandler>(
-      new rpc::DefaultStatsHandler(*redis_gcs_client_));
+      new rpc::DefaultStatsHandler(gcs_table_storage_));
 }
 
 std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {

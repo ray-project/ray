@@ -404,6 +404,10 @@ class RedisStatsInfoAccessor : public StatsInfoAccessor {
   Status AsyncAddProfileData(const std::shared_ptr<ProfileTableData> &data_ptr,
                              const StatusCallback &callback) override;
 
+  Status AsyncGetAll(const MultiItemCallback<rpc::ProfileTableData> &callback) override {
+    return Status::NotImplemented("AsyncGetAll not implemented");
+  }
+
  private:
   RedisGcsClient *client_impl_{nullptr};
 };
