@@ -2,7 +2,7 @@ import base64
 
 from collections import defaultdict
 from enum import Enum
-from typing import Dict, List
+from typing import List
 
 import ray
 
@@ -158,10 +158,10 @@ class MemoryTable:
                  entries: List[MemoryTableEntry],
                  group_by_type: GroupByType = GroupByType.NODE_ADDRESS,
                  sort_by_type: SortingType = SortingType.PID):
-        self.table: List[MemoryTableEntry] = entries
+        self.table = entries
         # Group is a list of memory tables grouped by a group key.
-        self.group: Dict[str, MemoryTable] = {}
-        self.summary: dict = defaultdict(int)
+        self.group = {}
+        self.summary = defaultdict(int)
         if group_by_type and sort_by_type:
             self.setup(group_by_type, sort_by_type)
         elif group_by_type:
