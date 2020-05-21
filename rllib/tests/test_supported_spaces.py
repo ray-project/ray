@@ -52,7 +52,8 @@ OBSERVATION_SPACES_TO_TEST = {
 def check_support(alg, config, check_bounds=False):
     config["log_level"] = "ERROR"
 
-    def _do_check(alg, fw, a_name, o_name, config):
+    def _do_check(alg, config, a_name, o_name):
+        fw = config["framework"]
         action_space = ACTION_SPACES_TO_TEST[a_name]
         obs_space = OBSERVATION_SPACES_TO_TEST[o_name]
         print("=== Testing {} (fw={}) A={} S={} ===".format(
@@ -69,9 +70,6 @@ def check_support(alg, config, check_bounds=False):
         stat = "ok"
         a = None
         try:
-            # if a_name in covered_a and o_name in covered_o:
-            #    stat = "skip"  # speed up tests by avoiding full grid
-            # else:
             a = get_agent_class(alg)(config=config, env=RandomEnv)
             if alg not in ["DDPG", "ES", "ARS", "SAC"]:
                 if o_name in ["atari", "image"]:
@@ -89,15 +87,8 @@ def check_support(alg, config, check_bounds=False):
                         assert isinstance(a.get_policy().model,
                                           FCNetV2)
             a.train()
-            #covered_a.add(a_name)
-            #covered_o.add(o_name)
         except UnsupportedSpaceException:
             stat = "unsupported"
-        # except Exception as e:
-        #    stat = "ERROR"
-        #    print(e)
-        #    print(traceback.format_exc())
-        #    first_error = first_error if first_error is not None else e
         finally:
             if a:
                 try:
@@ -106,28 +97,19 @@ def check_support(alg, config, check_bounds=False):
                     print("Ignoring error stopping agent", e)
                     pass
         print(stat)
-        # print()
-        # stats[name or alg, a_name, o_name] = stat
 
-    for fw in framework_iterator(config, frameworks=("tf", "torch")):
-        #covered_a = set()
-        #covered_o = set()
-        #first_error = None
-
+    for _ in framework_iterator(config, frameworks=("torch", "tf")):
         # Check all action spaces.
         for a_name, action_space in ACTION_SPACES_TO_TEST.items():
-            _do_check(alg, fw, a_name, "discrete", config)
+            _do_check(alg, config, a_name, "discrete")
+        # Check all obs spaces.
         for o_name, obs_space in OBSERVATION_SPACES_TO_TEST.items():
-            _do_check(alg, fw, "discrete", o_name, config)
-
-        ## If anything happened, raise error.
-        #if first_error is not None:
-        #    raise first_error
+            _do_check(alg, config, "discrete", o_name)
     
 
 class ModelSupportedSpaces(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=4, ignore_reinit_error=True)
+        ray.init(num_cpus=4, ignore_reinit_error=True, local_mode=True)
 
     def tearDown(self):
         ray.shutdown()

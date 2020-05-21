@@ -98,6 +98,7 @@ class ModelSupportedSpaces(unittest.TestCase):
         check_support_multiagent(
             "SAC", {
                 "num_workers": 0,
+                "normalize_actions": False,
             })
 
 
