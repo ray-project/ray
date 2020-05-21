@@ -1435,9 +1435,16 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_supported_multi_agent",
+    tags = ["tests_dir", "tests_dir_S"],
+    size = "large",
+    srcs = ["tests/test_supported_multi_agent.py"]
+)
+
+py_test(
     name = "tests/test_supported_spaces",
     tags = ["tests_dir", "tests_dir_S"],
-    size = "enormous",
+    size = "large",
     srcs = ["tests/test_supported_spaces.py"]
 )
 

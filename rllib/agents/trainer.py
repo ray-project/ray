@@ -17,7 +17,7 @@ from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
-from ray.rllib.utils.framework import try_import_tf, get_auto_framework
+from ray.rllib.utils.framework import check_framework, try_import_tf
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.memory import ray_get_and_free
@@ -562,9 +562,8 @@ class Trainer(Trainable):
                 self.config["framework"] = "torch"
             elif self.config["eager"]:
                 self.config["framework"] = "tfe"
-        # Resolve "auto" framework.
-        elif self.config["framework"] == "auto":
-            self.config["framework"] = get_auto_framework()
+        # Check all dependencies and resolve "auto" framework.
+        self.config["framework"] = check_framework(self.config["framework"])
         # Notify about eager/tracing support.
         if tf and self.config["framework"] == "tfe":
             if not tf.executing_eagerly():

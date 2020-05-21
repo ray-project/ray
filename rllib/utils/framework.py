@@ -44,13 +44,15 @@ def get_auto_framework():
     return "tf"
 
 
-def check_framework(framework="tf"):
+def check_framework(framework, allow_none=True):
     """Checks, whether the given framework is "valid".
 
     Meaning, whether all necessary dependencies are installed.
 
     Args:
         framework (str): Once of "tf", "torch", or None.
+        allow_none (bool): Whether framework=None (e.g. numpy implementatiopn)
+            is allowed or not.
 
     Returns:
         str: The input framework string.
@@ -58,14 +60,29 @@ def check_framework(framework="tf"):
     Raises:
         ImportError: If given framework is not installed.
     """
-    if framework == "tf":
+    # Resolve auto framework first.
+    if framework == "auto":
+        framework = get_auto_framework()
+
+    # Check, whether tf is installed.
+    if framework in ["tf", "tfe"]:
         if tf is None:
-            raise ImportError("Could not import tensorflow.")
+            raise ImportError(
+                "Could not import `tensorflow`. Try `pip install tensorflow`")
+    # Check, whether torch is installed.
     elif framework == "torch":
         if torch is None:
-            raise ImportError("Could not import torch.")
+            raise ImportError(
+                "Could not import `torch`. "
+                "Try `pip install torch torchvision`")
+    # Framework is None (use numpy version of the component).
+    elif framework is None:
+        if not allow_none:
+            raise ValueError("framework=None not allowed!")
+    # Invalid value.
     else:
-        assert framework is None
+        raise ValueError(
+            "Invalid framework={}. Use one of [tf|tfe|torch|auto].")
     return framework
 
 
