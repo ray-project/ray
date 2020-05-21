@@ -7,7 +7,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.utils.memory import ray_get_and_free
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +53,7 @@ class SyncSamplesOptimizer(PolicyOptimizer):
             while sum(s.count for s in samples) < self.train_batch_size:
                 if self.workers.remote_workers():
                     samples.extend(
-                        ray_get_and_free([
+                        ray.get([
                             e.sample.remote()
                             for e in self.workers.remote_workers()
                         ]))

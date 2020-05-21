@@ -217,6 +217,10 @@ In the above section you saw how to compose a simple policy gradient algorithm w
 
 Besides some boilerplate for defining the PPO configuration and some warnings, there are two important arguments to take note of here: ``make_policy_optimizer=choose_policy_optimizer``, and ``after_optimizer_step=update_kl``.
 
+.. warning::
+
+    Policy optimizers are deprecated. This documentation will be updated in the future.
+
 The ``choose_policy_optimizer`` function chooses which `Policy Optimizer <#policy-optimization>`__ to use for distributed training. You can think of these policy optimizers as coordinating the distributed workflow needed to improve the policy. Depending on the trainer config, PPO can switch between a simple synchronous optimizer, or a multi-GPU optimizer that implements minibatch SGD (the default):
 
 .. code-block:: python
@@ -580,6 +584,10 @@ Here is an example of creating a set of rollout workers and using them gather ex
 
 Policy Optimization
 -------------------
+
+.. warning::
+
+    Policy optimizers are deprecated. This documentation will be updated in the future.
 
 Similar to how a `gradient-descent optimizer <https://www.tensorflow.org/api_docs/python/tf/train/GradientDescentOptimizer>`__ can be used to improve a model, RLlib's `policy optimizers <https://github.com/ray-project/ray/tree/master/rllib/optimizers>`__ implement different strategies for improving a policy.
 

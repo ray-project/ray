@@ -7,7 +7,8 @@ from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.space_utils import get_base_struct_from_space
+from ray.rllib.utils.space_utils import get_base_struct_from_space, \
+    unbatch
 
 tree = try_import_tree()
 
@@ -158,7 +159,7 @@ class Policy(metaclass=ABCMeta):
         if state is not None:
             state_batch = [[s] for s in state]
 
-        [action], state_out, info = self.compute_actions(
+        batched_action, state_out, info = self.compute_actions(
             [obs],
             state_batch,
             prev_action_batch=prev_action_batch,
@@ -168,11 +169,16 @@ class Policy(metaclass=ABCMeta):
             explore=explore,
             timestep=timestep)
 
+        single_action = unbatch(batched_action)
+        assert len(single_action) == 1
+        single_action = single_action[0]
+
         if clip_actions:
-            action = clip_action(action, self.action_space_struct)
+            single_action = clip_action(single_action,
+                                        self.action_space_struct)
 
         # Return action, internal state(s), infos.
-        return action, [s[0] for s in state_out], \
+        return single_action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
     @DeveloperAPI

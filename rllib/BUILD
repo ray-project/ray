@@ -1166,30 +1166,23 @@ py_test(
 
 # --------------------------------------------------------------------
 # Optimizers and Memories
-# rllib/optimizers/
+# rllib/execution/
 #
 # Tag: optimizers
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_optimizers",
-    tags = ["optimizers"],
-    size = "large",
-    srcs = ["optimizers/tests/test_optimizers.py"]
-)
-
-py_test(
     name = "test_segment_tree",
     tags = ["optimizers"],
     size = "small",
-    srcs = ["optimizers/tests/test_segment_tree.py"]
+    srcs = ["execution/tests/test_segment_tree.py"]
 )
 
 py_test(
     name = "test_prioritized_replay_buffer",
     tags = ["optimizers"],
     size = "small",
-    srcs = ["optimizers/tests/test_prioritized_replay_buffer.py"]
+    srcs = ["execution/tests/test_prioritized_replay_buffer.py"]
 )
 
 # --------------------------------------------------------------------
@@ -1453,6 +1446,25 @@ py_test(
 
 
 py_test(
+    name = "examples/attention_net_tf",
+    main = "examples/attention_net.py",
+    tags = ["examples", "examples_A"],
+    size = "large",
+    srcs = ["examples/attention_net.py"],
+    args = ["--as-test", "--stop-reward=80"]
+)
+
+# TODO(sven): GTrXL PyTorch.
+# py_test(
+#    name = "examples/attention_net_torch",
+#    main = "examples/attention_net.py",
+#    tags = ["examples", "examples_A"],
+#    size = "large",
+#    srcs = ["examples/attention_net.py"],
+#    args = ["--as-test", "--torch", "--stop-reward=90"]
+# )
+
+py_test(
     name = "examples/autoregressive_action_dist_tf",
     main = "examples/autoregressive_action_dist.py",
     tags = ["examples", "examples_A"],
@@ -1492,7 +1504,7 @@ py_test(
     name = "examples/batch_norm_model_dqn_tf",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "medium",  # DQN learns much slower with BatchNorm.
+    size = "large",  # DQN learns much slower with BatchNorm.
     srcs = ["examples/batch_norm_model.py"],
     args = ["--as-test", "--run=DQN", "--stop-reward=70"]
 )
@@ -1501,7 +1513,7 @@ py_test(
     name = "examples/batch_norm_model_dqn_torch",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "medium",  # DQN learns much slower with BatchNorm.
+    size = "large",  # DQN learns much slower with BatchNorm.
     srcs = ["examples/batch_norm_model.py"],
     args = ["--as-test", "--torch", "--run=DQN", "--stop-reward=70"]
 )
@@ -1555,7 +1567,7 @@ py_test(
     name = "examples/cartpole_lstm_ppo_torch",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--torch", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
 )
@@ -1871,7 +1883,7 @@ py_test(
     name = "examples/multi_agent_two_trainers_mixed_torch_tf",
     main = "examples/multi_agent_two_trainers.py",
     tags = ["examples", "examples_M"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_two_trainers.py"],
     args = ["--as-test", "--mixed-torch-tf", "--stop-reward=70"]
 )
@@ -2033,15 +2045,6 @@ py_test(
     size = "medium",
     srcs = ["examples/twostep_game.py"],
     args = ["--stop-timesteps=2000", "--run=QMIX"]
-)
-
-py_test(
-    name = "examples/twostep_game_apex_qmix",
-    main = "examples/twostep_game.py",
-    tags = ["examples", "examples_T"],
-    size = "medium",
-    srcs = ["examples/twostep_game.py"],
-    args = ["--stop-timesteps=2000", "--run=APEX_QMIX", "--num-cpus=4"]
 )
 
 py_test(
