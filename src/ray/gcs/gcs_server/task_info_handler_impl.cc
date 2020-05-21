@@ -52,8 +52,7 @@ void DefaultTaskInfoHandler::HandleGetTask(const GetTaskRequest &request,
                  << ", task id = " << task_id;
   auto on_done = [task_id, request, reply, send_reply_callback](
                      const Status &status, const boost::optional<TaskTableData> &result) {
-    if (status.ok()) {
-      RAY_DCHECK(result);
+    if (status.ok() && result) {
       reply->mutable_task_data()->CopyFrom(*result);
     }
     RAY_LOG(DEBUG) << "Finished getting task, job id = " << task_id.JobId()
@@ -127,8 +126,7 @@ void DefaultTaskInfoHandler::HandleGetTaskLease(const GetTaskLeaseRequest &reque
                  << ", task id = " << task_id;
   auto on_done = [task_id, request, reply, send_reply_callback](
                      const Status &status, const boost::optional<TaskLeaseData> &result) {
-    if (status.ok()) {
-      RAY_DCHECK(result);
+    if (status.ok() && result) {
       reply->mutable_task_lease_data()->CopyFrom(*result);
     }
     RAY_LOG(DEBUG) << "Finished getting task lease, job id = " << task_id.JobId()
