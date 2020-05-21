@@ -18,7 +18,6 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts, \
     try_import_tf
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
-from ray.rllib.utils.memory import ray_get_and_free
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
@@ -206,9 +205,6 @@ COMMON_CONFIG = {
     # trainer guarantees all eval workers have the latest policy state before
     # this function is called.
     "custom_eval_function": None,
-    # EXPERIMENTAL: use the execution plan based API impl of the algo. Can also
-    # be enabled by setting RLLIB_EXEC_API=1.
-    "use_exec_api": True,
 
     # === Advanced Rollout Settings ===
     # Use a background thread for sampling (slightly off-policy, usually not
@@ -981,7 +977,7 @@ class Trainer(Trainable):
         for i, obj_id in enumerate(checks):
             w = workers.remote_workers()[i]
             try:
-                ray_get_and_free(obj_id)
+                ray.get(obj_id)
                 healthy_workers.append(w)
                 logger.info("Worker {} looks healthy".format(i + 1))
             except RayError:

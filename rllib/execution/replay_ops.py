@@ -3,8 +3,9 @@ import random
 
 from ray.util.iter import from_actors, LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import SharedMetrics
-from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer
-from ray.rllib.execution.common import SampleBatchType
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer
+from ray.rllib.execution.common import SampleBatchType, \
+    STEPS_SAMPLED_COUNTER, _get_shared_metrics
 
 
 class StoreToReplayBuffer:
@@ -91,6 +92,18 @@ def Replay(*,
                 yield item
 
     return LocalIterator(gen_replay, SharedMetrics())
+
+
+class WaitUntilTimestepsElapsed:
+    """Callable that returns True once a given number of timesteps are hit."""
+
+    def __init__(self, target_num_timesteps):
+        self.target_num_timesteps = target_num_timesteps
+
+    def __call__(self, item):
+        metrics = _get_shared_metrics()
+        ts = metrics.counters[STEPS_SAMPLED_COUNTER]
+        return ts > self.target_num_timesteps
 
 
 class SimpleReplayBuffer:

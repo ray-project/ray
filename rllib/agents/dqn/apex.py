@@ -4,6 +4,7 @@ import copy
 import ray
 from ray.rllib.agents.dqn.dqn import DQNTrainer, \
     DEFAULT_CONFIG as DQN_CONFIG, calculate_rr_weights
+from ray.rllib.agents.dqn.learner_thread import LearnerThread
 from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, \
     SampleBatchType, _get_shared_metrics, _get_global_vars
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -12,12 +13,9 @@ from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
 from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
 from ray.rllib.execution.train_ops import UpdateTargetNetwork
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.optimizers import AsyncReplayOptimizer
-from ray.rllib.optimizers.async_replay_optimizer import ReplayActor
+from ray.rllib.execution.replay_buffer import ReplayActor
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.actors import create_colocated
-from ray.rllib.optimizers.async_replay_optimizer import LearnerThread
-from ray.util.iter import LocalIterator
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -51,45 +49,6 @@ APEX_DEFAULT_CONFIG = merge_dicts(
 # yapf: enable
 
 
-def defer_make_workers(trainer, env_creator, policy, config):
-    # Hack to workaround https://github.com/ray-project/ray/issues/2541
-    # The workers will be created later, after the optimizer is created
-    return trainer._make_workers(env_creator, policy, config, num_workers=0)
-
-
-def make_async_optimizer(workers, config):
-    assert len(workers.remote_workers()) == 0
-    extra_config = config["optimizer"].copy()
-    for key in [
-            "prioritized_replay", "prioritized_replay_alpha",
-            "prioritized_replay_beta", "prioritized_replay_eps"
-    ]:
-        if key in config:
-            extra_config[key] = config[key]
-    opt = AsyncReplayOptimizer(
-        workers,
-        learning_starts=config["learning_starts"],
-        buffer_size=config["buffer_size"],
-        train_batch_size=config["train_batch_size"],
-        rollout_fragment_length=config["rollout_fragment_length"],
-        **extra_config)
-    workers.add_workers(config["num_workers"])
-    opt._set_workers(workers.remote_workers())
-    return opt
-
-
-def update_target_based_on_num_steps_trained(trainer, fetches):
-    # Ape-X updates based on num steps trained, not sampled
-    if (trainer.optimizer.num_steps_trained -
-            trainer.state["last_target_update_ts"] >
-            trainer.config["target_network_update_freq"]):
-        trainer.workers.local_worker().foreach_trainable_policy(
-            lambda p, _: p.update_target())
-        trainer.state["last_target_update_ts"] = (
-            trainer.optimizer.num_steps_trained)
-        trainer.state["num_target_updates"] += 1
-
-
 # Update worker weights as they finish generating experiences.
 class UpdateWorkerWeights:
     def __init__(self, learner_thread, workers, max_weight_sync_delay):
@@ -112,14 +71,12 @@ class UpdateWorkerWeights:
             actor.set_weights.remote(self.weights, _get_global_vars())
             self.steps_since_update[actor] = 0
             # Update metrics.
-            metrics = LocalIterator.get_metrics()
+            metrics = _get_shared_metrics()
             metrics.counters["num_weight_syncs"] += 1
 
 
-# Experimental distributed execution impl; enable with "use_exec_api": True.
-def execution_plan(workers: WorkerSet, config: dict):
+def apex_execution_plan(workers: WorkerSet, config: dict):
     # Create a number of replay buffer actors.
-    # TODO(ekl) support batch replay options
     num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
     replay_actors = create_colocated(ReplayActor, [
         num_replay_buffer_shards,
@@ -216,14 +173,7 @@ def execution_plan(workers: WorkerSet, config: dict):
         selected_workers=selected_workers).for_each(add_apex_metrics)
 
 
-APEX_TRAINER_PROPERTIES = {
-    "make_workers": defer_make_workers,
-    "make_policy_optimizer": make_async_optimizer,
-    "after_optimizer_step": update_target_based_on_num_steps_trained,
-}
-
 ApexTrainer = DQNTrainer.with_updates(
     name="APEX",
     default_config=APEX_DEFAULT_CONFIG,
-    execution_plan=execution_plan,
-    **APEX_TRAINER_PROPERTIES)
+    execution_plan=apex_execution_plan)
