@@ -60,6 +60,7 @@ class BayesOptSearch(Searcher):
                  mode="max",
                  utility_kwargs=None,
                  random_state=1,
+                 n_initial_trials=100,
                  verbose=0,
                  max_concurrent=None,
                  use_early_stopped_trials=None):
@@ -81,6 +82,8 @@ class BayesOptSearch(Searcher):
         elif mode == "min":
             self._metric_op = -1.
         self._live_trial_mapping = {}
+        self._cached_results = []
+        self.n_initial_trials = n_initial_trials
 
         self.optimizer = byo.BayesianOptimization(
             f=None, pbounds=space, verbose=verbose, random_state=random_state)
@@ -100,12 +103,21 @@ class BayesOptSearch(Searcher):
     def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial."""
         if result:
-            self._process_result(trial_id, result)
+            if self.n_initial_trials:
+                self._cached_results.append(self._live_trial_mapping[trial_id], result)
+                if len(self._cached_results) < self.n_initial_trials:
+                    return
+                else:
+                    self.n_initial_trials = 0
+                    for param, result in self._cached_results:
+                        self._process_result(param, result)
+            else:
+                self._process_result(self._live_trial_mapping[trial_id], result)
         del self._live_trial_mapping[trial_id]
 
-    def _process_result(self, trial_id, result):
+    def _process_result(self, params, result):
         self.optimizer.register(
-            params=self._live_trial_mapping[trial_id],
+            params=params,
             target=self._metric_op * result[self.metric])
 
     def save(self, checkpoint_dir):
