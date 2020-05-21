@@ -470,23 +470,23 @@ class QMixTorchPolicy(Policy):
             np.array(obs_batch, dtype=np.float32),
             self.observation_space.original_space,
             tensorlib=np)
+
+        if isinstance(unpacked[0], dict):
+            unpacked_obs = [
+                np.concatenate(tree.flatten(u["obs"]), 1) for u in unpacked
+            ]
+        else:
+            unpacked_obs = unpacked
+
+        obs = np.concatenate(
+            unpacked_obs,
+            axis=1).reshape([len(obs_batch), self.n_agents, self.obs_size])
+
         if self.has_action_mask:
-            obs = np.concatenate(
-                [o["obs"] for o in unpacked],
-                axis=1).reshape([len(obs_batch), self.n_agents, self.obs_size])
             action_mask = np.concatenate(
                 [o["action_mask"] for o in unpacked], axis=1).reshape(
                     [len(obs_batch), self.n_agents, self.n_actions])
         else:
-            if isinstance(unpacked[0], dict):
-                unpacked_obs = [
-                    np.concatenate(tree.flatten(u["obs"]), 1) for u in unpacked
-                ]
-            else:
-                unpacked_obs = unpacked
-            obs = np.concatenate(
-                unpacked_obs,
-                axis=1).reshape([len(obs_batch), self.n_agents, self.obs_size])
             action_mask = np.ones(
                 [len(obs_batch), self.n_agents, self.n_actions],
                 dtype=np.float32)
