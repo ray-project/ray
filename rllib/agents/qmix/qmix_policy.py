@@ -465,7 +465,7 @@ class QMixTorchPolicy(Policy):
             state (np.ndarray or None): state tensor of shape [B, state_size]
                 or None if it is not in the batch
         """
-        print()
+
         unpacked = _unpack_obs(
             np.array(obs_batch, dtype=np.float32),
             self.observation_space.original_space,
@@ -478,11 +478,12 @@ class QMixTorchPolicy(Policy):
                 [o["action_mask"] for o in unpacked], axis=1).reshape(
                     [len(obs_batch), self.n_agents, self.n_actions])
         else:
-            unpacked_obs = tree.flatten(unpacked)
-            #if isinstance(unpacked[0], dict):
-            #    unpacked_obs = [u["obs"] for u in unpacked]
-            #else:
-            #    unpacked_obs = unpacked
+            if isinstance(unpacked[0], dict):
+                unpacked_obs = [
+                    np.concatenate(tree.flatten(u["obs"]), 1) for u in unpacked
+                ]
+            else:
+                unpacked_obs = unpacked
             obs = np.concatenate(
                 unpacked_obs,
                 axis=1).reshape([len(obs_batch), self.n_agents, self.obs_size])
