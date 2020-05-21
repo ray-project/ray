@@ -1,4 +1,6 @@
 import time
+import asyncio
+
 import pytest
 import requests
 
@@ -342,3 +344,85 @@ def test_shard_key(serve_instance, route):
     # Check that the shard keys are mapped to the same backends.
     for shard_key in shard_keys:
         assert do_request(shard_key) == results[shard_key]
+
+
+def test_cluster_name():
+    with pytest.raises(TypeError):
+        serve.init(cluster_name=1)
+
+    route = "/api"
+    backend = "backend"
+    endpoint = "endpoint"
+
+    serve.init(cluster_name="cluster1", blocking=True, http_port=8001)
+    serve.create_endpoint(endpoint, route=route)
+
+    def function():
+        return "hello1"
+
+    serve.create_backend(backend, function)
+    serve.set_traffic(endpoint, {backend: 1.0})
+
+    assert requests.get("http://127.0.0.1:8001" + route).text == "hello1"
+
+    # Create a second cluster on port 8002. Create an endpoint and backend with
+    # the same names and check that they don't collide.
+    serve.init(cluster_name="cluster2", blocking=True, http_port=8002)
+    serve.create_endpoint(endpoint, route=route)
+
+    def function():
+        return "hello2"
+
+    serve.create_backend(backend, function)
+    serve.set_traffic(endpoint, {backend: 1.0})
+
+    assert requests.get("http://127.0.0.1:8001" + route).text == "hello1"
+    assert requests.get("http://127.0.0.1:8002" + route).text == "hello2"
+
+    # Check that deleting the backend in the current cluster doesn't.
+    serve.delete_endpoint(endpoint)
+    serve.delete_backend(backend)
+    assert requests.get("http://127.0.0.1:8001" + route).text == "hello1"
+
+    # Check that we can re-connect to the first cluster.
+    serve.init(cluster_name="cluster1")
+    serve.delete_endpoint(endpoint)
+    serve.delete_backend(backend)
+
+
+def test_parallel_start(serve_instance):
+    # Test the ability to start multiple replicas in parallel.
+    # In the past, when Serve scale up a backend, it does so one by one and
+    # wait for each replica to initialize. This test avoid this by preventing
+    # the first replica to finish initialization unless the second replica is
+    # also started.
+    @ray.remote
+    class Barrier:
+        def __init__(self, release_on):
+            self.release_on = release_on
+            self.current_waiters = 0
+            self.event = asyncio.Event()
+
+        async def wait(self):
+            self.current_waiters += 1
+            if self.current_waiters == self.release_on:
+                self.event.set()
+            else:
+                await self.event.wait()
+
+    barrier = Barrier.remote(release_on=2)
+
+    class LongStartingServable:
+        def __init__(self):
+            ray.get(barrier.wait.remote(), timeout=10)
+
+        def __call__(self, _):
+            return "Ready"
+
+    serve.create_endpoint("test-parallel")
+    serve.create_backend(
+        "p:v0", LongStartingServable, config={"num_replicas": 2})
+    serve.set_traffic("test-parallel", {"p:v0": 1})
+    handle = serve.get_handle("test-parallel")
+
+    ray.get(handle.remote(), timeout=10)

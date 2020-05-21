@@ -237,7 +237,7 @@ build_wheels() {
         for pyversion in "${pyversions[@]}"; do
           if [ -z "${pyversion}" ]; then continue; fi
           "${ROOT_DIR}"/bazel-preclean.sh
-          git clean -f -f -x -d -e "${local_dir}" -e python/ray/dashboard/client
+          git clean -q -f -f -x -d -e "${local_dir}" -e python/ray/dashboard/client
           git checkout -q -f -- .
           cp -R -f -a -T -- "${backup_conda}" "${CONDA_PREFIX}"
           local existing_version
@@ -262,10 +262,14 @@ build_wheels() {
 }
 
 lint_readme() {
-  (
-    cd "${WORKSPACE_DIR}"/python
-    python setup.py check --restructuredtext --strict --metadata
-  )
+  if python -s -c "import docutils" >/dev/null 2>/dev/null; then
+    (
+      cd "${WORKSPACE_DIR}"/python
+      python setup.py check --restructuredtext --strict --metadata
+    )
+  else
+    echo "Skipping README lint because the docutils package is not installed" 1>&2
+  fi
 }
 
 lint_python() {
@@ -310,7 +314,11 @@ _lint() {
     linux*) platform=linux;;
   esac
 
-  "${ROOT_DIR}"/check-git-clang-format-output.sh
+  if command -v clang-format > /dev/null; then
+    "${ROOT_DIR}"/check-git-clang-format-output.sh
+  else
+    { echo "WARNING: Skipping linting C/C++ as clang-format is not installed."; } 2> /dev/null
+  fi
 
   # Run Python linting
   lint_python

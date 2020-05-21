@@ -1,7 +1,7 @@
 .. _rayserve:
 
-RayServe: Scalable and Programmable Serving
-===========================================
+Ray Serve: Scalable and Programmable Serving
+============================================
 
 .. image:: logo.svg
     :align: center
@@ -13,21 +13,21 @@ RayServe: Scalable and Programmable Serving
 Overview
 --------
 
-RayServe is a scalable model-serving library built on Ray.
+Ray Serve is a scalable model-serving library built on Ray.
 
-For users RayServe is:
+For users Ray Serve is:
 
 - **Framework Agnostic**:Use the same toolkit to serve everything from deep learning models 
   built with frameworks like PyTorch or TensorFlow to scikit-learn models or arbitrary business logic.
 - **Python First**: Configure your model serving with pure Python code - no more YAMLs or 
   JSON configs.
 
-RayServe enables: 
+Ray Serve enables: 
 
 -  **A/B test models** with zero downtime by decoupling routing logic from response handling logic.
 - **Batching** built-in to help you meet your performance objectives.
 
-Since Ray is built on Ray, RayServe also allows you to **scale to many machines**
+Since Ray is built on Ray, Ray Serve also allows you to **scale to many machines**
 and allows you to leverage all of the other Ray frameworks so you can deploy and scale on any cloud.
 
 .. note:: 
@@ -37,7 +37,7 @@ and allows you to leverage all of the other Ray frameworks so you can deploy and
 
 Installation
 ~~~~~~~~~~~~
-RayServe supports Python versions 3.5 and higher. To install RayServe:
+Ray Serve supports Python versions 3.5 and higher. To install Ray Serve:
 
 .. code-block:: bash
 
@@ -45,8 +45,8 @@ RayServe supports Python versions 3.5 and higher. To install RayServe:
 
 
 
-RayServe in 90 Seconds
-~~~~~~~~~~~~~~~~~~~~~~
+Ray Serve in 90 Seconds
+~~~~~~~~~~~~~~~~~~~~~~~
 
 Serve a stateless function:
 
@@ -56,10 +56,10 @@ Serve a stateful class:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/quickstart_class.py
 
-See :ref:`serve-key-concepts` for more information about working with RayServe.
+See :ref:`serve-key-concepts` for more information about working with Ray Serve.
 
-Why RayServe?
-~~~~~~~~~~~~~
+Why Ray Serve?
+~~~~~~~~~~~~~~
 
 There are generally two ways of serving machine learning applications, both with serious limitations:
 you can build using a **traditional webserver** - your own Flask app or you can use a cloud hosted solution.
@@ -68,24 +68,24 @@ The first approach is easy to get started with, but it's hard to scale each comp
 requires vendor lock-in (SageMaker), framework specific tooling (TFServing), and a general
 lack of flexibility.
 
-RayServe solves these problems by giving a user the ability to leverage the simplicity
+Ray Serve solves these problems by giving a user the ability to leverage the simplicity
 of deployment of a simple webserver but handles the complex routing, scaling, and testing logic
 necessary for production deployments.
 
-For more on the motivation behind RayServe, check out these `meetup slides <https://tinyurl.com/serve-meetup>`_.
+For more on the motivation behind Ray Serve, check out these `meetup slides <https://tinyurl.com/serve-meetup>`_.
 
 When should I use Ray Serve?
 ++++++++++++++++++++++++++++
 
-RayServe should be used when you need to deploy at least one model, preferrably many models.  
-RayServe **won't work well** when you need to run batch prediction over a dataset. Given this use case, we recommend looking into `multiprocessing with Ray </multiprocessing.html>`_.
+Ray Serve should be used when you need to deploy at least one model, preferrably many models.  
+Ray Serve **won't work well** when you need to run batch prediction over a dataset. Given this use case, we recommend looking into `multiprocessing with Ray </multiprocessing.html>`_.
 
 .. _serve-key-concepts:
 
 Key Concepts
 ------------
 
-RayServe focuses on **simplicity** and only has two core concepts: endpoints and backends.
+Ray Serve focuses on **simplicity** and only has two core concepts: endpoints and backends.
 
 To follow along, you'll need to make the necessary imports.
 
@@ -128,9 +128,9 @@ Once you define the function (or class) that will handle a request.
 You'd use a function when your response is stateless and a class when you
 might need to maintain some state (like a model). 
 For both functions and classes (that take as input Flask Requests), you'll need to 
-define them as backends to RayServe.
+define them as backends to Ray Serve.
 
-It's important to note that RayServe places these backends in individual workers, which are replicas of the model.
+It's important to note that Ray Serve places these backends in individual workers, which are replicas of the model.
 
 .. code-block:: python
   
@@ -192,6 +192,27 @@ To scale out a backend to multiple workers, simplify configure the number of rep
 
 This will scale out the number of workers that can accept requests.
 
+Using Resources (CPUs, GPUs)
+++++++++++++++++++++++++++++
+To assign hardware resource per worker, you can pass resource requirements to
+``ray_actor_options``. To learn about options to pass in, take a look at
+:ref:`Resources with Actor<actor-resource-guide>` guide.
+
+For example, to create a backend where each replica uses a single GPU, you can do the
+following:
+
+.. code-block:: python
+
+  options = {"num_gpus": 1}
+  serve.create_backend("my_gpu_backend", handle_request, ray_actor_options=options)
+
+.. note::
+
+  Deep learning models like PyTorch and Tensorflow often use all the CPUs when
+  performing inference. Ray sets the environment variable ``OMP_NUM_THREADS=1`` to
+  :ref:`avoid contention<omp-num-thread-note>`. This means each worker will only
+  use one CPU instead of all of them.
+
 Splitting Traffic
 +++++++++++++++++
 
@@ -208,7 +229,7 @@ It's trivial to also split traffic, simply specify the endpoint and the backends
 Batching
 ++++++++
 
-You can also have RayServe batch requests for performance. You'll configure this in the backend config.
+You can also have Ray Serve batch requests for performance. You'll configure this in the backend config.
 
 .. code-block:: python
 
@@ -246,6 +267,30 @@ The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or `
   handle = serve.get_handle("api_endpoint")
   handler.options(shard_key=session_id).remote(args)
 
+Running Multiple Serve Clusters on one Ray Cluster
+++++++++++++++++++++++++++++++++++++++++++++++++++
+
+You can run multiple serve clusters on the same Ray cluster by providing a ``cluster_name`` to ``serve.init()``.
+
+.. code-block:: python
+
+  # Create a first cluster whose HTTP server listens on 8000.
+  serve.init(cluster_name="cluster1", http_port=8000)
+  serve.create_endpoint("counter1", "/increment")
+
+  # Create a second cluster whose HTTP server listens on 8001.
+  serve.init(cluster_name="cluster2", http_port=8001)
+  serve.create_endpoint("counter1", "/increment")
+
+  # Create a backend that will be served on the second cluster.
+  serve.create_backend("counter1", function)
+  serve.set_traffic("counter1", {"counter1": 1.0})
+
+  # Switch back the the first cluster and create the same backend on it.
+  serve.init(cluster_name="cluster1")
+  serve.create_backend("counter1", function)
+  serve.set_traffic("counter1", {"counter1": 1.0})
+
 Other Resources
 ---------------
 
@@ -253,7 +298,7 @@ Other Resources
 
 Frameworks
 ~~~~~~~~~~
-RayServe makes it easy to deploy models from all popular frameworks.
+Ray Serve makes it easy to deploy models from all popular frameworks.
 Learn more about how to deploy your model in the following tutorials:
 
 - :ref:`Tensorflow & Keras <serve-tensorflow-tutorial>`

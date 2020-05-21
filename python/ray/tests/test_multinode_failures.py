@@ -11,6 +11,8 @@ import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
 from ray.test_utils import RayTestTimeoutException
 
+SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
+
 
 @pytest.fixture(params=[(1, 4), (4, 4)])
 def ray_start_workers_separate_multinode(request):
@@ -62,7 +64,7 @@ def test_worker_failed(ray_start_workers_separate_multinode):
     time.sleep(0.1)
     # Kill the workers as the tasks execute.
     for pid in pids:
-        os.kill(pid, signal.SIGKILL)
+        os.kill(pid, SIGKILL)
         time.sleep(0.1)
     # Make sure that we either get the object or we get an appropriate
     # exception.

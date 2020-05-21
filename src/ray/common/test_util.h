@@ -53,16 +53,19 @@ extern std::string REDIS_SERVER_EXEC_PATH;
 extern std::string REDIS_CLIENT_EXEC_PATH;
 /// Path to redis module library.
 extern std::string REDIS_MODULE_LIBRARY_PATH;
-/// Port of redis server.
-extern int REDIS_SERVER_PORT;
+/// Ports of redis server.
+extern std::vector<int> REDIS_SERVER_PORTS;
 
 /// Test helper class, it will start redis server before the test runs,
 /// and stop redis server after the test is completed.
 class RedisServiceManagerForTest : public ::testing::Test {
  public:
   static void SetUpTestCase();
+  static int StartUpRedisServer(int port);
   static void TearDownTestCase();
+  static void ShutDownRedisServer(int port);
   static void FlushAll();
+  static void FlushRedisServer(int port);
 };
 
 }  // namespace ray

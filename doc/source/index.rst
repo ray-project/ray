@@ -250,8 +250,6 @@ Getting Involved
 
    tune.rst
    Tutorials, Guides, Examples <tune/tutorials/overview.rst>
-   tune-schedulers.rst
-   tune-searchalg.rst
    tune/api_docs/overview.rst
    tune-contrib.rst
 
@@ -282,12 +280,12 @@ Getting Involved
 
 .. toctree::
    :maxdepth: -1
-   :caption: RayServe
+   :caption: Ray Serve
 
-   rayserve/overview.rst
-   rayserve/tutorials/tensorflow-tutorial.rst
-   rayserve/tutorials/pytorch-tutorial.rst
-   rayserve/tutorials/sklearn-tutorial.rst
+   serve/overview.rst
+   serve/tutorials/tensorflow-tutorial.rst
+   serve/tutorials/pytorch-tutorial.rst
+   serve/tutorials/sklearn-tutorial.rst
 
 .. toctree::
    :maxdepth: -1

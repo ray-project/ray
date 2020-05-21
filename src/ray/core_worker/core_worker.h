@@ -754,7 +754,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Perform async get from in-memory store.
   ///
-  /// \param[in] object_id The id to call get on. Assumes object_id.IsDirectCallType().
+  /// \param[in] object_id The id to call get on.
   /// \param[in] success_callback The callback to use the result object.
   /// \param[in] fallback_callback The callback to use when failed to get result.
   /// \param[in] python_future the void* object to be passed to SetResultCallback
@@ -946,7 +946,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   boost::asio::steady_timer internal_timer_;
 
   /// RPC server used to receive tasks to execute.
-  rpc::GrpcServer core_worker_server_;
+  std::unique_ptr<rpc::GrpcServer> core_worker_server_;
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;

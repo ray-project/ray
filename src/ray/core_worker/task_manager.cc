@@ -48,8 +48,7 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
     }
   }
   if (spec.IsActorTask()) {
-    const auto actor_creation_return_id =
-        spec.ActorCreationDummyObjectId().WithTransportType(TaskTransportType::DIRECT);
+    const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
     task_deps.push_back(actor_creation_return_id);
   }
   reference_counter_->UpdateSubmittedTaskReferences(task_deps);
@@ -66,7 +65,7 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
       // notify us via the WaitForRefRemoved RPC that we are now a borrower for
       // the inner IDs. Note that this RPC can be received *before* the
       // PushTaskReply.
-      reference_counter_->AddOwnedObject(spec.ReturnId(i, TaskTransportType::DIRECT),
+      reference_counter_->AddOwnedObject(spec.ReturnId(i),
                                          /*inner_ids=*/{}, caller_id, caller_address,
                                          call_site, -1, /*is_reconstructable=*/true);
     }
@@ -378,8 +377,7 @@ void TaskManager::RemoveFinishedTaskReferences(
     }
   }
   if (spec.IsActorTask()) {
-    const auto actor_creation_return_id =
-        spec.ActorCreationDummyObjectId().WithTransportType(TaskTransportType::DIRECT);
+    const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
     plasma_dependencies.push_back(actor_creation_return_id);
   }
 
@@ -445,9 +443,7 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
                  << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
-    const auto object_id = ObjectID::ForTaskReturn(
-        task_id, /*index=*/i + 1,
-        /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
+    const auto object_id = ObjectID::ForTaskReturn(task_id, /*index=*/i + 1);
     RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
   }
 

@@ -23,11 +23,24 @@
 namespace ray {
 
 void RedisServiceManagerForTest::SetUpTestCase() {
-  auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-  std::mt19937 gen(seed);
-  std::uniform_int_distribution<int> random_gen{2000, 7000};
-  // Use random port to avoid port conflicts between UTs.
-  REDIS_SERVER_PORT = random_gen(gen);
+  std::vector<int> actual_redis_server_ports;
+  if (REDIS_SERVER_PORTS.empty()) {
+    actual_redis_server_ports.push_back(StartUpRedisServer(0));
+  } else {
+    for (const auto &port : REDIS_SERVER_PORTS) {
+      actual_redis_server_ports.push_back(StartUpRedisServer(port));
+    }
+  }
+  REDIS_SERVER_PORTS = actual_redis_server_ports;
+}
+
+// start a redis server with specified port, use random one when 0 given
+int RedisServiceManagerForTest::StartUpRedisServer(int port) {
+  int actual_port = port;
+  if (port == 0) {
+    // Use random port (in range [2000, 7000) to avoid port conflicts between UTs.
+    actual_port = rand() % 5000 + 2000;
+  }
 
   std::string load_module_command;
   if (!REDIS_MODULE_LIBRARY_PATH.empty()) {
@@ -37,15 +50,22 @@ void RedisServiceManagerForTest::SetUpTestCase() {
 
   std::string start_redis_command = REDIS_SERVER_EXEC_PATH + " --loglevel warning " +
                                     load_module_command + " --port " +
-                                    std::to_string(REDIS_SERVER_PORT) + " &";
+                                    std::to_string(actual_port) + " &";
   RAY_LOG(INFO) << "Start redis command is: " << start_redis_command;
   RAY_CHECK(system(start_redis_command.c_str()) == 0);
   usleep(200 * 1000);
+  return actual_port;
 }
 
 void RedisServiceManagerForTest::TearDownTestCase() {
+  for (const auto &port : REDIS_SERVER_PORTS) {
+    ShutDownRedisServer(port);
+  }
+}
+
+void RedisServiceManagerForTest::ShutDownRedisServer(int port) {
   std::string stop_redis_command =
-      REDIS_CLIENT_EXEC_PATH + " -p " + std::to_string(REDIS_SERVER_PORT) + " shutdown";
+      REDIS_CLIENT_EXEC_PATH + " -p " + std::to_string(port) + " shutdown";
   RAY_LOG(INFO) << "Stop redis command is: " << stop_redis_command;
   if (system(stop_redis_command.c_str()) != 0) {
     RAY_LOG(WARNING) << "Failed to stop redis. The redis process may no longer exist.";
@@ -54,8 +74,14 @@ void RedisServiceManagerForTest::TearDownTestCase() {
 }
 
 void RedisServiceManagerForTest::FlushAll() {
+  for (const auto &port : REDIS_SERVER_PORTS) {
+    FlushRedisServer(port);
+  }
+}
+
+void RedisServiceManagerForTest::FlushRedisServer(int port) {
   std::string flush_all_redis_command =
-      REDIS_CLIENT_EXEC_PATH + " -p " + std::to_string(REDIS_SERVER_PORT) + " flushall";
+      REDIS_CLIENT_EXEC_PATH + " -p " + std::to_string(port) + " flushall";
   RAY_LOG(INFO) << "Cleaning up redis with command: " << flush_all_redis_command;
   if (system(flush_all_redis_command.c_str()) != 0) {
     RAY_LOG(WARNING) << "Failed to flush redis. The redis process may no longer exist.";
@@ -109,7 +135,7 @@ std::string REDIS_SERVER_EXEC_PATH;
 std::string REDIS_CLIENT_EXEC_PATH;
 /// Path to redis module library.
 std::string REDIS_MODULE_LIBRARY_PATH;
-/// Port of redis server.
-int REDIS_SERVER_PORT;
+/// Ports of redis server.
+std::vector<int> REDIS_SERVER_PORTS;
 
 }  // namespace ray

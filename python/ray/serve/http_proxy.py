@@ -4,12 +4,12 @@ import socket
 import uvicorn
 
 import ray
+from ray import serve
 from ray.serve.context import TaskContext
 from ray.serve.metric import MetricClient
 from ray.serve.request_params import RequestMetadata
 from ray.serve.http_util import Response
 from ray.serve.utils import logger, retry_actor_failures_async
-from ray.serve.constants import SERVE_MASTER_NAME
 
 from urllib.parse import parse_qs
 
@@ -29,7 +29,7 @@ class HTTPProxy:
 
     async def fetch_config_from_master(self):
         assert ray.is_initialized()
-        master = ray.util.get_actor(SERVE_MASTER_NAME)
+        master = serve.api._get_master_actor()
 
         self.route_table, [
             self.router_handle
@@ -39,7 +39,7 @@ class HTTPProxy:
         [self.metric_exporter] = await retry_actor_failures_async(
             master.get_metric_exporter)
 
-        self.metric_client = MetricClient.connect_from_serve()
+        self.metric_client = MetricClient(self.metric_exporter)
         self.request_counter = self.metric_client.new_counter(
             "num_http_requests",
             description="The number of requests processed",
@@ -194,7 +194,8 @@ class HTTPProxy:
 
 @ray.remote
 class HTTPProxyActor:
-    async def __init__(self, host, port):
+    async def __init__(self, host, port, cluster_name=None):
+        serve.init(cluster_name=cluster_name)
         self.app = HTTPProxy()
         await self.app.fetch_config_from_master()
         self.host = host

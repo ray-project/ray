@@ -280,10 +280,13 @@ class ModelCatalog:
         """
 
         if model_config.get("custom_model"):
-            model_cls = _global_registry.get(RLLIB_MODEL,
-                                             model_config["custom_model"])
+            if isinstance(model_config["custom_model"], type):
+                model_cls = model_config["custom_model"]
+            else:
+                model_cls = _global_registry.get(RLLIB_MODEL,
+                                                 model_config["custom_model"])
+            # TODO(sven): Hard-deprecate Model(V1).
             if issubclass(model_cls, ModelV2):
-
                 logger.info("Wrapping {} as {}".format(model_cls,
                                                        model_interface))
                 model_cls = ModelCatalog._wrap_if_needed(
@@ -299,9 +302,26 @@ class ModelCatalog:
                         return v
 
                     with tf.variable_creator_scope(track_var_creation):
-                        instance = model_cls(obs_space, action_space,
-                                             num_outputs, model_config, name,
-                                             **model_kwargs)
+                        # Try calling with kwargs first (custom ModelV2 should
+                        # accept these as kwargs, not get them from
+                        # config["custom_options"] anymore)
+                        try:
+                            instance = model_cls(obs_space, action_space,
+                                                 num_outputs, model_config,
+                                                 name, **model_kwargs)
+                        except TypeError as e:
+                            # Keyword error: Try old way w/o kwargs.
+                            if "__init__() got an unexpected " in e.args[0]:
+                                logger.warning(
+                                    "Custom ModelV2 should accept all custom "
+                                    "options as **kwargs, instead of expecting"
+                                    " them in config['custom_options']!")
+                                instance = model_cls(obs_space, action_space,
+                                                     num_outputs, model_config,
+                                                     name)
+                            # Other error -> re-raise.
+                            else:
+                                raise e
                     registered = set(instance.variables())
                     not_registered = set()
                     for var in created:
@@ -322,7 +342,8 @@ class ModelCatalog:
                     instance = model_cls(obs_space, action_space, num_outputs,
                                          model_config, name, **model_kwargs)
                 return instance
-
+            # TODO(sven): Hard-deprecate Model(V1). This check will be
+            #   superflous then.
             elif tf.executing_eagerly():
                 raise ValueError(
                     "Eager execution requires a TFModelV2 model to be "
@@ -536,9 +557,9 @@ class ModelCatalog:
             from ray.rllib.models.torch.visionnet import (VisionNetwork as
                                                           VisionNet)
         else:
-            from ray.rllib.models.tf.fcnet_v2 import \
+            from ray.rllib.models.tf.fcnet import \
                 FullyConnectedNetwork as FCNet
-            from ray.rllib.models.tf.visionnet_v2 import \
+            from ray.rllib.models.tf.visionnet import \
                 VisionNetwork as VisionNet
 
         # Discrete/1D obs-spaces.

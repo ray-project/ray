@@ -44,6 +44,10 @@ void GcsServer::Start() {
   // Init gcs pub sub instance.
   gcs_pub_sub_ = std::make_shared<gcs::GcsPubSub>(redis_gcs_client_->GetRedisClient());
 
+  // Init gcs table storage.
+  gcs_table_storage_ =
+      std::make_shared<gcs::RedisGcsTableStorage>(redis_gcs_client_->GetRedisClient());
+
   // Init gcs node_manager.
   InitGcsNodeManager();
 
@@ -192,7 +196,7 @@ void GcsServer::InitGcsActorManager() {
 
 std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
   return std::unique_ptr<rpc::DefaultJobInfoHandler>(
-      new rpc::DefaultJobInfoHandler(*redis_gcs_client_, gcs_pub_sub_));
+      new rpc::DefaultJobInfoHandler(gcs_table_storage_, gcs_pub_sub_));
 }
 
 std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {

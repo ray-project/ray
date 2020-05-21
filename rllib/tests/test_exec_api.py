@@ -17,10 +17,8 @@ class TestDistributedExecution(unittest.TestCase):
 
     def test_exec_plan_stats(ray_start_regular):
         trainer = A2CTrainer(
-            env="CartPole-v0",
-            config={
+            env="CartPole-v0", config={
                 "min_iter_time_s": 0,
-                "use_exec_api": True
             })
         result = trainer.train()
         assert isinstance(result, dict)
@@ -37,10 +35,8 @@ class TestDistributedExecution(unittest.TestCase):
 
     def test_exec_plan_save_restore(ray_start_regular):
         trainer = A2CTrainer(
-            env="CartPole-v0",
-            config={
+            env="CartPole-v0", config={
                 "min_iter_time_s": 0,
-                "use_exec_api": True
             })
         res1 = trainer.train()
         checkpoint = trainer.save()

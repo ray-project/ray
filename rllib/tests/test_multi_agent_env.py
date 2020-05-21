@@ -6,17 +6,12 @@ import ray
 from ray.tune.registry import register_env
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
-from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
-from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
     BasicMultiAgent, EarlyDoneMultiAgent, RoundRobinMultiAgent
-from ray.rllib.examples.policy.random_policy import RandomPolicy
-from ray.rllib.optimizers import (SyncSamplesOptimizer, SyncReplayOptimizer,
-                                  AsyncGradientsOptimizer)
 from ray.rllib.tests.test_rollout_worker import MockPolicy
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
 
 
 def one_hot(i, n):
@@ -423,103 +418,6 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertRaises(
             KeyError,
             lambda: pg.compute_action([0, 0, 0, 0], policy_id="policy_3"))
-
-    def _test_with_optimizer(self, optimizer_cls):
-        n = 3
-        env = gym.make("CartPole-v0")
-        act_space = env.action_space
-        obs_space = env.observation_space
-        dqn_config = {"gamma": 0.95, "n_step": 3}
-        if optimizer_cls == SyncReplayOptimizer:
-            # TODO: support replay with non-DQN graphs. Currently this can't
-            # happen since the replay buffer doesn't encode extra fields like
-            # "advantages" that PG uses.
-            policies = {
-                "p1": (DQNTFPolicy, obs_space, act_space, dqn_config),
-                "p2": (DQNTFPolicy, obs_space, act_space, dqn_config),
-            }
-        else:
-            policies = {
-                "p1": (PGTFPolicy, obs_space, act_space, {}),
-                "p2": (DQNTFPolicy, obs_space, act_space, dqn_config),
-            }
-        worker = RolloutWorker(
-            env_creator=lambda _: MultiAgentCartPole({"num_agents": n}),
-            policy=policies,
-            policy_mapping_fn=lambda agent_id: ["p1", "p2"][agent_id % 2],
-            rollout_fragment_length=50)
-        if optimizer_cls == AsyncGradientsOptimizer:
-
-            def policy_mapper(agent_id):
-                return ["p1", "p2"][agent_id % 2]
-
-            remote_workers = [
-                RolloutWorker.as_remote().remote(
-                    env_creator=lambda _: MultiAgentCartPole(
-                        {"num_agents": n}),
-                    policy=policies,
-                    policy_mapping_fn=policy_mapper,
-                    rollout_fragment_length=50)
-            ]
-        else:
-            remote_workers = []
-        workers = WorkerSet._from_existing(worker, remote_workers)
-        optimizer = optimizer_cls(workers)
-        for i in range(200):
-            optimizer.step()
-            result = collect_metrics(worker, remote_workers)
-            if i % 20 == 0:
-
-                def do_update(p):
-                    if isinstance(p, DQNTFPolicy):
-                        p.update_target()
-
-                worker.foreach_policy(lambda p, _: do_update(p))
-                print("Iter {}, rew {}".format(i,
-                                               result["policy_reward_mean"]))
-                print("Total reward", result["episode_reward_mean"])
-            if result["episode_reward_mean"] >= 25 * n:
-                return
-        print(result)
-        raise Exception("failed to improve reward")
-
-    def test_multi_agent_sync_optimizer(self):
-        self._test_with_optimizer(SyncSamplesOptimizer)
-
-    def test_multi_agent_async_gradients_optimizer(self):
-        # Allow to be run via Unittest.
-        ray.init(num_cpus=4, ignore_reinit_error=True)
-        self._test_with_optimizer(AsyncGradientsOptimizer)
-
-    def test_multi_agent_replay_optimizer(self):
-        self._test_with_optimizer(SyncReplayOptimizer)
-
-    def test_train_multi_agent_cartpole_many_policies(self):
-        n = 20
-        env = gym.make("CartPole-v0")
-        act_space = env.action_space
-        obs_space = env.observation_space
-        policies = {}
-        for i in range(20):
-            policies["pg_{}".format(i)] = (PGTFPolicy, obs_space, act_space,
-                                           {})
-        policy_ids = list(policies.keys())
-        worker = RolloutWorker(
-            env_creator=lambda _: MultiAgentCartPole({"num_agents": n}),
-            policy=policies,
-            policy_mapping_fn=lambda agent_id: random.choice(policy_ids),
-            rollout_fragment_length=100)
-        workers = WorkerSet._from_existing(worker, [])
-        optimizer = SyncSamplesOptimizer(workers)
-        for i in range(100):
-            optimizer.step()
-            result = collect_metrics(worker)
-            print("Iteration {}, rew {}".format(i,
-                                                result["policy_reward_mean"]))
-            print("Total reward", result["episode_reward_mean"])
-            if result["episode_reward_mean"] >= 25 * n:
-                return
-        raise Exception("failed to improve reward")
 
 
 if __name__ == "__main__":

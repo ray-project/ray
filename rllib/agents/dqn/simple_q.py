@@ -8,7 +8,7 @@ from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,6 @@ def get_policy_class(config):
         return SimpleQTFPolicy
 
 
-# Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
     local_replay_buffer = LocalReplayBuffer(
         num_shards=1,
