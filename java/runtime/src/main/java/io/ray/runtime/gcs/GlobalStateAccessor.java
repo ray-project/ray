@@ -10,7 +10,7 @@ public class GlobalStateAccessor {
   public GlobalStateAccessor(String redisAddress, String redisPassword) {
     globalStateAccessorNativePtr = nativeCreateGlobalStateAccessor(redisAddress, redisPassword);
     Preconditions.checkState(globalStateAccessorNativePtr != 0,
-        "Global state accessor native pointr is non-nullptr");
+        "Global state accessor native pointr must not be 0.");
   }
 
   public boolean connect() {
@@ -18,14 +18,22 @@ public class GlobalStateAccessor {
   }
 
   public void disconnect() {
-    this.nativeDisConnect(globalStateAccessorNativePtr);
+    this.nativeDisconnect(globalStateAccessorNativePtr);
   }
 
+  /**
+   * @return A list of job info with JobInfo protobuf schema.
+   */
   public List<byte[]> getAllJobInfo() {
+    // Fetch a job list with protobuf bytes format from GCS.
     return this.nativeGetAllJobInfo(globalStateAccessorNativePtr);
   }
 
+  /**
+   * @return A list of node info with GcsNodeInfo protobuf schema.
+   */
   public List<byte[]> getAllNodeInfo() {
+    // Fetch a node list with protobuf bytes format from GCS.
     return this.nativeGetAllNodeInfo(globalStateAccessorNativePtr);
   }
 
@@ -40,7 +48,7 @@ public class GlobalStateAccessor {
 
   private native boolean nativeConnect(long nativePtr);
 
-  private native void nativeDisConnect(long nativePtr);
+  private native void nativeDisconnect(long nativePtr);
 
   private native List<byte[]> nativeGetAllJobInfo(long nativePtr);
 
