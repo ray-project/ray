@@ -34,11 +34,11 @@ with open("/tmp/iris_labels.json", "w") as f:
 
 
 # __doc_create_deploy_begin__
-import pickle # noqa: E402
-import json # noqa: E402
+import pickle  # noqa: E402
+import json  # noqa: E402
 
-from ray import serve # noqa: E402
-import ray # noqa: E402
+from ray import serve  # noqa: E402
+import ray  # noqa: E402
 
 
 class BoostingModel:
@@ -71,11 +71,11 @@ ray.init(address="auto", redis_password="5241590000000000")
 serve.init()
 serve.create_endpoint("iris_classifier", "/regressor")
 serve.create_backend("lr:v1", BoostingModel)
-serve.set_traffic("iris_classifier", {"lr:v1": 1, "version":"v1"})
+serve.set_traffic("iris_classifier", {"lr:v1": 1, "version": "v1"})
 # __doc_create_deploy_end__
 
 # __doc_query_begin__
-import requests
+import requests  # noqa: E402
 
 sample_request_input = {
     "sepal length": 1.2,
@@ -96,15 +96,14 @@ print(response.text)
 # __doc_query_end__
 
 
-
 # __doc_create_deploy_2_begin__
-import pickle
-import json
-import numpy as np
+import pickle  # noqa: E402
+import json  # noqa: E402
+import numpy as np  # noqa: E402
 
-from sklearn.datasets import load_iris
-from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.metrics import mean_squared_error
+from sklearn.datasets import load_iris  # noqa: E402
+from sklearn.ensemble import GradientBoostingClassifier  # noqa: E402
+from sklearn.metrics import mean_squared_error  # noqa: E402
 
 # Load data
 iris_dataset = load_iris()
@@ -130,11 +129,12 @@ with open("/tmp/iris_labels_2.json", "w") as f:
     json.dump(target_names.tolist(), f)
 
 
-import pickle
-import json
+import pickle  # noqa: E402
+import json  # noqa: E402
 
-from ray import serve
-import ray
+from ray import serve  # noqa: E402
+import ray  # noqa: E402
+
 
 class BoostingModelv2:
     def __init__(self):
@@ -155,12 +155,13 @@ class BoostingModelv2:
         ]
         prediction = self.model.predict([input_vector])[0]
         human_name = self.label_list[prediction]
-        return {"result": human_name, "version":"v2"}
+        return {"result": human_name, "version": "v2"}
 
 # connect to our existing Ray cluster
 # note that the password will be different for your redis instance!
 # ray.init(address='auto', redis_password='5241590000000000')
 # now we initialize /connect to the Ray service
+
 
 serve.init()
 serve.create_backend("lr:v2", BoostingModelv2)
