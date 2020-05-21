@@ -285,22 +285,21 @@ class GlobalState:
                     object_table[i])
                 results[binary_to_hex(object_location_info.object_id)] = \
                     self._gen_object_info(object_location_info)
-
-
             return results
 
     def _gen_object_info(self, object_location_info):
-        """Parse object table data.
+        """Parse object location info.
         Returns:
-            Information from object table.
+            Information from object.
         """
         locations = []
         for location in object_location_info.locations:
             locations.append(ray.utils.binary_to_hex(location.manager))
 
         object_info = {
-            "ObjectID": ray.utils.binary_to_hex(object_location_info.object_id),
-            "Locations": locations
+            "ObjectID": ray.utils.binary_to_hex(
+                object_location_info.object_id),
+            "Locations": locations,
         }
         return object_info
 
