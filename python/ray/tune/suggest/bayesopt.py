@@ -38,6 +38,9 @@ class BayesOptSearch(Searcher):
             - kappa: 2.576
             - xi: 0.0
         random_state (int): Used to initialize BayesOpt.
+        random_search_steps (int): Number of initial random searches.
+            This is necessary to avoid initial local overfitting
+            of the Bayesian process.
         analysis (ExperimentAnalysis): Optionally, the previous analysis
             to integrate.
         verbose (int): Sets verbosity level for BayesOpt packages.
@@ -64,7 +67,8 @@ class BayesOptSearch(Searcher):
                  metric="episode_reward_mean",
                  mode="max",
                  utility_kwargs=None,
-                 random_state=1,
+                 random_state=42,
+                 random_search_steps=10,
                  verbose=0,
                  analysis=None,
                  max_concurrent=None,
@@ -81,6 +85,9 @@ class BayesOptSearch(Searcher):
             utility_kwargs (dict): Parameters to define the utility function.
                 Must provide values for the keys `kind`, `kappa`, and `xi`.
             random_state (int): Used to initialize BayesOpt.
+            random_search_steps (int): Number of initial random searches.
+                This is necessary to avoid initial local overfitting
+                of the Bayesian process.
             analysis (ExperimentAnalysis): Optionally, the previous analysis
                 to integrate.
             verbose (int): Sets verbosity level for BayesOpt packages.
@@ -112,6 +119,8 @@ class BayesOptSearch(Searcher):
         elif mode == "min":
             self._metric_op = -1.
         self._live_trial_mapping = {}
+        self._cached_results = []
+        self._random_search_steps = random_search_steps
 
         self.optimizer = byo.BayesianOptimization(
             f=None, pbounds=space, verbose=verbose, random_state=random_state)
@@ -148,12 +157,21 @@ class BayesOptSearch(Searcher):
     def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial."""
         if result:
-            self._process_result(trial_id, result)
+            if self._random_search_steps:
+                self._cached_results.append(self._live_trial_mapping[trial_id], result)
+                if len(self._cached_results) < self._random_search_steps:
+                    return
+                else:
+                    self._random_search_steps = 0
+                    for param, result in self._cached_results:
+                        self._process_result(param, result)
+            else:
+                self._process_result(self._live_trial_mapping[trial_id], result)
         del self._live_trial_mapping[trial_id]
 
-    def _process_result(self, trial_id, result):
+    def _process_result(self, params, result):
         self.optimizer.register(
-            params=self._live_trial_mapping[trial_id],
+            params=params,
             target=self._metric_op * result[self.metric])
 
     def save(self, checkpoint_dir):
