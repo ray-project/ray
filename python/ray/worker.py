@@ -1266,6 +1266,8 @@ def connect(node,
     )
 
     # Create an object for interfacing with the global state.
+    # Note, global state should be intialized after `CoreWorker`, because it will
+    # use glog, which is intialized in `CoreWorker`.
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
 
