@@ -23,7 +23,8 @@ namespace ray {
 
 namespace gcs {
 
-std::string RedisStoreClient::separator_ = ":";
+std::string RedisStoreClient::table_separator_ = ":";
+std::string RedisStoreClient::index_table_separator_ = "&";
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::string &key,
                                   const std::string &data,
@@ -207,7 +208,7 @@ RedisStoreClient::GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_
 std::string RedisStoreClient::GenRedisKey(const std::string &table_name,
                                           const std::string &key) {
   std::stringstream ss;
-  ss << table_name << separator_ << key;
+  ss << table_name << table_separator_ << key;
   return ss.str();
 }
 
@@ -215,33 +216,35 @@ std::string RedisStoreClient::GenRedisKey(const std::string &table_name,
                                           const std::string &key,
                                           const std::string &index_key) {
   std::stringstream ss;
-  ss << table_name << separator_ << index_key << separator_ << key;
+  ss << table_name << index_table_separator_ << index_key << index_table_separator_
+     << key;
   return ss.str();
 }
 
 std::string RedisStoreClient::GenRedisMatchPattern(const std::string &table_name) {
   std::stringstream ss;
-  ss << table_name << separator_ << "*";
+  ss << table_name << table_separator_ << "*";
   return ss.str();
 }
 
 std::string RedisStoreClient::GenRedisMatchPattern(const std::string &table_name,
                                                    const std::string &index_key) {
   std::stringstream ss;
-  ss << table_name << separator_ << index_key << separator_ << "*";
+  ss << table_name << index_table_separator_ << index_key << index_table_separator_
+     << "*";
   return ss.str();
 }
 
 std::string RedisStoreClient::GetKeyFromRedisKey(const std::string &redis_key,
                                                  const std::string &table_name) {
-  auto pos = table_name.size() + separator_.size();
+  auto pos = table_name.size() + table_separator_.size();
   return redis_key.substr(pos, redis_key.size() - pos);
 }
 
 std::string RedisStoreClient::GetKeyFromRedisKey(const std::string &redis_key,
                                                  const std::string &table_name,
                                                  const std::string &index_key) {
-  auto pos = table_name.size() + separator_.size() * 2 + index_key.size();
+  auto pos = table_name.size() + index_table_separator_.size() * 2 + index_key.size();
   return redis_key.substr(pos, redis_key.size() - pos);
 }
 
