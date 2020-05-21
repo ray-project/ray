@@ -377,7 +377,7 @@ class NodeUpdater:
                           "Synced {} to {}".format(local_path, remote_path)):
                 self.cmd_runner.run("mkdir -p {}".format(
                     os.path.dirname(remote_path)))
-                sync_cmd(local_path, remote_path, docker=container)
+                sync_cmd(local_path, remote_path, container=container)
 
     def wait_ready(self, deadline):
         with LogTimer(self.log_prefix + "Got remote shell"):

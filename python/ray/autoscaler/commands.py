@@ -509,7 +509,7 @@ def rsync(config_file,
             logger.warning(
                 "A docker container was specified in the cluster YAML, but"
                 "the docker flag was not specified. To run this command inside"
-                "the container, add --docker to your ray command.")
+                " the container, add --docker to your ray command.")
 
         for node_id in nodes:
             updater = NodeUpdaterThread(
