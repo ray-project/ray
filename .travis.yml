@@ -31,6 +31,19 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
 
+    - os: linux
+      env:
+        - PYTHON=3.6 ENABLE_ASAN=--config=asan
+        - PYTHONWARNINGS=ignore
+        - RAY_DEFAULT_BUILD=1
+      install:
+        - . ./ci/travis/ci.sh init
+      before_script:
+        - . ./ci/travis/ci.sh build
+      script:
+        # Run all C++ unit tests with ASAN enabled. ASAN adds too much overhead to run Python tests.
+        - bazel test $ENABLE_ASAN --config=ci --build_tests_only -- //:all
+
     - os: osx
       osx_image: xcode7
       env:
@@ -287,7 +300,7 @@ script:
   - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
 
   # cc bazel tests (w/o RLlib)
-  - ./ci/suppress_output bazel test --config=ci --build_tests_only --show_progress_rate_limit=100 --test_output=errors -- //:all -rllib/...
+  - ./ci/suppress_output bazel test --config=ci --build_tests_only -- //:all -rllib/...
 
   # ray serve tests
   - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/serve/...; fi

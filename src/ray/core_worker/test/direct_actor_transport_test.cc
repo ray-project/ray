@@ -369,7 +369,12 @@ class DirectActorReceiverTest : public ::testing::Test {
 
   void StartIOService() { main_io_service_.run(); }
 
-  void StopIOService() { main_io_service_.stop(); }
+  void StopIOService() {
+    // We must delete the receiver before stopping the IO service, since it
+    // contains timers referencing the service.
+    receiver_.reset();
+    main_io_service_.stop();
+  }
 
   std::unique_ptr<CoreWorkerDirectTaskReceiver> receiver_;
 

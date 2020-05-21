@@ -411,7 +411,7 @@ init() {
 
 build() {
   if ! need_wheels; then
-    bazel build -k "//:*"   # Do a full build first to ensure everything passes
+    bazel build ${ENABLE_ASAN-} -k "//:*"   # Do a full build first to ensure everything passes
     install_ray
     if [ "${LINT-}" = 1 ]; then
       # Try generating Sphinx documentation. To do this, we need to install Ray first.
