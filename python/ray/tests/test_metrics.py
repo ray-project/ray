@@ -752,7 +752,7 @@ def test_memory_table_summary():
         build_local_reference_entry(),
         build_local_reference_entry()
     ]
-    memory_table = MemoryTable([entry for entry in entries])
+    memory_table = MemoryTable(entries)
     assert len(memory_table.group) == 1
     assert memory_table.summary["total_actor_handles"] == 1
     assert memory_table.summary["total_captured_in_objects"] == 1
@@ -766,8 +766,7 @@ def test_memory_table_summary():
 def test_memory_table_sort_by_pid():
     unsort = [1, 3, 2]
     entries = [build_entry(pid=pid) for pid in unsort]
-    memory_table = MemoryTable(
-        [entry for entry in entries], sort_by_type=SortingType.PID)
+    memory_table = MemoryTable(entries, sort_by_type=SortingType.PID)
     sort = sorted(unsort)
     for pid, entry in zip(sort, memory_table.table):
         assert pid == entry.pid
@@ -782,7 +781,7 @@ def test_memory_table_sort_by_reference_type():
         build_entry(reference_type=reference_type) for reference_type in unsort
     ]
     memory_table = MemoryTable(
-        [entry for entry in entries], sort_by_type=SortingType.REFERENCE_TYPE)
+        entries, sort_by_type=SortingType.REFERENCE_TYPE)
     sort = sorted(unsort)
     for reference_type, entry in zip(sort, memory_table.table):
         assert reference_type == entry.reference_type
@@ -791,8 +790,7 @@ def test_memory_table_sort_by_reference_type():
 def test_memory_table_sort_by_object_size():
     unsort = [312, 214, -1, 1244, 642]
     entries = [build_entry(object_size=object_size) for object_size in unsort]
-    memory_table = MemoryTable(
-        [entry for entry in entries], sort_by_type=SortingType.OBJECT_SIZE)
+    memory_table = MemoryTable(entries, sort_by_type=SortingType.OBJECT_SIZE)
     sort = sorted(unsort)
     for object_size, entry in zip(sort, memory_table.table):
         assert object_size == entry.object_size
@@ -807,7 +805,7 @@ def test_group_by():
         build_entry(node_address=node_first, pid=2),
         build_entry(node_address=node_first, pid=1)
     ]
-    memory_table = MemoryTable([entry for entry in entries])
+    memory_table = MemoryTable(entries)
 
     # Make sure it is correctly grouped
     assert node_first in memory_table.group
