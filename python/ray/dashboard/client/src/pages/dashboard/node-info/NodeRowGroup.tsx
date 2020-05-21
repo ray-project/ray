@@ -21,6 +21,8 @@ import { makeNodeErrors, makeWorkerErrors } from "./features/Errors";
 import { NodeHost, WorkerHost } from "./features/Host";
 import { makeNodeLogs, makeWorkerLogs } from "./features/Logs";
 import { NodeRAM, WorkerRAM } from "./features/RAM";
+import { NodeGPU, WorkerGPU } from "./features/GPU";
+import { NodeGRAM, WorkerGRAM } from "./features/GRAM";
 import { NodeReceived, WorkerReceived } from "./features/Received";
 import { NodeSent, WorkerSent } from "./features/Sent";
 import { NodeUptime, WorkerUptime } from "./features/Uptime";
@@ -108,6 +110,8 @@ class NodeRowGroup extends React.Component<
       { NodeFeature: NodeUptime, WorkerFeature: WorkerUptime },
       { NodeFeature: NodeCPU, WorkerFeature: WorkerCPU },
       { NodeFeature: NodeRAM, WorkerFeature: WorkerRAM },
+      { NodeFeature: NodeGPU, WorkerFeature: WorkerGPU },
+      { NodeFeature: NodeGRAM, WorkerFeature: WorkerGRAM },
       { NodeFeature: NodeDisk, WorkerFeature: WorkerDisk },
       { NodeFeature: NodeSent, WorkerFeature: WorkerSent },
       { NodeFeature: NodeReceived, WorkerFeature: WorkerReceived },
@@ -153,16 +157,20 @@ class NodeRowGroup extends React.Component<
                 </TableCell>
               </TableRow>
             )}
-            {clusterWorkers.map((worker, index: number) => (
+            {clusterWorkers.map((worker, index: number) => {
+              const rayletWorker = raylet?.workersStats.find(rayletWorker => worker.pid === rayletWorker.pid) || null;
+              
+              return (
               <TableRow hover key={index}>
                 <TableCell className={classes.cell} />
                 {features.map(({ WorkerFeature }, index) => (
                   <TableCell className={classes.cell} key={index}>
-                    <WorkerFeature node={node} worker={worker} />
+                    <WorkerFeature node={node} worker={worker} rayletWorker={rayletWorker} />
                   </TableCell>
-                ))}
+                ))
+                }
               </TableRow>
-            ))}
+            )})}
           </React.Fragment>
         )}
       </React.Fragment>
