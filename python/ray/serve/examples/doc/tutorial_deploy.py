@@ -34,11 +34,12 @@ with open("/tmp/iris_labels.json", "w") as f:
 
 
 # __doc_create_deploy_begin__
-import pickle
-import json
+import pickle # noqa: E402
+import json # noqa: E402
 
-from ray import serve
-import ray
+from ray import serve # noqa: E402
+import ray # noqa: E402
+
 
 class BoostingModel:
     def __init__(self):
@@ -61,9 +62,10 @@ class BoostingModel:
         human_name = self.label_list[prediction]
         return {"result": human_name}
 
+
 # connect to our existing Ray cluster
 # note that the password will be different for your redis instance!
-ray.init(address='auto', redis_password='5241590000000000')
+ray.init(address="auto", redis_password="5241590000000000")
 # now we initialize /connect to the Ray service
 
 serve.init()
