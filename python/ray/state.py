@@ -412,19 +412,6 @@ class GlobalState:
             results.append(node_info)
         return results
 
-    def client_table(self):
-        """ Deprecated interface to fetch and parse the Redis DB client table.
-        Returns:
-            Information about the Ray clients in the cluster.
-        """
-        self._check_connected()
-        client_table = _parse_client_table(self.redis_client)
-
-        for client in client_table:
-            # These are equivalent and is better for application developers.
-            client["alive"] = client["Alive"]
-        return client_table
-
     def job_table(self):
         """Fetch and parse the Redis job table.
 
@@ -676,7 +663,7 @@ class GlobalState:
         self._check_connected()
 
         node_id_to_address = {}
-        for node_info in self.client_table():
+        for node_info in self.node_table():
             node_id_to_address[node_info["NodeID"]] = "{}:{}".format(
                 node_info["NodeManagerAddress"],
                 node_info["ObjectManagerPort"])
@@ -807,7 +794,7 @@ class GlobalState:
         self._check_connected()
 
         resources = defaultdict(int)
-        clients = self.client_table()
+        clients = self.node_table()
         for client in clients:
             # Only count resources from latest entries of live clients.
             if client["Alive"]:
@@ -819,7 +806,7 @@ class GlobalState:
         """Returns a set of client IDs corresponding to clients still alive."""
         return {
             client["NodeID"]
-            for client in self.client_table() if (client["Alive"])
+            for client in self.node_table() if (client["Alive"])
         }
 
     def available_resources(self):
