@@ -333,7 +333,7 @@ def _get_vpc_id_or_die(config, subnet_id):
             "Name": "subnet-id",
             "Values": [subnet_id]
         }]))
-    assert len(subnet) == 1, "Subnet not found"
+    assert len(subnet) == 1, "Subnet ID not found: {}".format(subnet_id)
     subnet = subnet[0]
     return subnet.vpc_id
 
