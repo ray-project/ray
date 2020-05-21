@@ -10,7 +10,7 @@ provider:
 auth:
     ssh_user: ubuntu
 
-# If required, head and worker nodes can exist on different subnets and
+# If required, head and worker nodes can exist on subnets in different VPCs and
 # communicate via VPC peering.
 
 # VPC peering overview: https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html.

@@ -4,8 +4,7 @@ import ray.tests.aws.utils.stubs as stubs
 import ray.tests.aws.utils.helpers as helpers
 from ray.tests.aws.utils.constants import AUX_SUBNET, DEFAULT_SUBNET, \
     DEFAULT_SG_AUX_SUBNET, DEFAULT_SG, DEFAULT_SG_DUAL_GROUP_RULES, \
-    DEFAULT_SG_WITH_RULES_AUX_SUBNET, DEFAULT_SG_WITH_RULES, AUX_SG, \
-    DEFAULT_CLUSTER_NAME
+    DEFAULT_SG_WITH_RULES_AUX_SUBNET, DEFAULT_SG_WITH_RULES, AUX_SG
 
 
 def test_create_sg_different_vpc_same_rules(iam_client_stub, ec2_client_stub):
@@ -27,12 +26,6 @@ def test_create_sg_different_vpc_same_rules(iam_client_stub, ec2_client_stub):
         [AUX_SUBNET["VpcId"]],
         [DEFAULT_SG_AUX_SUBNET],
     )
-    # expect to tag the worker security group after creating it
-    stubs.create_sg_tags(
-        ec2_client_stub,
-        DEFAULT_SG_AUX_SUBNET["GroupId"],
-        DEFAULT_CLUSTER_NAME,
-    )
     # expect to second create a security group on the head node VPC
     stubs.create_sg_echo(ec2_client_stub, DEFAULT_SG)
     # expect new head security group details to be retrieved after creation
@@ -40,12 +33,6 @@ def test_create_sg_different_vpc_same_rules(iam_client_stub, ec2_client_stub):
         ec2_client_stub,
         [DEFAULT_SUBNET["VpcId"]],
         [DEFAULT_SG],
-    )
-    # expect to tag the head security group after creating it
-    stubs.create_sg_tags(
-        ec2_client_stub,
-        DEFAULT_SG["GroupId"],
-        DEFAULT_CLUSTER_NAME,
     )
 
     # given no existing default head security group inbound rules...

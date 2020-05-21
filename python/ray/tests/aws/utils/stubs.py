@@ -1,5 +1,4 @@
 import ray
-from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
 from ray.tests.aws.utils.mocks import mock_path_exists_key_pair
 from ray.tests.aws.utils.constants import DEFAULT_INSTANCE_PROFILE, \
     DEFAULT_KEY_PAIR, DEFAULT_SUBNET
@@ -76,19 +75,6 @@ def create_sg_echo(ec2_client_stub, security_group):
             "VpcId": security_group["VpcId"]
         },
         service_response={"GroupId": security_group["GroupId"]})
-
-
-def create_sg_tags(ec2_client_stub, security_group_id, cluster_name):
-    ec2_client_stub.add_response(
-        "create_tags",
-        expected_params={
-            "Resources": [security_group_id],
-            "Tags": [{
-                "Key": TAG_RAY_CLUSTER_NAME,
-                "Value": cluster_name
-            }]
-        },
-        service_response={})
 
 
 def describe_sgs_on_vpc(ec2_client_stub, vpc_ids, security_groups):

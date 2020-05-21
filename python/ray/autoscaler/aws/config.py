@@ -11,7 +11,6 @@ from botocore.config import Config
 import botocore
 
 from ray.ray_constants import BOTO_MAX_RETRIES
-from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
 from ray.autoscaler.autoscaler import NODE_TYPE_CONFIG_KEYS
 
 logger = logging.getLogger(__name__)
@@ -307,16 +306,14 @@ def _get_or_create_vpc_security_groups(conf, node_types):
         node_type: conf[NODE_TYPE_CONFIG_KEYS[node_type]]["SubnetIds"][0]
         for node_type in node_types
     }
-    for node_type in node_types:
-        subnet_id = node_type_to_subnet[node_type]
-        subnet_to_vpc.setdefault(
-            subnet_id, _get_vpc_id_or_die(conf,
-                                          node_type_to_subnet[node_type]))
+
+    for node_type, subnet_id in node_type_to_subnet.items():
+        if subnet_id not in subnet_to_vpc:
+            subnet_to_vpc[subnet_id] = _get_vpc_id_or_die(conf, subnet_id)
         node_type_to_vpc[node_type] = subnet_to_vpc[subnet_id]
 
     all_sgs = _get_security_groups(conf, subnet_to_vpc.values(), [sg_name])
-    for node_type in node_types:
-        vpc_id = node_type_to_vpc[node_type]
+    for node_type, vpc_id in node_type_to_vpc.items():
         sg = next((_ for _ in all_sgs if _.vpc_id == vpc_id), None)
         if sg is None:
             sg = _create_security_group(conf, vpc_id, sg_name)
@@ -366,24 +363,10 @@ def _create_security_group(config, vpc_id, group_name):
         GroupName=group_name,
         VpcId=vpc_id)
     security_group = _get_security_group(config, vpc_id, group_name)
-    # only create tags AFTER getting the security group to avoid occasional
-    # eventual consistency failures that occur when tagging immediately after
-    # security group creation (claiming the security group does not exist)
-    _tag_security_group(config, security_group.id)
     logger.info("_create_security_group: Created new security group {} ({})"
                 .format(security_group.group_name, security_group.id))
     assert security_group, "Failed to create security group"
     return security_group
-
-
-def _tag_security_group(config, security_group_id):
-    client = _client("ec2", config)
-    client.create_tags(
-        Resources=[security_group_id],
-        Tags=[{
-            "Key": TAG_RAY_CLUSTER_NAME,
-            "Value": config["cluster_name"]
-        }])
 
 
 def _upsert_security_group_rules(conf, security_groups):
@@ -484,10 +467,11 @@ def _client(name, config):
 def _resource(name, config):
     boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
     aws_credentials = config["provider"].get("aws_credentials", {})
-    return _RESOURCE_CACHE.setdefault(
-        name,
-        boto3.resource(
+    if name not in _RESOURCE_CACHE:
+        _RESOURCE_CACHE[name] = boto3.resource(
             name,
             config["provider"]["region"],
             config=boto_config,
-            **aws_credentials))
+            **aws_credentials,
+        )
+    return _RESOURCE_CACHE[name]
