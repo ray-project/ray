@@ -43,8 +43,10 @@ def test_dynamic_res_deletion(shutdown_only):
     available_res = ray.available_resources()
     cluster_res = ray.cluster_resources()
 
-    assert res_name not in available_res
-    assert res_name not in cluster_res
+    def check_resources():
+        return res_name not in available_res and res_name not in cluster_res
+
+    ray.test_utils.wait_for_condition(check_resources)
 
 
 def test_dynamic_res_infeasible_rescheduling(ray_start_regular):
