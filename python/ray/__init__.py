@@ -62,6 +62,7 @@ from ray._raylet import (
     TaskID,
     UniqueID,
     Language,
+    RayException,
 )  # noqa: E402
 
 _config = _Config()
@@ -162,4 +163,5 @@ __all__ += [
     "ObjectID",
     "TaskID",
     "UniqueID",
+    "RayException",
 ]

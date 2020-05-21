@@ -33,7 +33,7 @@ class RayException : public MessageWrapper<rpc::RayException> {
                ActorID actor_id, ObjectID object_id, const std::string &ip, pid_t pid,
                const std::string &proc_title, const std::string &file, uint64_t lineno,
                const std::string &function, const std::string &traceback,
-               const std::string &data, std::shared_ptr<rpc::RayException> cause) {
+               const std::string &data, std::shared_ptr<RayException> cause) {
     message_->set_error_type(error_type);
     message_->set_error_message(error_message);
     message_->set_language(language);
@@ -50,7 +50,9 @@ class RayException : public MessageWrapper<rpc::RayException> {
     message_->set_function(function);
     message_->set_traceback(traceback);
     message_->set_data(data);
-    *message_->mutable_cause() = *cause.get();
+    if (cause) {
+      *message_->mutable_cause() = *cause->message_;
+    }
   }
 
   /// Construct from protobuf-serialized binary.
@@ -93,9 +95,6 @@ class RayException : public MessageWrapper<rpc::RayException> {
       if (message_->pid()) {
         ss << "(pid=" << message_->pid() << ")";
       }
-      if (message_->proc_title().size()) {
-        ss << " " << message_->proc_title();
-      }
       from = ss.str();
     }
 
@@ -110,37 +109,32 @@ class RayException : public MessageWrapper<rpc::RayException> {
       at = ss.str();
     }
 
-    std::string msg = "";
-    {
-      std::stringstream ss;
-      ss << "error: " << ErrorType_Name(message_->error_type())
-         << ", message: " << message_->error_message();
-      msg = ss.str();
-    }
-
     std::string details = "";
     {
       std::stringstream ss;
-      ss << "  languge: " << Language_Name(message_->language()) << "\n"
-         << "  job id: " << JobID::FromBinary(message_->job_id()).Hex() << "\n"
-         << "  worker id: " << WorkerID::FromBinary(message_->worker_id()).Hex() << "\n"
-         << "  task id: " << TaskID::FromBinary(message_->task_id()).Hex() << "\n"
-         << "  actor id: " << ActorID::FromBinary(message_->actor_id()).Hex() << "\n"
-         << "  object id: " << ObjectID::FromBinary(message_->object_id()).Hex() << "\n";
+      ss << "  Languge: " << Language_Name(message_->language()) << "\n"
+         << "  Job ID: " << JobID::FromBinary(message_->job_id()).Hex() << "\n"
+         << "  Worker ID: " << WorkerID::FromBinary(message_->worker_id()).Hex() << "\n"
+         << "  Task ID: " << TaskID::FromBinary(message_->task_id()).Hex() << "\n"
+         << "  Actor ID: " << ActorID::FromBinary(message_->actor_id()).Hex() << "\n"
+         << "  Object ID: " << ObjectID::FromBinary(message_->object_id()).Hex() << "\n";
       details = ss.str();
     }
 
-    std::stringstream result("An exception");
+    std::stringstream result;
+    result << ErrorType_Name(message_->error_type());
     if (!from.empty()) {
       result << " from " << from;
     }
     if (!at.empty()) {
       result << " " << at;
     }
-    result << ":\n";
-    result << "    " << msg << "\n";
+    result << ":";
+    if (!message_->error_message().empty()) {
+      result << ":\n\n" << message_->error_message() << "\n";
+    }
     if (!details.empty()) {
-      result << details;
+      result << "\n" << details;
     }
     if (!message_->traceback().empty()) {
       result << "\n" << message_->traceback();

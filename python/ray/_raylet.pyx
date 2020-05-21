@@ -109,6 +109,7 @@ include "includes/common.pxi"
 include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
+include "includes/ray_exception.pxi"
 
 
 logger = logging.getLogger(__name__)
