@@ -4,11 +4,10 @@ from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
-from ray.rllib.optimizers import SyncReplayOptimizer
-from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer
 from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.exploration import PerWorkerEpsilonGreedy
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
@@ -140,35 +139,6 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def make_policy_optimizer(workers, config):
-    """Create the single process DQN policy optimizer.
-
-    Returns:
-        SyncReplayOptimizer: Used for generic off-policy Trainers.
-    """
-    # SimpleQ does not use a PR buffer.
-    kwargs = {"prioritized_replay": config.get("prioritized_replay", False)}
-    kwargs.update(**config["optimizer"])
-    if "prioritized_replay" in config:
-        kwargs.update({
-            "prioritized_replay_alpha": config["prioritized_replay_alpha"],
-            "prioritized_replay_beta": config["prioritized_replay_beta"],
-            "prioritized_replay_beta_annealing_timesteps": config[
-                "prioritized_replay_beta_annealing_timesteps"],
-            "final_prioritized_replay_beta": config[
-                "final_prioritized_replay_beta"],
-            "prioritized_replay_eps": config["prioritized_replay_eps"],
-        })
-
-    return SyncReplayOptimizer(
-        workers,
-        # TODO(sven): Move all PR-beta decays into Schedule components.
-        learning_starts=config["learning_starts"],
-        buffer_size=config["buffer_size"],
-        train_batch_size=config["train_batch_size"],
-        **kwargs)
-
-
 def validate_config(config):
     """Checks and updates the config based on settings.
 
@@ -258,54 +228,6 @@ def validate_config(config):
     config["rollout_fragment_length"] = adjusted_batch_size
 
 
-def get_initial_state(config):
-    return {
-        "last_target_update_ts": 0,
-        "num_target_updates": 0,
-    }
-
-
-# TODO(sven): Move this to generic Trainer. Every Algo should do this.
-def update_worker_exploration(trainer):
-    """Sets epsilon exploration values in all policies to updated values.
-
-    According to current time-step.
-
-    Args:
-        trainer (Trainer): The Trainer object for the DQN.
-    """
-    # Store some data for metrics after learning.
-    global_timestep = trainer.optimizer.num_steps_sampled
-    trainer.train_start_timestep = global_timestep
-
-    # Get all current exploration-infos (from Policies, which cache this info).
-    trainer.exploration_infos = trainer.workers.foreach_trainable_policy(
-        lambda p, _: p.get_exploration_info())
-
-
-def after_train_result(trainer, result):
-    """Add some DQN specific metrics to results."""
-    global_timestep = trainer.optimizer.num_steps_sampled
-    result.update(
-        timesteps_this_iter=global_timestep - trainer.train_start_timestep,
-        info=dict({
-            "exploration_infos": trainer.exploration_infos,
-            "num_target_updates": trainer.state["num_target_updates"],
-        }, **trainer.optimizer.stats()))
-
-
-def update_target_if_needed(trainer, fetches):
-    """Update the target network in configured intervals."""
-    global_timestep = trainer.optimizer.num_steps_sampled
-    if global_timestep - trainer.state["last_target_update_ts"] > \
-            trainer.config["target_network_update_freq"]:
-        trainer.workers.local_worker().foreach_trainable_policy(
-            lambda p, _: p.update_target())
-        trainer.state["last_target_update_ts"] = global_timestep
-        trainer.state["num_target_updates"] += 1
-
-
-# Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
     if config.get("prioritized_replay"):
         prio_args = {
@@ -405,11 +327,6 @@ GenericOffPolicyTrainer = build_trainer(
     get_policy_class=get_policy_class,
     default_config=DEFAULT_CONFIG,
     validate_config=validate_config,
-    get_initial_state=get_initial_state,
-    make_policy_optimizer=make_policy_optimizer,
-    before_train_step=update_worker_exploration,
-    after_optimizer_step=update_target_if_needed,
-    after_train_result=after_train_result,
     execution_plan=execution_plan)
 
 DQNTrainer = GenericOffPolicyTrainer.with_updates(

@@ -1,5 +1,5 @@
 import os
-from signal import SIGKILL
+import signal
 import sys
 import time
 
@@ -7,6 +7,8 @@ import pytest
 
 import ray
 from ray.test_utils import run_string_as_driver_nonblocking, SignalActor
+
+SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 
 # This test checks that when a worker dies in the middle of a get, the plasma
