@@ -15,19 +15,18 @@
 #ifndef RAY_CORE_WORKER_EXCEPTION_H
 #define RAY_CORE_WORKER_EXCEPTION_H
 
+#include <sstream>
 #include <string>
 
-#include "ray/common/buffer.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
+#include "ray/common/ray_object.h"
 #include "ray/common/task/task_common.h"
 #include "ray/protobuf/common.pb.h"
 
 namespace ray {
 /// Wrap a protobuf message.
 class RayException : public MessageWrapper<rpc::RayException> {
-  friend class RayErrorBuilder;
-
  public:
   RayException(rpc::ErrorType error_type, const std::string &error_message,
                Language language, JobID job_id, WorkerID worker_id, TaskID task_id,
@@ -42,7 +41,7 @@ class RayException : public MessageWrapper<rpc::RayException> {
     message_->set_worker_id(worker_id.Binary());
     message_->set_task_id(task_id.Binary());
     message_->set_actor_id(actor_id.Binary());
-    message_->set_actor_id(object_id.Binary());
+    message_->set_object_id(object_id.Binary());
     message_->set_ip(ip);
     message_->set_pid(pid);
     message_->set_proc_title(proc_title);
@@ -54,29 +53,108 @@ class RayException : public MessageWrapper<rpc::RayException> {
     *message_->mutable_cause() = *cause.get();
   }
 
+  /// Construct from protobuf-serialized binary.
+  ///
+  /// \param serialized_binary Protobuf-serialized binary.
+  explicit RayException(const std::string &serialized_binary)
+      : MessageWrapper<rpc::RayException>(serialized_binary) {}
+
   const rpc::ErrorType ErrorType() const { return message_->error_type(); }
 
-  std::shared_ptr<Buffer> GetBuffer() const {
-    auto serialized = message_->SerializeAsString();
-    return std::make_shared<LocalMemoryBuffer>(static_cast<uint8_t *>(serialized.c_str()),
-                                               serialized.size(),
-                                               /*copy_data=*/true);
+  std::string Data() const { return message_->data(); }
+
+  std::shared_ptr<RayException> Cause() const {
+    if (message_->has_cause()) {
+      return std::make_shared<RayException>(RayException(message_->cause()));
+    } else {
+      return nullptr;
+    }
   }
 
-  // Forbid construction of this class.
- protected:
-  /// Construct an empty message.
-  RayException() : MessageWrapper() {}
+  RayObject ToRayObject() const {
+    auto serialized = message_->SerializeAsString();
+    auto data =
+        const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(serialized.data()));
+    auto data_buffer =
+        std::make_shared<LocalMemoryBuffer>(data, serialized.size(), /*copy_data=*/true);
+    auto error_type = message_->error_type();
+    std::string meta = std::to_string(static_cast<int>(error_type));
+    auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+    auto meta_buffer =
+        std::make_shared<LocalMemoryBuffer>(metadata, meta.size(), /*copy_data=*/true);
+    return RayObject(data_buffer, meta_buffer, {});
+  }
 
-  /// Construct from a protobuf message object.
-  /// The input message will be **moved** into this object.
-  ///
-  /// \param message The protobuf message.
-  explicit RayException(rpc::RayException &&message) : MessageWrapper(message) {}
+  std::string ToString() const {
+    std::string from = "";
+    if (!message_->ip().empty()) {
+      std::stringstream ss;
+      ss << message_->ip();
+      if (message_->pid()) {
+        ss << "(pid=" << message_->pid() << ")";
+      }
+      if (message_->proc_title().size()) {
+        ss << " " << message_->proc_title();
+      }
+      from = ss.str();
+    }
+
+    std::string at = "";
+    if (!message_->file().empty()) {
+      std::stringstream ss;
+      ss << "[" << message_->file() << ":" << message_->lineno();
+      if (message_->function().size()) {
+        ss << " in function " << message_->function();
+      }
+      ss << "]";
+      at = ss.str();
+    }
+
+    std::string msg = "";
+    {
+      std::stringstream ss;
+      ss << "error: " << ErrorType_Name(message_->error_type())
+         << ", message: " << message_->error_message();
+      msg = ss.str();
+    }
+
+    std::string details = "";
+    {
+      std::stringstream ss;
+      ss << "  languge: " << Language_Name(message_->language()) << "\n"
+         << "  job id: " << JobID::FromBinary(message_->job_id()).Hex() << "\n"
+         << "  worker id: " << WorkerID::FromBinary(message_->worker_id()).Hex() << "\n"
+         << "  task id: " << TaskID::FromBinary(message_->task_id()).Hex() << "\n"
+         << "  actor id: " << ActorID::FromBinary(message_->actor_id()).Hex() << "\n"
+         << "  object id: " << ObjectID::FromBinary(message_->object_id()).Hex() << "\n";
+      details = ss.str();
+    }
+
+    std::stringstream result("An exception");
+    if (!from.empty()) {
+      result << " from " << from;
+    }
+    if (!at.empty()) {
+      result << " " << at;
+    }
+    result << ":\n";
+    result << "    " << msg << "\n";
+    if (!details.empty()) {
+      result << details;
+    }
+    if (!message_->traceback().empty()) {
+      result << "\n" << message_->traceback();
+    }
+    return result.str();
+  }
 
  private:
-  RayException(const RayException &);
-  RayException &operator=(const RayException &);
+  /// Construct from a protobuf message object.
+  /// The input message will be **copied** into this object.
+  ///
+  /// \param message The protobuf message.
+  explicit RayException(const rpc::RayException &message)
+      : MessageWrapper<rpc::RayException>(std::make_shared<rpc::RayException>(message)) {}
 };
 
 }  // namespace ray
