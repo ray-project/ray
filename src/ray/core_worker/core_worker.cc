@@ -106,7 +106,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
     RAY_CHECK(options_.log_dir.empty())
         << "log_dir must be empty because ray log is disabled.";
     RAY_CHECK(!options_.install_failure_signal_handler)
-        << "install_failure_signal_handler must be false because ray log is disabled."
+        << "install_failure_signal_handler must be false because ray log is disabled.";
   }
 
   RAY_CHECK(options_.num_workers > 0);
