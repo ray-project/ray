@@ -55,7 +55,7 @@ def build_q_models(policy, obs_space, action_space, config):
         action_space=action_space,
         num_outputs=action_space.n,
         model_config=config["model"],
-        framework="torch" if config["framework"] == "torch" else "tf",
+        framework=config["framework"],
         name=Q_SCOPE)
 
     policy.target_q_model = ModelCatalog.get_model_v2(
@@ -63,7 +63,7 @@ def build_q_models(policy, obs_space, action_space, config):
         action_space=action_space,
         num_outputs=action_space.n,
         model_config=config["model"],
-        framework="torch" if config["framework"] == "torch" else "tf",
+        framework=config["framework"],
         name=Q_TARGET_SCOPE)
 
     policy.q_func_vars = policy.q_model.variables()

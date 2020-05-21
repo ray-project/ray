@@ -66,7 +66,7 @@ def build_ddpg_models(policy, observation_space, action_space, config):
         action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
-        framework="torch" if config["framework"] == "torch" else "tf",
+        framework=config["framework"],
         model_interface=(DDPGTorchModel
                          if config["framework"] == "torch" else DDPGTFModel),
         default_model=default_model,
@@ -85,7 +85,7 @@ def build_ddpg_models(policy, observation_space, action_space, config):
         action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
-        framework="torch" if config["framework"] == "torch" else "tf",
+        framework=config["framework"],
         model_interface=(DDPGTorchModel
                          if config["framework"] == "torch" else DDPGTFModel),
         default_model=default_model,

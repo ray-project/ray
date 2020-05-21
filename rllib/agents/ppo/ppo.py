@@ -183,8 +183,9 @@ def validate_config(config):
         logger.warning(
             "Using the simple minibatch optimizer. This will significantly "
             "reduce performance, consider simple_optimizer=False.")
-    elif config["framework"] != "torch":
-        config["simple_optimizer"] = True  # multi-gpu not supported
+    # Multi-gpu not supported for PyTorch and tf-eager.
+    elif config["framework"] in ["tfe", "torch"]:
+        config["simple_optimizer"] = True
 
 
 def get_policy_class(config):

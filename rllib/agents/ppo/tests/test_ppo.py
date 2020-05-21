@@ -164,7 +164,7 @@ class TestPPO(unittest.TestCase):
             init_std = get_value()
             assert init_std == 0.0, init_std
 
-            if fw != "torch":
+            if fw in ["tf", "tfe"]:
                 batch = postprocess_ppo_gae_tf(policy, FAKE_BATCH)
             else:
                 batch = postprocess_ppo_gae_torch(policy, FAKE_BATCH)

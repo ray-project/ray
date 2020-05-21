@@ -21,10 +21,11 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
-from ray.rllib.utils import try_import_tf, try_import_tree
+from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.utils.framework import check_framework, try_import_tf
 from ray.rllib.utils.space_utils import flatten_space
 
 tf = try_import_tf()
@@ -122,7 +123,7 @@ class ModelCatalog:
             action_space (Space): Action space of the target gym env.
             config (Optional[dict]): Optional model config.
             dist_type (Optional[str]): Identifier of the action distribution.
-            framework (str): One of "tf" or "torch".
+            framework (str): One of "tf", "tfe", or "torch".
             kwargs (dict): Optional kwargs to pass on to the Distribution's
                 constructor.
 
@@ -130,6 +131,10 @@ class ModelCatalog:
             dist_class (ActionDistribution): Python class of the distribution.
             dist_dim (int): The size of the input vector to the distribution.
         """
+
+        # Make sure, framework is ok.
+        framework = check_framework(framework)
+
         dist = None
         config = config or MODEL_DEFAULTS
         # Custom distribution given.
@@ -162,7 +167,7 @@ class ModelCatalog:
                     else Deterministic
         # Discrete Space -> Categorical.
         elif isinstance(action_space, gym.spaces.Discrete):
-            dist = Categorical if framework == "tf" else TorchCategorical
+            dist = TorchCategorical if framework == "torch" else Categorical
         # Tuple/Dict Spaces -> MultiAction.
         elif dist_type in (MultiActionDistribution,
                            TorchMultiActionDistribution) or \
@@ -188,8 +193,8 @@ class ModelCatalog:
             dist = Dirichlet
         # MultiDiscrete -> MultiCategorical.
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
-            dist = MultiCategorical if framework == "tf" else \
-                TorchMultiCategorical
+            dist = TorchMultiCategorical if framework == "torch" else \
+                MultiCategorical
             return partial(dist, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
         # Unknown type -> Error.
@@ -269,7 +274,7 @@ class ModelCatalog:
                 unflatten the tensor into a ragged tensor.
             action_space (Space): Action space of the target gym env.
             num_outputs (int): The size of the output vector of the model.
-            framework (str): One of "tf" or "torch".
+            framework (str): One of "tf", "tfe", or "torch".
             name (str): Name (scope) for the model.
             model_interface (cls): Interface required for the model
             default_model (cls): Override the default class for the model. This
@@ -279,6 +284,9 @@ class ModelCatalog:
         Returns:
             model (ModelV2): Model to use for the policy.
         """
+
+        # Make sure, framework is ok.
+        framework = check_framework(framework)
 
         if model_config.get("custom_model"):
             if isinstance(model_config["custom_model"], type):
@@ -293,7 +301,7 @@ class ModelCatalog:
                 model_cls = ModelCatalog._wrap_if_needed(
                     model_cls, model_interface)
 
-                if framework == "tf":
+                if framework in ["tf", "tfe"]:
                     # Track and warn if vars were created but not registered.
                     created = set()
 
@@ -351,7 +359,7 @@ class ModelCatalog:
                     "used, however you specified a custom model {}".format(
                         model_cls))
 
-        if framework == "tf":
+        if framework in ["tf", "tfe"]:
             v2_class = None
             # try to get a default v2 model
             if not model_config.get("custom_model"):
@@ -499,7 +507,7 @@ class ModelCatalog:
                   options,
                   state_in=None,
                   seq_lens=None):
-        """Deprecated: use get_model_v2() instead."""
+        """Deprecated: Use get_model_v2() instead."""
 
         deprecation_warning("get_model", "get_model_v2", error=False)
         assert isinstance(input_dict, dict)
@@ -551,7 +559,9 @@ class ModelCatalog:
 
     @staticmethod
     def _get_v2_model_class(obs_space, model_config, framework="tf"):
-        model_config = model_config or MODEL_DEFAULTS
+        # Make sure, framework is ok.
+        framework = check_framework(framework)
+
         if framework == "torch":
             from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
                                                       FCNet)

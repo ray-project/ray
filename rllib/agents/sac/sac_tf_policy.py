@@ -63,7 +63,7 @@ def build_sac_model(policy, obs_space, action_space, config):
         action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
-        framework="torch" if config["framework"] == "torch" else "tf",
+        framework=config["framework"],
         model_interface=SACTorchModel
         if config["framework"] == "torch" else SACTFModel,
         name="sac_model",
@@ -80,7 +80,7 @@ def build_sac_model(policy, obs_space, action_space, config):
         action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
-        framework="torch" if config["framework"] == "torch" else "tf",
+        framework=config["framework"],
         model_interface=SACTorchModel
         if config["framework"] == "torch" else SACTFModel,
         name="target_sac_model",
