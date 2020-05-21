@@ -2,7 +2,8 @@ import collections
 import copy
 
 import ray
-from ray.rllib.agents.dqn.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_CONFIG
+from ray.rllib.agents.dqn.dqn import DQNTrainer, \
+    DEFAULT_CONFIG as DQN_CONFIG, calculate_rr_weights
 from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, \
     SampleBatchType, _get_shared_metrics, _get_global_vars
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -41,6 +42,9 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "exploration_config": {"type": "PerWorkerEpsilonGreedy"},
         "worker_side_prioritization": True,
         "min_iter_time_s": 30,
+        # If set, this will fix the ratio of sampled to replayed timesteps.
+        # Otherwise, replay will proceed as fast as possible.
+        "training_intensity": None,
     },
 )
 # __sphinx_doc_end__
@@ -175,10 +179,19 @@ def execution_plan(workers: WorkerSet, config: dict):
             workers, config["target_network_update_freq"],
             by_steps_trained=True))
 
-    # Execute (1), (2), (3) asynchronously as fast as possible. Only output
-    # items from (3) since metrics aren't available before then.
-    merged_op = Concurrently(
-        [store_op, replay_op, update_op], mode="async", output_indexes=[2])
+    if config["training_intensity"]:
+        # Execute (1), (2) with a fixed intensity ratio.
+        rr_weights = calculate_rr_weights(config) + ["*"]
+        merged_op = Concurrently(
+            [store_op, replay_op, update_op],
+            mode="round_robin",
+            output_indexes=[2],
+            round_robin_weights=rr_weights)
+    else:
+        # Execute (1), (2), (3) asynchronously as fast as possible. Only output
+        # items from (3) since metrics aren't available before then.
+        merged_op = Concurrently(
+            [store_op, replay_op, update_op], mode="async", output_indexes=[2])
 
     # Add in extra replay and learner metrics to the training result.
     def add_apex_metrics(result):

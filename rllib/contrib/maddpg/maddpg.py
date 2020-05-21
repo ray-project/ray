@@ -70,6 +70,10 @@ DEFAULT_CONFIG = with_common_config({
     # In multi-agent mode, whether to replay experiences from the same time
     # step for all policies. This is required for MADDPG.
     "multiagent_sync_replay": True,
+    # If set, this will fix the ratio of sampled to replayed timesteps.
+    # Otherwise, replay will proceed at the native ratio determined by
+    # (train_batch_size / rollout_fragment_length).
+    "training_intensity": None,
 
     # === Optimization ===
     # Learning rate for the critic (Q-function) optimizer.

@@ -249,7 +249,7 @@ class Router:
         backend_replica_tag = backend_tag + ":" + replica_tag
         if backend_replica_tag not in self.replicas:
             return
-        worker_handle = self.replicas.pop(backend_replica_tag)
+        del self.replicas[backend_replica_tag]
 
         # We need this lock because we modify worker_queue here.
         async with self.flush_lock:
@@ -262,10 +262,6 @@ class Router:
                     await new_queue.put(curr_tag)
 
             self.worker_queues[backend_tag] = new_queue
-            # We need to terminate the worker here instead of from the master
-            # so we can guarantee that the router won't submit any more tasks
-            # on it.
-            worker_handle.__ray_terminate__.remote()
 
     async def set_traffic(self, endpoint, traffic_dict):
         logger.debug("Setting traffic for endpoint %s to %s", endpoint,
