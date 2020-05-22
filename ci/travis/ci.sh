@@ -237,7 +237,7 @@ build_wheels() {
         for pyversion in "${pyversions[@]}"; do
           if [ -z "${pyversion}" ]; then continue; fi
           "${ROOT_DIR}"/bazel-preclean.sh
-          git clean -f -f -x -d -e "${local_dir}" -e python/ray/dashboard/client
+          git clean -q -f -f -x -d -e "${local_dir}" -e python/ray/dashboard/client
           git checkout -q -f -- .
           cp -R -f -a -T -- "${backup_conda}" "${CONDA_PREFIX}"
           local existing_version
@@ -411,7 +411,7 @@ init() {
 
 build() {
   if ! need_wheels; then
-    bazel build -k "//:*"   # Do a full build first to ensure everything passes
+    bazel build ${ENABLE_ASAN-} -k "//:*"   # Do a full build first to ensure everything passes
     install_ray
     if [ "${LINT-}" = 1 ]; then
       # Try generating Sphinx documentation. To do this, we need to install Ray first.

@@ -29,17 +29,9 @@ def test_metrics(ray_start_regular_shared):
     it = it.gather_sync().for_each(f)
     it2 = it2.gather_sync().for_each(f)
 
-    # Context cannot be accessed outside the iterator.
-    with pytest.raises(ValueError):
-        LocalIterator.get_metrics()
-
     # Tests iterators have isolated contexts.
     assert it.take(4) == [1, 3, 6, 10]
     assert it2.take(4) == [1, 3, 6, 10]
-
-    # Context cannot be accessed outside the iterator.
-    with pytest.raises(ValueError):
-        LocalIterator.get_metrics()
 
 
 def test_zip_with_source_actor(ray_start_regular_shared):

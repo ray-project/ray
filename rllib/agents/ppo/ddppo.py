@@ -18,14 +18,13 @@ import logging
 import time
 
 import ray
-from ray.util.iter import LocalIterator
 from ray.rllib.agents.ppo import ppo
 from ray.rllib.agents.trainer import with_base_config
-from ray.rllib.optimizers import TorchDistributedDataParallelOptimizer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    STEPS_TRAINED_COUNTER, LEARNER_INFO, LEARN_ON_BATCH_TIMER
+    STEPS_TRAINED_COUNTER, LEARNER_INFO, LEARN_ON_BATCH_TIMER, \
+    _get_shared_metrics
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.utils.sgd import do_minibatch_sgd
 
@@ -87,17 +86,6 @@ def validate_config(config):
     ppo.validate_config(config)
 
 
-def make_distributed_allreduce_optimizer(workers, config):
-    return TorchDistributedDataParallelOptimizer(
-        workers,
-        expected_batch_size=config["rollout_fragment_length"] *
-        config["num_envs_per_worker"],
-        num_sgd_iter=config["num_sgd_iter"],
-        sgd_minibatch_size=config["sgd_minibatch_size"],
-        standardize_fields=["advantages"])
-
-
-# Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
     rollouts = ParallelRollouts(workers, mode="raw")
 
@@ -141,7 +129,7 @@ def execution_plan(workers, config):
         def __call__(self, items):
             for item in items:
                 info, count = item
-                metrics = LocalIterator.get_metrics()
+                metrics = _get_shared_metrics()
                 metrics.counters[STEPS_SAMPLED_COUNTER] += count
                 metrics.counters[STEPS_TRAINED_COUNTER] += count
                 metrics.info[LEARNER_INFO] = info
@@ -190,6 +178,5 @@ def execution_plan(workers, config):
 DDPPOTrainer = ppo.PPOTrainer.with_updates(
     name="DDPPO",
     default_config=DEFAULT_CONFIG,
-    make_policy_optimizer=make_distributed_allreduce_optimizer,
     execution_plan=execution_plan,
     validate_config=validate_config)

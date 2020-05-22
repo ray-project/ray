@@ -1,4 +1,4 @@
-from gym.spaces import Tuple, Discrete, Dict, Box
+from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import numpy as np
 import unittest
 
@@ -9,10 +9,17 @@ from ray.rllib.agents.qmix import QMixTrainer
 
 
 class AvailActionsTestEnv(MultiAgentEnv):
-    action_space = Discrete(10)
+    num_actions = 10
+    action_space = Discrete(num_actions)
     observation_space = Dict({
-        "obs": Discrete(3),
-        "action_mask": Box(0, 1, (10, )),
+        "obs": Dict({
+            "test": Dict({
+                "a": Discrete(2),
+                "b": MultiDiscrete([2, 3, 4])
+            }),
+            "state": MultiDiscrete([2, 2, 2])
+        }),
+        "action_mask": Box(0, 1, (num_actions, )),
     })
 
     def __init__(self, env_config):
@@ -25,7 +32,7 @@ class AvailActionsTestEnv(MultiAgentEnv):
         self.state = 0
         return {
             "agent_1": {
-                "obs": self.state,
+                "obs": self.observation_space["obs"].sample(),
                 "action_mask": self.action_mask
             }
         }
@@ -36,7 +43,12 @@ class AvailActionsTestEnv(MultiAgentEnv):
                 "Failed to obey available actions mask!"
         self.state += 1
         rewards = {"agent_1": 1}
-        obs = {"agent_1": {"obs": 0, "action_mask": self.action_mask}}
+        obs = {
+            "agent_1": {
+                "obs": self.observation_space["obs"].sample(),
+                "action_mask": self.action_mask
+            }
+        }
         dones = {"__all__": self.state > 20}
         return obs, rewards, dones, {}
 
