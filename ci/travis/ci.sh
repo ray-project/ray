@@ -109,8 +109,14 @@ upload_wheels() {
 
 test_python() {
   if [ "${OSTYPE}" = msys ]; then
-    # Windows -- most tests won't work yet; just do the ones we know work
-    PYTHONPATH=python python -m pytest --durations=5 --timeout=300 python/ray/tests/test_mini.py
+    PYTHONPATH=python python \
+      -c "import colorama; colorama.init(); import pytest, ray; pytest.main()" \
+      -q -s --durations=5 --timeout=300 \
+      python/ray/tests/test_actor.py \
+      python/ray/tests/test_basic.py \
+      python/ray/tests/test_debug_tools.py \
+      python/ray/tests/test_mini.py \
+      ;
   fi
 }
 
