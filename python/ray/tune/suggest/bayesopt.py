@@ -122,6 +122,7 @@ class BayesOptSearch(Searcher):
         self._live_trial_mapping = {}
         self._cached_results = []
         self._random_search_steps = random_search_steps
+        self._random_trials = 0
 
         self.optimizer = byo.BayesianOptimization(
             f=None, pbounds=space, verbose=verbose, random_state=random_state)
@@ -136,6 +137,11 @@ class BayesOptSearch(Searcher):
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
+        if self._random_search_steps != 0:
+            if self._random_trials >= self._random_search_steps:
+                return None
+            self._random_trials += 1
+                
         new_trial = self.optimizer.suggest(self.utility)
 
         self._live_trial_mapping[trial_id] = new_trial
