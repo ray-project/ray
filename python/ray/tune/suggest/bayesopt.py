@@ -167,7 +167,7 @@ class BayesOptSearch(Searcher):
             # search steps
             if self._random_search_steps > 0:
                 # We store the results into a temporary cache
-                self._cached_results.append(params, result)
+                self._cached_results.append((params, result))
                 # Decrease the total number of steps to do
                 self._random_search_steps -= 1
                 # And if we hit zero, we update the BO
