@@ -153,10 +153,6 @@ class Cluster:
             TimeoutError: An exception is raised if the timeout expires before
                 the node appears in the client table.
         """
-        ip_address, port = self.redis_address.split(":")
-        redis_client = redis.StrictRedis(
-            host=ip_address, port=int(port), password=self.redis_password)
-
         start_time = time.time()
         while time.time() - start_time < timeout:
             clients = self.global_state.node_table()
