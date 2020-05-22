@@ -125,7 +125,7 @@ class BayesOptSearch(Searcher):
 
         self.optimizer = byo.BayesianOptimization(
             f=None, pbounds=space, verbose=verbose, random_state=random_state)
-        
+
         self.utility = byo.UtilityFunction(**utility_kwargs)
 
         # Registering the provided analysis, if given
@@ -179,8 +179,7 @@ class BayesOptSearch(Searcher):
             else:
                 # Otherwise we simply register the obtained result
                 self._register_result(params, result)
-        # Finally, we delete the computed trial from the 
-        # dictionary.
+        # Finally, we delete the computed trial from the dictionary.
         del self._live_trial_mapping[trial_id]
 
     def _register_result(self, params, result):
