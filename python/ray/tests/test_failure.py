@@ -940,11 +940,26 @@ def test_fill_object_store_exception(shutdown_only):
 
 
 def test_fill_object_store_lru_fallback(shutdown_only):
-    ray.init(num_cpus=2, object_store_memory=10**8, lru_evict=True)
+    config = json.dumps({
+        "free_objects_batch_size": 1,
+    })
+    ray.init(
+        num_cpus=2,
+        object_store_memory=10**8,
+        lru_evict=True,
+        _internal_config=config)
 
     @ray.remote
     def expensive_task():
         return np.zeros((10**8) // 2, dtype=np.uint8)
+
+    # Check that objects out of scope are cleaned up quickly.
+    ray.get(expensive_task.remote())
+    for _ in range(3):
+        start = time.time()
+        ray.get(expensive_task.remote())
+        end = time.time()
+        assert end - start < 1
 
     oids = []
     for _ in range(3):
