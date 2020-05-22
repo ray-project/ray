@@ -35,7 +35,6 @@ void DefaultStatsHandler::HandleAddProfileData(const AddProfileDataRequest &requ
   };
   Status status = gcs_table_storage_->ProfileTable().Put(UniqueID::FromRandom(),
                                                          *profile_table_data, on_done);
-  ;
   if (!status.ok()) {
     on_done(status);
   }

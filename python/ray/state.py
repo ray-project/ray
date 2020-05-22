@@ -428,71 +428,34 @@ class GlobalState:
 
         return results
 
-    def _profile_table(self, batch_id):
-        """Get the profile events for a given batch of profile events.
+    def profile_table(self):
+        self._check_connected()
 
-        Args:
-            batch_id: An identifier for a batch of profile events.
+        result = defaultdict(list)
+        profile_table = self.global_state_accessor.get_profile_table()
+        for i in range(len(profile_table)):
+            profile = gcs_utils.ProfileTableData.FromString(profile_table[i])
 
-        Returns:
-            A list of the profile events for the specified batch.
-        """
-        # TODO(rkn): This method should support limiting the number of log
-        # events and should also support returning a window of events.
-        message = self._execute_command(batch_id, "RAY.TABLE_LOOKUP",
-                                        gcs_utils.TablePrefix.Value("PROFILE"),
-                                        "", batch_id.binary())
+            component_type = profile.component_type
+            component_id = binary_to_hex(profile.component_id)
+            node_ip_address = profile.node_ip_address
 
-        if message is None:
-            return []
-
-        gcs_entries = gcs_utils.GcsEntry.FromString(message)
-
-        profile_events = []
-        for entry in gcs_entries.entries:
-            profile_table_message = gcs_utils.ProfileTableData.FromString(
-                entry)
-
-            component_type = profile_table_message.component_type
-            component_id = binary_to_hex(profile_table_message.component_id)
-            node_ip_address = profile_table_message.node_ip_address
-
-            for profile_event_message in profile_table_message.profile_events:
+            for event in profile.profile_events:
                 try:
-                    extra_data = json.loads(profile_event_message.extra_data)
+                    extra_data = json.loads(event.extra_data)
                 except ValueError:
                     extra_data = {}
                 profile_event = {
-                    "event_type": profile_event_message.event_type,
+                    "event_type": event.event_type,
                     "component_id": component_id,
                     "node_ip_address": node_ip_address,
                     "component_type": component_type,
-                    "start_time": profile_event_message.start_time,
-                    "end_time": profile_event_message.end_time,
+                    "start_time": event.start_time,
+                    "end_time": event.end_time,
                     "extra_data": extra_data
                 }
 
-                profile_events.append(profile_event)
-
-        return profile_events
-
-    def profile_table(self):
-        self._check_connected()
-        profile_table_keys = self._keys(gcs_utils.TablePrefix_PROFILE_string +
-                                        "*")
-        batch_identifiers_binary = [
-            key[len(gcs_utils.TablePrefix_PROFILE_string):]
-            for key in profile_table_keys
-        ]
-
-        result = defaultdict(list)
-        for batch_id in batch_identifiers_binary:
-            profile_data = self._profile_table(binary_to_object_id(batch_id))
-            # Note that if keys are being evicted from Redis, then it is
-            # possible that the batch will be evicted before we get it.
-            if len(profile_data) > 0:
-                component_id = profile_data[0]["component_id"]
-                result[component_id].extend(profile_data)
+                result[component_id].append(profile_event)
 
         return dict(result)
 
