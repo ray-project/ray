@@ -8,7 +8,6 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker, \
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
     ShuffledInput
 from ray.rllib.utils import merge_dicts, try_import_tf
-from ray.rllib.utils.memory import ray_get_and_free
 
 tf = try_import_tf()
 
@@ -115,7 +114,7 @@ class WorkerSet:
         """Apply the given function to each worker instance."""
 
         local_result = [func(self.local_worker())]
-        remote_results = ray_get_and_free(
+        remote_results = ray.get(
             [w.apply.remote(func) for w in self.remote_workers()])
         return local_result + remote_results
 
@@ -126,7 +125,7 @@ class WorkerSet:
         The index will be passed as the second arg to the given function.
         """
         local_result = [func(self.local_worker(), 0)]
-        remote_results = ray_get_and_free([
+        remote_results = ray.get([
             w.apply.remote(func, i + 1)
             for i, w in enumerate(self.remote_workers())
         ])
@@ -147,7 +146,7 @@ class WorkerSet:
         local_results = self.local_worker().foreach_policy(func)
         remote_results = []
         for worker in self.remote_workers():
-            res = ray_get_and_free(
+            res = ray.get(
                 worker.apply.remote(lambda w: w.foreach_policy(func)))
             remote_results.extend(res)
         return local_results + remote_results
@@ -172,7 +171,7 @@ class WorkerSet:
         local_results = self.local_worker().foreach_trainable_policy(func)
         remote_results = []
         for worker in self.remote_workers():
-            res = ray_get_and_free(
+            res = ray.get(
                 worker.apply.remote(
                     lambda w: w.foreach_trainable_policy(func)))
             remote_results.extend(res)

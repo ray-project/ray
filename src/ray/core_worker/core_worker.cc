@@ -244,8 +244,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       death_check_timer_(io_service_),
       internal_timer_(io_service_),
-      core_worker_server_(WorkerTypeString(options_.worker_type),
-                          0 /* let grpc choose a port */),
       task_queue_length_(0),
       num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
@@ -266,10 +264,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             [this] { return local_raylet_client_->TaskDone(); }));
   }
 
-  // Start RPC server after all the task receivers are properly initialized.
-  core_worker_server_.RegisterService(grpc_service_);
-  core_worker_server_.Run();
-
   // Initialize raylet client.
   // NOTE(edoakes): the core_worker_server_ must be running before registering with
   // the raylet, as the raylet will start sending some RPC messages immediately.
@@ -280,21 +274,37 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   auto grpc_client = rpc::NodeManagerWorkerClient::make(
       options_.raylet_ip_address, options_.node_manager_port, *client_call_manager_);
   ClientID local_raylet_id;
+  int assigned_port;
   std::unordered_map<std::string, std::string> internal_config;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       (options_.worker_type == ray::WorkerType::WORKER),
-      worker_context_.GetCurrentJobID(), options_.language, &local_raylet_id,
-      &internal_config, options_.node_ip_address, core_worker_server_.GetPort()));
+      worker_context_.GetCurrentJobID(), options_.language, options_.node_ip_address,
+      &local_raylet_id, &assigned_port, &internal_config));
   connected_ = true;
+
+  RAY_CHECK(assigned_port != -1)
+      << "Failed to allocate a port for the worker. Please specify a wider port range "
+         "using the '--min-worker-port' and '--max-worker-port' arguments to 'ray "
+         "start'.";
 
   // NOTE(edoakes): any initialization depending on RayConfig must happen after this line.
   RayConfig::instance().initialize(internal_config);
 
+  // Start RPC server after all the task receivers are properly initialized and we have
+  // our assigned port from the raylet.
+  core_worker_server_ = std::unique_ptr<rpc::GrpcServer>(
+      new rpc::GrpcServer(WorkerTypeString(options_.worker_type), assigned_port));
+  core_worker_server_->RegisterService(grpc_service_);
+  core_worker_server_->Run();
+
+  // Tell the raylet the port that we are listening on.
+  RAY_CHECK_OK(local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
+
   // Set our own address.
   RAY_CHECK(!local_raylet_id.IsNil());
   rpc_address_.set_ip_address(options_.node_ip_address);
-  rpc_address_.set_port(core_worker_server_.GetPort());
+  rpc_address_.set_port(core_worker_server_->GetPort());
   rpc_address_.set_raylet_id(local_raylet_id.Binary());
   rpc_address_.set_worker_id(worker_context_.GetWorkerID().Binary());
   RAY_LOG(INFO) << "Initializing worker at address: " << rpc_address_.ip_address() << ":"

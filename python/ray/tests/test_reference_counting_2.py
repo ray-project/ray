@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import signal
+import sys
 
 import numpy as np
 
@@ -11,6 +12,8 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray.test_utils import SignalActor, put_object, wait_for_condition
+
+SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 logger = logging.getLogger(__name__)
 
@@ -269,7 +272,7 @@ def test_recursively_return_borrowed_object_id(one_worker_100MiB, use_ray_put,
     _fill_object_store_and_get(final_oid_bytes)
 
     if failure:
-        os.kill(owner_pid, signal.SIGKILL)
+        os.kill(owner_pid, SIGKILL)
     else:
         # Remove all references.
         del head_oid

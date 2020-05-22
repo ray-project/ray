@@ -6,7 +6,6 @@ import random
 import ray
 from ray.rllib.utils.actors import TaskPool
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.memory import ray_get_and_free
 
 
 class Aggregator:
@@ -166,7 +165,7 @@ class AggregationWorkerBase:
             return len(self.replay_batches) > num_needed
 
         for ev, sample_batch in sample_futures:
-            sample_batch = ray_get_and_free(sample_batch)
+            sample_batch = ray.get(sample_batch)
             yield ev, sample_batch
 
             if can_replay():
