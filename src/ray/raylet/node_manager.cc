@@ -3364,7 +3364,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   if (object_pinning_enabled_) {
     // Pin the objects in plasma by getting them and holding a reference to
     // the returned buffer.
-    // NOTE: the caller must ensure that the objects already exist in plamsa before
+    // NOTE: the caller must ensure that the objects already exist in plasma before
     // sending a PinObjectIDs request.
     std::vector<plasma::ObjectID> plasma_ids;
     plasma_ids.reserve(request.object_ids_size());
