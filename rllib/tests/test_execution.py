@@ -15,7 +15,7 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, AsyncGradients, \
     ConcatBatches, StandardizeFields
 from ray.rllib.execution.train_ops import TrainOneStep, ComputeGradients, \
     AverageGradients
-from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer, \
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer, \
     ReplayActor
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.util.iter import LocalIterator, from_range
@@ -51,6 +51,22 @@ def test_concurrently(ray_start_regular_shared):
     b = iter_list([4, 5, 6])
     c = Concurrently([a, b], mode="async")
     assert c.take(6) == [1, 4, 2, 5, 3, 6]
+
+
+def test_concurrently_weighted(ray_start_regular_shared):
+    a = iter_list([1, 1, 1])
+    b = iter_list([2, 2, 2])
+    c = iter_list([3, 3, 3])
+    c = Concurrently(
+        [a, b, c], mode="round_robin", round_robin_weights=[3, 1, 2])
+    assert c.take(9) == [1, 1, 1, 2, 3, 3, 2, 3, 2]
+
+    a = iter_list([1, 1, 1])
+    b = iter_list([2, 2, 2])
+    c = iter_list([3, 3, 3])
+    c = Concurrently(
+        [a, b, c], mode="round_robin", round_robin_weights=[1, 1, "*"])
+    assert c.take(9) == [1, 2, 3, 3, 3, 1, 2, 1, 2]
 
 
 def test_concurrently_output(ray_start_regular_shared):
@@ -158,7 +174,8 @@ def test_train_one_step(ray_start_regular_shared):
     b = a.for_each(TrainOneStep(workers))
     batch, stats = next(b)
     assert isinstance(batch, SampleBatch)
-    assert "learner_stats" in stats
+    assert "default_policy" in stats
+    assert "learner_stats" in stats["default_policy"]
     counters = a.shared_metrics.get().counters
     assert counters["num_steps_sampled"] == 100, counters
     assert counters["num_steps_trained"] == 100, counters

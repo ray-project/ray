@@ -185,6 +185,8 @@ class CoreWorkerTest : public RedisServiceManagerForTest {
         .append(" --node_ip_address=" + node_ip_address)
         .append(" --redis_address=" + redis_address)
         .append(" --redis_port=6379")
+        .append(" --min-worker-port=0")
+        .append(" --max-worker-port=0")
         .append(" --num_initial_workers=1")
         .append(" --maximum_startup_concurrency=10")
         .append(" --static_resource_list=" + resource)

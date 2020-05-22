@@ -189,10 +189,13 @@ class TestRolloutWorker(unittest.TestCase):
             print("num_steps_trained={}".format(
                 result["info"]["num_steps_trained"]))
             if i == 0:
-                self.assertGreater(result["info"]["learner"]["cur_lr"], 0.01)
-            if result["info"]["learner"]["cur_lr"] < 0.07:
+                self.assertGreater(
+                    result["info"]["learner"]["default_policy"]["cur_lr"],
+                    0.01)
+            if result["info"]["learner"]["default_policy"]["cur_lr"] < 0.07:
                 break
-        self.assertLess(result["info"]["learner"]["cur_lr"], 0.07)
+        self.assertLess(result["info"]["learner"]["default_policy"]["cur_lr"],
+                        0.07)
 
     def test_no_step_on_init(self):
         # Allow for Unittest run.

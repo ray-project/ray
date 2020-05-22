@@ -1166,30 +1166,23 @@ py_test(
 
 # --------------------------------------------------------------------
 # Optimizers and Memories
-# rllib/optimizers/
+# rllib/execution/
 #
 # Tag: optimizers
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_optimizers",
-    tags = ["optimizers"],
-    size = "large",
-    srcs = ["optimizers/tests/test_optimizers.py"]
-)
-
-py_test(
     name = "test_segment_tree",
     tags = ["optimizers"],
     size = "small",
-    srcs = ["optimizers/tests/test_segment_tree.py"]
+    srcs = ["execution/tests/test_segment_tree.py"]
 )
 
 py_test(
     name = "test_prioritized_replay_buffer",
     tags = ["optimizers"],
     size = "small",
-    srcs = ["optimizers/tests/test_prioritized_replay_buffer.py"]
+    srcs = ["execution/tests/test_prioritized_replay_buffer.py"]
 )
 
 # --------------------------------------------------------------------
@@ -2052,15 +2045,6 @@ py_test(
     size = "medium",
     srcs = ["examples/twostep_game.py"],
     args = ["--stop-timesteps=2000", "--run=QMIX"]
-)
-
-py_test(
-    name = "examples/twostep_game_apex_qmix",
-    main = "examples/twostep_game.py",
-    tags = ["examples", "examples_T"],
-    size = "medium",
-    srcs = ["examples/twostep_game.py"],
-    args = ["--stop-timesteps=2000", "--run=APEX_QMIX", "--num-cpus=4"]
 )
 
 py_test(
