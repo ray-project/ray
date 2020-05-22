@@ -236,7 +236,7 @@ std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {
 
 std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
   return std::unique_ptr<rpc::DefaultErrorInfoHandler>(
-      new rpc::DefaultErrorInfoHandler(*redis_gcs_client_));
+      new rpc::DefaultErrorInfoHandler(gcs_table_storage_, gcs_pub_sub_));
 }
 
 std::unique_ptr<rpc::WorkerInfoHandler> GcsServer::InitWorkerInfoHandler() {
