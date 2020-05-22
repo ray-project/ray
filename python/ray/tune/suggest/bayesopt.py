@@ -134,7 +134,8 @@ class BayesOptSearch(Searcher):
             self.register_analysis(analysis)
 
     def suggest(self, trial_id):
-        if self.max_concurrent and len(self._live_trial_mapping) >= self.max_concurrent:
+        current_trials = len(self._live_trial_mapping)
+        if self.max_concurrent and current_trials >= self.max_concurrent:
             return None
 
         if self._random_search_trials == self._random_search_steps:
@@ -166,7 +167,7 @@ class BayesOptSearch(Searcher):
         """Notification for the completion of trial."""
         params = self._live_trial_mapping.pop(trial_id)
 
-        # The results may be None when some exception is raised during the trial.
+        # The results may be None if some exception is raised during the trial.
         if result is None:
             return
 
@@ -179,7 +180,8 @@ class BayesOptSearch(Searcher):
         # We store the results into a temporary cache
         self._cached_results.append((params, result))
 
-        # If the random search finished, we update the BO with all the computer points.
+        # If the random search finished,
+        # we update the BO with all the computer points.
         if len(self._cached_results) == self._random_search_steps:
             for params, result in self._cached_results:
                 self._register_result(params, result)
