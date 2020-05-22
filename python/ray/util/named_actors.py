@@ -47,7 +47,6 @@ def get_actor(name):
     """
     logger.warning("ray.util.get_actor has been moved to ray.get_actor and "
                    "will be removed in the future.")
-    raise Exception()
     return _get_actor(name)
 
 
