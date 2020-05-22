@@ -138,10 +138,9 @@ class BayesOptSearch(Searcher):
         if self.max_concurrent and current_trials >= self.max_concurrent:
             return None
 
-        if self._random_search_trials == self._random_search_steps:
-            return None
-
         if 0 <= len(self._cached_results) < self._random_search_steps:
+            if self._random_search_trials == self._random_search_steps:
+                return None
             self._random_search_trials += 1
 
         new_trial = self.optimizer.suggest(self.utility)
