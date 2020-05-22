@@ -95,9 +95,7 @@ if __name__ == "__main__":
         }
         group = True
     else:
-        config = {
-            "framework": "torch" if args.torch else "tf"
-        }
+        config = {"framework": "torch" if args.torch else "tf"}
         group = False
 
     ray.init(num_cpus=args.num_cpus or None)

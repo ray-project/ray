@@ -20,7 +20,6 @@ from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.rllib.utils.framework import check_framework, try_import_tf
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
-from ray.rllib.utils.memory import ray_get_and_free
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat

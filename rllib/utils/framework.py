@@ -72,9 +72,8 @@ def check_framework(framework, allow_none=True):
     # Check, whether torch is installed.
     elif framework == "torch":
         if torch is None:
-            raise ImportError(
-                "Could not import `torch`. "
-                "Try `pip install torch torchvision`")
+            raise ImportError("Could not import `torch`. "
+                              "Try `pip install torch torchvision`")
     # Framework is None (use numpy version of the component).
     elif framework is None:
         if not allow_none:

@@ -73,8 +73,8 @@ def before_init(policy, observation_space, action_space, config):
                                  policy.action_noise_std
             return single_action
 
-        action = tree.map_structure(
-            _add_noise, action, policy.action_space_struct)
+        action = tree.map_structure(_add_noise, action,
+                                    policy.action_space_struct)
         action = unbatch(action)
         return action
 

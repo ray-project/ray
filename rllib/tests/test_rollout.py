@@ -14,9 +14,9 @@ def rollout_test(algo, env="CartPole-v0"):
         tmp_dir = os.popen("mktemp -d").read()[:-1]
         if not os.path.exists(tmp_dir):
             sys.exit(1)
-    
+
         print("Saving results to {}".format(tmp_dir))
-    
+
         rllib_dir = str(Path(__file__).parent.parent.absolute())
         print("RLlib dir = {}\nexists={}".format(rllib_dir,
                                                  os.path.exists(rllib_dir)))
@@ -29,13 +29,12 @@ def rollout_test(algo, env="CartPole-v0"):
                   "\"timesteps_per_iter\": 10, "
                   "\"min_iter_time_s\": 1}'" + " --env={}".format(env))
 
-        checkpoint_path = os.popen(
-            "ls {}/default/*/checkpoint_1/"
-            "checkpoint-1".format(tmp_dir)).read()[:-1]
+        checkpoint_path = os.popen("ls {}/default/*/checkpoint_1/"
+                                   "checkpoint-1".format(tmp_dir)).read()[:-1]
         if not os.path.exists(checkpoint_path):
             sys.exit(1)
         print("Checkpoint path {} (exists)".format(checkpoint_path))
-    
+
         # Test rolling out n steps.
         os.popen("python {}/rollout.py --run={} \"{}\" --steps=25 "
                  "--out=\"{}/rollouts_25steps.pkl\" --no-render".format(
@@ -43,7 +42,7 @@ def rollout_test(algo, env="CartPole-v0"):
         if not os.path.exists(tmp_dir + "/rollouts_25steps.pkl"):
             sys.exit(1)
         print("rollout output (25 steps) exists!".format(checkpoint_path))
-    
+
         # Test rolling out 1 episode.
         os.popen("python {}/rollout.py --run={} \"{}\" --episodes=1 "
                  "--out=\"{}/rollouts_1episode.pkl\" --no-render".format(
@@ -51,7 +50,7 @@ def rollout_test(algo, env="CartPole-v0"):
         if not os.path.exists(tmp_dir + "/rollouts_1episode.pkl"):
             sys.exit(1)
         print("rollout output (1 ep) exists!".format(checkpoint_path))
-    
+
         # Cleanup.
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
 

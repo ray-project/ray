@@ -12,7 +12,6 @@ from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFCNetV2
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.test_utils import framework_iterator
 
-
 ACTION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
     "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
@@ -63,8 +62,7 @@ def check_support(alg, config, check_bounds=False):
                 env_config=dict(
                     action_space=action_space,
                     observation_space=obs_space,
-                    reward_space=Box(
-                        1.0, 1.0, shape=(), dtype=np.float32),
+                    reward_space=Box(1.0, 1.0, shape=(), dtype=np.float32),
                     p_done=1.0,
                     check_action_bounds=check_bounds)))
         stat = "ok"
@@ -77,15 +75,12 @@ def check_support(alg, config, check_bounds=False):
                         assert isinstance(a.get_policy().model,
                                           TorchVisionNetV2)
                     else:
-                        assert isinstance(a.get_policy().model,
-                                          VisionNetV2)
+                        assert isinstance(a.get_policy().model, VisionNetV2)
                 elif o_name in ["vector", "vector2"]:
                     if fw == "torch":
-                        assert isinstance(a.get_policy().model,
-                                          TorchFCNetV2)
+                        assert isinstance(a.get_policy().model, TorchFCNetV2)
                     else:
-                        assert isinstance(a.get_policy().model,
-                                          FCNetV2)
+                        assert isinstance(a.get_policy().model, FCNetV2)
             a.train()
         except UnsupportedSpaceException:
             stat = "unsupported"
@@ -105,7 +100,7 @@ def check_support(alg, config, check_bounds=False):
         # Check all obs spaces.
         for o_name, obs_space in OBSERVATION_SPACES_TO_TEST.items():
             _do_check(alg, config, "discrete", o_name)
-    
+
 
 class ModelSupportedSpaces(unittest.TestCase):
     def setUp(self):
@@ -115,18 +110,12 @@ class ModelSupportedSpaces(unittest.TestCase):
         ray.shutdown()
 
     def test_a3c(self):
-        config = {
-            "num_workers": 1, "optimizer": {"grads_per_step": 1}
-        }
+        config = {"num_workers": 1, "optimizer": {"grads_per_step": 1}}
         check_support("A3C", config, check_bounds=True)
 
     def test_appo(self):
         check_support("APPO", {"num_gpus": 0, "vtrace": False})
-        check_support(
-            "APPO", {
-                "num_gpus": 0,
-                "vtrace": True
-            })
+        check_support("APPO", {"num_gpus": 0, "vtrace": True})
 
     def test_ars(self):
         check_support(
@@ -180,7 +169,6 @@ class ModelSupportedSpaces(unittest.TestCase):
 
     def test_sac(self):
         check_support("SAC", {}, check_bounds=True)
-
 
 
 if __name__ == "__main__":

@@ -17,12 +17,9 @@ def check_support_multiagent(alg, config):
     for _ in framework_iterator(config, frameworks=("tf", "torch")):
         if alg in ["DDPG", "APEX_DDPG", "SAC"]:
             a = get_agent_class(alg)(
-                config=config,
-                env="multi_agent_mountaincar")
+                config=config, env="multi_agent_mountaincar")
         else:
-            a = get_agent_class(alg)(
-                config=config,
-                env="multi_agent_cartpole")
+            a = get_agent_class(alg)(config=config, env="multi_agent_cartpole")
         try:
             a.train()
         finally:
@@ -95,11 +92,10 @@ class ModelSupportedSpaces(unittest.TestCase):
             })
 
     def test_sac_multiagent(self):
-        check_support_multiagent(
-            "SAC", {
-                "num_workers": 0,
-                "normalize_actions": False,
-            })
+        check_support_multiagent("SAC", {
+            "num_workers": 0,
+            "normalize_actions": False,
+        })
 
 
 if __name__ == "__main__":
