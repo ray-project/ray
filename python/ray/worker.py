@@ -1054,9 +1054,8 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
 
     # Really we should just subscribe to the errors for this specific job.
     # However, currently all errors seem to be published on the same channel.
-    error_pubsub_channel = str(
-        ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB")).encode("ascii")
-    worker.error_message_pubsub_client.subscribe(error_pubsub_channel)
+    error_pubsub_channel = "ERROR_INFO*".encode("ascii")
+    worker.error_message_pubsub_client.psubscribe(error_pubsub_channel)
     # worker.error_message_pubsub_client.psubscribe("*")
 
     try:

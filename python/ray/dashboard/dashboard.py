@@ -797,8 +797,8 @@ class NodeStats(threading.Thread):
         p.subscribe(log_channel)
         logger.info("NodeStats: subscribed to {}".format(log_channel))
 
-        error_channel = ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB")
-        p.subscribe(error_channel)
+        error_channel = "ERROR_INFO*".encode("ascii")
+        p.psubscribe(error_channel)
         logger.info("NodeStats: subscribed to {}".format(error_channel))
 
         actor_channel = ray.gcs_utils.TablePubsub.Value("ACTOR_PUBSUB")
