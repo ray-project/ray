@@ -514,31 +514,35 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
   RAY_CHECK(node_change_callback_ == nullptr);
   node_change_callback_ = subscribe;
 
-  auto on_subscribe = [this](const std::string &id, const std::string &data) {
-    GcsNodeInfo node_info;
-    node_info.ParseFromString(data);
-    HandleNotification(node_info);
-  };
-
-  auto on_done = [this, subscribe, done](const Status &status) {
-    // Get nodes from GCS Service.
-    auto callback = [this, subscribe, done](
-                        const Status &status,
-                        const std::vector<GcsNodeInfo> &node_info_list) {
-      for (auto &node_info : node_info_list) {
-        HandleNotification(node_info);
-      }
-      if (done) {
-        done(status);
-      }
+  RAY_CHECK(subscribe != nullptr);
+  subscribe_node_operation_ = [this, subscribe](const StatusCallback &done) {
+    auto on_subscribe = [this](const std::string &id, const std::string &data) {
+      GcsNodeInfo node_info;
+      node_info.ParseFromString(data);
+      HandleNotification(node_info);
     };
-    RAY_CHECK_OK(AsyncGetAll(callback));
-  };
 
-  auto status =
-      client_impl_->GetGcsPubSub().SubscribeAll(NODE_CHANNEL, on_subscribe, on_done);
-  RAY_LOG(DEBUG) << "Finished subscribing node change.";
-  return status;
+    auto on_done = [this, subscribe, done](const Status &status) {
+      // Get nodes from GCS Service.
+      auto callback = [this, subscribe, done](
+                          const Status &status,
+                          const std::vector<GcsNodeInfo> &node_info_list) {
+        for (auto &node_info : node_info_list) {
+          HandleNotification(node_info);
+        }
+        if (done) {
+          done(status);
+        }
+      };
+      RAY_CHECK_OK(AsyncGetAll(callback));
+    };
+
+    auto status =
+        client_impl_->GetGcsPubSub().SubscribeAll(NODE_CHANNEL, on_subscribe, on_done);
+    RAY_LOG(DEBUG) << "Finished subscribing node change.";
+    return status;
+  };
+  return subscribe_node_operation_(done);
 }
 
 boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
@@ -641,16 +645,19 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
   RAY_LOG(DEBUG) << "Subscribing node resources change.";
   RAY_CHECK(subscribe != nullptr);
 
-  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-    rpc::NodeResourceChange node_resource_change;
-    node_resource_change.ParseFromString(data);
-    subscribe(node_resource_change);
-  };
+  subscribe_resource_operation_ = [this, subscribe](const StatusCallback &done) {
+    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+      rpc::NodeResourceChange node_resource_change;
+      node_resource_change.ParseFromString(data);
+      subscribe(node_resource_change);
+    };
 
-  auto status = client_impl_->GetGcsPubSub().SubscribeAll(NODE_RESOURCE_CHANNEL,
-                                                          on_subscribe, done);
-  RAY_LOG(DEBUG) << "Finished subscribing node resources change.";
-  return status;
+    auto status = client_impl_->GetGcsPubSub().SubscribeAll(NODE_RESOURCE_CHANNEL,
+                                                            on_subscribe, done);
+    RAY_LOG(DEBUG) << "Finished subscribing node resources change.";
+    return status;
+  };
+  return subscribe_resource_operation_(done);
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
@@ -690,15 +697,19 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing batch heartbeat.";
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-    rpc::HeartbeatBatchTableData heartbeat_batch_table_data;
-    heartbeat_batch_table_data.ParseFromString(data);
-    subscribe(heartbeat_batch_table_data);
+
+  subscribe_batch_heartbeat_operation_ = [this, subscribe](const StatusCallback &done) {
+    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+      rpc::HeartbeatBatchTableData heartbeat_batch_table_data;
+      heartbeat_batch_table_data.ParseFromString(data);
+      subscribe(heartbeat_batch_table_data);
+    };
+    auto status = client_impl_->GetGcsPubSub().Subscribe(
+        HEARTBEAT_BATCH_CHANNEL, ClientID::Nil().Hex(), on_subscribe, done);
+    RAY_LOG(DEBUG) << "Finished subscribing batch heartbeat.";
+    return status;
   };
-  auto status = client_impl_->GetGcsPubSub().Subscribe(
-      HEARTBEAT_BATCH_CHANNEL, ClientID::Nil().Hex(), on_subscribe, done);
-  RAY_LOG(DEBUG) << "Finished subscribing batch heartbeat.";
-  return status;
+  return subscribe_batch_heartbeat_operation_(done);
 }
 
 void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
@@ -738,6 +749,20 @@ void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_in
     GcsNodeInfo &cache_data = node_cache_[node_id];
     node_change_callback_(node_id, cache_data);
   }
+}
+
+Status ServiceBasedNodeInfoAccessor::AsyncReSubscribe() {
+  RAY_LOG(INFO) << "Reestablishing subscription for node info.";
+  if (subscribe_node_operation_ != nullptr) {
+    return subscribe_node_operation_(nullptr);
+  }
+  if (subscribe_resource_operation_ != nullptr) {
+    return subscribe_resource_operation_(nullptr);
+  }
+  if (subscribe_batch_heartbeat_operation_ != nullptr) {
+    return subscribe_batch_heartbeat_operation_(nullptr);
+  }
+  return Status::OK();
 }
 
 ServiceBasedTaskInfoAccessor::ServiceBasedTaskInfoAccessor(

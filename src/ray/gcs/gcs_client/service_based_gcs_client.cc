@@ -50,6 +50,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   auto re_subscribe = [this]() {
     RAY_CHECK_OK(job_accessor_->AsyncReSubscribe());
     RAY_CHECK_OK(actor_accessor_->AsyncReSubscribe());
+    RAY_CHECK_OK(node_accessor_->AsyncReSubscribe());
   };
 
   // Connect to gcs service.

@@ -185,7 +185,15 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
       const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
       const StatusCallback &done) override;
 
+  Status AsyncReSubscribe() override;
+
  private:
+  /// Save the subscribe operation in this function, so we can call it again when GCS
+  /// restarts from a failure.
+  SubscribeOperation subscribe_node_operation_;
+  SubscribeOperation subscribe_resource_operation_;
+  SubscribeOperation subscribe_batch_heartbeat_operation_;
+
   void HandleNotification(const GcsNodeInfo &node_info);
 
   ServiceBasedGcsClient *client_impl_;
