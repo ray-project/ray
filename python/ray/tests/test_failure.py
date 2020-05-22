@@ -955,11 +955,11 @@ def test_fill_object_store_lru_fallback(shutdown_only):
 
     # Check that objects out of scope are cleaned up quickly.
     ray.get(expensive_task.remote())
+    start = time.time()
     for _ in range(3):
-        start = time.time()
         ray.get(expensive_task.remote())
-        end = time.time()
-        assert end - start < 1
+    end = time.time()
+    assert end - start < 3
 
     oids = []
     for _ in range(3):
