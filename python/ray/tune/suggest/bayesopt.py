@@ -64,7 +64,7 @@ class BayesOptSearch(Searcher):
 
     def __init__(self,
                  space,
-                 metric="episode_reward_mean",
+                 metric,
                  mode="max",
                  utility_kwargs=None,
                  random_state=42,
@@ -118,14 +118,17 @@ class BayesOptSearch(Searcher):
             self._metric_op = 1.
         elif mode == "min":
             self._metric_op = -1.
+
         self._live_trial_mapping = {}
         self._cached_results = []
         self._random_search_steps = random_search_steps
 
         self.optimizer = byo.BayesianOptimization(
             f=None, pbounds=space, verbose=verbose, random_state=random_state)
-
+        
         self.utility = byo.UtilityFunction(**utility_kwargs)
+
+        # Registering the provided analysis, if given
         if analysis is not None:
             self.register_analysis(analysis)
 
@@ -151,31 +154,45 @@ class BayesOptSearch(Searcher):
                                        analysis.get_all_configs().values()):
             # We add the obtained results to the
             # gaussian process optimizer
-            self._process_result(params, report)
+            self._register_result(params, report)
 
     def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial."""
+        # The results may be None when some exception
+        # is raised during the trial.
         if result is not None:
+            # We retrieve the stored parameters
             params = self._live_trial_mapping[trial_id]
+            # If we still have to execute some random
+            # search steps
             if self._random_search_steps > 0:
+                # We store the results into a temporary cache
                 self._cached_results.append(params, result)
+                # Decrease the total number of steps to do
                 self._random_search_steps -= 1
+                # And if we hit zero, we update the BO
+                # with all the computer points.
                 if self._random_search_steps == 0:
+                    # And for each tuple we register the result
                     for params, result in self._cached_results:
-                        self._process_result(params, result)
+                        self._register_result(params, result)
             else:
-                self._process_result(params, result)
+                # Otherwise we simply register the obtained result
+                self._register_result(params, result)
+        # Finally, we delete the computed trial from the 
+        # dictionary.
         del self._live_trial_mapping[trial_id]
 
-    def _process_result(self, params, result):
+    def _register_result(self, params, result):
+        """Register given tuple of params and results."""
         self.optimizer.register(params, self._metric_op * result[self.metric])
 
     def save(self, checkpoint_dir):
-        trials_object = self.optimizer
-        with open(checkpoint_dir, "wb") as output:
-            pickle.dump(trials_object, output)
+        """Storing current optimizer state."""
+        with open(checkpoint_dir, "wb") as f:
+            pickle.dump(self.optimizer, f)
 
     def restore(self, checkpoint_dir):
-        with open(checkpoint_dir, "rb") as input:
-            trials_object = pickle.load(input)
-        self.optimizer = trials_object
+        """Restoring current optimizer state."""
+        with open(checkpoint_dir, "rb") as f:
+            self.optimizer = pickle.load(f)
