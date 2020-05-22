@@ -1,6 +1,6 @@
-=====================================
+======================================
 Advanced Topics, Configurations, & FAQ
-=====================================
+======================================
 
 Ray Serve has a number of knobs and tools for you to tune for your particular workload. 
 All Ray Serve advanced options and topics are covered on this page aside from the 
