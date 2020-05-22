@@ -168,9 +168,7 @@ class BayesOptSearch(Searcher):
         del self._live_trial_mapping[trial_id]
 
     def _process_result(self, params, result):
-        self.optimizer.register(
-            params=params,
-            target=self._metric_op * result[self.metric])
+        self.optimizer.register(params, self._metric_op * result[self.metric])
 
     def save(self, checkpoint_dir):
         trials_object = self.optimizer
