@@ -238,8 +238,8 @@ std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
 }
 
 std::unique_ptr<rpc::WorkerInfoHandler> GcsServer::InitWorkerInfoHandler() {
-  return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(
-      new rpc::DefaultWorkerInfoHandler(*redis_gcs_client_, gcs_pub_sub_));
+  return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(new rpc::DefaultWorkerInfoHandler(
+      *redis_gcs_client_, gcs_table_storage_, gcs_pub_sub_));
 }
 
 }  // namespace gcs

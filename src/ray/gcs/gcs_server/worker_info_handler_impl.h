@@ -26,9 +26,13 @@ namespace rpc {
 /// This implementation class of `WorkerInfoHandler`.
 class DefaultWorkerInfoHandler : public rpc::WorkerInfoHandler {
  public:
-  explicit DefaultWorkerInfoHandler(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                                    std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub)
-      : gcs_table_storage_(gcs_table_storage), gcs_pub_sub_(gcs_pub_sub) {}
+  explicit DefaultWorkerInfoHandler(
+      gcs::RedisGcsClient &gcs_client,
+      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+      std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub)
+      : gcs_client_(gcs_client),
+        gcs_table_storage_(gcs_table_storage),
+        gcs_pub_sub_(gcs_pub_sub) {}
 
   void HandleReportWorkerFailure(const ReportWorkerFailureRequest &request,
                                  ReportWorkerFailureReply *reply,
@@ -39,6 +43,7 @@ class DefaultWorkerInfoHandler : public rpc::WorkerInfoHandler {
                             SendReplyCallback send_reply_callback) override;
 
  private:
+  gcs::RedisGcsClient &gcs_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
 };
