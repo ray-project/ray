@@ -143,9 +143,9 @@ if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
     # Install pickle5-backport.
     TEMP_DIR="$(mktemp -d)"
     pushd "$TEMP_DIR"
-    curl -f -s -L -R -o "pickle5-backport.zip" "https://github.com/suquark/pickle5-backport/archive/8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72.zip"
+    curl -f -s -L -R -o "pickle5-backport.zip" "https://github.com/pitrou/pickle5-backport/archive/c0c1a158f59366696161e0dffdd10cfe17601372.zip"
     unzip pickle5-backport.zip
-    pushd pickle5-backport-8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72
+    pushd pickle5-backport-c0c1a158f59366696161e0dffdd10cfe17601372
       CC=gcc "$PYTHON_EXECUTABLE" setup.py --quiet bdist_wheel
       unzip -q -o dist/*.whl -d "$pickle5_path"
     popd
