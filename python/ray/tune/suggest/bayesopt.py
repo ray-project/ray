@@ -134,11 +134,10 @@ class BayesOptSearch(Searcher):
             self.register_analysis(analysis)
 
     def suggest(self, trial_id):
-        current_trials = len(self._live_trial_mapping)
-        if self.max_concurrent and current_trials >= self.max_concurrent:
-            return None
-
-        if 0 <= len(self._cached_results) < self._random_search_steps:
+        if self.max_concurrent:
+            if len(self._live_trial_mapping) >= self.max_concurrent:
+                return None
+        if self._random_search_steps > 0 and len(self._cached_results) < self._random_search_steps:
             if self._random_search_trials == self._random_search_steps:
                 return None
             self._random_search_trials += 1
@@ -161,30 +160,31 @@ class BayesOptSearch(Searcher):
             # We add the obtained results to the
             # gaussian process optimizer
             self._register_result(params, report)
-            
+
     def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial."""
-        params = self._live_trial_mapping.pop(trial_id)
-
-        # The results may be None if some exception is raised during the trial.
-        if result is None:
-            return
-
-        # If we don't have to execute some random search steps
-        if not (0 <=  len(self._cached_results) < self._random_search_steps):
-            #  we simply register the obtained result
-            self._register_result(params, result)
-            return
-
-        # We store the results into a temporary cache
-        self._cached_results.append((params, result))
-
-        # If the random search finished,
-        # we update the BO with all the computer points.
-        if len(self._cached_results) == self._random_search_steps:
-            for params, result in self._cached_results:
+        # The results may be None when some exception
+        # is raised during the trial.
+        if result is not None:
+            # We retrieve the stored parameters
+            params = self._live_trial_mapping[trial_id]
+            # If we still have to execute some random
+            # search steps
+            if self._random_search_steps > 0 and len(self._cached_results) < self._random_search_steps:
+                # We store the results into a temporary cache
+                self._cached_results.append((params, result))
+                # And if we hit zero, we update the BO
+                # with all the computer points.
+                if len(self._cached_results) == self._random_search_steps:
+                    # And for each tuple we register the result
+                    for params, result in self._cached_results:
+                        self._register_result(params, result)
+            else:
+                # Otherwise we simply register the obtained result
                 self._register_result(params, result)
-                
+        # Finally, we delete the computed trial from the dictionary.
+        del self._live_trial_mapping[trial_id]
+
     def _register_result(self, params, result):
         """Register given tuple of params and results."""
         self.optimizer.register(params, self._metric_op * result[self.metric])
