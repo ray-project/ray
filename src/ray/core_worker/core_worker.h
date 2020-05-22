@@ -76,6 +76,9 @@ struct CoreWorkerOptions {
   JobID job_id;
   /// Options for the GCS client.
   gcs::GcsClientOptions gcs_options;
+  /// Initialize logging if true. Otherwise, it must be initialized and cleaned up by the
+  /// caller.
+  bool enable_logging;
   /// Directory to write logs to. If this is empty, logs won't be written to a file.
   std::string log_dir;
   /// If false, will not call `RayLog::InstallFailureSignalHandler()`.

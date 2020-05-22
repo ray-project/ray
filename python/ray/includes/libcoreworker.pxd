@@ -193,6 +193,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string raylet_socket
         CJobID job_id
         CGcsClientOptions gcs_options
+        c_bool enable_logging
         c_string log_dir
         c_bool install_failure_signal_handler
         c_string node_ip_address
