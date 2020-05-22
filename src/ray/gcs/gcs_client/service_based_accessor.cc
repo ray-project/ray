@@ -80,7 +80,7 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeToFinishedJobs(
 }
 
 Status ServiceBasedJobInfoAccessor::AsyncReSubscribe() {
-  RAY_LOG(INFO) << "Job info resubscribe once.";
+  RAY_LOG(INFO) << "Reestablishing subscription for job info.";
   if (subscribe_operation_ != nullptr) {
     return subscribe_operation_(nullptr);
   }

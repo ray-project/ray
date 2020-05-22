@@ -228,19 +228,33 @@ class GcsRpcClient {
   }
 
   void Reconnect() {
+    absl::MutexLock lock(&mutex_);
     if (get_server_address_) {
-      auto address = get_server_address_();
-      Init(address.first, address.second, client_call_manager_);
+      std::pair<std::string, int> address;
+      int index = 0;
+      for (; index < RayConfig::instance().ping_gcs_rpc_server_max_retries(); ++index) {
+        address = get_server_address_();
+        if (Ping(address.first, address.second, 100)) {
+          RAY_LOG(INFO) << "Target rpc server " << address.first << ":" << address.second
+                        << " is valid.";
+          break;
+        }
+        usleep(RayConfig::instance().ping_gcs_rpc_server_interval_milliseconds() * 1000);
+      }
 
-      if (Ping(address.first, address.second, 100)) {
-        RAY_LOG(INFO) << "Target rpc server " << address.first << ":" << address.second
-                      << " is valid.";
+      if (index < RayConfig::instance().ping_gcs_rpc_server_max_retries()) {
+        Init(address.first, address.second, client_call_manager_);
         if (reconnected_callback_) {
           reconnected_callback_();
         }
+      } else {
+        RAY_LOG(FATAL) << "Target rpc server " << address.first << ":" << address.second
+                       << " is invalid.";
       }
     }
   }
+
+  absl::Mutex mutex_;
 
   ClientCallManager &client_call_manager_;
   std::function<std::pair<std::string, int>()> get_server_address_;
