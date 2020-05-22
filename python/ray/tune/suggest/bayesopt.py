@@ -156,14 +156,15 @@ class BayesOptSearch(Searcher):
     def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial."""
         if result is not None:
+            params = self._live_trial_mapping[trial_id]
             if self._random_search_steps > 0:
-                self._cached_results.append(self._live_trial_mapping[trial_id], result)
+                self._cached_results.append(params, result)
                 self._random_search_steps -= 1
                 if self._random_search_steps == 0:
-                    for param, result in self._cached_results:
-                        self._process_result(param, result)
+                    for params, result in self._cached_results:
+                        self._process_result(params, result)
             else:
-                self._process_result(self._live_trial_mapping[trial_id], result)
+                self._process_result(params, result)
         del self._live_trial_mapping[trial_id]
 
     def _process_result(self, params, result):
