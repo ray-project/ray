@@ -33,6 +33,11 @@ class AsyncClient {
  public:
   AsyncClient() : socket_(io_service_), timer_(io_service_) {}
 
+  ~AsyncClient() {
+    io_service_.stop();
+    socket_.close();
+  }
+
   /// This function is used to asynchronously connect a socket to the specified address
   /// with timeout.
   ///

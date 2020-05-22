@@ -55,8 +55,8 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
   }
 
   void TearDown() override {
-    gcs_server_->Stop();
     io_service_->stop();
+    gcs_server_->Stop();
     thread_io_service_->join();
     thread_gcs_server_->join();
     gcs_client_->Disconnect();
