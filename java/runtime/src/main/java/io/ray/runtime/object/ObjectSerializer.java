@@ -1,11 +1,14 @@
 package io.ray.runtime.object;
 
+import io.ray.api.Ray;
 import io.ray.api.exception.RayActorException;
 import io.ray.api.exception.RayTaskException;
 import io.ray.api.exception.RayWorkerException;
 import io.ray.api.exception.UnreconstructableException;
 import io.ray.api.id.ObjectId;
-import io.ray.runtime.generated.Gcs.ErrorType;
+import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.exception.NativeRayException;
+import io.ray.runtime.generated.Common.ErrorType;
 import io.ray.runtime.serializer.Serializer;
 import java.util.Arrays;
 import org.apache.commons.lang3.tuple.Pair;
@@ -56,7 +59,13 @@ public class ObjectSerializer {
       } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)) {
         return new UnreconstructableException(objectId);
       } else if (Arrays.equals(meta, TASK_EXECUTION_EXCEPTION_META)) {
-        return Serializer.decode(data, objectType);
+        byte[] serialized = Serializer.decode(data, byte[].class);
+        NativeRayException nativeRayException = NativeRayException.fromBytes(serialized);
+        try {
+          return nativeRayException.getJavaException();
+        } finally {
+          nativeRayException.destroy();
+        }
       } else if (Arrays.equals(meta, OBJECT_METADATA_TYPE_PYTHON)) {
         throw new IllegalArgumentException("Can't deserialize Python object: " + objectId
             .toString());
@@ -82,8 +91,16 @@ public class ObjectSerializer {
       // indicate it's raw binary. So that this object can also be read by Python.
       return new NativeRayObject((byte[]) object, OBJECT_METADATA_TYPE_RAW);
     } else if (object instanceof RayTaskException) {
-      byte[] serializedBytes = Serializer.encode(object).getLeft();
-      return new NativeRayObject(serializedBytes, TASK_EXECUTION_EXCEPTION_META);
+      NativeRayException nativeRayException = new NativeRayException(
+          (RayRuntimeInternal) Ray.internal(),
+          ErrorType.TASK_EXECUTION_EXCEPTION,
+          (Throwable) object);
+      try {
+        byte[] serializedBytes = Serializer.encode(nativeRayException.serialize()).getLeft();
+        return new NativeRayObject(serializedBytes, TASK_EXECUTION_EXCEPTION_META);
+      } finally {
+        nativeRayException.destroy();
+      }
     } else {
       Pair<byte[], Boolean> serialized = Serializer.encode(object);
       return new NativeRayObject(serialized.getLeft(), serialized.getRight() ?

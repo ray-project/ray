@@ -63,6 +63,8 @@ class RayException : public MessageWrapper<rpc::RayException> {
 
   const rpc::ErrorType ErrorType() const { return message_->error_type(); }
 
+  Language Language() const { return message_->language(); }
+
   std::string Data() const { return message_->data(); }
 
   std::shared_ptr<RayException> Cause() const {

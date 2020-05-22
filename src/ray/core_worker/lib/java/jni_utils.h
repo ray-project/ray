@@ -207,6 +207,21 @@ class JavaByteArrayBuffer : public ray::Buffer {
   jbyte *native_bytes_;
 };
 
+/// Convert a Java byte array to a C++ string.
+inline std::string JavaByteArrayToNativeString(JNIEnv *env, const jbyteArray &bytes) {
+  return std::string(
+      reinterpret_cast<const char *>(env->GetByteArrayElements(bytes, nullptr)),
+      env->GetArrayLength(bytes));
+}
+
+/// Convert a C++ string to a Java byte array.
+inline jbyteArray NativeStringToJavaByteArray(JNIEnv *env, const std::string &bytes) {
+  jbyteArray array = env->NewByteArray(bytes.size());
+  env->SetByteArrayRegion(array, 0, bytes.size(),
+                          reinterpret_cast<const jbyte *>(bytes.c_str()));
+  return array;
+}
+
 /// Convert a Java byte array to a C++ UniqueID.
 template <typename ID>
 inline ID JavaByteArrayToId(JNIEnv *env, const jbyteArray &bytes) {

@@ -362,8 +362,8 @@ class SerializationContext:
         # Only RayTaskError is possible to be serialized here. We don't
         # need to deal with other exception types here.
         if isinstance(value, RayTaskError):
-            metadata = str(ErrorType.Value(
-                    "TASK_EXECUTION_EXCEPTION")).encode("ascii")
+            metadata = str(
+                ErrorType.Value("TASK_EXECUTION_EXCEPTION")).encode("ascii")
             value = RayException(value).binary()
         else:
             metadata = ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE

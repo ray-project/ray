@@ -37,6 +37,15 @@ public class ObjectId extends BaseId implements Serializable {
     super(id);
   }
 
+  /**
+   * Generate a nil ObjectId.
+   */
+  public static ObjectId nil() {
+    byte[] b = new byte[LENGTH];
+    Arrays.fill(b, (byte) 0xFF);
+    return new ObjectId(b);
+  }
+
   @Override
   public int size() {
     return LENGTH;
