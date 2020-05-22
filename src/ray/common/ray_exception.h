@@ -131,7 +131,7 @@ class RayException : public MessageWrapper<rpc::RayException> {
     }
     result << ":";
     if (!message_->error_message().empty()) {
-      result << ":\n\n" << message_->error_message() << "\n";
+      result << "\n\n" << message_->error_message() << "\n";
     }
     if (!details.empty()) {
       result << "\n" << details;

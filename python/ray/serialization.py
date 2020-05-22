@@ -230,10 +230,10 @@ class SerializationContext:
     def _deserialize_msgpack_data(self, data, metadata):
         msgpack_data, pickle5_data = split_buffer(data)
 
-        if metadata == ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE:
-            python_objects = []
-        else:
+        if metadata == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
             python_objects = self._deserialize_pickle5_data(pickle5_data)
+        else:
+            python_objects = []
 
         try:
 
@@ -273,8 +273,8 @@ class SerializationContext:
             if error_type == ErrorType.Value("TASK_EXECUTION_EXCEPTION"):
                 obj = self._deserialize_msgpack_data(data, metadata)
                 obj = ray.RayException.from_binary(obj)
-                obj = obj.python_exception()
                 assert isinstance(obj, RayException)
+                obj = obj.python_exception()
                 return obj
             elif error_type == ErrorType.Value("WORKER_DIED"):
                 return RayWorkerError()
@@ -358,7 +358,16 @@ class SerializationContext:
             metadata, inband, writer,
             self.get_and_clear_contained_object_ids())
 
-    def _serialize_to_msgpack(self, metadata, value):
+    def _serialize_to_msgpack(self, value):
+        # Only RayTaskError is possible to be serialized here. We don't
+        # need to deal with other exception types here.
+        if isinstance(value, RayTaskError):
+            metadata = str(ErrorType.Value(
+                    "TASK_EXECUTION_EXCEPTION")).encode("ascii")
+            value = RayException(value).binary()
+        else:
+            metadata = ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE
+
         python_objects = []
 
         def _python_serializer(o):
@@ -369,10 +378,10 @@ class SerializationContext:
         msgpack_data = MessagePackSerializer.dumps(value, _python_serializer)
 
         if python_objects:
+            metadata = ray_constants.OBJECT_METADATA_TYPE_PYTHON
             pickle5_serialized_object = \
                 self._serialize_to_pickle5(metadata, python_objects)
         else:
-            metadata = ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE
             pickle5_serialized_object = None
 
         return MessagePackSerializedObject(metadata, msgpack_data,
@@ -390,16 +399,7 @@ class SerializationContext:
             # that this object can also be read by Java.
             return RawSerializedObject(value)
         else:
-            # Only RayTaskError is possible to be serialized here. We don't
-            # need to deal with other exception types here.
-            if isinstance(value, RayTaskError):
-                metadata = str(ErrorType.Value(
-                    "TASK_EXECUTION_EXCEPTION")).encode("ascii")
-                value = RayException(value).binary()
-            else:
-                metadata = ray_constants.OBJECT_METADATA_TYPE_PYTHON
-
-            return self._serialize_to_msgpack(metadata, value)
+            return self._serialize_to_msgpack(value)
 
     def register_custom_serializer(self,
                                    cls,
