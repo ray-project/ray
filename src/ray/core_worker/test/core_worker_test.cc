@@ -264,6 +264,7 @@ class CoreWorkerTest : public RedisServiceManagerForTest {
           raylet_socket_names_[0],        // raylet_socket
           NextJobId(),                    // job_id
           gcs_options_,                   // gcs_options
+          true,                           // enable_logging
           "",                             // log_dir
           true,                           // install_failure_signal_handler
           "127.0.0.1",                    // node_ip_address
