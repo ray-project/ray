@@ -122,7 +122,7 @@ class BayesOptSearch(Searcher):
         self._live_trial_mapping = {}
         self._cached_results = []
         self._random_search_steps = random_search_steps
-        self._random_trials = 0
+        self._random_search_trials = 0
 
         self.optimizer = byo.BayesianOptimization(
             f=None, pbounds=space, verbose=verbose, random_state=random_state)
@@ -137,10 +137,10 @@ class BayesOptSearch(Searcher):
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
-        if self._random_search_steps != 0:
-            if self._random_trials >= self._random_search_steps:
+        if self._random_search_steps > 0:
+            if self._random_search_trials == self._random_search_steps:
                 return None
-            self._random_trials += 1
+            self._random_search_trials += 1
                 
         new_trial = self.optimizer.suggest(self.utility)
 
@@ -171,14 +171,12 @@ class BayesOptSearch(Searcher):
             params = self._live_trial_mapping[trial_id]
             # If we still have to execute some random
             # search steps
-            if self._random_search_steps > 0:
+            if self._random_search_steps > 0 and len(self._cached_results) < self._random_search_steps:
                 # We store the results into a temporary cache
                 self._cached_results.append((params, result))
-                # Decrease the total number of steps to do
-                self._random_search_steps -= 1
                 # And if we hit zero, we update the BO
                 # with all the computer points.
-                if self._random_search_steps == 0:
+                if len(self._cached_results) == self._random_search_steps:
                     # And for each tuple we register the result
                     for params, result in self._cached_results:
                         self._register_result(params, result)
