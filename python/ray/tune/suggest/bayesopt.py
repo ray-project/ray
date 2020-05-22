@@ -137,7 +137,7 @@ class BayesOptSearch(Searcher):
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
-        if self._random_search_steps > 0:
+        if self._random_search_steps > 0 and len(self._cached_results) < self._random_search_steps:
             if self._random_search_trials == self._random_search_steps:
                 return None
             self._random_search_trials += 1
