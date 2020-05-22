@@ -34,6 +34,7 @@ namespace gcs {
 #define TASK_CHANNEL "TASK"
 #define TASK_LEASE_CHANNEL "TASK_LEASE"
 #define HEARTBEAT_BATCH_CHANNEL "HEARTBEAT_BATCH"
+#define ERROR_INFO_CHANNEL "ERROR_INFO"
 
 /// \class GcsPubSub
 ///

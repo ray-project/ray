@@ -15,6 +15,8 @@
 #ifndef RAY_GCS_ERROR_INFO_HANDLER_IMPL_H
 #define RAY_GCS_ERROR_INFO_HANDLER_IMPL_H
 
+#include "gcs_table_storage.h"
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
@@ -24,15 +26,19 @@ namespace rpc {
 /// This implementation class of `ErrorInfoHandler`.
 class DefaultErrorInfoHandler : public rpc::ErrorInfoHandler {
  public:
-  explicit DefaultErrorInfoHandler(gcs::RedisGcsClient &gcs_client)
-      : gcs_client_(gcs_client) {}
+  explicit DefaultErrorInfoHandler(
+      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+      std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub)
+      : gcs_table_storage_(std::move(gcs_table_storage)),
+        gcs_pub_sub_(std::move(gcs_pub_sub)) {}
 
   void HandleReportJobError(const ReportJobErrorRequest &request,
                             ReportJobErrorReply *reply,
                             SendReplyCallback send_reply_callback) override;
 
  private:
-  gcs::RedisGcsClient &gcs_client_;
+  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
 };
 
 }  // namespace rpc
