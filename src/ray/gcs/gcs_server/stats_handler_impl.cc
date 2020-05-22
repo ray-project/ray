@@ -33,6 +33,7 @@ void DefaultStatsHandler::HandleAddProfileData(const AddProfileDataRequest &requ
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
+
   Status status = gcs_table_storage_->ProfileTable().Put(UniqueID::FromRandom(),
                                                          *profile_table_data, on_done);
   if (!status.ok()) {
@@ -54,6 +55,7 @@ void DefaultStatsHandler::HandleGetAllProfileInfo(
     RAY_LOG(INFO) << "Finished getting all profile info.";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
+
   Status status = gcs_table_storage_->ProfileTable().GetAll(on_done);
   if (!status.ok()) {
     on_done(std::unordered_map<UniqueID, ProfileTableData>());
