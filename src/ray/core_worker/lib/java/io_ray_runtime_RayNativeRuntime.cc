@@ -109,7 +109,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
       JavaStringToNativeString(env, rayletSocket),  // raylet_socket
       JavaByteArrayToId<ray::JobID>(env, jobId),    // job_id
       ToGcsClientOptions(env, gcsClientOptions),    // gcs_options
-      true,                                         // enable_ray_log
+      true,                                         // enable_logging
       JavaStringToNativeString(env, logDir),        // log_dir
       // TODO (kfstorm): JVM would crash if install_failure_signal_handler was set to true
       false,                                         // install_failure_signal_handler

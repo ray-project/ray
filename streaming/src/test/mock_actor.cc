@@ -300,7 +300,7 @@ class StreamingWorker {
         raylet_socket,       // raylet_socket
         JobID::FromInt(1),   // job_id
         gcs_options,         // gcs_options
-        true,                // enable_ray_log
+        true,                // enable_logging
         "",                  // log_dir
         true,                // install_failure_signal_handler
         "127.0.0.1",         // node_ip_address

@@ -667,7 +667,7 @@ cdef class CoreWorker:
         options.raylet_socket = raylet_socket.encode("ascii")
         options.job_id = job_id.native()
         options.gcs_options = gcs_options.native()[0]
-        options.enable_ray_log = True
+        options.enable_logging = True
         options.log_dir = log_dir.encode("utf-8")
         options.install_failure_signal_handler = True
         options.node_ip_address = node_ip_address.encode("utf-8")

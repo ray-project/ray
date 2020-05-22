@@ -91,7 +91,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
           options.worker_type == WorkerType::DRIVER
               ? ComputeDriverIdFromJob(options_.job_id)
               : (options_.num_workers == 1 ? WorkerID::FromRandom() : WorkerID::Nil())) {
-  if (options_.enable_ray_log) {
+  if (options_.enable_logging) {
     std::stringstream app_name;
     app_name << LanguageString(options_.language) << "-core-"
              << WorkerTypeString(options_.worker_type);
@@ -139,7 +139,7 @@ CoreWorkerProcess::~CoreWorkerProcess() {
     absl::ReaderMutexLock lock(&worker_map_mutex_);
     RAY_CHECK(workers_.empty());
   }
-  if (options_.enable_ray_log) {
+  if (options_.enable_logging) {
     RayLog::ShutDownRayLog();
   }
 }
@@ -1866,7 +1866,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   if (success && request.force_kill()) {
     RAY_LOG(INFO) << "Force killing a worker running " << main_thread_task_id_;
     RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
-    if (options_.enable_ray_log) {
+    if (options_.enable_logging) {
       RayLog::ShutDownRayLog();
     }
     // NOTE(hchen): Use `_Exit()` to force-exit this process without doing cleanup.
@@ -1905,7 +1905,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
              "please create the Java actor with some dynamic options to make it being "
              "hosted in a dedicated worker process.";
     }
-    if (options_.enable_ray_log) {
+    if (options_.enable_logging) {
       RayLog::ShutDownRayLog();
     }
     // NOTE(hchen): Use `_Exit()` to force-exit this process without doing cleanup.
