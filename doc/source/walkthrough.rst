@@ -168,6 +168,20 @@ Further, remote functions can return multiple object IDs.
 
   a_id, b_id, c_id = return_multiple.remote()
 
+Remote functions can be canceled by calling ``ray.cancel`` on the returned Object ID. Remote actor functions can be stopped by killing the actor using the ``ray.kill`` interface.
+
+.. code-block:: python
+
+  @ray.remote
+  def blocking_operation():
+      time.sleep(10e6)
+      return 100
+  
+  obj_id = blocking_operation.remote()
+  ray.cancel(obj_id)
+
+.. autofunction:: ray.cancel
+    :noindex:
 
 Objects in Ray
 --------------

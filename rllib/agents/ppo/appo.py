@@ -1,8 +1,10 @@
 from ray.rllib.agents.impala.impala import validate_config
 from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
-from ray.rllib.agents.ppo.ppo import update_kl
+from ray.rllib.agents.ppo.ppo import UpdateKL
 from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.agents import impala
+from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
+    LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES, _get_shared_metrics
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -54,35 +56,48 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "vf_loss_coeff": 0.5,
     "entropy_coeff": 0.01,
     "entropy_coeff_schedule": None,
-
-    # TODO: impl update target.
-    "use_exec_api": False,
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
-def update_target_and_kl(trainer, fetches):
-    # Update the KL coeff depending on how many steps LearnerThread has stepped
-    # through
-    learner_steps = trainer.optimizer.learner.num_steps
-    if learner_steps >= trainer.target_update_frequency:
-
-        # Update Target Network
-        trainer.optimizer.learner.num_steps = 0
-        trainer.workers.local_worker().foreach_trainable_policy(
-            lambda p, _: p.update_target())
-
-        # Also update KL Coeff
-        if trainer.config["use_kl_loss"]:
-            update_kl(trainer, trainer.optimizer.learner.stats)
-
-
 def initialize_target(trainer):
     trainer.workers.local_worker().foreach_trainable_policy(
         lambda p, _: p.update_target())
-    trainer.target_update_frequency = trainer.config["num_sgd_iter"] \
-        * trainer.config["minibatch_buffer_size"]
+
+
+class UpdateTargetAndKL:
+    def __init__(self, workers, config):
+        self.workers = workers
+        self.config = config
+        self.update_kl = UpdateKL(workers)
+        self.target_update_freq = config["num_sgd_iter"] \
+            * config["minibatch_buffer_size"]
+
+    def __call__(self, fetches):
+        metrics = _get_shared_metrics()
+        cur_ts = metrics.counters[STEPS_SAMPLED_COUNTER]
+        last_update = metrics.counters[LAST_TARGET_UPDATE_TS]
+        if cur_ts - last_update > self.target_update_freq:
+            metrics.counters[NUM_TARGET_UPDATES] += 1
+            metrics.counters[LAST_TARGET_UPDATE_TS] = cur_ts
+            # Update Target Network
+            self.workers.local_worker().foreach_trainable_policy(
+                lambda p, _: p.update_target())
+            # Also update KL Coeff
+            if self.config["use_kl_loss"]:
+                self.update_kl(fetches)
+
+
+def add_target_callback(config):
+    """Add the update target and kl hook.
+
+    This hook is called explicitly after each learner step in the execution
+    setup for IMPALA.
+    """
+
+    config["after_train_step"] = UpdateTargetAndKL
+    return validate_config(config)
 
 
 def get_policy_class(config):
@@ -96,8 +111,7 @@ def get_policy_class(config):
 APPOTrainer = impala.ImpalaTrainer.with_updates(
     name="APPO",
     default_config=DEFAULT_CONFIG,
-    validate_config=validate_config,
+    validate_config=add_target_callback,
     default_policy=AsyncPPOTFPolicy,
     get_policy_class=get_policy_class,
-    after_init=initialize_target,
-    after_optimizer_step=update_target_and_kl)
+    after_init=initialize_target)

@@ -25,8 +25,8 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches, \
     StandardizeFields, SelectExperiences
 from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
 from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import register_env
 

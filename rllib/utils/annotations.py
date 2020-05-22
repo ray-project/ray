@@ -41,8 +41,7 @@ def DeveloperAPI(obj):
     to be stable sans minor changes (but less stable than public APIs).
 
     Subclasses that inherit from a ``@DeveloperAPI`` base class can be
-    assumed part of the RLlib developer API as well (e.g., all policy
-    optimizers are developer API because PolicyOptimizer is ``@DeveloperAPI``).
+    assumed part of the RLlib developer API as well.
     """
 
     return obj

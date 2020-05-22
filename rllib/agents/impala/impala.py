@@ -1,26 +1,22 @@
-import copy
 import logging
 
 import ray
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
-from ray.rllib.agents.impala.tree_agg import \
-    gather_experiences_tree_aggregation
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, _get_global_vars
+from ray.rllib.execution.learner_thread import LearnerThread
+from ray.rllib.execution.multi_gpu_learner import TFMultiGPULearner
+from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
+from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, \
+    _get_global_vars, _get_shared_metrics
 from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.optimizers import AsyncSamplesOptimizer
-from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
-from ray.rllib.optimizers.aso_learner import LearnerThread
-from ray.rllib.optimizers.aso_multi_gpu_learner import TFMultiGPULearner
 from ray.rllib.utils.annotations import override
 from ray.tune.trainable import Trainable
 from ray.tune.resources import Resources
-from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
@@ -91,48 +87,13 @@ DEFAULT_CONFIG = with_common_config({
     "vf_loss_coeff": 0.5,
     "entropy_coeff": 0.01,
     "entropy_coeff_schedule": None,
+
+    # Callback for APPO to use to update KL, target network periodically.
+    # The input to the callback is the learner fetches dict.
+    "after_train_step": None,
 })
 # __sphinx_doc_end__
 # yapf: enable
-
-
-def defer_make_workers(trainer, env_creator, policy, config):
-    # Defer worker creation to after the optimizer has been created.
-    return trainer._make_workers(env_creator, policy, config, 0)
-
-
-def make_aggregators_and_optimizer(workers, config):
-    if config["num_aggregation_workers"] > 0:
-        # Create co-located aggregator actors first for placement pref
-        aggregators = TreeAggregator.precreate_aggregators(
-            config["num_aggregation_workers"])
-    else:
-        aggregators = None
-    workers.add_workers(config["num_workers"])
-
-    optimizer = AsyncSamplesOptimizer(
-        workers,
-        lr=config["lr"],
-        num_gpus=config["num_gpus"],
-        rollout_fragment_length=config["rollout_fragment_length"],
-        train_batch_size=config["train_batch_size"],
-        replay_buffer_num_slots=config["replay_buffer_num_slots"],
-        replay_proportion=config["replay_proportion"],
-        num_data_loader_buffers=config["num_data_loader_buffers"],
-        max_sample_requests_in_flight_per_worker=config[
-            "max_sample_requests_in_flight_per_worker"],
-        broadcast_interval=config["broadcast_interval"],
-        num_sgd_iter=config["num_sgd_iter"],
-        minibatch_buffer_size=config["minibatch_buffer_size"],
-        num_aggregation_workers=config["num_aggregation_workers"],
-        learner_queue_size=config["learner_queue_size"],
-        learner_queue_timeout=config["learner_queue_timeout"],
-        **config["optimizer"])
-
-    if aggregators:
-        # Assign the pre-created aggregators to the optimizer
-        optimizer.aggregator.init(aggregators)
-    return optimizer
 
 
 class OverrideDefaultResourceRequest:
@@ -230,16 +191,18 @@ class BroadcastUpdateLearnerWeights:
             self.steps_since_broadcast = 0
             self.learner_thread.weights_updated = False
             # Update metrics.
-            metrics = LocalIterator.get_metrics()
+            metrics = _get_shared_metrics()
             metrics.counters["num_weight_broadcasts"] += 1
         actor.set_weights.remote(self.weights, _get_global_vars())
 
 
-def record_steps_trained(count):
-    metrics = LocalIterator.get_metrics()
+def record_steps_trained(item):
+    count, fetches = item
+    metrics = _get_shared_metrics()
     # Manually update the steps trained counter since the learner thread
     # is executing outside the pipeline.
     metrics.counters[STEPS_TRAINED_COUNTER] += count
+    return item
 
 
 def gather_experiences_directly(workers, config):
@@ -261,7 +224,6 @@ def gather_experiences_directly(workers, config):
     return train_batches
 
 
-# Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
     if config["num_aggregation_workers"] > 0:
         train_batches = gather_experiences_tree_aggregation(workers, config)
@@ -290,26 +252,14 @@ def execution_plan(workers, config):
     merged_op = Concurrently(
         [enqueue_op, dequeue_op], mode="async", output_indexes=[1])
 
-    def add_learner_metrics(result):
-        def timer_to_ms(timer):
-            return round(1000 * timer.mean, 3)
-
-        result["info"].update({
-            "learner_queue": learner_thread.learner_queue_size.stats(),
-            "learner": copy.deepcopy(learner_thread.stats),
-            "timing_breakdown": {
-                "learner_grad_time_ms": timer_to_ms(learner_thread.grad_timer),
-                "learner_load_time_ms": timer_to_ms(learner_thread.load_timer),
-                "learner_load_wait_time_ms": timer_to_ms(
-                    learner_thread.load_wait_timer),
-                "learner_dequeue_time_ms": timer_to_ms(
-                    learner_thread.queue_timer),
-            }
-        })
-        return result
+    # Callback for APPO to use to update KL, target network periodically.
+    # The input to the callback is the learner fetches dict.
+    if config["after_train_step"]:
+        merged_op = merged_op.for_each(lambda t: t[1]).for_each(
+            config["after_train_step"](workers, config))
 
     return StandardMetricsReporting(merged_op, workers, config) \
-        .for_each(add_learner_metrics)
+        .for_each(learner_thread.add_learner_metrics)
 
 
 ImpalaTrainer = build_trainer(
@@ -318,7 +268,5 @@ ImpalaTrainer = build_trainer(
     default_policy=VTraceTFPolicy,
     validate_config=validate_config,
     get_policy_class=get_policy_class,
-    make_workers=defer_make_workers,
-    make_policy_optimizer=make_aggregators_and_optimizer,
     execution_plan=execution_plan,
     mixins=[OverrideDefaultResourceRequest])

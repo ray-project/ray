@@ -17,16 +17,6 @@ class TestPG(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def test_pg_exec_impl(ray_start_regular):
-        trainer = pg.PGTrainer(
-            env="CartPole-v0",
-            config={
-                "min_iter_time_s": 0,
-                "use_exec_api": True
-            })
-        assert isinstance(trainer.train(), dict)
-        check_compute_action(trainer)
-
     def test_pg_compilation(self):
         """Test whether a PGTrainer can be built with both frameworks."""
         config = pg.DEFAULT_CONFIG.copy()

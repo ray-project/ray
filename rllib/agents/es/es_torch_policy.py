@@ -5,14 +5,14 @@ import gym
 import numpy as np
 
 import ray
-from ray.rllib.evaluation.sampler import unbatch_actions
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.space_utils import get_base_struct_from_space
+from ray.rllib.utils.space_utils import get_base_struct_from_space, \
+    unbatch
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
 torch, _ = try_import_torch()
@@ -75,7 +75,7 @@ def before_init(policy, observation_space, action_space, config):
 
         action = tree.map_structure(
             _add_noise, action, policy.action_space_struct)
-        action = unbatch_actions(action)
+        action = unbatch(action)
         return action
 
     type(policy).compute_actions = _compute_actions
@@ -100,7 +100,6 @@ def make_model_and_action_dist(policy, observation_space, action_space,
         framework="torch")
     model = ModelCatalog.get_model_v2(
         policy.preprocessor.observation_space,
-        #observation_space,
         action_space,
         num_outputs=dist_dim,
         model_config=config["model"],
