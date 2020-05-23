@@ -99,12 +99,12 @@ class BaseEnv:
                         make_env=make_env,
                         existing_envs=[env],
                         num_envs=num_envs)
-            elif isinstance(env, ExternalMultiAgentEnv):
-                if num_envs != 1:
-                    raise ValueError(
-                        "ExternalMultiAgentEnv does not currently support "
-                        "num_envs > 1.")
-                env = _ExternalEnvToBaseEnv(env, multiagent=True)
+            #elif isinstance(env, ExternalMultiAgentEnv):
+            #    #if num_envs != 1:
+            #    #    raise ValueError(
+            #    #        "ExternalMultiAgentEnv does not currently support "
+            #    #        "num_envs > 1.")
+            #    env = _ExternalEnvToBaseEnv(env, multiagent=True)
             elif isinstance(env, ExternalEnv):
                 #if num_envs != 1:
                 #    raise ValueError(
@@ -166,11 +166,15 @@ class BaseEnv:
         raise NotImplementedError
 
     @PublicAPI
-    def try_reset(self, env_id):
-        """Attempt to reset the env with the given id.
+    def try_reset(self, env_id=None):
+        """Attempt to reset the sub-env with the given id or all sub-envs.
 
         If the environment does not support synchronous reset, None can be
         returned here.
+
+        Args:
+            env_id (Optional[int]): The sub-env ID if applicable. If None,
+                reset the entire Env (i.e. all sub-envs).
 
         Returns:
             obs (dict|None): Resetted observation or None if not supported.
@@ -206,10 +210,10 @@ def _with_dummy_agent_id(env_id_to_values, dummy_id=_DUMMY_AGENT_ID):
 class _ExternalEnvToBaseEnv(BaseEnv):
     """Internal adapter of ExternalEnv to BaseEnv."""
 
-    def __init__(self, external_env, preprocessor=None, multiagent=False):
+    def __init__(self, external_env, preprocessor=None):  #, multiagent=False):
         self.external_env = external_env
         self.prep = preprocessor
-        self.multiagent = multiagent
+        self.multiagent = issubclass(type(external_env), ExternalMultiAgentEnv)  #multiagent
         self.action_space = external_env.action_space
         if preprocessor:
             self.observation_space = preprocessor.observation_space
@@ -262,27 +266,27 @@ class _ExternalEnvToBaseEnv(BaseEnv):
                 del self.external_env._episodes[eid]
 
             if data:
-                if self.external_env.num_envs > 1:
-                    for i in range(self.external_env.num_envs):
-                        if self.prep:
-                            all_obs[i] = self.prep.transform(data["obs"][i])
-                        else:
-                            all_obs[i] = data["obs"][i]
-                        all_rewards[i] = data["reward"][i]
-                        all_dones[i] = data["done"][i]
-                        all_infos[i] = data["info"]
-                        if "off_policy_action" in data:
-                            off_policy_actions[i] = data["off_policy_action"][i]
+                #if self.external_env.num_envs > 1:
+                #    for i in range(self.external_env.num_envs):
+                #        if self.prep:
+                #            all_obs[i] = self.prep.transform(data["obs"][i])
+                #        else:
+                #            all_obs[i] = data["obs"][i]
+                #        all_rewards[i] = data["reward"][i]
+                #        all_dones[i] = data["done"][i]
+                #        all_infos[i] = data["info"]
+                #        if "off_policy_action" in data:
+                #            off_policy_actions[i] = data["off_policy_action"][i]
+                #else:
+                if self.prep:
+                    all_obs[eid] = self.prep.transform(data["obs"])
                 else:
-                    if self.prep:
-                        all_obs[eid] = self.prep.transform(data["obs"])
-                    else:
-                        all_obs[eid] = data["obs"]
-                    all_rewards[eid] = data["reward"]
-                    all_dones[eid] = data["done"]
-                    all_infos[eid] = data["info"]
-                    if "off_policy_action" in data:
-                        off_policy_actions[eid] = data["off_policy_action"]
+                    all_obs[eid] = data["obs"]
+                all_rewards[eid] = data["reward"]
+                all_dones[eid] = data["done"]
+                all_infos[eid] = data["info"]
+                if "off_policy_action" in data:
+                    off_policy_actions[eid] = data["off_policy_action"]
 
         if self.multiagent:
             # ensure a consistent set of keys

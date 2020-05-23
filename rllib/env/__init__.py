@@ -15,6 +15,7 @@ __all__ = [
     "MultiAgentEnv",
     "ExternalEnv",
     "ExternalMultiAgentEnv",
+    "ExternalMultiAgentVectorEnv",
     "VectorEnv",
     "EnvContext",
     "DMEnv",

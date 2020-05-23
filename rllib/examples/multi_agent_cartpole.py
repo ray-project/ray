@@ -39,7 +39,7 @@ parser.add_argument("--torch", action="store_true")
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=True)
 
     # Register the models to use.
     mod1 = TorchSharedWeightsModel if args.torch else SharedWeightsModel1
@@ -55,6 +55,7 @@ if __name__ == "__main__":
     # Each policy can have a different configuration (including custom model).
     def gen_policy(i):
         config = {
+            "num_envs_per_worker": 5,
             "model": {
                 "custom_model": ["model1", "model2"][i % 2],
             },
@@ -74,6 +75,7 @@ if __name__ == "__main__":
         "env_config": {
             "num_agents": args.num_agents,
         },
+        "num_envs_per_worker": 5,
         "log_level": "DEBUG",
         "simple_optimizer": args.simple,
         "num_sgd_iter": 10,

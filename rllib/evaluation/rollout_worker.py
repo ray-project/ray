@@ -304,8 +304,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         self.fake_sampler = fake_sampler
 
         self.env = _validate_env(env_creator(env_context))
-        if isinstance(self.env, MultiAgentEnv) or \
-                isinstance(self.env, BaseEnv):
+        if isinstance(self.env, (BaseEnv, MultiAgentEnv)):
 
             def wrap(env):
                 return env  # we can't auto-wrap these env types

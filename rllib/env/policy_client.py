@@ -10,7 +10,8 @@ import time
 
 import ray.cloudpickle as pickle
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.env import ExternalEnv, MultiAgentEnv, ExternalMultiAgentEnv
+from ray.rllib.env import ExternalEnv, MultiAgentEnv, ExternalMultiAgentEnv, \
+    ExternalMultiAgentVectorEnv
 from ray.rllib.utils.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,7 @@ class PolicyClient:
 
     @PublicAPI
     def start_episode(self, episode_id=None, training_enabled=True):
+                      #num_episodes=1):
         """Record the start of an episode.
 
         Arguments:
@@ -73,6 +75,8 @@ class PolicyClient:
                 it to be auto-assigned.
             training_enabled (bool): Whether to use experiences for this
                 episode to improve the policy.
+            #num_episodes (int): How many episodes to generate. Only valid for
+            #    the self.env=ExternalMultiAgentVectorEnv case (vectorized).
 
         Returns:
             episode_id (str): Unique string id for the episode.
@@ -80,7 +84,13 @@ class PolicyClient:
 
         if self.local:
             self._update_local_policy()
-            return self.env.start_episode(episode_id, training_enabled)
+            #if num_episodes == 1:
+            ret = self.env.start_episode(episode_id, training_enabled)
+            #else:
+            #    assert isinstance(self.env, ExternalMultiAgentVectorEnv)
+            #    ret = [self.env.start_episode(i, training_enabled)
+            #           for i in range(num_episodes)]
+            return ret
 
         return self._send({
             "episode_id": episode_id,
@@ -266,21 +276,27 @@ def auto_wrap_external(real_env_creator, num_envs=None):
 
     def wrapped_creator(env_config):
         real_env = real_env_creator(env_config)
-        if not (isinstance(real_env, ExternalEnv)
-                or isinstance(real_env, ExternalMultiAgentEnv)):
+        if not isinstance(real_env,
+                          (ExternalEnv, ExternalMultiAgentEnv,
+                           ExternalMultiAgentVectorEnv)):
             logger.info(
-                "The env you specified is not a type of ExternalEnv. "
-                "Attempting to convert it automatically to ExternalEnv.")
+                "The env you specified is not a supported (sub-)type of "
+                "ExternalEnv. Attempting to convert it automatically to "
+                "ExternalEnv.")
 
-            if isinstance(real_env, MultiAgentEnv):
+            if num_envs > 1:
+                external_cls = ExternalMultiAgentVectorEnv
+            elif isinstance(real_env, MultiAgentEnv):
                 external_cls = ExternalMultiAgentEnv
             else:
                 external_cls = ExternalEnv
 
             class ExternalEnvWrapper(external_cls):
                 def __init__(self, real_env):
-                    super().__init__(real_env.action_space,
-                                     real_env.observation_space, num_envs=num_envs)
+                    super().__init__(
+                        observation_space=real_env.observation_space,
+                        action_space=real_env.action_space,
+                        num_envs=num_envs)
 
                 def run(self):
                     # Since we are calling methods on this class in the
