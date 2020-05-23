@@ -16,4 +16,3 @@ export const getWeightedAverage = (
   }
   return totalWeightTimesValue / totalWeight;
 };
-

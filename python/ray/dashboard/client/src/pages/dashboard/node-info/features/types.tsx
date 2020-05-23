@@ -7,7 +7,11 @@ export type Worker = ArrayType<Node["workers"]>;
 
 type ClusterFeatureData = { nodes: Node[] };
 type NodeFeatureData = { node: Node };
-type WorkerFeatureData = { node: Node; worker: Worker, rayletWorker: RayletWorkerStats | null };
+type WorkerFeatureData = {
+  node: Node;
+  worker: Worker;
+  rayletWorker: RayletWorkerStats | null;
+};
 
 export type ClusterFeatureComponent = (
   data: ClusterFeatureData,

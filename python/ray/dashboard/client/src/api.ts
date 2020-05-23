@@ -94,7 +94,6 @@ export type GPUStats = {
   processes: Array<GPUProcessStats>;
 };
 
-
 export type NodeInfoResponse = {
   clients: Array<{
     now: number;
@@ -138,9 +137,9 @@ export type RayletCoreWorkerStats = {
 };
 
 export type RayletWorkerStats = {
-        pid: number;
-        isDriver?: boolean;
-        coreWorkerStats: RayletCoreWorkerStats;
+  pid: number;
+  isDriver?: boolean;
+  coreWorkerStats: RayletCoreWorkerStats;
 };
 
 export type RayletInfoResponse = {
