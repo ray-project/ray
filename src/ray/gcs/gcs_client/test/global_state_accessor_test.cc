@@ -112,7 +112,8 @@ TEST_F(GlobalStateAccessorTest, TestProfileTable) {
     auto client_id = ClientID::FromRandom();
     auto profile_table_data = Mocker::GenProfileTableData(client_id);
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(profile_table_data,
+    RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(
+        profile_table_data,
         [&promise](Status status) { promise.set_value(status.ok()); }));
     WaitReady(promise.get_future(), timeout_ms_);
   }
