@@ -135,12 +135,12 @@ class BayesOptSearch(Searcher):
 
     def suggest(self, trial_id):
         """Return new point to be explored by black box function.
-        
+
         Parameters
         --------------------
         trial_id (str): Id of the trial.
             This is a short alphanumerical string.
-        
+
         Returns
         --------------------
         Either a dictionary describing the new point to explore or
@@ -184,10 +184,10 @@ class BayesOptSearch(Searcher):
             # We add the obtained results to the
             # gaussian process optimizer
             self._register_result(params, report)
-            
+
     def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial.
-        
+
         Parameters
         ----------------
         trial_id (str): Id of the trial.
@@ -222,7 +222,7 @@ class BayesOptSearch(Searcher):
         if len(self._cached_results) == self.random_search_trials:
             for params, result in self._cached_results:
                 self._register_result(params, result)
-                
+
     def _register_result(self, params, result):
         """Register given tuple of params and results."""
         self.optimizer.register(params, self._metric_op * result[self.metric])
