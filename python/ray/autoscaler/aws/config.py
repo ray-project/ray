@@ -1,4 +1,5 @@
 from distutils.version import StrictVersion
+from functools import lru_cache
 from functools import partial
 import itertools
 import json
@@ -12,6 +13,7 @@ import botocore
 
 from ray.ray_constants import BOTO_MAX_RETRIES
 from ray.autoscaler.autoscaler import NODE_TYPE_CONFIG_KEYS
+from ray.autoscaler.aws.utils import LazyDefaultDict
 
 logger = logging.getLogger(__name__)
 
@@ -300,31 +302,44 @@ def _upsert_security_groups(config, node_types):
 
 
 def _get_or_create_vpc_security_groups(conf, node_types):
-    sg_name = SECURITY_GROUP_TEMPLATE.format(conf["cluster_name"])
-    subnet_to_vpc, node_type_to_vpc, node_type_to_sg = {}, {}, {}
-    node_type_to_subnet = {
-        node_type: conf[NODE_TYPE_CONFIG_KEYS[node_type]]["SubnetIds"][0]
+    # Figure out which VPC each node_type is in...
+    ec2 = _resource("ec2", conf)
+    node_type_to_vpc = {
+        node_type: _get_vpc_id_or_die(
+            ec2,
+            conf[NODE_TYPE_CONFIG_KEYS[node_type]]["SubnetIds"][0],
+        )
         for node_type in node_types
     }
 
-    for node_type, subnet_id in node_type_to_subnet.items():
-        if subnet_id not in subnet_to_vpc:
-            subnet_to_vpc[subnet_id] = _get_vpc_id_or_die(conf, subnet_id)
-        node_type_to_vpc[node_type] = subnet_to_vpc[subnet_id]
+    # Generate the name of the security group we're looking for...
+    expected_sg_name = SECURITY_GROUP_TEMPLATE.format(conf["cluster_name"])
 
-    all_sgs = _get_security_groups(conf, subnet_to_vpc.values(), [sg_name])
-    for node_type, vpc_id in node_type_to_vpc.items():
-        sg = next((_ for _ in all_sgs if _.vpc_id == vpc_id), None)
-        if sg is None:
-            sg = _create_security_group(conf, vpc_id, sg_name)
-            all_sgs.append(sg)
-        node_type_to_sg[node_type] = sg
+    # Figure out which security groups with this name exist for each VPC...
+    vpc_to_existing_sg = {
+        sg.vpc_id: sg
+        for sg in _get_security_groups(
+            conf,
+            node_type_to_vpc.values(),
+            [expected_sg_name],
+        )
+    }
 
-    return node_type_to_sg
+    # Lazily create any security group we're missing for each VPC...
+    vpc_to_sg = LazyDefaultDict(
+        partial(_create_security_group, conf, group_name=expected_sg_name),
+        vpc_to_existing_sg,
+    )
+
+    # Then return a mapping from each node_type to its security group...
+    return {
+        node_type: vpc_to_sg[vpc_id]
+        for node_type, vpc_id in node_type_to_vpc.items()
+    }
 
 
-def _get_vpc_id_or_die(config, subnet_id):
-    ec2 = _resource("ec2", config)
+@lru_cache()
+def _get_vpc_id_or_die(ec2, subnet_id):
     subnet = list(
         ec2.subnets.filter(Filters=[{
             "Name": "subnet-id",
