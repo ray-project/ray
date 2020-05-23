@@ -164,10 +164,13 @@ class BayesOptSearch(Searcher):
             
     def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial."""
-        params = self._live_trial_mapping.pop(trial_id)
+        # We try to get the parameters used for this trial
+        params = self._live_trial_mapping.pop(trial_id, None)
 
         # The results may be None if some exception is raised during the trial.
-        if result is None:
+        # Also, if the parameters are None (were already processed)
+        # we interrupt the following procedure.
+        if result is None or params is None:
             return
 
         # If we don't have to execute some random search steps
