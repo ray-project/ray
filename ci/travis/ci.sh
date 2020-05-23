@@ -109,13 +109,12 @@ upload_wheels() {
 
 test_python() {
   if [ "${OSTYPE}" = msys ]; then
-    PYTHONPATH=python python \
-      -c "import colorama; colorama.init(); import pytest, ray; pytest.main()" \
-      -q -s --durations=5 --timeout=300 \
-      python/ray/tests/test_actor.py \
-      python/ray/tests/test_basic.py \
-      python/ray/tests/test_debug_tools.py \
-      python/ray/tests/test_mini.py \
+    # Increased timeout from default of timeout=300 due to test_basic
+    bazel test -k --config=ci --test_timeout=600 --build_tests_only -- \
+      python/ray/tests:test_actor \
+      python/ray/tests:test_basic \
+      python/ray/tests:test_debug_tools \
+      python/ray/tests:test_mini \
       ;
   fi
 }
