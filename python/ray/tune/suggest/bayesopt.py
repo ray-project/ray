@@ -147,7 +147,8 @@ class BayesOptSearch(Searcher):
         None, when no new point is to be explored for the time being.
         """
         # If we have more active trials than the allowed maximum
-        if 0 < self.max_concurrent <= len(self._live_trial_mapping):
+        total_live_trials = len(self._live_trial_mapping)
+        if self.max_concurrent and self.max_concurrent <= total_live_trials:
             # we stop the suggestion and return None.
             return None
 
