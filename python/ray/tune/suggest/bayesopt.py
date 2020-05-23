@@ -121,8 +121,8 @@ class BayesOptSearch(Searcher):
 
         self._live_trial_mapping = {}
         self._cached_results = []
-        self._random_search_steps = random_search_steps
-        self._random_search_trials = 0
+        self.random_search_trials = random_search_steps
+        self._total_random_search_trials = 0
 
         self.optimizer = byo.BayesianOptimization(
             f=None, pbounds=space, verbose=verbose, random_state=random_state)
@@ -134,18 +134,40 @@ class BayesOptSearch(Searcher):
             self.register_analysis(analysis)
 
     def suggest(self, trial_id):
-        current_trials = len(self._live_trial_mapping)
-        if self.max_concurrent and current_trials >= self.max_concurrent:
+        """Return new point to be explored by black box function.
+        
+        Parameters
+        --------------------
+        trial_id (str): Id of the trial.
+            This is a short alphanumerical string.
+        
+        Returns
+        --------------------
+        Either a dictionary describing the new point to explore or
+        None, when no new point is to be explored for the time being.
+        """
+        # If we have more active trials than the allowed maximum
+        if 0 < self.max_concurrent <= len(self._live_trial_mapping):
+            # we stop the suggestion and return None.
             return None
 
-        if 0 <= len(self._cached_results) < self._random_search_steps:
-            if self._random_search_trials == self._random_search_steps:
+        # If we are still in the random search part and we are waiting for
+        # trials to complete
+        if len(self._cached_results) < self.random_search_trials:
+            # We check if we have already maxed out the number of requested
+            # random search trials
+            if self._total_random_search_trials == self.random_search_trials:
+                # If so we stop the suggestion and return None
                 return None
-            self._random_search_trials += 1
+            # Otherwise we increase the total number of rndom search trials
+            self._total_random_search_trials += 1
 
+        # We compute the new point to explore
         new_trial = self.optimizer.suggest(self.utility)
+        # Save the new trial to the trial mapping
         self._live_trial_mapping[trial_id] = new_trial
 
+        # Return a deep copy of the mapping
         return copy.deepcopy(new_trial)
 
     def register_analysis(self, analysis):
@@ -186,7 +208,7 @@ class BayesOptSearch(Searcher):
             return
 
         # If we don't have to execute some random search steps
-        if not (0 <=  len(self._cached_results) < self._random_search_steps):
+        if len(self._cached_results) >= self.random_search_trials:
             #  we simply register the obtained result
             self._register_result(params, result)
             return
@@ -196,7 +218,7 @@ class BayesOptSearch(Searcher):
 
         # If the random search finished,
         # we update the BO with all the computer points.
-        if len(self._cached_results) == self._random_search_steps:
+        if len(self._cached_results) == self.random_search_trials:
             for params, result in self._cached_results:
                 self._register_result(params, result)
                 
