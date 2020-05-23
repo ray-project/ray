@@ -38,6 +38,7 @@ from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
 from ray.dashboard.interface import BaseDashboardController
 from ray.dashboard.interface import BaseDashboardRouteHandler
+from ray.dashboard.memory import construct_memory_table, MemoryTable
 from ray.dashboard.metrics_exporter.client import Exporter
 from ray.dashboard.metrics_exporter.client import MetricsExportClient
 
@@ -126,6 +127,7 @@ class DashboardController(BaseDashboardController):
             redis_address, redis_password=redis_password)
         if Analysis is not None:
             self.tune_stats = TuneCollector(2.0)
+        self.memory_table = MemoryTable([])
 
     def _construct_raylet_info(self):
         D = self.raylet_stats.get_raylet_stats()
@@ -133,6 +135,7 @@ class DashboardController(BaseDashboardController):
             data["nodeId"]: data.get("workersStats")
             for data in D.values()
         }
+
         infeasible_tasks = sum(
             (data.get("infeasibleTasks", []) for data in D.values()), [])
         # ready_tasks are used to render tasks that are not schedulable
@@ -142,6 +145,7 @@ class DashboardController(BaseDashboardController):
                           [])
         actor_tree = self.node_stats.get_actor_tree(
             workers_info_by_node, infeasible_tasks, ready_tasks)
+
         for address, data in D.items():
             # process view data
             measures_dicts = {}
@@ -223,6 +227,23 @@ class DashboardController(BaseDashboardController):
 
     def get_raylet_info(self):
         return self._construct_raylet_info()
+
+    def get_memory_table_info(self) -> MemoryTable:
+        # Collecting memory info adds big overhead to the cluster.
+        # This must be collected only when it is necessary.
+        self.raylet_stats.include_memory_info = True
+        D = self.raylet_stats.get_raylet_stats()
+        workers_info_by_node = {
+            data["nodeId"]: data.get("workersStats")
+            for data in D.values()
+        }
+        self.memory_table = construct_memory_table(workers_info_by_node)
+        return self.memory_table
+
+    def stop_collecting_memory_table_info(self):
+        # Reset memory table.
+        self.memory_table = MemoryTable([])
+        self.raylet_stats.include_memory_info = False
 
     def tune_info(self):
         if Analysis is not None:
@@ -312,6 +333,15 @@ class DashboardRouteHandler(BaseDashboardRouteHandler):
     async def raylet_info(self, req) -> aiohttp.web.Response:
         result = self.dashboard_controller.get_raylet_info()
         return await json_response(self.is_dev, result=result)
+
+    async def memory_table_info(self, req) -> aiohttp.web.Response:
+        memory_table = self.dashboard_controller.get_memory_table_info()
+        return await json_response(self.is_dev, result=memory_table.__dict__())
+
+    async def stop_collecting_memory_table_info(self,
+                                                req) -> aiohttp.web.Response:
+        self.dashboard_controller.stop_collecting_memory_table_info()
+        return await json_response(self.is_dev, result={})
 
     async def tune_info(self, req) -> aiohttp.web.Response:
         result = self.dashboard_controller.tune_info()
@@ -462,7 +492,9 @@ def setup_dashboard_route(app: aiohttp.web.Application,
                           get_profiling_info=None,
                           kill_actor=None,
                           logs=None,
-                          errors=None):
+                          errors=None,
+                          memory_table=None,
+                          stop_memory_table=None):
     def add_get_route(route, handler_func):
         if route is not None:
             app.router.add_get(route, handler_func)
@@ -480,6 +512,8 @@ def setup_dashboard_route(app: aiohttp.web.Application,
     add_get_route(kill_actor, handler.kill_actor)
     add_get_route(logs, handler.logs)
     add_get_route(errors, handler.errors)
+    add_get_route(memory_table, handler.memory_table_info)
+    add_get_route(stop_memory_table, handler.stop_collecting_memory_table_info)
 
 
 class Dashboard:
@@ -548,7 +582,9 @@ class Dashboard:
             get_profiling_info="/api/get_profiling_info",
             kill_actor="/api/kill_actor",
             logs="/api/logs",
-            errors="/api/errors")
+            errors="/api/errors",
+            memory_table="/api/memory_table",
+            stop_memory_table="/api/stop_memory_table")
         self.app.router.add_get("/{_}", route_handler.get_forbidden)
         self.app.router.add_post("/api/set_tune_experiment",
                                  route_handler.set_tune_experiment)
@@ -849,6 +885,7 @@ class RayletStats(threading.Thread):
         self._profiling_stats = {}
 
         self._update_nodes()
+        self.include_memory_info = False
 
         super().__init__()
 
@@ -950,7 +987,9 @@ class RayletStats(threading.Thread):
                     node_id = node["NodeID"]
                     stub = self.stubs[node_id]
                     reply = stub.GetNodeStats(
-                        node_manager_pb2.GetNodeStatsRequest(), timeout=2)
+                        node_manager_pb2.GetNodeStatsRequest(
+                            include_memory_info=self.include_memory_info),
+                        timeout=2)
                     reply_dict = MessageToDict(reply)
                     reply_dict["nodeId"] = node_id
                     replies[node["NodeManagerAddress"]] = reply_dict

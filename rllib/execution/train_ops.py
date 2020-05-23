@@ -5,15 +5,15 @@ import math
 from typing import List
 
 import ray
-from ray.util.iter import LocalIterator
 from ray.rllib.evaluation.metrics import get_learner_stats, LEARNER_STATS_KEY
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import SampleBatchType, \
     STEPS_SAMPLED_COUNTER, STEPS_TRAINED_COUNTER, LEARNER_INFO, \
     APPLY_GRADS_TIMER, COMPUTE_GRADS_TIMER, WORKER_UPDATE_TIMER, \
     LEARN_ON_BATCH_TIMER, LOAD_BATCH_TIMER, LAST_TARGET_UPDATE_TS, \
-    NUM_TARGET_UPDATES, _get_global_vars, _check_sample_batch_type
-from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
+    NUM_TARGET_UPDATES, _get_global_vars, _check_sample_batch_type, \
+    _get_shared_metrics
+from ray.rllib.execution.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.policy.policy import PolicyID
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
@@ -54,7 +54,7 @@ class TrainOneStep:
     def __call__(self,
                  batch: SampleBatchType) -> (SampleBatchType, List[dict]):
         _check_sample_batch_type(batch)
-        metrics = LocalIterator.get_metrics()
+        metrics = _get_shared_metrics()
         learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
         with learn_timer:
             if self.num_sgd_iter > 1 or self.sgd_minibatch_size > 0:
@@ -164,7 +164,7 @@ class TrainTFMultiGPU:
                 DEFAULT_POLICY_ID: samples
             }, samples.count)
 
-        metrics = LocalIterator.get_metrics()
+        metrics = _get_shared_metrics()
         load_timer = metrics.timers[LOAD_BATCH_TIMER]
         learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
         with load_timer:
@@ -245,7 +245,7 @@ class ComputeGradients:
 
     def __call__(self, samples: SampleBatchType):
         _check_sample_batch_type(samples)
-        metrics = LocalIterator.get_metrics()
+        metrics = _get_shared_metrics()
         with metrics.timers[COMPUTE_GRADS_TIMER]:
             grad, info = self.workers.local_worker().compute_gradients(samples)
         metrics.info[LEARNER_INFO] = get_learner_stats(info)
@@ -287,7 +287,7 @@ class ApplyGradients:
                 "Input must be a tuple of (grad_dict, count), got {}".format(
                     item))
         gradients, count = item
-        metrics = LocalIterator.get_metrics()
+        metrics = _get_shared_metrics()
         metrics.counters[STEPS_TRAINED_COUNTER] += count
 
         apply_timer = metrics.timers[APPLY_GRADS_TIMER]
@@ -377,7 +377,7 @@ class UpdateTargetNetwork:
             self.metric = STEPS_SAMPLED_COUNTER
 
     def __call__(self, _):
-        metrics = LocalIterator.get_metrics()
+        metrics = _get_shared_metrics()
         cur_ts = metrics.counters[self.metric]
         last_update = metrics.counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update > self.target_update_freq:
