@@ -44,8 +44,8 @@ export const NodeGPU: NodeFeatureComponent = ({ node }) => {
 )};
 
 export const WorkerGPU: WorkerFeatureComponent = ({ rayletWorker }) => {
-  const workerRes = rayletWorker?.coreWorkerStats.used_resources;
-  const workerUsedGPUResources = workerRes && workerRes["GPU"] || "No";
+  const workerRes = rayletWorker?.coreWorkerStats.usedResources;
+  const workerUsedGPUResources = workerRes?.["GPU"] || "No";
   return (<div style={{ minWidth: 60 }}>
     <b>{workerUsedGPUResources} GPUs in use</b>
   </div>

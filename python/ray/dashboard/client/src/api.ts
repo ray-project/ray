@@ -132,7 +132,7 @@ export type NodeInfoResponse = {
 export const getNodeInfo = () => get<NodeInfoResponse>("/api/node_info", {});
 
 export type RayletCoreWorkerStats = {
-  used_resources: {
+  usedResources: {
     [key: string]: number;
   };
 };

@@ -1,19 +1,16 @@
 import { ClusterFeatureComponent, NodeFeatureComponent, WorkerFeatureComponent, Node, Worker } from "./types";
 import React from "react";
 import UsageBar from "../../../../common/UsageBar";
-import { GPUStats, GPUProcessStats } from "../../../../api";
+import { GPUStats } from "../../../../api";
 import { getWeightedAverage } from "../../../../common/util";
+import { MiBRatio } from "../../../../common/formatUtils";
 
-// TODO SUPPORT N/A instead of 0 
 const nodeGRAMUtilization = (node: Node) => {
     const utilization =  (gpu: GPUStats) => gpu.memory_used / gpu.memory_total; 
     const utilizationSum = node.gpus.reduce((acc, gpu) => acc + utilization(gpu), 0);
     const avgUtilization = utilizationSum / node.gpus.length;
-    return avgUtilization;
-};
-
-const workerGRAMUtilization = ( gpuProcess: GPUProcessStats | undefined) => {
-  return gpuProcess?.gpu_memory_usage || 0;
+    // Convert to a percent before returning
+    return avgUtilization * 100;
 };
 
 const clusterGRAMUtilization = (nodes: Array<Node>) => {
@@ -46,12 +43,17 @@ export const ClusterGRAM: ClusterFeatureComponent = ({ nodes }) => {
   )};
   
   export const WorkerGRAM: WorkerFeatureComponent = ({ worker, node }) => {
-    const gramUtil = workerGRAMUtilization(worker);
+    const workerProcessPerGPU = node.gpus.map(
+      gpu => gpu.processes).map(processes => processes.find(process => process.pid === worker.pid));
+    const workerUtilPerGPU = workerProcessPerGPU.map(proc => proc?.gpu_memory_usage || 0);
+    const totalGRAMperGPU = node.gpus.map(gpu => gpu.memory_total);
+    const totalNodeGRAM = totalGRAMperGPU.reduce((acc, usage) => acc + usage, 0);
+    const usedGRAM = workerUtilPerGPU.reduce((acc, usage) => acc + usage, 0);
     return (
     <div style={{ minWidth: 60 }}>
       <UsageBar
-        percent={gramUtil}
-        text={`${gramUtil.toFixed(1)}%`}
+        percent={100 * (usedGRAM / totalNodeGRAM)}       
+        text={MiBRatio(usedGRAM, totalNodeGRAM)}
       />
     </div>
   )};

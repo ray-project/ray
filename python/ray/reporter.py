@@ -10,7 +10,7 @@ import socket
 import subprocess
 import sys
 from concurrent import futures
-
+from typing import Dict, Any
 import ray
 import psutil
 import ray.ray_constants as ray_constants
@@ -25,10 +25,10 @@ from ray.core.generated import reporter_pb2_grpc
 logger = logging.getLogger(__name__)
 
 try:
-    import GPUtil
+    import gpustat.core as gpustat
 except ImportError:
-    GPUtil = None
-    logger.warning("Install GPUtil with 'pip install gputil' to enable GPU monitoring.")
+    gpustat = None
+    logger.warning("Install gpustat with 'pip install gpustat' to enable GPU monitoring.")
 
 class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
     def __init__(self):
@@ -114,20 +114,21 @@ class Reporter:
 
     @staticmethod
     def get_gpu_usage():
-        if GPUtil is not None:
+        if gpustat is not None:
+            gpu_utilizations = []
             gpus = []
             try:
-                gpu_list = GPUtil.getGPUs()
+                gpus = gpustat.new_query().gpus
             except Exception:
                 logger.debug("GPUtil failed to retrieve GPUs.")
-            gpu_utilizations = []
             for gpu in gpus:
-                gpu_utilizations.append = {
-                    'id': gpu.id,
-                    'load': float(gpu.load),
-                    'memory_util': float(gpu.memoryUtil)
-                }
+                # Note the keys in this dict have periods which throws
+                # off javascript so we change .s to _s
+                gpu_data: Dict[str, Any] = {'_'.join(key.split('.')): val 
+                    for key, val in gpu.entry.items()}
+                gpu_utilizations.append(gpu_data)
             return gpu_utilizations
+        raise RuntimeError('Where is your GPUUtil young man')
 
     @staticmethod
     def get_boot_time():
