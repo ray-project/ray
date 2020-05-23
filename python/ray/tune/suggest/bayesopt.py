@@ -26,7 +26,7 @@ class BayesOptSearch(Searcher):
     This algorithm requires setting a search space using the
     `BayesianOptimization search space specification`_.
 
-    Parameters:
+    Args:
         space (dict): Continuous search space. Parameters will be sampled from
             this space which will be used to run trials.
         metric (str): The training result objective value attribute.
@@ -75,7 +75,7 @@ class BayesOptSearch(Searcher):
                  use_early_stopped_trials=None):
         """Instantiate new BayesOptSearch object.
 
-        Parameters:
+        Args:
             space (dict): Continuous search space.
                 Parameters will be sampled from
                 this space which will be used to run trials.
@@ -136,15 +136,13 @@ class BayesOptSearch(Searcher):
     def suggest(self, trial_id):
         """Return new point to be explored by black box function.
 
-        Parameters
-        --------------------
-        trial_id (str): Id of the trial.
-            This is a short alphanumerical string.
+        Args:
+            trial_id (str): Id of the trial.
+                This is a short alphanumerical string.
 
-        Returns
-        --------------------
-        Either a dictionary describing the new point to explore or
-        None, when no new point is to be explored for the time being.
+        Returns:
+            Either a dictionary describing the new point to explore or
+            None, when no new point is to be explored for the time being.
         """
         # If we have more active trials than the allowed maximum
         total_live_trials = len(self._live_trial_mapping)
@@ -174,10 +172,9 @@ class BayesOptSearch(Searcher):
     def register_analysis(self, analysis):
         """Integrate the given analysis into the gaussian process.
 
-        Parameters
-        ------------------
-        analysis (ExperimentAnalysis): Optionally, the previous analysis
-            to integrate.
+        Args:
+            analysis (ExperimentAnalysis): Optionally, the previous analysis
+                to integrate.
         """
         for (_, report), params in zip(analysis.dataframe().iterrows(),
                                        analysis.get_all_configs().values()):
@@ -188,14 +185,13 @@ class BayesOptSearch(Searcher):
     def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial.
 
-        Parameters
-        ----------------
-        trial_id (str): Id of the trial.
-            This is a short alphanumerical string.
-        result (dict): Dictionary of result.
-            May be none when some error occurs.
-        error (bool): Boolean representing a previous error state.
-            The result should be None when error is True.
+        Args:
+            trial_id (str): Id of the trial.
+                This is a short alphanumerical string.
+            result (dict): Dictionary of result.
+                May be none when some error occurs.
+            error (bool): Boolean representing a previous error state.
+                The result should be None when error is True.
         """
         # We try to get the parameters used for this trial
         params = self._live_trial_mapping.pop(trial_id, None)
