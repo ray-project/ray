@@ -1205,17 +1205,21 @@ Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill) {
       GetActorHandle(object_id.TaskId().ActorId(), &h).ok()) {
     return Status::Invalid("Actor task cancellation is not supported.");
   }
+
+  // Check for locally submitted tasks first to avoid a situation where the
+  // TaskId is known, but the ownership information is missing.
+  auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
+  if (task_spec.has_value() && !task_spec.value().IsActorCreationTask()) {
+    return direct_task_submitter_->CancelTask(task_spec.value(), force_kill);
+  }
+
   rpc::Address obj_addr;
   if (!reference_counter_->GetOwner(object_id, nullptr, &obj_addr)) {
     return Status::Invalid("No owner found for object.");
   }
+
   if (obj_addr.SerializeAsString() != rpc_address_.SerializeAsString()) {
     return direct_task_submitter_->CancelRemoteTask(object_id, obj_addr, force_kill);
-  }
-
-  auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
-  if (task_spec.has_value() && !task_spec.value().IsActorCreationTask()) {
-    return direct_task_submitter_->CancelTask(task_spec.value(), force_kill);
   }
   return Status::OK();
 }
