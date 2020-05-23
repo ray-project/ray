@@ -163,14 +163,26 @@ class BayesOptSearch(Searcher):
             self._register_result(params, report)
             
     def on_trial_complete(self, trial_id, result=None, error=False):
-        """Notification for the completion of trial."""
+        """Notification for the completion of trial.
+        
+        Parameters
+        ----------------
+        trial_id (str): Id of the trial.
+            This is a short alphanumerical string.
+        result (dict): Dictionary of result.
+            May be none when some error occurs.
+        error (bool): Boolean representing a previous error state.
+            The result should be None when error is True.
+        """
         # We try to get the parameters used for this trial
         params = self._live_trial_mapping.pop(trial_id, None)
 
         # The results may be None if some exception is raised during the trial.
         # Also, if the parameters are None (were already processed)
         # we interrupt the following procedure.
-        if result is None or params is None:
+        # Additionally, if somehow the error is True but
+        # the remaining values are not we also block the method
+        if result is None or params is None or error:
             return
 
         # If we don't have to execute some random search steps
