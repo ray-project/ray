@@ -16,7 +16,6 @@ from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
-from ray.rllib.evaluation.interface import EvaluatorInterface
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy
@@ -28,7 +27,7 @@ from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import NoPreprocessor
 from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sgd import do_minibatch_sgd
@@ -55,7 +54,7 @@ def get_global_worker():
 
 
 @DeveloperAPI
-class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
+class RolloutWorker(ParallelIteratorWorker):
     """Common experience collection class.
 
     This class wraps a policy instance and an environment class to
@@ -497,12 +496,19 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
             "Created rollout worker with env {} ({}), policies {}".format(
                 self.async_env, self.env, self.policy_map))
 
-    @override(EvaluatorInterface)
+    @DeveloperAPI
     def sample(self):
-        """Evaluate the current policies and return a batch of experiences.
+        """Returns a batch of experience sampled from this worker.
 
-        Return:
-            SampleBatch|MultiAgentBatch from evaluating the current policies.
+        This method must be implemented by subclasses.
+
+        Returns:
+            SampleBatch|MultiAgentBatch: A columnar batch of experiences
+            (e.g., tensors), or a multi-agent batch.
+
+        Examples:
+            >>> print(worker.sample())
+            SampleBatch({"obs": [1, 2, 3], "action": [0, 1, 0], ...})
         """
 
         if self.fake_sampler and self.last_batch is not None:
@@ -561,8 +567,17 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         batch = self.sample()
         return batch, batch.count
 
-    @override(EvaluatorInterface)
+    @DeveloperAPI
     def get_weights(self, policies=None):
+        """Returns the model weights of this worker.
+
+        Returns:
+            object: weights that can be set on another worker.
+            info: dictionary of extra metadata.
+
+        Examples:
+            >>> weights = worker.get_weights()
+        """
         if policies is None:
             policies = self.policy_map.keys()
         return {
@@ -570,15 +585,33 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
             for pid, policy in self.policy_map.items() if pid in policies
         }
 
-    @override(EvaluatorInterface)
+    @DeveloperAPI
     def set_weights(self, weights, global_vars=None):
+        """Sets the model weights of this worker.
+
+        Examples:
+            >>> weights = worker.get_weights()
+            >>> worker.set_weights(weights)
+        """
         for pid, w in weights.items():
             self.policy_map[pid].set_weights(w)
         if global_vars:
             self.set_global_vars(global_vars)
 
-    @override(EvaluatorInterface)
+    @DeveloperAPI
     def compute_gradients(self, samples):
+        """Returns a gradient computed w.r.t the specified samples.
+
+        Returns:
+            (grads, info): A list of gradients that can be applied on a
+            compatible worker. In the multi-agent case, returns a dict
+            of gradients keyed by policy ids. An info dictionary of
+            extra metadata is also returned.
+
+        Examples:
+            >>> batch = worker.sample()
+            >>> grads, info = worker.compute_gradients(samples)
+        """
         if log_once("compute_gradients"):
             logger.info("Compute gradients on:\n\n{}\n".format(
                 summarize(samples)))
@@ -609,8 +642,15 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 summarize(info_out)))
         return grad_out, info_out
 
-    @override(EvaluatorInterface)
+    @DeveloperAPI
     def apply_gradients(self, grads):
+        """Applies the given gradients to this worker's weights.
+
+        Examples:
+            >>> samples = worker.sample()
+            >>> grads, info = worker.compute_gradients(samples)
+            >>> worker.apply_gradients(grads)
+        """
         if log_once("apply_gradients"):
             logger.info("Apply gradients:\n\n{}\n".format(summarize(grads)))
         if isinstance(grads, dict):
@@ -630,8 +670,20 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         else:
             return self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
-    @override(EvaluatorInterface)
+    @DeveloperAPI
     def learn_on_batch(self, samples):
+        """Update policies based on the given batch.
+
+        This is the equivalent to apply_gradients(compute_gradients(samples)),
+        but can be optimized to avoid pulling gradients into CPU memory.
+
+        Returns:
+            info: dictionary of extra metadata from compute_gradients().
+
+        Examples:
+            >>> batch = worker.sample()
+            >>> worker.learn_on_batch(samples)
+        """
         if log_once("learn_on_batch"):
             logger.info(
                 "Training on concatenated sample batches:\n\n{}\n".format(
@@ -654,8 +706,10 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                     info_out[pid] = policy.learn_on_batch(batch)
             info_out.update({k: builder.get(v) for k, v in to_fetch.items()})
         else:
-            info_out = self.policy_map[DEFAULT_POLICY_ID].learn_on_batch(
-                samples)
+            info_out = {
+                DEFAULT_POLICY_ID: self.policy_map[DEFAULT_POLICY_ID]
+                .learn_on_batch(samples)
+            }
         if log_once("learn_out"):
             logger.debug("Training out:\n\n{}\n".format(summarize(info_out)))
         return info_out
@@ -826,6 +880,18 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
     def creation_args(self):
         """Returns the args used to create this worker."""
         return self._original_kwargs
+
+    @DeveloperAPI
+    def get_host(self):
+        """Returns the hostname of the process running this evaluator."""
+
+        return os.uname()[1]
+
+    @DeveloperAPI
+    def apply(self, func, *args):
+        """Apply the given function to this evaluator instance."""
+
+        return func(self, *args)
 
     def _build_policy_map(self, policy_dict, policy_config):
         policy_map = {}

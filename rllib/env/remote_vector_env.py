@@ -2,7 +2,6 @@ import logging
 
 import ray
 from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID, ASYNC_RESET_RETURN
-from ray.rllib.utils.memory import ray_get_and_free
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +56,7 @@ class RemoteVectorEnv(BaseEnv):
             actor = self.pending.pop(obj_id)
             env_id = self.actors.index(actor)
             env_ids.add(env_id)
-            ob, rew, done, info = ray_get_and_free(obj_id)
+            ob, rew, done, info = ray.get(obj_id)
             obs[env_id] = ob
             rewards[env_id] = rew
             dones[env_id] = done

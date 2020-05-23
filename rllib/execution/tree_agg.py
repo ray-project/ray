@@ -4,12 +4,12 @@ from typing import List
 
 import ray
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    SampleBatchType
+    SampleBatchType, _get_shared_metrics
 from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.utils.actors import create_colocated
-from ray.util.iter import LocalIterator, ParallelIterator, \
-    ParallelIteratorWorker, from_actors
+from ray.util.iter import ParallelIterator, ParallelIteratorWorker, \
+    from_actors
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ def gather_experiences_tree_aggregation(workers, config):
 
     # TODO(ekl) properly account for replay.
     def record_steps_sampled(batch):
-        metrics = LocalIterator.get_metrics()
+        metrics = _get_shared_metrics()
         metrics.counters[STEPS_SAMPLED_COUNTER] += batch.count
         return batch
 
