@@ -226,9 +226,11 @@ class BayesOptSearch(Searcher):
     def save(self, checkpoint_dir):
         """Storing current optimizer state."""
         with open(checkpoint_dir, "wb") as f:
-            pickle.dump(self.optimizer, f)
+            pickle.dump((self.optimizer, self._cached_results,
+                         self._total_random_search_trials), f)
 
     def restore(self, checkpoint_dir):
         """Restoring current optimizer state."""
         with open(checkpoint_dir, "rb") as f:
-            self.optimizer = pickle.load(f)
+            (self.optimizer, self._cached_results,
+             self._total_random_search_trials) = pickle.load(f)
