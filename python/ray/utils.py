@@ -117,8 +117,8 @@ def push_error_to_driver_through_redis(redis_client,
     # of through the raylet.
     error_data = ray.gcs_utils.construct_error_message(job_id, error_type,
                                                        message, time.time())
-    redis_client.execute_command(
-        "PUBLISH", "ERROR_INFO" + job_id.hex(), error_data)
+    redis_client.execute_command("PUBLISH", "ERROR_INFO" + job_id.hex(),
+                                 error_data)
 
 
 def is_cython(obj):
