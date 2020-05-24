@@ -105,6 +105,21 @@ TEST_F(GlobalStateAccessorTest, TestJobTable) {
   ASSERT_EQ(global_state_->GetAllJobInfo().size(), job_count);
 }
 
+TEST_F(GlobalStateAccessorTest, TestProfileTable) {
+  int profile_count = 100;
+  ASSERT_EQ(global_state_->GetAllProfileInfo().size(), 0);
+  for (int index = 0; index < profile_count; ++index) {
+    auto client_id = ClientID::FromRandom();
+    auto profile_table_data = Mocker::GenProfileTableData(client_id);
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(
+        profile_table_data,
+        [&promise](Status status) { promise.set_value(status.ok()); }));
+    WaitReady(promise.get_future(), timeout_ms_);
+  }
+  ASSERT_EQ(global_state_->GetAllProfileInfo().size(), profile_count);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
