@@ -1203,6 +1203,12 @@ Status ServiceBasedErrorInfoAccessor::AsyncReportJobError(
   return Status::OK();
 }
 
+Status ServiceBasedErrorInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<rpc::ErrorTableData> &callback) {}
+
+Status ServiceBasedErrorInfoAccessor::AsyncGetJobError(
+    const OptionalItemCallback<rpc::ErrorTableData> &callback) {}
+
 ServiceBasedWorkerInfoAccessor::ServiceBasedWorkerInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}

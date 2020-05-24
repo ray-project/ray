@@ -861,8 +861,7 @@ class GlobalState:
             assert isinstance(job_id, ray.JobID)
             return self._error_messages(job_id)
 
-        error_table_keys = self.redis_client.keys(
-            gcs_utils.TablePrefix_ERROR_INFO_string + "*")
+        error_table_keys = self.redis_client.keys("ERROR_INFO*")
         job_ids = [
             key[len(gcs_utils.TablePrefix_ERROR_INFO_string):]
             for key in error_table_keys

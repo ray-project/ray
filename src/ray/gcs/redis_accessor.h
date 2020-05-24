@@ -407,6 +407,14 @@ class RedisErrorInfoAccessor : public ErrorInfoAccessor {
   Status AsyncReportJobError(const std::shared_ptr<ErrorTableData> &data_ptr,
                              const StatusCallback &callback) override;
 
+  Status AsyncGetAll(const MultiItemCallback<rpc::ErrorTableData> &callback) {
+    return Status::NotImplemented("AsyncGetAll not implemented");
+  }
+
+  Status AsyncGetJobError(const OptionalItemCallback<rpc::ErrorTableData> &callback) {
+    return Status::NotImplemented("AsyncGetJobError not implemented");
+  }
+
  private:
   RedisGcsClient *client_impl_{nullptr};
 };

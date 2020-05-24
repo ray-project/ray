@@ -118,8 +118,8 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
   std::unique_ptr<std::string> object_info;
   std::promise<bool> promise;
   auto on_done = [object_id, &object_info, &promise](
-                     const Status &status,
-                     const std::vector<rpc::ObjectTableData> &result) {
+      const Status &status,
+      const std::vector<rpc::ObjectTableData> &result) {
     RAY_CHECK_OK(status);
     if (!result.empty()) {
       rpc::ObjectLocationInfo object_location_info;
@@ -134,6 +134,27 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
   RAY_CHECK_OK(gcs_client_->Objects().AsyncGetLocations(object_id, on_done));
   promise.get_future().get();
   return object_info;
+}
+
+std::vector<std::string> GlobalStateAccessor::GetAllJobErrorInfo() {
+  std::vector<std::string> error_table_data;
+  std::promise<bool> promise;
+  auto on_done = [&error_table_data, &promise](
+                     const Status &status,
+                     const std::vector<rpc::ErrorTableData> &result) {
+    RAY_CHECK_OK(status);
+    for (auto &data : result) {
+      error_table_data.push_back(data.SerializeAsString());
+    }
+    promise.set_value(true);
+  };
+  RAY_CHECK_OK(gcs_client_->Errors().AsyncGetAll(on_done));
+  promise.get_future().get();
+  return error_table_data;
+}
+
+std::unique_ptr<std::string> GlobalStateAccessor::GetJobErrorInfo(const JobID &job_id) {
+
 }
 
 }  // namespace gcs

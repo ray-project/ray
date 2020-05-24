@@ -79,6 +79,21 @@ class GlobalStateAccessor {
   /// protobuf function.
   std::unique_ptr<std::string> GetObjectInfo(const ObjectID &object_id);
 
+  /// Get error information of all jobs from GCS Service.
+  ///
+  /// \return All job error info. To support multi-language, we serialized each
+  /// ErrorTableData and returned the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::vector<std::string> GetAllJobErrorInfo();
+
+  /// Get error information of an job from GCS Service.
+  ///
+  /// \param object_id The ID of object to look up in the GCS Service.
+  /// \return Job error info. To support multi-language, we serialized each ErrorTableData
+  /// and returned the serialized string. Where used, it needs to be deserialized with
+  /// protobuf function.
+  std::unique_ptr<std::string> GetJobErrorInfo(const JobID &job_id);
+
  private:
   /// MultiItem tranformation helper in template style.
   ///

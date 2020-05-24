@@ -332,6 +332,11 @@ class ServiceBasedErrorInfoAccessor : public ErrorInfoAccessor {
   Status AsyncReportJobError(const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
                              const StatusCallback &callback) override;
 
+  Status AsyncGetAll(const MultiItemCallback<rpc::ErrorTableData> &callback) override;
+
+  Status AsyncGetJobError(
+      const OptionalItemCallback<rpc::ErrorTableData> &callback) override;
+
  private:
   ServiceBasedGcsClient *client_impl_;
 };

@@ -404,10 +404,33 @@ message ReportJobErrorReply {
   GcsStatus status = 1;
 }
 
+message GetAllErrorInfoRequest {
+}
+
+message GetAllErrorInfoReply {
+  GcsStatus status = 1;
+  // Data of job error.
+  repeated ErrorTableData error_data_list = 2;
+}
+
+message GetJobErrorInfoRequest {
+  bytes job_id = 1;
+}
+
+message GetJobErrorInfoReply {
+  GcsStatus status = 1;
+  // Data of job error.
+  ErrorTableData error_data = 2;
+}
+
 // Service for error info access.
 service ErrorInfoGcsService {
   // Report a job error to GCS Service.
   rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);
+  // Get error info of all jobs from GCS Service.
+  rpc GetAllErrorInfo(GetAllErrorInfoRequest) returns (GetAllErrorInfoReply);
+  // Get error info of a job from GCS Service.
+  rpc GetJobErrorInfo(GetJobErrorInfoRequest) returns (GetJobErrorInfoReply);
 }
 
 message ReportWorkerFailureRequest {

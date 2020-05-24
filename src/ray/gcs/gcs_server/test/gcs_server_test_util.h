@@ -363,6 +363,21 @@ struct GcsServerMocker {
       }
       return Status::OK();
     }
+
+    Status AsyncGetAll(const gcs::MultiItemCallback<rpc::ErrorTableData> &callback) {
+      if (callback) {
+        callback(Status::OK(), std::vector<rpc::ErrorTableData>());
+      }
+      return Status::OK();
+    }
+
+    Status AsyncGetJobError(
+        const gcs::OptionalItemCallback<rpc::ErrorTableData> &callback) {
+      if (callback) {
+        callback(Status::OK(), boost::none);
+      }
+      return Status::OK();
+    }
   };
 
   class MockGcsPubSub : public gcs::GcsPubSub {
