@@ -141,7 +141,7 @@ message GetActorCheckpointIDReply {
 
 // Service for actor info access.
 service ActorInfoGcsService {
-  // Create actor via gcs service
+  // Create actor via gcs service.
   rpc CreateActor(CreateActorRequest) returns (CreateActorReply);
   // Get actor data from GCS Service by actor id.
   rpc GetActorInfo(GetActorInfoRequest) returns (GetActorInfoReply);
@@ -256,7 +256,7 @@ message GetObjectLocationsRequest {
 
 message GetObjectLocationsReply {
   GcsStatus status = 1;
-  // Data of object
+  // Data of object.
   repeated ObjectTableData object_table_data_list = 2;
 }
 
@@ -265,7 +265,7 @@ message GetAllObjectLocationsRequest {
 
 message GetAllObjectLocationsReply {
   GcsStatus status = 1;
-  // Data of object location info
+  // Data of object location info.
   repeated ObjectLocationInfo object_location_info_list = 2;
 }
 
