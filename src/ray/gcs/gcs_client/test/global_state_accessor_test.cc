@@ -138,7 +138,7 @@ TEST_F(GlobalStateAccessorTest, TestObjectTable) {
   ASSERT_EQ(global_state_->GetAllObjectInfo().size(), object_count);
 
   for (auto &object_id : object_ids) {
-    ASSERT_TRUE(!global_state_->GetObjectInfo(object_id).empty());
+    ASSERT_TRUE(global_state_->GetObjectInfo(object_id));
   }
 }
 

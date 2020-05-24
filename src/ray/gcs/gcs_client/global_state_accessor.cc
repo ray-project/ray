@@ -114,8 +114,9 @@ std::vector<std::string> GlobalStateAccessor::GetAllObjectInfo() {
   return all_object_info;
 }
 
-std::string GlobalStateAccessor::GetObjectInfo(const ObjectID &object_id) {
-  std::string object_info;
+std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
+    const ObjectID &object_id) {
+  std::unique_ptr<std::string> object_info;
   std::promise<bool> promise;
   auto on_done = [object_id, &object_info, &promise](
                      const Status &status,
@@ -127,7 +128,7 @@ std::string GlobalStateAccessor::GetObjectInfo(const ObjectID &object_id) {
       for (auto &data : result) {
         object_location_info.add_locations()->CopyFrom(data);
       }
-      object_info = object_location_info.SerializeAsString();
+      object_info.reset(new std::string(object_location_info.SerializeAsString()));
     }
     promise.set_value(true);
   };

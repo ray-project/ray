@@ -6,6 +6,8 @@ from ray.includes.global_state_accessor cimport (
     CGlobalStateAccessor,
 )
 
+from libcpp.string cimport string as c_string
+
 cdef class GlobalStateAccessor:
     """Cython wrapper class of C++ `ray::gcs::GlobalStateAccessor`."""
     cdef:
@@ -35,6 +37,6 @@ cdef class GlobalStateAccessor:
 
     def get_object_info(self, object_id):
         object_info = self.inner.get().GetObjectInfo(CObjectID.FromBinary(object_id.binary()))
-        if object_info.strip() == '':
-            return None
-        return object_info
+        if object_info:
+            return c_string(object_info.get().data(), object_info.get().size())
+        return None

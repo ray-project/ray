@@ -71,7 +71,7 @@ class GlobalStateAccessor {
   /// \return Object info. To support multi-language, we serialize each ObjectTableData
   /// and return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
-  std::string GetObjectInfo(const ObjectID &object_id);
+  std::unique_ptr<std::string> GetObjectInfo(const ObjectID &object_id);
 
  private:
   /// Whether this client is connected to gcs server.
