@@ -812,37 +812,6 @@ class GlobalState:
 
         return dict(total_available_resources)
 
-    def _error_messages(self, job_id):
-        """Get the error messages for a specific driver.
-
-        Args:
-            job_id: The ID of the job to get the errors for.
-
-        Returns:
-            A list of the error messages for this driver.
-        """
-        assert isinstance(job_id, ray.JobID)
-        message = self.redis_client.execute_command(
-            "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("ERROR_INFO"), "",
-            job_id.binary())
-
-        # If there are no errors, return early.
-        if message is None:
-            return []
-
-        gcs_entries = gcs_utils.GcsEntry.FromString(message)
-        error_messages = []
-        for entry in gcs_entries.entries:
-            error_data = gcs_utils.ErrorTableData.FromString(entry)
-            assert job_id.binary() == error_data.job_id
-            error_message = {
-                "type": error_data.type,
-                "message": error_data.error_message,
-                "timestamp": error_data.timestamp,
-            }
-            error_messages.append(error_message)
-        return error_messages
-
     def error_messages(self, job_id=None):
         """Get the error messages for all drivers or a specific driver.
 
@@ -858,19 +827,36 @@ class GlobalState:
         self._check_connected()
 
         if job_id is not None:
-            assert isinstance(job_id, ray.JobID)
-            return self._error_messages(job_id)
+            error_info = self.global_state_accessor.get_error_info(job_id)
+            if error_info is None:
+                return []
+            else:
+                error_table_data = gcs_utils.ErrorTableData.FromString(
+                    error_info)
+                return self._gen_error_messages(error_table_data)
+        else:
+            error_table = self.global_state_accessor.get_error_table()
+            results = {}
+            for i in range(len(error_table)):
+                error_table_data = gcs_utils.ErrorTableData.FromString(
+                    error_table[i])
+                results[binary_to_hex(error_table_data.job_id)] = \
+                    self._gen_error_messages(error_table_data)
+            return results
 
-        error_table_keys = self.redis_client.keys("ERROR_INFO*")
-        job_ids = [
-            key[len(gcs_utils.TablePrefix_ERROR_INFO_string):]
-            for key in error_table_keys
-        ]
-
-        return {
-            binary_to_hex(job_id): self._error_messages(ray.JobID(job_id))
-            for job_id in job_ids
+    def _gen_error_messages(self, error_data):
+        """Parse error table data.
+        Returns:
+            Message from error table data.
+        """
+        error_messages = []
+        error_message = {
+            "type": error_data.type,
+            "message": error_data.error_message,
+            "timestamp": error_data.timestamp,
         }
+        error_messages.append(error_message)
+        return error_messages
 
     def actor_checkpoint_info(self, actor_id):
         """Get checkpoint info for the given actor id.

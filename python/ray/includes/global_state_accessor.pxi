@@ -1,5 +1,9 @@
 from ray.includes.unique_ids cimport (
+<<<<<<< HEAD
     CObjectID
+=======
+    CJobID
+>>>>>>> fix ray.errors() bug
 )
 
 from ray.includes.global_state_accessor cimport (
@@ -39,4 +43,12 @@ cdef class GlobalStateAccessor:
         object_info = self.inner.get().GetObjectInfo(CObjectID.FromBinary(object_id.binary()))
         if object_info:
             return c_string(object_info.get().data(), object_info.get().size())
+
+    def get_error_table(self):
+        return self.inner.get().GetAllJobErrorInfo()
+
+    def get_error_info(self, job_id):
+        error_info = self.inner.get().GetJobErrorInfo(CJobID.FromBinary(job_id.binary()))
+        if error_info:
+            return c_string(error_info.get().data(), error_info.get().size())
         return None
