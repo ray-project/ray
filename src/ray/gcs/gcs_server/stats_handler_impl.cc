@@ -46,13 +46,13 @@ void DefaultStatsHandler::HandleAddProfileData(const AddProfileDataRequest &requ
 void DefaultStatsHandler::HandleGetAllProfileInfo(
     const rpc::GetAllProfileInfoRequest &request, rpc::GetAllProfileInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "Getting all profile info.";
+  RAY_LOG(DEBUG) << "Getting all profile info.";
   auto on_done = [reply, send_reply_callback](
                      const std::unordered_map<UniqueID, ProfileTableData> &result) {
     for (auto &data : result) {
-      reply->add_profile_info_list()->CopyFrom(data.second);  // wangtao
+      reply->add_profile_info_list()->CopyFrom(data.second);
     }
-    RAY_LOG(INFO) << "Finished getting all profile info.";
+    RAY_LOG(DEBUG) << "Finished getting all profile info.";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
 
