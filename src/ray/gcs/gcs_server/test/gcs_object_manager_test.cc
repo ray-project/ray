@@ -32,18 +32,20 @@ class MockedGcsObjectManager : public gcs::GcsObjectManager {
     gcs::GcsObjectManager::AddObjectsLocation(node_id, object_ids);
   }
 
-  void AddObjectLocation(const ObjectID &object_id, const ClientID &node_id) {
-    gcs::GcsObjectManager::AddObjectLocation(object_id, node_id);
+  void AddObjectLocationInCache(const ObjectID &object_id, const ClientID &node_id) {
+    gcs::GcsObjectManager::AddObjectLocationInCache(object_id, node_id);
   }
 
   absl::flat_hash_set<ClientID> GetObjectLocations(const ObjectID &object_id) {
     return gcs::GcsObjectManager::GetObjectLocations(object_id);
   }
 
-  void RemoveNode(const ClientID &node_id) { gcs::GcsObjectManager::RemoveNode(node_id); }
+  void OnNodeRemoved(const ClientID &node_id) {
+    gcs::GcsObjectManager::OnNodeRemoved(node_id);
+  }
 
-  void RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id) {
-    gcs::GcsObjectManager::RemoveObjectLocation(object_id, node_id);
+  void RemoveObjectLocationInCache(const ObjectID &object_id, const ClientID &node_id) {
+    gcs::GcsObjectManager::RemoveObjectLocationInCache(object_id, node_id);
   }
 };
 
@@ -104,10 +106,10 @@ TEST_F(GcsObjectManagerTest, AddObjectsLocationAndGetLocationTest) {
   }
 }
 
-TEST_F(GcsObjectManagerTest, AddObjectLocationTest) {
+TEST_F(GcsObjectManagerTest, AddObjectLocationInCacheTest) {
   for (const auto &object_id : object_ids_) {
     for (const auto &node_id : node_ids_) {
-      gcs_object_manager_->AddObjectLocation(object_id, node_id);
+      gcs_object_manager_->AddObjectLocationInCache(object_id, node_id);
     }
   }
 
@@ -122,7 +124,7 @@ TEST_F(GcsObjectManagerTest, RemoveNodeTest) {
     gcs_object_manager_->AddObjectsLocation(node_id, object_ids_);
   }
 
-  gcs_object_manager_->RemoveNode(*node_ids_.begin());
+  gcs_object_manager_->OnNodeRemoved(*node_ids_.begin());
   auto locations = gcs_object_manager_->GetObjectLocations(*object_ids_.begin());
   ASSERT_EQ(locations.size() + 1, node_ids_.size());
 
@@ -135,7 +137,8 @@ TEST_F(GcsObjectManagerTest, RemoveObjectLocationTest) {
     gcs_object_manager_->AddObjectsLocation(node_id, object_ids_);
   }
 
-  gcs_object_manager_->RemoveObjectLocation(*object_ids_.begin(), *node_ids_.begin());
+  gcs_object_manager_->RemoveObjectLocationInCache(*object_ids_.begin(),
+                                                   *node_ids_.begin());
   auto locations = gcs_object_manager_->GetObjectLocations(*object_ids_.begin());
   ASSERT_EQ(locations.size() + 1, node_ids_.size());
 

@@ -34,7 +34,7 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
         [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
           // All of the related actors should be reconstructed when a node is removed from
           // the GCS.
-          RemoveNode(ClientID::FromBinary(node->node_id()));
+          OnNodeRemoved(ClientID::FromBinary(node->node_id()));
         });
   }
 
@@ -55,7 +55,10 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
                                   rpc::SendReplyCallback send_reply_callback) override;
 
  protected:
+  typedef absl::flat_hash_set<ClientID> LocationSet;
+
   /// Add a location of objects.
+  /// If the GCS server restarts, this function is used to reload data from storage.
   ///
   /// \param node_id The object location that will be added.
   /// \param object_ids The ids of objects which location will be added.
@@ -63,34 +66,32 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
                           const absl::flat_hash_set<ObjectID> &object_ids)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Add a location of an object.
+  /// Add a new location for the given object in local cache.
   ///
-  /// \param object_id The id of object which location will be added.
-  /// \param node_id The object location that will be added.
-  void AddObjectLocation(const ObjectID &object_id, const ClientID &node_id)
+  /// \param object_id The id of object.
+  /// \param node_id The node id of the new location.
+  void AddObjectLocationInCache(const ObjectID &object_id, const ClientID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Get object's locations.
+  /// Get all locations of the given object.
   ///
   /// \param object_id The id of object to lookup.
   /// \return Object locations.
-  absl::flat_hash_set<ClientID> GetObjectLocations(const ObjectID &object_id)
-      LOCKS_EXCLUDED(mutex_);
+  LocationSet GetObjectLocations(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
-  /// Remove a node.
+  /// Handler if a node is removed.
   ///
   /// \param node_id The node that will be removed.
-  void RemoveNode(const ClientID &node_id) LOCKS_EXCLUDED(mutex_);
+  void OnNodeRemoved(const ClientID &node_id) LOCKS_EXCLUDED(mutex_);
 
   /// Remove object's location.
   ///
   /// \param object_id The id of the object which location will be removed.
   /// \param node_id The location that will be removed.
-  void RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id)
+  void RemoveObjectLocationInCache(const ObjectID &object_id, const ClientID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
  private:
-  typedef absl::flat_hash_set<ClientID> LocationSet;
   typedef absl::flat_hash_set<ObjectID> ObjectSet;
 
   std::shared_ptr<ObjectTableDataList> GenObjectTableDataList(
@@ -112,16 +113,18 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   /// \param node_id The id of node to lookup.
   /// \param create_if_not_exist Whether to create a new one if not exist.
   /// \return ObjectSet *
-  GcsObjectManager::ObjectSet *GetNodeHoldObjectSet(const ClientID &node_id,
-                                                    bool create_if_not_exist = false)
+  GcsObjectManager::ObjectSet *GetObjectSetByNode(const ClientID &node_id,
+                                                  bool create_if_not_exist = false)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   mutable absl::Mutex mutex_;
 
   /// Mapping from object id to object locations.
+  /// This is the local cache of objects' locations in the storage.
   absl::flat_hash_map<ObjectID, LocationSet> object_to_locations_ GUARDED_BY(mutex_);
 
   /// Mapping from node id to objects that held by the node.
+  /// This is the local cache of nodes' objects in the storage.
   absl::flat_hash_map<ClientID, ObjectSet> node_to_objects_ GUARDED_BY(mutex_);
 
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;

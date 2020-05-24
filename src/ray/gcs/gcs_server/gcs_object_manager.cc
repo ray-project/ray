@@ -62,7 +62,7 @@ void GcsObjectManager::HandleAddObjectLocation(
   ClientID node_id = ClientID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "Adding object location, job id = " << object_id.TaskId().JobId()
                  << ", object id = " << object_id << ", node id = " << node_id;
-  AddObjectLocation(object_id, node_id);
+  AddObjectLocationInCache(object_id, node_id);
 
   auto on_done = [this, object_id, node_id, reply,
                   send_reply_callback](const Status &status) {
@@ -78,6 +78,9 @@ void GcsObjectManager::HandleAddObjectLocation(
                      << ", job id = " << object_id.TaskId().JobId()
                      << ", object id = " << object_id << ", node id = " << node_id;
     }
+    // We should only reply after the update is written to storage.
+    // So, if GCS server crashes before writing storage, GCS client will retry this
+    // request.
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
@@ -99,7 +102,7 @@ void GcsObjectManager::HandleRemoveObjectLocation(
   ClientID node_id = ClientID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "Removing object location, job id = " << object_id.TaskId().JobId()
                  << ", object id = " << object_id << ", node id = " << node_id;
-  RemoveObjectLocation(object_id, node_id);
+  RemoveObjectLocationInCache(object_id, node_id);
 
   auto on_done = [this, object_id, node_id, reply,
                   send_reply_callback](const Status &status) {
@@ -115,6 +118,9 @@ void GcsObjectManager::HandleRemoveObjectLocation(
                      << ", job id = " << object_id.TaskId().JobId()
                      << ", object id = " << object_id << ", node id = " << node_id;
     }
+    // We should only reply after the update is written to storage.
+    // So, if GCS server crashes before writing storage, GCS client will retry this
+    // request.
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
@@ -141,8 +147,8 @@ void GcsObjectManager::AddObjectsLocation(
   // Maybe use read/write lock. Or reduce the granularity of the lock.
   absl::MutexLock lock(&mutex_);
 
-  auto *node_hold_objects = GetNodeHoldObjectSet(node_id, /* create_if_not_exist */ true);
-  node_hold_objects->insert(object_ids.begin(), object_ids.end());
+  auto *objects_on_node = GetObjectSetByNode(node_id, /* create_if_not_exist */ true);
+  objects_on_node->insert(object_ids.begin(), object_ids.end());
 
   for (const auto &object_id : object_ids) {
     auto *object_locations =
@@ -151,12 +157,12 @@ void GcsObjectManager::AddObjectsLocation(
   }
 }
 
-void GcsObjectManager::AddObjectLocation(const ObjectID &object_id,
-                                         const ClientID &node_id) {
+void GcsObjectManager::AddObjectLocationInCache(const ObjectID &object_id,
+                                                const ClientID &node_id) {
   absl::MutexLock lock(&mutex_);
 
-  auto *node_hold_objects = GetNodeHoldObjectSet(node_id, /* create_if_not_exist */ true);
-  node_hold_objects->emplace(object_id);
+  auto *objects_on_node = GetObjectSetByNode(node_id, /* create_if_not_exist */ true);
+  objects_on_node->emplace(object_id);
 
   auto *object_locations =
       GetObjectLocationSet(object_id, /* create_if_not_exist */ true);
@@ -174,21 +180,21 @@ absl::flat_hash_set<ClientID> GcsObjectManager::GetObjectLocations(
   return absl::flat_hash_set<ClientID>{};
 }
 
-void GcsObjectManager::RemoveNode(const ClientID &node_id) {
+void GcsObjectManager::OnNodeRemoved(const ClientID &node_id) {
   absl::MutexLock lock(&mutex_);
 
-  ObjectSet node_hold_objects;
+  ObjectSet objects_on_node;
   auto it = node_to_objects_.find(node_id);
   if (it != node_to_objects_.end()) {
-    node_hold_objects.swap(it->second);
+    objects_on_node.swap(it->second);
     node_to_objects_.erase(it);
   }
 
-  if (node_hold_objects.empty()) {
+  if (objects_on_node.empty()) {
     return;
   }
 
-  for (const auto &object_id : node_hold_objects) {
+  for (const auto &object_id : objects_on_node) {
     auto *object_locations = GetObjectLocationSet(object_id);
     if (object_locations) {
       object_locations->erase(node_id);
@@ -199,8 +205,8 @@ void GcsObjectManager::RemoveNode(const ClientID &node_id) {
   }
 }
 
-void GcsObjectManager::RemoveObjectLocation(const ObjectID &object_id,
-                                            const ClientID &node_id) {
+void GcsObjectManager::RemoveObjectLocationInCache(const ObjectID &object_id,
+                                                   const ClientID &node_id) {
   absl::MutexLock lock(&mutex_);
 
   auto *object_locations = GetObjectLocationSet(object_id);
@@ -211,10 +217,10 @@ void GcsObjectManager::RemoveObjectLocation(const ObjectID &object_id,
     }
   }
 
-  auto *node_hold_objects = GetNodeHoldObjectSet(node_id);
-  if (node_hold_objects) {
-    node_hold_objects->erase(object_id);
-    if (node_hold_objects->empty()) {
+  auto *objects_on_node = GetObjectSetByNode(node_id);
+  if (objects_on_node) {
+    objects_on_node->erase(object_id);
+    if (objects_on_node->empty()) {
       node_to_objects_.erase(node_id);
     }
   }
@@ -236,19 +242,19 @@ GcsObjectManager::LocationSet *GcsObjectManager::GetObjectLocationSet(
   return object_locations;
 }
 
-GcsObjectManager::ObjectSet *GcsObjectManager::GetNodeHoldObjectSet(
+GcsObjectManager::ObjectSet *GcsObjectManager::GetObjectSetByNode(
     const ClientID &node_id, bool create_if_not_exist) {
-  ObjectSet *node_hold_objects = nullptr;
+  ObjectSet *objects_on_node = nullptr;
 
   auto it = node_to_objects_.find(node_id);
   if (it != node_to_objects_.end()) {
-    node_hold_objects = &it->second;
+    objects_on_node = &it->second;
   } else if (create_if_not_exist) {
     auto ret = node_to_objects_.emplace(std::make_pair(node_id, ObjectSet{}));
     RAY_CHECK(ret.second);
-    node_hold_objects = &(ret.first->second);
+    objects_on_node = &(ret.first->second);
   }
-  return node_hold_objects;
+  return objects_on_node;
 }
 
 std::shared_ptr<ObjectTableDataList> GcsObjectManager::GenObjectTableDataList(
