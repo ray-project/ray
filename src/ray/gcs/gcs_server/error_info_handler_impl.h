@@ -36,6 +36,14 @@ class DefaultErrorInfoHandler : public rpc::ErrorInfoHandler {
                             ReportJobErrorReply *reply,
                             SendReplyCallback send_reply_callback) override;
 
+  void HandleGetAllJobErrorInfo(const GetAllJobErrorInfoRequest &request,
+                                GetAllJobErrorInfoReply *reply,
+                                SendReplyCallback send_reply_callback) override;
+
+  void HandleGetJobErrorInfo(const GetJobErrorInfoRequest &request,
+                             GetJobErrorInfoReply *reply,
+                             SendReplyCallback send_reply_callback) override;
+
  private:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;

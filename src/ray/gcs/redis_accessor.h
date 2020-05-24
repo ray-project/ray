@@ -411,8 +411,9 @@ class RedisErrorInfoAccessor : public ErrorInfoAccessor {
     return Status::NotImplemented("AsyncGetAll not implemented");
   }
 
-  Status AsyncGetJobError(const OptionalItemCallback<rpc::ErrorTableData> &callback) {
-    return Status::NotImplemented("AsyncGetJobError not implemented");
+  Status AsyncGet(const JobID &job_id,
+                  const OptionalItemCallback<rpc::ErrorTableData> &callback) {
+    return Status::NotImplemented("AsyncGet not implemented");
   }
 
  private:

@@ -169,6 +169,28 @@ TEST_F(GlobalStateAccessorTest, TestObjectTable) {
   }
 }
 
+TEST_F(GlobalStateAccessorTest, TestErrorInfoTable) {
+  int job_count = 100;
+  ASSERT_EQ(global_state_->GetAllJobErrorInfo().size(), 0);
+
+  std::vector<JobID> job_ids;
+  job_ids.reserve(job_count);
+  for (int index = 0; index < job_count; ++index) {
+    auto job_id = JobID::FromInt(index);
+    job_ids.emplace_back(job_id);
+    auto error_table_data = Mocker::GenErrorTableData(job_id);
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(
+        error_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+    WaitReady(promise.get_future(), timeout_ms_);
+  }
+  
+  ASSERT_EQ(global_state_->GetAllJobErrorInfo().size(), job_count);
+  for (auto &job_id : job_ids) {
+    ASSERT_TRUE(global_state_->GetJobErrorInfo(job_id));
+  }
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

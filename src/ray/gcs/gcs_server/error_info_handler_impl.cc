@@ -45,5 +45,43 @@ void DefaultErrorInfoHandler::HandleReportJobError(
                  << ", type = " << type;
 }
 
+void DefaultErrorInfoHandler::HandleGetAllJobErrorInfo(
+    const GetAllJobErrorInfoRequest &request, GetAllJobErrorInfoReply *reply,
+    SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Getting all job error info.";
+  auto on_done = [reply, send_reply_callback](
+                     const std::unordered_map<JobID, ErrorTableData> &result) {
+    for (auto &data : result) {
+      reply->add_error_info_list()->CopyFrom(data.second);
+    }
+    RAY_LOG(DEBUG) << "Finished getting all job error info.";
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  };
+  Status status = gcs_table_storage_->ErrorInfoTable().GetAll(on_done);
+  if (!status.ok()) {
+    on_done(std::unordered_map<JobID, ErrorTableData>());
+  }
+}
+
+void DefaultErrorInfoHandler::HandleGetJobErrorInfo(
+    const GetJobErrorInfoRequest &request, GetJobErrorInfoReply *reply,
+    SendReplyCallback send_reply_callback) {
+  JobID job_id = JobID::FromBinary(request.job_id());
+  RAY_LOG(DEBUG) << "Getting job error info, job id = " << job_id;
+  auto on_done = [job_id, reply, send_reply_callback](
+                     const Status &status,
+                     const boost::optional<ErrorTableData> &result) {
+    if (result) {
+      reply->mutable_error_info()->CopyFrom(*result);
+    }
+    RAY_LOG(DEBUG) << "Finished getting job error info, job id = " << job_id;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  };
+  Status status = gcs_table_storage_->ErrorInfoTable().Get(job_id, on_done);
+  if (!status.ok()) {
+    on_done(status, boost::none);
+  }
+}
+
 }  // namespace rpc
 }  // namespace ray

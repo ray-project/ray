@@ -371,8 +371,8 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
-    Status AsyncGetJobError(
-        const gcs::OptionalItemCallback<rpc::ErrorTableData> &callback) {
+    Status AsyncGet(const JobID &job_id,
+                    const gcs::OptionalItemCallback<rpc::ErrorTableData> &callback) {
       if (callback) {
         callback(Status::OK(), boost::none);
       }

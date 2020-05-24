@@ -390,6 +390,14 @@ class ErrorInfoGcsServiceHandler {
   virtual void HandleReportJobError(const ReportJobErrorRequest &request,
                                     ReportJobErrorReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllJobErrorInfo(const GetAllJobErrorInfoRequest &request,
+                                        GetAllJobErrorInfoReply *reply,
+                                        SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetJobErrorInfo(const GetJobErrorInfoRequest &request,
+                                     GetJobErrorInfoReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `ErrorInfoGcsService`.
@@ -409,6 +417,8 @@ class ErrorInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     ERROR_INFO_SERVICE_RPC_HANDLER(ReportJobError);
+    ERROR_INFO_SERVICE_RPC_HANDLER(GetAllJobErrorInfo);
+    ERROR_INFO_SERVICE_RPC_HANDLER(GetJobErrorInfo);
   }
 
  private:

@@ -137,24 +137,37 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllJobErrorInfo() {
-  std::vector<std::string> error_table_data;
+  std::vector<std::string> all_error_info;
   std::promise<bool> promise;
-  auto on_done = [&error_table_data, &promise](
+  auto on_done = [&all_error_info, &promise](
                      const Status &status,
                      const std::vector<rpc::ErrorTableData> &result) {
     RAY_CHECK_OK(status);
     for (auto &data : result) {
-      error_table_data.push_back(data.SerializeAsString());
+      all_error_info.push_back(data.SerializeAsString());
     }
     promise.set_value(true);
   };
   RAY_CHECK_OK(gcs_client_->Errors().AsyncGetAll(on_done));
   promise.get_future().get();
-  return error_table_data;
+  return all_error_info;
 }
 
 std::unique_ptr<std::string> GlobalStateAccessor::GetJobErrorInfo(const JobID &job_id) {
-
+  std::unique_ptr<std::string> error_info;
+  std::promise<bool> promise;
+  auto on_done = [&error_info, &promise](
+                     const Status &status,
+                     const boost::optional<rpc::ErrorTableData> &result) {
+    RAY_CHECK_OK(status);
+    if (result) {
+      error_info.reset(new std::string(result->SerializeAsString()));
+    }
+    promise.set_value(true);
+  };
+  RAY_CHECK_OK(gcs_client_->Errors().AsyncGet(job_id, on_done));
+  promise.get_future().get();
+  return error_info;
 }
 
 }  // namespace gcs

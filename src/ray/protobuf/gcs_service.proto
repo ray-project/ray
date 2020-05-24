@@ -404,13 +404,13 @@ message ReportJobErrorReply {
   GcsStatus status = 1;
 }
 
-message GetAllErrorInfoRequest {
+message GetAllJobErrorInfoRequest {
 }
 
-message GetAllErrorInfoReply {
+message GetAllJobErrorInfoReply {
   GcsStatus status = 1;
   // Data of job error.
-  repeated ErrorTableData error_data_list = 2;
+  repeated ErrorTableData error_info_list = 2;
 }
 
 message GetJobErrorInfoRequest {
@@ -420,7 +420,7 @@ message GetJobErrorInfoRequest {
 message GetJobErrorInfoReply {
   GcsStatus status = 1;
   // Data of job error.
-  ErrorTableData error_data = 2;
+  ErrorTableData error_info = 2;
 }
 
 // Service for error info access.
@@ -428,7 +428,7 @@ service ErrorInfoGcsService {
   // Report a job error to GCS Service.
   rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);
   // Get error info of all jobs from GCS Service.
-  rpc GetAllErrorInfo(GetAllErrorInfoRequest) returns (GetAllErrorInfoReply);
+  rpc GetAllJobErrorInfo(GetAllJobErrorInfoRequest) returns (GetAllJobErrorInfoReply);
   // Get error info of a job from GCS Service.
   rpc GetJobErrorInfo(GetJobErrorInfoRequest) returns (GetJobErrorInfoReply);
 }

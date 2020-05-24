@@ -206,6 +206,14 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(ErrorInfoGcsService, ReportJobError,
                              error_info_grpc_client_, )
 
+  /// Get error info of all jobs from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(ErrorInfoGcsService, GetAllJobErrorInfo,
+                             error_info_grpc_client_, )
+
+  /// Get error info of a job from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(ErrorInfoGcsService, GetJobErrorInfo,
+                             error_info_grpc_client_, )
+
   /// Report a worker failure to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, ReportWorkerFailure,
                              worker_info_grpc_client_, )

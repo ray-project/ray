@@ -69,13 +69,13 @@ void DefaultJobInfoHandler::HandleMarkJobFinished(
 void DefaultJobInfoHandler::HandleGetAllJobInfo(
     const rpc::GetAllJobInfoRequest &request, rpc::GetAllJobInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "Getting all job info.";
+  RAY_LOG(DEBUG) << "Getting all job info.";
   auto on_done = [reply, send_reply_callback](
                      const std::unordered_map<JobID, JobTableData> &result) {
     for (auto &data : result) {
       reply->add_job_info_list()->CopyFrom(data.second);
     }
-    RAY_LOG(INFO) << "Finished getting all job info.";
+    RAY_LOG(DEBUG) << "Finished getting all job info.";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
   Status status = gcs_table_storage_->JobTable().GetAll(on_done);
