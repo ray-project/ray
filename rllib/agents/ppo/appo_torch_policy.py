@@ -278,7 +278,7 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
 
         # Prepare KL for Loss
         mean_kl = _make_time_major(
-            old_policy_action_dist.multi_kl(action_dist), drop_last=True)
+            old_policy_action_dist.kl(action_dist), drop_last=True)
 
         policy.loss = VTraceSurrogateLoss(
             actions=_make_time_major(loss_actions, drop_last=True),
@@ -288,8 +288,7 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
                 action_dist.logp(actions), drop_last=True),
             old_policy_actions_logp=_make_time_major(
                 old_policy_action_dist.logp(actions), drop_last=True),
-            action_kl=torch.mean(mean_kl, dim=0)
-            if is_multidiscrete else mean_kl,
+            action_kl=mean_kl,
             actions_entropy=_make_time_major(
                 action_dist.entropy(), drop_last=True),
             dones=_make_time_major(dones, drop_last=True),
@@ -322,8 +321,7 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
         policy.loss = PPOSurrogateLoss(
             prev_actions_logp=_make_time_major(prev_action_dist.logp(actions)),
             actions_logp=_make_time_major(action_dist.logp(actions)),
-            action_kl=torch.mean(mean_kl, dim=0)
-            if is_multidiscrete else mean_kl,
+            action_kl=mean_kl,
             actions_entropy=_make_time_major(action_dist.entropy()),
             values=_make_time_major(values),
             valid_mask=_make_time_major(mask),

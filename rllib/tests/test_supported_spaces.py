@@ -95,7 +95,7 @@ def check_support(alg, config, check_bounds=False):
                     pass
         print(stat)
 
-    for _ in framework_iterator(config, frameworks=("torch", "tf")):
+    for _ in framework_iterator(config, frameworks=("tf", "torch")):
         # Check all action spaces.
         for a_name, action_space in ACTION_SPACES_TO_TEST.items():
             _do_check(alg, config, a_name, "discrete")
