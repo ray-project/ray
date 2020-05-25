@@ -37,7 +37,6 @@ class ExternalEnv(threading.Thread):
 
     @PublicAPI
     def __init__(self, action_space, observation_space, max_concurrent=100):
-        #num_envs=1):
         """Initializes an external env.
 
         Args:
@@ -45,8 +44,6 @@ class ExternalEnv(threading.Thread):
             observation_space (gym.Space): Observation space of the env.
             max_concurrent (int): Max number of active episodes to allow at
                 once. Exceeding this limit raises an error.
-            #num_envs (int): If > 1, this ExternalEnv will be
-            #    treated as vectorized.
         """
 
         threading.Thread.__init__(self)
@@ -54,7 +51,6 @@ class ExternalEnv(threading.Thread):
         self.daemon = True
         self.action_space = action_space
         self.observation_space = observation_space
-        #self.num_envs = num_envs
         self._episodes = {}
         self._finished = set()
         self._results_avail_condition = threading.Condition()
@@ -171,9 +167,9 @@ class ExternalEnv(threading.Thread):
     def _get(self, episode_id):
         """Get a started episode or raise an error."""
 
-        #if episode_id in self._finished:
-        #    raise ValueError(
-        #        "Episode {} has already completed.".format(episode_id))
+        if episode_id in self._finished:
+            raise ValueError(
+                "Episode {} has already completed.".format(episode_id))
 
         if episode_id not in self._episodes:
             raise ValueError("Episode {} not found.".format(episode_id))
@@ -193,7 +189,6 @@ class _ExternalEnvEpisode:
         self.results_avail_condition = results_avail_condition
         self.training_enabled = training_enabled
         self.multiagent = multiagent
-        #self.num_envs = num_envs
         self.data_queue = queue.Queue()
         self.action_queue = queue.Queue()
         if multiagent:
@@ -271,10 +266,6 @@ class _ExternalEnvEpisode:
             self.cur_reward = 0.0
             if not self.training_enabled:
                 item["info"]["training_enabled"] = False
-            #if self.num_envs > 1:
-            #    self.cur_rewards = [0.0 for _ in range(self.num_envs)]
-            #else:
-            #    self.cur_rewards = 0.0
 
         with self.results_avail_condition:
             self.data_queue.put_nowait(item)

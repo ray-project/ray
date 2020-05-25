@@ -55,9 +55,9 @@ class ExternalMultiAgentEnv(ExternalEnv):
         if episode_id is None:
             episode_id = uuid.uuid4().hex
 
-        #if episode_id in self._finished:
-        #    raise ValueError(
-        #        "Episode {} has already completed.".format(episode_id))
+        if episode_id in self._finished:
+            raise ValueError(
+                "Episode {} has already completed.".format(episode_id))
 
         if episode_id in self._episodes:
             raise ValueError(
@@ -135,10 +135,7 @@ class ExternalMultiAgentEnv(ExternalEnv):
 
         if multiagent_done_dict:
             for agent, done in multiagent_done_dict.items():
-                #if agent in episode.cur_done_dict:
                 episode.cur_done_dict[agent] = done
-                #else:
-                #    episode.cur_done_dict[agent] = done
 
         if info_dict:
             episode.cur_info_dict = info_dict or {}
