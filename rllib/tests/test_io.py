@@ -44,7 +44,7 @@ class AgentIOTest(unittest.TestCase):
         agent = PGTrainer(
             env="CartPole-v0",
             config={
-                "output": output + fw,
+                "output": output + (fw if output != "logdir" else ""),
                 "rollout_fragment_length": 250,
                 "framework": fw,
             })
@@ -59,6 +59,7 @@ class AgentIOTest(unittest.TestCase):
             reader.next()
 
     def testAgentOutputLogdir(self):
+        """Test special value 'logdir' as Agent's output."""
         for fw in framework_iterator():
             agent = self.writeOutputs("logdir", fw)
             self.assertEqual(
@@ -70,7 +71,7 @@ class AgentIOTest(unittest.TestCase):
             agent = PGTrainer(
                 env="CartPole-v0",
                 config={
-                    "input": self.test_dir,
+                    "input": self.test_dir + fw,
                     "input_evaluation": [],
                     "framework": fw,
                 })
@@ -122,7 +123,7 @@ class AgentIOTest(unittest.TestCase):
             agent = PGTrainer(
                 env="CartPole-v0",
                 config={
-                    "input": self.test_dir,
+                    "input": self.test_dir + fw,
                     "input_evaluation": ["simulation"],
                     "framework": fw,
                 })
@@ -139,7 +140,7 @@ class AgentIOTest(unittest.TestCase):
             agent = PGTrainer(
                 env="CartPole-v0",
                 config={
-                    "input": glob.glob(self.test_dir + "/*.json"),
+                    "input": glob.glob(self.test_dir + fw + "/*.json"),
                     "input_evaluation": [],
                     "rollout_fragment_length": 99,
                     "framework": fw,
@@ -155,7 +156,7 @@ class AgentIOTest(unittest.TestCase):
                 env="CartPole-v0",
                 config={
                     "input": {
-                        self.test_dir: 0.1,
+                        self.test_dir + fw: 0.1,
                         "sampler": 0.9,
                     },
                     "train_batch_size": 2000,

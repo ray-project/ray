@@ -1092,7 +1092,7 @@ py_test(
 py_test(
     name = "tests/test_export",
     tags = ["tests_dir", "tests_dir_E"],
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_export.py"]
 )
 
@@ -1185,7 +1185,7 @@ py_test(
 py_test(
     name = "tests/test_exec_api",
     tags = ["tests_dir", "tests_dir_E"],
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_exec_api.py"]
 )
 

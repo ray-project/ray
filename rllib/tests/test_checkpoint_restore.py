@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import gym
 import numpy as np
 import unittest
 
@@ -71,11 +70,11 @@ def ckpt_restore_test(use_object_store, alg_name, failures, framework="tf"):
     if "DDPG" in alg_name or "SAC" in alg_name:
         alg1 = cls(config=config, env="Pendulum-v0")
         alg2 = cls(config=config, env="Pendulum-v0")
-        env = gym.make("Pendulum-v0")
     else:
         alg1 = cls(config=config, env="CartPole-v0")
         alg2 = cls(config=config, env="CartPole-v0")
-        env = gym.make("CartPole-v0")
+
+    policy1 = alg1.get_policy()
 
     for _ in range(1):
         res = alg1.train()
@@ -87,17 +86,17 @@ def ckpt_restore_test(use_object_store, alg_name, failures, framework="tf"):
     else:
         alg2.restore(alg1.save())
 
-    for _ in range(2):
+    for _ in range(1):
         if "DDPG" in alg_name or "SAC" in alg_name:
             obs = np.clip(
                 np.random.uniform(size=3),
-                env.observation_space.low,
-                env.observation_space.high)
+                policy1.observation_space.low,
+                policy1.observation_space.high)
         else:
             obs = np.clip(
                 np.random.uniform(size=4),
-                env.observation_space.low,
-                env.observation_space.high)
+                policy1.observation_space.low,
+                policy1.observation_space.high)
         a1 = get_mean_action(alg1, obs)
         a2 = get_mean_action(alg2, obs)
         print("Checking computed actions", alg1, obs, a1, a2)
@@ -122,6 +121,8 @@ class TestCheckpointRestore(unittest.TestCase):
                         "A3C", "APEX_DDPG", "ARS", "DDPG", "DQN", "ES", "PPO",
                         "SAC"
                 ]:
+                    print("Testing algo={} (use_object_store={})".format(
+                        name, use_object_store))
                     ckpt_restore_test(
                         use_object_store, name, failures, framework=fw)
 

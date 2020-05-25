@@ -36,12 +36,10 @@ def check_support(alg, config, test_trace=True):
 
 
 class TestEagerSupport(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        ray.init(num_cpus=4)
+    def setUp(self):
+        ray.init(num_cpus=4, ignore_reinit_error=True)
 
-    @classmethod
-    def tearDownClass(cls) -> None:
+    def tearDown(self):
         ray.shutdown()
 
     def test_simple_q(self):

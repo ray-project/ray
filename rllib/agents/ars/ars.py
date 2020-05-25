@@ -208,6 +208,13 @@ class ARSTrainer(Trainer):
         self.tstart = time.time()
 
     @override(Trainer)
+    def get_policy(self, policy=DEFAULT_POLICY_ID):
+        if policy != DEFAULT_POLICY_ID:
+            raise ValueError("ARS has no policy '{}'! Use {} "
+                             "instead.".format(policy, DEFAULT_POLICY_ID))
+        return self.policy
+
+    @override(Trainer)
     def _train(self):
         config = self.config
 

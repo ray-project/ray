@@ -80,8 +80,8 @@ def check_framework(framework, allow_none=True):
             raise ValueError("framework=None not allowed!")
     # Invalid value.
     else:
-        raise ValueError(
-            "Invalid framework={}. Use one of [tf|tfe|torch|auto].")
+        raise ValueError("Invalid framework='{}'. Use one of "
+                         "[tf|tfe|torch|auto].".format(framework))
     return framework
 
 

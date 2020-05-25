@@ -23,11 +23,11 @@ def rollout_test(algo, env="CartPole-v0"):
         os.system("python {}/train.py --local-dir={} --run={} "
                   "--checkpoint-freq=1 ".format(rllib_dir, tmp_dir, algo) +
                   "--config='{" +
-                  "\"num_workers\": 1, \"num_gpus\": 0{}".format(fw_) +
+                  "\"num_workers\": 0, \"num_gpus\": 0{}".format(fw_) +
                   ", \"model\": {\"fcnet_hiddens\": [10]}"
                   "}' --stop='{\"training_iteration\": 1, "
-                  "\"timesteps_per_iter\": 10, "
-                  "\"min_iter_time_s\": 1}'" + " --env={}".format(env))
+                  "\"timesteps_per_iter\": 5, "
+                  "\"min_iter_time_s\": 0.1}'" + " --env={}".format(env))
 
         checkpoint_path = os.popen("ls {}/default/*/checkpoint_1/"
                                    "checkpoint-1".format(tmp_dir)).read()[:-1]
@@ -36,8 +36,8 @@ def rollout_test(algo, env="CartPole-v0"):
         print("Checkpoint path {} (exists)".format(checkpoint_path))
 
         # Test rolling out n steps.
-        os.popen("python {}/rollout.py --run={} \"{}\" --steps=25 "
-                 "--out=\"{}/rollouts_25steps.pkl\" --no-render".format(
+        os.popen("python {}/rollout.py --run={} \"{}\" --steps=15 "
+                 "--out=\"{}/rollouts_15steps.pkl\" --no-render".format(
                      rllib_dir, algo, checkpoint_path, tmp_dir)).read()
         if not os.path.exists(tmp_dir + "/rollouts_25steps.pkl"):
             sys.exit(1)
