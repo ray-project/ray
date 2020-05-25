@@ -407,12 +407,12 @@ class RedisErrorInfoAccessor : public ErrorInfoAccessor {
   Status AsyncReportJobError(const std::shared_ptr<ErrorTableData> &data_ptr,
                              const StatusCallback &callback) override;
 
-  Status AsyncGetAll(const MultiItemCallback<rpc::ErrorTableData> &callback) {
+  Status AsyncGetAll(const MultiItemCallback<rpc::ErrorTableData> &callback) override {
     return Status::NotImplemented("AsyncGetAll not implemented");
   }
 
   Status AsyncGet(const JobID &job_id,
-                  const OptionalItemCallback<rpc::ErrorTableData> &callback) {
+                  const OptionalItemCallback<rpc::ErrorTableData> &callback) override {
     return Status::NotImplemented("AsyncGet not implemented");
   }
 
