@@ -108,16 +108,17 @@ def export_test(alg_name, failures):
     shutil.rmtree(export_dir)
 
 
-class TestCheckpointRestore(unittest.TestCase):
+class TestExport(unittest.TestCase):
     @classmethod
-    def setUpClass(cls):
-        ray.init(num_cpus=10, object_store_memory=1e9)
+    def setUpClass(cls) -> None:
+        ray.init(
+            num_cpus=10, object_store_memory=1e9, ignore_reinit_error=True)
 
     @classmethod
-    def tearDownClass(cls):
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_checkpoint_restore(self):
+    def test_export(self):
         failures = []
         for name in ["A3C", "DQN", "DDPG", "PPO", "SAC"]:
             export_test(name, failures)

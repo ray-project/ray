@@ -52,7 +52,7 @@ class AgentIOTest(unittest.TestCase):
         return agent
 
     def testAgentOutputOk(self):
-        for fw in framework_iterator():
+        for fw in framework_iterator(frameworks=("torch", "tf")):
             self.writeOutputs(self.test_dir, fw)
             self.assertEqual(len(os.listdir(self.test_dir)), 1)
             reader = JsonReader(self.test_dir + "/*.json")
@@ -65,7 +65,7 @@ class AgentIOTest(unittest.TestCase):
                 len(glob.glob(agent.logdir + "/output-*.json")), 1)
 
     def testAgentInputDir(self):
-        for fw in framework_iterator():
+        for fw in framework_iterator(frameworks=("torch", "tf")):
             self.writeOutputs(self.test_dir, fw)
             agent = PGTrainer(
                 env="CartPole-v0",
@@ -86,7 +86,7 @@ class AgentIOTest(unittest.TestCase):
         self.assertEqual(splits[2].count, 1)
 
     def testAgentInputPostprocessingEnabled(self):
-        for fw in framework_iterator():
+        for fw in framework_iterator(frameworks=("torch", "tf")):
             self.writeOutputs(self.test_dir, fw)
 
             # Rewrite the files to drop advantages and value_targets for

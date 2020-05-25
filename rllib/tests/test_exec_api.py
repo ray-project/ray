@@ -9,7 +9,7 @@ class TestDistributedExecution(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(ignore_reinit_error=True)
 
     @classmethod
     def tearDownClass(cls):

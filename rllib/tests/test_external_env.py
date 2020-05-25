@@ -117,7 +117,7 @@ class MultiServing(ExternalEnv):
 class TestExternalEnv(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(ignore_reinit_error=True)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -176,13 +176,13 @@ class TestExternalEnv(unittest.TestCase):
         }
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             dqn = DQNTrainer(env="test3", config=config)
-            for i in range(80):
+            for i in range(50):
                 result = dqn.train()
                 print("Iteration {}, reward {}, timesteps {}".format(
                     i, result["episode_reward_mean"],
                     result["timesteps_total"]))
                 if result["episode_reward_mean"] >= 80:
-                    return
+                    continue
             raise Exception("failed to improve reward")
 
     def test_train_cartpole(self):
@@ -196,7 +196,7 @@ class TestExternalEnv(unittest.TestCase):
                     i, result["episode_reward_mean"],
                     result["timesteps_total"]))
                 if result["episode_reward_mean"] >= 80:
-                    return
+                    continue
             raise Exception("failed to improve reward")
 
     def test_train_cartpole_multi(self):
@@ -211,7 +211,7 @@ class TestExternalEnv(unittest.TestCase):
                     i, result["episode_reward_mean"],
                     result["timesteps_total"]))
                 if result["episode_reward_mean"] >= 80:
-                    return
+                    continue
             raise Exception("failed to improve reward")
 
     def test_external_env_horizon_not_supported(self):
