@@ -127,11 +127,10 @@ class ServeMaster:
         """
         router_name = format_actor_name(SERVE_ROUTER_NAME, self.cluster_name)
         try:
-            self.router = ray.util.get_actor(router_name)
+            self.router = ray.get_actor(router_name)
         except ValueError:
             logger.info("Starting router with name '{}'".format(router_name))
             self.router = async_retryable(ray.remote(Router)).options(
-                detached=True,
                 name=router_name,
                 max_concurrency=ASYNC_CONCURRENCY,
                 max_restarts=-1,
@@ -148,13 +147,12 @@ class ServeMaster:
         """
         proxy_name = format_actor_name(SERVE_PROXY_NAME, self.cluster_name)
         try:
-            self.http_proxy = ray.util.get_actor(proxy_name)
+            self.http_proxy = ray.get_actor(proxy_name)
         except ValueError:
             logger.info(
                 "Starting HTTP proxy with name '{}' on node '{}'".format(
                     proxy_name, node_id))
             self.http_proxy = async_retryable(HTTPProxyActor).options(
-                detached=True,
                 name=proxy_name,
                 max_concurrency=ASYNC_CONCURRENCY,
                 max_restarts=-1,
@@ -180,12 +178,11 @@ class ServeMaster:
         metric_sink_name = format_actor_name(SERVE_METRIC_SINK_NAME,
                                              self.cluster_name)
         try:
-            self.metric_exporter = ray.util.get_actor(metric_sink_name)
+            self.metric_exporter = ray.get_actor(metric_sink_name)
         except ValueError:
             logger.info("Starting metric exporter with name '{}'".format(
                 metric_sink_name))
             self.metric_exporter = MetricExporterActor.options(
-                detached=True,
                 name=metric_sink_name).remote(metric_exporter_class)
 
     def get_metric_exporter(self):
@@ -246,7 +243,7 @@ class ServeMaster:
             for replica_tag in replica_tags:
                 replica_name = format_actor_name(replica_tag,
                                                  self.cluster_name)
-                self.workers[backend_tag][replica_tag] = ray.util.get_actor(
+                self.workers[backend_tag][replica_tag] = ray.get_actor(
                     replica_name)
 
         # Push configuration state to the router.
@@ -311,7 +308,6 @@ class ServeMaster:
 
         replica_name = format_actor_name(replica_tag, self.cluster_name)
         worker_handle = async_retryable(ray.remote(backend_worker)).options(
-            detached=True,
             name=replica_name,
             max_restarts=-1,
             **replica_config.ray_actor_options).remote(
@@ -328,7 +324,7 @@ class ServeMaster:
         # failed after creating them but before writing a
         # checkpoint.
         try:
-            worker_handle = ray.util.get_actor(replica_tag)
+            worker_handle = ray.get_actor(replica_tag)
         except ValueError:
             worker_handle = await self._start_backend_worker(
                 backend_tag, replica_tag)
@@ -371,7 +367,7 @@ class ServeMaster:
                 # NOTE(edoakes): the replicas may already be stopped if we
                 # failed after stopping them but before writing a checkpoint.
                 try:
-                    replica = ray.util.get_actor(replica_tag)
+                    replica = ray.get_actor(replica_tag)
                 except ValueError:
                     continue
 
@@ -384,9 +380,7 @@ class ServeMaster:
                 # use replica.__ray_terminate__, we may send it while the
                 # replica is being restarted and there's no way to tell if it
                 # successfully killed the worker or not.
-                worker = ray.worker.global_worker
-                # Kill the actor with no_restart=True.
-                worker.core_worker.kill_actor(replica._ray_actor_id, True)
+                ray.kill(replica, no_restart=True)
 
         self.replicas_to_stop.clear()
 
