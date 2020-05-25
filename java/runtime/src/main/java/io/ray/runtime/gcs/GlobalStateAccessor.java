@@ -10,7 +10,7 @@ import java.util.List;
 public class GlobalStateAccessor {
   // NOTE(lingxuan.zlx): Native pointer is singleton in gcs state accessor, which means it can not
   // be changed in cluster when redis or other storage accessor is fixed.
-  private static Long globalStateAccessorNativePtr;
+  private static Long globalStateAccessorNativePtr = 0L;
 
   public GlobalStateAccessor(String redisAddress, String redisPassword) {
     synchronized (globalStateAccessorNativePtr) {
