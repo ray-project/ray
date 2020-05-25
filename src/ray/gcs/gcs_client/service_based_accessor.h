@@ -23,6 +23,8 @@
 namespace ray {
 namespace gcs {
 
+using SubscribeOperation = std::function<Status(const StatusCallback &done)>;
+
 class ServiceBasedGcsClient;
 
 /// \class ServiceBasedJobInfoAccessor
@@ -45,7 +47,13 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
 
   Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) override;
 
+  Status AsyncReSubscribe() override;
+
  private:
+  /// Save the subscribe operation in this function, so we can call it again when GCS
+  /// restarts from a failure.
+  SubscribeOperation subscribe_operation_;
+
   ServiceBasedGcsClient *client_impl_;
 };
 
@@ -100,7 +108,15 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const ActorID &actor_id,
       const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override;
 
+  Status AsyncReSubscribe() override;
+
  private:
+  /// Save the subscribe operation in this function, so we can call it again when GCS
+  /// restarts from a failure.
+  SubscribeOperation subscribe_all_operation_;
+  /// Save the subscribe operation of actors.
+  std::unordered_map<ActorID, SubscribeOperation> subscribe_operations_;
+
   ServiceBasedGcsClient *client_impl_;
 
   Sequencer<ActorID> sequencer_;
@@ -250,6 +266,8 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
       const ObjectID &object_id,
       const MultiItemCallback<rpc::ObjectTableData> &callback) override;
 
+  Status AsyncGetAll(const MultiItemCallback<rpc::ObjectLocationInfo> &callback) override;
+
   Status AsyncAddLocation(const ObjectID &object_id, const ClientID &node_id,
                           const StatusCallback &callback) override;
 
@@ -280,6 +298,8 @@ class ServiceBasedStatsInfoAccessor : public StatsInfoAccessor {
 
   Status AsyncAddProfileData(const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
                              const StatusCallback &callback) override;
+
+  Status AsyncGetAll(const MultiItemCallback<rpc::ProfileTableData> &callback) override;
 
  private:
   ServiceBasedGcsClient *client_impl_;
