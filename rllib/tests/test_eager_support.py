@@ -2,35 +2,37 @@ import unittest
 
 import ray
 from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.utils.test_utils import framework_iterator
 
 
 def check_support(alg, config, test_trace=True):
-    config["framework"] = "tfe"
+    # Only do tfe here - of course - but utilize framework_iterator's built-in
+    # eager mode handling.
+    for _ in framework_iterator(config, frameworks="tfe"):
+        # Test both continuous and discrete actions.
+        for cont in [True, False]:
+            if cont and alg in ["DQN", "APEX", "SimpleQ"]:
+                continue
+            elif not cont and alg in ["DDPG", "APEX_DDPG", "TD3"]:
+                continue
 
-    # Test both continuous and discrete actions.
-    for cont in [True, False]:
-        if cont and alg in ["DQN", "APEX", "SimpleQ"]:
-            continue
-        elif not cont and alg in ["DDPG", "APEX_DDPG", "TD3"]:
-            continue
+            print("run={} cont. actions={}".format(alg, cont))
 
-        print("run={} cont. actions={}".format(alg, cont))
+            if cont:
+                config["env"] = "Pendulum-v0"
+            else:
+                config["env"] = "CartPole-v0"
 
-        if cont:
-            config["env"] = "Pendulum-v0"
-        else:
-            config["env"] = "CartPole-v0"
-
-        a = get_agent_class(alg)
-        config["log_level"] = "ERROR"
-        config["eager_tracing"] = False
-        trainer = a(config=config)
-        trainer.train()
-
-        if test_trace:
-            config["eager_tracing"] = True
+            a = get_agent_class(alg)
+            config["log_level"] = "ERROR"
+            config["eager_tracing"] = False
             trainer = a(config=config)
             trainer.train()
+
+            if test_trace:
+                config["eager_tracing"] = True
+                trainer = a(config=config)
+                trainer.train()
 
 
 class TestEagerSupport(unittest.TestCase):

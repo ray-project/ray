@@ -119,8 +119,8 @@ class TestCheckpointRestore(unittest.TestCase):
         for fw in framework_iterator(frameworks=("torch", "tf")):
             for use_object_store in [False, True]:
                 for name in [
-                        "SAC", "ES", "DQN", "DDPG", "PPO", "A3C", "APEX_DDPG",
-                        "ARS"
+                        "A3C", "APEX_DDPG", "ARS", "DDPG", "DQN", "ES", "PPO",
+                        "SAC"
                 ]:
                     ckpt_restore_test(
                         use_object_store, name, failures, framework=fw)

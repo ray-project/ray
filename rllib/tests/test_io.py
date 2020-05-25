@@ -44,7 +44,7 @@ class AgentIOTest(unittest.TestCase):
         agent = PGTrainer(
             env="CartPole-v0",
             config={
-                "output": output,
+                "output": output + fw,
                 "rollout_fragment_length": 250,
                 "framework": fw,
             })
@@ -54,8 +54,8 @@ class AgentIOTest(unittest.TestCase):
     def testAgentOutputOk(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):
             self.writeOutputs(self.test_dir, fw)
-            self.assertEqual(len(os.listdir(self.test_dir)), 1)
-            reader = JsonReader(self.test_dir + "/*.json")
+            self.assertEqual(len(os.listdir(self.test_dir + fw)), 1)
+            reader = JsonReader(self.test_dir + fw + "/*.json")
             reader.next()
 
     def testAgentOutputLogdir(self):
@@ -86,18 +86,19 @@ class AgentIOTest(unittest.TestCase):
         self.assertEqual(splits[2].count, 1)
 
     def testAgentInputPostprocessingEnabled(self):
-        for fw in framework_iterator(frameworks=("torch", "tf")):
+        for fw in framework_iterator(frameworks=("tf", "torch")):
             self.writeOutputs(self.test_dir, fw)
 
             # Rewrite the files to drop advantages and value_targets for
             # testing
-            for path in glob.glob(self.test_dir + "/*.json"):
+            for path in glob.glob(self.test_dir + fw + "/*.json"):
                 out = []
-                for line in open(path).readlines():
-                    data = json.loads(line)
-                    del data["advantages"]
-                    del data["value_targets"]
-                    out.append(data)
+                with open(path) as f:
+                    for line in f.readlines():
+                        data = json.loads(line)
+                        del data["advantages"]
+                        del data["value_targets"]
+                        out.append(data)
                 with open(path, "w") as f:
                     for data in out:
                         f.write(json.dumps(data))
@@ -105,7 +106,7 @@ class AgentIOTest(unittest.TestCase):
             agent = PGTrainer(
                 env="CartPole-v0",
                 config={
-                    "input": self.test_dir,
+                    "input": self.test_dir + fw,
                     "input_evaluation": [],
                     "postprocess_inputs": True,  # adds back 'advantages'
                     "framework": fw,
