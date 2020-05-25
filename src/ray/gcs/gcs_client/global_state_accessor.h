@@ -46,8 +46,8 @@ class GlobalStateAccessor {
 
   /// Get information of all jobs from GCS Service.
   ///
-  /// \return All job info. To support multi-language, we serialized each JobTableData and
-  /// returned the serialized string. Where used, it needs to be deserialized with
+  /// \return All job info. To support multi-language, we serialize each JobTableData and
+  /// return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
   std::vector<std::string> GetAllJobInfo();
 
@@ -57,6 +57,21 @@ class GlobalStateAccessor {
   /// ProfileTableData and returned the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllProfileInfo();
+
+  /// Get information of all objects from GCS Service.
+  ///
+  /// \return All object info. To support multi-language, we serialize each
+  /// ObjectTableData and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::vector<std::string> GetAllObjectInfo();
+
+  /// Get information of an object from GCS Service.
+  ///
+  /// \param object_id The ID of object to look up in the GCS Service.
+  /// \return Object info. To support multi-language, we serialize each ObjectTableData
+  /// and return the serialized string. Where used, it needs to be deserialized with
+  /// protobuf function.
+  std::unique_ptr<std::string> GetObjectInfo(const ObjectID &object_id);
 
  private:
   /// Whether this client is connected to gcs server.

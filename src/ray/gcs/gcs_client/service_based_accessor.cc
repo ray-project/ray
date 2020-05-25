@@ -968,6 +968,24 @@ Status ServiceBasedObjectInfoAccessor::AsyncGetLocations(
   return Status::OK();
 }
 
+Status ServiceBasedObjectInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<rpc::ObjectLocationInfo> &callback) {
+  RAY_LOG(DEBUG) << "Getting all object locations.";
+  rpc::GetAllObjectLocationsRequest request;
+  client_impl_->GetGcsRpcClient().GetAllObjectLocations(
+      request,
+      [callback](const Status &status, const rpc::GetAllObjectLocationsReply &reply) {
+        std::vector<rpc::ObjectLocationInfo> result;
+        result.reserve((reply.object_location_info_list_size()));
+        for (int index = 0; index < reply.object_location_info_list_size(); ++index) {
+          result.emplace_back(reply.object_location_info_list(index));
+        }
+        callback(status, result);
+        RAY_LOG(DEBUG) << "Finished getting all object locations, status = " << status;
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_id,
                                                         const ClientID &node_id,
                                                         const StatusCallback &callback) {

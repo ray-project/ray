@@ -274,6 +274,11 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
   Status AsyncGetLocations(const ObjectID &object_id,
                            const MultiItemCallback<ObjectTableData> &callback) override;
 
+  Status AsyncGetAll(
+      const MultiItemCallback<rpc::ObjectLocationInfo> &callback) override {
+    return Status::NotImplemented("AsyncGetAll not implemented");
+  }
+
   Status AsyncAddLocation(const ObjectID &object_id, const ClientID &node_id,
                           const StatusCallback &callback) override;
 
