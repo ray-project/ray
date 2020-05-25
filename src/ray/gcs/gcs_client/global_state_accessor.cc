@@ -118,8 +118,8 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
   std::unique_ptr<std::string> object_info;
   std::promise<bool> promise;
   auto on_done = [object_id, &object_info, &promise](
-      const Status &status,
-      const std::vector<rpc::ObjectTableData> &result) {
+                     const Status &status,
+                     const std::vector<rpc::ObjectTableData> &result) {
     RAY_CHECK_OK(status);
     if (!result.empty()) {
       rpc::ObjectLocationInfo object_location_info;

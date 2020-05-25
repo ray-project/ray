@@ -184,7 +184,7 @@ TEST_F(GlobalStateAccessorTest, TestErrorInfoTable) {
         error_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
     WaitReady(promise.get_future(), timeout_ms_);
   }
-  
+
   ASSERT_EQ(global_state_->GetAllJobErrorInfo().size(), job_count);
   for (auto &job_id : job_ids) {
     ASSERT_TRUE(global_state_->GetJobErrorInfo(job_id));
