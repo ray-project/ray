@@ -62,6 +62,7 @@ void RedisServiceManagerForTest::ShutDownRedisServers() {
   for (const auto &port : REDIS_SERVER_PORTS) {
     ShutDownRedisServer(port);
   }
+  REDIS_SERVER_PORTS = std::vector<int>();
 }
 
 void RedisServiceManagerForTest::ShutDownRedisServer(int port) {

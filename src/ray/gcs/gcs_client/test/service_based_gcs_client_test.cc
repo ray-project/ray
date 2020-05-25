@@ -832,7 +832,7 @@ TEST_F(ServiceBasedGcsClientTest, TestDetectGcsAvailability) {
 
 TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
   // Stop redis.
-  TearDownTestCase();
+  RedisServiceManagerForTest::ShutDownRedisServers();
 
   // Sleep 3 times of gcs_redis_heartbeat_interval_milliseconds to make sure gcs_server
   // detects that the redis is failure and then stop itself.
