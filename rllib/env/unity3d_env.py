@@ -8,9 +8,13 @@ from ray.rllib.utils.annotations import override
 class Unity3DEnv(MultiAgentEnv):
     """A MultiAgentEnv representing a single Unity3D game instance.
 
+    For an example on how to use this class inside a Unity game client, which
+    connects to an RLlib Policy server, see:
+    `rllib/examples/serving/unity3d_[client|server].py`
+
     Supports all Unity3D (MLAgents) examples, multi- or single-agent and
-    will be converted automatically into an ExternalMultiAgentEnv, when used
-    inside an RLlib PolicyClient for cloud training of Unity3D games.
+    gets converted automatically into an ExternalMultiAgentEnv, when used
+    inside an RLlib PolicyClient for cloud/distributed training of Unity games.
     """
 
     def __init__(self,
@@ -75,18 +79,24 @@ class Unity3DEnv(MultiAgentEnv):
 
     @override(MultiAgentEnv)
     def step(self, action_dict):
-        """
+        """Performs one multi-agent step through the game.
 
         Args:
-            action_dict (dict): Double keyed dict with:
-                upper key (int): RLlib Episode (MLAgents: "agent") ID.
-                lower key (str): RLlib Agent (MLAgents: "behavior") name.
+            action_dict (dict): Multi-agent action dict with:
+                keys=agent identifier consisting of
+                     [MLagents behavior name, e.g. "Goalie?team=1"] + "_" +
+                     [Agent index, a unique MLAgent-assigned index per single
+                      agent]
 
         Returns:
             tuple:
-                obs: Only those observations for which to get new actions.
-                rewards: Rewards dicts matching the returned obs.
-                dones: Done dicts matching the returned obs.
+                obs: Multi-agent observation dict.
+                    Only those observations for which to get new actions are
+                    returned.
+                rewards: Rewards dict matching `obs`.
+                dones: Done dict with only an __all__ multi-agent entry in it.
+                    __all__=True, if episode is done for all agents.
+                infos: An (empty) info dict.
         """
 
         # Set only the required actions (from the DecisionSteps) in Unity3D.
@@ -111,12 +121,25 @@ class Unity3DEnv(MultiAgentEnv):
 
     @override(MultiAgentEnv)
     def reset(self):
+        """Resets the entire Unity3D scene (a single multi-agent episode)."""
         self.episode_timesteps = 0
         self.unity_env.reset()
         obs, _, _, _ = self._get_step_results()
         return obs
 
     def _get_step_results(self):
+        """Collects those agents' obs/rewards that have to act in next `step`.
+
+        Returns:
+            Tuple:
+                obs: Multi-agent observation dict.
+                    Only those observations for which to get new actions are
+                    returned.
+                rewards: Rewards dict matching `obs`.
+                dones: Done dict with only an __all__ multi-agent entry in it.
+                    __all__=True, if episode is done for all agents.
+                infos: An (empty) info dict.
+        """
         obs = {}
         rewards = {}
         infos = {}

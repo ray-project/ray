@@ -278,8 +278,6 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
             terminal condition, and other fields as dictated by `policy`.
     """
 
-    print("base_env={}".format(base_env))
-
     # Try to get Env's max_episode_steps prop. If it doesn't exist, catch
     # error and continue.
     max_episode_steps = None

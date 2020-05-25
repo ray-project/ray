@@ -39,7 +39,7 @@ parser.add_argument("--torch", action="store_true")
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None, local_mode=True)
+    ray.init(num_cpus=args.num_cpus or None)
 
     # Register the models to use.
     mod1 = TorchSharedWeightsModel if args.torch else SharedWeightsModel1

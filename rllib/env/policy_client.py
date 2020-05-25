@@ -214,7 +214,6 @@ class PolicyClient:
         kwargs = self._send({
             "command": PolicyClient.GET_WORKER_ARGS,
         })["worker_args"]
-        print("kwargs={}".format(kwargs))
         (self.rollout_worker,
          self.inference_thread) = create_embedded_rollout_worker(
              kwargs, self._send)
