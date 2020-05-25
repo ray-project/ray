@@ -640,7 +640,7 @@ TEST_F(SchedulingTest, TaskResourceInstancesTest) {
 
     TaskRequest task_req;
     vector<FixedPoint> pred_demands = {3. /* CPU */, 2. /* MEM */, 1.5 /* GPU */};
-    vector<bool> pred_soft = {false};
+    vector<bool> pred_soft = {false, false, false};
     initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector,
                     EmptyFixedPointVector, EmptyBoolVector, EmptyIntVector);
 
@@ -725,7 +725,7 @@ TEST_F(SchedulingTest, TaskResourceInstancesTest) {
 
     TaskRequest task_req;
     vector<FixedPoint> pred_demands = {3. /* CPU */, 2. /* MEM */, 1.5 /* GPU */};
-    vector<bool> pred_soft = {false};
+    vector<bool> pred_soft = {false, false, false};
     vector<FixedPoint> cust_demands{3, 2};
     vector<bool> cust_soft{false, false};
     initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,
@@ -755,7 +755,7 @@ TEST_F(SchedulingTest, TaskResourceInstancesTest) {
 
     TaskRequest task_req;
     vector<FixedPoint> pred_demands = {3. /* CPU */, 2. /* MEM */, 1.5 /* GPU */};
-    vector<bool> pred_soft = {false};
+    vector<bool> pred_soft = {false, false, false};
     vector<FixedPoint> cust_demands{3, 10};
     vector<bool> cust_soft{false, false};
     initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,
@@ -782,7 +782,7 @@ TEST_F(SchedulingTest, TaskResourceInstancesTest) {
 
     TaskRequest task_req;
     vector<FixedPoint> pred_demands = {3. /* CPU */, 2. /* MEM */, 1.5 /* GPU */};
-    vector<bool> pred_soft = {false};
+    vector<bool> pred_soft = {false, false, false};
     vector<FixedPoint> cust_demands{3, 10};
     vector<bool> cust_soft{false, true};
     initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,

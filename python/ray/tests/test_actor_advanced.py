@@ -655,63 +655,22 @@ def test_pickled_actor_handle_call_in_method_twice(ray_start_regular):
     ray.get(b.step.remote())
 
 
-def test_register_and_get_named_actors(ray_start_regular):
-    # TODO(heyucongtom): We should test this from another driver.
-
-    @ray.remote
-    class Foo:
-        def __init__(self):
-            self.x = 0
-
-        def method(self):
-            self.x += 1
-            return self.x
-
-    f1 = Foo.remote()
-    # Test saving f.
-    ray.util.register_actor("f1", f1)
-    # Test getting f.
-    f2 = ray.util.get_actor("f1")
-    assert f1._actor_id == f2._actor_id
-
-    # Test same name register shall raise error.
-    with pytest.raises(ValueError):
-        ray.util.register_actor("f1", f2)
-
-    # Test register with wrong object type.
-    with pytest.raises(TypeError):
-        ray.util.register_actor("f3", 1)
-
-    # Test getting a nonexistent actor.
-    with pytest.raises(ValueError):
-        ray.util.get_actor("nonexistent")
-
-    # Test method
-    assert ray.get(f1.method.remote()) == 1
-    assert ray.get(f2.method.remote()) == 2
-    assert ray.get(f1.method.remote()) == 3
-    assert ray.get(f2.method.remote()) == 4
-
-
 def test_detached_actor(ray_start_regular):
     @ray.remote
     class DetachedActor:
         def ping(self):
             return "pong"
 
+    with pytest.raises(TypeError):
+        DetachedActor._remote(name=1)
+
     with pytest.raises(
             ValueError, match="Actor name cannot be an empty string"):
-        DetachedActor._remote(detached=True, name="")
+        DetachedActor._remote(name="")
 
-    with pytest.raises(ValueError, match="Detached actors must be named"):
-        DetachedActor._remote(detached=True)
-
-    with pytest.raises(ValueError, match="Only detached actors can be named"):
-        DetachedActor._remote(name="d_actor")
-
-    DetachedActor._remote(detached=True, name="d_actor")
+    DetachedActor._remote(name="d_actor")
     with pytest.raises(ValueError, match="Please use a different name"):
-        DetachedActor._remote(detached=True, name="d_actor")
+        DetachedActor._remote(name="d_actor")
 
     redis_address = ray_start_regular["redis_address"]
 
@@ -721,7 +680,7 @@ def test_detached_actor(ray_start_regular):
 import ray
 ray.init(address="{}")
 
-existing_actor = ray.util.get_actor("{}")
+existing_actor = ray.get_actor("{}")
 assert ray.get(existing_actor.ping.remote()) == "pong"
 
 @ray.remote
@@ -729,17 +688,16 @@ class DetachedActor:
     def ping(self):
         return "pong"
 
-actor = DetachedActor._remote(name="{}", detached=True)
+actor = DetachedActor._remote(name="{}")
 ray.get(actor.ping.remote())
 """.format(redis_address, get_actor_name, create_actor_name)
 
     run_string_as_driver(driver_script)
-    detached_actor = ray.util.get_actor(create_actor_name)
+    detached_actor = ray.get_actor(create_actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
 
 
-@pytest.mark.parametrize("deprecated_codepath", [False, True])
-def test_kill(ray_start_regular, deprecated_codepath):
+def test_kill(ray_start_regular):
     @ray.remote
     class Actor:
         def hang(self):
@@ -750,17 +708,13 @@ def test_kill(ray_start_regular, deprecated_codepath):
     result = actor.hang.remote()
     ready, _ = ray.wait([result], timeout=0.5)
     assert len(ready) == 0
-    if deprecated_codepath:
-        actor.__ray_kill__()
-    else:
-        ray.kill(actor)
+    ray.kill(actor, no_restart=False)
 
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(result)
 
-    if not deprecated_codepath:
-        with pytest.raises(ValueError):
-            ray.kill("not_an_actor_handle")
+    with pytest.raises(ValueError):
+        ray.kill("not_an_actor_handle")
 
 
 # This test verifies actor creation task failure will not

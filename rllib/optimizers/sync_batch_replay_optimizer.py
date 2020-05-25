@@ -7,7 +7,6 @@ from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.utils.memory import ray_get_and_free
 
 
 class SyncBatchReplayOptimizer(PolicyOptimizer):
@@ -56,7 +55,7 @@ class SyncBatchReplayOptimizer(PolicyOptimizer):
 
         with self.sample_timer:
             if self.workers.remote_workers():
-                batches = ray_get_and_free(
+                batches = ray.get(
                     [e.sample.remote() for e in self.workers.remote_workers()])
             else:
                 batches = [self.workers.local_worker().sample()]

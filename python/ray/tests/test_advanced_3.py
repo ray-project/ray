@@ -511,26 +511,6 @@ def test_put_pins_object(ray_start_object_store_memory):
         ray.get(y_id)
 
 
-@pytest.mark.parametrize(
-    "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
-def test_redis_lru_with_set(ray_start_object_store_memory):
-    x = np.zeros(8 * 10**7, dtype=np.uint8)
-    x_id = ray.put(x, weakref=True)
-
-    # Remove the object from the object table to simulate Redis LRU eviction.
-    removed = False
-    start_time = time.time()
-    while time.time() < start_time + 10:
-        if ray.state.state.redis_clients[0].delete(b"OBJECT" +
-                                                   x_id.binary()) == 1:
-            removed = True
-            break
-    assert removed
-
-    # Now evict the object from the object store.
-    ray.put(x)  # This should not crash.
-
-
 def test_decorated_function(ray_start_regular):
     def function_invocation_decorator(f):
         def new_f(args, kwargs):

@@ -157,7 +157,7 @@ class MockGcsClient : public gcs::RedisGcsClient {
     node_accessor_.reset(new MockNodeInfoAccessor(this, node_id));
   }
 
-  gcs::raylet::TaskTable &raylet_task_table() { return *task_table_fake_; }
+  gcs::raylet::TaskTable &raylet_task_table() override { return *task_table_fake_; }
 
   MockTaskInfoAccessor &MockTasks() {
     return *dynamic_cast<MockTaskInfoAccessor *>(task_accessor_.get());

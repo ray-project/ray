@@ -3,9 +3,9 @@ from types import FunctionType
 
 import ray
 import ray.cloudpickle as pickle
-
 from ray.experimental.internal_kv import _internal_kv_initialized, \
     _internal_kv_get, _internal_kv_put
+from ray.tune.error import TuneError
 
 TRAINABLE_CLASS = "trainable_class"
 ENV_CREATOR = "env_creator"
@@ -31,9 +31,9 @@ def get_trainable_cls(trainable_name):
 
 def validate_trainable(trainable_name):
     if not has_trainable(trainable_name):
-        # Make sure rllib agents are registered
-        from ray import rllib  # noqa: F401
-        from ray.tune.error import TuneError
+        # Make sure everything rllib-related is registered.
+        from ray.rllib import _register_all
+        _register_all()
         if not has_trainable(trainable_name):
             raise TuneError("Unknown trainable: " + trainable_name)
 

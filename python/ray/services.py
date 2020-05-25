@@ -527,10 +527,7 @@ def start_ray_process(command,
         use_tmux=use_tmux)
 
 
-def wait_for_redis_to_start(redis_ip_address,
-                            redis_port,
-                            password=None,
-                            num_retries=5):
+def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
     """Wait for a Redis server to be available.
 
     This is accomplished by creating a Redis client and sending a random
@@ -540,8 +537,6 @@ def wait_for_redis_to_start(redis_ip_address,
         redis_ip_address (str): The IP address of the redis server.
         redis_port (int): The port of the redis server.
         password (str): The password of the redis server.
-        num_retries (int): The number of times to try connecting with redis.
-            The client will sleep for one second between attempts.
 
     Raises:
         Exception: An exception is raised if we could not connect with Redis.
@@ -549,8 +544,9 @@ def wait_for_redis_to_start(redis_ip_address,
     redis_client = redis.StrictRedis(
         host=redis_ip_address, port=redis_port, password=password)
     # Wait for the Redis server to start.
-    counter = 0
-    while counter < num_retries:
+    num_retries = 12
+    delay = 0.001
+    for _ in range(num_retries):
         try:
             # Run some random command and see if it worked.
             logger.debug(
@@ -559,12 +555,11 @@ def wait_for_redis_to_start(redis_ip_address,
             redis_client.client_list()
         except redis.ConnectionError:
             # Wait a little bit.
-            time.sleep(1)
-            logger.info("Failed to connect to the redis server, retrying.")
-            counter += 1
+            time.sleep(delay)
+            delay *= 2
         else:
             break
-    if counter == num_retries:
+    else:
         raise RuntimeError("Unable to connect to Redis. If the Redis instance "
                            "is on a different machine, check that your "
                            "firewall is configured properly.")
@@ -878,8 +873,9 @@ def _start_redis_instance(executable,
 
     Notes:
         If "port" is not None, then we will only use this port and try
-        only once. Otherwise, random ports will be used and the maximum
-        retries count is "num_retries".
+        only once. Otherwise, we will first try the default redis port,
+        and if it is unavailable, we will try random ports with
+        maximum retries of "num_retries".
 
     Args:
         executable (str): Full path of the redis-server executable.
@@ -917,7 +913,7 @@ def _start_redis_instance(executable,
         # This ensures that we will use the given port.
         num_retries = 1
     else:
-        port = new_port()
+        port = ray_constants.DEFAULT_PORT
 
     load_module_args = []
     for module in modules:
@@ -1223,6 +1219,8 @@ def start_raylet(redis_address,
                  temp_dir,
                  session_dir,
                  resource_spec,
+                 min_worker_port=None,
+                 max_worker_port=None,
                  object_manager_port=None,
                  redis_password=None,
                  use_valgrind=False,
@@ -1251,6 +1249,10 @@ def start_raylet(redis_address,
         resource_spec (ResourceSpec): Resources for this raylet.
         object_manager_port: The port to use for the object manager. If this is
             None, then the object manager will choose its own port.
+        min_worker_port (int): The lowest port number that workers will bind
+            on. If not set, random ports will be chosen.
+        max_worker_port (int): The highest port number that workers will bind
+            on. If set, min_worker_port must also be set.
         redis_password: The password to use when connecting to Redis.
         use_valgrind (bool): True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
@@ -1328,6 +1330,12 @@ def start_raylet(redis_address,
     if object_manager_port is None:
         object_manager_port = 0
 
+    if min_worker_port is None:
+        min_worker_port = 0
+
+    if max_worker_port is None:
+        max_worker_port = 0
+
     if load_code_from_local:
         start_worker_command += ["--load-code-from-local"]
 
@@ -1336,6 +1344,8 @@ def start_raylet(redis_address,
         "--raylet_socket_name={}".format(raylet_name),
         "--store_socket_name={}".format(plasma_store_name),
         "--object_manager_port={}".format(object_manager_port),
+        "--min_worker_port={}".format(min_worker_port),
+        "--max_worker_port={}".format(max_worker_port),
         "--node_manager_port={}".format(node_manager_port),
         "--node_ip_address={}".format(node_ip_address),
         "--redis_address={}".format(gcs_ip_address),

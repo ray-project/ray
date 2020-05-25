@@ -83,6 +83,8 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
       const ActorID &actor_id,
       const OptionalItemCallback<ActorCheckpointIdData> &callback) override;
 
+  Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
+
  protected:
   virtual std::vector<ActorID> GetAllActorID() const;
   virtual Status Get(const ActorID &actor_id, ActorTableData *actor_table_data) const;
@@ -181,6 +183,10 @@ class RedisJobInfoAccessor : public JobInfoAccessor {
     return Status::NotImplemented("AsyncGetAll not implemented");
   }
 
+  Status AsyncReSubscribe() override {
+    return Status::NotImplemented("AsyncReSubscribe not implemented");
+  }
+
  private:
   /// Append job information to GCS asynchronously.
   ///
@@ -267,6 +273,11 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
 
   Status AsyncGetLocations(const ObjectID &object_id,
                            const MultiItemCallback<ObjectTableData> &callback) override;
+
+  Status AsyncGetAll(
+      const MultiItemCallback<rpc::ObjectLocationInfo> &callback) override {
+    return Status::NotImplemented("AsyncGetAll not implemented");
+  }
 
   Status AsyncAddLocation(const ObjectID &object_id, const ClientID &node_id,
                           const StatusCallback &callback) override;
@@ -403,6 +414,10 @@ class RedisStatsInfoAccessor : public StatsInfoAccessor {
 
   Status AsyncAddProfileData(const std::shared_ptr<ProfileTableData> &data_ptr,
                              const StatusCallback &callback) override;
+
+  Status AsyncGetAll(const MultiItemCallback<rpc::ProfileTableData> &callback) override {
+    return Status::NotImplemented("AsyncGetAll not implemented");
+  }
 
  private:
   RedisGcsClient *client_impl_{nullptr};
