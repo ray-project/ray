@@ -242,6 +242,8 @@ struct GcsServerMocker {
         const gcs::OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override {
       return Status::NotImplemented("");
     }
+
+    Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
   };
 
   class MockedNodeInfoAccessor : public gcs::NodeInfoAccessor {

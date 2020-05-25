@@ -18,8 +18,8 @@
 #include "error_info_handler_impl.h"
 #include "gcs_actor_manager.h"
 #include "gcs_node_manager.h"
+#include "gcs_object_manager.h"
 #include "job_info_handler_impl.h"
-#include "object_info_handler_impl.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "stats_handler_impl.h"
@@ -205,8 +205,8 @@ std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {
 }
 
 std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
-  return std::unique_ptr<rpc::DefaultObjectInfoHandler>(
-      new rpc::DefaultObjectInfoHandler(*redis_gcs_client_, gcs_pub_sub_));
+  return std::unique_ptr<GcsObjectManager>(
+      new GcsObjectManager(gcs_table_storage_, gcs_pub_sub_, *gcs_node_manager_));
 }
 
 void GcsServer::StoreGcsServerAddressInRedis() {

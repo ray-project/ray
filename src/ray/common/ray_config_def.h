@@ -284,6 +284,12 @@ RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 
+/// The interval at which the gcs rpc client will check if gcs rpc server is ready.
+RAY_CONFIG(int64_t, ping_gcs_rpc_server_interval_milliseconds, 1000)
+
+/// Maximum number of times to retry ping gcs rpc server when gcs server restarts.
+RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 600)
+
 /// Whether to enable gcs service.
 /// RAY_GCS_SERVICE_ENABLED is an env variable which only set in ci job.
 /// If the value of RAY_GCS_SERVICE_ENABLED is false, we will disable gcs service,
