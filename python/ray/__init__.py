@@ -9,9 +9,13 @@ logger = logging.getLogger(__name__)
 # raylet modules.
 
 if "pickle5" in sys.modules:
-    raise ImportError("Ray must be imported before pickle5 because Ray "
-                      "requires a specific version of pickle5 (which is "
-                      "packaged along with Ray).")
+    import pkg_resources
+    version_info = pkg_resources.require("pickle5")
+    version = tuple(int(n) for n in version_info[0].version.split("."))
+    if version < (0, 0, 10):
+        raise ImportError("You are using an old version of pickle5 that "
+                          "leaks memory, please run 'pip install pickle5 -U' "
+                          "to upgrade")
 
 if "OMP_NUM_THREADS" not in os.environ:
     logger.debug("[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "

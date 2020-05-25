@@ -323,6 +323,23 @@ class ServeMaster:
         await worker_handle.ready.remote()
         return worker_handle
 
+    async def _start_replica(self, backend_tag, replica_tag):
+        # NOTE(edoakes): the replicas may already be created if we
+        # failed after creating them but before writing a
+        # checkpoint.
+        try:
+            worker_handle = ray.util.get_actor(replica_tag)
+        except ValueError:
+            worker_handle = await self._start_backend_worker(
+                backend_tag, replica_tag)
+
+        self.replicas[backend_tag].append(replica_tag)
+        self.workers[backend_tag][replica_tag] = worker_handle
+
+        # Register the worker with the router.
+        await self.router.add_new_worker.remote(backend_tag, replica_tag,
+                                                worker_handle)
+
     async def _start_pending_replicas(self):
         """Starts the pending backend replicas in self.replicas_to_start.
 
@@ -332,46 +349,44 @@ class ServeMaster:
 
         Clears self.replicas_to_start.
         """
+        replica_started_futures = []
         for backend_tag, replicas_to_create in self.replicas_to_start.items():
             for replica_tag in replicas_to_create:
-                # NOTE(edoakes): the replicas may already be created if we
-                # failed after creating them but before writing a checkpoint.
-                try:
-                    worker_handle = ray.util.get_actor(replica_tag)
-                except ValueError:
-                    worker_handle = await self._start_backend_worker(
-                        backend_tag, replica_tag)
+                replica_started_futures.append(
+                    self._start_replica(backend_tag, replica_tag))
 
-                self.replicas[backend_tag].append(replica_tag)
-                self.workers[backend_tag][replica_tag] = worker_handle
-
-                # Register the worker with the router.
-                await self.router.add_new_worker.remote(
-                    backend_tag, replica_tag, worker_handle)
+        # Wait on all creation task futures together.
+        await asyncio.gather(*replica_started_futures)
 
         self.replicas_to_start.clear()
 
     async def _stop_pending_replicas(self):
         """Stops the pending backend replicas in self.replicas_to_stop.
 
-        Stops workers by telling the router to remove them.
-
-        Clears self.replicas_to_stop.
+        Removes workers from the router, kills them, and clears
+        self.replicas_to_stop.
         """
         for backend_tag, replicas_to_stop in self.replicas_to_stop.items():
             for replica_tag in replicas_to_stop:
                 # NOTE(edoakes): the replicas may already be stopped if we
                 # failed after stopping them but before writing a checkpoint.
                 try:
-                    # Remove the replica from router.
-                    # This will also submit __ray_terminate__ on the worker.
-                    # NOTE(edoakes): we currently need to kill the worker from
-                    # the router to guarantee that the router won't submit any
-                    # more requests to it.
-                    await self.router.remove_worker.remote(
-                        backend_tag, replica_tag)
+                    replica = ray.util.get_actor(replica_tag)
                 except ValueError:
-                    pass
+                    continue
+
+                # Remove the replica from router. This call is idempotent.
+                await self.router.remove_worker.remote(backend_tag,
+                                                       replica_tag)
+
+                # TODO(edoakes): this logic isn't ideal because there may be
+                # pending tasks still executing on the replica. However, if we
+                # use replica.__ray_terminate__, we may send it while the
+                # replica is being restarted and there's no way to tell if it
+                # successfully killed the worker or not.
+                worker = ray.worker.global_worker
+                # Kill the actor with no_restart=True.
+                worker.core_worker.kill_actor(replica._ray_actor_id, True)
 
         self.replicas_to_stop.clear()
 

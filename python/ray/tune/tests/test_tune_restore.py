@@ -202,18 +202,21 @@ class HyperoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 
 class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
+    def set_basic_conf(self, analysis=None):
         space = {"width": (0, 20), "height": (-100, 100)}
 
         def cost(space, reporter):
             reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
 
         search_alg = BayesOptSearch(
-            space,
-            metric="loss",
-            mode="min",
-        )
+            space, metric="loss", mode="min", analysis=analysis)
         return search_alg, cost
+
+    def testBootStrapAnalysis(self):
+        analysis = self.run_exp_3()
+        search_alg3, cost = self.set_basic_conf(analysis)
+        search_alg3 = ConcurrencyLimiter(search_alg3, 1)
+        tune.run(cost, num_samples=10, search_alg=search_alg3, verbose=0)
 
 
 class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):

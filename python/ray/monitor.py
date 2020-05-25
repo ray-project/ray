@@ -53,7 +53,12 @@ class Monitor:
     def __del__(self):
         """Destruct the monitor object."""
         # We close the pubsub client to avoid leaking file descriptors.
-        self.primary_subscribe_client.close()
+        try:
+            primary_subscribe_client = self.primary_subscribe_client
+        except AttributeError:
+            primary_subscribe_client = None
+        if primary_subscribe_client is not None:
+            primary_subscribe_client.close()
 
     def subscribe(self, channel):
         """Subscribe to the given channel on the primary Redis shard.
