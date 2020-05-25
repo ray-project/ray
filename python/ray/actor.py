@@ -435,8 +435,7 @@ class ActorClass:
                 asyncio execution. Note that the execution order is not
                 guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor.
-            detached: Whether the actor should be kept alive after driver
-                exits.
+            detached: DEPRECATED.
 
         Returns:
             A handle to the newly created actor.
@@ -469,18 +468,16 @@ class ActorClass:
             raise RuntimeError("Actors cannot be created before ray.init() "
                                "has been called.")
 
-        if detached and name is None:
-            raise ValueError("Detached actors must be named. "
-                             "Please use Actor._remote(name='some_name') "
-                             "to associate the name.")
+        if detached:
+            logger.warning("The detached flag is deprecated. To create a "
+                           "detached actor, use the name parameter.")
 
-        if name and not detached:
-            raise ValueError("Only detached actors can be named. "
-                             "Please use Actor._remote(detached=True, "
-                             "name='some_name').")
-
-        if name == "":
-            raise ValueError("Actor name cannot be an empty string.")
+        if name is not None:
+            if not isinstance(name, str):
+                raise TypeError("name must be None or a string, "
+                                "got: '{}'.".format(type(name)))
+            if name == "":
+                raise ValueError("Actor name cannot be an empty string.")
 
         # Check whether the name is already taken.
         # TODO(edoakes): this check has a race condition because two drivers
@@ -489,14 +486,17 @@ class ActorClass:
         # async call.
         if name is not None:
             try:
-                ray.util.get_actor(name)
+                ray.get_actor(name)
             except ValueError:  # Name is not taken.
                 pass
             else:
                 raise ValueError(
                     "The name {name} is already taken. Please use "
-                    "a different name or get existing actor using "
-                    "ray.util.get_actor('{name}')".format(name=name))
+                    "a different name or get the existing actor using "
+                    "ray.get_actor('{name}')".format(name=name))
+            detached = True
+        else:
+            detached = False
 
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
@@ -583,7 +583,7 @@ class ActorClass:
             original_handle=True)
 
         if name is not None and not gcs_actor_service_enabled():
-            ray.util.register_actor(name, actor_handle)
+            ray.util.named_actors._register_actor(name, actor_handle)
 
         return actor_handle
 
@@ -761,12 +761,6 @@ class ActorHandle:
         return "Actor({}, {})".format(
             self._ray_actor_creation_function_descriptor.class_name,
             self._actor_id.hex())
-
-    def __ray_kill__(self):
-        """Deprecated - use ray.kill() instead."""
-        logger.warning("actor.__ray_kill__() is deprecated and will be removed"
-                       " in the near future. Use ray.kill(actor) instead.")
-        ray.kill(self)
 
     @property
     def _actor_id(self):

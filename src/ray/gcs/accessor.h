@@ -151,6 +151,12 @@ class ActorInfoAccessor {
       const ActorID &actor_id,
       const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) = 0;
 
+  /// Reestablish subscription.
+  /// This should be called when GCS server restarts from a failure.
+  ///
+  /// \return Status
+  virtual Status AsyncReSubscribe() = 0;
+
  protected:
   ActorInfoAccessor() = default;
 };
@@ -194,6 +200,12 @@ class JobInfoAccessor {
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
   virtual Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) = 0;
+
+  /// Reestablish subscription.
+  /// This should be called when GCS server restarts from a failure.
+  ///
+  /// \return Status
+  virtual Status AsyncReSubscribe() = 0;
 
  protected:
   JobInfoAccessor() = default;
@@ -569,6 +581,13 @@ class StatsInfoAccessor {
   virtual Status AsyncAddProfileData(
       const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
       const StatusCallback &callback) = 0;
+
+  /// Get all profile info from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finished.
+  /// \return Status
+  virtual Status AsyncGetAll(
+      const MultiItemCallback<rpc::ProfileTableData> &callback) = 0;
 
  protected:
   StatsInfoAccessor() = default;

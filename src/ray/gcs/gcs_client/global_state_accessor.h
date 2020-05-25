@@ -51,6 +51,13 @@ class GlobalStateAccessor {
   /// protobuf function.
   std::vector<std::string> GetAllJobInfo();
 
+  /// Get information of all profiles from GCS Service.
+  ///
+  /// \return All profile info. To support multi-language, we serialized each
+  /// ProfileTableData and returned the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::vector<std::string> GetAllProfileInfo();
+
  private:
   /// Whether this client is connected to gcs server.
   bool is_connected_{false};

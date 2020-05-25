@@ -368,10 +368,20 @@ message AddProfileDataReply {
   GcsStatus status = 1;
 }
 
+message GetAllProfileInfoRequest {
+}
+
+message GetAllProfileInfoReply {
+  GcsStatus status = 1;
+  repeated ProfileTableData profile_info_list = 2;
+}
+
 // Service for stats access.
 service StatsGcsService {
   // Add profile data to GCS Service.
   rpc AddProfileData(AddProfileDataRequest) returns (AddProfileDataReply);
+  // Get information of all profiles from GCS Service.
+  rpc GetAllProfileInfo(GetAllProfileInfoRequest) returns (GetAllProfileInfoReply);
 }
 
 message ReportJobErrorRequest {
