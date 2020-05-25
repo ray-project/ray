@@ -266,6 +266,8 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
       const ObjectID &object_id,
       const MultiItemCallback<rpc::ObjectTableData> &callback) override;
 
+  Status AsyncGetAll(const MultiItemCallback<rpc::ObjectLocationInfo> &callback) override;
+
   Status AsyncAddLocation(const ObjectID &object_id, const ClientID &node_id,
                           const StatusCallback &callback) override;
 

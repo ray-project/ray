@@ -329,6 +329,13 @@ class ObjectInfoAccessor {
       const ObjectID &object_id,
       const MultiItemCallback<rpc::ObjectTableData> &callback) = 0;
 
+  /// Get all object's locations from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finished.
+  /// \return Status
+  virtual Status AsyncGetAll(
+      const MultiItemCallback<rpc::ObjectLocationInfo> &callback) = 0;
+
   /// Add location of object to GCS asynchronously.
   ///
   /// \param object_id The ID of object which location will be added to GCS.

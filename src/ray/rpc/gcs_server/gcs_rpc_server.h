@@ -243,6 +243,10 @@ class ObjectInfoGcsServiceHandler {
                                         GetObjectLocationsReply *reply,
                                         SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleGetAllObjectLocations(const GetAllObjectLocationsRequest &request,
+                                           GetAllObjectLocationsReply *reply,
+                                           SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleAddObjectLocation(const AddObjectLocationRequest &request,
                                        AddObjectLocationReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
@@ -269,6 +273,7 @@ class ObjectInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     OBJECT_INFO_SERVICE_RPC_HANDLER(GetObjectLocations);
+    OBJECT_INFO_SERVICE_RPC_HANDLER(GetAllObjectLocations);
     OBJECT_INFO_SERVICE_RPC_HANDLER(AddObjectLocation);
     OBJECT_INFO_SERVICE_RPC_HANDLER(RemoveObjectLocation);
   }
