@@ -31,8 +31,13 @@ class VectorEnv:
              action_space=None,
              observation_space=None,
              env_config=None):
-        return _VectorizedGymEnv(make_env, existing_envs or [], num_envs,
-                                 action_space, observation_space, env_config)
+        return _VectorizedGymEnv(
+            make_env=make_env,
+            existing_envs=existing_envs or [],
+            num_envs=num_envs,
+            observation_space=observation_space,
+            action_space=action_space,
+            env_config=env_config)
 
     @PublicAPI
     def vector_reset(self):
@@ -89,11 +94,7 @@ class _VectorizedGymEnv(VectorEnv):
                  observation_space=None,
                  action_space=None,
                  env_config=None):
-        """
-            Arguments:
-        make_env (func|None):
-        existing_envs (list): List of existing gym envs.
-        num_envs (int): Desired num gym envs to keep total.
+        """Initializes a _VectorizedGymEnv object.
 
         Args:
             make_env (Optional[callable]): Factory that produces a new gym env.

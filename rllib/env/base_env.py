@@ -1,7 +1,6 @@
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.env.remote_vector_env import RemoteVectorEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.utils.annotations import override, PublicAPI
 
@@ -81,6 +80,7 @@ class BaseEnv:
                     remote_env_batch_wait_ms=0):
         """Wraps any env type as needed to expose the async interface."""
 
+        from ray.rllib.env.remote_vector_env import RemoteVectorEnv
         if remote_envs and num_envs == 1:
             raise ValueError(
                 "Remote envs only make sense to use if num_envs > 1 "
