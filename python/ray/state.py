@@ -10,8 +10,7 @@ from ray import (
     gcs_utils,
     services,
 )
-from ray.utils import (decode, binary_to_object_id, binary_to_hex,
-                       hex_to_binary)
+from ray.utils import (decode, binary_to_hex, hex_to_binary)
 
 from ray._raylet import GlobalStateAccessor
 
