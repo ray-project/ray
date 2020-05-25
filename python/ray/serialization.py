@@ -271,11 +271,19 @@ class SerializationContext:
             # TODO (kfstorm): exception serialization should be language
             # independent.
             if error_type == ErrorType.Value("TASK_EXECUTION_EXCEPTION"):
-                obj = self._deserialize_msgpack_data(data, metadata)
-                obj = ray.RayException.from_binary(obj)
-                assert isinstance(obj, RayException)
-                obj = obj.python_exception()
-                return obj
+                serialized = self._deserialize_msgpack_data(data, metadata)
+                ray_exception = ray.RayException.from_binary(serialized)
+                assert isinstance(ray_exception, RayException)
+                python_exception = ray_exception.python_exception()
+                if python_exception is None:
+                    return RayTaskError(ray_exception.function(),
+                                        ray_exception.error_message(),
+                                        ray_exception.cause(),
+                                        ray_exception.proc_title(),
+                                        ray_exception.pid(),
+                                        ray_exception.ip())
+                else:
+                    return python_exception
             elif error_type == ErrorType.Value("WORKER_DIED"):
                 return RayWorkerError()
             elif error_type == ErrorType.Value("ACTOR_DIED"):

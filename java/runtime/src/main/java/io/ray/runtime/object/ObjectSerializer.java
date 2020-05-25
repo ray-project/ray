@@ -62,7 +62,11 @@ public class ObjectSerializer {
         byte[] serialized = Serializer.decode(data, byte[].class);
         NativeRayException nativeRayException = NativeRayException.fromBytes(serialized);
         try {
-          return nativeRayException.getJavaException();
+          Throwable e = nativeRayException.getJavaException();
+          if (e == null) {
+            e = new RayTaskException(nativeRayException.toString(), null);
+          }
+          return e;
         } finally {
           nativeRayException.destroy();
         }
@@ -96,7 +100,7 @@ public class ObjectSerializer {
           ErrorType.TASK_EXECUTION_EXCEPTION,
           (Throwable) object);
       try {
-        byte[] serializedBytes = Serializer.encode(nativeRayException.serialize()).getLeft();
+        byte[] serializedBytes = Serializer.encode(nativeRayException.toBytes()).getLeft();
         return new NativeRayObject(serializedBytes, TASK_EXECUTION_EXCEPTION_META);
       } finally {
         nativeRayException.destroy();

@@ -63,7 +63,33 @@ class RayException : public MessageWrapper<rpc::RayException> {
 
   const rpc::ErrorType ErrorType() const { return message_->error_type(); }
 
+  std::string ErrorMessage() const { return message_->error_message(); }
+
   Language Language() const { return message_->language(); }
+
+  JobID JobId() const { return JobID::FromBinary(message_->job_id()); }
+
+  WorkerID WorkerId() const { return WorkerID::FromBinary(message_->worker_id()); }
+
+  TaskID TaskId() const { return TaskID::FromBinary(message_->task_id()); }
+
+  ActorID ActorId() const { return ActorID::FromBinary(message_->actor_id()); }
+
+  ObjectID ObjectId() const { return ObjectID::FromBinary(message_->object_id()); }
+
+  std::string Ip() const { return message_->ip(); }
+
+  pid_t Pid() const { return static_cast<pid_t>(message_->pid()); }
+
+  std::string ProcTitle() const { return message_->proc_title(); }
+
+  std::string File() const { return message_->file(); }
+
+  uint64_t LineNo() const { return message_->lineno(); }
+
+  std::string Function() const { return message_->function(); }
+
+  std::string Traceback() const { return message_->traceback(); }
 
   std::string Data() const { return message_->data(); }
 

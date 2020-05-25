@@ -55,6 +55,15 @@ public class NativeRayException {
     return new NativeRayException(serialized);
   }
 
+  public byte[] toBytes() {
+    return nativeSerialize(this.nativeHandle);
+  }
+
+  @Override
+  public String toString() {
+    return nativeToString(this.nativeHandle);
+  }
+
   public void destroy() {
     nativeDestroy(this.nativeHandle);
   }
@@ -64,19 +73,11 @@ public class NativeRayException {
   }
 
   public Throwable getJavaException() {
-    // byte[] serialized = nativeData(this.nativeHandle);
-    //    if (getLanguge() == Language.JAVA && serialized.length > 0) {
-    return Serializer.decode(nativeData(this.nativeHandle), Throwable.class);
-    //    }
-  }
-
-  public byte[] serialize() {
-    return nativeSerialize(this.nativeHandle);
-  }
-
-  @Override
-  public String toString() {
-    return nativeToString(this.nativeHandle);
+    byte[] serialized = nativeData(this.nativeHandle);
+    if (getLanguge() == Language.JAVA && serialized.length > 0) {
+      return Serializer.decode(serialized, Throwable.class);
+    }
+    return null;
   }
 
   private static native long nativeCreateRayException(int errorType, String errorMessage,
@@ -89,8 +90,6 @@ public class NativeRayException {
   private static native void nativeDestroy(long handle);
 
   private static native int nativeLanguage(long handle);
-
-  private static native int nativeErrorType(long handle);
 
   private static native String nativeToString(long handle);
 

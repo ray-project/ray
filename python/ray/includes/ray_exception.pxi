@@ -10,7 +10,7 @@ import setproctitle
 cdef class RayException(object):
     cdef shared_ptr[CRayException] exception    
 
-    def __init__(self, exc_info=None):
+    def __init__(self, exc_info=None, RayException cause=None):
         cdef:
             cdef JobID job_id
             cdef WorkerID worker_id
@@ -84,14 +84,15 @@ cdef class RayException(object):
                                                function,
                                                traceback_str,
                                                data,
-                                               shared_ptr[CRayException]()))
+                                               shared_ptr[CRayException]() if cause is None else cause.exception))
 
     def python_exception(self):
-        cdef bytes data = self.exception.get().Data()
-        if data:
-            return pickle.loads(data)
-        else:
-            return None
+        cdef bytes data
+        if <int>self.exception.get().Language() == <int>LANGUAGE_PYTHON:
+            data = self.exception.get().Data()
+            if data:
+                return pickle.loads(data)
+        return None
 
     def binary(self):
         return self.exception.get().Serialize()
@@ -101,6 +102,70 @@ cdef class RayException(object):
         cdef RayException r = RayException()
         r.exception.reset(new CRayException(b))
         return r
+
+    def error_type(self):
+        return <int>self.exception.get().ErrorType()
+
+    def error_message(self):
+        return <str>self.exception.get().ErrorMessage()
+
+    def language(self):
+        return Language(<int>self.exception.get().Language())
+
+    def job_id(self):
+        cdef JobID job_id = JobID.nil()
+        job_id.data = self.exception.get().JobId()
+        return job_id
+
+    def worker_id(self):
+        cdef WorkerID worker_id = WorkerID.nil()
+        worker_id.data = self.exception.get().WorkerId()
+        return worker_id
+
+    def task_id(self):
+        cdef TaskID task_id = TaskID.nil()
+        task_id.data = self.exception.get().TaskId()
+        return task_id
+
+    def actor_id(self):
+        cdef ActorID actor_id = ActorID.nil()
+        actor_id.data = self.exception.get().ActorId()
+        return actor_id
+
+    def object_id(self):
+        cdef ObjectID object_id = ObjectID.nil()
+        object_id.data = self.exception.get().ObjectId()
+        return object_id
+
+    def ip(self):
+        return <str>self.exception.get().Ip()
+
+    def pid(self):
+        return self.exception.get().Pid()
+
+    def proc_title(self):
+        return <str>self.exception.get().ProcTitle()
+
+    def file(self):
+        return <str>self.exception.get().File()
+
+    def lineno(self):
+        return self.exception.get().LineNo()
+
+    def function(self):
+        return <str>self.exception.get().Function()
+
+    def traceback(self):
+        return <str>self.exception.get().Traceback()
+
+    def cause(self):
+        cdef shared_ptr[CRayException] cause = self.exception.get().Cause()
+        cdef RayException cause_ex = RayException()
+        if cause.get() == nullptr:
+            return None
+        else:
+            cause_ex.exception = cause
+            return cause_ex
 
     def __str__(self):
         return <str>self.exception.get().ToString()

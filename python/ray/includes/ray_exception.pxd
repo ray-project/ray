@@ -20,6 +20,22 @@ cdef extern from "ray/common/ray_exception.h" nogil:
             const c_string &function, const c_string &traceback,
             const c_string &data, shared_ptr[CRayException] cause)
         CRayException(const c_string &serialized_binary)
+        CErrorType ErrorType() const
+        c_string ErrorMessage() const
+        CLanguage Language() const
+        CJobID JobId() const
+        CWorkerID WorkerId() const
+        CTaskID TaskId() const
+        CActorID ActorId() const
+        CObjectID ObjectId() const
+        c_string Ip() const
+        int32_t Pid() const
+        c_string ProcTitle() const
+        c_string File() const
+        uint64_t LineNo() const
+        c_string Function() const
+        c_string Traceback() const
         c_string Data() const 
+        shared_ptr[CRayException] Cause() const
         c_string ToString() const
         c_string Serialize() const
