@@ -411,8 +411,8 @@ class SchedulingQueue {
     while (!pending_tasks_.empty()) {
       auto head = pending_tasks_.begin();
       head->second.Cancel();
-      pending_tasks_.erase(head);
       next_seq_no_ = std::max(next_seq_no_, head->first + 1);
+      pending_tasks_.erase(head);
     }
   }
 

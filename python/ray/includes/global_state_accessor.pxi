@@ -25,3 +25,6 @@ cdef class GlobalStateAccessor:
 
     def get_node_table(self):
         return self.inner.get().GetAllNodeInfo()
+
+    def get_profile_table(self):
+        return self.inner.get().GetAllProfileInfo()

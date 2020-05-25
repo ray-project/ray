@@ -281,6 +281,8 @@ class ServiceBasedStatsInfoAccessor : public StatsInfoAccessor {
   Status AsyncAddProfileData(const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
                              const StatusCallback &callback) override;
 
+  Status AsyncGetAll(const MultiItemCallback<rpc::ProfileTableData> &callback) override;
+
  private:
   ServiceBasedGcsClient *client_impl_;
 };

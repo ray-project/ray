@@ -358,7 +358,7 @@ def test_decorator_args(ray_start_regular):
     with pytest.raises(Exception):
 
         @ray.remote(invalid_kwarg=0)  # noqa: F811
-        class Actor:
+        class Actor:  # noqa: F811
             def __init__(self):
                 pass
 
@@ -366,25 +366,25 @@ def test_decorator_args(ray_start_regular):
     with pytest.raises(Exception):
 
         @ray.remote(num_cpus=0, invalid_kwarg=0)  # noqa: F811
-        class Actor:
+        class Actor:  # noqa: F811
             def __init__(self):
                 pass
 
     # This is a valid way of using the decorator.
     @ray.remote(num_cpus=1)  # noqa: F811
-    class Actor:
+    class Actor:  # noqa: F811
         def __init__(self):
             pass
 
     # This is a valid way of using the decorator.
     @ray.remote(num_gpus=1)  # noqa: F811
-    class Actor:
+    class Actor:  # noqa: F811
         def __init__(self):
             pass
 
     # This is a valid way of using the decorator.
     @ray.remote(num_cpus=1, num_gpus=1)  # noqa: F811
-    class Actor:
+    class Actor:  # noqa: F811
         def __init__(self):
             pass
 

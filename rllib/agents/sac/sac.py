@@ -62,8 +62,12 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_eps": 1e-6,
     "prioritized_replay_beta_annealing_timesteps": 20000,
     "final_prioritized_replay_beta": 0.4,
-
+    # Whether to LZ4 compress observations
     "compress_observations": False,
+    # If set, this will fix the ratio of sampled to replayed timesteps.
+    # Otherwise, replay will proceed at the native ratio determined by
+    # (train_batch_size / rollout_fragment_length).
+    "training_intensity": None,
 
     # === Optimization ===
     "optimization": {
