@@ -3,14 +3,23 @@ package io.ray.runtime.gcs;
 import com.google.common.base.Preconditions;
 import java.util.List;
 
-
+/**
+ * `GlobalStateAccessor` is used for accessing information from GCS.
+ *
+ **/
 public class GlobalStateAccessor {
-  private long globalStateAccessorNativePtr = 0;
+  // NOTE(lingxuan.zlx): Native pointer is singleton in gcs state accessor, which means it can not
+  // be changed in cluster when redis or other storage accessor is fixed.
+  private static Long globalStateAccessorNativePtr;
 
   public GlobalStateAccessor(String redisAddress, String redisPassword) {
-    globalStateAccessorNativePtr = nativeCreateGlobalStateAccessor(redisAddress, redisPassword);
-    Preconditions.checkState(globalStateAccessorNativePtr != 0,
-        "Global state accessor native pointr must not be 0.");
+    synchronized (globalStateAccessorNativePtr) {
+      if (0 == globalStateAccessorNativePtr) {
+        globalStateAccessorNativePtr = nativeCreateGlobalStateAccessor(redisAddress, redisPassword);
+      }
+      Preconditions.checkState(globalStateAccessorNativePtr != 0,
+          "Global state accessor native pointer must not be 0.");
+    }
   }
 
   public boolean connect() {
@@ -38,8 +47,10 @@ public class GlobalStateAccessor {
   }
 
   public void destroyGlobalStateAccessor() {
-    this.nativeDestroyGlobalStateAccessor(globalStateAccessorNativePtr);
-    globalStateAccessorNativePtr = 0;
+    synchronized (globalStateAccessorNativePtr) {
+      this.nativeDestroyGlobalStateAccessor(globalStateAccessorNativePtr);
+      globalStateAccessorNativePtr = 0L;
+    }
   }
 
   private native long nativeCreateGlobalStateAccessor(String redisAddress, String redisPassword);
