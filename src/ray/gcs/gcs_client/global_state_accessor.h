@@ -57,6 +57,13 @@ class GlobalStateAccessor {
   /// \return A list of `GcsNodeInfo` objects serialized in protobuf format.
   std::vector<std::string> GetAllNodeInfo();
 
+  /// Get information of all profiles from GCS Service.
+  ///
+  /// \return All profile info. To support multi-language, we serialized each
+  /// ProfileTableData and returned the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::vector<std::string> GetAllProfileInfo();
+
  private:
   /// MultiItem tranformation helper in template style.
   ///

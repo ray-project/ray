@@ -57,10 +57,6 @@ public class GcsClient {
   public List<NodeInfo> getAllNodeInfo() {
     List<byte[]> results = globalStateAccessor.getAllNodeInfo();
 
-    if (results == null) {
-      return new ArrayList<>();
-    }
-
     // This map is used for deduplication of node entries.
     Map<UniqueId, NodeInfo> nodes = new HashMap<>();
     for (byte[] result : results) {

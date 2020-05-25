@@ -107,7 +107,7 @@ def init(cluster_name=None,
     global master_actor
     master_actor_name = format_actor_name(SERVE_MASTER_NAME, cluster_name)
     try:
-        master_actor = ray.util.get_actor(master_actor_name)
+        master_actor = ray.get_actor(master_actor_name)
         return
     except ValueError:
         pass
@@ -124,7 +124,6 @@ def init(cluster_name=None,
     # in the future.
     http_node_id = ray.state.current_node_id()
     master_actor = ServeMaster.options(
-        detached=True,
         name=master_actor_name,
         max_restarts=-1,
     ).remote(cluster_name, start_server, http_node_id, http_host, http_port,

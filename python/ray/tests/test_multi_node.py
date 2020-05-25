@@ -219,8 +219,7 @@ class Counter:
     def increment(self):
         self.count += 1
         return self.count
-counter = Counter.remote()
-ray.util.register_actor("Counter", counter)
+counter = Counter.options(name="Counter").remote()
 time.sleep(100)
 """.format(address)
 
@@ -231,7 +230,7 @@ import time
 ray.init(address="{}")
 while True:
     try:
-        counter = ray.util.get_actor("Counter")
+        counter = ray.get_actor("Counter")
         break
     except ValueError:
         time.sleep(1)

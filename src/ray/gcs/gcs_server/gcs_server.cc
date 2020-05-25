@@ -224,12 +224,12 @@ void GcsServer::StoreGcsServerAddressInRedis() {
 
 std::unique_ptr<rpc::TaskInfoHandler> GcsServer::InitTaskInfoHandler() {
   return std::unique_ptr<rpc::DefaultTaskInfoHandler>(
-      new rpc::DefaultTaskInfoHandler(gcs_table_storage_, gcs_pub_sub_));
+      new rpc::DefaultTaskInfoHandler(*redis_gcs_client_, gcs_pub_sub_));
 }
 
 std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {
   return std::unique_ptr<rpc::DefaultStatsHandler>(
-      new rpc::DefaultStatsHandler(*redis_gcs_client_));
+      new rpc::DefaultStatsHandler(gcs_table_storage_));
 }
 
 std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
@@ -238,8 +238,8 @@ std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
 }
 
 std::unique_ptr<rpc::WorkerInfoHandler> GcsServer::InitWorkerInfoHandler() {
-  return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(
-      new rpc::DefaultWorkerInfoHandler(*redis_gcs_client_, gcs_pub_sub_));
+  return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(new rpc::DefaultWorkerInfoHandler(
+      *redis_gcs_client_, gcs_table_storage_, gcs_pub_sub_));
 }
 
 }  // namespace gcs
