@@ -2,8 +2,6 @@ import json
 import logging
 import time
 
-import redis
-
 import ray
 from ray import ray_constants
 
