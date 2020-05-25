@@ -40,14 +40,13 @@ class MultiAgentEpisode:
     """
 
     def __init__(self, policies, policy_mapping_fn, batch_builder_factory,
-                 extra_batch_callback, episode_id=None):
+                 extra_batch_callback):
         self.new_batch_builder = batch_builder_factory
         self.add_extra_batch = extra_batch_callback
         self.batch_builder = batch_builder_factory()
         self.total_reward = 0.0
         self.length = 0
-        self.episode_id = episode_id if episode_id is not None else \
-            random.randrange(2e9)
+        self.episode_id = random.randrange(2e9)
         self.agent_rewards = defaultdict(float)
         self.custom_metrics = {}
         self.user_data = {}

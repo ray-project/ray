@@ -10,8 +10,8 @@ import time
 
 import ray.cloudpickle as pickle
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.env import ExternalEnv, MultiAgentEnv, ExternalMultiAgentEnv, \
-    ExternalMultiAgentVectorEnv
+from ray.rllib.env import ExternalEnv, MultiAgentEnv, ExternalMultiAgentEnv  #, \
+#ExternalMultiAgentVectorEnv
 from ray.rllib.utils.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -67,16 +67,13 @@ class PolicyClient:
 
     @PublicAPI
     def start_episode(self, episode_id=None, training_enabled=True):
-                      #num_episodes=1):
-        """Record the start of an episode.
+        """Record the start of one or more episode(s).
 
-        Arguments:
+        Args:
             episode_id (str): Unique string id for the episode or None for
                 it to be auto-assigned.
             training_enabled (bool): Whether to use experiences for this
                 episode to improve the policy.
-            #num_episodes (int): How many episodes to generate. Only valid for
-            #    the self.env=ExternalMultiAgentVectorEnv case (vectorized).
 
         Returns:
             episode_id (str): Unique string id for the episode.
@@ -84,13 +81,7 @@ class PolicyClient:
 
         if self.local:
             self._update_local_policy()
-            #if num_episodes == 1:
-            ret = self.env.start_episode(episode_id, training_enabled)
-            #else:
-            #    assert isinstance(self.env, ExternalMultiAgentVectorEnv)
-            #    ret = [self.env.start_episode(i, training_enabled)
-            #           for i in range(num_episodes)]
-            return ret
+            return self.env.start_episode(episode_id, training_enabled)
 
         return self._send({
             "episode_id": episode_id,
@@ -112,7 +103,14 @@ class PolicyClient:
 
         if self.local:
             self._update_local_policy()
-            return self.env.get_action(episode_id, observation)
+            if isinstance(episode_id, (list, tuple)):
+                actions = {
+                    eid: self.env.get_action(eid, observation[eid])
+                    for eid in episode_id
+                }
+                return actions
+            else:
+                return self.env.get_action(episode_id, observation)
         else:
             return self._send({
                 "command": PolicyClient.GET_ACTION,
@@ -162,11 +160,12 @@ class PolicyClient:
 
         if self.local:
             self._update_local_policy()
-            if multiagent_done_dict:
-                return self.env.log_returns(episode_id, reward, info,
-                                            multiagent_done_dict)
-            else:
-                return self.env.log_returns(episode_id, reward, info)
+            if multiagent_done_dict is not None:
+                assert isinstance(reward, dict)
+            return self.env.log_returns(episode_id, reward, info,
+                                        multiagent_done_dict)
+            #else:
+            #    return self.env.log_returns(episode_id, reward, info)
 
         self._send({
             "command": PolicyClient.LOG_RETURNS,
@@ -257,7 +256,7 @@ class _LocalInferenceThread(threading.Thread):
                 samples = self.rollout_worker.sample()
                 metrics = self.rollout_worker.get_metrics()
                 logger.info("Sending batch of {} steps back to server.".format(
-                    samples.count))
+                    samples.total()))
                 self.send_fn({
                     "command": PolicyClient.REPORT_SAMPLES,
                     "samples": samples,
@@ -267,7 +266,7 @@ class _LocalInferenceThread(threading.Thread):
             logger.info("Error: inference worker thread died!", e)
 
 
-def auto_wrap_external(real_env_creator, num_envs=None):
+def auto_wrap_external(real_env_creator):  #, num_envs=None):
     """Wrap an environment in the ExternalEnv interface if needed.
 
     Args:
@@ -276,17 +275,16 @@ def auto_wrap_external(real_env_creator, num_envs=None):
 
     def wrapped_creator(env_config):
         real_env = real_env_creator(env_config)
-        if not isinstance(real_env,
-                          (ExternalEnv, ExternalMultiAgentEnv,
-                           ExternalMultiAgentVectorEnv)):
+        if not isinstance(real_env, (ExternalEnv, ExternalMultiAgentEnv)):
+            #ExternalMultiAgentVectorEnv)):
             logger.info(
                 "The env you specified is not a supported (sub-)type of "
                 "ExternalEnv. Attempting to convert it automatically to "
                 "ExternalEnv.")
 
-            if num_envs > 1:
-                external_cls = ExternalMultiAgentVectorEnv
-            elif isinstance(real_env, MultiAgentEnv):
+            #if num_envs > 1:
+            #    external_cls = ExternalMultiAgentVectorEnv
+            if isinstance(real_env, MultiAgentEnv):
                 external_cls = ExternalMultiAgentEnv
             else:
                 external_cls = ExternalEnv
@@ -295,8 +293,8 @@ def auto_wrap_external(real_env_creator, num_envs=None):
                 def __init__(self, real_env):
                     super().__init__(
                         observation_space=real_env.observation_space,
-                        action_space=real_env.action_space,
-                        num_envs=num_envs)
+                        action_space=real_env.action_space)
+                    #num_envs=num_envs)
 
                 def run(self):
                     # Since we are calling methods on this class in the
@@ -323,7 +321,8 @@ def create_embedded_rollout_worker(kwargs, send_fn):
     del kwargs["input_creator"]
     logger.info("Creating rollout worker with kwargs={}".format(kwargs))
     real_env_creator = kwargs["env_creator"]
-    kwargs["env_creator"] = auto_wrap_external(real_env_creator, num_envs=kwargs["num_envs"])
+    kwargs["env_creator"] = auto_wrap_external(
+        real_env_creator)  #, num_envs=kwargs["num_envs"])
 
     rollout_worker = RolloutWorker(**kwargs)
     inference_thread = _LocalInferenceThread(rollout_worker, send_fn)

@@ -53,7 +53,8 @@ class OBSOLETED_ExternalMultiAgentVectorEnv(ExternalMultiAgentEnv):
             raise ValueError(
                 "Episode {} is already started".format(episode_id))
 
-        episode = MultiAgentEpisode(None, None, lambda: 0, None, episode_id=episode_id)
+        episode = MultiAgentEpisode(
+            None, None, lambda: 0, None, episode_id=episode_id)
         # Update ID, in case it was auto-generated.
         episode_id = episode.episode_id
         self._episodes[episode_id] = episode
@@ -69,7 +70,8 @@ class OBSOLETED_ExternalMultiAgentVectorEnv(ExternalMultiAgentEnv):
             for agent_id in obs.keys():
                 episode._set_last_observation(agent_id, obs[agent_id])
         self._send(episode_id)
-        return self.action_queue.get(True, timeout=1000000.0) #TODO: change back to 60
+        return self.action_queue.get(
+            True, timeout=1000000.0)  #TODO: change back to 60
 
     #@override(ExternalMultiAgentEnv)
     #def log_action(self, episode_id, observation_dict, action_dict):
@@ -141,10 +143,31 @@ class OBSOLETED_ExternalMultiAgentVectorEnv(ExternalMultiAgentEnv):
         # Build per-env, per-agent struct for obs, rewards, etc..
         print()
         item = {
-            "obs": {env_id: dict(self._episodes[env_id]._agent_to_last_obs.items()) for env_id in episode_ids},
-            "reward": {env_id: {agent_id: rew_hist[-1] for agent_id, rew_hist in self._episodes[env_id]._agent_reward_history.items()} for env_id in episode_ids},
-            "done": {env_id: {agent_id: False for agent_id, rew_hist in self._episodes[env_id]._agent_reward_history.items()} for env_id in episode_ids},
-            "info": {env_id: dict(self._episodes[env_id]._agent_to_last_pi_info.items()) for env_id in episode_ids},
+            "obs": {
+                env_id: dict(self._episodes[env_id]._agent_to_last_obs.items())
+                for env_id in episode_ids
+            },
+            "reward": {
+                env_id: {
+                    agent_id: rew_hist[-1]
+                    for agent_id, rew_hist in self._episodes[env_id]
+                    ._agent_reward_history.items()
+                }
+                for env_id in episode_ids
+            },
+            "done": {
+                env_id: {
+                    agent_id: False
+                    for agent_id, rew_hist in self._episodes[env_id]
+                    ._agent_reward_history.items()
+                }
+                for env_id in episode_ids
+            },
+            "info": {
+                env_id:
+                dict(self._episodes[env_id]._agent_to_last_pi_info.items())
+                for env_id in episode_ids
+            },
         }
         #if self.new_actions is not None:
         #    item["off_policy_action"] = self.new_actions

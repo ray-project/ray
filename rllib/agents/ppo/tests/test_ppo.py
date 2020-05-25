@@ -50,7 +50,6 @@ class TestPPO(unittest.TestCase):
         """Test whether a PPOTrainer can be built with both frameworks."""
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
         config["num_workers"] = 0  # Run locally.
-        config["num_envs_per_worker"] = 12
         num_iterations = 2
 
         for _ in framework_iterator(config):

@@ -213,7 +213,8 @@ class _ExternalEnvToBaseEnv(BaseEnv):
     def __init__(self, external_env, preprocessor=None):  #, multiagent=False):
         self.external_env = external_env
         self.prep = preprocessor
-        self.multiagent = issubclass(type(external_env), ExternalMultiAgentEnv)  #multiagent
+        self.multiagent = issubclass(
+            type(external_env), ExternalMultiAgentEnv)  #multiagent
         self.action_space = external_env.action_space
         if preprocessor:
             self.observation_space = preprocessor.observation_space
@@ -241,9 +242,9 @@ class _ExternalEnvToBaseEnv(BaseEnv):
         if self.multiagent:
             for env_id, actions in action_dict.items():
                 self.external_env._episodes[env_id].action_queue.put(actions)
-        elif self.external_env.num_envs > 1:
-            next(iter(self.external_env._episodes.values())).action_queue.put(
-                action_dict)
+        #elif self.external_env.num_envs > 1:
+        #    next(iter(self.external_env._episodes.values())).action_queue.put(
+        #        action_dict)
         else:
             for env_id, action in action_dict.items():
                 self.external_env._episodes[env_id].action_queue.put(
@@ -254,17 +255,10 @@ class _ExternalEnvToBaseEnv(BaseEnv):
         off_policy_actions = {}
         for eid, episode in self.external_env._episodes.copy().items():
             data = episode.get_data()
-
-            if self.multiagent:
-                all_done = episode.cur_dones["__all__"]
-            elif self.external_env.num_envs > 1:
-                all_done = all(episode.cur_dones)
-            else:
-                all_done = episode.cur_dones
-
-            if all_done:
+            cur_done = episode.cur_done_dict[
+                "__all__"] if self.multiagent else episode.cur_done
+            if cur_done:
                 del self.external_env._episodes[eid]
-
             if data:
                 #if self.external_env.num_envs > 1:
                 #    for i in range(self.external_env.num_envs):
@@ -287,7 +281,6 @@ class _ExternalEnvToBaseEnv(BaseEnv):
                 all_infos[eid] = data["info"]
                 if "off_policy_action" in data:
                     off_policy_actions[eid] = data["off_policy_action"]
-
         if self.multiagent:
             # ensure a consistent set of keys
             # rely on all_obs having all possible keys for now

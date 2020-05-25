@@ -36,8 +36,8 @@ class ExternalEnv(threading.Thread):
     """
 
     @PublicAPI
-    def __init__(self, action_space, observation_space, max_concurrent=100,
-                 num_envs=1):
+    def __init__(self, action_space, observation_space, max_concurrent=100):
+        #num_envs=1):
         """Initializes an external env.
 
         Args:
@@ -45,8 +45,8 @@ class ExternalEnv(threading.Thread):
             observation_space (gym.Space): Observation space of the env.
             max_concurrent (int): Max number of active episodes to allow at
                 once. Exceeding this limit raises an error.
-            num_envs (int): If > 1, this ExternalEnv will be
-                treated as vectorized.
+            #num_envs (int): If > 1, this ExternalEnv will be
+            #    treated as vectorized.
         """
 
         threading.Thread.__init__(self)
@@ -54,7 +54,7 @@ class ExternalEnv(threading.Thread):
         self.daemon = True
         self.action_space = action_space
         self.observation_space = observation_space
-        self.num_envs = num_envs
+        #self.num_envs = num_envs
         self._episodes = {}
         self._finished = set()
         self._results_avail_condition = threading.Condition()
@@ -103,8 +103,7 @@ class ExternalEnv(threading.Thread):
                 "Episode {} is already started".format(episode_id))
 
         self._episodes[episode_id] = _ExternalEnvEpisode(
-            episode_id, self._results_avail_condition, training_enabled,
-            num_envs=self.num_envs)
+            episode_id, self._results_avail_condition, training_enabled)
 
         return episode_id
 
@@ -151,10 +150,10 @@ class ExternalEnv(threading.Thread):
         """
 
         episode = self._get(episode_id)
-        episode.cur_rewards += reward
+        episode.cur_reward += reward
 
         if info:
-            episode.cur_infos = info or {}
+            episode.cur_info = info or {}
 
     @PublicAPI
     def end_episode(self, episode_id, observation):
@@ -172,9 +171,9 @@ class ExternalEnv(threading.Thread):
     def _get(self, episode_id):
         """Get a started episode or raise an error."""
 
-        if episode_id in self._finished:
-            raise ValueError(
-                "Episode {} has already completed.".format(episode_id))
+        #if episode_id in self._finished:
+        #    raise ValueError(
+        #        "Episode {} has already completed.".format(episode_id))
 
         if episode_id not in self._episodes:
             raise ValueError("Episode {} not found.".format(episode_id))
@@ -189,37 +188,26 @@ class _ExternalEnvEpisode:
                  episode_id,
                  results_avail_condition,
                  training_enabled,
-                 multiagent=False,
-                 num_envs=1):
-        assert not (multiagent and (num_envs > 1)), \
-            "Multiagent AND vectorized (num_envs > 1) not supported yet in " \
-            "_ExternalEnvEpisode!"
-
+                 multiagent=False):
         self.episode_id = episode_id
         self.results_avail_condition = results_avail_condition
         self.training_enabled = training_enabled
         self.multiagent = multiagent
-        self.num_envs = num_envs
+        #self.num_envs = num_envs
         self.data_queue = queue.Queue()
         self.action_queue = queue.Queue()
         if multiagent:
-            self.new_observations = None
-            self.new_actions = None
-            self.cur_rewards = {}
-            self.cur_dones = {"__all__": False}
-            self.cur_infos = {}
-        elif self.num_envs > 1:
-            self.new_observations = None
-            self.new_actions = None
-            self.cur_rewards = [0.0 for _ in range(self.num_envs)]
-            self.cur_dones = [False for _ in range(self.num_envs)]
-            self.cur_infos = {}
+            self.new_observation_dict = None
+            self.new_action_dict = None
+            self.cur_reward_dict = {}
+            self.cur_done_dict = {"__all__": False}
+            self.cur_info_dict = {}
         else:
-            self.new_observations = None
-            self.new_actions = None
-            self.cur_rewards = 0.0
-            self.cur_dones = False
-            self.cur_infos = {}
+            self.new_observation = None
+            self.new_action = None
+            self.cur_reward = 0.0
+            self.cur_done = False
+            self.cur_info = {}
 
     def get_data(self):
         if self.data_queue.empty():
@@ -227,51 +215,66 @@ class _ExternalEnvEpisode:
         return self.data_queue.get_nowait()
 
     def log_action(self, observation, action):
-        self.new_observations = observation
-        self.new_actions = action
+        if self.multiagent:
+            self.new_observation_dict = observation
+            self.new_action_dict = action
+        else:
+            self.new_observation = observation
+            self.new_action = action
         self._send()
         self.action_queue.get(True, timeout=1000000.0)
 
     def wait_for_action(self, observation):
-        self.new_observations = observation
+        if self.multiagent:
+            self.new_observation_dict = observation
+        else:
+            self.new_observation = observation
         self._send()
         return self.action_queue.get(True, timeout=1000000.0)
 
     def done(self, observation):
-        self.new_observation = observation
         if self.multiagent:
-            self.cur_dones = {"__all__": True}
-        elif self.num_envs > 1:
-            self.cur_dones = [True for _ in range(self.num_envs)]
+            self.new_observation_dict = observation
+            self.cur_done_dict = {"__all__": True}
         else:
-            self.cur_dones = True
+            self.new_observation = observation
+            self.cur_done = True
         self._send()
 
     def _send(self):
         if self.multiagent:
             if not self.training_enabled:
-                for agent_id in self.cur_infos:
-                    self.cur_infos[agent_id]["training_enabled"] = False
-
-        item = {
-            "obs": self.new_observations,
-            "reward": self.cur_rewards,
-            "done": self.cur_dones,
-            "info": self.cur_infos,
-        }
-        if self.new_actions is not None:
-            item["off_policy_action"] = self.new_actions
-        self.new_observations = None
-        self.new_actions = None
-        if self.multiagent:
-            self.cur_rewards = {}
+                for agent_id in self.cur_info_dict:
+                    self.cur_info_dict[agent_id]["training_enabled"] = False
+            item = {
+                "obs": self.new_observation_dict,
+                "reward": self.cur_reward_dict,
+                "done": self.cur_done_dict,
+                "info": self.cur_info_dict,
+            }
+            if self.new_action_dict is not None:
+                item["off_policy_action"] = self.new_action_dict
+            self.new_observation_dict = None
+            self.new_action_dict = None
+            self.cur_reward_dict = {}
         else:
+            item = {
+                "obs": self.new_observation,
+                "reward": self.cur_reward,
+                "done": self.cur_done,
+                "info": self.cur_info,
+            }
+            if self.new_action is not None:
+                item["off_policy_action"] = self.new_action
+            self.new_observation = None
+            self.new_action = None
+            self.cur_reward = 0.0
             if not self.training_enabled:
                 item["info"]["training_enabled"] = False
-            if self.num_envs > 1:
-                self.cur_rewards = [0.0 for _ in range(self.num_envs)]
-            else:
-                self.cur_rewards = 0.0
+            #if self.num_envs > 1:
+            #    self.cur_rewards = [0.0 for _ in range(self.num_envs)]
+            #else:
+            #    self.cur_rewards = 0.0
 
         with self.results_avail_condition:
             self.data_queue.put_nowait(item)
