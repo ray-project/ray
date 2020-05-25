@@ -112,8 +112,7 @@ class RedisStoreClient : public StoreClient {
       const std::vector<std::string> &keys);
 
   /// The separator is used when building redis key.
-  static std::string table_separator_;
-  static std::string index_table_separator_;
+  static std::string separator_;
 
   static std::string GenRedisKey(const std::string &table_name, const std::string &key);
 
