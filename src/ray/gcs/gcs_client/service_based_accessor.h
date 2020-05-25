@@ -23,6 +23,8 @@
 namespace ray {
 namespace gcs {
 
+using SubscribeOperation = std::function<Status(const StatusCallback &done)>;
+
 class ServiceBasedGcsClient;
 
 /// \class ServiceBasedJobInfoAccessor
@@ -45,7 +47,13 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
 
   Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) override;
 
+  Status AsyncReSubscribe() override;
+
  private:
+  /// Save the subscribe operation in this function, so we can call it again when GCS
+  /// restarts from a failure.
+  SubscribeOperation subscribe_operation_;
+
   ServiceBasedGcsClient *client_impl_;
 };
 
@@ -100,7 +108,15 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const ActorID &actor_id,
       const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override;
 
+  Status AsyncReSubscribe() override;
+
  private:
+  /// Save the subscribe operation in this function, so we can call it again when GCS
+  /// restarts from a failure.
+  SubscribeOperation subscribe_all_operation_;
+  /// Save the subscribe operation of actors.
+  std::unordered_map<ActorID, SubscribeOperation> subscribe_operations_;
+
   ServiceBasedGcsClient *client_impl_;
 
   Sequencer<ActorID> sequencer_;

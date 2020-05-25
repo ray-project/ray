@@ -83,6 +83,8 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
       const ActorID &actor_id,
       const OptionalItemCallback<ActorCheckpointIdData> &callback) override;
 
+  Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
+
  protected:
   virtual std::vector<ActorID> GetAllActorID() const;
   virtual Status Get(const ActorID &actor_id, ActorTableData *actor_table_data) const;
@@ -179,6 +181,10 @@ class RedisJobInfoAccessor : public JobInfoAccessor {
 
   Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) override {
     return Status::NotImplemented("AsyncGetAll not implemented");
+  }
+
+  Status AsyncReSubscribe() override {
+    return Status::NotImplemented("AsyncReSubscribe not implemented");
   }
 
  private:

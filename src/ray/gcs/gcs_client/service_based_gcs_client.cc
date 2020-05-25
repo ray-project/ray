@@ -47,11 +47,16 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   };
   std::pair<std::string, int> address = get_server_address();
 
+  auto re_subscribe = [this]() {
+    RAY_CHECK_OK(job_accessor_->AsyncReSubscribe());
+    RAY_CHECK_OK(actor_accessor_->AsyncReSubscribe());
+  };
+
   // Connect to gcs service.
   client_call_manager_.reset(new rpc::ClientCallManager(io_service));
   gcs_rpc_client_.reset(new rpc::GcsRpcClient(address.first, address.second,
-                                              *client_call_manager_, get_server_address));
-
+                                              *client_call_manager_, get_server_address,
+                                              re_subscribe));
   job_accessor_.reset(new ServiceBasedJobInfoAccessor(this));
   actor_accessor_.reset(new ServiceBasedActorInfoAccessor(this));
   node_accessor_.reset(new ServiceBasedNodeInfoAccessor(this));

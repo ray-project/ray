@@ -15,6 +15,8 @@
 #ifndef RAY_RPC_GCS_RPC_CLIENT_H
 #define RAY_RPC_GCS_RPC_CLIENT_H
 
+#include <unistd.h>
+#include "src/ray/common/network_util.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 #include "src/ray/rpc/grpc_client.h"
 
@@ -84,9 +86,11 @@ class GcsRpcClient {
   /// rpc server.
   GcsRpcClient(const std::string &address, const int port,
                ClientCallManager &client_call_manager,
-               std::function<std::pair<std::string, int>()> get_server_address = nullptr)
+               std::function<std::pair<std::string, int>()> get_server_address = nullptr,
+               std::function<void()> reconnected_callback = nullptr)
       : client_call_manager_(client_call_manager),
-        get_server_address_(std::move(get_server_address)) {
+        get_server_address_(std::move(get_server_address)),
+        reconnected_callback_(std::move(reconnected_callback)) {
     Init(address, port, client_call_manager);
   };
 
@@ -228,14 +232,46 @@ class GcsRpcClient {
   }
 
   void Reconnect() {
+    absl::MutexLock lock(&mutex_);
     if (get_server_address_) {
-      auto address = get_server_address_();
-      Init(address.first, address.second, client_call_manager_);
+      std::pair<std::string, int> address;
+      int index = 0;
+      for (; index < RayConfig::instance().ping_gcs_rpc_server_max_retries(); ++index) {
+        address = get_server_address_();
+        RAY_LOG(DEBUG) << "Attempt to reconnect to GCS server: " << address.first << ":"
+                       << address.second;
+        if (Ping(address.first, address.second, 100)) {
+          RAY_LOG(INFO) << "Reconnected to GCS server: " << address.first << ":"
+                        << address.second;
+          break;
+        }
+        usleep(RayConfig::instance().ping_gcs_rpc_server_interval_milliseconds() * 1000);
+      }
+
+      if (index < RayConfig::instance().ping_gcs_rpc_server_max_retries()) {
+        Init(address.first, address.second, client_call_manager_);
+        if (reconnected_callback_) {
+          reconnected_callback_();
+        }
+      } else {
+        RAY_LOG(FATAL) << "Couldn't reconnect to GCS server. The last attempted GCS "
+                          "server address was "
+                       << address.first << ":" << address.second;
+      }
     }
   }
 
+  absl::Mutex mutex_;
+
   ClientCallManager &client_call_manager_;
   std::function<std::pair<std::string, int>()> get_server_address_;
+
+  /// The callback that will be called when we reconnect to GCS server.
+  /// Currently, we use this function to reestablish subscription to GCS.
+  /// Note, we use ping to detect whether the reconnection is successful. If the ping
+  /// succeeds but the RPC connection fails, this function might be called called again.
+  /// So it needs to be idempotent.
+  std::function<void()> reconnected_callback_;
 
   /// The gRPC-generated stub.
   std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;
