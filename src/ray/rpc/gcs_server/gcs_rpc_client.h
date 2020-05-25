@@ -235,9 +235,11 @@ class GcsRpcClient {
       int index = 0;
       for (; index < RayConfig::instance().ping_gcs_rpc_server_max_retries(); ++index) {
         address = get_server_address_();
+        RAY_LOG(DEBUG) << "Attempt to reconnect to GCS server: " << address.first << ":"
+                       << address.second;
         if (Ping(address.first, address.second, 100)) {
-          RAY_LOG(INFO) << "Target rpc server " << address.first << ":" << address.second
-                        << " is valid.";
+          RAY_LOG(INFO) << "Reconnected to GCS server: " << address.first << ":"
+                        << address.second;
           break;
         }
         usleep(RayConfig::instance().ping_gcs_rpc_server_interval_milliseconds() * 1000);
@@ -249,8 +251,9 @@ class GcsRpcClient {
           reconnected_callback_();
         }
       } else {
-        RAY_LOG(FATAL) << "Target rpc server " << address.first << ":" << address.second
-                       << " is invalid.";
+        RAY_LOG(FATAL) << "Couldn't reconnect to GCS server. The last attempted GCS "
+                          "server address was "
+                       << address.first << ":" << address.second;
       }
     }
   }
@@ -259,11 +262,12 @@ class GcsRpcClient {
 
   ClientCallManager &client_call_manager_;
   std::function<std::pair<std::string, int>()> get_server_address_;
-  /// This function is triggered when RPC request is called.
-  /// We will ping the address of the GCS server, and if it is valid, this function will
-  /// be called. Currently, we will subscribe to GCS again in this function. If the
-  /// function call succeeds but the connection of GCS server fails, it will try again and
-  /// subscription function needs to be idempotent.
+
+  /// The callback that will be called when we reconnect to GCS server.
+  /// Currently, we use this function to reestablish subscription to GCS.
+  /// Note, we use ping to detect whether the reconnection is successful. If the ping
+  /// succeeds but the RPC connection fails, this function might be called called again.
+  /// So it needs to be idempotent.
   std::function<void()> reconnected_callback_;
 
   /// The gRPC-generated stub.
