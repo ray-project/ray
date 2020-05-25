@@ -33,7 +33,7 @@ matrix:
 
     - os: linux
       env:
-        - PYTHON=3.6 ENABLE_ASAN=--config=asan
+        - PYTHON=3.6 ENABLE_ASAN="--config=asan -j 2"
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
       install:
