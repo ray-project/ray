@@ -69,8 +69,8 @@ class PolicyClient:
         """Record the start of one or more episode(s).
 
         Args:
-            episode_id (str): Unique string id for the episode or None for
-                it to be auto-assigned.
+            episode_id (Optional[str]): Unique string id for the episode or
+                None for it to be auto-assigned.
             training_enabled (bool): Whether to use experiences for this
                 episode to improve the policy.
 
@@ -251,8 +251,8 @@ class _LocalInferenceThread(threading.Thread):
                 logger.info("Generating new batch of experiences.")
                 samples = self.rollout_worker.sample()
                 metrics = self.rollout_worker.get_metrics()
-                logger.info("Sending batch of {} steps back to server.".format(
-                    samples.total()))
+                logger.info("Sending batch of {} steps (per-agent) back to "
+                            "server.".format(samples.count))
                 self.send_fn({
                     "command": PolicyClient.REPORT_SAMPLES,
                     "samples": samples,

@@ -78,8 +78,8 @@ class ExternalEnv(threading.Thread):
         """Record the start of an episode.
 
         Args:
-            episode_id (str): Unique string id for the episode or None for
-                it to be auto-assigned.
+            episode_id (Optional[str]): Unique string id for the episode or
+                None for it to be auto-assigned and returned.
             training_enabled (bool): Whether to use experiences for this
                 episode to improve the policy.
 
@@ -217,7 +217,7 @@ class _ExternalEnvEpisode:
             self.new_observation = observation
             self.new_action = action
         self._send()
-        self.action_queue.get(True, timeout=1000000.0)
+        self.action_queue.get(True, timeout=60.0)
 
     def wait_for_action(self, observation):
         if self.multiagent:
@@ -225,7 +225,7 @@ class _ExternalEnvEpisode:
         else:
             self.new_observation = observation
         self._send()
-        return self.action_queue.get(True, timeout=1000000.0)
+        return self.action_queue.get(True, timeout=60.0)
 
     def done(self, observation):
         if self.multiagent:

@@ -1838,7 +1838,7 @@ py_test(
     name = "examples/multi_agent_cartpole_torch",
     main = "examples/multi_agent_cartpole.py",
     tags = ["examples", "examples_M"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_cartpole.py"],
     args = ["--as-test", "--torch", "--stop-reward=70.0", "--num-cpus=4"]
 )
