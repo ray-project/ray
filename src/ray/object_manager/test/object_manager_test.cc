@@ -86,8 +86,8 @@ class TestObjectManagerBase : public ::testing::Test {
     flushall_redis();
 
     // start store
-    socket_name_1 = ObjectStoreManagerForTest::StartStore();
-    socket_name_2 = ObjectStoreManagerForTest::StartStore();
+    socket_name_1 = TestSetupUtil::StartObjectStore();
+    socket_name_2 = TestSetupUtil::StartObjectStore();
 
     unsigned int pull_timeout_ms = 1;
     push_timeout_ms = 1000;
@@ -134,8 +134,8 @@ class TestObjectManagerBase : public ::testing::Test {
     this->server1.reset();
     this->server2.reset();
 
-    ObjectStoreManagerForTest::StopStore(socket_name_1);
-    ObjectStoreManagerForTest::StopStore(socket_name_2);
+    TestSetupUtil::StopObjectStore(socket_name_1);
+    TestSetupUtil::StopObjectStore(socket_name_2);
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
@@ -455,7 +455,7 @@ TEST_F(TestObjectManager, StartTestObjectManager) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  ray::STORE_EXEC_PATH = std::string(argv[1]);
+  ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);
   wait_timeout_ms = std::stoi(std::string(argv[2]));
   return RUN_ALL_TESTS();
 }

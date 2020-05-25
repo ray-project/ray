@@ -33,17 +33,15 @@ namespace gcs {
 template <typename ID, typename Data>
 class AccessorTestBase : public ::testing::Test {
  public:
-  AccessorTestBase() {
-    RedisServiceManagerForTest::StartUpRedisServers(std::vector<int>());
-  }
+  AccessorTestBase() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
 
-  virtual ~AccessorTestBase() { RedisServiceManagerForTest::ShutDownRedisServers(); }
+  virtual ~AccessorTestBase() { TestSetupUtil::ShutDownRedisServers(); }
 
   virtual void SetUp() {
     GenTestData();
 
     GcsClientOptions options =
-        GcsClientOptions("127.0.0.1", REDIS_SERVER_PORTS.front(), "", true);
+        GcsClientOptions("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "", true);
     gcs_client_.reset(new RedisGcsClient(options));
     RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 

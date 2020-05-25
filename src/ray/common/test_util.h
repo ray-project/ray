@@ -53,69 +53,62 @@ std::shared_ptr<RayObject> GenerateRandomObject(
     const std::vector<ObjectID> &inlined_ids = {});
 
 /// Path to redis server executable binary.
-extern std::string REDIS_SERVER_EXEC_PATH;
+extern std::string TEST_REDIS_SERVER_EXEC_PATH;
 /// Path to redis client executable binary.
-extern std::string REDIS_CLIENT_EXEC_PATH;
+extern std::string TEST_REDIS_CLIENT_EXEC_PATH;
 /// Path to redis module library.
-extern std::string REDIS_MODULE_LIBRARY_PATH;
+extern std::string TEST_REDIS_MODULE_LIBRARY_PATH;
 /// Ports of redis server.
-extern std::vector<int> REDIS_SERVER_PORTS;
+extern std::vector<int> TEST_REDIS_SERVER_PORTS;
 
 /// Path to object store executable binary.
-extern std::string STORE_EXEC_PATH;
+extern std::string TEST_STORE_EXEC_PATH;
 
 /// Path to gcs server executable binary.
-extern std::string GCS_SERVER_EXEC_PATH;
+extern std::string TEST_GCS_SERVER_EXEC_PATH;
 
 /// Path to raylet executable binary.
-extern std::string RAYLET_EXEC_PATH;
+extern std::string TEST_RAYLET_EXEC_PATH;
 /// Path to mock worker executable binary. Required by raylet.
-extern std::string MOCK_WORKER_EXEC_PATH;
+extern std::string TEST_MOCK_WORKER_EXEC_PATH;
 /// Path to raylet monitor executable binary.
-extern std::string RAYLET_MONITOR_EXEC_PATH;
+extern std::string TEST_RAYLET_MONITOR_EXEC_PATH;
 
 //--------------------------------------------------------------------------------
 // COMPONENT MANAGEMENT CLASSES FOR TEST CASES
 //--------------------------------------------------------------------------------
-/// Test cases can use it to 1) start redis server(s), 2) stop redis server(s) and 3)
-/// flush all redis servers.
-class RedisServiceManagerForTest {
+/// Test cases can use it to
+/// 1. start/stop/flush redis server(s)
+/// 2. start/stop object store
+/// 3. start/stop gcs server
+/// 4. start/stop raylet
+/// 5. start/stop raylet monitor
+class TestSetupUtil {
  public:
-  static void StartUpRedisServers(std::vector<int> redis_server_ports);
+  static void StartUpRedisServers(const std::vector<int> &redis_server_ports);
   static void ShutDownRedisServers();
   static void FlushAllRedisServers();
 
- private:
-  static int StartUpRedisServer(int port);
-  static void ShutDownRedisServer(int port);
-  static void FlushRedisServer(int port);
-};
-
-/// Test cases can use it to 1) start object store and 2) stop object store.
-class ObjectStoreManagerForTest {
- public:
-  static std::string StartStore(
+  static std::string StartObjectStore(
       const boost::optional<std::string> &socket_name = boost::none);
-  static void StopStore(const std::string &store_socket_name);
-};
+  static void StopObjectStore(const std::string &store_socket_name);
 
-/// Test cases can use it to 1) start gcs server and 2) stop gcs server.
-class GcsServerManagerForTest {
- public:
-  static std::string StartGcsServer(std::string redis_address);
-  static void StopGcsServer(std::string gcs_server_socket_name);
-};
+  static std::string StartGcsServer(const std::string &redis_address);
+  static void StopGcsServer(const std::string &gcs_server_socket_name);
 
-/// Test cases can use it to 1) start raylet and 2) stop raylet.
-class RayletManagerForTest {
- public:
-  static std::string StartRaylet(std::string store_socket_name,
-                                 std::string node_ip_address, int port,
-                                 std::string redis_address, std::string resource);
-  static void StopRaylet(std::string raylet_socket_name);
+  static std::string StartRaylet(const std::string &store_socket_name,
+                                 const std::string &node_ip_address, const int &port,
+                                 const std::string &redis_address,
+                                 const std::string &resource);
+  static void StopRaylet(const std::string &raylet_socket_name);
 
-  static std::string StartRayletMonitor(std::string redis_address);
-  static void StopRayletMonitor(std::string raylet_monitor_socket_name);
+  static std::string StartRayletMonitor(const std::string &redis_address);
+  static void StopRayletMonitor(const std::string &raylet_monitor_socket_name);
+
+ private:
+  static int StartUpRedisServer(const int &port);
+  static void ShutDownRedisServer(const int &port);
+  static void FlushRedisServer(const int &port);
 };
 
 }  // namespace ray

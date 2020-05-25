@@ -58,8 +58,8 @@ class TestObjectManagerBase : public ::testing::Test {
 
   void SetUp() {
     // start store
-    std::string store_sock_1 = ObjectStoreManagerForTest::StartStore("1");
-    std::string store_sock_2 = ObjectStoreManagerForTest::StartStore("2");
+    std::string store_sock_1 = TestSetupUtil::StartObjectStore("1");
+    std::string store_sock_2 = TestSetupUtil::StartObjectStore("2");
 
     // start first server
     gcs::GcsClientOptions client_options("127.0.0.1", 6379, /*password*/ "", true);
@@ -239,6 +239,6 @@ TEST_F(TestObjectManagerIntegration, StartTestObjectManagerPush) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   ray::raylet::test_executable = std::string(argv[0]);
-  ray::STORE_EXEC_PATH = std::string(argv[1]);
+  ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);
   return RUN_ALL_TESTS();
 }

@@ -51,12 +51,12 @@ int main(int argc, char **argv) {
   // set_streaming_log_config("streaming_writer_test", StreamingLogLevel::INFO, 0);
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 8);
-  ray::STORE_EXEC_PATH = std::string(argv[1]);
-  ray::RAYLET_EXEC_PATH = std::string(argv[2]);
+  ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);
+  ray::TEST_RAYLET_EXEC_PATH = std::string(argv[2]);
   ray::streaming::node_manager_port = std::stoi(std::string(argv[3]));
-  ray::MOCK_WORKER_EXEC_PATH = std::string(argv[4]);
-  ray::GCS_SERVER_EXEC_PATH = std::string(argv[5]);
-  ray::REDIS_SERVER_EXEC_PATH = std::string(argv[6]);
-  ray::REDIS_MODULE_LIBRARY_PATH = std::string(argv[7]);
+  ray::TEST_MOCK_WORKER_EXEC_PATH = std::string(argv[4]);
+  ray::TEST_GCS_SERVER_EXEC_PATH = std::string(argv[5]);
+  ray::TEST_REDIS_SERVER_EXEC_PATH = std::string(argv[6]);
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = std::string(argv[7]);
   return RUN_ALL_TESTS();
 }

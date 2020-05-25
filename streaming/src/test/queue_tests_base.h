@@ -21,7 +21,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 #ifdef _WIN32
     RAY_CHECK(false) << "port system() calls to Windows before running this test";
 #endif
-    RedisServiceManagerForTest::StartUpRedisServers(std::vector<int>{6379, 6380});
+    TestSetupUtil::StartUpRedisServers(std::vector<int>{6379, 6380});
 
     // flush redis first.
     flushall_redis();
@@ -34,16 +34,16 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
     // start plasma store.
     for (auto &store_socket : raylet_store_socket_names_) {
-      store_socket = ObjectStoreManagerForTest::StartStore();
+      store_socket = TestSetupUtil::StartObjectStore();
     }
 
     // start gcs server
-    gcs_server_socket_name_ = GcsServerManagerForTest::StartGcsServer("127.0.0.1");
+    gcs_server_socket_name_ = TestSetupUtil::StartGcsServer("127.0.0.1");
 
     // start raylet on each node. Assign each node with different resources so that
     // a task can be scheduled to the desired node.
     for (int i = 0; i < num_nodes; i++) {
-      raylet_socket_names_[i] = RayletManagerForTest::StartRaylet(
+      raylet_socket_names_[i] = TestSetupUtil::StartRaylet(
           raylet_store_socket_names_[i], "127.0.0.1", node_manager_port_ + i, "127.0.0.1",
           "\"CPU,4.0,resource" + std::to_string(i) + ",10\"");
     }
@@ -52,15 +52,15 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
   ~StreamingQueueTestBase() {
     STREAMING_LOG(INFO) << "Stop raylet store and actors";
     for (const auto &raylet_socket_name : raylet_socket_names_) {
-      RayletManagerForTest::StopRaylet(raylet_socket_name);
+      TestSetupUtil::StopRaylet(raylet_socket_name);
     }
 
     for (const auto &store_socket_name : raylet_store_socket_names_) {
-      ObjectStoreManagerForTest::StopStore(store_socket_name);
+      TestSetupUtil::StopObjectStore(store_socket_name);
     }
 
     GcsServerManagerForTest::StopGcsServer(gcs_server_socket_name_);
-    RedisServiceManagerForTest::ShutDownRedisServers();
+    TestSetupUtil::ShutDownRedisServers();
   }
 
   JobID NextJobId() const {

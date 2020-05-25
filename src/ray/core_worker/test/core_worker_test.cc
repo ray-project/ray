@@ -19,6 +19,7 @@
 #include <boost/bind.hpp>
 #include <thread>
 
+#include "../../common/test_util.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "gmock/gmock.h"
@@ -91,7 +92,7 @@ class CoreWorkerTest : public ::testing::Test {
 #ifdef _WIN32
     RAY_CHECK(false) << "port system() calls to Windows before running this test";
 #endif
-    RedisServiceManagerForTest::StartUpRedisServers(std::vector<int>{6379, 6380});
+    TestSetupUtil::StartUpRedisServers(std::vector<int>{6379, 6380});
 
     // flush redis first.
     flushall_redis();
@@ -104,22 +105,22 @@ class CoreWorkerTest : public ::testing::Test {
 
     // start plasma store.
     for (auto &store_socket : raylet_store_socket_names_) {
-      store_socket = ObjectStoreManagerForTest::StartStore();
+      store_socket = TestSetupUtil::StartObjectStore();
     }
 
     // start gcs server
     if (RayConfig::instance().gcs_service_enabled()) {
-      gcs_server_socket_name_ = GcsServerManagerForTest::StartGcsServer("127.0.0.1");
+      gcs_server_socket_name_ = TestSetupUtil::StartGcsServer("127.0.0.1");
     } else {
       // core worker test relies on node resources. It's important that one raylet can
       // receive the heartbeat from another. So starting raylet monitor is required here.
-      raylet_monitor_socket_name_ = RayletManagerForTest::StartRayletMonitor("127.0.0.1");
+      raylet_monitor_socket_name_ = TestSetupUtil::StartRayletMonitor("127.0.0.1");
     }
 
     // start raylet on each node. Assign each node with different resources so that
     // a task can be scheduled to the desired node.
     for (int i = 0; i < num_nodes; i++) {
-      raylet_socket_names_[i] = RayletManagerForTest::StartRaylet(
+      raylet_socket_names_[i] = TestSetupUtil::StartRaylet(
           raylet_store_socket_names_[i], "127.0.0.1", node_manager_port + i, "127.0.0.1",
           "\"CPU,4.0,resource" + std::to_string(i) + ",10\"");
     }
@@ -127,22 +128,22 @@ class CoreWorkerTest : public ::testing::Test {
 
   ~CoreWorkerTest() {
     for (const auto &raylet_socket_name : raylet_socket_names_) {
-      RayletManagerForTest::StopRaylet(raylet_socket_name);
+      TestSetupUtil::StopRaylet(raylet_socket_name);
     }
 
     for (const auto &store_socket_name : raylet_store_socket_names_) {
-      ObjectStoreManagerForTest::StopStore(store_socket_name);
+      TestSetupUtil::StopObjectStore(store_socket_name);
     }
 
     if (!raylet_monitor_socket_name_.empty()) {
-      RayletManagerForTest::StopRayletMonitor(raylet_monitor_socket_name_);
+      TestSetupUtil::StopRayletMonitor(raylet_monitor_socket_name_);
     }
 
     if (!gcs_server_socket_name_.empty()) {
-      GcsServerManagerForTest::StopGcsServer(gcs_server_socket_name_);
+      TestSetupUtil::StopGcsServer(gcs_server_socket_name_);
     }
 
-    RedisServiceManagerForTest::ShutDownRedisServers();
+    TestSetupUtil::ShutDownRedisServers();
   }
 
   JobID NextJobId() const {
@@ -910,20 +911,20 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodesFailure) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 9);
-  ray::STORE_EXEC_PATH = std::string(argv[1]);
-  ray::RAYLET_EXEC_PATH = std::string(argv[2]);
+  ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);
+  ray::TEST_RAYLET_EXEC_PATH = std::string(argv[2]);
 
   auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
   std::mt19937 gen(seed);
   std::uniform_int_distribution<int> random_gen{2000, 2009};
   // Use random port to avoid port conflicts between UTs.
   node_manager_port = random_gen(gen);
-  ray::RAYLET_MONITOR_EXEC_PATH = std::string(argv[3]);
-  ray::MOCK_WORKER_EXEC_PATH = std::string(argv[4]);
-  ray::GCS_SERVER_EXEC_PATH = std::string(argv[5]);
+  ray::TEST_RAYLET_MONITOR_EXEC_PATH = std::string(argv[3]);
+  ray::TEST_MOCK_WORKER_EXEC_PATH = std::string(argv[4]);
+  ray::TEST_GCS_SERVER_EXEC_PATH = std::string(argv[5]);
 
-  ray::REDIS_CLIENT_EXEC_PATH = std::string(argv[6]);
-  ray::REDIS_SERVER_EXEC_PATH = std::string(argv[7]);
-  ray::REDIS_MODULE_LIBRARY_PATH = std::string(argv[8]);
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = std::string(argv[6]);
+  ray::TEST_REDIS_SERVER_EXEC_PATH = std::string(argv[7]);
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = std::string(argv[8]);
   return RUN_ALL_TESTS();
 }
