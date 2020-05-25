@@ -15,6 +15,8 @@ Ray Package Reference
 
 .. autofunction:: ray.kill
 
+.. autofunction:: ray.cancel
+
 .. autofunction:: ray.get_gpu_ids
 
 .. autofunction:: ray.get_resource_ids
@@ -33,8 +35,6 @@ Inspect the Cluster State
 -------------------------
 
 .. autofunction:: ray.nodes
-
-.. autofunction:: ray.tasks
 
 .. autofunction:: ray.objects
 

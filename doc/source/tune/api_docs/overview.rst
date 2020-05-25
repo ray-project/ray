@@ -1,3 +1,5 @@
+.. _tune-api-ref:
+
 Tune API Reference
 ==================
 
@@ -11,11 +13,12 @@ on `Github`_.
 
    execution.rst
    trainable.rst
+   reporters.rst
    analysis.rst
    grid_random.rst
    suggestion.rst
    schedulers.rst
+   logging.rst
    internals.rst
-   reporters.rst
    client.rst
    cli.rst

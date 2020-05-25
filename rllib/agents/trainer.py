@@ -9,6 +9,7 @@ import tempfile
 
 import ray
 from ray.exceptions import RayError
+from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.evaluation.metrics import collect_metrics
@@ -17,7 +18,6 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts, \
     try_import_tf
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
-from ray.rllib.utils.memory import ray_get_and_free
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
@@ -126,24 +126,10 @@ COMMON_CONFIG = {
     # `rllib train` command, you can also use the `-v` and `-vv` flags as
     # shorthand for INFO and DEBUG.
     "log_level": "WARN",
-    # Callbacks that will be run during various phases of training. These all
-    # take a single "info" dict as an argument. For episode callbacks, custom
-    # metrics can be attached to the episode by updating the episode object's
-    # custom metrics dict (see examples/custom_metrics_and_callbacks.py). You
-    # may also mutate the passed in batch data in your callback.
-    "callbacks": {
-        "on_episode_start": None,     # arg: {"env": .., "episode": ...}
-        "on_episode_step": None,      # arg: {"env": .., "episode": ...}
-        "on_episode_end": None,       # arg: {"env": .., "episode": ...}
-        "on_sample_end": None,        # arg: {"samples": .., "worker": ...}
-        "on_train_result": None,      # arg: {"trainer": ..., "result": ...}
-        "on_postprocess_traj": None,  # arg: {
-                                      #   "agent_id": ..., "episode": ...,
-                                      #   "pre_batch": (before processing),
-                                      #   "post_batch": (after processing),
-                                      #   "all_pre_batches": (other agent ids),
-                                      # }
-    },
+    # Callbacks that will be run during various phases of training. See the
+    # `DefaultCallbacks` class and `examples/custom_metrics_and_callbacks.py`
+    # for more usage information.
+    "callbacks": DefaultCallbacks,
     # Whether to attempt to continue training if a worker crashes. The number
     # of currently healthy workers is reported as the "num_healthy_workers"
     # metric.
@@ -151,6 +137,8 @@ COMMON_CONFIG = {
     # Log system resource metrics to results. This requires `psutil` to be
     # installed for sys stats, and `gputil` for GPU metrics.
     "log_sys_usage": True,
+    # Use fake (infinite speed) sampler. For testing only.
+    "fake_sampler": False,
 
     # === Framework Settings ===
     # Use PyTorch (instead of tf). If using `rllib train`, this can also be
@@ -217,9 +205,6 @@ COMMON_CONFIG = {
     # trainer guarantees all eval workers have the latest policy state before
     # this function is called.
     "custom_eval_function": None,
-    # EXPERIMENTAL: use the execution plan based API impl of the algo. Can also
-    # be enabled by setting RLLIB_EXEC_API=1.
-    "use_exec_api": False,
 
     # === Advanced Rollout Settings ===
     # Use a background thread for sampling (slightly off-policy, usually not
@@ -271,11 +256,16 @@ COMMON_CONFIG = {
     "min_iter_time_s": 0,
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of train iterations.
-    "timesteps_per_iteration": 0,  # TODO(ekl) deprecate this
+    "timesteps_per_iteration": 0,
     # This argument, in conjunction with worker_index, sets the random seed of
     # each worker, so that identically configured trials will have identical
     # results. This makes experiments reproducible.
     "seed": None,
+    # Any extra python env vars to set in the trainer process, e.g.,
+    # {"OMP_NUM_THREADS": "16"}
+    "extra_python_environs_for_driver": {},
+    # The extra python environments need to set for worker processes.
+    "extra_python_environs_for_worker": {},
 
     # === Advanced Resource Settings ===
     # Number of CPUs to allocate per worker.
@@ -353,6 +343,10 @@ COMMON_CONFIG = {
         "policy_mapping_fn": None,
         # Optional whitelist of policies to train, or None for all policies.
         "policies_to_train": None,
+        # Optional function that can be used to enhance the local agent
+        # observations to include more state.
+        # See rllib/evaluation/observation_function.py for more info.
+        "observation_fn": None,
     },
 }
 # __sphinx_doc_end__
@@ -397,7 +391,8 @@ class Trainer(Trainable):
     _allow_unknown_subkeys = [
         "tf_session_args", "local_tf_session_args", "env_config", "model",
         "optimizer", "multiagent", "custom_resources_per_worker",
-        "evaluation_config", "exploration_config"
+        "evaluation_config", "exploration_config",
+        "extra_python_environs_for_driver", "extra_python_environs_for_worker"
     ]
 
     # List of top level keys with value=dict, for which we always override the
@@ -424,7 +419,7 @@ class Trainer(Trainable):
             logger.info("Executing eagerly, with eager_tracing={}".format(
                 "True" if config.get("eager_tracing") else "False"))
 
-        if tf and not tf.executing_eagerly():
+        if tf and not tf.executing_eagerly() and not config.get("use_pytorch"):
             logger.info("Tip: set 'eager': true or the --eager flag to enable "
                         "TensorFlow eager execution")
 
@@ -536,11 +531,7 @@ class Trainer(Trainable):
 
     @override(Trainable)
     def _log_result(self, result):
-        if self.config["callbacks"].get("on_train_result"):
-            self.config["callbacks"]["on_train_result"]({
-                "trainer": self,
-                "result": result,
-            })
+        self.callbacks.on_train_result(trainer=self, result=result)
         # log after the callback is invoked, so that the user has a chance
         # to mutate the result
         Trainable._log_result(self, result)
@@ -578,6 +569,12 @@ class Trainer(Trainable):
             self.env_creator = lambda env_config: normalize(inner(env_config))
 
         Trainer._validate_config(self.config)
+        if not callable(self.config["callbacks"]):
+            raise ValueError(
+                "`callbacks` must be a callable method that "
+                "returns a subclass of DefaultCallbacks, got {}".format(
+                    self.config["callbacks"]))
+        self.callbacks = self.config["callbacks"]()
         log_level = self.config.get("log_level")
         if log_level in ["WARN", "ERROR"]:
             logger.info("Current log_level is {}. For more information, "
@@ -590,7 +587,7 @@ class Trainer(Trainable):
             if tf and not tf.executing_eagerly():
                 return tf.Graph().as_default()
             else:
-                return open("/dev/null")  # fake a no-op scope
+                return open(os.devnull)  # fake a no-op scope
 
         with get_scope():
             self._init(self.config, self.env_creator)
@@ -678,13 +675,6 @@ class Trainer(Trainable):
         Note that this default implementation does not do anything beyond
         merging evaluation_config with the normal trainer config.
         """
-        if not self.config["evaluation_config"]:
-            raise ValueError(
-                "No evaluation_config specified. It doesn't make sense "
-                "to enable evaluation without specifying any config "
-                "overrides, since the results will be the "
-                "same as reported during normal policy evaluation.")
-
         self._before_evaluate()
 
         # Broadcast the new policy weights to all evaluation workers.
@@ -919,6 +909,15 @@ class Trainer(Trainable):
                 "sample_batch_size", new="rollout_fragment_length")
             config2["rollout_fragment_length"] = config2["sample_batch_size"]
             del config2["sample_batch_size"]
+        if "callbacks" in config2 and type(config2["callbacks"]) is dict:
+            legacy_callbacks_dict = config2["callbacks"]
+
+            def make_callbacks():
+                # Deprecation warning will be logged by DefaultCallbacks.
+                return DefaultCallbacks(
+                    legacy_callbacks_dict=legacy_callbacks_dict)
+
+            config2["callbacks"] = make_callbacks
         return deep_update(config1, config2, cls._allow_unknown_configs,
                            cls._allow_unknown_subkeys,
                            cls._override_all_subkeys_if_type_changes)
@@ -978,7 +977,7 @@ class Trainer(Trainable):
         for i, obj_id in enumerate(checks):
             w = workers.remote_workers()[i]
             try:
-                ray_get_and_free(obj_id)
+                ray.get(obj_id)
                 healthy_workers.append(w)
                 logger.info("Worker {} looks healthy".format(i + 1))
             except RayError:

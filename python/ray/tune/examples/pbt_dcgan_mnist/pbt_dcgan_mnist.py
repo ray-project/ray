@@ -49,6 +49,8 @@ beta1 = 0.5
 # iterations of actual training in each Trainable _train
 train_iterations_per_step = 5
 
+MODEL_PATH = os.path.expanduser("~/.ray/models/mnist_cnn.pt")
+
 
 def get_data_loader():
     dataset = dset.MNIST(
@@ -305,6 +307,16 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     ray.init()
 
+    import urllib.request
+    # Download a pre-trained MNIST model for inception score calculation.
+    # This is a tiny model (<100kb).
+    if not os.path.exists(MODEL_PATH):
+        print("downloading model")
+        os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+        urllib.request.urlretrieve(
+            "https://github.com/ray-project/ray/raw/master/python/ray/tune/"
+            "examples/pbt_dcgan_mnist/mnist_cnn.pt", MODEL_PATH)
+
     dataloader = get_data_loader()
     if not args.smoke_test:
         # Plot some training images
@@ -322,10 +334,7 @@ if __name__ == "__main__":
 
     # load the pretrained mnist classification model for inception_score
     mnist_cnn = Net()
-    model_path = os.path.join(
-        os.path.dirname(ray.__file__),
-        "tune/examples/pbt_dcgan_mnist/mnist_cnn.pt")
-    mnist_cnn.load_state_dict(torch.load(model_path))
+    mnist_cnn.load_state_dict(torch.load(MODEL_PATH))
     mnist_cnn.eval()
     mnist_model_ref = ray.put(mnist_cnn)
 

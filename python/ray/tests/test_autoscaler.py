@@ -1,3 +1,4 @@
+import os
 import shutil
 import tempfile
 import threading
@@ -165,7 +166,7 @@ SMALL_CLUSTER = {
     },
     "auth": {
         "ssh_user": "ubuntu",
-        "ssh_private_key": "/dev/null",
+        "ssh_private_key": os.devnull,
     },
     "head_node": {
         "TestProp": 1,
@@ -310,7 +311,7 @@ class AutoscalingTest(unittest.TestCase):
         return path
 
     def testInvalidConfig(self):
-        invalid_config = "/dev/null"
+        invalid_config = os.devnull
         with pytest.raises(ValueError):
             StandardAutoscaler(
                 invalid_config, LoadMetrics(), update_interval_s=0)
@@ -327,11 +328,6 @@ class AutoscalingTest(unittest.TestCase):
         with pytest.raises(ValidationError):
             validate_config(config)
         del config["blah"]
-
-        config["provider"]["blah"] = "blah"
-        with pytest.raises(ValidationError):
-            validate_config(config)
-        del config["provider"]["blah"]
 
         del config["provider"]
         with pytest.raises(ValidationError):

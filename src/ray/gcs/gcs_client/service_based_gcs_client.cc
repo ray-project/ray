@@ -31,11 +31,14 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
     return Status::Invalid("gcs service address is invalid!");
   }
 
-  // Connect to gcs
+  // Connect to gcs.
   redis_gcs_client_.reset(new RedisGcsClient(options_));
   RAY_CHECK_OK(redis_gcs_client_->Connect(io_service));
 
-  // Get gcs service address
+  // Init gcs pub sub instance.
+  gcs_pub_sub_.reset(new GcsPubSub(redis_gcs_client_->GetRedisClient()));
+
+  // Get gcs service address.
   auto get_server_address = [this]() {
     std::pair<std::string, int> address;
     GetGcsServerAddressFromRedis(redis_gcs_client_->primary_context()->sync_context(),
@@ -44,11 +47,16 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   };
   std::pair<std::string, int> address = get_server_address();
 
-  // Connect to gcs service
+  auto re_subscribe = [this]() {
+    RAY_CHECK_OK(job_accessor_->AsyncReSubscribe());
+    RAY_CHECK_OK(actor_accessor_->AsyncReSubscribe());
+  };
+
+  // Connect to gcs service.
   client_call_manager_.reset(new rpc::ClientCallManager(io_service));
   gcs_rpc_client_.reset(new rpc::GcsRpcClient(address.first, address.second,
-                                              *client_call_manager_, get_server_address));
-
+                                              *client_call_manager_, get_server_address,
+                                              re_subscribe));
   job_accessor_.reset(new ServiceBasedJobInfoAccessor(this));
   actor_accessor_.reset(new ServiceBasedActorInfoAccessor(this));
   node_accessor_.reset(new ServiceBasedNodeInfoAccessor(this));
@@ -67,6 +75,9 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
 void ServiceBasedGcsClient::Disconnect() {
   RAY_CHECK(is_connected_);
   is_connected_ = false;
+  gcs_pub_sub_.reset();
+  redis_gcs_client_->Disconnect();
+  redis_gcs_client_.reset();
   RAY_LOG(INFO) << "ServiceBasedGcsClient Disconnected.";
 }
 

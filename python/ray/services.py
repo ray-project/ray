@@ -73,8 +73,14 @@ DEFAULT_JAVA_WORKER_CLASSPATH = [
 logger = logging.getLogger(__name__)
 
 ProcessInfo = collections.namedtuple("ProcessInfo", [
-    "process", "stdout_file", "stderr_file", "use_valgrind", "use_gdb",
-    "use_valgrind_profiler", "use_perftools_profiler", "use_tmux"
+    "process",
+    "stdout_file",
+    "stderr_file",
+    "use_valgrind",
+    "use_gdb",
+    "use_valgrind_profiler",
+    "use_perftools_profiler",
+    "use_tmux",
 ])
 
 
@@ -189,7 +195,7 @@ def get_address_info_from_redis_helper(redis_address,
     return {
         "object_store_address": relevant_client["ObjectStoreSocketName"],
         "raylet_socket_name": relevant_client["RayletSocketName"],
-        "node_manager_port": relevant_client["NodeManagerPort"]
+        "node_manager_port": relevant_client["NodeManagerPort"],
     }
 
 
@@ -430,9 +436,12 @@ def start_ray_process(command,
         logger.info("Detected environment variable '%s'.", gdb_env_var)
         use_gdb = True
 
-    if sum(
-        [use_gdb, use_valgrind, use_valgrind_profiler, use_perftools_profiler
-         ]) > 1:
+    if sum([
+            use_gdb,
+            use_valgrind,
+            use_valgrind_profiler,
+            use_perftools_profiler,
+    ]) > 1:
         raise ValueError(
             "At most one of the 'use_gdb', 'use_valgrind', "
             "'use_valgrind_profiler', and 'use_perftools_profiler' flags can "
@@ -463,9 +472,12 @@ def start_ray_process(command,
 
     if use_valgrind:
         command = [
-            "valgrind", "--track-origins=yes", "--leak-check=full",
-            "--show-leak-kinds=all", "--leak-check-heuristics=stdstring",
-            "--error-exitcode=1"
+            "valgrind",
+            "--track-origins=yes",
+            "--leak-check=full",
+            "--show-leak-kinds=all",
+            "--leak-check-heuristics=stdstring",
+            "--error-exitcode=1",
         ] + command
 
     if use_valgrind_profiler:
@@ -515,10 +527,7 @@ def start_ray_process(command,
         use_tmux=use_tmux)
 
 
-def wait_for_redis_to_start(redis_ip_address,
-                            redis_port,
-                            password=None,
-                            num_retries=5):
+def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
     """Wait for a Redis server to be available.
 
     This is accomplished by creating a Redis client and sending a random
@@ -528,8 +537,6 @@ def wait_for_redis_to_start(redis_ip_address,
         redis_ip_address (str): The IP address of the redis server.
         redis_port (int): The port of the redis server.
         password (str): The password of the redis server.
-        num_retries (int): The number of times to try connecting with redis.
-            The client will sleep for one second between attempts.
 
     Raises:
         Exception: An exception is raised if we could not connect with Redis.
@@ -537,8 +544,9 @@ def wait_for_redis_to_start(redis_ip_address,
     redis_client = redis.StrictRedis(
         host=redis_ip_address, port=redis_port, password=password)
     # Wait for the Redis server to start.
-    counter = 0
-    while counter < num_retries:
+    num_retries = 12
+    delay = 0.001
+    for _ in range(num_retries):
         try:
             # Run some random command and see if it worked.
             logger.debug(
@@ -547,12 +555,11 @@ def wait_for_redis_to_start(redis_ip_address,
             redis_client.client_list()
         except redis.ConnectionError:
             # Wait a little bit.
-            time.sleep(1)
-            logger.info("Failed to connect to the redis server, retrying.")
-            counter += 1
+            time.sleep(delay)
+            delay *= 2
         else:
             break
-    if counter == num_retries:
+    else:
         raise RuntimeError("Unable to connect to Redis. If the Redis instance "
                            "is on a different machine, check that your "
                            "firewall is configured properly.")
@@ -866,8 +873,9 @@ def _start_redis_instance(executable,
 
     Notes:
         If "port" is not None, then we will only use this port and try
-        only once. Otherwise, random ports will be used and the maximum
-        retries count is "num_retries".
+        only once. Otherwise, we will first try the default redis port,
+        and if it is unavailable, we will try random ports with
+        maximum retries of "num_retries".
 
     Args:
         executable (str): Full path of the redis-server executable.
@@ -905,7 +913,7 @@ def _start_redis_instance(executable,
         # This ensures that we will use the given port.
         num_retries = 1
     else:
-        port = new_port()
+        port = ray_constants.DEFAULT_PORT
 
     load_module_args = []
     for module in modules:
@@ -939,7 +947,9 @@ def _start_redis_instance(executable,
     if counter == num_retries:
         raise RuntimeError("Couldn't start Redis. "
                            "Check log files: {} {}".format(
-                               stdout_file.name, stderr_file.name))
+                               stdout_file.name if stdout_file is not None else
+                               "<stdout>", stderr_file.name
+                               if stdout_file is not None else "<stderr>"))
 
     # Create a Redis client just for configuring Redis.
     redis_client = redis.StrictRedis(
@@ -1021,9 +1031,11 @@ def start_log_monitor(redis_address,
     log_monitor_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "log_monitor.py")
     command = [
-        sys.executable, "-u", log_monitor_filepath,
+        sys.executable,
+        "-u",
+        log_monitor_filepath,
         "--redis-address={}".format(redis_address),
-        "--logs-dir={}".format(logs_dir)
+        "--logs-dir={}".format(logs_dir),
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1057,8 +1069,10 @@ def start_reporter(redis_address,
     reporter_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "reporter.py")
     command = [
-        sys.executable, "-u", reporter_filepath,
-        "--redis-address={}".format(redis_address)
+        sys.executable,
+        "-u",
+        reporter_filepath,
+        "--redis-address={}".format(redis_address),
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1112,9 +1126,13 @@ def start_dashboard(require_webui,
     dashboard_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "dashboard/dashboard.py")
     command = [
-        sys.executable, "-u", dashboard_filepath, "--host={}".format(host),
-        "--port={}".format(port), "--redis-address={}".format(redis_address),
-        "--temp-dir={}".format(temp_dir)
+        sys.executable,
+        "-u",
+        dashboard_filepath,
+        "--host={}".format(host),
+        "--port={}".format(port),
+        "--redis-address={}".format(redis_address),
+        "--temp-dir={}".format(temp_dir),
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1201,6 +1219,8 @@ def start_raylet(redis_address,
                  temp_dir,
                  session_dir,
                  resource_spec,
+                 min_worker_port=None,
+                 max_worker_port=None,
                  object_manager_port=None,
                  redis_password=None,
                  use_valgrind=False,
@@ -1229,6 +1249,10 @@ def start_raylet(redis_address,
         resource_spec (ResourceSpec): Resources for this raylet.
         object_manager_port: The port to use for the object manager. If this is
             None, then the object manager will choose its own port.
+        min_worker_port (int): The lowest port number that workers will bind
+            on. If not set, random ports will be chosen.
+        max_worker_port (int): The highest port number that workers will bind
+            on. If set, min_worker_port must also be set.
         redis_password: The password to use when connecting to Redis.
         use_valgrind (bool): True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
@@ -1288,13 +1312,15 @@ def start_raylet(redis_address,
 
     # Create the command that the Raylet will use to start workers.
     start_worker_command = [
-        sys.executable, worker_path,
+        sys.executable,
+        worker_path,
         "--node-ip-address={}".format(node_ip_address),
         "--node-manager-port={}".format(node_manager_port),
         "--object-store-name={}".format(plasma_store_name),
         "--raylet-name={}".format(raylet_name),
         "--redis-address={}".format(redis_address),
-        "--config-list={}".format(config_str), "--temp-dir={}".format(temp_dir)
+        "--config-list={}".format(config_str),
+        "--temp-dir={}".format(temp_dir),
     ]
     if redis_password:
         start_worker_command += ["--redis-password={}".format(redis_password)]
@@ -1304,6 +1330,12 @@ def start_raylet(redis_address,
     if object_manager_port is None:
         object_manager_port = 0
 
+    if min_worker_port is None:
+        min_worker_port = 0
+
+    if max_worker_port is None:
+        max_worker_port = 0
+
     if load_code_from_local:
         start_worker_command += ["--load-code-from-local"]
 
@@ -1312,6 +1344,8 @@ def start_raylet(redis_address,
         "--raylet_socket_name={}".format(raylet_name),
         "--store_socket_name={}".format(plasma_store_name),
         "--object_manager_port={}".format(object_manager_port),
+        "--min_worker_port={}".format(min_worker_port),
+        "--max_worker_port={}".format(max_worker_port),
         "--node_manager_port={}".format(node_manager_port),
         "--node_ip_address={}".format(node_ip_address),
         "--redis_address={}".format(gcs_ip_address),
@@ -1420,7 +1454,7 @@ def build_java_worker_command(
     command += options
 
     command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0"]
-    command += ["org.ray.runtime.runner.worker.DefaultWorker"]
+    command += ["io.ray.runtime.runner.worker.DefaultWorker"]
 
     return command
 
@@ -1538,8 +1572,11 @@ def _start_plasma_store(plasma_store_memory,
         plasma_store_memory = int(plasma_store_memory)
 
     command = [
-        PLASMA_STORE_EXECUTABLE, "-s", socket_name, "-m",
-        str(plasma_store_memory)
+        PLASMA_STORE_EXECUTABLE,
+        "-s",
+        socket_name,
+        "-m",
+        str(plasma_store_memory),
     ]
     if plasma_directory is not None:
         command += ["-d", plasma_directory]
@@ -1615,6 +1652,7 @@ def start_worker(node_ip_address,
                  redis_address,
                  worker_path,
                  temp_dir,
+                 raylet_ip_address=None,
                  stdout_file=None,
                  stderr_file=None,
                  fate_share=None):
@@ -1629,6 +1667,8 @@ def start_worker(node_ip_address,
         worker_path (str): The path of the source code which the worker process
             will run.
         temp_dir (str): The path of the temp dir.
+        raylet_ip_address (str): The IP address of the worker's raylet. If not
+            provided, it defaults to the node_ip_address.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1638,12 +1678,17 @@ def start_worker(node_ip_address,
         ProcessInfo for the process that was started.
     """
     command = [
-        sys.executable, "-u", worker_path,
+        sys.executable,
+        "-u",
+        worker_path,
         "--node-ip-address=" + node_ip_address,
         "--object-store-name=" + object_store_name,
         "--raylet-name=" + raylet_name,
-        "--redis-address=" + str(redis_address), "--temp-dir=" + temp_dir
+        "--redis-address=" + str(redis_address),
+        "--temp-dir=" + temp_dir,
     ]
+    if raylet_ip_address is not None:
+        command.append("--raylet-ip-address=" + raylet_ip_address)
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_WORKER,
@@ -1676,8 +1721,10 @@ def start_monitor(redis_address,
     monitor_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "monitor.py")
     command = [
-        sys.executable, "-u", monitor_path,
-        "--redis-address=" + str(redis_address)
+        sys.executable,
+        "-u",
+        monitor_path,
+        "--redis-address=" + str(redis_address),
     ]
     if autoscaling_config:
         command.append("--autoscaling-config=" + str(autoscaling_config))

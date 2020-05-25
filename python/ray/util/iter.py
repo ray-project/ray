@@ -185,18 +185,50 @@ class ParallelIterator(Generic[T]):
             name=self.name + name,
             parent_iterators=self.parent_iterators)
 
-    def for_each(self, fn: Callable[[T], U]) -> "ParallelIterator[U]":
-        """Remotely apply fn to each item in this iterator.
+    def for_each(self, fn: Callable[[T], U], max_concurrency=1,
+                 resources=None) -> "ParallelIterator[U]":
+        """Remotely apply fn to each item in this iterator, at most `max_concurrency`
+        at a time.
+
+        If `max_concurrency` == 1 then `fn` will be executed serially by the
+        shards
+
+        `max_concurrency` should be used to achieve a high degree of
+        parallelism without the overhead of increasing the number of shards
+        (which are actor based). This provides the semantic guarantee that
+        `fn(x_i)` will _begin_ executing before `fn(x_{i+1})` (but not
+        necessarily finish first)
+
+        A performance note: When executing concurrently, this function
+        maintains its own internal buffer. If `async_queue_depth` is `n` and
+        max_concur is `k` then the total number of buffered objects could be up
+        to `n + k - 1`
 
         Args:
             fn (func): function to apply to each item.
+            max_concurrency (int): max number of concurrent calls to fn per
+                shard. If 0, then apply all operations concurrently.
+            resources (dict): resources that the function requires to execute.
+                This has the same default as `ray.remote` and is only used
+                when `max_concurrency > 1`.
+
+        Returns:
+            ParallelIterator[U]: a parallel iterator whose elements have `fn`
+            applied.
+
 
         Examples:
-            >>> next(from_range(4).for_each(lambda x: x * 2).gather_sync())
+            >>> next(from_range(4).for_each(
+                        lambda x: x * 2,
+                        max_concur=2,
+                        resources={"num_cpus": 0.1}).gather_sync()
+                )
             ... [0, 2, 4, 8]
+
         """
-        return self._with_transform(lambda local_it: local_it.for_each(fn),
-                                    ".for_each()")
+        return self._with_transform(
+            lambda local_it: local_it.for_each(fn, max_concurrency, resources),
+            ".for_each()")
 
     def filter(self, fn: Callable[[T], bool]) -> "ParallelIterator[T]":
         """Remotely filter items from this iterator.
@@ -415,14 +447,14 @@ class ParallelIterator(Generic[T]):
         name = "{}.batch_across_shards()".format(self)
         return LocalIterator(base_iterator, SharedMetrics(), name=name)
 
-    def gather_async(self, async_queue_depth=1) -> "LocalIterator[T]":
+    def gather_async(self, num_async=1) -> "LocalIterator[T]":
         """Returns a local iterable for asynchronous iteration.
 
         New items will be fetched from the shards asynchronously as soon as
         the previous one is computed. Items arrive in non-deterministic order.
 
         Arguments:
-            async_queue_depth (int): The max number of async requests in flight
+            num_async (int): The max number of async requests in flight
                 per actor. Increasing this improves the amount of pipeline
                 parallelism in the iterator.
 
@@ -436,7 +468,7 @@ class ParallelIterator(Generic[T]):
             ... 1
         """
 
-        if async_queue_depth < 1:
+        if num_async < 1:
             raise ValueError("queue depth must be positive")
 
         # Forward reference to the returned iterator.
@@ -448,7 +480,7 @@ class ParallelIterator(Generic[T]):
                 actor_set.init_actors()
                 all_actors.extend(actor_set.actors)
             futures = {}
-            for _ in range(async_queue_depth):
+            for _ in range(num_async):
                 for a in all_actors:
                     futures[a.par_iter_next.remote()] = a
             while futures:
@@ -502,6 +534,29 @@ class ParallelIterator(Generic[T]):
             actor_sets,
             "ParallelUnion[{}, {}]".format(self, other),
             parent_iterators=self.parent_iterators + other.parent_iterators)
+
+    def select_shards(self,
+                      shards_to_keep: List[int]) -> "ParallelIterator[T]":
+        """Return a child iterator that only iterates over given shards.
+
+        It is the user's responsibility to ensure child iterators are operating
+        over disjoint sub-sets of this iterator's shards.
+        """
+        if len(self.actor_sets) > 1:
+            raise ValueError("select_shards() is not allowed after union()")
+        if len(shards_to_keep) == 0:
+            raise ValueError("at least one shard must be selected")
+        old_actor_set = self.actor_sets[0]
+        new_actors = [
+            a for (i, a) in enumerate(old_actor_set.actors)
+            if i in shards_to_keep
+        ]
+        assert len(new_actors) == len(shards_to_keep), "Invalid actor index"
+        new_actor_set = _ActorSet(new_actors, old_actor_set.transforms)
+        return ParallelIterator(
+            [new_actor_set],
+            "{}.select_shards({} total)".format(self, len(shards_to_keep)),
+            parent_iterators=self.parent_iterators)
 
     def num_shards(self) -> int:
         """Return the number of worker actors backing this iterator."""
@@ -615,15 +670,8 @@ class LocalIterator(Generic[T]):
 
     @contextmanager
     def _metrics_context(self):
-        if hasattr(self.thread_local, "metrics"):
-            prev_metrics = self.thread_local.metrics
-        else:
-            prev_metrics = None
-        try:
-            self.thread_local.metrics = self.shared_metrics.get()
-            yield
-        finally:
-            self.thread_local.metrics = prev_metrics
+        self.thread_local.metrics = self.shared_metrics.get()
+        yield
 
     def __iter__(self):
         self._build_once()
@@ -639,20 +687,52 @@ class LocalIterator(Generic[T]):
     def __repr__(self):
         return "LocalIterator[{}]".format(self.name)
 
-    def for_each(self, fn: Callable[[T], U]) -> "LocalIterator[U]":
-        def apply_foreach(it):
-            for item in it:
-                if isinstance(item, _NextValueNotReady):
-                    yield item
-                else:
-                    # Keep retrying the function until it returns a valid
-                    # value. This allows for non-blocking functions.
-                    while True:
-                        with self._metrics_context():
-                            result = fn(item)
-                        yield result
-                        if not isinstance(result, _NextValueNotReady):
-                            break
+    def for_each(self, fn: Callable[[T], U], max_concurrency=1,
+                 resources=None) -> "LocalIterator[U]":
+        if max_concurrency == 1:
+
+            def apply_foreach(it):
+                for item in it:
+                    if isinstance(item, _NextValueNotReady):
+                        yield item
+                    else:
+                        # Keep retrying the function until it returns a valid
+                        # value. This allows for non-blocking functions.
+                        while True:
+                            with self._metrics_context():
+                                result = fn(item)
+                            yield result
+                            if not isinstance(result, _NextValueNotReady):
+                                break
+        else:
+            if resources is None:
+                resources = {}
+
+            def apply_foreach(it):
+                cur = []
+                remote = ray.remote(fn).options(**resources)
+                remote_fn = remote.remote
+                for item in it:
+                    if isinstance(item, _NextValueNotReady):
+                        yield item
+                    else:
+                        finished, remaining = ray.wait(cur, timeout=0)
+                        if max_concurrency and len(
+                                remaining) >= max_concurrency:
+                            ray.wait(cur, num_returns=(len(finished) + 1))
+                        cur.append(remote_fn(item))
+
+                        while len(cur) > 0:
+                            to_yield = cur[0]
+                            finished, remaining = ray.wait(
+                                [to_yield], timeout=0)
+                            if finished:
+                                cur.pop(0)
+                                yield ray.get(to_yield)
+                            else:
+                                break
+
+                yield from ray.get(cur)
 
         if hasattr(fn, LocalIterator.ON_FETCH_START_HOOK_NAME):
             unwrapped = apply_foreach
@@ -806,8 +886,12 @@ class LocalIterator(Generic[T]):
     def duplicate(self, n) -> List["LocalIterator[T]"]:
         """Copy this iterator `n` times, duplicating the data.
 
+        The child iterators will be prioritized by how much of the parent
+        stream they have consumed. That is, we will not allow children to fall
+        behind, since that can cause infinite memory buildup in this operator.
+
         Returns:
-            List[LocalIterator[T]]: multiple iterators that each have a copy
+            List[LocalIterator[T]]: child iterators that each have a copy
                 of the data of this iterator.
         """
 
@@ -827,9 +911,16 @@ class LocalIterator(Generic[T]):
         def make_next(i):
             def gen(timeout):
                 while True:
-                    if len(queues[i]) == 0:
-                        fill_next(timeout)
-                    yield queues[i].popleft()
+                    my_len = len(queues[i])
+                    max_len = max(len(q) for q in queues)
+                    # Yield to let other iterators that have fallen behind
+                    # process more items.
+                    if my_len < max_len:
+                        yield _NextValueNotReady()
+                    else:
+                        if len(queues[i]) == 0:
+                            fill_next(timeout)
+                        yield queues[i].popleft()
 
             return gen
 
@@ -843,13 +934,22 @@ class LocalIterator(Generic[T]):
 
         return iterators
 
-    def union(self, *others: "LocalIterator[T]",
-              deterministic: bool = False) -> "LocalIterator[T]":
+    def union(self,
+              *others: "LocalIterator[T]",
+              deterministic: bool = False,
+              round_robin_weights: List[float] = None) -> "LocalIterator[T]":
         """Return an iterator that is the union of this and the others.
 
-        If deterministic=True, we alternate between reading from one iterator
-        and the others. Otherwise we return items from iterators as they
-        become ready.
+        Args:
+            deterministic (bool): If deterministic=True, we alternate between
+                reading from one iterator and the others. Otherwise we return
+                items from iterators as they become ready.
+            round_robin_weights (list): List of weights to use for round robin
+                mode. For example, [2, 1] will cause the iterator to pull twice
+                as many items from the first iterator as the second.
+                [2, 1, "*"] will cause as many items to be pulled as possible
+                from the third iterator without blocking. This overrides the
+                deterministic flag.
         """
 
         for it in others:
@@ -858,43 +958,49 @@ class LocalIterator(Generic[T]):
                     "other must be of type LocalIterator, got {}".format(
                         type(it)))
 
-        if deterministic:
-            timeout = None
-        else:
-            timeout = 0
-
         active = []
         parent_iters = [self] + list(others)
         shared_metrics = SharedMetrics(
             parents=[p.shared_metrics for p in parent_iters])
-        for it in parent_iters:
+
+        timeout = None if deterministic else 0
+        if round_robin_weights:
+            if len(round_robin_weights) != len(parent_iters):
+                raise ValueError(
+                    "Length of round robin weights must equal number of "
+                    "iterators total.")
+            timeouts = [0 if w == "*" else None for w in round_robin_weights]
+        else:
+            timeouts = [timeout] * len(parent_iters)
+            round_robin_weights = [1] * len(parent_iters)
+
+        for i, it in enumerate(parent_iters):
             active.append(
                 LocalIterator(
                     it.base_iterator,
                     shared_metrics,
                     it.local_transforms,
-                    timeout=timeout))
+                    timeout=timeouts[i]))
+        active = list(zip(round_robin_weights, active))
 
         def build_union(timeout=None):
             while True:
-                for it in list(active):
-                    # Yield items from the iterator until _NextValueNotReady is
-                    # found, then switch to the next iterator.
-                    # To avoid starvation, we yield at most max_yield items per
-                    # iterator before switching.
-                    if deterministic:
-                        max_yield = 1  # Forces round robin.
+                for weight, it in list(active):
+                    if weight == "*":
+                        max_pull = 100  # TOOD(ekl) how to best bound this?
                     else:
-                        max_yield = 20
+                        max_pull = _randomized_int_cast(weight)
                     try:
-                        for _ in range(max_yield):
+                        for _ in range(max_pull):
                             item = next(it)
                             if isinstance(item, _NextValueNotReady):
+                                if timeout is not None:
+                                    yield item
                                 break
                             else:
                                 yield item
                     except StopIteration:
-                        active.remove(it)
+                        active.remove((weight, it))
                 if not active:
                     break
 
@@ -982,6 +1088,14 @@ class ParallelIteratorWorker(object):
                 raise StopIteration
 
         return self.next_ith_buffer[start].pop(0)
+
+
+def _randomized_int_cast(float_value):
+    base = int(float_value)
+    remainder = float_value - base
+    if random.random() < remainder:
+        base += 1
+    return base
 
 
 class _NextValueNotReady(Exception):

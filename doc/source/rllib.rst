@@ -7,6 +7,8 @@ RLlib is an open-source library for reinforcement learning that offers both high
 
 To get started, take a look over the `custom env example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__ and the `API documentation <rllib-toc.html>`__. If you're looking to develop custom algorithms with RLlib, also check out `concepts and custom algorithms <rllib-concepts.html>`__.
 
+.. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray/RLlib!
+
 RLlib in 60 seconds
 -------------------
 
@@ -35,7 +37,7 @@ Then, you can try out training in the following equivalent ways:
   from ray.rllib.agents.ppo import PPOTrainer
   tune.run(PPOTrainer, config={"env": "CartPole-v0"})  # "log_level": "INFO" for verbose,
                                                        # "eager": True for eager execution,
-                                                       # "torch": True for PyTorch
+                                                       # "use_pytorch": True for PyTorch
 
 Next, we'll cover three key concepts in RLlib: Policies, Samples, and Trainers.
 
@@ -90,7 +92,7 @@ Policies each define a ``learn_on_batch()`` method that improves the policy give
 - Simple `Q-function loss <https://github.com/ray-project/ray/blob/a1d2e1762325cd34e14dc411666d63bb15d6eaf0/rllib/agents/dqn/simple_q_policy.py#L136>`__
 - Importance-weighted `APPO surrogate loss <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/appo_policy.py>`__
 
-RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distributed workflow of running rollouts and optimizing policies. They do this by leveraging `policy optimizers <rllib-concepts.html#policy-optimization>`__ that implement the desired computation pattern. The following figure shows *synchronous sampling*, the simplest of `these patterns <rllib-algorithms.html>`__:
+RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distributed workflow of running rollouts and optimizing policies. They do this by leveraging Ray `parallel iterators <iter.html>`__ to implement the desired computation pattern. The following figure shows *synchronous sampling*, the simplest of `these patterns <rllib-algorithms.html>`__:
 
 .. figure:: a2c-arch.svg
 

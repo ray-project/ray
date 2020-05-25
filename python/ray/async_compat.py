@@ -85,14 +85,10 @@ def get_async(object_id):
                 # A hack to keep reference to the future so it doesn't get GC.
                 user_future.retry_plasma_future = retry_plasma_future
 
-    if object_id.is_direct_call_type():
-        inner_future = loop.create_future()
-        # We must add the done_callback before sending to in_memory_store_get
-        inner_future.add_done_callback(done_callback)
-        core_worker.in_memory_store_get_async(object_id, inner_future)
-    else:
-        inner_future = as_future(object_id)
-        inner_future.add_done_callback(done_callback)
+    inner_future = loop.create_future()
+    # We must add the done_callback before sending to in_memory_store_get
+    inner_future.add_done_callback(done_callback)
+    core_worker.in_memory_store_get_async(object_id, inner_future)
     # A hack to keep reference to inner_future so it doesn't get GC.
     user_future.inner_future = inner_future
     # A hack to keep a reference to the object ID for ref counting.
@@ -107,7 +103,8 @@ class AsyncMonitorState:
         self.names_lock = threading.Lock()
 
         self.sleep_time = 1.0
-        asyncio.ensure_future(self.monitor(), loop=loop)
+        self.monitor_loop_future = asyncio.ensure_future(
+            self.monitor(), loop=loop)
 
     async def monitor(self):
         while True:
@@ -131,3 +128,11 @@ class AsyncMonitorState:
         with self.names_lock:
             names = list(self.names.values())
         return names
+
+    def kill(self):
+        """Kill the monitor's loop
+
+        This should be called in order to clean an event loop
+        that this monitor is running.
+        """
+        self.monitor_loop_future.cancel()

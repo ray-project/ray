@@ -13,7 +13,6 @@ RUN apt update
 RUN apt install -y kubectl
 
 # We have to uninstall wrapt this way for Tensorflow compatibility
-RUN conda remove -y wrapt
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 

@@ -32,19 +32,29 @@ class TaskFinisherInterface {
   virtual void CompletePendingTask(const TaskID &task_id, const rpc::PushTaskReply &reply,
                                    const rpc::Address &actor_addr) = 0;
 
-  virtual void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+  virtual bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
                                  Status *status = nullptr) = 0;
 
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
       const std::vector<ObjectID> &contained_ids) = 0;
 
+  virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
+
   virtual ~TaskFinisherInterface() {}
 };
 
-using RetryTaskCallback = std::function<void(const TaskSpecification &spec)>;
+class TaskResubmissionInterface {
+ public:
+  virtual Status ResubmitTask(const TaskID &task_id,
+                              std::vector<ObjectID> *task_deps) = 0;
 
-class TaskManager : public TaskFinisherInterface {
+  virtual ~TaskResubmissionInterface() {}
+};
+
+using RetryTaskCallback = std::function<void(const TaskSpecification &spec, bool delay)>;
+
+class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
  public:
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
@@ -73,6 +83,19 @@ class TaskManager : public TaskFinisherInterface {
                       const TaskSpecification &spec, const std::string &call_site,
                       int max_retries = 0);
 
+  /// Resubmit a task that has completed execution before. This is used to
+  /// reconstruct objects stored in Plasma that were lost.
+  ///
+  /// \param[in] task_id The ID of the task to resubmit.
+  /// \param[out] task_deps The object dependencies of the resubmitted task,
+  /// i.e. all arguments that were not inlined in the task spec. The caller is
+  /// responsible for making sure that these dependencies become available, so
+  /// that the resubmitted task can run. This is only populated if the task was
+  /// not already pending and was successfully resubmitted.
+  /// \return OK if the task was successfully resubmitted or was
+  /// already pending, Invalid if the task spec is no longer present.
+  Status ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) override;
+
   /// Wait for all pending tasks to finish, and then shutdown.
   ///
   /// \param shutdown The shutdown callback to call.
@@ -93,7 +116,8 @@ class TaskManager : public TaskFinisherInterface {
   /// \param[in] task_id ID of the pending task.
   /// \param[in] error_type The type of the specific error.
   /// \param[in] status Optional status message.
-  void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+  /// \return Whether the task will be retried or not.
+  bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
                          Status *status = nullptr) override;
 
   /// A task's dependencies were inlined in the task spec. This will decrement
@@ -108,8 +132,14 @@ class TaskManager : public TaskFinisherInterface {
   void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
                                  const std::vector<ObjectID> &contained_ids) override;
 
+  /// Set number of retries to zero for a task that is being canceled.
+  ///
+  /// \param[in] task_id to cancel.
+  /// \return Whether the task was pending and was marked for cancellation.
+  bool MarkTaskCanceled(const TaskID &task_id) override;
+
   /// Return the spec for a pending task.
-  TaskSpecification GetTaskSpec(const TaskID &task_id) const;
+  absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const;
 
   /// Return whether this task can be submitted for execution.
   ///
@@ -137,7 +167,7 @@ class TaskManager : public TaskFinisherInterface {
               size_t num_returns)
         : spec(spec_arg), num_retries_left(num_retries_left_arg) {
       for (size_t i = 0; i < num_returns; i++) {
-        reconstructable_return_ids.insert(spec.ReturnId(i, TaskTransportType::DIRECT));
+        reconstructable_return_ids.insert(spec.ReturnId(i));
       }
     }
     /// The task spec. This is pinned as long as the following are true:

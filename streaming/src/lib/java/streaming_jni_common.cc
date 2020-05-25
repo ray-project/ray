@@ -49,7 +49,7 @@ jint throwChannelInitException(JNIEnv *env, const char *message,
   }
 
   jclass ex_class =
-      env->FindClass("org/ray/streaming/runtime/transfer/ChannelInitException");
+      env->FindClass("io/ray/streaming/runtime/transfer/ChannelInitException");
   jmethodID ex_constructor =
       env->GetMethodID(ex_class, "<init>", "(Ljava/lang/String;Ljava/util/List;)V");
   jstring message_jstr = env->NewStringUTF(message);
@@ -60,7 +60,7 @@ jint throwChannelInitException(JNIEnv *env, const char *message,
 
 jint throwChannelInterruptException(JNIEnv *env, const char *message) {
   jclass ex_class =
-      env->FindClass("org/ray/streaming/runtime/transfer/ChannelInterruptException");
+      env->FindClass("io/ray/streaming/runtime/transfer/ChannelInterruptException");
   return env->ThrowNew(ex_class, message);
 }
 
@@ -88,6 +88,15 @@ void JavaListToNativeVector(JNIEnv *env, jobject java_list,
   }
 }
 
+/// Convert a Java byte array to a C++ UniqueID.
+template <typename ID>
+inline ID JavaByteArrayToId(JNIEnv *env, const jbyteArray &bytes) {
+  std::string id_str(ID::Size(), 0);
+  env->GetByteArrayRegion(bytes, 0, ID::Size(),
+                          reinterpret_cast<jbyte *>(&id_str.front()));
+  return ID::FromBinary(id_str);
+}
+
 /// Convert a Java String to C++ std::string.
 std::string JavaStringToNativeString(JNIEnv *env, jstring jstr) {
   const char *c_str = env->GetStringUTFChars(jstr, nullptr);
@@ -105,17 +114,16 @@ void JavaStringListToNativeStringVector(JNIEnv *env, jobject java_list,
       });
 }
 
-ray::RayFunction FunctionDescriptorToRayFunction(JNIEnv *env,
-                                                 jobject functionDescriptor) {
-  jclass java_language_class =
-      LoadClass(env, "org/ray/runtime/generated/Common$Language");
+std::shared_ptr<ray::RayFunction> FunctionDescriptorToRayFunction(
+    JNIEnv *env, jobject functionDescriptor) {
+  jclass java_language_class = LoadClass(env, "io/ray/runtime/generated/Common$Language");
   jclass java_function_descriptor_class =
-      LoadClass(env, "org/ray/runtime/functionmanager/FunctionDescriptor");
+      LoadClass(env, "io/ray/runtime/functionmanager/FunctionDescriptor");
   jmethodID java_language_get_number =
       env->GetMethodID(java_language_class, "getNumber", "()I");
   jmethodID java_function_descriptor_get_language =
       env->GetMethodID(java_function_descriptor_class, "getLanguage",
-                       "()Lorg/ray/runtime/generated/Common$Language;");
+                       "()Lio/ray/runtime/generated/Common$Language;");
   jobject java_language =
       env->CallObjectMethod(functionDescriptor, java_function_descriptor_get_language);
   auto language = static_cast<::Language>(
@@ -129,5 +137,56 @@ ray::RayFunction FunctionDescriptorToRayFunction(JNIEnv *env,
   ray::FunctionDescriptor function_descriptor =
       ray::FunctionDescriptorBuilder::FromVector(language, function_descriptor_list);
   ray::RayFunction ray_function{language, function_descriptor};
-  return ray_function;
+  return std::make_shared<ray::RayFunction>(ray_function);
+}
+
+void ParseChannelInitParameters(
+    JNIEnv *env, jobject param_obj,
+    std::vector<ray::streaming::ChannelCreationParameter> &parameter_vec) {
+  jclass java_streaming_queue_initial_parameters_class =
+      LoadClass(env,
+                "io/ray/streaming/runtime/transfer/"
+                "ChannelCreationParametersBuilder");
+  jmethodID java_streaming_queue_initial_parameters_getParameters_method =
+      env->GetMethodID(java_streaming_queue_initial_parameters_class, "getParameters",
+                       "()Ljava/util/List;");
+  STREAMING_CHECK(java_streaming_queue_initial_parameters_getParameters_method !=
+                  nullptr);
+  jclass java_streaming_queue_initial_parameters_parameter_class =
+      LoadClass(env,
+                "io/ray/streaming/runtime/transfer/"
+                "ChannelCreationParametersBuilder$Parameter");
+  jmethodID java_getActorIdBytes_method = env->GetMethodID(
+      java_streaming_queue_initial_parameters_parameter_class, "getActorIdBytes", "()[B");
+  jmethodID java_getAsyncFunctionDescriptor_method =
+      env->GetMethodID(java_streaming_queue_initial_parameters_parameter_class,
+                       "getAsyncFunctionDescriptor",
+                       "()Lio/ray/runtime/functionmanager/FunctionDescriptor;");
+  jmethodID java_getSyncFunctionDescriptor_method =
+      env->GetMethodID(java_streaming_queue_initial_parameters_parameter_class,
+                       "getSyncFunctionDescriptor",
+                       "()Lio/ray/runtime/functionmanager/FunctionDescriptor;");
+  // Call getParameters method
+  jobject parameter_list = env->CallObjectMethod(
+      param_obj, java_streaming_queue_initial_parameters_getParameters_method);
+
+  JavaListToNativeVector<ray::streaming::ChannelCreationParameter>(
+      env, parameter_list, &parameter_vec,
+      [java_getActorIdBytes_method, java_getAsyncFunctionDescriptor_method,
+       java_getSyncFunctionDescriptor_method](JNIEnv *env, jobject jobject_parameter) {
+        ray::streaming::ChannelCreationParameter native_parameter;
+        jbyteArray jobject_actor_id_bytes = (jbyteArray)env->CallObjectMethod(
+            jobject_parameter, java_getActorIdBytes_method);
+        native_parameter.actor_id =
+            JavaByteArrayToId<ray::ActorID>(env, jobject_actor_id_bytes);
+        jobject jobject_async_func = env->CallObjectMethod(
+            jobject_parameter, java_getAsyncFunctionDescriptor_method);
+        native_parameter.async_function =
+            FunctionDescriptorToRayFunction(env, jobject_async_func);
+        jobject jobject_sync_func = env->CallObjectMethod(
+            jobject_parameter, java_getSyncFunctionDescriptor_method);
+        native_parameter.sync_function =
+            FunctionDescriptorToRayFunction(env, jobject_sync_func);
+        return native_parameter;
+      });
 }

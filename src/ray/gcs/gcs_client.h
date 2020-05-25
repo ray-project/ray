@@ -45,6 +45,8 @@ class GcsClientOptions {
         password_(password),
         is_test_client_(is_test_client) {}
 
+  GcsClientOptions() {}
+
   // GCS server address
   std::string server_ip_;
   int server_port_;

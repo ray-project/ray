@@ -1,6 +1,7 @@
 #include <unordered_set>
 
 #include "event_service.h"
+
 namespace ray {
 namespace streaming {
 
@@ -105,7 +106,11 @@ Event &EventQueue::Front() {
 }
 
 EventService::EventService(uint32_t event_size)
-    : event_queue_(std::make_shared<EventQueue>(event_size)), stop_flag_(false) {}
+    : worker_id_(CoreWorkerProcess::IsInitialized()
+                     ? CoreWorkerProcess::GetCoreWorker().GetWorkerID()
+                     : WorkerID::Nil()),
+      event_queue_(std::make_shared<EventQueue>(event_size)),
+      stop_flag_(false) {}
 EventService::~EventService() {
   stop_flag_ = true;
   // No need to join if loop thread has never been created.
@@ -154,6 +159,9 @@ void EventService::Execute(Event &event) {
 }
 
 void EventService::LoopThreadHandler() {
+  if (CoreWorkerProcess::IsInitialized()) {
+    CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id_);
+  }
   while (true) {
     if (stop_flag_) {
       break;
@@ -174,7 +182,7 @@ void EventService::RemoveDestroyedChannelEvent(const std::vector<ObjectID> &remo
   STREAMING_LOG(INFO) << "Remove Destroyed channel event, removed_ids size "
                       << removed_ids.size() << ", total event size " << total_event_nums;
   size_t removed_related_num = 0;
-  event_queue_->Freeze();
+  event_queue_->Unfreeze();
   for (size_t i = 0; i < total_event_nums; ++i) {
     Event event;
     if (!event_queue_->Get(event) || !event.channel_info) {
@@ -188,7 +196,7 @@ void EventService::RemoveDestroyedChannelEvent(const std::vector<ObjectID> &remo
     }
     event_queue_->Pop();
   }
-  event_queue_->Unfreeze();
+  event_queue_->Freeze();
   STREAMING_LOG(INFO) << "Total event num => " << total_event_nums
                       << ", removed related num => " << removed_related_num;
 }

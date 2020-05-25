@@ -108,7 +108,7 @@ class TrialInfo:
     """Serializable struct for holding information for a Trial.
 
     Attributes:
-        trial_name (str): String name of the currernt trial.
+        trial_name (str): String name of the current trial.
         trial_id (str): trial_id of the trial
     """
 
@@ -191,8 +191,7 @@ class Trial:
         self.evaluated_params = evaluated_params or {}
         self.experiment_tag = experiment_tag
         trainable_cls = self.get_trainable_cls()
-        if trainable_cls and hasattr(trainable_cls,
-                                     "default_resource_request"):
+        if trainable_cls:
             default_resources = trainable_cls.default_resource_request(
                 self.config)
             if default_resources:
@@ -215,7 +214,7 @@ class Trial:
         self.last_result = {}
         self.last_update_time = -float("inf")
 
-        # stores in memory max/min/last result for each metric by trial
+        # stores in memory max/min/avg/last result for each metric by trial
         self.metric_analysis = {}
 
         self.export_formats = export_formats
@@ -477,13 +476,18 @@ class Trial:
                     self.metric_analysis[metric] = {
                         "max": value,
                         "min": value,
+                        "avg": value,
                         "last": value
                     }
                 else:
+                    step = result["training_iteration"] or 1
                     self.metric_analysis[metric]["max"] = max(
                         value, self.metric_analysis[metric]["max"])
                     self.metric_analysis[metric]["min"] = min(
                         value, self.metric_analysis[metric]["min"])
+                    self.metric_analysis[metric]["avg"] = 1 / step * (
+                        value +
+                        (step - 1) * self.metric_analysis[metric]["avg"])
                     self.metric_analysis[metric]["last"] = value
 
     def get_trainable_cls(self):

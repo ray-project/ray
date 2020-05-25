@@ -3,6 +3,7 @@ from ray.rllib.utils.exploration.epsilon_greedy import EpsilonGreedy
 from ray.rllib.utils.exploration.gaussian_noise import GaussianNoise
 from ray.rllib.utils.exploration.ornstein_uhlenbeck_noise import \
     OrnsteinUhlenbeckNoise
+from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
 from ray.rllib.utils.exploration.per_worker_epsilon_greedy import \
     PerWorkerEpsilonGreedy
 from ray.rllib.utils.exploration.per_worker_gaussian_noise import \
@@ -19,6 +20,7 @@ __all__ = [
     "EpsilonGreedy",
     "GaussianNoise",
     "OrnsteinUhlenbeckNoise",
+    "ParameterNoise",
     "PerWorkerEpsilonGreedy",
     "PerWorkerGaussianNoise",
     "PerWorkerOrnsteinUhlenbeckNoise",

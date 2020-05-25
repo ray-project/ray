@@ -3,6 +3,7 @@ import shutil
 import tempfile
 import random
 import pandas as pd
+import numpy as np
 
 import ray
 from ray.tune import run, Trainable, sample_from, Analysis, grid_search
@@ -12,16 +13,17 @@ from ray.tune.examples.async_hyperband_example import MyTrainableClass
 class ExperimentAnalysisInMemorySuite(unittest.TestCase):
     def setUp(self):
         class MockTrainable(Trainable):
+            scores_dict = {
+                0: [5, 4, 0],
+                1: [4, 3, 1],
+                2: [2, 1, 8],
+                3: [9, 7, 6],
+                4: [7, 5, 3]
+            }
+
             def _setup(self, config):
                 self.id = config["id"]
                 self.idx = 0
-                self.scores_dict = {
-                    0: [5, 0],
-                    1: [4, 1],
-                    2: [2, 8],
-                    3: [9, 6],
-                    4: [7, 3]
-                }
 
             def _train(self):
                 val = self.scores_dict[self.id][self.idx]
@@ -43,14 +45,15 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
 
     def testCompareTrials(self):
         self.test_dir = tempfile.mkdtemp()
-        scores_all = [5, 4, 2, 9, 7, 0, 1, 8, 6, 3]
+        scores = np.asarray(list(self.MockTrainable.scores_dict.values()))
+        scores_all = scores.flatten("F")
         scores_last = scores_all[5:]
 
         ea = run(
             self.MockTrainable,
             name="analysis_exp",
             local_dir=self.test_dir,
-            stop={"training_iteration": 2},
+            stop={"training_iteration": 3},
             num_samples=1,
             config={"id": grid_search(list(range(5)))})
 
@@ -60,9 +63,15 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
                                     "min").metric_analysis["score"]["min"]
         max_last = ea.get_best_trial("score", "max",
                                      "last").metric_analysis["score"]["last"]
+        max_avg = ea.get_best_trial("score", "max",
+                                    "avg").metric_analysis["score"]["avg"]
+        min_avg = ea.get_best_trial("score", "min",
+                                    "avg").metric_analysis["score"]["avg"]
         self.assertEqual(max_all, max(scores_all))
         self.assertEqual(min_all, min(scores_all))
         self.assertEqual(max_last, max(scores_last))
+        self.assertAlmostEqual(max_avg, max(np.mean(scores, axis=1)))
+        self.assertAlmostEqual(min_avg, min(np.mean(scores, axis=1)))
         self.assertNotEqual(max_last, max(scores_all))
 
 

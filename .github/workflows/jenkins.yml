@@ -1,0 +1,26 @@
+name: Jenkins Integration
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+
+on: [push, pull_request]
+
+jobs:
+  jenkins:
+    name: docker integration
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        test-case: ["RUN_TUNE_TESTS", "RUN_DOC_TESTS", "RUN_SGD_TESTS"]
+      fail-fast: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v1
+        with:
+          fetch-depth: 0
+      - name: Run Jenkins Tests
+        shell: bash -e -o pipefail -l {0}
+        env:
+          SIGOPT_KEY: ${{ secrets.TUNE_SIGOPT_KEY }}
+          TEST_CASE: ${{ matrix.test-case }}
+        run: export $TEST_CASE=1 && HOME=$(pwd) ./ci/jenkins_tests/entry_point.sh

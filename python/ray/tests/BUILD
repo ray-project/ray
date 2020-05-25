@@ -51,7 +51,15 @@ py_test(
     size = "medium",
     srcs = ["test_actor_failures.py"],
     # TODO(ekl) enable this once we support actor reconstruction again
-    tags = ["exclusive", "manual"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_serialization",
+    size = "small",
+    srcs = ["test_serialization.py"],
+    tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
@@ -59,6 +67,14 @@ py_test(
     name = "test_basic",
     size = "medium",
     srcs = ["test_basic.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_basic_2",
+    size = "medium",
+    srcs = ["test_basic_2.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -204,6 +220,14 @@ py_test(
 )
 
 py_test(
+    name = "test_reconstruction",
+    size = "medium",
+    srcs = ["test_reconstruction.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_reference_counting",
     size = "medium",
     srcs = ["test_reference_counting.py"],
@@ -279,15 +303,6 @@ py_test(
     name = "test_mini",
     size = "small",
     srcs = ["test_mini.py"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_monitors",
-    size = "small",
-    srcs = ["test_monitors.py"],
-    # TODO(ekl) tasks() and objects() are different in direct call mode.
-    tags = ["exclusive", "manual"],
     deps = ["//:ray_lib"],
 )
 
@@ -412,6 +427,14 @@ py_test(
     name = "test_numba",
     size = "small",
     srcs = ["test_numba.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_cancel",
+    size = "medium",
+    srcs = ["test_cancel.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )

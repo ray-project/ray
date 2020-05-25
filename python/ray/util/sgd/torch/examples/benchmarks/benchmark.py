@@ -17,6 +17,8 @@ parser = argparse.ArgumentParser(
     description="PyTorch Synthetic Benchmark",
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
+    "--smoke-test", action="store_true", default=False, help="finish quickly.")
+parser.add_argument(
     "--fp16", action="store_true", default=False, help="use fp16 training")
 
 parser.add_argument(
@@ -49,6 +51,16 @@ parser.add_argument(
     help="Disables cluster training")
 
 args = parser.parse_args()
+
+if args.smoke_test:
+    args.model = "resnet18"
+    args.batch_size = 1
+    args.num_iters = 1
+    args.num_batches_per_iter = 2
+    args.num_warmup_batches = 2
+    args.local = True
+    args.no_cuda = True
+
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 device = "GPU" if args.cuda else "CPU"
 
@@ -68,7 +80,6 @@ class Training(TrainingOperator):
         self.data, self.target = data, target
 
     def train_epoch(self, *pargs, **kwargs):
-        # print(self.model)
         def benchmark():
             self.optimizer.zero_grad()
             output = self.model(self.data)
@@ -76,11 +87,11 @@ class Training(TrainingOperator):
             loss.backward()
             self.optimizer.step()
 
-        # print("Running warmup...")
+        print("Running warmup...")
         if self.global_step == 0:
             timeit.timeit(benchmark, number=args.num_warmup_batches)
             self.global_step += 1
-        # print("Running benchmark...")
+        print("Running benchmark...")
         time = timeit.timeit(benchmark, number=args.num_batches_per_iter)
         img_sec = args.batch_size * args.num_batches_per_iter / time
         return {"img_sec": img_sec}
@@ -99,7 +110,7 @@ if __name__ == "__main__":
         model_creator=lambda cfg: getattr(models, args.model)(),
         optimizer_creator=lambda model, cfg: optim.SGD(
             model.parameters(), lr=0.01 * cfg.get("lr_scaler")),
-        data_creator=lambda cfg: LinearDataset(4, 2),
+        data_creator=lambda cfg: LinearDataset(4, 2),  # Mock dataset.
         initialization_hook=init_hook,
         config=dict(
             lr_scaler=num_workers),

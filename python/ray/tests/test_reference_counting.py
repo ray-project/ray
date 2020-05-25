@@ -18,7 +18,14 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture
 def one_worker_100MiB(request):
-    yield ray.init(num_cpus=1, object_store_memory=100 * 1024 * 1024)
+    config = json.dumps({
+        "object_store_full_max_retries": 2,
+        "task_retry_delay_ms": 0,
+    })
+    yield ray.init(
+        num_cpus=1,
+        object_store_memory=100 * 1024 * 1024,
+        _internal_config=config)
     ray.shutdown()
 
 
@@ -33,12 +40,8 @@ def _fill_object_store_and_get(oid, succeed=True, object_MiB=40,
     if succeed:
         ray.get(oid)
     else:
-        if oid.is_direct_call_type():
-            with pytest.raises(ray.exceptions.RayTimeoutError):
-                ray.get(oid, timeout=0.1)
-        else:
-            with pytest.raises(ray.exceptions.UnreconstructableError):
-                ray.get(oid)
+        with pytest.raises(ray.exceptions.RayTimeoutError):
+            ray.get(oid, timeout=0.1)
 
 
 def _check_refcounts(expected):
@@ -160,6 +163,29 @@ def test_dependency_refcounts(ray_start_regular):
     check_refcounts({dep: (1, 0), result: (1, 0)})
     del dep, result
     check_refcounts({})
+
+
+def test_actor_creation_task(ray_start_regular):
+    @ray.remote
+    def large_object():
+        # This will be spilled to plasma.
+        return np.zeros(10 * 1024 * 1024, dtype=np.uint8)
+
+    @ray.remote(resources={"init": 1})
+    class Actor:
+        def __init__(self, dependency):
+            return
+
+        def ping(self):
+            return
+
+    a = Actor.remote(large_object.remote())
+    ping = a.ping.remote()
+    ready, unready = ray.wait([ping], timeout=1)
+    assert not ready
+
+    ray.experimental.set_resource("init", 1)
+    ray.get(ping)
 
 
 def test_basic_pinning(one_worker_100MiB):

@@ -69,10 +69,6 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
             raise TypeError("Attempting to call `free` on the value {}, "
                             "which is not an ray.ObjectID.".format(object_id))
 
-    if ray.worker._mode() == ray.worker.LOCAL_MODE:
-        worker.local_mode_manager.free(object_ids)
-        return
-
     worker.check_connected()
     with profiling.profile("ray.free"):
         if len(object_ids) == 0:

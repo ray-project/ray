@@ -3,9 +3,9 @@ import logging
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.optimizers import AsyncGradientsOptimizer
-from ray.rllib.utils.experimental_dsl import (AsyncGradients, ApplyGradients,
-                                              StandardMetricsReporting)
+from ray.rllib.execution.rollout_ops import AsyncGradients
+from ray.rllib.execution.train_ops import ApplyGradients
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +37,6 @@ DEFAULT_CONFIG = with_common_config({
     # Workers sample async. Note that this increases the effective
     # rollout_fragment_length by up to 5x due to async buffering of batches.
     "sample_async": True,
-    # Use the execution plan API instead of policy optimizers.
-    "use_exec_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -63,11 +61,6 @@ def validate_config(config):
             "Multithreading can be lead to crashes if used with pytorch.")
 
 
-def make_async_optimizer(workers, config):
-    return AsyncGradientsOptimizer(workers, **config["optimizer"])
-
-
-# Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
     # For A3C, compute policy gradients remotely on the rollout workers.
     grads = AsyncGradients(workers)
@@ -85,5 +78,4 @@ A3CTrainer = build_trainer(
     default_policy=A3CTFPolicy,
     get_policy_class=get_policy_class,
     validate_config=validate_config,
-    make_policy_optimizer=make_async_optimizer,
     execution_plan=execution_plan)

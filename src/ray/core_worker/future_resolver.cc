@@ -18,7 +18,6 @@ namespace ray {
 
 void FutureResolver::ResolveFutureAsync(const ObjectID &object_id, const TaskID &owner_id,
                                         const rpc::Address &owner_address) {
-  RAY_CHECK(object_id.IsDirectCallType());
   absl::MutexLock lock(&mu_);
   auto it = owner_clients_.find(owner_id);
   if (it == owner_clients_.end()) {

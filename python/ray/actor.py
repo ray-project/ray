@@ -1,17 +1,15 @@
-import copy
 import inspect
 import logging
 import weakref
 
 from abc import ABCMeta, abstractmethod
 from collections import namedtuple
-
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
 import ray.worker
-from ray import ActorID, ActorClassID, Language
-from ray._raylet import PythonFunctionDescriptor
+from ray import ActorClassID, Language
+from ray._raylet import PythonFunctionDescriptor, gcs_actor_service_enabled
 from ray import cross_language
 
 logger = logging.getLogger(__name__)
@@ -244,8 +242,8 @@ class ActorClassMetadata:
     """
 
     def __init__(self, language, modified_class,
-                 actor_creation_function_descriptor, class_id,
-                 max_reconstructions, num_cpus, num_gpus, memory,
+                 actor_creation_function_descriptor, class_id, max_restarts,
+                 max_task_retries, num_cpus, num_gpus, memory,
                  object_store_memory, resources):
         self.language = language
         self.modified_class = modified_class
@@ -254,7 +252,8 @@ class ActorClassMetadata:
         self.class_name = actor_creation_function_descriptor.class_name
         self.is_cross_language = language != Language.PYTHON
         self.class_id = class_id
-        self.max_reconstructions = max_reconstructions
+        self.max_restarts = max_restarts
+        self.max_task_retries = max_task_retries
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
         self.memory = memory
@@ -315,9 +314,9 @@ class ActorClass:
                             self.__ray_metadata__.class_name))
 
     @classmethod
-    def _ray_from_modified_class(cls, modified_class, class_id,
-                                 max_reconstructions, num_cpus, num_gpus,
-                                 memory, object_store_memory, resources):
+    def _ray_from_modified_class(cls, modified_class, class_id, max_restarts,
+                                 max_task_retries, num_cpus, num_gpus, memory,
+                                 object_store_memory, resources):
         for attribute in [
                 "remote", "_remote", "_ray_from_modified_class",
                 "_ray_from_function_descriptor"
@@ -345,21 +344,22 @@ class ActorClass:
 
         self.__ray_metadata__ = ActorClassMetadata(
             Language.PYTHON, modified_class,
-            actor_creation_function_descriptor, class_id, max_reconstructions,
-            num_cpus, num_gpus, memory, object_store_memory, resources)
+            actor_creation_function_descriptor, class_id, max_restarts,
+            max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
+            resources)
 
         return self
 
     @classmethod
-    def _ray_from_function_descriptor(cls, language,
-                                      actor_creation_function_descriptor,
-                                      max_reconstructions, num_cpus, num_gpus,
-                                      memory, object_store_memory, resources):
+    def _ray_from_function_descriptor(
+            cls, language, actor_creation_function_descriptor, max_restarts,
+            max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
+            resources):
         self = ActorClass.__new__(ActorClass)
 
         self.__ray_metadata__ = ActorClassMetadata(
             language, None, actor_creation_function_descriptor, None,
-            max_reconstructions, num_cpus, num_gpus, memory,
+            max_restarts, max_task_retries, num_cpus, num_gpus, memory,
             object_store_memory, resources)
 
         return self
@@ -408,6 +408,8 @@ class ActorClass:
                 resources=None,
                 is_direct_call=None,
                 max_concurrency=None,
+                max_restarts=None,
+                max_task_retries=None,
                 name=None,
                 detached=False):
         """Create an actor.
@@ -433,8 +435,7 @@ class ActorClass:
                 asyncio execution. Note that the execution order is not
                 guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor.
-            detached: Whether the actor should be kept alive after driver
-                exits.
+            detached: DEPRECATED.
 
         Returns:
             A handle to the newly created actor.
@@ -467,22 +468,35 @@ class ActorClass:
             raise RuntimeError("Actors cannot be created before ray.init() "
                                "has been called.")
 
-        if detached and name is None:
-            raise ValueError("Detached actors must be named. "
-                             "Please use Actor._remote(name='some_name') "
-                             "to associate the name.")
+        if detached:
+            logger.warning("The detached flag is deprecated. To create a "
+                           "detached actor, use the name parameter.")
+
+        if name is not None:
+            if not isinstance(name, str):
+                raise TypeError("name must be None or a string, "
+                                "got: '{}'.".format(type(name)))
+            if name == "":
+                raise ValueError("Actor name cannot be an empty string.")
 
         # Check whether the name is already taken.
+        # TODO(edoakes): this check has a race condition because two drivers
+        # could pass the check and then create the same named actor. We should
+        # instead check this when we create the actor, but that's currently an
+        # async call.
         if name is not None:
             try:
-                ray.util.get_actor(name)
-            except ValueError:  # name is not taken, expected.
+                ray.get_actor(name)
+            except ValueError:  # Name is not taken.
                 pass
             else:
                 raise ValueError(
                     "The name {name} is already taken. Please use "
-                    "a different name or get existing actor using "
-                    "ray.util.get_actor('{name}')".format(name=name))
+                    "a different name or get the existing actor using "
+                    "ray.get_actor('{name}')".format(name=name))
+            detached = True
+        else:
+            detached = False
 
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
@@ -503,66 +517,59 @@ class ActorClass:
                            if meta.num_cpus is None else meta.num_cpus)
             actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPU_SPECIFIED
 
-        # Do not export the actor class or the actor if run in LOCAL_MODE
-        # Instead, instantiate the actor locally and add it to the worker's
-        # dictionary
+        # LOCAL_MODE cannot handle cross_language
         if worker.mode == ray.LOCAL_MODE:
             assert not meta.is_cross_language, \
                 "Cross language ActorClass cannot be executed locally."
-            actor_id = ActorID.from_random()
-            worker.actors[actor_id] = meta.modified_class(
-                *copy.deepcopy(args), **copy.deepcopy(kwargs))
+
+        # Export the actor.
+        if not meta.is_cross_language and (meta.last_export_session_and_job !=
+                                           worker.current_session_and_job):
+            # If this actor class was not exported in this session and job,
+            # we need to export this function again, because current GCS
+            # doesn't have it.
+            meta.last_export_session_and_job = (worker.current_session_and_job)
+            # After serialize / deserialize modified class, the __module__
+            # of modified class will be ray.cloudpickle.cloudpickle.
+            # So, here pass actor_creation_function_descriptor to make
+            # sure export actor class correct.
+            worker.function_actor_manager.export_actor_class(
+                meta.modified_class, meta.actor_creation_function_descriptor,
+                meta.method_meta.methods.keys())
+
+        resources = ray.utils.resources_from_resource_arguments(
+            cpus_to_use, meta.num_gpus, meta.memory, meta.object_store_memory,
+            meta.resources, num_cpus, num_gpus, memory, object_store_memory,
+            resources)
+
+        # If the actor methods require CPU resources, then set the required
+        # placement resources. If actor_placement_resources is empty, then
+        # the required placement resources will be the same as resources.
+        actor_placement_resources = {}
+        assert actor_method_cpu in [0, 1]
+        if actor_method_cpu == 1:
+            actor_placement_resources = resources.copy()
+            actor_placement_resources["CPU"] += 1
+        if meta.is_cross_language:
+            creation_args = cross_language.format_args(worker, args, kwargs)
         else:
-            # Export the actor.
-            if not meta.is_cross_language and (meta.last_export_session_and_job
-                                               !=
-                                               worker.current_session_and_job):
-                # If this actor class was not exported in this session and job,
-                # we need to export this function again, because current GCS
-                # doesn't have it.
-                meta.last_export_session_and_job = (
-                    worker.current_session_and_job)
-                # After serialize / deserialize modified class, the __module__
-                # of modified class will be ray.cloudpickle.cloudpickle.
-                # So, here pass actor_creation_function_descriptor to make
-                # sure export actor class correct.
-                worker.function_actor_manager.export_actor_class(
-                    meta.modified_class,
-                    meta.actor_creation_function_descriptor,
-                    meta.method_meta.methods.keys())
-
-            resources = ray.utils.resources_from_resource_arguments(
-                cpus_to_use, meta.num_gpus, meta.memory,
-                meta.object_store_memory, meta.resources, num_cpus, num_gpus,
-                memory, object_store_memory, resources)
-
-            # If the actor methods require CPU resources, then set the required
-            # placement resources. If actor_placement_resources is empty, then
-            # the required placement resources will be the same as resources.
-            actor_placement_resources = {}
-            assert actor_method_cpu in [0, 1]
-            if actor_method_cpu == 1:
-                actor_placement_resources = resources.copy()
-                actor_placement_resources["CPU"] += 1
-            if meta.is_cross_language:
-                creation_args = cross_language.format_args(
-                    worker, args, kwargs)
-            else:
-                function_signature = meta.method_meta.signatures["__init__"]
-                creation_args = signature.flatten_args(function_signature,
-                                                       args, kwargs)
-            actor_id = worker.core_worker.create_actor(
-                meta.language,
-                meta.actor_creation_function_descriptor,
-                creation_args,
-                meta.max_reconstructions,
-                resources,
-                actor_placement_resources,
-                max_concurrency,
-                detached,
-                is_asyncio,
-                # Store actor_method_cpu in actor handle's extension data.
-                extension_data=str(actor_method_cpu))
+            function_signature = meta.method_meta.signatures["__init__"]
+            creation_args = signature.flatten_args(function_signature, args,
+                                                   kwargs)
+        actor_id = worker.core_worker.create_actor(
+            meta.language,
+            meta.actor_creation_function_descriptor,
+            creation_args,
+            max_restarts or meta.max_restarts,
+            max_task_retries or meta.max_task_retries,
+            resources,
+            actor_placement_resources,
+            max_concurrency,
+            detached,
+            name if name is not None else "",
+            is_asyncio,
+            # Store actor_method_cpu in actor handle's extension data.
+            extension_data=str(actor_method_cpu))
 
         actor_handle = ActorHandle(
             meta.language,
@@ -575,8 +582,8 @@ class ActorClass:
             worker.current_session_and_job,
             original_handle=True)
 
-        if name is not None:
-            ray.util.register_actor(name, actor_handle)
+        if name is not None and not gcs_actor_service_enabled():
+            ray.util.named_actors._register_actor(name, actor_handle)
 
         return actor_handle
 
@@ -705,14 +712,10 @@ class ActorHandle:
             assert not self._ray_is_cross_language,\
                 "Cross language remote actor method " \
                 "cannot be executed locally."
-            function = getattr(worker.actors[self._actor_id], method_name)
-            object_ids = worker.local_mode_manager.execute(
-                function, method_name, args, kwargs, num_return_vals)
-        else:
-            object_ids = worker.core_worker.submit_actor_task(
-                self._ray_actor_language, self._ray_actor_id,
-                function_descriptor, list_args, num_return_vals,
-                self._ray_actor_method_cpus)
+
+        object_ids = worker.core_worker.submit_actor_task(
+            self._ray_actor_language, self._ray_actor_id, function_descriptor,
+            list_args, num_return_vals, self._ray_actor_method_cpus)
 
         if len(object_ids) == 1:
             object_ids = object_ids[0]
@@ -758,12 +761,6 @@ class ActorHandle:
         return "Actor({}, {})".format(
             self._ray_actor_creation_function_descriptor.class_name,
             self._actor_id.hex())
-
-    def __ray_kill__(self):
-        """Deprecated - use ray.kill() instead."""
-        logger.warning("actor.__ray_kill__() is deprecated and will be removed"
-                       " in the near future. Use ray.kill(actor) instead.")
-        ray.kill(self)
 
     @property
     def _actor_id(self):
@@ -893,21 +890,31 @@ def modify_class(cls):
 
 
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
-               max_reconstructions):
+               max_restarts, max_task_retries):
     Class = modify_class(cls)
 
-    if max_reconstructions is None:
-        max_reconstructions = 0
+    if max_restarts is None:
+        max_restarts = 0
+    if max_task_retries is None:
+        max_task_retries = 0
 
-    if not (ray_constants.NO_RECONSTRUCTION <= max_reconstructions <=
-            ray_constants.INFINITE_RECONSTRUCTION):
-        raise ValueError("max_reconstructions must be in range [%d, %d]." %
-                         (ray_constants.NO_RECONSTRUCTION,
-                          ray_constants.INFINITE_RECONSTRUCTION))
+    infinite_restart = max_restarts == -1
+    if not infinite_restart:
+        if max_restarts < 0:
+            raise ValueError("max_restarts must be an integer >= -1 "
+                             "-1 indicates infinite restarts")
+        else:
+            # Make sure we don't pass too big of an int to C++, causing
+            # an overflow.
+            max_restarts = min(max_restarts, ray_constants.MAX_INT64_VALUE)
+
+    if max_restarts == 0 and max_task_retries != 0:
+        raise ValueError(
+            "max_task_retries cannot be set if max_restarts is 0.")
 
     return ActorClass._ray_from_modified_class(
-        Class, ActorClassID.from_random(), max_reconstructions, num_cpus,
-        num_gpus, memory, object_store_memory, resources)
+        Class, ActorClassID.from_random(), max_restarts, max_task_retries,
+        num_cpus, num_gpus, memory, object_store_memory, resources)
 
 
 def exit_actor():
@@ -1005,7 +1012,7 @@ class Checkpointable(metaclass=ABCMeta):
     def load_checkpoint(self, actor_id, available_checkpoints):
         """Load actor's previous checkpoint, and restore actor's state.
 
-        This method will be called when an actor is reconstructed, after
+        This method will be called when an actor is restarted, after
         actor's constructor.
         If the actor needs to restore from previous checkpoint, this function
         should restore actor's state and return the checkpoint ID. Otherwise,

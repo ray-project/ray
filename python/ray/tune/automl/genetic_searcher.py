@@ -109,12 +109,13 @@ class GeneticSearch(AutoMLSearcher):
         for i in range(top_num, num_population):
             flip_coin = np.random.uniform()
             if flip_coin < self._selection_bound:
-                next_generation.append(GeneticSearch._selection(candidate))
+                next_gen = GeneticSearch._selection(candidate)
             else:
                 if flip_coin < self._selection_bound + self._crossover_bound:
-                    next_generation.append(GeneticSearch._crossover(candidate))
+                    next_gen = GeneticSearch._crossover(candidate)
                 else:
-                    next_generation.append(GeneticSearch._mutation(candidate))
+                    next_gen = GeneticSearch._mutation(candidate)
+            next_generation.append(next_gen)
         return next_generation
 
     def _next_population_size(self, last_population_size):
@@ -167,10 +168,8 @@ class GeneticSearch(AutoMLSearcher):
 
         next_gen = []
         for i in range(len(sample_1)):
-            if i is select_index:
-                next_gen.append(sample_2[i])
-            else:
-                next_gen.append(sample_1[i])
+            sample = sample_2[i] if i is select_index else sample_1[i]
+            next_gen.append(sample)
         return next_gen
 
     @staticmethod
@@ -209,10 +208,8 @@ class GeneticSearch(AutoMLSearcher):
 
         next_gen = []
         for i in range(len(sample_1)):
-            if i > cross_index:
-                next_gen.append(sample_2[i])
-            else:
-                next_gen.append(sample_1[i])
+            sample = sample_2[i] if i > cross_index else sample_1[i]
+            next_gen.append(sample)
         return next_gen
 
     @staticmethod

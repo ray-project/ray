@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import re
+import socket
 import threading
 import time
 import traceback
@@ -37,11 +38,11 @@ from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
 from ray.dashboard.interface import BaseDashboardController
 from ray.dashboard.interface import BaseDashboardRouteHandler
+from ray.dashboard.memory import construct_memory_table, MemoryTable
 from ray.dashboard.metrics_exporter.client import Exporter
 from ray.dashboard.metrics_exporter.client import MetricsExportClient
 
 try:
-    from ray.tune.result import DEFAULT_RESULTS_DIR
     from ray.tune import Analysis
     from tensorboard import program
 except ImportError:
@@ -125,7 +126,8 @@ class DashboardController(BaseDashboardController):
         self.raylet_stats = RayletStats(
             redis_address, redis_password=redis_password)
         if Analysis is not None:
-            self.tune_stats = TuneCollector(DEFAULT_RESULTS_DIR, 2.0)
+            self.tune_stats = TuneCollector(2.0)
+        self.memory_table = MemoryTable([])
 
     def _construct_raylet_info(self):
         D = self.raylet_stats.get_raylet_stats()
@@ -133,6 +135,7 @@ class DashboardController(BaseDashboardController):
             data["nodeId"]: data.get("workersStats")
             for data in D.values()
         }
+
         infeasible_tasks = sum(
             (data.get("infeasibleTasks", []) for data in D.values()), [])
         # ready_tasks are used to render tasks that are not schedulable
@@ -142,6 +145,7 @@ class DashboardController(BaseDashboardController):
                           [])
         actor_tree = self.node_stats.get_actor_tree(
             workers_info_by_node, infeasible_tasks, ready_tasks)
+
         for address, data in D.items():
             # process view data
             measures_dicts = {}
@@ -224,6 +228,23 @@ class DashboardController(BaseDashboardController):
     def get_raylet_info(self):
         return self._construct_raylet_info()
 
+    def get_memory_table_info(self) -> MemoryTable:
+        # Collecting memory info adds big overhead to the cluster.
+        # This must be collected only when it is necessary.
+        self.raylet_stats.include_memory_info = True
+        D = self.raylet_stats.get_raylet_stats()
+        workers_info_by_node = {
+            data["nodeId"]: data.get("workersStats")
+            for data in D.values()
+        }
+        self.memory_table = construct_memory_table(workers_info_by_node)
+        return self.memory_table
+
+    def stop_collecting_memory_table_info(self):
+        # Reset memory table.
+        self.memory_table = MemoryTable([])
+        self.raylet_stats.include_memory_info = False
+
     def tune_info(self):
         if Analysis is not None:
             D = self.tune_stats.get_stats()
@@ -235,8 +256,17 @@ class DashboardController(BaseDashboardController):
         if Analysis is not None:
             D = self.tune_stats.get_availability()
         else:
-            D = {"available": False}
+            D = {"available": False, "trials_available": False}
         return D
+
+    def set_tune_experiment(self, experiment):
+        if Analysis is not None:
+            return self.tune_stats.set_experiment(experiment)
+        return "Tune Not Enabled", None
+
+    def enable_tune_tensorboard(self):
+        if Analysis is not None:
+            self.tune_stats.enable_tensorboard()
 
     def launch_profiling(self, node_id, pid, duration):
         profiling_id = self.raylet_stats.launch_profiling(
@@ -304,6 +334,15 @@ class DashboardRouteHandler(BaseDashboardRouteHandler):
         result = self.dashboard_controller.get_raylet_info()
         return await json_response(self.is_dev, result=result)
 
+    async def memory_table_info(self, req) -> aiohttp.web.Response:
+        memory_table = self.dashboard_controller.get_memory_table_info()
+        return await json_response(self.is_dev, result=memory_table.__dict__())
+
+    async def stop_collecting_memory_table_info(self,
+                                                req) -> aiohttp.web.Response:
+        self.dashboard_controller.stop_collecting_memory_table_info()
+        return await json_response(self.is_dev, result={})
+
     async def tune_info(self, req) -> aiohttp.web.Response:
         result = self.dashboard_controller.tune_info()
         return await json_response(self.is_dev, result=result)
@@ -311,6 +350,18 @@ class DashboardRouteHandler(BaseDashboardRouteHandler):
     async def tune_availability(self, req) -> aiohttp.web.Response:
         result = self.dashboard_controller.tune_availability()
         return await json_response(self.is_dev, result=result)
+
+    async def set_tune_experiment(self, req) -> aiohttp.web.Response:
+        data = await req.json()
+        error, result = self.dashboard_controller.set_tune_experiment(
+            data["experiment"])
+        if error:
+            return await json_response(self.is_dev, error=error)
+        return await json_response(self.is_dev, result=result)
+
+    async def enable_tune_tensorboard(self, req) -> aiohttp.web.Response:
+        self.dashboard_controller.enable_tune_tensorboard()
+        return await json_response(self.is_dev, result={})
 
     async def launch_profiling(self, req) -> aiohttp.web.Response:
         node_id = req.query.get("node_id")
@@ -329,7 +380,7 @@ class DashboardRouteHandler(BaseDashboardRouteHandler):
         profiling_id = req.query.get("profiling_id")
         profiling_info = self.dashboard_controller.get_profiling_info(
             profiling_id)
-        return aiohttp.web.json_response(self.is_dev, profiling_info)
+        return aiohttp.web.json_response(profiling_info)
 
     async def kill_actor(self, req) -> aiohttp.web.Response:
         actor_id = req.query.get("actor_id")
@@ -441,7 +492,9 @@ def setup_dashboard_route(app: aiohttp.web.Application,
                           get_profiling_info=None,
                           kill_actor=None,
                           logs=None,
-                          errors=None):
+                          errors=None,
+                          memory_table=None,
+                          stop_memory_table=None):
     def add_get_route(route, handler_func):
         if route is not None:
             app.router.add_get(route, handler_func)
@@ -459,6 +512,8 @@ def setup_dashboard_route(app: aiohttp.web.Application,
     add_get_route(kill_actor, handler.kill_actor)
     add_get_route(logs, handler.logs)
     add_get_route(errors, handler.errors)
+    add_get_route(memory_table, handler.memory_table_info)
+    add_get_route(stop_memory_table, handler.stop_collecting_memory_table_info)
 
 
 class Dashboard:
@@ -527,8 +582,14 @@ class Dashboard:
             get_profiling_info="/api/get_profiling_info",
             kill_actor="/api/kill_actor",
             logs="/api/logs",
-            errors="/api/errors")
+            errors="/api/errors",
+            memory_table="/api/memory_table",
+            stop_memory_table="/api/stop_memory_table")
         self.app.router.add_get("/{_}", route_handler.get_forbidden)
+        self.app.router.add_post("/api/set_tune_experiment",
+                                 route_handler.set_tune_experiment)
+        self.app.router.add_post("/api/enable_tune_tensorboard",
+                                 route_handler.enable_tune_tensorboard)
 
     def _setup_metrics_export(self):
         exporter = Exporter(self.dashboard_id, self.metrics_export_address,
@@ -587,7 +648,6 @@ class NodeStats(threading.Thread):
             "children": {},
             "currentTaskFuncDesc": [],
             "ipAddress": "",
-            "isDirectCall": False,
             "jobId": "",
             "numExecutedTasks": 0,
             "numLocalObjects": 0,
@@ -757,7 +817,6 @@ class NodeStats(threading.Thread):
                 self._addr_to_extra_info_dict[addr] = {
                     "jobId": actor_data["JobID"],
                     "state": actor_data["State"],
-                    "isDirectCall": actor_data["IsDirectCall"],
                     "timestamp": actor_data["Timestamp"]
                 }
 
@@ -801,7 +860,6 @@ class NodeStats(threading.Thread):
                             "jobId": ray.utils.binary_to_hex(
                                 actor_data.job_id),
                             "state": actor_data.state,
-                            "isDirectCall": True,
                             "timestamp": actor_data.timestamp
                         }
                     else:
@@ -827,6 +885,7 @@ class RayletStats(threading.Thread):
         self._profiling_stats = {}
 
         self._update_nodes()
+        self.include_memory_info = False
 
         super().__init__()
 
@@ -923,13 +982,14 @@ class RayletStats(threading.Thread):
         while True:
             time.sleep(1.0)
             replies = {}
-
             try:
                 for node in self.nodes:
                     node_id = node["NodeID"]
                     stub = self.stubs[node_id]
                     reply = stub.GetNodeStats(
-                        node_manager_pb2.GetNodeStatsRequest(), timeout=2)
+                        node_manager_pb2.GetNodeStatsRequest(
+                            include_memory_info=self.include_memory_info),
+                        timeout=2)
                     reply_dict = MessageToDict(reply)
                     reply_dict["nodeId"] = node_id
                     replies[node["NodeManagerAddress"]] = reply_dict
@@ -955,24 +1015,52 @@ class TuneCollector(threading.Thread):
                         data from logs
     """
 
-    def __init__(self, logdir, reload_interval):
-        self._logdir = logdir
+    def __init__(self, reload_interval):
+        self._logdir = None
         self._trial_records = {}
         self._data_lock = threading.Lock()
         self._reload_interval = reload_interval
-        self._available = False
-        self._tensor_board_started = False
+        self._trials_available = False
+        self._tensor_board_dir = ""
+        self._enable_tensor_board = False
+        self._errors = {}
 
-        os.makedirs(self._logdir, exist_ok=True)
         super().__init__()
 
     def get_stats(self):
         with self._data_lock:
-            return {"trial_records": copy.deepcopy(self._trial_records)}
+            tensor_board_info = {
+                "tensorboard_current": self._logdir == self._tensor_board_dir,
+                "tensorboard_enabled": self._tensor_board_dir != ""
+            }
+            return {
+                "trial_records": copy.deepcopy(self._trial_records),
+                "errors": copy.deepcopy(self._errors),
+                "tensorboard": tensor_board_info
+            }
+
+    def set_experiment(self, experiment):
+        with self._data_lock:
+            if os.path.isdir(os.path.expanduser(experiment)):
+                self._logdir = os.path.expanduser(experiment)
+                return None, {"experiment": self._logdir}
+            else:
+                return "Not a Valid Directory", None
+
+    def enable_tensorboard(self):
+        with self._data_lock:
+            if not self._tensor_board_dir:
+                tb = program.TensorBoard()
+                tb.configure(argv=[None, "--logdir", str(self._logdir)])
+                tb.launch()
+                self._tensor_board_dir = self._logdir
 
     def get_availability(self):
         with self._data_lock:
-            return {"available": self._available}
+            return {
+                "available": True,
+                "trials_available": self._trials_available
+            }
 
     def run(self):
         while True:
@@ -980,48 +1068,73 @@ class TuneCollector(threading.Thread):
                 self.collect()
             time.sleep(self._reload_interval)
 
+    def collect_errors(self, df):
+        sub_dirs = os.listdir(self._logdir)
+        trial_names = filter(
+            lambda d: os.path.isdir(os.path.join(self._logdir, d)), sub_dirs)
+        for trial in trial_names:
+            error_path = os.path.join(self._logdir, trial, "error.txt")
+            if os.path.isfile(error_path):
+                self._trials_available = True
+                with open(error_path) as f:
+                    text = f.read()
+                    self._errors[str(trial)] = {
+                        "text": text,
+                        "job_id": os.path.basename(self._logdir),
+                        "trial_id": "No Trial ID"
+                    }
+                    other_data = df[df["logdir"].str.contains(trial)]
+                    if len(other_data) > 0:
+                        trial_id = other_data["trial_id"].values[0]
+                        self._errors[str(trial)]["trial_id"] = str(trial_id)
+                        if str(trial_id) in self._trial_records.keys():
+                            self._trial_records[str(trial_id)]["error"] = text
+                            self._trial_records[str(trial_id)][
+                                "status"] = "ERROR"
+
     def collect(self):
         """
         Collects and cleans data on the running Tune experiment from the
         Tune logs so that users can see this information in the front-end
         client
         """
-        sub_dirs = os.listdir(self._logdir)
-        job_names = filter(
-            lambda d: os.path.isdir(os.path.join(self._logdir, d)), sub_dirs)
-
         self._trial_records = {}
+        self._errors = {}
+        if not self._logdir:
+            return
 
         # search through all the sub_directories in log directory
-        for job_name in job_names:
-            analysis = Analysis(str(os.path.join(self._logdir, job_name)))
-            df = analysis.dataframe()
-            if len(df) == 0:
-                continue
+        analysis = Analysis(str(self._logdir))
+        df = analysis.dataframe()
 
-            # start TensorBoard server if not started yet
-            if not self._tensor_board_started:
-                tb = program.TensorBoard()
-                tb.configure(argv=[None, "--logdir", self._logdir])
-                tb.launch()
-                self._tensor_board_started = True
+        if len(df) == 0 or "trial_id" not in df.columns:
+            return
 
-            self._available = True
+        self._trials_available = True
 
-            # make sure that data will convert to JSON without error
-            df["trial_id"] = df["trial_id"].astype(str)
-            df = df.fillna(0)
+        # make sure that data will convert to JSON without error
+        df["trial_id_key"] = df["trial_id"].astype(str)
+        df = df.fillna(0)
 
-            # convert df to python dict
-            df = df.set_index("trial_id")
-            trial_data = df.to_dict(orient="index")
+        trial_ids = df["trial_id"]
+        for i, value in df["trial_id"].iteritems():
+            if type(value) != str and type(value) != int:
+                trial_ids[i] = int(value)
 
-            # clean data and update class attribute
-            if len(trial_data) > 0:
-                trial_data = self.clean_trials(trial_data, job_name)
-                self._trial_records.update(trial_data)
+        df["trial_id"] = trial_ids
 
-    def clean_trials(self, trial_details, job_name):
+        # convert df to python dict
+        df = df.set_index("trial_id_key")
+        trial_data = df.to_dict(orient="index")
+
+        # clean data and update class attribute
+        if len(trial_data) > 0:
+            trial_data = self.clean_trials(trial_data)
+            self._trial_records.update(trial_data)
+
+        self.collect_errors(df)
+
+    def clean_trials(self, trial_details):
         first_trial = trial_details[list(trial_details.keys())[0]]
         config_keys = []
         float_keys = []
@@ -1034,7 +1147,7 @@ class TuneCollector(threading.Thread):
             "experiment_id", "date", "timestamp", "time_total_s", "pid",
             "hostname", "node_ip", "time_since_restore",
             "timesteps_since_restore", "iterations_since_restore",
-            "experiment_tag"
+            "experiment_tag", "trial_id"
         ]
 
         # filter attributes into floats, metrics, and config variables
@@ -1076,8 +1189,8 @@ class TuneCollector(threading.Thread):
                 details["status"] = "RUNNING"
             details.pop("done")
 
-            details["trial_id"] = trial
-            details["job_id"] = job_name
+            details["job_id"] = os.path.basename(self._logdir)
+            details["error"] = "No Error"
 
         return trial_details
 
@@ -1129,6 +1242,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
+    # TODO(sang): Add a URL validation.
     metrics_export_address = os.environ.get("METRICS_EXPORT_ADDRESS")
 
     try:
@@ -1146,7 +1260,7 @@ if __name__ == "__main__":
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The dashboard on node {} failed with the following "
-                   "error:\n{}".format(os.uname()[1], traceback_str))
+                   "error:\n{}".format(socket.gethostname(), traceback_str))
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
         if isinstance(e, OSError) and e.errno == errno.ENOENT:

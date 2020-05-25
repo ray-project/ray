@@ -10,12 +10,7 @@ class PerWorkerGaussianNoise(GaussianNoise):
     See Ape-X paper.
     """
 
-    def __init__(self,
-                 action_space,
-                 *,
-                 num_workers,
-                 worker_index,
-                 framework="tf",
+    def __init__(self, action_space, *, framework, num_workers, worker_index,
                  **kwargs):
         """
         Args:
@@ -28,7 +23,7 @@ class PerWorkerGaussianNoise(GaussianNoise):
         scale_schedule = None
         # Use a fixed, different epsilon per worker. See: Ape-X paper.
         if num_workers > 0:
-            if worker_index >= 0:
+            if worker_index > 0:
                 exponent = (1 + worker_index / float(num_workers - 1) * 7)
                 scale_schedule = ConstantSchedule(
                     0.4**exponent, framework=framework)

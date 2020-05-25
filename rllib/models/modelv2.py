@@ -1,6 +1,13 @@
+from collections import OrderedDict
+import gym
+
+from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models.model import restore_original_dimensions, flatten
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
+
+tf = try_import_tf()
+torch, _ = try_import_torch()
 
 
 @PublicAPI
@@ -44,7 +51,15 @@ class ModelV2:
         """Get the initial recurrent state values for the model.
 
         Returns:
-            list of np.array objects, if any
+            List[np.ndarray]: List of np.array objects containing the initial
+                hidden state of an RNN, if applicable.
+
+        Examples:
+            >>> def get_initial_state(self):
+            >>>    return [
+            >>>        np.zeros(self.cell_size, np.float32),
+            >>>        np.zeros(self.cell_size, np.float32),
+            >>>    ]
         """
         return []
 
@@ -62,7 +77,7 @@ class ModelV2:
 
         Custom models should override this instead of __call__.
 
-        Arguments:
+        Args:
             input_dict (dict): dictionary of input tensors, including "obs",
                 "obs_flat", "prev_action", "prev_reward", "is_training"
             state (list): list of state tensors with sizes matching those
@@ -72,11 +87,21 @@ class ModelV2:
         Returns:
             (outputs, state): The model output tensor of size
                 [BATCH, num_outputs]
+
+        Examples:
+            >>> def forward(self, input_dict, state, seq_lens):
+            >>>     model_out, self._value_out = self.base_model(
+            ...         input_dict["obs"])
+            >>>     return model_out, state
         """
         raise NotImplementedError
 
     def value_function(self):
-        """Return the value function estimate for the most recent forward pass.
+        """Returns the value function output for the most recent forward pass.
+
+        Note that a `forward` call has to be performed first, before this
+        methods can return anything and thus that calling this method does not
+        cause an extra forward pass through the network.
 
         Returns:
             value estimate tensor of shape [BATCH].
@@ -94,11 +119,13 @@ class ModelV2:
         You can find an runnable example in examples/custom_loss.py.
 
         Arguments:
-            policy_loss (Tensor): scalar policy loss from the policy.
+            policy_loss (Union[List[Tensor],Tensor]): List of or single policy
+                loss(es) from the policy.
             loss_inputs (dict): map of input placeholders for rollout data.
 
         Returns:
-            Scalar tensor for the customized loss for this model.
+            Union[List[Tensor],Tensor]: List of or scalar tensor for the
+                customized loss(es) for this model.
         """
         return policy_loss
 
@@ -160,7 +187,7 @@ class ModelV2:
         except AttributeError:
             raise ValueError("Output is not a tensor: {}".format(outputs))
         else:
-            if len(shape) != 2 or shape[1] != self.num_outputs:
+            if len(shape) != 2 or int(shape[1]) != self.num_outputs:
                 raise ValueError(
                     "Expected output shape of [None, {}], got {}".format(
                         self.num_outputs, shape))
@@ -214,6 +241,33 @@ class ModelV2:
         """Returns a contextmanager for the current forward pass."""
         return NullContextManager()
 
+    def variables(self, as_dict=False):
+        """Returns the list (or a dict) of variables for this model.
+
+        Args:
+            as_dict(bool): Whether variables should be returned as dict-values
+                (using descriptive keys).
+
+        Returns:
+            Union[List[any],Dict[str,any]]: The list (or dict if `as_dict` is
+                True) of all variables of this ModelV2.
+        """
+        raise NotImplementedError
+
+    def trainable_variables(self, as_dict=False):
+        """Returns the list of trainable variables for this model.
+
+        Args:
+            as_dict(bool): Whether variables should be returned as dict-values
+                (using descriptive keys).
+
+        Returns:
+            Union[List[any],Dict[str,any]]: The list (or dict if `as_dict` is
+                True) of all trainable (tf)/requires_grad (torch) variables
+                of this ModelV2.
+        """
+        raise NotImplementedError
+
 
 class NullContextManager:
     """No-op context manager"""
@@ -226,3 +280,98 @@ class NullContextManager:
 
     def __exit__(self, *args):
         pass
+
+
+@DeveloperAPI
+def flatten(obs, framework):
+    """Flatten the given tensor."""
+    if framework == "tf":
+        return tf.layers.flatten(obs)
+    elif framework == "torch":
+        assert torch is not None
+        return torch.flatten(obs, start_dim=1)
+    else:
+        raise NotImplementedError("flatten", framework)
+
+
+@DeveloperAPI
+def restore_original_dimensions(obs, obs_space, tensorlib=tf):
+    """Unpacks Dict and Tuple space observations into their original form.
+
+    This is needed since we flatten Dict and Tuple observations in transit.
+    Before sending them to the model though, we should unflatten them into
+    Dicts or Tuples of tensors.
+
+    Arguments:
+        obs: The flattened observation tensor.
+        obs_space: The flattened obs space. If this has the `original_space`
+            attribute, we will unflatten the tensor to that shape.
+        tensorlib: The library used to unflatten (reshape) the array/tensor.
+
+    Returns:
+        single tensor or dict / tuple of tensors matching the original
+        observation space.
+    """
+
+    if hasattr(obs_space, "original_space"):
+        if tensorlib == "tf":
+            tensorlib = tf
+        elif tensorlib == "torch":
+            assert torch is not None
+            tensorlib = torch
+        return _unpack_obs(obs, obs_space.original_space, tensorlib=tensorlib)
+    else:
+        return obs
+
+
+# Cache of preprocessors, for if the user is calling unpack obs often.
+_cache = {}
+
+
+def _unpack_obs(obs, space, tensorlib=tf):
+    """Unpack a flattened Dict or Tuple observation array/tensor.
+
+    Arguments:
+        obs: The flattened observation tensor
+        space: The original space prior to flattening
+        tensorlib: The library used to unflatten (reshape) the array/tensor
+    """
+
+    if (isinstance(space, gym.spaces.Dict)
+            or isinstance(space, gym.spaces.Tuple)):
+        if id(space) in _cache:
+            prep = _cache[id(space)]
+        else:
+            prep = get_preprocessor(space)(space)
+            # Make an attempt to cache the result, if enough space left.
+            if len(_cache) < 999:
+                _cache[id(space)] = prep
+        if len(obs.shape) != 2 or obs.shape[1] != prep.shape[0]:
+            raise ValueError(
+                "Expected flattened obs shape of [None, {}], got {}".format(
+                    prep.shape[0], obs.shape))
+        assert len(prep.preprocessors) == len(space.spaces), \
+            (len(prep.preprocessors) == len(space.spaces))
+        offset = 0
+        if isinstance(space, gym.spaces.Tuple):
+            u = []
+            for p, v in zip(prep.preprocessors, space.spaces):
+                obs_slice = obs[:, offset:offset + p.size]
+                offset += p.size
+                u.append(
+                    _unpack_obs(
+                        tensorlib.reshape(obs_slice, [-1] + list(p.shape)),
+                        v,
+                        tensorlib=tensorlib))
+        else:
+            u = OrderedDict()
+            for p, (k, v) in zip(prep.preprocessors, space.spaces.items()):
+                obs_slice = obs[:, offset:offset + p.size]
+                offset += p.size
+                u[k] = _unpack_obs(
+                    tensorlib.reshape(obs_slice, [-1] + list(p.shape)),
+                    v,
+                    tensorlib=tensorlib)
+        return u
+    else:
+        return obs

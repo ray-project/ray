@@ -10,7 +10,11 @@ import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
 import classNames from "classnames";
 import React from "react";
-import { NodeInfoResponse, RayletInfoResponse } from "../../../api";
+import {
+  NodeInfoResponse,
+  NodeInfoResponseWorker,
+  RayletInfoResponse,
+} from "../../../api";
 import { NodeCPU, WorkerCPU } from "./features/CPU";
 import { NodeDisk, WorkerDisk } from "./features/Disk";
 import { makeNodeErrors, makeWorkerErrors } from "./features/Errors";
@@ -50,6 +54,7 @@ type Node = ArrayType<NodeInfoResponse["clients"]>;
 
 type Props = {
   node: Node;
+  clusterWorkers: Array<NodeInfoResponseWorker>;
   raylet: RayletInfoResponse["nodes"][keyof RayletInfoResponse["nodes"]] | null;
   logCounts: {
     perWorker: { [pid: string]: number };
@@ -87,16 +92,19 @@ class NodeRowGroup extends React.Component<
       classes,
       node,
       raylet,
+      clusterWorkers,
       logCounts,
       errorCounts,
       setLogDialog,
       setErrorDialog,
     } = this.props;
     const { expanded } = this.state;
-
     const features = [
       { NodeFeature: NodeHost, WorkerFeature: WorkerHost },
-      { NodeFeature: NodeWorkers, WorkerFeature: WorkerWorkers },
+      {
+        NodeFeature: NodeWorkers(clusterWorkers.length),
+        WorkerFeature: WorkerWorkers,
+      },
       { NodeFeature: NodeUptime, WorkerFeature: WorkerUptime },
       { NodeFeature: NodeCPU, WorkerFeature: WorkerCPU },
       { NodeFeature: NodeRAM, WorkerFeature: WorkerRAM },
@@ -145,7 +153,7 @@ class NodeRowGroup extends React.Component<
                 </TableCell>
               </TableRow>
             )}
-            {node.workers.map((worker, index: number) => (
+            {clusterWorkers.map((worker, index: number) => (
               <TableRow hover key={index}>
                 <TableCell className={classes.cell} />
                 {features.map(({ WorkerFeature }, index) => (

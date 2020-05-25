@@ -14,6 +14,7 @@ from ray.core.generated.gcs_pb2 import (
     TablePubsub,
     TaskTableData,
     ResourceTableData,
+    ObjectLocationInfo,
 )
 
 __all__ = [
@@ -33,6 +34,7 @@ __all__ = [
     "TaskTableData",
     "ResourceTableData",
     "construct_error_message",
+    "ObjectLocationInfo",
 ]
 
 FUNCTION_PREFIX = "RemoteFunction:"
@@ -46,7 +48,7 @@ XRAY_HEARTBEAT_BATCH_CHANNEL = str(
     TablePubsub.Value("HEARTBEAT_BATCH_PUBSUB")).encode("ascii")
 
 # xray job updates
-XRAY_JOB_CHANNEL = str(TablePubsub.Value("JOB_PUBSUB")).encode("ascii")
+XRAY_JOB_CHANNEL = "JOB".encode("ascii")
 
 # These prefixes must be kept up-to-date with the TablePrefix enum in
 # gcs.proto.

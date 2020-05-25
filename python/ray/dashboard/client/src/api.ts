@@ -22,6 +22,27 @@ const get = async <T>(path: string, params: { [key: string]: any }) => {
   return result as T;
 };
 
+const post = async <T>(path: string, params: { [key: string]: any }) => {
+  const requestOptions = {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  };
+
+  const url = new URL(path, base);
+
+  const response = await fetch(url.toString(), requestOptions);
+  const json = await response.json();
+
+  const { result, error } = json;
+
+  if (error !== null) {
+    throw Error(error);
+  }
+
+  return result as T;
+};
+
 export type RayConfigResponse = {
   min_workers: number;
   max_workers: number;
@@ -33,6 +54,25 @@ export type RayConfigResponse = {
 };
 
 export const getRayConfig = () => get<RayConfigResponse>("/api/ray_config", {});
+
+export type NodeInfoResponseWorker = {
+  pid: number;
+  create_time: number;
+  cmdline: string[];
+  cpu_percent: number;
+  cpu_times: {
+    system: number;
+    children_system: number;
+    user: number;
+    children_user: number;
+  };
+  memory_info: {
+    pageins: number;
+    pfaults: number;
+    vms: number;
+    rss: number;
+  };
+};
 
 export type NodeInfoResponse = {
   clients: Array<{
@@ -53,24 +93,7 @@ export type NodeInfoResponse = {
     };
     load_avg: [[number, number, number], [number, number, number]];
     net: [number, number]; // Sent and received network traffic in bytes / second
-    workers: Array<{
-      pid: number;
-      create_time: number;
-      cmdline: string[];
-      cpu_percent: number;
-      cpu_times: {
-        system: number;
-        children_system: number;
-        user: number;
-        children_user: number;
-      };
-      memory_info: {
-        pageins: number;
-        pfaults: number;
-        vms: number;
-        rss: number;
-      };
-    }>;
+    workers: Array<NodeInfoResponseWorker>;
   }>;
   log_counts: {
     [ip: string]: {
@@ -105,7 +128,6 @@ export type RayletInfoResponse = {
           children: RayletInfoResponse["actors"];
           // currentTaskFuncDesc: string[];
           ipAddress: string;
-          isDirectCall: boolean;
           jobId: string;
           nodeId: string;
           numExecutedTasks: number;
@@ -192,7 +214,8 @@ export const launchKillActor = (
   actorIpAddress: string,
   actorPort: number,
 ) =>
-  get<string>("/api/kill_actor", {
+  get<object>("/api/kill_actor", {
+    // make sure object is okay
     actor_id: actorId,
     ip_address: actorIpAddress,
     port: actorPort,
@@ -217,21 +240,46 @@ export type TuneTrial = {
   training_iteration: number;
   start_time: string;
   status: string;
-  trial_id: string;
+  trial_id: string | number;
   job_id: string;
   params: { [key: string]: string | number };
   metrics: { [key: string]: string | number };
+  error: string;
+};
+
+export type TuneError = {
+  text: string;
+  job_id: string;
+  trial_id: string;
 };
 
 export type TuneJobResponse = {
   trial_records: { [key: string]: TuneTrial };
+  errors: { [key: string]: TuneError };
+  tensorboard: {
+    tensorboard_current: boolean;
+    tensorboard_enabled: boolean;
+  };
 };
 
 export const getTuneInfo = () => get<TuneJobResponse>("/api/tune_info", {});
 
 export type TuneAvailabilityResponse = {
   available: boolean;
+  trials_available: boolean;
 };
 
 export const getTuneAvailability = () =>
   get<TuneAvailabilityResponse>("/api/tune_availability", {});
+
+export type TuneSetExperimentReponse = {
+  experiment: string;
+};
+
+export const setTuneExperiment = (experiment: string) =>
+  post<TuneSetExperimentReponse>("/api/set_tune_experiment", {
+    experiment: experiment,
+  });
+
+export const enableTuneTensorBoard = () =>
+  post<{}>("/api/enable_tune_tensorboard", {});

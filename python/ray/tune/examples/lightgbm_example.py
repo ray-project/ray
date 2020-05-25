@@ -10,7 +10,7 @@ from ray import tune
 def LightGBMCallback(env):
     """Assumes that `valid_0` is the target validation score."""
     _, metric, score, _ = env.evaluation_result_list[0]
-    tune.track.log(**{metric: score})
+    tune.report(**{metric: score})
 
 
 def train_breast_cancer(config):
@@ -27,7 +27,7 @@ def train_breast_cancer(config):
         callbacks=[LightGBMCallback])
     preds = gbm.predict(test_x)
     pred_labels = np.rint(preds)
-    tune.track.log(
+    tune.report(
         mean_accuracy=sklearn.metrics.accuracy_score(test_y, pred_labels),
         done=True)
 

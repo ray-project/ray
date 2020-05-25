@@ -3,6 +3,7 @@
 
 #include <jni.h>
 #include <string>
+#include "channel.h"
 #include "ray/core_worker/common.h"
 #include "util/streaming_logging.h"
 
@@ -21,12 +22,10 @@ class UniqueIdFromJByteArray {
 
     b = reinterpret_cast<jbyte *>(_env->GetByteArrayElements(_bytes, nullptr));
     PID = ray::ObjectID::FromBinary(
-        std::string(reinterpret_cast<const char*>(b), ray::ObjectID::Size()));
+        std::string(reinterpret_cast<const char *>(b), ray::ObjectID::Size()));
   }
 
-  ~UniqueIdFromJByteArray() {
-    _env->ReleaseByteArrayElements(_bytes, b, 0);
-  }
+  ~UniqueIdFromJByteArray() { _env->ReleaseByteArrayElements(_bytes, b, 0); }
 };
 
 class RawDataFromJByteArray {
@@ -42,15 +41,13 @@ class RawDataFromJByteArray {
     _env = env;
     _bytes = bytes;
     data_size = _env->GetArrayLength(_bytes);
-    jbyte *b =
-        reinterpret_cast<jbyte *>(_env->GetByteArrayElements(_bytes, nullptr));
+    jbyte *b = reinterpret_cast<jbyte *>(_env->GetByteArrayElements(_bytes, nullptr));
     data = reinterpret_cast<uint8_t *>(b);
   }
 
   ~RawDataFromJByteArray() {
     _env->ReleaseByteArrayElements(_bytes, reinterpret_cast<jbyte *>(data), 0);
   }
-
 };
 
 class StringFromJString {
@@ -69,10 +66,7 @@ class StringFromJString {
     str = std::string(j_str);
   }
 
-  ~StringFromJString() {
-    _env->ReleaseStringUTFChars(jni_str, j_str);
-  }
-
+  ~StringFromJString() { _env->ReleaseStringUTFChars(jni_str, j_str); }
 };
 
 class LongVectorFromJLongArray {
@@ -98,14 +92,16 @@ class LongVectorFromJLongArray {
   }
 };
 
-std::vector<ray::ObjectID>
-jarray_to_object_id_vec(JNIEnv *env, jobjectArray jarr);
-std::vector<ray::ActorID>
-jarray_to_actor_id_vec(JNIEnv *env, jobjectArray jarr);
+std::vector<ray::ObjectID> jarray_to_object_id_vec(JNIEnv *env, jobjectArray jarr);
+std::vector<ray::ActorID> jarray_to_actor_id_vec(JNIEnv *env, jobjectArray jarr);
 
 jint throwRuntimeException(JNIEnv *env, const char *message);
 jint throwChannelInitException(JNIEnv *env, const char *message,
                                const std::vector<ray::ObjectID> &abnormal_queues);
 jint throwChannelInterruptException(JNIEnv *env, const char *message);
-ray::RayFunction FunctionDescriptorToRayFunction(JNIEnv *env, jobject functionDescriptor);
-#endif //RAY_STREAMING_JNI_COMMON_H
+std::shared_ptr<ray::RayFunction> FunctionDescriptorToRayFunction(
+    JNIEnv *env, jobject functionDescriptor);
+void ParseChannelInitParameters(
+    JNIEnv *env, jobject param_obj,
+    std::vector<ray::streaming::ChannelCreationParameter> &parameter_vec);
+#endif  // RAY_STREAMING_JNI_COMMON_H

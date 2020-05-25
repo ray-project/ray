@@ -32,6 +32,9 @@ message RequestWorkerLeaseReply {
   Address retry_at_raylet_address = 2;
   // Resource mapping ids acquired by the leased worker.
   repeated ResourceMapEntry resource_mapping = 3;
+  // Whether this lease request was canceled. In this case, the
+  // client should try again if the resources are still required.
+  bool canceled = 4;
 }
 
 // Release a worker back to its raylet.
@@ -46,6 +49,19 @@ message ReturnWorkerRequest {
 }
 
 message ReturnWorkerReply {
+}
+
+message CancelWorkerLeaseRequest {
+  // The task to cancel.
+  bytes task_id = 1;
+}
+
+message CancelWorkerLeaseReply {
+  // Whether the cancellation request was successful. Cancellation
+  // succeeds if the node manager has the task queued upon receiving
+  // the cancellation request, and the node manager has not yet
+  // granted the lease.
+  bool success = 1;
 }
 
 message ForwardTaskRequest {
@@ -115,6 +131,9 @@ service NodeManagerService {
   rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
   // Release a worker back to its raylet.
   rpc ReturnWorker(ReturnWorkerRequest) returns (ReturnWorkerReply);
+  // Cancel a pending lease request. This only returns success if the
+  // lease request was not yet granted.
+  rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
   // Forward a task and its uncommitted lineage to the remote node manager.
   rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
   // Pin the provided object IDs.

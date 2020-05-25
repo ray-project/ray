@@ -40,7 +40,8 @@ class AccessorTestBase : public RedisServiceManagerForTest {
   virtual void SetUp() {
     GenTestData();
 
-    GcsClientOptions options = GcsClientOptions("127.0.0.1", REDIS_SERVER_PORT, "", true);
+    GcsClientOptions options =
+        GcsClientOptions("127.0.0.1", REDIS_SERVER_PORTS.front(), "", true);
     gcs_client_.reset(new RedisGcsClient(options));
     RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 

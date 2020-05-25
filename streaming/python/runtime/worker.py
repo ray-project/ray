@@ -4,12 +4,14 @@ import ray
 import ray.streaming._streaming as _streaming
 import ray.streaming.generated.remote_call_pb2 as remote_call_pb
 import ray.streaming.runtime.processor as processor
-from ray._raylet import PythonFunctionDescriptor
 from ray.streaming.config import Config
 from ray.streaming.runtime.graph import ExecutionGraph
 from ray.streaming.runtime.task import SourceStreamTask, OneInputStreamTask
 
 logger = logging.getLogger(__name__)
+
+# special flag to indicate this actor not ready
+_NOT_READY_FLAG_ = b" " * 4
 
 
 @ray.remote
@@ -48,23 +50,8 @@ class JobWorker(object):
                 self.task_id, self.stream_processor))
 
         if self.config.get(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL):
-            core_worker = ray.worker.global_worker.core_worker
-            reader_async_func = PythonFunctionDescriptor(
-                __name__, self.on_reader_message.__name__,
-                self.__class__.__name__)
-            reader_sync_func = PythonFunctionDescriptor(
-                __name__, self.on_reader_message_sync.__name__,
-                self.__class__.__name__)
-            self.reader_client = _streaming.ReaderClient(
-                core_worker, reader_async_func, reader_sync_func)
-            writer_async_func = PythonFunctionDescriptor(
-                __name__, self.on_writer_message.__name__,
-                self.__class__.__name__)
-            writer_sync_func = PythonFunctionDescriptor(
-                __name__, self.on_writer_message_sync.__name__,
-                self.__class__.__name__)
-            self.writer_client = _streaming.WriterClient(
-                core_worker, writer_async_func, writer_sync_func)
+            self.reader_client = _streaming.ReaderClient()
+            self.writer_client = _streaming.WriterClient()
 
         self.task = self.create_stream_task()
         self.task.start()
@@ -82,23 +69,31 @@ class JobWorker(object):
                             type(self.stream_processor))
 
     def on_reader_message(self, buffer: bytes):
-        """used in direct call mode"""
+        """Called by upstream queue writer to send data message to downstream
+        queue reader.
+        """
         self.reader_client.on_reader_message(buffer)
 
     def on_reader_message_sync(self, buffer: bytes):
-        """used in direct call mode"""
+        """Called by upstream queue writer to send control message to downstream
+        downstream queue reader.
+        """
         if self.reader_client is None:
-            return b" " * 4  # special flag to indicate this actor not ready
+            return _NOT_READY_FLAG_
         result = self.reader_client.on_reader_message_sync(buffer)
         return result.to_pybytes()
 
     def on_writer_message(self, buffer: bytes):
-        """used in direct call mode"""
+        """Called by downstream queue reader to send notify message to
+        upstream queue writer.
+        """
         self.writer_client.on_writer_message(buffer)
 
     def on_writer_message_sync(self, buffer: bytes):
-        """used in direct call mode"""
+        """Called by downstream queue reader to send control message to
+        upstream queue writer.
+        """
         if self.writer_client is None:
-            return b" " * 4  # special flag to indicate this actor not ready
+            return _NOT_READY_FLAG_
         result = self.writer_client.on_writer_message_sync(buffer)
         return result.to_pybytes()

@@ -10,7 +10,8 @@ import ray
 from ray.rllib import _register_all
 
 from ray import tune
-from ray.tune import DurableTrainable, Trainable, TuneError, Stopper
+from ray.tune import (DurableTrainable, Trainable, TuneError, Stopper,
+                      EarlyStopping)
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.trial import Trial
@@ -487,6 +488,47 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 t.last_result.get("training_iteration") is None
                 for t in trials))
 
+    def testEarlyStopping(self):
+        def train(config, reporter):
+            reporter(test=0)
+
+        top = 3
+
+        with self.assertRaises(ValueError):
+            EarlyStopping("test", top=0)
+        with self.assertRaises(ValueError):
+            EarlyStopping("test", top="0")
+        with self.assertRaises(ValueError):
+            EarlyStopping("test", std=0)
+        with self.assertRaises(ValueError):
+            EarlyStopping("test", patience=-1)
+        with self.assertRaises(ValueError):
+            EarlyStopping("test", std="0")
+        with self.assertRaises(ValueError):
+            EarlyStopping("test", mode="0")
+
+        stopper = EarlyStopping("test", top=top, mode="min")
+
+        analysis = tune.run(train, num_samples=10, stop=stopper)
+        self.assertTrue(
+            all(t.status == Trial.TERMINATED for t in analysis.trials))
+        self.assertTrue(len(analysis.dataframe()) <= top)
+
+        patience = 10
+        stopper = EarlyStopping("test", top=top, mode="min", patience=patience)
+
+        analysis = tune.run(train, num_samples=100, stop=stopper)
+        self.assertTrue(
+            all(t.status == Trial.TERMINATED for t in analysis.trials))
+        self.assertTrue(len(analysis.dataframe()) <= patience)
+
+        stopper = EarlyStopping("test", top=top, mode="min")
+
+        analysis = tune.run(train, num_samples=10, stop=stopper)
+        self.assertTrue(
+            all(t.status == Trial.TERMINATED for t in analysis.trials))
+        self.assertTrue(len(analysis.dataframe()) <= top)
+
     def testBadStoppingFunction(self):
         def train(config, reporter):
             for i in range(10):
@@ -572,7 +614,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testReportInfinity(self):
         def train(config, reporter):
-            for i in range(100):
+            for _ in range(100):
                 reporter(mean_accuracy=float("inf"))
 
         register_trainable("f1", train)
@@ -606,13 +648,32 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial.last_result.get("trial_id"), trial.trial_id)
 
         def track_train(config):
-            tune.track.log(
-                name=tune.track.trial_name(), trial_id=tune.track.trial_id())
+            tune.report(
+                name=tune.get_trial_name(), trial_id=tune.get_trial_id())
 
         analysis = tune.run(track_train, stop={TRAINING_ITERATION: 1})
         trial = analysis.trials[0]
         self.assertEqual(trial.last_result.get("name"), str(trial))
         self.assertEqual(trial.last_result.get("trial_id"), trial.trial_id)
+
+    @patch("ray.tune.ray_trial_executor.TRIAL_CLEANUP_THRESHOLD", 3)
+    def testLotsOfStops(self):
+        class TestTrainable(Trainable):
+            def _train(self):
+                result = {"name": self.trial_name, "trial_id": self.trial_id}
+                return result
+
+            def _stop(self):
+                time.sleep(2)
+                open(os.path.join(self.logdir, "marker"), "a").close()
+                return 1
+
+        analysis = tune.run(
+            TestTrainable, num_samples=10, stop={TRAINING_ITERATION: 1})
+        ray.shutdown()
+        for trial in analysis.trials:
+            path = os.path.join(trial.logdir, "marker")
+            assert os.path.exists(path)
 
     def testNestedResults(self):
         def create_result(i):

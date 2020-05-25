@@ -1,19 +1,47 @@
 import json
 
+from collections import namedtuple
+
 
 class ValidationError(Exception):
     pass
 
 
+Field = namedtuple("Field", ["required", "default", "type"])
+
+
 class BaseModel:
     """Base class to define schema.
 
-    This will raise ValidationError if
-    - Number of given kwargs are bigger than needed.
-    - Number of given kwargs are smaller than needed.
+    Model schema should be defined in class variable `__schema__`
+    within a child class. `__schema__` should be a dictionary that contains
+    `field`: `Field(
+        required=required: bool,
+        default=default: Any,
+        type=type: type
+    )`
+    See the example below for more details.
 
-    This doesn't
-    - Validate types.
+    The class can have unexpected behavior if you don't follow the
+    schema pattern properly.
+
+    Example:
+        class A(BaseModel):
+            __schema__ = {
+                "field_name": Field(
+                    required=[True|False],
+                    default=[default],
+                    type=[type]
+                ),
+                "cluster_id": Field(
+                    required=True,
+                    default="1234",
+                    type=str
+                ),
+            }
+
+    Raises:
+        ValidationError: Raised if a given arg doesn't satisfy the schema.
     """
 
     def __init__(self, **kwargs):
@@ -30,41 +58,61 @@ class BaseModel:
 
     @classmethod
     def parse_obj(cls, obj):
-        assert type(obj) == dict, ("It can only parse dict type object.")
-        required_args = cls.__slots__
-        given_args = obj.keys()
-
-        # Check if given_args have args that is not required.
-        for arg in given_args:
-            if arg not in required_args:
-                raise ValidationError(
-                    "Given argument has a key {}, which is not required "
-                    "by this schema: {}".format(arg, required_args))
-
-        # Check if given args have all required args.
-        if len(required_args) != len(given_args):
-            raise ValidationError("Given args: {} doesn't have all the "
-                                  "necessary args for this schema: {}".format(
-                                      given_args, required_args))
+        # Validation.
+        assert type(obj) == dict, ("It can only parse dict type object, "
+                                   "but {} type is given.".format(type(obj)))
+        for field, schema in cls.__schema__.items():
+            required, default, arg_type = schema
+            if field not in obj:
+                if required:
+                    raise ValidationError("{} is required, but doesn't "
+                                          "exist in a given object {}".format(
+                                              field, obj))
+                else:
+                    # Set default value if the field is optional
+                    obj[field] = default
 
         return cls(**obj)
 
 
 class IngestRequest(BaseModel):
-    __slots__ = [
-        "cluster_id", "access_token", "ray_config", "node_info", "raylet_info",
-        "tune_info", "tune_availability"
-    ]
+    __schema__ = {
+        "ray_config": Field(required=True, default=None, type=tuple),
+        "node_info": Field(required=True, default=None, type=dict),
+        "raylet_info": Field(required=True, default=None, type=dict),
+        "tune_info": Field(required=True, default=None, type=dict),
+        "tune_availability": Field(required=True, default=None, type=dict)
+    }
 
 
-# TODO(sang): Add piggybacked response.
 class IngestResponse(BaseModel):
-    pass
+    __schema__ = {
+        "succeed": Field(required=True, default=None, type=bool),
+        "actions": Field(required=False, default=[], type=list)
+    }
 
 
 class AuthRequest(BaseModel):
-    __slots__ = ["cluster_id"]
+    __schema__ = {"cluster_id": Field(required=True, default=None, type=str)}
 
 
 class AuthResponse(BaseModel):
-    __slots__ = ["dashboard_url", "access_token"]
+    __schema__ = {
+        "access_token_dashboard": Field(required=True, default=None, type=str),
+        "access_token_ingest": Field(required=True, default=None, type=str)
+    }
+
+
+# Enum is not used because action types will be received
+# through a network communication, and it will be string.
+class ActionType:
+    KILL_ACTOR = "KILL_ACTOR"
+
+
+class KillAction(BaseModel):
+    __schema__ = {
+        "type": Field(required=False, default=ActionType.KILL_ACTOR, type=str),
+        "actor_id": Field(required=True, default=None, type=str),
+        "ip_address": Field(required=True, default=None, type=str),
+        "port": Field(required=True, default=None, type=int)
+    }

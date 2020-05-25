@@ -1,4 +1,5 @@
 import asyncio
+import errno
 import json
 import fnmatch
 import os
@@ -11,6 +12,9 @@ import socket
 import ray
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
+
+if sys.platform == "win32":
+    import _winapi
 
 
 class RayTestTimeoutException(Exception):
@@ -27,11 +31,24 @@ def _pid_alive(pid):
     Returns:
         This returns false if the process is dead. Otherwise, it returns true.
     """
+    no_such_process = errno.EINVAL if sys.platform == "win32" else errno.ESRCH
+    alive = True
     try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
+        if sys.platform == "win32":
+            SYNCHRONIZE = 0x00100000  # access mask defined in <winnt.h>
+            handle = _winapi.OpenProcess(SYNCHRONIZE, False, pid)
+            try:
+                alive = (_winapi.WaitForSingleObject(handle, 0) !=
+                         _winapi.WAIT_OBJECT_0)
+            finally:
+                _winapi.CloseHandle(handle)
+        else:
+            os.kill(pid, 0)
+    except OSError as ex:
+        if ex.errno != no_such_process:
+            raise
+        alive = False
+    return alive
 
 
 def wait_for_pid_to_exit(pid, timeout=20):
@@ -137,9 +154,7 @@ def wait_for_errors(error_type, num_errors, timeout=20):
         num_errors, error_type))
 
 
-def wait_for_condition(condition_predictor,
-                       timeout=1000,
-                       retry_interval_ms=100):
+def wait_for_condition(condition_predictor, timeout=30, retry_interval_ms=100):
     """A helper function that waits until a condition is met.
 
     Args:
@@ -223,6 +238,21 @@ class SignalActor:
     async def wait(self, should_wait=True):
         if should_wait:
             await self.ready_event.wait()
+
+
+@ray.remote(num_cpus=0)
+class Semaphore:
+    def __init__(self, value=1):
+        self._sema = asyncio.Semaphore(value=value)
+
+    async def acquire(self):
+        self._sema.acquire()
+
+    async def release(self):
+        self._sema.release()
+
+    async def locked(self):
+        return self._sema.locked()
 
 
 @ray.remote

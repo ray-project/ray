@@ -10,13 +10,13 @@ import time
 import unittest
 
 import ray
+from ray.tune.registry import register_env
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.offline import IOContext, JsonWriter, JsonReader
 from ray.rllib.offline.json_writer import _to_json
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.tests.test_multi_agent_env import MultiCartpole
-from ray.tune.registry import register_env
 
 SAMPLES = SampleBatch({
     "actions": np.array([1, 2, 3, 4]),
@@ -149,7 +149,8 @@ class AgentIOTest(unittest.TestCase):
         self.assertTrue(not np.isnan(result["episode_reward_mean"]))
 
     def testMultiAgent(self):
-        register_env("multi_cartpole", lambda _: MultiCartpole(10))
+        register_env("multi_agent_cartpole",
+                     lambda _: MultiAgentCartPole({"num_agents": 10}))
         single_env = gym.make("CartPole-v0")
 
         def gen_policy():
@@ -158,7 +159,7 @@ class AgentIOTest(unittest.TestCase):
             return (PGTFPolicy, obs_space, act_space, {})
 
         pg = PGTrainer(
-            env="multi_cartpole",
+            env="multi_agent_cartpole",
             config={
                 "num_workers": 0,
                 "output": self.test_dir,
@@ -177,7 +178,7 @@ class AgentIOTest(unittest.TestCase):
 
         pg.stop()
         pg = PGTrainer(
-            env="multi_cartpole",
+            env="multi_agent_cartpole",
             config={
                 "num_workers": 0,
                 "input": self.test_dir,
@@ -222,7 +223,7 @@ class JsonIOTest(unittest.TestCase):
     def test_write_file_uri(self):
         ioctx = IOContext(self.test_dir, {}, 0, None)
         writer = JsonWriter(
-            "file:" + self.test_dir,
+            "file://" + self.test_dir,
             ioctx,
             max_file_size=1000,
             compress_columns=["obs"])
@@ -278,7 +279,7 @@ class JsonIOTest(unittest.TestCase):
         reader = JsonReader([
             self.test_dir + "/empty",
             self.test_dir + "/f1",
-            "file:" + self.test_dir + "/f2",
+            "file://" + self.test_dir + "/f2",
         ])
         seen_a = set()
         for i in range(100):

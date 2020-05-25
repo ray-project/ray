@@ -16,7 +16,7 @@ syntax = "proto3";
 
 package ray.rpc;
 
-option java_package = "org.ray.runtime.generated";
+option java_package = "io.ray.runtime.generated";
 
 // Language of a task or worker.
 enum Language {
@@ -148,8 +148,9 @@ message ActorCreationTaskSpec {
   // ID of the actor that will be created by this task.
   bytes actor_id = 2;
   // The max number of times this actor should be recontructed.
-  // If this number of 0 or negative, the actor won't be reconstructed on failure.
-  uint64 max_actor_reconstructions = 3;
+  // If this number is 0 the actor won't be restarted.
+  // If this number is -1 the actor will be restarted indefinitely.
+  int64 max_actor_restarts = 3;
   // The dynamic options used in the worker command when starting a worker process for
   // an actor creation task. If the list isn't empty, the options will be used to replace
   // the placeholder strings (`RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0`,
@@ -159,8 +160,12 @@ message ActorCreationTaskSpec {
   int32 max_concurrency = 5;
   // Whether the actor is persistent
   bool is_detached = 6;
+  // Globally-unique name of the actor. Should only be populated when is_detached is true.
+  string name = 7;
   // Whether the actor use async actor calls
-  bool is_asyncio = 7;
+  bool is_asyncio = 8;
+  // Field used for storing application-level extensions to the actor definition.
+  string extension_data = 9;
 }
 
 // Task spec of an actor task.
@@ -269,16 +274,18 @@ message CoreWorkerStats {
   map<string, double> used_resources = 9;
   // A string displayed on Dashboard.
   map<string, string> webui_display = 10;
+  // Number of objects that are IN_PLASMA_ERROR in the local memory store.
+  int32 num_in_plasma = 11;
   // Number of objects stored in local memory.
-  int32 num_local_objects = 11;
+  int32 num_local_objects = 12;
   // Used local object store memory.
-  int64 used_object_store_memory = 12;
+  int64 used_object_store_memory = 13;
   // Length of the task queue.
-  int32 task_queue_length = 13;
+  int32 task_queue_length = 14;
   // Number of executed tasks.
-  int32 num_executed_tasks = 14;
+  int32 num_executed_tasks = 15;
   // Actor constructor.
-  string actor_title = 15;
+  string actor_title = 16;
   // Local reference table.
-  repeated ObjectRefInfo object_refs = 16;
+  repeated ObjectRefInfo object_refs = 17;
 }

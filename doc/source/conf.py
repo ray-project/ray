@@ -32,7 +32,8 @@ MOCK_MODULES = [
     "tensorflow.contrib.rnn", "tensorflow.contrib.slim", "tensorflow.core",
     "tensorflow.core.util", "tensorflow.python", "tensorflow.python.client",
     "tensorflow.python.util", "torch", "torch.distributed", "torch.nn",
-    "torch.nn.parallel", "torch.utils.data", "torch.utils.data.distributed"
+    "torch.nn.parallel", "torch.utils.data", "torch.utils.data.distributed",
+    "zoopt"
 ]
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
@@ -63,11 +64,25 @@ extensions = [
     'sphinx-jsonschema',
     'sphinx_gallery.gen_gallery',
     'sphinx_copybutton',
+    'versionwarning.extension',
 ]
 
+versionwarning_messages = {
+    "master": (
+        "This document is for the master branch. "
+        'Visit the <a href="/en/latest/">latest pip release documentation here</a>.'
+    ),
+    "latest": (
+        "This document is for the latest pip release. "
+        'Visit the <a href="/en/master/">master branch documentation here</a>.'
+    ),
+}
+
+versionwarning_body_selector = "div.document"
 sphinx_gallery_conf = {
-    "examples_dirs": ["../examples"],  # path to example scripts
-    "gallery_dirs": ["auto_examples"],  # path where to save generated examples
+    "examples_dirs": ["../examples", "tune/_tutorials"],  # path to example scripts
+    # path where to save generated examples
+    "gallery_dirs": ["auto_examples", "tune/tutorials"],
     "ignore_pattern": "../examples/doc_code/",
     "plot_gallery": "False",
     # "filename_pattern": "tutorial.py",
@@ -138,7 +153,6 @@ language = None
 # directories to ignore when looking for source files.
 exclude_patterns = ['_build']
 exclude_patterns += sphinx_gallery_conf['examples_dirs']
-exclude_patterns += ["*/README.rst"]
 
 # The reST default role (used for this markup: `text`) to use for all
 # documents.

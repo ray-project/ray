@@ -23,7 +23,7 @@ def train_mnist(config):
     for i in range(10):
         train(model, optimizer, train_loader)
         acc = test(model, test_loader)
-        tune.track.log(mean_accuracy=acc)
+        tune.report(mean_accuracy=acc)
 
 
 analysis = tune.run(

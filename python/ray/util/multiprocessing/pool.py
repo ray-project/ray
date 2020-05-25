@@ -349,11 +349,12 @@ class Pool:
         # Else, the priority is:
         # ray_address argument > RAY_ADDRESS > start new local cluster.
         if not ray.is_initialized():
-            if ray_address is None and RAY_ADDRESS_ENV in os.environ:
-                ray_address = os.environ[RAY_ADDRESS_ENV]
-
             # Cluster mode.
-            if ray_address is not None:
+            if ray_address is None and RAY_ADDRESS_ENV in os.environ:
+                logger.info("Connecting to ray cluster at address='{}'".format(
+                    os.environ[RAY_ADDRESS_ENV]))
+                ray.init()
+            elif ray_address is not None:
                 logger.info("Connecting to ray cluster at address='{}'".format(
                     ray_address))
                 ray.init(address=ray_address)
