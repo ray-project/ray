@@ -13,8 +13,8 @@ class TestDQN(unittest.TestCase):
     def test_dqn_compilation(self):
         """Test whether a DQNTrainer can be built on all frameworks."""
         config = dqn.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
-        num_iterations = 2
+        config["num_workers"] = 2
+        num_iterations = 1
 
         for fw in framework_iterator(config):
             # double-dueling DQN.

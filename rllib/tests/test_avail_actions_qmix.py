@@ -73,6 +73,7 @@ class TestAvailActionsQMix(unittest.TestCase):
                 "env_config": {
                     "avail_action": 3,
                 },
+                "framework": "torch",
             })
         for _ in range(5):
             agent.train()  # OK if it doesn't trip the action assertion error

@@ -5,7 +5,7 @@ import ray.rllib.agents.a3c as a3c
 from ray.rllib.utils.test_utils import check_compute_action, framework_iterator
 
 
-class TestA2C(unittest.TestCase):
+class TestA3C(unittest.TestCase):
     """Sanity tests for A2C exec impl."""
 
     def setUp(self):
@@ -14,8 +14,8 @@ class TestA2C(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def test_a2c_compilation(self):
-        """Test whether an A2CTrainer can be built with both frameworks."""
+    def test_a3c_compilation(self):
+        """Test whether an A3CTrainer can be built with both frameworks."""
         config = a3c.DEFAULT_CONFIG.copy()
         config["num_workers"] = 2
         config["num_envs_per_worker"] = 2
@@ -25,30 +25,12 @@ class TestA2C(unittest.TestCase):
         # Test against all frameworks.
         for fw in framework_iterator(config, ("tf", "torch")):
             config["sample_async"] = fw == "tf"
-            for env in ["PongDeterministic-v0"]:
-                trainer = a3c.A2CTrainer(config=config, env=env)
+            for env in ["CartPole-v0", "Pendulum-v0", "PongDeterministic-v0"]:
+                trainer = a3c.A3CTrainer(config=config, env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
                     print(results)
                 check_compute_action(trainer)
-
-    def test_a2c_exec_impl(ray_start_regular):
-        trainer = a3c.A2CTrainer(
-            env="CartPole-v0", config={
-                "min_iter_time_s": 0,
-            })
-        assert isinstance(trainer.train(), dict)
-        check_compute_action(trainer)
-
-    def test_a2c_exec_impl_microbatch(ray_start_regular):
-        trainer = a3c.A2CTrainer(
-            env="CartPole-v0",
-            config={
-                "min_iter_time_s": 0,
-                "microbatch_size": 10,
-            })
-        assert isinstance(trainer.train(), dict)
-        check_compute_action(trainer)
 
 
 if __name__ == "__main__":
