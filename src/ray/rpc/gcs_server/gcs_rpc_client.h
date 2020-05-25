@@ -165,6 +165,10 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetObjectLocations,
                              object_info_grpc_client_, )
 
+  /// Get all object's locations from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetAllObjectLocations,
+                             object_info_grpc_client_, )
+
   /// Add location of object to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, AddObjectLocation,
                              object_info_grpc_client_, )
