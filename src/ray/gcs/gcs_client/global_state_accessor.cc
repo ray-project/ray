@@ -84,8 +84,8 @@ std::vector<std::string> GlobalStateAccessor::GetAllProfileInfo() {
   std::vector<std::string> profile_table_data;
   std::promise<bool> promise;
   auto on_done = [&profile_table_data, &promise](
-      const Status &status,
-      const std::vector<rpc::ProfileTableData> &result) {
+                     const Status &status,
+                     const std::vector<rpc::ProfileTableData> &result) {
     RAY_CHECK_OK(status);
     for (auto &data : result) {
       profile_table_data.push_back(data.SerializeAsString());
