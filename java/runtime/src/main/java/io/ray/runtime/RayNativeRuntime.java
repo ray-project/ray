@@ -107,6 +107,10 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       manager.cleanup();
       manager = null;
     }
+    if (null != gcsClient) {
+      gcsClient.destroy();
+      gcsClient = null;
+    }
     RayConfig.reset();
     LOGGER.info("RayNativeRuntime shutdown");
   }

@@ -188,6 +188,18 @@ public class GcsClient {
     return JobId.fromInt(jobCounter);
   }
 
+  public void disconnect() {
+    globalStateAccessor.disconnect();
+  }
+
+  /**
+   * Destroy global state accessor when ray native runtime will be shutdown.
+   */
+  public void destroy() {
+    // Only ray shutdown should call gcs client destroy.
+    globalStateAccessor.destroyGlobalStateAccessor();
+  }
+
   private RedisClient getShardClient(BaseId key) {
     return shards.get((int) Long.remainderUnsigned(IdUtil.murmurHashCode(key),
         shards.size()));
