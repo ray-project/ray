@@ -562,7 +562,8 @@ py_test(
     args = [
         "--env", "FrozenLake-v0",
         "--run", "DQN",
-        "--stop", "'{\"framework\": \"tf\", \"training_iteration\": 1}'"
+        "--config", "'{\"framework\": \"tf\"}'",
+        "--stop", "'{\"training_iteration\": 1}'"
         ]
 )
 

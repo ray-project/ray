@@ -68,6 +68,8 @@ def check_support(alg, config, check_bounds=False):
         stat = "ok"
         a = None
         try:
+            if alg == "SAC":
+                config["use_state_preprocessor"] = o_name in ["atari", "image"]
             a = get_agent_class(alg)(config=config, env=RandomEnv)
             if alg not in ["DDPG", "ES", "ARS", "SAC"]:
                 if o_name in ["atari", "image"]:
