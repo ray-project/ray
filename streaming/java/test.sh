@@ -49,8 +49,10 @@ if [ $exit_code -ne 2 ] && [ $exit_code -ne 0 ] ; then
       done
     fi
     for f in /home/travis/build/ray-project/ray/hs_err*log; do
-      echo "Cat file $f"
-      cat "$f"
+      if [ -f "$f" ]; then
+        echo "Cat file $f"
+        cat "$f"
+      fi
     done
     exit $exit_code
 fi
