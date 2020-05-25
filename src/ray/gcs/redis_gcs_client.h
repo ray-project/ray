@@ -99,7 +99,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   HeartbeatBatchTable &heartbeat_batch_table();
   DynamicResourceTable &resource_table();
   /// Implements the Tasks() interface.
-  raylet::TaskTable &raylet_task_table();
+  virtual raylet::TaskTable &raylet_task_table();
   TaskLeaseTable &task_lease_table();
   TaskReconstructionLog &task_reconstruction_log();
   /// Implements the Errors() interface.
