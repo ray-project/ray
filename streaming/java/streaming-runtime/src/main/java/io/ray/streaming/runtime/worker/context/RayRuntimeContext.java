@@ -62,6 +62,11 @@ public class RayRuntimeContext implements RuntimeContext {
   }
 
   @Override
+  public Map<String, String> getJobConfig() {
+    return config;
+  }
+
+  @Override
   public Long getCheckpointId() {
     return checkpointId;
   }

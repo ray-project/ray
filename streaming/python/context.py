@@ -159,13 +159,22 @@ class RuntimeContext(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_job_config(self):
+        """
+        Returns:
+            The config with which the parallel task runs.
+        """
+        pass
+
 
 class RuntimeContextImpl(RuntimeContext):
-    def __init__(self, task_id, task_index, parallelism, config):
+    def __init__(self, task_id, task_index, parallelism, **kargs):
         self.task_id = task_id
         self.task_index = task_index
         self.parallelism = parallelism
-        self.config = config
+        self.config = kargs.get("config", {})
+        self.job_config = kargs.get("job_config", {})
 
     def get_task_id(self):
         return self.task_id
@@ -178,3 +187,6 @@ class RuntimeContextImpl(RuntimeContext):
 
     def get_config(self):
         return self.config
+
+    def get_job_config(self):
+        return self.job_config

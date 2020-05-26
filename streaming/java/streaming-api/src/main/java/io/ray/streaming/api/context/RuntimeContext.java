@@ -22,6 +22,8 @@ public interface RuntimeContext {
 
   Map<String, String> getConfig();
 
+  Map<String, String> getJobConfig();
+
   Long getCheckpointId();
 
   void setCheckpointId(long checkpointId);
