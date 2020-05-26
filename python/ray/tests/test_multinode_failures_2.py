@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 import ray
+from ray.test_utils import get_other_nodes
 import ray.ray_constants as ray_constants
 
 
@@ -45,7 +46,7 @@ def test_object_reconstruction(ray_start_cluster):
     # execute. Do this in a loop while submitting tasks between each
     # component failure.
     time.sleep(0.1)
-    worker_nodes = cluster.list_all_nodes()[1:]
+    worker_nodes = get_other_nodes(cluster)
     assert len(worker_nodes) > 0
     component_type = ray_constants.PROCESS_TYPE_RAYLET
     for node in worker_nodes:
