@@ -11,9 +11,19 @@ import java.util.List;
  */
 @SuppressWarnings("unchecked")
 public class PythonOperator extends StreamOperator {
+  private final String moduleName;
+  private final String className;
+
+  public PythonOperator(String moduleName, String className) {
+    super(null);
+    this.moduleName = moduleName;
+    this.className = className;
+  }
 
   public PythonOperator(PythonFunction function) {
     super(function);
+    this.moduleName = null;
+    this.className = null;
   }
 
   @Override
@@ -43,5 +53,13 @@ public class PythonOperator extends StreamOperator {
   @Override
   public Language getLanguage() {
     return Language.PYTHON;
+  }
+
+  public String getModuleName() {
+    return moduleName;
+  }
+
+  public String getClassName() {
+    return className;
   }
 }

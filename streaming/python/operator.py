@@ -1,8 +1,11 @@
-from abc import ABC, abstractmethod
 import enum
+import importlib
+from abc import ABC, abstractmethod
+
 from ray import streaming
 from ray.streaming import function
 from ray.streaming import message
+from ray.streaming.runtime import gateway_client
 
 
 class OperatorType(enum.Enum):
@@ -225,7 +228,34 @@ _function_to_operator = {
 }
 
 
-def create_operator(func: function.Function):
+def load_operator(descriptor_operator_bytes: bytes):
+    """
+    Deserialize `descriptor_operator_bytes` to get operator info, then
+    create streaming operator.
+    Note that this function must be kept in sync with
+     `io.ray.streaming.runtime.python.GraphPbBuilder.serializeOperator`
+
+    Args:
+        descriptor_operator_bytes: serialized operator info
+
+    Returns:
+        a streaming operator
+    """
+    assert len(descriptor_operator_bytes) > 0
+    function_desc_bytes, module_name, class_name \
+        = gateway_client.deserialize(descriptor_operator_bytes)
+    if function_desc_bytes:
+        return create_operator_with_func(function.load_function(function_desc_bytes))
+    else:
+        assert module_name
+        assert class_name
+        mod = importlib.import_module(module_name)
+        cls = getattr(mod, class_name)
+        assert issubclass(cls, Operator)
+        return cls()
+
+
+def create_operator_with_func(func: function.Function):
     """Create an operator according to a :class:`function.Function`
 
     Args:
