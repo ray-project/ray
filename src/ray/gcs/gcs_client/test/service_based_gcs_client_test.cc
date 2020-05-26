@@ -917,6 +917,51 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableReSubscribe) {
   WaitPendingDone(batch_heartbeat_count, 1);
 }
 
+TEST_F(ServiceBasedGcsClientTest, TestTaskTableReSubscribe) {
+  JobID job_id = JobID::FromInt(6);
+  TaskID task_id = TaskID::ForDriverTask(job_id);
+  auto task_table_data = Mocker::GenTaskTableData(job_id.Binary(), task_id.Binary());
+
+  // Subscribe to the event that the given task is added in GCS.
+  std::atomic<int> task_count(0);
+  auto task_subscribe = [&task_count](const TaskID &task_id,
+                                      const gcs::TaskTableData &data) { ++task_count; };
+  ASSERT_TRUE(SubscribeTask(task_id, task_subscribe));
+
+  // Subscribe to the event that the given task lease is added in GCS.
+  std::atomic<int> task_lease_count(0);
+  auto task_lease_subscribe = [&task_lease_count](
+                                  const TaskID &task_id,
+                                  const boost::optional<rpc::TaskLeaseData> &data) {
+    if (data) {
+      ++task_lease_count;
+    }
+  };
+  ASSERT_TRUE(SubscribeTaskLease(task_id, task_lease_subscribe));
+
+  ASSERT_TRUE(AddTask(task_table_data));
+  ClientID node_id = ClientID::FromRandom();
+  auto task_lease = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
+  ASSERT_TRUE(AddTaskLease(task_lease));
+  WaitPendingDone(task_count, 1);
+  WaitPendingDone(task_lease_count, 1);
+  UnsubscribeTask(task_id);
+
+  RestartGcsServer();
+
+  RAY_LOG(INFO) << "task_lease_count = " << task_lease_count
+                << ", task_count = " << task_count;
+  node_id = ClientID::FromRandom();
+  task_lease = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
+  ASSERT_TRUE(AddTaskLease(task_lease));
+  RAY_LOG(INFO) << "task_lease_count = " << task_lease_count
+                << ", task_count = " << task_count;
+  WaitPendingDone(task_lease_count, 3);
+  RAY_LOG(INFO) << "task_lease_count = " << task_lease_count
+                << ", task_count = " << task_count;
+  WaitPendingDone(task_count, 1);
+}
+
 TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
   // Stop redis.
   TearDownTestCase();
