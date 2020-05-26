@@ -80,7 +80,7 @@ void ServiceBasedGcsClient::Disconnect() {
   gcs_pub_sub_.reset();
   redis_gcs_client_->Disconnect();
   redis_gcs_client_.reset();
-  RAY_LOG(INFO) << "ServiceBasedGcsClient Disconnected.";
+  RAY_LOG(DEBUG) << "ServiceBasedGcsClient Disconnected.";
 }
 
 void ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
