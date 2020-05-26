@@ -75,6 +75,14 @@ def test_worker_failed(ray_start_workers_separate_multinode):
             pass
 
 
+def _get_other_nodes(cluster):
+    """Get all nodes except the one that we're connected to."""
+    return [
+        node for node in cluster.list_all_nodes() if
+        node._raylet_socket_name != ray.worker._global_node._raylet_socket_name
+    ]
+
+
 def _test_component_failed(cluster, component_type):
     """Kill a component on all worker nodes and check workload succeeds."""
     # Submit many tasks with many dependencies.
@@ -90,7 +98,7 @@ def _test_component_failed(cluster, component_type):
     # execute. Do this in a loop while submitting tasks between each
     # component failure.
     time.sleep(0.1)
-    worker_nodes = cluster.list_all_nodes()[1:]
+    worker_nodes = _get_other_nodes(cluster)
     assert len(worker_nodes) > 0
     for node in worker_nodes:
         process = node.all_processes[component_type][0].process
@@ -119,7 +127,7 @@ def _test_component_failed(cluster, component_type):
 
 def check_components_alive(cluster, component_type, check_component_alive):
     """Check that a given component type is alive on all worker nodes."""
-    worker_nodes = cluster.list_all_nodes()[1:]
+    worker_nodes = _get_other_nodes(cluster)
     assert len(worker_nodes) > 0
     for node in worker_nodes:
         process = node.all_processes[component_type][0].process
