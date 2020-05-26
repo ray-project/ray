@@ -65,7 +65,7 @@ class BoostingModel:
 
 # connect to our existing Ray cluster
 # note that the password will be different for your redis instance!
-ray.init(address="auto", redis_password="5241590000000000")
+ray.init(address="auto")
 # now we initialize /connect to the Ray service
 
 serve.init()
