@@ -949,16 +949,10 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskTableReSubscribe) {
 
   RestartGcsServer();
 
-  RAY_LOG(INFO) << "task_lease_count = " << task_lease_count
-                << ", task_count = " << task_count;
   node_id = ClientID::FromRandom();
   task_lease = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
   ASSERT_TRUE(AddTaskLease(task_lease));
-  RAY_LOG(INFO) << "task_lease_count = " << task_lease_count
-                << ", task_count = " << task_count;
   WaitPendingDone(task_lease_count, 3);
-  RAY_LOG(INFO) << "task_lease_count = " << task_lease_count
-                << ", task_count = " << task_count;
   WaitPendingDone(task_count, 1);
 }
 
