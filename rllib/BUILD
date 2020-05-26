@@ -1307,6 +1307,13 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "tests/test_attention_net_learning",
+    tags = ["tests_dir", "tests_dir_A"],
+    size = "large",
+    srcs = ["tests/test_attention_net_learning.py"]
+)
+
+py_test(
     name = "tests/test_avail_actions_qmix",
     tags = ["tests_dir", "tests_dir_A"],
     size = "small",

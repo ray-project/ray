@@ -89,7 +89,7 @@ MODEL_DEFAULTS = {
     # Custom preprocessors are deprecated. Please use a wrapper class around
     # your environment instead to preprocess observations.
     "custom_preprocessor": None,
-    
+
     # Deprecated config keys.
     "custom_options": DEPRECATED_VALUE,
 }
@@ -286,8 +286,10 @@ class ModelCatalog:
 
             if "custom_options" in model_config and \
                     model_config["custom_options"] != DEPRECATED_VALUE:
-                deprecation_warning("model.custom_options",
-                                    "model.custom_model_config", error=False)
+                deprecation_warning(
+                    "model.custom_options",
+                    "model.custom_model_config",
+                    error=False)
                 model_config["custom_model_config"] = \
                     model_config.pop("custom_options")
 
