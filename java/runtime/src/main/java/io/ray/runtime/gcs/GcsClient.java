@@ -188,10 +188,6 @@ public class GcsClient {
     return JobId.fromInt(jobCounter);
   }
 
-  public void disconnect() {
-    globalStateAccessor.disconnect();
-  }
-
   /**
    * Destroy global state accessor when ray native runtime will be shutdown.
    */
