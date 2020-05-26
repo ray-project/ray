@@ -24,8 +24,9 @@ class NodeLauncher(threading.Thread):
         before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"])
         self.log("Launching {} nodes.".format(count))
+        node_config = copy.deepcopy(config["worker_nodes"])
         self.provider.create_node(
-            config["worker_nodes"], {
+            node_config, {
                 TAG_RAY_NODE_NAME: "ray-{}-worker".format(
                     config["cluster_name"]),
                 TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER,
