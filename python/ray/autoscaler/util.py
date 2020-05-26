@@ -1,5 +1,13 @@
 import os
+import json
 import threading
+import hashlib
+import jsonschema
+
+import ray
+import ray.services as services
+from ray.autoscaler.node_provider import get_default_config
+from ray.autoscaler.docker import dockerize_if_needed
 
 REQUIRED, OPTIONAL = True, False
 RAY_SCHEMA_PATH = os.path.join(

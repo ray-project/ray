@@ -6,7 +6,8 @@ import traceback
 import json
 
 import ray
-from ray.autoscaler.autoscaler import LoadMetrics, StandardAutoscaler
+from ray.autoscaler.autoscaler import StandardAutoscaler
+from ray.autoscaler.load_metrics import LoadMetrics
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants

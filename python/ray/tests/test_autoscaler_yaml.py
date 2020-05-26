@@ -5,7 +5,7 @@ import yaml
 import urllib
 import tempfile
 
-from ray.autoscaler.autoscaler import fillout_defaults, validate_config
+from ray.autoscaler.util import fillout_defaults, validate_config
 from ray.test_utils import recursive_fnmatch
 
 RAY_PATH = os.path.abspath(os.path.join(__file__, "../../"))

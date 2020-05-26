@@ -1,8 +1,6 @@
 from collections import defaultdict
 import copy
-import hashlib
 import json
-import jsonschema
 import logging
 import math
 import numpy as np
@@ -12,28 +10,23 @@ import threading
 import time
 import yaml
 
-import ray
-from ray.autoscaler.docker import dockerize_if_needed
-from ray.autoscaler.node_provider import get_node_provider, \
-    get_default_config
+from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
-                                 TAG_RAY_NODE_NAME, STATUS_UP_TO_DATE,
-                                 STATUS_UNINITIALIZED, NODE_TYPE_WORKER)
+                                 STATUS_UP_TO_DATE, NODE_TYPE_WORKER)
 from ray.autoscaler.updater import NodeUpdaterThread
+from ray.autoscaler.node_launcher import NodeLauncher
+from ray.autoscaler.util import ConcurrentCounter, validate_config, \
+    with_head_node_ip, hash_launch_conf, hash_runtime_conf
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
     AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S, \
-    AUTOSCALER_RESOURCE_REQUEST_CHANNEL, MEMORY_RESOURCE_UNIT_BYTES
+    AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 import ray.services as services
 from ray.worker import global_worker
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
-
-REQUIRED, OPTIONAL = True, False
-RAY_SCHEMA_PATH = os.path.join(
-    os.path.dirname(ray.autoscaler.__file__), "ray-schema.json")
 
 
 class StandardAutoscaler:

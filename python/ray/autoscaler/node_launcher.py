@@ -1,4 +1,12 @@
+import threading
+import logging
 
+from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_STATUS,
+                                 TAG_RAY_NODE_TYPE, TAG_RAY_NODE_NAME,
+                                 STATUS_UNINITIALIZED, NODE_TYPE_WORKER)
+from ray.autoscaler.util import hash_launch_conf
+
+logger = logging.getLogger(__name__)
 
 
 class NodeLauncher(threading.Thread):
