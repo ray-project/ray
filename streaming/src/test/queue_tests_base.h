@@ -59,7 +59,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
       TestSetupUtil::StopObjectStore(store_socket_name);
     }
 
-    GcsServerManagerForTest::StopGcsServer(gcs_server_socket_name_);
+    TestSetupUtil::StopGcsServer(gcs_server_socket_name_);
     TestSetupUtil::ShutDownRedisServers();
   }
 
