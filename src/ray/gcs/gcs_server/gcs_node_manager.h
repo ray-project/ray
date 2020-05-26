@@ -39,6 +39,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node_info_accessor The node info accessor.
   /// \param error_info_accessor The error info accessor, which is used to report error.
   /// \param gcs_pub_sub GCS message pushlisher.
+  /// \param gcs_table_storage GCS table external storage accessor.
   /// when detecting the death of nodes.
   explicit GcsNodeManager(boost::asio::io_service &io_service,
                           gcs::NodeInfoAccessor &node_info_accessor,
@@ -206,7 +207,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
       node_removed_listeners_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
-  /// A storage slover for gcs table.
+  /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 };
 

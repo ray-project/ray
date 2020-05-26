@@ -166,7 +166,7 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
                                          node->SerializeAsString(), nullptr));
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     };
-    // Overwrite in DEAD state.
+    // Update node state to DEAD instead of deleting it.
     RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
     // TODO(Shanly): Remove node resources from resource table.
   }

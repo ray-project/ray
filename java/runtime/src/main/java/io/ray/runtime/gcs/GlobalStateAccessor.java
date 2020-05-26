@@ -10,24 +10,25 @@ import java.util.List;
 public class GlobalStateAccessor {
   // NOTE(lingxuan.zlx): Native pointer is singleton in gcs state accessor, which means it can not
   // be changed in cluster when redis or other storage accessor is fixed.
-  private static Long globalStateAccessorNativePtr = 0L;
+  private static Long globalStateAccessorNativePointer = 0L;
 
   public GlobalStateAccessor(String redisAddress, String redisPassword) {
-    synchronized (globalStateAccessorNativePtr) {
-      if (0 == globalStateAccessorNativePtr) {
-        globalStateAccessorNativePtr = nativeCreateGlobalStateAccessor(redisAddress, redisPassword);
+    synchronized (globalStateAccessorNativePointer) {
+      if (0 == globalStateAccessorNativePointer) {
+        globalStateAccessorNativePointer =
+          nativeCreateGlobalStateAccessor(redisAddress, redisPassword);
       }
-      Preconditions.checkState(globalStateAccessorNativePtr != 0,
+      Preconditions.checkState(globalStateAccessorNativePointer != 0,
           "Global state accessor native pointer must not be 0.");
     }
   }
 
   public boolean connect() {
-    return this.nativeConnect(globalStateAccessorNativePtr);
+    return this.nativeConnect(globalStateAccessorNativePointer);
   }
 
   public void disconnect() {
-    this.nativeDisconnect(globalStateAccessorNativePtr);
+    this.nativeDisconnect(globalStateAccessorNativePointer);
   }
 
   /**
@@ -35,7 +36,10 @@ public class GlobalStateAccessor {
    */
   public List<byte[]> getAllJobInfo() {
     // Fetch a job list with protobuf bytes format from GCS.
-    return this.nativeGetAllJobInfo(globalStateAccessorNativePtr);
+    synchronized (globalStateAccessorNativePointer) {
+      Preconditions.checkState(globalStateAccessorNativePointer != 0);
+      return this.nativeGetAllJobInfo(globalStateAccessorNativePointer);
+    }
   }
 
   /**
@@ -43,13 +47,16 @@ public class GlobalStateAccessor {
    */
   public List<byte[]> getAllNodeInfo() {
     // Fetch a node list with protobuf bytes format from GCS.
-    return this.nativeGetAllNodeInfo(globalStateAccessorNativePtr);
+    synchronized (globalStateAccessorNativePointer) {
+      Preconditions.checkState(globalStateAccessorNativePointer != 0);
+      return this.nativeGetAllNodeInfo(globalStateAccessorNativePointer);
+    }
   }
 
   public void destroyGlobalStateAccessor() {
-    synchronized (globalStateAccessorNativePtr) {
-      this.nativeDestroyGlobalStateAccessor(globalStateAccessorNativePtr);
-      globalStateAccessorNativePtr = 0L;
+    synchronized (globalStateAccessorNativePointer) {
+      this.nativeDestroyGlobalStateAccessor(globalStateAccessorNativePointer);
+      globalStateAccessorNativePointer = 0L;
     }
   }
 

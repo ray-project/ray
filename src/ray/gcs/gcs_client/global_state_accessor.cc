@@ -57,7 +57,7 @@ bool GlobalStateAccessor::Connect() {
     is_connected_ = true;
     return gcs_client_->Connect(*io_service_).ok();
   } else {
-    RAY_LOG(DEBUG) << "Duplicated connection for accessor";
+    RAY_LOG(DEBUG) << "Duplicated connection for GlobalStateAccessor.";
     return true;
   }
 }

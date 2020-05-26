@@ -171,7 +171,7 @@ def get_address_info_from_redis_helper(redis_address,
                                        node_ip_address,
                                        redis_password=None):
     redis_ip_address, redis_port = redis_address.split(":")
-    # Get node table from global state accessor in redis.
+    # Get node table from global state accessor.
     global_state = ray.state.GlobalState()
     global_state._initialize_global_state(redis_address, redis_password)
     client_table = global_state.node_table()

@@ -31,7 +31,7 @@ class Cluster:
         self.worker_nodes = set()
         self.redis_address = None
         self.connected = False
-        # Create new global state accessor for fetching gcs table.
+        # Create a new global state accessor for fetching GCS table.
         self.global_state = ray.state.GlobalState()
         self._shutdown_at_exit = shutdown_at_exit
         if not initialize_head and connect:
@@ -96,7 +96,7 @@ class Cluster:
             self.redis_password = node_args.get(
                 "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD)
             self.webui_url = self.head_node.webui_url
-            if self.global_state.global_state_accessor is None:
+            if self.global_state.global_state_accessor:
                 self.global_state._initialize_global_state(
                     self.redis_address, self.redis_password)
         else:
