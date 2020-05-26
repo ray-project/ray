@@ -9,13 +9,15 @@
 #     name = "run_regression_tests",
 #     main = "tests/run_regression_tests.py",
 #     tags = ["learning_tests"],
-#     size = "enormous",  # = 60min timeout
+#     size = "medium",  # 5min timeout
 #     srcs = ["tests/run_regression_tests.py"],
 #     data = glob(["tuned_examples/regression_tests/*.yaml"]),
-#     Pass `BAZEL` option and the path to look for yaml regression files.
+#     # Pass `BAZEL` option and the path to look for yaml regression files.
 #     args = ["BAZEL", "tuned_examples/regression_tests"]
 # )
 
+import argparse
+import os
 from pathlib import Path
 import sys
 import yaml
@@ -24,30 +26,51 @@ import ray
 from ray.tune import run_experiments
 from ray.rllib import _register_all
 
-if __name__ == "__main__":
-    # Bazel regression test mode: Get path to look for yaml files from argv[2].
-    if sys.argv[1] == "BAZEL":
-        # Get the path to use.
-        rllib_dir = Path(__file__).parent.parent
-        print("rllib dir={}".format(rllib_dir))
-        yaml_files = rllib_dir.rglob(sys.argv[2] + "/*.yaml")
-        yaml_files = sorted(
-            map(lambda path: str(path.absolute()), yaml_files), reverse=True)
-    # Normal mode: Get yaml files to run from command line.
-    else:
-        yaml_files = sys.argv[1:]
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--torch",
+    action="store_true",
+    help="Runs all tests with PyTorch enabled.")
+parser.add_argument(
+    "--yaml-dir",
+    type=str,
+    help="The directory in which to find all yamls to test.")
 
-    print("Will run the following regression files:")
+if __name__ == "__main__":
+    args = parser.parse_args()
+
+    # Bazel regression test mode: Get path to look for yaml files from argv[2].
+    # Get the path or single file to use.
+    rllib_dir = Path(__file__).parent.parent
+    print("rllib dir={}".format(rllib_dir))
+
+    if not os.path.isdir(os.path.join(rllib_dir, args.yaml_dir)):
+        raise ValueError("yaml-dir ({}) not found!".format(args.yaml_dir))
+
+    yaml_files = rllib_dir.rglob(args.yaml_dir + "/*.yaml")
+    yaml_files = sorted(
+        map(lambda path: str(path.absolute()), yaml_files), reverse=True)
+
+    print("Will run the following regression tests:")
     for yaml_file in yaml_files:
         print("->", yaml_file)
 
     # Loop through all collected files.
     for yaml_file in yaml_files:
         experiments = yaml.load(open(yaml_file).read())
+        assert len(experiments) == 1,\
+            "Error, can only run a single experiment per yaml file!"
 
         print("== Test config ==")
         print(yaml.dump(experiments))
 
+        # Add torch option to exp configs.
+        for exp in experiments.values():
+            if args.torch:
+                exp["config"]["use_pytorch"] = True
+
+        # Try running each test 3 times and make sure it reaches the given
+        # reward.
         passed = False
         for i in range(3):
             try:
