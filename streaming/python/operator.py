@@ -217,6 +217,12 @@ class SinkOperator(StreamOperator, OneInputOperator):
         self.func.sink(record.value)
 
 
+class UnionOperator(StreamOperator, OneInputOperator):
+    """Operator for union operation"""
+    def process_element(self, record):
+        self.collect(record)
+
+
 _function_to_operator = {
     function.SourceFunction: SourceOperator,
     function.MapFunction: MapOperator,
