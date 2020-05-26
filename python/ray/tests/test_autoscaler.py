@@ -10,8 +10,8 @@ from jsonschema.exceptions import ValidationError
 
 import ray
 import ray.services as services
-from ray.autoscaler.autoscaler import StandardAutoscaler, LoadMetrics, \
-    fillout_defaults, validate_config
+from ray.autoscaler.util import LoadMetrics, fillout_defaults, validate_config
+from ray.autoscaler.autoscaler import StandardAutoscaler
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_NODE_STATUS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED
 from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
