@@ -122,14 +122,14 @@ void DefaultTaskInfoHandler::HandleGetTaskLease(const GetTaskLeaseRequest &reque
                                                 GetTaskLeaseReply *reply,
                                                 SendReplyCallback send_reply_callback) {
   TaskID task_id = TaskID::FromBinary(request.task_id());
-  RAY_LOG(INFO) << "Getting task lease, job id = " << task_id.JobId()
+  RAY_LOG(DEBUG) << "Getting task lease, job id = " << task_id.JobId()
                 << ", task id = " << task_id;
   auto on_done = [task_id, request, reply, send_reply_callback](
                      const Status &status, const boost::optional<TaskLeaseData> &result) {
     if (status.ok() && result) {
       reply->mutable_task_lease_data()->CopyFrom(*result);
     }
-    RAY_LOG(INFO) << "Finished getting task lease, job id = " << task_id.JobId()
+    RAY_LOG(DEBUG) << "Finished getting task lease, job id = " << task_id.JobId()
                   << ", task id = " << task_id << ", status = " << status.ToString();
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
