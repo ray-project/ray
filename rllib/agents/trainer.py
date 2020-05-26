@@ -550,14 +550,18 @@ class Trainer(Trainable):
                                                     config)
 
         # Check and resolve DL framework settings.
-        if self.config["use_pytorch"] != DEPRECATED_VALUE or \
-                self.config["eager"] != DEPRECATED_VALUE:
-            deprecation_warning(
-                "use_pytorch/eager", "framework=torch|tfe", error=False)
+        if "use_pytorch" in self.config and \
+                self.config["use_pytorch"] != DEPRECATED_VALUE:
+            deprecation_warning("use_pytorch", "framework=torch", error=False)
             if self.config["use_pytorch"]:
                 self.config["framework"] = "torch"
-            elif self.config["eager"]:
+            self.config.pop("use_pytorch")
+        if "eager" in self.config and self.config["eager"] != DEPRECATED_VALUE:
+            deprecation_warning("eager", "framework=tfe", error=False)
+            if self.config["eager"]:
                 self.config["framework"] = "tfe"
+            self.config.pop("eager")
+
         # Check all dependencies and resolve "auto" framework.
         self.config["framework"] = check_framework(self.config["framework"])
         # Notify about eager/tracing support.

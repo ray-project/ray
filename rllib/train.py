@@ -177,7 +177,7 @@ def run(args, parser):
             parser.error("the following arguments are required: --env")
         if args.eager:
             exp["config"]["framework"] = "tfe"
-        if args.torch:
+        elif args.torch:
             exp["config"]["framework"] = "torch"
         if args.v:
             exp["config"]["log_level"] = "INFO"
