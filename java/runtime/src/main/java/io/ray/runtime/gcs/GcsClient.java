@@ -50,8 +50,7 @@ public class GcsClient {
     shards = shardAddresses.stream().map((byte[] address) -> {
       return new RedisClient(new String(address), redisPassword);
     }).collect(Collectors.toList());
-    globalStateAccessor = new GlobalStateAccessor(redisAddress, redisPassword);
-    globalStateAccessor.connect();
+    globalStateAccessor = GlobalStateAccessor.getInstance(redisAddress, redisPassword);
   }
 
   public List<NodeInfo> getAllNodeInfo() {
@@ -193,7 +192,7 @@ public class GcsClient {
    */
   public void destroy() {
     // Only ray shutdown should call gcs client destroy.
-    globalStateAccessor.destroyGlobalStateAccessor();
+    GlobalStateAccessor.destroyInstance();
   }
 
   private RedisClient getShardClient(BaseId key) {

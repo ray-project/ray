@@ -8,27 +8,35 @@ import java.util.List;
  *
  **/
 public class GlobalStateAccessor {
-  // Native pointer to the C++ GcsStateAccessor.
   // NOTE(lingxuan.zlx): this is a singleton, it can not be changed during a Ray session.
-  private static Long globalStateAccessorNativePointer = 0L;
+  // Native pointer to the C++ GcsStateAccessor.
+  private Long globalStateAccessorNativePointer = 0L;
+  private static GlobalStateAccessor globalStateAccessor;
 
-  public GlobalStateAccessor(String redisAddress, String redisPassword) {
-    synchronized (globalStateAccessorNativePointer) {
-      if (0 == globalStateAccessorNativePointer) {
-        globalStateAccessorNativePointer =
-          nativeCreateGlobalStateAccessor(redisAddress, redisPassword);
-      }
-      Preconditions.checkState(globalStateAccessorNativePointer != 0,
-          "Global state accessor native pointer must not be 0.");
+  public static synchronized GlobalStateAccessor getInstance(String redisAddress,
+                                                             String redisPassword) {
+    if (null == globalStateAccessor) {
+      globalStateAccessor = new GlobalStateAccessor(redisAddress, redisPassword);
+    }
+    return globalStateAccessor;
+  }
+
+  public static synchronized void destroyInstance() {
+    if (null != globalStateAccessor) {
+      globalStateAccessor.destroyGlobalStateAccessor();
     }
   }
 
-  public boolean connect() {
-    return this.nativeConnect(globalStateAccessorNativePointer);
+  private GlobalStateAccessor(String redisAddress, String redisPassword) {
+    globalStateAccessorNativePointer =
+      nativeCreateGlobalStateAccessor(redisAddress, redisPassword);
+    Preconditions.checkState(globalStateAccessorNativePointer != 0,
+          "Global state accessor native pointer must not be 0.");
+    connect();
   }
 
-  public void disconnect() {
-    this.nativeDisconnect(globalStateAccessorNativePointer);
+  private boolean connect() {
+    return this.nativeConnect(globalStateAccessorNativePointer);
   }
 
   /**
@@ -53,8 +61,9 @@ public class GlobalStateAccessor {
     }
   }
 
-  public void destroyGlobalStateAccessor() {
+  private void destroyGlobalStateAccessor() {
     synchronized (globalStateAccessorNativePointer) {
+      this.nativeDisconnect(globalStateAccessorNativePointer);
       this.nativeDestroyGlobalStateAccessor(globalStateAccessorNativePointer);
       globalStateAccessorNativePointer = 0L;
     }
