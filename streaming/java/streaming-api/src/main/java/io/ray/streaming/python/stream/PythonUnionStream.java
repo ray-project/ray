@@ -8,10 +8,9 @@ import java.util.List;
 public class PythonUnionStream extends PythonDataStream {
   private List<PythonDataStream> unionStreams;
 
-  public PythonUnionStream(PythonDataStream input,
-                           PythonOperator streamOperator,
-                           PythonDataStream... others) {
-    super(input, streamOperator);
+  public PythonUnionStream(PythonDataStream input, PythonDataStream... others) {
+    super(input, new PythonOperator(
+        "ray.streaming.operator", "UnionOperator"));
     this.unionStreams = new ArrayList<>();
     Arrays.stream(others).forEach(this::addStream);
   }

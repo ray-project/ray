@@ -107,8 +107,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
       Arrays.stream(streams).forEach(unionStream::addStream);
       return unionStream;
     } else {
-      return new PythonUnionStream(this,
-          new PythonOperator(new PythonFunction(new byte[0])), streams);
+      return new PythonUnionStream(this, streams);
     }
   }
 

@@ -1,6 +1,6 @@
 package io.ray.streaming.api.stream;
 
-import io.ray.streaming.operator.StreamOperator;
+import io.ray.streaming.operator.impl.UnionOperator;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -14,8 +14,8 @@ public class UnionStream<T> extends DataStream<T> {
   private List<DataStream<T>> unionStreams;
 
   @SafeVarargs
-  public UnionStream(DataStream<T> input, StreamOperator streamOperator, DataStream<T>... others) {
-    super(input, streamOperator);
+  public UnionStream(DataStream<T> input, DataStream<T>... others) {
+    super(input, new UnionOperator());
     this.unionStreams = new ArrayList<>();
     Arrays.stream(others).forEach(this::addStream);
   }

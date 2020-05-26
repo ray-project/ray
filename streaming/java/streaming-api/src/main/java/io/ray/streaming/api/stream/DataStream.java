@@ -97,7 +97,7 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
       Arrays.stream(streams).forEach(unionStream::addStream);
       return unionStream;
     } else {
-      return new UnionStream<>(this, new UnionOperator(), streams);
+      return new UnionStream<>(this, streams);
     }
   }
 
