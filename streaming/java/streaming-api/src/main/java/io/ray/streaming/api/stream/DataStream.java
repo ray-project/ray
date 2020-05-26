@@ -1,6 +1,7 @@
 package io.ray.streaming.api.stream;
 
 
+import com.google.common.base.Preconditions;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.function.impl.FilterFunction;
@@ -16,7 +17,9 @@ import io.ray.streaming.operator.impl.FlatMapOperator;
 import io.ray.streaming.operator.impl.KeyByOperator;
 import io.ray.streaming.operator.impl.MapOperator;
 import io.ray.streaming.operator.impl.SinkOperator;
+import io.ray.streaming.operator.impl.UnionOperator;
 import io.ray.streaming.python.stream.PythonDataStream;
+import java.util.Arrays;
 
 /**
  * Represents a stream of data.
@@ -81,13 +84,21 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
   }
 
   /**
-   * Apply a union transformation to this stream, with another stream.
+   * Apply union transformations to this stream.
    *
-   * @param other Another stream.
+   * @param streams The DataStreams to union output with.
    * @return A new UnionStream.
    */
-  public UnionStream<T> union(DataStream<T> other) {
-    return new UnionStream<>(this, null, other);
+  @SafeVarargs
+  public final DataStream<T> union(DataStream<T>... streams) {
+    Preconditions.checkArgument(streams.length >= 1);
+    if (this instanceof UnionStream) {
+      UnionStream<T> unionStream = (UnionStream<T>) this;
+      Arrays.stream(streams).forEach(unionStream::addStream);
+      return unionStream;
+    } else {
+      return new UnionStream<>(this, new UnionOperator(), streams);
+    }
   }
 
   /**
