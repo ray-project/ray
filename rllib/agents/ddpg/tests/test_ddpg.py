@@ -376,9 +376,9 @@ class TestDDPG(unittest.TestCase):
                         else:
                             torch_var = policy.model.state_dict()[map_[tf_key]]
                         if tf_var.shape != torch_var.shape:
-                            check(tf_var, np.transpose(torch_var), rtol=0.07)
+                            check(tf_var, np.transpose(torch_var), atol=0.1)
                         else:
-                            check(tf_var, torch_var, rtol=0.07)
+                            check(tf_var, torch_var, atol=0.1)
 
             trainer.stop()
 
