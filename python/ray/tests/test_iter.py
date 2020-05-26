@@ -329,10 +329,56 @@ def test_gather_async(ray_start_regular_shared):
     assert sorted(it) == [0, 1, 2, 3]
 
 
-def test_gather_async_queue(ray_start_regular_shared):
+def test_gather_async_optimized(ray_start_regular_shared):
     it = from_range(100)
-    it = it.gather_async(num_async=4)
+    it = it.gather_async(batch_ms=100, num_async=4)
     assert sorted(it) == list(range(100))
+
+
+def test_get_shard_optimized(ray_start_regular_shared):
+    it = from_range(6, num_shards=3)
+    shard1 = it.get_shard(shard_index=0, batch_ms=25, num_async=2)
+    shard2 = it.get_shard(shard_index=1, batch_ms=15, num_async=3)
+    shard3 = it.get_shard(shard_index=2, batch_ms=5, num_async=4)
+    assert list(shard1) == [0, 1]
+    assert list(shard2) == [2, 3]
+    assert list(shard3) == [4, 5]
+
+
+# Tested on 5/13/20
+# Run on 2019 Macbook Pro with 8 cores, 16 threads
+# 14.52 sec
+# 14.64 sec
+# 0.935 sec
+# 0.515 sec
+"""
+def test_gather_async_optimized_benchmark(ray_start_regular_shared):
+    import numpy as np
+    import tensorflow as tf
+    train, _ = tf.keras.datasets.fashion_mnist.load_data()
+    images, labels = train
+    num_bytes = images.nbytes / 1e6
+    items = list(images)
+    it = from_items(items, num_shards=4)
+    it = it.for_each(lambda img: img/255)
+    #local_it = it.gather_async(batch_ms=0, num_async=1)
+    #local_it = it.gather_async(batch_ms=0, num_async=3)
+    #local_it = it.gather_async(batch_ms=10, num_async=1)
+    #local_it = it.gather_async(batch_ms=10, num_async=3)
+
+    # dummy iterations
+    for i in range(20):
+        record = next(local_it)
+
+    start_time = time.time()
+    #print(start_time)
+    count = 0
+    for record in local_it:
+        count += 1
+    assert count == len(items) - 20
+    end_time = time.time() - start_time
+    print(end_time)
+"""
 
 
 def test_batch_across_shards(ray_start_regular_shared):
