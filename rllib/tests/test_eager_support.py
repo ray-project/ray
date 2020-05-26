@@ -1,6 +1,7 @@
 import unittest
 
 import ray
+from ray import tune
 from ray.rllib.agents.registry import get_agent_class
 from ray.rllib.utils.test_utils import framework_iterator
 
@@ -26,18 +27,16 @@ def check_support(alg, config, test_trace=True):
             a = get_agent_class(alg)
             config["log_level"] = "ERROR"
             config["eager_tracing"] = False
-            trainer = a(config=config)
-            trainer.train()
+            tune.run(a, config=config, stop={"training_iteration": 1})
 
             if test_trace:
                 config["eager_tracing"] = True
-                trainer = a(config=config)
-                trainer.train()
+                tune.run(a, config=config, stop={"training_iteration": 1})
 
 
 class TestEagerSupport(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=4, ignore_reinit_error=True)
+        ray.init(num_cpus=4, local_mode=True)
 
     def tearDown(self):
         ray.shutdown()
