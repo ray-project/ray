@@ -86,7 +86,8 @@ class StreamTask(ABC):
         # TODO(chaokunyang) add task/job config
         runtime_context = RuntimeContextImpl(
             self.worker.execution_task.task_id,
-            self.worker.execution_task.task_index, execution_node.parallelism)
+            self.worker.execution_task.task_index,
+            execution_node.parallelism)
         logger.info("open Processor {}".format(self.processor))
         self.processor.open(collectors, runtime_context)
 
