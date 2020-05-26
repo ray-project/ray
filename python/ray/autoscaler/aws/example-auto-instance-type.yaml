@@ -1,0 +1,45 @@
+# This is an example of configuring a mixed-worker cluster. Currently this only
+# works if you are using Tune. When using Tune, Tune will tell the scheduler
+# the resource demands of experiments to request the right types of workers.
+cluster_name: auto_instance_type
+min_workers: 1
+max_workers: 10
+
+# Cloud-provider specific configuration.
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+
+# Configure the cluster for very conservative auto-scaling. This is fine
+# since Tune will manage scale-up separately.
+target_utilization_fraction: 1.0
+idle_timeout_minutes: 2
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: ubuntu
+
+# Provider-specific config for the head node, e.g. instance type.
+head_node:
+    InstanceType: m4.large
+    ImageId: latest_dlami
+
+# Set the worker instance type to "auto" for it to be auto-selected.
+worker_nodes:
+    InstanceType: auto
+    ImageId: latest_dlami
+
+# Tell the autoscaler the allowed node types and the resources they provide.
+# This configuration will be used to select the "auto" worker instance type.
+# TODO(ekl) support per-instance-type configs as well.
+available_instances:
+    m4.4xlarge:
+        resources: {"CPU": 16}
+        max_count: 10
+    p2.xlarge:
+        resources: {"CPU": 4, "GPU": 1}
+        max_count: 8
+    p2.8xlarge:
+        resources: {"CPU": 32, "GPU": 8}
+        max_count: 2
