@@ -59,6 +59,38 @@ class Stream(ABC):
         return self._gateway_client(). \
             call_method(self._j_stream, "getId")
 
+    def with_config(self, key=None, value=None, conf=None):
+        """Set stream config.
+
+        Args:
+            key: a key name string for configuration property
+            value: a value string for configuration property
+            conf: multi key-value pairs as a dict
+
+        Returns:
+            self
+        """
+        if key is not None:
+            assert value
+            assert type(key) is str
+            assert type(value) is str
+            self._gateway_client(). \
+                call_method(self._j_stream, "withConfig", key, value)
+        if conf is not None:
+            for k, v in conf.items():
+                assert type(k) is str
+                assert type(v) is str
+            self._gateway_client(). \
+                call_method(self._j_stream, "withConfig", conf)
+        return self
+
+    def get_config(self):
+        """
+        Returns:
+            A dict config for this stream
+        """
+        return self._gateway_client().call_method(self._j_stream, "getConfig")
+
     @abstractmethod
     def get_language(self):
         pass
