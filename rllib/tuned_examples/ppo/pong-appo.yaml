@@ -11,7 +11,7 @@ pong-appo:
         timesteps_total: 5000000
     config:
         # Works for both torch and tf.
-        use_pytorch: false
+        framework: tf
         vtrace: True
         use_kl_loss: False
         rollout_fragment_length: 50

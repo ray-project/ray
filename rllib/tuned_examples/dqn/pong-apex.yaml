@@ -6,7 +6,8 @@ pong-apex:
     env: PongNoFrameskip-v4
     run: APEX
     config:
-        use_pytorch: false
+        # Works for both torch and tf.
+        framework: tf
         target_network_update_freq: 20000
         num_workers: 4
         num_envs_per_worker: 8
