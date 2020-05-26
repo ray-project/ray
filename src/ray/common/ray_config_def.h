@@ -149,9 +149,9 @@ RAY_CONFIG(uint64_t, max_lineage_size, 100)
 /// objects to store.
 RAY_CONFIG(int64_t, actor_max_dummy_objects, 1000)
 
-/// Number of times we try connecting to a socket.
-RAY_CONFIG(int64_t, num_connect_attempts, 5)
-RAY_CONFIG(int64_t, connect_timeout_milliseconds, 500)
+/// Number of times raylet client tries connecting to a raylet.
+RAY_CONFIG(int64_t, raylet_client_num_connect_attempts, 10)
+RAY_CONFIG(int64_t, raylet_client_connect_timeout_milliseconds, 1000)
 
 /// The duration that the raylet will wait before reinitiating a
 /// fetch request for a missing task dependency. This time may adapt based on
