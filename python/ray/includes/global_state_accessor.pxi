@@ -1,9 +1,6 @@
 from ray.includes.unique_ids cimport (
-<<<<<<< HEAD
-    CObjectID
-=======
-    CJobID
->>>>>>> fix ray.errors() bug
+    CJobID,
+    CObjectID,
 )
 
 from ray.includes.global_state_accessor cimport (
