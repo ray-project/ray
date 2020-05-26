@@ -143,7 +143,7 @@ public abstract class Stream<S extends Stream<S, T>, T>
   }
 
   public S withConfig(String key, String value) {
-    if (originalStream != null) {
+    if (isProxyStream()) {
       originalStream.withConfig(key, value);
     } else {
       this.config.put(key, value);
@@ -153,7 +153,7 @@ public abstract class Stream<S extends Stream<S, T>, T>
 
   @SuppressWarnings("unchecked")
   public Map<String, String> getConfig() {
-    return originalStream != null ? originalStream.getConfig() : config;
+    return isProxyStream() ? originalStream.getConfig() : config;
   }
 
   public boolean isProxyStream() {
