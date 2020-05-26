@@ -120,7 +120,7 @@ class Reporter:
             try:
                 gpus = gpustat.new_query().gpus
             except Exception:
-                logger.debug("GPUtil failed to retrieve GPUs.")
+                logger.debug("gpustat failed to retrieve GPU information.")
             for gpu in gpus:
                 # Note the keys in this dict have periods which throws
                 # off javascript so we change .s to _s
@@ -128,7 +128,6 @@ class Reporter:
                     for key, val in gpu.entry.items()}
                 gpu_utilizations.append(gpu_data)
             return gpu_utilizations
-        raise RuntimeError('Where is your GPUUtil young man')
 
     @staticmethod
     def get_boot_time():
