@@ -90,7 +90,7 @@ Tune Quick Start
 
 This example runs a small grid search to train a CNN using PyTorch and Tune.
 
-.. literalinclude:: ../../python/ray/tune/tests/example.py
+.. literalinclude:: ../../../python/ray/tune/tests/example.py
    :language: python
    :start-after: __quick_start_begin__
    :end-before: __quick_start_end__
