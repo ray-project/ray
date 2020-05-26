@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.test_utils import get_other_nodes
+from ray.test_utils import get_other_nodes, get_non_head_nodes
 import ray.ray_constants as ray_constants
 
 
@@ -122,7 +122,7 @@ def test_actor_creation_node_failure(ray_start_cluster):
                     children[i] = Child.remote(death_probability)
         # Remove a node. Any actor creation tasks that were forwarded to this
         # node must be resubmitted.
-        cluster.remove_node(cluster.list_all_nodes()[-1])
+        cluster.remove_node(get_non_head_nodes(cluster)[-1])
 
 
 @pytest.mark.skipif(

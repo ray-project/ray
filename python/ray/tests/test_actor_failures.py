@@ -13,7 +13,7 @@ import ray.test_utils
 import ray.cluster_utils
 from ray.test_utils import (relevant_errors, wait_for_condition,
                             wait_for_errors, wait_for_pid_to_exit,
-                            generate_internal_config_map)
+                            generate_internal_config_map, get_non_head_nodes)
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -305,7 +305,7 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
     ray.get(actor.ready.remote())
     results = [actor.increase.remote() for _ in range(100)]
     # Kill actor node, while the above task is still being executed.
-    cluster.remove_node(cluster.list_all_nodes()[-1])
+    cluster.remove_node(get_non_head_nodes(cluster)[-1])
     cluster.add_node(num_cpus=1, _internal_config=config)
     cluster.wait_for_nodes()
     # Check that none of the tasks failed and the actor is restarted.
@@ -858,7 +858,7 @@ def test_ray_wait_dead_actor(ray_start_cluster):
             return True
 
     # Kill a node.
-    cluster.remove_node(cluster.list_all_nodes()[-1])
+    cluster.remove_node(get_non_head_nodes(cluster)[-1])
     # Repeatedly submit tasks and call ray.wait until the exception for the
     # dead actor is received.
     assert wait_for_condition(actor_dead)

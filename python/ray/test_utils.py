@@ -296,3 +296,8 @@ def get_other_nodes(cluster):
         node for node in cluster.list_all_nodes() if
         node._raylet_socket_name != ray.worker._global_node._raylet_socket_name
     ]
+
+
+def get_non_head_nodes(cluster):
+    """Get all non-head nodes."""
+    return list(filter(lambda x: x.head is False, cluster.list_all_nodes()))
