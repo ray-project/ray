@@ -110,6 +110,7 @@ struct Mocker {
     auto task_lease_data = std::make_shared<rpc::TaskLeaseData>();
     task_lease_data->set_task_id(task_id);
     task_lease_data->set_node_manager_id(node_id);
+    task_lease_data->set_timeout(9999);
     return task_lease_data;
   }
 

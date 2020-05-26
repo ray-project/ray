@@ -257,7 +257,14 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
       const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
       const StatusCallback &callback) override;
 
+  Status AsyncReSubscribe() override;
+
  private:
+  /// Save the subscribe operation in this function, so we can call it again when GCS
+  /// restarts from a failure.
+  std::unordered_map<TaskID, SubscribeOperation> subscribe_task_operations_;
+  std::unordered_map<TaskID, SubscribeOperation> subscribe_task_lease_operations_;
+
   ServiceBasedGcsClient *client_impl_;
 };
 
