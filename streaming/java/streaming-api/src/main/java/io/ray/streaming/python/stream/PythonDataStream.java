@@ -1,14 +1,18 @@
 package io.ray.streaming.python.stream;
 
+import com.google.common.base.Preconditions;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.partition.Partition;
 import io.ray.streaming.api.stream.DataStream;
 import io.ray.streaming.api.stream.Stream;
+import io.ray.streaming.api.stream.UnionStream;
+import io.ray.streaming.operator.impl.UnionOperator;
 import io.ray.streaming.python.PythonFunction;
 import io.ray.streaming.python.PythonFunction.FunctionInterface;
 import io.ray.streaming.python.PythonOperator;
 import io.ray.streaming.python.PythonPartition;
+import java.util.Arrays;
 
 /**
  * Represents a stream of data whose transformations will be executed in python.
@@ -88,6 +92,24 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   public PythonDataStream filter(PythonFunction func) {
     func.setFunctionInterface(FunctionInterface.FILTER_FUNCTION);
     return new PythonDataStream(this, new PythonOperator(func));
+  }
+
+  /**
+   * Apply union transformations to this stream.
+   *
+   * @param streams The DataStreams to union output with.
+   * @return A new UnionStream.
+   */
+  public final PythonDataStream union(PythonDataStream... streams) {
+    Preconditions.checkArgument(streams.length >= 1);
+    if (this instanceof PythonUnionStream) {
+      PythonUnionStream unionStream = (PythonUnionStream) this;
+      Arrays.stream(streams).forEach(unionStream::addStream);
+      return unionStream;
+    } else {
+      return new PythonUnionStream(this,
+          new PythonOperator(new PythonFunction(new byte[0])), streams);
+    }
   }
 
   public PythonStreamSink sink(String moduleName, String funcName) {
