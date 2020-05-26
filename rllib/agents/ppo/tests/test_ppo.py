@@ -64,6 +64,7 @@ class TestPPO(unittest.TestCase):
         # Fake GPU setup.
         config["num_gpus"] = 2
         config["_fake_gpus"] = True
+        config["framework"] = "tf"
         # Mimick tuned_example for PPO CartPole.
         config["num_workers"] = 1
         config["lr"] = 0.0003

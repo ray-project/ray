@@ -21,9 +21,10 @@ class TestApexDQN(unittest.TestCase):
         config["timesteps_per_iteration"] = 100
         config["min_iter_time_s"] = 1
         config["optimizer"]["num_replay_buffer_shards"] = 1
-        trainer = apex.ApexTrainer(config=config, env="CartPole-v0")
-        trainer.train()
-        trainer.stop()
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+            trainer = apex.ApexTrainer(config=config, env="CartPole-v0")
+            trainer.train()
+            trainer.stop()
 
     def test_apex_dqn_compilation_and_per_worker_epsilon_values(self):
         """Test whether an APEX-DQNTrainer can be built on all frameworks."""

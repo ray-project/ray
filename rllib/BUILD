@@ -363,7 +363,7 @@ py_test(
 py_test(
     name = "test_a3c",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/a3c/tests/test_a3c.py"]
 )
 

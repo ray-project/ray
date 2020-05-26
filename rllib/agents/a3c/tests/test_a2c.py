@@ -33,22 +33,21 @@ class TestA2C(unittest.TestCase):
                 check_compute_action(trainer)
 
     def test_a2c_exec_impl(ray_start_regular):
-        trainer = a3c.A2CTrainer(
-            env="CartPole-v0", config={
-                "min_iter_time_s": 0,
-            })
-        assert isinstance(trainer.train(), dict)
-        check_compute_action(trainer)
+        config = {"min_iter_time_s": 0}
+        for _ in framework_iterator(config, ("tf", "torch")):
+            trainer = a3c.A2CTrainer(env="CartPole-v0", config=config)
+            assert isinstance(trainer.train(), dict)
+            check_compute_action(trainer)
 
     def test_a2c_exec_impl_microbatch(ray_start_regular):
-        trainer = a3c.A2CTrainer(
-            env="CartPole-v0",
-            config={
-                "min_iter_time_s": 0,
-                "microbatch_size": 10,
-            })
-        assert isinstance(trainer.train(), dict)
-        check_compute_action(trainer)
+        config = {
+            "min_iter_time_s": 0,
+            "microbatch_size": 10,
+        }
+        for _ in framework_iterator(config, ("tf", "torch")):
+            trainer = a3c.A2CTrainer(env="CartPole-v0", config=config)
+            assert isinstance(trainer.train(), dict)
+            check_compute_action(trainer)
 
 
 if __name__ == "__main__":
