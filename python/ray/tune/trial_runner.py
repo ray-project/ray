@@ -128,7 +128,8 @@ class TrialRunner:
                  fail_fast=False,
                  verbose=True,
                  checkpoint_period=10,
-                 trial_executor=None):
+                 trial_executor=None,
+                 use_cache=True):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()

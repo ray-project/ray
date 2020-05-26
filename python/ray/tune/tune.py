@@ -296,7 +296,8 @@ def run(run_or_experiment,
         server_port=server_port,
         verbose=bool(verbose > 1),
         fail_fast=fail_fast,
-        trial_executor=trial_executor)
+        trial_executor=trial_executor,
+        use_cache=use_cache)
 
     for exp in experiments:
         runner.add_experiment(exp)
