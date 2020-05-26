@@ -14,7 +14,6 @@
 
 #include "ray/gcs/gcs_client/service_based_accessor.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
-#include "service_based_accessor.h"
 
 namespace ray {
 namespace gcs {
