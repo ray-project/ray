@@ -23,7 +23,9 @@ class TestDDPG(unittest.TestCase):
         """Test whether a DDPGTrainer can be built with both frameworks."""
         config = ddpg.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
-        config["num_envs_per_worker"] = 2  # Run locally.
+        config["num_envs_per_worker"] = 2
+        config["learning_starts"] = 0
+        config["exploration_config"]["random_timesteps"] = 100
 
         num_iterations = 2
 

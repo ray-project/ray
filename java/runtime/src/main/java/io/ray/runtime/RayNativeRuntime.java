@@ -102,10 +102,13 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   @Override
   public void shutdown() {
-    nativeShutdown();
-    if (null != manager) {
-      manager.cleanup();
-      manager = null;
+    if (rayConfig.workerMode == WorkerType.DRIVER) {
+      nativeShutdown();
+      if (null != manager) {
+        manager.cleanup();
+        manager = null;
+      }
+      RayConfig.reset();
     }
     if (null != gcsClient) {
       gcsClient.destroy();
