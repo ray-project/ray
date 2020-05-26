@@ -371,6 +371,10 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
       const ItemCallback<HeartbeatBatchTableData> &subscribe,
       const StatusCallback &done) override;
 
+  Status AsyncReSubscribe() override {
+    return Status::NotImplemented("AsyncReSubscribe not implemented");
+  }
+
  private:
   RedisGcsClient *client_impl_{nullptr};
 
