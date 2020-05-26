@@ -24,6 +24,8 @@ class TestDDPG(unittest.TestCase):
         config = ddpg.DEFAULT_CONFIG.copy()
         config["num_workers"] = 1
         config["num_envs_per_worker"] = 2
+        config["learning_starts"] = 0
+        config["exploration_config"]["random_timesteps"] = 100
 
         num_iterations = 2
 
