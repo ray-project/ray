@@ -184,6 +184,11 @@ class AWSNodeProvider(NodeProvider):
 
             self.tag_cache_update_event.set()
 
+    def create_node_of_type(self, node_config, tags, instance_type, count):
+        assert instance_type is not None
+        node_config["InstanceType"] = instance_type
+        return self.create_node(node_config, tags, count)
+
     def create_node(self, node_config, tags, count):
         # Try to reuse previously stopped nodes with compatible configs
         if self.cache_stopped_nodes:

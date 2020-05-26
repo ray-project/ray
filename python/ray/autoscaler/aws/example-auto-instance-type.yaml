@@ -10,19 +10,6 @@ provider:
     type: aws
     region: us-west-2
     availability_zone: us-west-2a
-    # Tell the autoscaler the allowed node types and the resources. This
-    # configuration will be used to select the "auto" worker instance type.
-    available_instance_types:
-        m4.4xlarge:
-            resources: {"CPU": 16}
-            max_count: 10
-            default: True
-        p2.xlarge:
-            resources: {"CPU": 4, "GPU": 1}
-            max_count: 8
-        p2.8xlarge:
-            resources: {"CPU": 32, "GPU": 8}
-            max_count: 2
 
 # Configure the cluster for very conservative auto-scaling. This is fine
 # since Tune will manage scale-up separately.
@@ -38,7 +25,22 @@ head_node:
     InstanceType: m4.large
     ImageId: latest_dlami
 
-# Set the worker instance type to "auto" for it to be auto-selected.
+# Provider-specific config for the worker nodes, e.g. instance type.
+# NOTE: the instance type can be overriden by the resource demand scheduler.
+# The instance type set here is only used as the default fallback.
 worker_nodes:
-    InstanceType: auto
+    InstanceType: m4.large
     ImageId: latest_dlami
+
+# Tell the autoscaler the allowed node types and the resources they provide.
+# Setting this configuration enables the Tune resource demand scheduler.
+available_instance_types:
+    m4.4xlarge:
+        resources: {"CPU": 16}
+        max_count: 10
+    p2.xlarge:
+        resources: {"CPU": 4, "GPU": 1}
+        max_count: 8
+    p2.8xlarge:
+        resources: {"CPU": 32, "GPU": 8}
+        max_count: 2

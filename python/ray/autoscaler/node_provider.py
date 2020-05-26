@@ -208,3 +208,13 @@ class NodeProvider:
     def cleanup(self):
         """Clean-up when a Provider is no longer required."""
         pass
+
+    def create_node_of_type(self, node_config, tags, instance_type, count):
+        """Creates a number of nodes with a given instance type.
+
+        This is an optional method only required if implementing "auto"
+        instance types for worker nodes. This method should rewrite the given
+        node config to set the specified instance type.
+        """
+        assert instance_type is not None
+        raise NotImplementedError

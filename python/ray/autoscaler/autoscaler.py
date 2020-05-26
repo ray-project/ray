@@ -1,4 +1,5 @@
 from collections import defaultdict
+from typing import List
 import copy
 import json
 import logging
@@ -16,6 +17,7 @@ from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  STATUS_UP_TO_DATE, NODE_TYPE_WORKER)
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.node_launcher import NodeLauncher
+from ray.autoscaler.resource_demand_scheduler import ResourceDemandScheduler
 from ray.autoscaler.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
@@ -60,6 +62,16 @@ class StandardAutoscaler:
         self.load_metrics = load_metrics
         self.provider = get_node_provider(self.config["provider"],
                                           self.config["cluster_name"])
+
+        # Check whether we can enable the resource demand scheduler.
+        if "available_instance_types" in self.config:
+            self.instance_types = self.config["available_instance_types"]
+            self.resource_demand_scheduler = ResourceDemandScheduler(
+                self.provider, self.load_metrics, self.instance_types,
+                self.config["max_workers"])
+        else:
+            self.instance_types = None
+            self.resource_demand_scheduler = None
 
         self.max_failures = max_failures
         self.max_launch_batch = max_launch_batch
@@ -126,7 +138,6 @@ class StandardAutoscaler:
             return
 
         self.last_update_time = now
-        num_pending = self.num_launches_pending.value
         nodes = self.workers()
         self.load_metrics.prune_active_ips(
             [self.provider.internal_ip(node_id) for node_id in nodes])
@@ -173,14 +184,23 @@ class StandardAutoscaler:
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
 
-        # Launch new nodes if needed
+        # First let the resource demand scheduler launch nodes, if enabled.
+        if self.resource_demand_scheduler:
+            instances = (
+                self.resource_demand_scheduler.get_instances_to_launch(nodes))
+            # TODO(ekl) also enforce max launch concurrency here?
+            for instance_type, count in instances:
+                self.launch_new_node(count, instance_type=instance_type)
+
+        # Launch additional nodes of the default type, if still needed.
+        num_pending = self.num_launches_pending.value
         num_workers = len(nodes) + num_pending
         if num_workers < target_workers:
             max_allowed = min(self.max_launch_batch,
                               self.max_concurrent_launches - num_pending)
 
             num_launches = min(max_allowed, target_workers - num_workers)
-            self.launch_new_node(num_launches)
+            self.launch_new_node(num_launches, instance_type=None)
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
         elif self.load_metrics.num_workers_connected() >= target_workers:
@@ -373,12 +393,12 @@ class StandardAutoscaler:
             return False
         return True
 
-    def launch_new_node(self, count):
+    def launch_new_node(self, count, instance_type):
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
         self.num_launches_pending.inc(count)
         config = copy.deepcopy(self.config)
-        self.launch_queue.put((config, count))
+        self.launch_queue.put((config, count, instance_type))
 
     def workers(self):
         return self.provider.non_terminated_nodes(
@@ -418,6 +438,27 @@ class StandardAutoscaler:
             self.provider.terminate_nodes(nodes)
         logger.error("StandardAutoscaler: terminated {} node(s)".format(
             len(nodes)))
+
+
+# Experimental API.
+def request_resource_bundles(resource_bundles: List[dict]):
+    """Remotely request some a vector of resource bundles from the autoscaler.
+
+    The autoscaler will try to ensure that the set of requested resource
+    bundles is placable on the cluster (assuming the cluster is otherwise
+    not utilized).
+
+    Examples:
+        >>> request_resource_bundles(
+        ...    [{"GPU": 4}, {"GPU": 4}, {"CPU": 8, "GPU": 4}])
+
+    This is an experimental feature, and only works if the resource demand
+    scheduler is enabled."""
+    r = services.create_redis_client(
+        global_worker.node.redis_address,
+        password=global_worker.node.redis_password)
+    r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
+              json.dumps(resource_bundles))
 
 
 # Note: this is a user-facing API, do not move.
