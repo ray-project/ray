@@ -350,6 +350,8 @@ struct GcsServerMocker {
         const gcs::StatusCallback &done) override {
       return Status::NotImplemented("");
     }
+
+    Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
   };
 
   class MockedErrorInfoAccessor : public gcs::ErrorInfoAccessor {

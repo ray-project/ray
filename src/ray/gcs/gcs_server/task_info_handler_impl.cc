@@ -23,23 +23,22 @@ void DefaultTaskInfoHandler::HandleAddTask(const AddTaskRequest &request,
   JobID job_id = JobID::FromBinary(request.task_data().task().task_spec().job_id());
   TaskID task_id = TaskID::FromBinary(request.task_data().task().task_spec().task_id());
   RAY_LOG(DEBUG) << "Adding task, job id = " << job_id << ", task id = " << task_id;
-  auto task_table_data = std::make_shared<TaskTableData>();
-  task_table_data->CopyFrom(request.task_data());
-  auto on_done = [this, job_id, task_id, task_table_data, request, reply,
+  auto on_done = [this, job_id, task_id, request, reply,
                   send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add task, job id = " << job_id
                      << ", task id = " << task_id;
     } else {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(TASK_CHANNEL, task_id.Hex(),
-                                         task_table_data->SerializeAsString(), nullptr));
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(
+          TASK_CHANNEL, task_id.Hex(), request.task_data().SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished adding task, job id = " << job_id
                      << ", task id = " << task_id;
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     }
   };
 
-  Status status = gcs_client_.Tasks().AsyncAdd(task_table_data, on_done);
+  Status status =
+      gcs_table_storage_->TaskTable().Put(task_id, request.task_data(), on_done);
   if (!status.ok()) {
     on_done(status);
   }
@@ -53,8 +52,7 @@ void DefaultTaskInfoHandler::HandleGetTask(const GetTaskRequest &request,
                  << ", task id = " << task_id;
   auto on_done = [task_id, request, reply, send_reply_callback](
                      const Status &status, const boost::optional<TaskTableData> &result) {
-    if (status.ok()) {
-      RAY_DCHECK(result);
+    if (status.ok() && result) {
       reply->mutable_task_data()->CopyFrom(*result);
     }
     RAY_LOG(DEBUG) << "Finished getting task, job id = " << task_id.JobId()
@@ -62,7 +60,7 @@ void DefaultTaskInfoHandler::HandleGetTask(const GetTaskRequest &request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
 
-  Status status = gcs_client_.Tasks().AsyncGet(task_id, on_done);
+  Status status = gcs_table_storage_->TaskTable().Get(task_id, on_done);
   if (!status.ok()) {
     on_done(status, boost::none);
   }
@@ -83,7 +81,7 @@ void DefaultTaskInfoHandler::HandleDeleteTasks(const DeleteTasksRequest &request
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_client_.Tasks().AsyncDelete(task_ids, on_done);
+  Status status = gcs_table_storage_->TaskTable().BatchDelete(task_ids, on_done);
   if (!status.ok()) {
     on_done(status);
   }
@@ -98,23 +96,23 @@ void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &reque
   ClientID node_id = ClientID::FromBinary(request.task_lease_data().node_manager_id());
   RAY_LOG(DEBUG) << "Adding task lease, job id = " << task_id.JobId()
                  << ", task id = " << task_id << ", node id = " << node_id;
-  auto task_lease_data = std::make_shared<TaskLeaseData>();
-  task_lease_data->CopyFrom(request.task_lease_data());
-  auto on_done = [this, task_id, node_id, task_lease_data, request, reply,
+  auto on_done = [this, task_id, node_id, request, reply,
                   send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add task lease, job id = " << task_id.JobId()
                      << ", task id = " << task_id << ", node id = " << node_id;
     } else {
       RAY_CHECK_OK(gcs_pub_sub_->Publish(TASK_LEASE_CHANNEL, task_id.Hex(),
-                                         task_lease_data->SerializeAsString(), nullptr));
+                                         request.task_lease_data().SerializeAsString(),
+                                         nullptr));
       RAY_LOG(DEBUG) << "Finished adding task lease, job id = " << task_id.JobId()
                      << ", task id = " << task_id << ", node id = " << node_id;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_client_.Tasks().AsyncAddTaskLease(task_lease_data, on_done);
+  Status status = gcs_table_storage_->TaskLeaseTable().Put(
+      task_id, request.task_lease_data(), on_done);
   if (!status.ok()) {
     on_done(status);
   }
@@ -128,8 +126,7 @@ void DefaultTaskInfoHandler::HandleGetTaskLease(const GetTaskLeaseRequest &reque
                  << ", task id = " << task_id;
   auto on_done = [task_id, request, reply, send_reply_callback](
                      const Status &status, const boost::optional<TaskLeaseData> &result) {
-    if (status.ok()) {
-      RAY_DCHECK(result);
+    if (status.ok() && result) {
       reply->mutable_task_lease_data()->CopyFrom(*result);
     }
     RAY_LOG(DEBUG) << "Finished getting task lease, job id = " << task_id.JobId()
@@ -137,7 +134,7 @@ void DefaultTaskInfoHandler::HandleGetTaskLease(const GetTaskLeaseRequest &reque
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
 
-  Status status = gcs_client_.Tasks().AsyncGetTaskLease(task_id, on_done);
+  Status status = gcs_table_storage_->TaskLeaseTable().Get(task_id, on_done);
   if (!status.ok()) {
     on_done(status, boost::none);
   }
@@ -153,8 +150,6 @@ void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
                  << ", task id = " << task_id << ", reconstructions num = "
                  << request.task_reconstruction().num_reconstructions()
                  << ", node id = " << node_id;
-  auto task_reconstruction_data = std::make_shared<TaskReconstructionData>();
-  task_reconstruction_data->CopyFrom(request.task_reconstruction());
   auto on_done = [task_id, node_id, request, reply,
                   send_reply_callback](const Status &status) {
     if (!status.ok()) {
@@ -171,8 +166,8 @@ void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status =
-      gcs_client_.Tasks().AttemptTaskReconstruction(task_reconstruction_data, on_done);
+  Status status = gcs_table_storage_->TaskReconstructionTable().Put(
+      task_id, request.task_reconstruction(), on_done);
   if (!status.ok()) {
     on_done(status);
   }
