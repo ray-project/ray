@@ -9,6 +9,8 @@ import io.ray.streaming.operator.Operator;
 import io.ray.streaming.operator.StreamOperator;
 import io.ray.streaming.python.PythonPartition;
 import java.io.Serializable;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Abstract base class of all stream types.
@@ -23,6 +25,7 @@ public abstract class Stream<S extends Stream<S, T>, T>
   private final Stream inputStream;
   private final StreamOperator operator;
   private int parallelism = 1;
+  private Map<String, String> config = new HashMap<>();
   private Partition<T> partition;
   private Stream originalStream;
 
@@ -132,6 +135,20 @@ public abstract class Stream<S extends Stream<S, T>, T>
       this.partition = partition;
     }
     return self();
+  }
+
+  public S withConfig(Map<String, String> config) {
+    this.config.putAll(config);
+    return self();
+  }
+
+  public S withConfig(String key, String value) {
+    this.config.put(key, value);
+    return self();
+  }
+
+  public Map<String, String> getConfig() {
+    return config;
   }
 
   public boolean isProxyStream() {
