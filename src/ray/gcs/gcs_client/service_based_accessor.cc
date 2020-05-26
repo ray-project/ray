@@ -830,38 +830,44 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing task, task id = " << task_id;
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe task, task id = " << task_id;
-  auto on_subscribe = [task_id, subscribe](const std::string &id,
-                                           const std::string &data) {
-    TaskTableData task_data;
-    task_data.ParseFromString(data);
-    subscribe(task_id, task_data);
+
+  auto subscribe_operation = [this, task_id, subscribe](const StatusCallback &done) {
+    auto on_subscribe = [task_id, subscribe](const std::string &id,
+                                             const std::string &data) {
+      TaskTableData task_data;
+      task_data.ParseFromString(data);
+      subscribe(task_id, task_data);
+    };
+    auto on_done = [this, task_id, subscribe, done](const Status &status) {
+      if (status.ok()) {
+        auto callback = [task_id, subscribe, done](
+                            const Status &status,
+                            const boost::optional<rpc::TaskTableData> &result) {
+          if (result) {
+            subscribe(task_id, *result);
+          }
+          if (done) {
+            done(status);
+          }
+        };
+        RAY_CHECK_OK(AsyncGet(task_id, callback));
+      } else if (done) {
+        done(status);
+      }
+    };
+    auto status = client_impl_->GetGcsPubSub().Subscribe(TASK_CHANNEL, task_id.Hex(),
+                                                         on_subscribe, on_done);
+    RAY_LOG(DEBUG) << "Finished subscribing task, task id = " << task_id;
+    return status;
   };
-  auto on_done = [this, task_id, subscribe, done](const Status &status) {
-    if (status.ok()) {
-      auto callback = [task_id, subscribe, done](
-                          const Status &status,
-                          const boost::optional<rpc::TaskTableData> &result) {
-        if (result) {
-          subscribe(task_id, *result);
-        }
-        if (done) {
-          done(status);
-        }
-      };
-      RAY_CHECK_OK(AsyncGet(task_id, callback));
-    } else if (done) {
-      done(status);
-    }
-  };
-  auto status = client_impl_->GetGcsPubSub().Subscribe(TASK_CHANNEL, task_id.Hex(),
-                                                       on_subscribe, on_done);
-  RAY_LOG(DEBUG) << "Finished subscribing task, task id = " << task_id;
-  return status;
+  subscribe_task_operations_[task_id] = subscribe_operation;
+  return subscribe_operation(done);
 }
 
 Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Unsubscribing task, task id = " << task_id;
   auto status = client_impl_->GetGcsPubSub().Unsubscribe(TASK_CHANNEL, task_id.Hex());
+  subscribe_task_operations_.erase(task_id);
   RAY_LOG(DEBUG) << "Finished unsubscribing task, task id = " << task_id;
   return status;
 }
@@ -912,37 +918,43 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
   RAY_LOG(DEBUG) << "Subscribing task lease, task id = " << task_id;
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe task lease, task id = " << task_id;
-  auto on_subscribe = [task_id, subscribe](const std::string &id,
-                                           const std::string &data) {
-    TaskLeaseData task_lease_data;
-    task_lease_data.ParseFromString(data);
-    subscribe(task_id, task_lease_data);
+
+  auto subscribe_operation = [this, task_id, subscribe](const StatusCallback &done) {
+    auto on_subscribe = [task_id, subscribe](const std::string &id,
+                                             const std::string &data) {
+      TaskLeaseData task_lease_data;
+      task_lease_data.ParseFromString(data);
+      subscribe(task_id, task_lease_data);
+    };
+    auto on_done = [this, task_id, subscribe, done](const Status &status) {
+      if (status.ok()) {
+        auto callback = [task_id, subscribe, done](
+                            const Status &status,
+                            const boost::optional<rpc::TaskLeaseData> &result) {
+          subscribe(task_id, result);
+          if (done) {
+            done(status);
+          }
+        };
+        RAY_CHECK_OK(AsyncGetTaskLease(task_id, callback));
+      } else if (done) {
+        done(status);
+      }
+    };
+    auto status = client_impl_->GetGcsPubSub().Subscribe(
+        TASK_LEASE_CHANNEL, task_id.Hex(), on_subscribe, on_done);
+    RAY_LOG(DEBUG) << "Finished subscribing task lease, task id = " << task_id;
+    return status;
   };
-  auto on_done = [this, task_id, subscribe, done](const Status &status) {
-    if (status.ok()) {
-      auto callback = [task_id, subscribe, done](
-                          const Status &status,
-                          const boost::optional<rpc::TaskLeaseData> &result) {
-        subscribe(task_id, result);
-        if (done) {
-          done(status);
-        }
-      };
-      RAY_CHECK_OK(AsyncGetTaskLease(task_id, callback));
-    } else if (done) {
-      done(status);
-    }
-  };
-  auto status = client_impl_->GetGcsPubSub().Subscribe(TASK_LEASE_CHANNEL, task_id.Hex(),
-                                                       on_subscribe, on_done);
-  RAY_LOG(DEBUG) << "Finished subscribing task lease, task id = " << task_id;
-  return status;
+  subscribe_task_lease_operations_[task_id] = subscribe_operation;
+  return subscribe_operation(done);
 }
 
 Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribeTaskLease(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Unsubscribing task lease, task id = " << task_id;
   auto status =
       client_impl_->GetGcsPubSub().Unsubscribe(TASK_LEASE_CHANNEL, task_id.Hex());
+  subscribe_task_lease_operations_.erase(task_id);
   RAY_LOG(DEBUG) << "Finished unsubscribing task lease, task id = " << task_id;
   return status;
 }
@@ -966,6 +978,17 @@ Status ServiceBasedTaskInfoAccessor::AttemptTaskReconstruction(
                        << ", reconstructions num = " << data_ptr->num_reconstructions()
                        << ", node id = " << node_id;
       });
+  return Status::OK();
+}
+
+Status ServiceBasedTaskInfoAccessor::AsyncReSubscribe() {
+  RAY_LOG(INFO) << "Reestablishing subscription for task info.";
+  for (auto &item : subscribe_task_operations_) {
+    RAY_CHECK_OK(item.second(nullptr));
+  }
+  for (auto &item : subscribe_task_lease_operations_) {
+    RAY_CHECK_OK(item.second(nullptr));
+  }
   return Status::OK();
 }
 
