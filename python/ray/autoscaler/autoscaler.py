@@ -113,6 +113,7 @@ class StandardAutoscaler:
             assert os.path.exists(local_path)
 
         self.resource_requests = defaultdict(int)
+        self.resource_demand_vector = None
 
         logger.info("StandardAutoscaler: {}".format(self.config))
 
@@ -424,12 +425,14 @@ class StandardAutoscaler:
         return "{}/{} target nodes{}".format(len(nodes), target, suffix)
 
     def request_resources(self, resources):
-        for resource, count in resources.items():
-            self.resource_requests[resource] = max(
-                self.resource_requests[resource], count)
-
-        logger.info("StandardAutoscaler: resource_requests={}".format(
-            self.resource_requests))
+        logger.info(
+            "StandardAutoscaler: resource_requests={}".format(resources))
+        if isinstance(resources, list):
+            self.resource_demand_vector = resources
+        else:
+            for resource, count in resources.items():
+                self.resource_requests[resource] = max(
+                    self.resource_requests[resource], count)
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")
