@@ -29,7 +29,7 @@ public class RichFunctions {
   public static RichFunction wrap(Function function) {
     if (function instanceof RichFunction) {
       return (RichFunction) function;
-    } {
+    } else {
       return new DefaultRichFunction(function);
     }
   }
