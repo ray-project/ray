@@ -99,7 +99,8 @@ def run(run_or_experiment,
         trial_executor=None,
         raise_on_failed_trial=True,
         return_trials=False,
-        ray_auto_init=True):
+        ray_auto_init=True,
+        use_cache=True):
     """Executes training.
 
     Args:
@@ -211,6 +212,8 @@ def run(run_or_experiment,
         ray_auto_init (bool): Automatically starts a local Ray cluster
             if using a RayTrialExecutor (which is the default) and
             if Ray is not initialized. Defaults to True.
+        use_cache (bool): Avoids exploring multiple times the same point,
+            by using a caching mechanism. Defaults to True
 
     Returns:
         ExperimentAnalysis: Object for experiment analysis.
