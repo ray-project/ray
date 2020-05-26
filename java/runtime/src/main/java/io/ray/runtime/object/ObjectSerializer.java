@@ -98,7 +98,7 @@ public class ObjectSerializer {
       NativeRayException nativeRayException = new NativeRayException(
           (RayRuntimeInternal) Ray.internal(),
           ErrorType.TASK_EXECUTION_EXCEPTION,
-          (Throwable) object);
+          (Throwable) object, null);
       try {
         byte[] serializedBytes = Serializer.encode(nativeRayException.toBytes()).getLeft();
         return new NativeRayObject(serializedBytes, TASK_EXECUTION_EXCEPTION_META);

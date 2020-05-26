@@ -140,8 +140,7 @@ class RayException : public MessageWrapper<rpc::RayException> {
     std::string details = "";
     {
       std::stringstream ss;
-      ss << "  Languge: " << Language_Name(message_->language()) << "\n"
-         << "  Job ID: " << JobID::FromBinary(message_->job_id()).Hex() << "\n"
+      ss << "  Job ID: " << JobID::FromBinary(message_->job_id()).Hex() << "\n"
          << "  Worker ID: " << WorkerID::FromBinary(message_->worker_id()).Hex() << "\n"
          << "  Task ID: " << TaskID::FromBinary(message_->task_id()).Hex() << "\n"
          << "  Actor ID: " << ActorID::FromBinary(message_->actor_id()).Hex() << "\n"
@@ -150,7 +149,8 @@ class RayException : public MessageWrapper<rpc::RayException> {
     }
 
     std::stringstream result;
-    result << ErrorType_Name(message_->error_type());
+    result << "[" << Language_Name(message_->language()) << "] "
+           << ErrorType_Name(message_->error_type());
     if (!from.empty()) {
       result << " from " << from;
     }
@@ -166,6 +166,9 @@ class RayException : public MessageWrapper<rpc::RayException> {
     }
     if (!message_->traceback().empty()) {
       result << "\n" << message_->traceback();
+    }
+    if (message_->has_cause()) {
+      result << "\n\nCaused by:\n\n" << RayException(message_->cause()).ToString();
     }
     return result.str();
   }

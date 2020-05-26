@@ -17,7 +17,8 @@ public class NativeRayException {
 
   private long nativeHandle;
 
-  public NativeRayException(RayRuntimeInternal runtime, ErrorType errorType, Throwable e) {
+  public NativeRayException(RayRuntimeInternal runtime, ErrorType errorType, Throwable e,
+      NativeRayException cause) {
     RuntimeContext runtimeContext = runtime.getRuntimeContext();
     WorkerContext workerContext = runtime.getWorkerContext();
     StackTraceElement[] stackTrace = e.getStackTrace();
@@ -44,7 +45,8 @@ public class NativeRayException {
         lineNo,
         function,
         traceBack,
-        serialized.getLeft());
+        serialized.getLeft(),
+        cause == null ? new byte[0] : cause.toBytes());
   }
 
   protected NativeRayException(byte[] serialized) {
@@ -61,20 +63,34 @@ public class NativeRayException {
 
   @Override
   public String toString() {
-    return nativeToString(this.nativeHandle);
+    String currentException;
+    Throwable e = getJavaException();
+    if (e == null) {
+      currentException = nativeToString(this.nativeHandle);
+    } else {
+      StringWriter errors = new StringWriter();
+      e.printStackTrace(new PrintWriter(errors));
+      currentException = errors.toString();
+    }
+    byte[] serialized = nativeCause(this.nativeHandle);
+    if (serialized.length > 0) {
+      return currentException + "\nCaused by:\n" + new NativeRayException(serialized).toString();
+    } else {
+      return currentException;
+    }
   }
 
   public void destroy() {
     nativeDestroy(this.nativeHandle);
   }
 
-  public Language getLanguge() {
+  public Language getLanguage() {
     return Language.forNumber(nativeLanguage(this.nativeHandle));
   }
 
   public Throwable getJavaException() {
     byte[] serialized = nativeData(this.nativeHandle);
-    if (getLanguge() == Language.JAVA && serialized.length > 0) {
+    if (getLanguage() == Language.JAVA && serialized.length > 0) {
       return Serializer.decode(serialized, Throwable.class);
     }
     return null;
@@ -83,7 +99,7 @@ public class NativeRayException {
   private static native long nativeCreateRayException(int errorType, String errorMessage,
       int language, byte[] jobId, byte[] workerId, byte[] taskId, byte[] actorId, byte[] objectId,
       String ip, int pid, String procTitle, String file, long lineNo, String function,
-      String traceBack, byte[] data);
+      String traceBack, byte[] data, byte[] cause);
 
   private static native long nativeDeserialize(byte[] data);
 
@@ -96,4 +112,6 @@ public class NativeRayException {
   private static native byte[] nativeSerialize(long handle);
 
   private static native byte[] nativeData(long handle);
+
+  private static native byte[] nativeCause(long handle);
 }

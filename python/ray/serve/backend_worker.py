@@ -63,8 +63,7 @@ def wrap_to_ray_error(exception):
         # Raise and catch so we can access traceback.format_exc()
         raise exception
     except Exception as e:
-        traceback_str = ray.utils.format_error_message(traceback.format_exc())
-        return ray.exceptions.RayTaskError(str(e), traceback_str, e.__class__)
+        return ray.exceptions.RayTaskError()
 
 
 def ensure_async(func):

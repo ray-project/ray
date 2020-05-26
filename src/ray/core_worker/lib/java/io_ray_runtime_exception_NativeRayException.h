@@ -11,12 +11,13 @@ extern "C" {
  * Class:     io_ray_runtime_exception_NativeRayException
  * Method:    nativeCreateRayException
  * Signature:
- * (ILjava/lang/String;I[B[B[B[B[BLjava/lang/String;ILjava/lang/String;Ljava/lang/String;JLjava/lang/String;Ljava/lang/String;[B)J
+ * (ILjava/lang/String;I[B[B[B[B[BLjava/lang/String;ILjava/lang/String;Ljava/lang/String;JLjava/lang/String;Ljava/lang/String;[B[B)J
  */
 JNIEXPORT jlong JNICALL
 Java_io_ray_runtime_exception_NativeRayException_nativeCreateRayException(
     JNIEnv *, jclass, jint, jstring, jint, jbyteArray, jbyteArray, jbyteArray, jbyteArray,
-    jbyteArray, jstring, jint, jstring, jstring, jlong, jstring, jstring, jbyteArray);
+    jbyteArray, jstring, jint, jstring, jstring, jlong, jstring, jstring, jbyteArray,
+    jbyteArray);
 
 /*
  * Class:     io_ray_runtime_exception_NativeRayException
@@ -66,6 +67,14 @@ Java_io_ray_runtime_exception_NativeRayException_nativeSerialize(JNIEnv *, jclas
  */
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_exception_NativeRayException_nativeData(JNIEnv *, jclass, jlong);
+
+/*
+ * Class:     io_ray_runtime_exception_NativeRayException
+ * Method:    nativeCause
+ * Signature: (J)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_exception_NativeRayException_nativeCause(JNIEnv *, jclass, jlong);
 
 #ifdef __cplusplus
 }

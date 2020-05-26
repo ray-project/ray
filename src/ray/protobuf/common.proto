@@ -112,8 +112,12 @@ enum ErrorType {
   OBJECT_IN_PLASMA = 4;
   // Indicates that an object has been cancelled.
   TASK_CANCELLED = 5;
-  // Inidicates that creating the GCS service failed to create the actor.
+  // Indicates that creating the GCS service failed to create the actor.
   ACTOR_CREATION_FAILED = 6;
+  // Indicates that the object store is full.
+  OBJECT_STORE_FULL = 7;
+  // Indicates that the error is not categorized.
+  GENERAL_ERROR = 8;
 }
 
 /// The task exception encapsulates all information about task

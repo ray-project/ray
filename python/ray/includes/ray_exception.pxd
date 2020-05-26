@@ -16,7 +16,7 @@ cdef extern from "ray/common/ray_exception.h" nogil:
         CRayException(CErrorType error_type, const c_string &error_message,
             CLanguage language, CJobID job_id, CWorkerID worker_id, CTaskID task_id,
             CActorID actor_id, CObjectID object_id, const c_string &ip, int32_t pid,
-            const c_string &proc_title, const c_string &file, uint64_t lineno,
+            const c_string &proctitle, const c_string &file, uint64_t lineno,
             const c_string &function, const c_string &traceback,
             const c_string &data, shared_ptr[CRayException] cause)
         CRayException(const c_string &serialized_binary)

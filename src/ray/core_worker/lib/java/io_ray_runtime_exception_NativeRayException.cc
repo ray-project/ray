@@ -27,7 +27,9 @@ Java_io_ray_runtime_exception_NativeRayException_nativeCreateRayException(
     JNIEnv *env, jclass, jint error_type, jstring error_message, jint language,
     jbyteArray job_id, jbyteArray worker_id, jbyteArray task_id, jbyteArray actor_id,
     jbyteArray object_id, jstring ip, jint pid, jstring proc_title, jstring file,
-    jlong lineno, jstring function, jstring traceback, jbyteArray data) {
+    jlong lineno, jstring function, jstring traceback, jbyteArray data,
+    jbyteArray cause) {
+  std::string cause_serialized = JavaByteArrayToNativeString(env, cause);
   return reinterpret_cast<long>(new ray::RayException(
       (ray::rpc::ErrorType)error_type, JavaStringToNativeString(env, error_message),
       (ray::Language)language, JavaByteArrayToId<ray::JobID>(env, job_id),
@@ -38,7 +40,10 @@ Java_io_ray_runtime_exception_NativeRayException_nativeCreateRayException(
       (pid_t)pid, JavaStringToNativeString(env, proc_title),
       JavaStringToNativeString(env, file), lineno,
       JavaStringToNativeString(env, function), JavaStringToNativeString(env, traceback),
-      JavaByteArrayToNativeString(env, data), std::shared_ptr<ray::RayException>()));
+      JavaByteArrayToNativeString(env, data),
+      cause_serialized.empty()
+          ? std::shared_ptr<ray::RayException>()
+          : std::shared_ptr<ray::RayException>(new ray::RayException(cause_serialized))));
 }
 
 JNIEXPORT jlong JNICALL
@@ -78,4 +83,15 @@ JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_exception_NativeRayException_na
     JNIEnv *env, jclass, jlong handle) {
   auto e = reinterpret_cast<ray::RayException *>(handle);
   return NativeStringToJavaByteArray(env, e->Data());
+}
+
+JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_exception_NativeRayException_nativeCause(
+    JNIEnv *env, jclass, jlong handle) {
+  auto e = reinterpret_cast<ray::RayException *>(handle);
+  std::shared_ptr<ray::RayException> cause = e->Cause();
+  if (cause.get()) {
+    return NativeStringToJavaByteArray(env, cause->Serialize());
+  } else {
+    return env->NewByteArray(0);
+  }
 }

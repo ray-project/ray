@@ -87,14 +87,6 @@ from ray.async_compat import (sync_to_async,
 import ray.memory_monitor as memory_monitor
 import ray.ray_constants as ray_constants
 from ray import profiling
-from ray.exceptions import (
-    RayError,
-    RayletError,
-    RayTaskError,
-    ObjectStoreFullError,
-    RayTimeoutError,
-    RayCancellationError
-)
 from ray.utils import decode
 import gc
 import msgpack
@@ -480,14 +472,17 @@ cdef execute_task(
                 worker.mark_actor_init_failed(error)
 
             backtrace = ray.utils.format_error_message(
-                traceback.format_exc(), task_exception=task_exception)
-            if isinstance(error, RayTaskError):
-                # Avoid recursive nesting of RayTaskError.
-                failure_object = RayTaskError(function_name, backtrace,
-                                              error.cause_cls, proctitle=title)
+                "".join(traceback.format_tb(sys.exc_info()[2])), task_exception=task_exception)
+            if isinstance(error, RayException):
+                failure_object = RayTaskError(cause=error,
+                                              error_message="Get object failed because of deeper errors.",
+                                              function=function_name,
+                                              traceback=backtrace,
+                                              proctitle=title)
             else:
-                failure_object = RayTaskError(function_name, backtrace,
-                                              error.__class__, proctitle=title)
+                failure_object = RayTaskError(function=function_name,
+                                              traceback=backtrace,
+                                              proctitle=title)
             errors = []
             for _ in range(c_return_ids.size()):
                 errors.append(failure_object)
