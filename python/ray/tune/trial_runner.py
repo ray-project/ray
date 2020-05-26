@@ -6,7 +6,6 @@ import os
 import time
 import traceback
 import types
-
 import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.stopper import NoopStopper
@@ -143,6 +142,19 @@ class TrialRunner:
         self._has_errored = False
         self._fail_fast = fail_fast
         self._verbose = verbose
+
+        # Wethever to enable or not the caching of points
+        # to avoid exploring multiple times the same point.
+        self._use_cache = use_cache
+        # Dictionary that will contain an hash of the explored space
+        # mapped to either None if no result is yet available or
+        # alternatively to the score obtained by the previous execution.
+        self._evaluated_params = {}
+        # Dictionary that will contain an hash of the explored space
+        # and a list of the trials that are to be notified when the first
+        # one that has required the point will complete, if it has not yet
+        # completed the execution.
+        self._queued_duplicated_trials = {}
 
         self._server = None
         self._server_port = server_port
@@ -335,6 +347,7 @@ class TrialRunner:
         next_trial = self._get_next_trial()  # blocking
         if next_trial is not None:
             with warn_if_slow("start_trial"):
+                # TODO: support caching of started trials.
                 self.trial_executor.start_trial(next_trial)
         elif self.trial_executor.get_running_trials():
             self._process_events()  # blocking
@@ -370,6 +383,72 @@ class TrialRunner:
         """
         return self._trials
 
+    def _is_trial_cached(self, trial):
+        """Return True if given trial space is already cached.
+
+        Args:
+            trial (Trial): Trial to find if cached.
+
+        Returns:
+            Boolean representing if trial is cached.
+        """
+        return self._use_cache and trial.params_hash in self._evaluated_params
+
+    def _get_cached_trial(self, trial):
+        """Return result from the given trial.
+
+        Args:
+            trial (Trial): Trial whose result is to be retrieved.
+
+        Returns:
+            The result of the given trial.
+        """
+        return self._evaluated_params[trial.params_hash]
+
+    def _is_trial_explored(self, trial):
+        """Return True if given trial space was already explored.
+
+        Args:
+            trial (Trial): Trial to find if explored.
+
+        Returns:
+            Boolean representing if trial space is explored.
+        """
+        return self._is_trial_cached(trial) and self._get_cached_trial(trial) is not None
+
+    def _cache_trial(self, trial, result=None):
+        """Cache given trial's result.
+
+        Args:
+            trial (Trial): Trial to be cached.
+            result: result to be cached. By default None.
+        """
+        if self._use_cache:
+            self._evaluated_params[trial.params_hash] = result
+
+    def _queued_duplicated_trial(self, trial):
+        """Append given duplicated trial to its space list.
+
+        Args:
+            trial (Trial): Trial to be stored.
+        """
+        trial_hash = trial.params_hash
+        self._queued_duplicated_trials.setdefault(trial_hash, [])
+        self._queued_duplicated_trials[trial_hash].append(trial)
+
+    def _pop_queued_duplicated_trials(self, trial):
+        """Return list of trials that are duplicate of the given trial.
+
+        The list is then removed from the duplicated trials dictionary.
+
+        Args:
+            trial (Trial): Trial whose doubles are to be retrieved.
+
+        Returns:
+            List of the doubles trials.
+        """
+        return self._queued_duplicated_trial.pop(trial.params_hash, ())
+
     def add_trial(self, trial):
         """Adds a new trial to this TrialRunner.
 
@@ -378,7 +457,30 @@ class TrialRunner:
         Args:
             trial (Trial): Trial to queue.
         """
+        # If the space of the trial has already been explored
+        if self._is_trial_explored(trial):
+            print("WAS EXPLORED")
+            # We can directly process the trials results.
+            self._process_trial(trial)
+            return
+        # Otherwise, if the trial has been cached, but the space is yet to be
+        # explored (when another trial has already started on the space but has
+        # not completed yet)
+        if self._is_trial_cached(trial):
+            print("WAS CACHED")
+            # we have to register this trial, so to be processed as soon as
+            # the other trial completes.
+            self._queued_duplicated_trial(trial)
+            return
+        print("NEW TRIAL")
+        # If the trial was not yet cached, we cache it now.
+        self._cache_trial(trial)
+
         trial.set_verbose(self._verbose)
+        # trial.evaluated_params maps to a space that is already under
+        # exploration. If the trial is already completed, it should be
+        # moved immediately to the completed trials.
+        # In both cases, no resources should allocated for this trial.
         self._trials.append(trial)
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(self, trial)
@@ -465,8 +567,13 @@ class TrialRunner:
             trial (Trial): Trial with a result ready to be processed.
         """
         try:
-            result = self.trial_executor.fetch_result(trial)
-
+            if self._is_trial_explored(trial):
+                result = self._get_cached_trial(trial)
+            else:
+                result = self.trial_executor.fetch_result(trial)
+                self._cache_trial(trial, result)
+            for double in self._pop_queued_duplicated_trials(trial):
+                self._process_trial(double)
             is_duplicate = RESULT_DUPLICATE in result
             # TrialScheduler and SearchAlgorithm still receive a
             # notification because there may be special handling for

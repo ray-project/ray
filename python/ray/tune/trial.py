@@ -7,6 +7,7 @@ import uuid
 import time
 import tempfile
 import os
+from dict_hash import sha256
 from numbers import Number
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
@@ -285,6 +286,10 @@ class Trial:
     @classmethod
     def generate_id(cls):
         return str(uuid.uuid1().hex)[:8]
+
+    @property
+    def params_hash(self):
+        return sha256(self.evaluated_params)
 
     @property
     def remote_checkpoint_dir(self):
