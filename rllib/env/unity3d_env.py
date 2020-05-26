@@ -1,8 +1,12 @@
+import logging
 import mlagents_envs
 from mlagents_envs.environment import UnityEnvironment
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import override
+
+
+logger = logging.getLogger(__name__)
 
 
 class Unity3DEnv(MultiAgentEnv):
@@ -51,6 +55,12 @@ class Unity3DEnv(MultiAgentEnv):
         """
 
         super().__init__()
+
+        if file_name is None:
+            print(
+                "No game binary provided, will use a running Unity editor "
+                "instead.\nMake sure you are pressing the Play (|>) button in "
+                "your editor to start.")
 
         # Try connecting to the Unity3D game instance. If a port
         while True:

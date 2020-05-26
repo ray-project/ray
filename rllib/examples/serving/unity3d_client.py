@@ -48,9 +48,10 @@ parser.add_argument(
     "it'll be reset again automatically.")
 parser.add_argument(
     "--server",
-    type=int,
-    default=SERVER_ADDRESS + ":" + SERVER_PORT,
-    help="The Policy server's address to connect to from this client.")
+    type=str,
+    default=SERVER_ADDRESS + ":" + str(SERVER_PORT),
+    help="The Policy server's address and port to connect to from this client."
+)
 parser.add_argument(
     "--no-train",
     action="store_true",
@@ -81,7 +82,7 @@ if __name__ == "__main__":
     # Start the client for sending environment information (e.g. observations,
     # actions) to a policy server (listening on port 9900).
     client = PolicyClient(
-        "http://" + args.server_address,
+        "http://" + args.server,
         inference_mode=args.inference_mode,
         update_interval=args.update_interval_local_mode)
 
