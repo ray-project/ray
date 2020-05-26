@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 
 check_shell_scripts_bazel() {
-  "${ROOT_DIR}"/check-shell-scripts-bazel.sh "$@"
+  "${ROOT_DIR}"/bazel.py run_shellcheck "mnemonic(\"Genrule\", deps(//:*))" "$@"
 }
 
 check_shell_scripts_git() {
@@ -34,9 +34,6 @@ _check_shell_scripts() {
 
 check_shell_scripts() {
   local result=0 args=(shellcheck --exclude=1091)
-  if [ -t 1 ]; then
-    args+=(--color=always)  # output is a terminal, so color it (subshells may not realize this)
-  fi
   args+=("$@")
   _check_shell_scripts "${args[@]}" || result="$?"
   if [ 0 -eq "${result}" ]; then
