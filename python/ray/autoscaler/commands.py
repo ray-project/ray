@@ -51,6 +51,7 @@ def _bootstrap_config(config):
     cache_key = os.path.join(tempfile.gettempdir(),
                              "ray-config-{}".format(hasher.hexdigest()))
     if os.path.exists(cache_key):
+        logger.info("Using cached config at {}".format(cache_key))
         return json.loads(open(cache_key).read())
     validate_config(config)
 

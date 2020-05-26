@@ -32,10 +32,11 @@ worker_nodes:
 
 # Tell the autoscaler the allowed node types and the resources they provide.
 # This configuration will be used to select the "auto" worker instance type.
-available_instances:
+available_instance_types:
     m4.4xlarge:
         resources: {"CPU": 16}
         max_count: 10
+        default: True
     p2.xlarge:
         resources: {"CPU": 4, "GPU": 1}
         max_count: 8
