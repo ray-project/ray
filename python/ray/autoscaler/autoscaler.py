@@ -1,6 +1,5 @@
 from collections import defaultdict
 import copy
-import json
 import logging
 import math
 import numpy as np
@@ -10,6 +9,7 @@ import threading
 import time
 import yaml
 
+from ray.experimental.internal_kv import _internal_kv_put
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
@@ -18,11 +18,11 @@ from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.node_launcher import NodeLauncher
 from ray.autoscaler.resource_demand_scheduler import ResourceDemandScheduler
 from ray.autoscaler.util import ConcurrentCounter, validate_config, \
-    with_head_node_ip, hash_launch_conf, hash_runtime_conf, TRIM_NODES_COMMAND
+    with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
+    TRIM_NODES_COMMAND, DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
     AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
-from ray.worker import global_worker
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
@@ -124,6 +124,7 @@ class StandardAutoscaler:
         except Exception as e:
             logger.exception("StandardAutoscaler: "
                              "Error during autoscaling.")
+            _internal_kv_put(DEBUG_AUTOSCALING_ERROR, str(e))
             self.num_failures += 1
             if self.num_failures > self.max_failures:
                 logger.critical("StandardAutoscaler: "
@@ -413,9 +414,17 @@ class StandardAutoscaler:
             tag_filters={TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER})
 
     def log_info_string(self, nodes, target):
-        logger.info("StandardAutoscaler: {}".format(
-            self.info_string(nodes, target)))
-        logger.info("LoadMetrics: {}".format(self.load_metrics.info_string()))
+        tmp = "== Cluster status ==\n"
+        tmp += self.info_string(nodes, target)
+        tmp += "\n"
+        tmp += self.load_metrics.info_string()
+        tmp += "\n"
+        if self.resource_demand_scheduler:
+            tmp += self.resource_demand_scheduler.debug_string(
+                nodes, self.pending_launches.breakdown())
+        _internal_kv_put(DEBUG_AUTOSCALING_STATUS, tmp)
+        logger.info(tmp)
+        updated = worker.redis_client.hset(key, "value", value)
 
     def info_string(self, nodes, target):
         suffix = ""

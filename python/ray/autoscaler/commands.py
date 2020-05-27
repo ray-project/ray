@@ -15,9 +15,11 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
+from ray.experimental.internal_kv import _internal_kv_get
 import ray.services as services
 from ray.autoscaler.util import validate_config, hash_runtime_conf, \
-    hash_launch_conf, fillout_defaults, TRIM_NODES_COMMAND
+    hash_launch_conf, fillout_defaults, TRIM_NODES_COMMAND, \
+    DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_TYPE_WORKER, NODE_TYPE_HEAD
@@ -25,6 +27,7 @@ from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.log_timer import LogTimer
 from ray.autoscaler.docker import with_docker_exec
+from ray.worker import global_worker
 
 logger = logging.getLogger(__name__)
 
@@ -41,15 +44,25 @@ def _redis():
 
 
 def debug_status():
-    r = _redis()  # TODO(ekl)
+    """Return a debug string for the autoscaler."""
+    status = _internal_kv_get(DEBUG_AUTOSCALING_STATUS)
+    error = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
+    if not status:
+        status = "No cluster status."
+    if error:
+        status += "\n"
+        status += error
+    status += "\n---"
+    return status
 
 
-def trim():
+def trim_nodes():
+    """Tell the autoscaler to delete idle nodes immediately."""
     r = _redis()
     r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, TRIM_NODES_COMMAND)
 
 
-def request_resources(num_cpus=None, num_gpus=None):
+def request_resources(num_cpus=None, bundles=None):
     """Remotely request some CPU or GPU resources from the autoscaler.
 
     This function is to be called e.g. on a node before submitting a bunch of

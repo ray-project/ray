@@ -10,10 +10,16 @@ import ray.services as services
 from ray.autoscaler.node_provider import get_default_config
 from ray.autoscaler.docker import dockerize_if_needed
 
-TRIM_NODES_COMMAND = "TRIM_IDLE_NODES"
 REQUIRED, OPTIONAL = True, False
 RAY_SCHEMA_PATH = os.path.join(
     os.path.dirname(ray.autoscaler.__file__), "ray-schema.json")
+
+# Command sent over redis channel to trim nodes.
+TRIM_NODES_COMMAND = "TRIM_IDLE_NODES"
+
+# Internal kv keys for storing debug status.
+DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
+DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
 
 
 class ConcurrentCounter:

@@ -17,21 +17,24 @@ class ResourceDemandScheduler:
         self.instance_types = instance_types
         self.max_workers = max_workers
 
-    def get_instances_to_launch(self, nodes: List[str],
-                                pending_nodes: Dict[str, int],
-                                resource_demands: List[dict]):
-        """Get a list of instance types that should be added to the cluster.
+    def debug_string(self, nodes: List[str],
+                     pending_nodes: Dict[str, int]) -> str:
+        node_resources, instance_type_counts = self.calculate_node_resources(
+            nodes, pending_nodes)
 
-        This method:
-            (1) calculates the resources present in the cluster.
-            (2) calculates the unfulfilled resource bundles.
-            (3) calculates which instances need to be launched to fulfill all
-                the bundle requests, subject to max_worker constraints.
-        """
+        out = "Worker instance types:\n"
+        for instance_type, count in instance_type_counts.items():
+            out += " - {}: {}".format(instance_type, count)
+            if instance_type in pending_nodes:
+                out += " ({} pending)".format(pending_nodes[instance_type])
+            out += "\n"
 
-        if resource_demands is None:
-            logger.info("No resource demands")
-            return []
+        return out
+
+    def calculate_node_resources(
+            self, nodes: List[str],
+            pending_nodes: Dict[str, int]) -> (List[dict], Dict[str, int]):
+        """Returns node resource list and instance type counts."""
 
         node_resources = []
         instance_type_counts = collections.defaultdict(int)
@@ -56,6 +59,26 @@ class ResourceDemandScheduler:
             for _ in range(count):
                 add_instance(instance_type)
 
+        return node_resources, instance_type_counts
+
+    def get_instances_to_launch(self, nodes: List[str],
+                                pending_nodes: Dict[str, int],
+                                resource_demands: List[dict]):
+        """Get a list of instance types that should be added to the cluster.
+
+        This method:
+            (1) calculates the resources present in the cluster.
+            (2) calculates the unfulfilled resource bundles.
+            (3) calculates which instances need to be launched to fulfill all
+                the bundle requests, subject to max_worker constraints.
+        """
+
+        if resource_demands is None:
+            logger.info("No resource demands")
+            return []
+
+        node_resources, instance_type_counts = self.calculate_node_resources(
+            nodes, pending_nodes)
         logger.info("Cluster resources: {}".format(node_resources))
         logger.info("Instance counts: {}".format(instance_type_counts))
 

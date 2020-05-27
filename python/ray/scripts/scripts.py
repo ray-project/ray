@@ -11,10 +11,10 @@ import urllib
 import urllib.parse
 
 import ray.services as services
-from ray.autoscaler.autoscaler import debug_status, trim
 from ray.autoscaler.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
-    rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips)
+    rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
+    debug_status)
 import ray.ray_constants as ray_constants
 import ray.utils
 from ray.projects.scripts import project_cli, session_cli
@@ -993,7 +993,7 @@ def timeline(address):
     required=False,
     type=str,
     help="Override the address to connect to.")
-def stat(address):
+def statistics(address):
     """Get the current metrics protobuf from a Ray cluster (developer tool)."""
     if not address:
         address = services.find_redis_address_or_die()
@@ -1030,6 +1030,21 @@ def memory(address):
     logger.info("Connecting to Ray instance at {}.".format(address))
     ray.init(address=address)
     print(ray.internal.internal_api.memory_summary())
+
+
+@cli.command()
+@click.option(
+    "--address",
+    required=False,
+    type=str,
+    help="Override the address to connect to.")
+def status(address):
+    """Print cluster status, including autoscaling info."""
+    if not address:
+        address = services.find_redis_address_or_die()
+    logger.info("Connecting to Ray instance at {}.".format(address))
+    ray.init(address=address)
+    print(debug_status())
 
 
 @cli.command()
@@ -1085,7 +1100,8 @@ add_command_alias(get_head_ip, name="get_head_ip", hidden=True)
 cli.add_command(get_worker_ips)
 cli.add_command(microbenchmark)
 cli.add_command(stack)
-cli.add_command(stat)
+cli.add_command(statistics)
+cli.add_command(status)
 cli.add_command(memory)
 cli.add_command(globalgc)
 cli.add_command(timeline)

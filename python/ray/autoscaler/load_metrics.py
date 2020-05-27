@@ -128,7 +128,7 @@ class LoadMetrics:
         return nodes_used, resources_used, resources_total
 
     def info_string(self):
-        return ", ".join(
+        return " - " + "\n - ".join(
             ["{}={}".format(k, v) for k, v in sorted(self._info().items())])
 
     def _info(self):
