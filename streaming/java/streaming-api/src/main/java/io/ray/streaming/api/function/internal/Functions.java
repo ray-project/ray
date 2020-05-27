@@ -4,7 +4,10 @@ import io.ray.streaming.api.context.RuntimeContext;
 import io.ray.streaming.api.function.Function;
 import io.ray.streaming.api.function.RichFunction;
 
-public class RichFunctions {
+/**
+ * A util class for {@link Function}
+ */
+public class Functions {
 
   private static class DefaultRichFunction implements RichFunction {
     private final Function function;

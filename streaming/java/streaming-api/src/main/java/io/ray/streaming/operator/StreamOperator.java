@@ -5,7 +5,7 @@ import io.ray.streaming.api.collector.Collector;
 import io.ray.streaming.api.context.RuntimeContext;
 import io.ray.streaming.api.function.Function;
 import io.ray.streaming.api.function.RichFunction;
-import io.ray.streaming.api.function.internal.RichFunctions;
+import io.ray.streaming.api.function.internal.Functions;
 import io.ray.streaming.message.KeyRecord;
 import io.ray.streaming.message.Record;
 import java.util.List;
@@ -20,7 +20,7 @@ public abstract class StreamOperator<F extends Function> implements Operator {
   public StreamOperator(F function) {
     this.name = getClass().getSimpleName();
     this.function = function;
-    this.richFunction = RichFunctions.wrap(function);
+    this.richFunction = Functions.wrap(function);
   }
 
   @Override
