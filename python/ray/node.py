@@ -25,6 +25,7 @@ from ray.utils import try_to_create_directory, try_to_symlink
 logger = logging.getLogger(__name__)
 
 SESSION_LATEST = "session_latest"
+NUMBER_OF_PORT_RETRIES = 10
 
 
 class Node:
@@ -403,7 +404,7 @@ class Node:
         s.close()
 
         # Try to generate a port that is far above the 'next available' one
-        for _ in range(10):
+        for _ in range(NUMBER_OF_PORT_RETRIES):
             new_port = random.randint(port, 65535)
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             error_val = s.connect_ex(("", new_port))
