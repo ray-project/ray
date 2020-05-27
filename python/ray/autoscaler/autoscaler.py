@@ -424,7 +424,6 @@ class StandardAutoscaler:
                 nodes, self.pending_launches.breakdown())
         _internal_kv_put(DEBUG_AUTOSCALING_STATUS, tmp)
         logger.info(tmp)
-        updated = worker.redis_client.hset(key, "value", value)
 
     def info_string(self, nodes, target):
         suffix = ""

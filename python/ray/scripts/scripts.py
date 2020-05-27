@@ -1053,21 +1053,6 @@ def status(address):
     required=False,
     type=str,
     help="Override the address to connect to.")
-def memory(address):
-    """Print object references held in a Ray cluster."""
-    if not address:
-        address = services.find_redis_address_or_die()
-    logger.info("Connecting to Ray instance at {}.".format(address))
-    ray.init(address=address)
-    print(ray.internal.internal_api.memory_summary())
-
-
-@cli.command()
-@click.option(
-    "--address",
-    required=False,
-    type=str,
-    help="Override the address to connect to.")
 def globalgc(address):
     """Trigger Python garbage collection on all cluster workers."""
     if not address:
