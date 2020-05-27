@@ -36,12 +36,12 @@ def rollout_test(algo, env="CartPole-v0"):
         print("Checkpoint path {} (exists)".format(checkpoint_path))
 
         # Test rolling out n steps.
-        os.popen("python {}/rollout.py --run={} \"{}\" --steps=15 "
-                 "--out=\"{}/rollouts_15steps.pkl\" --no-render".format(
+        os.popen("python {}/rollout.py --run={} \"{}\" --steps=10 "
+                 "--out=\"{}/rollouts_10steps.pkl\" --no-render".format(
                      rllib_dir, algo, checkpoint_path, tmp_dir)).read()
-        if not os.path.exists(tmp_dir + "/rollouts_25steps.pkl"):
+        if not os.path.exists(tmp_dir + "/rollouts_10steps.pkl"):
             sys.exit(1)
-        print("rollout output (25 steps) exists!".format(checkpoint_path))
+        print("rollout output (10 steps) exists!".format(checkpoint_path))
 
         # Test rolling out 1 episode.
         os.popen("python {}/rollout.py --run={} \"{}\" --episodes=1 "

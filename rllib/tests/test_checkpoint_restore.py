@@ -115,7 +115,7 @@ class TestCheckpointRestore(unittest.TestCase):
 
     def test_checkpoint_restore(self):
         failures = []
-        for fw in framework_iterator(frameworks=("torch", "tf")):
+        for fw in framework_iterator(frameworks=("tf", "torch")):
             for use_object_store in [False, True]:
                 for name in [
                         "A3C", "APEX_DDPG", "ARS", "DDPG", "DQN", "ES", "PPO",

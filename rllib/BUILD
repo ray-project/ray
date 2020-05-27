@@ -1108,7 +1108,7 @@ py_test(
 py_test(
     name = "tests/test_checkpoint_restore",
     tags = ["tests_dir", "tests_dir_C"],
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_checkpoint_restore.py"]
 )
 
