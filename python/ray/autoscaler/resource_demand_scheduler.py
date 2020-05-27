@@ -66,9 +66,9 @@ def get_instances_for(instance_types: Dict[str, dict],
     while resources and sum(instances_to_add.values()) < max_to_add:
         utilization_scores = []
         for instance_type in instance_types:
-            if (existing_instances.get(instance_type, 0) +
-                    instances_to_add.get(instance_type, 0) >=
-                    instance_types[instance_type]["max_workers"]):
+            if (existing_instances.get(
+                    instance_type, 0) + instances_to_add.get(instance_type, 0)
+                    >= instance_types[instance_type]["max_workers"]):
                 continue
             node_resources = instance_types[instance_type]["resources"]
             score = _utilization_score(node_resources, resources)
@@ -102,11 +102,11 @@ def _utilization_score(node_resources, resources):
             _inplace_subtract(remaining, r)
     if not fittable:
         return None
-    
+
     util_by_resources = []
     for k, v in node_resources.items():
         util = (v - remaining[k]) / v
-        util_by_resources.append(v * (util ** 3))
+        util_by_resources.append(v * (util**3))
 
     # Prioritize using all resources first, then prioritize overall balance
     # of multiple resources.
