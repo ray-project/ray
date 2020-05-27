@@ -266,8 +266,8 @@ def compute_driver_id_from_job(job_id):
     return ray.WorkerID(driver_id_str)
 
 
-def extrace_job_id_from_object(object_id):
-    assert isinstance(object_id, ray.ObjectID)
+def extract_job_id_from_object(object_id_str):
+    object_id = binary_to_object_id(object_id_str)
     job_id_str = object_id.binary()[12:12 + ray.JobID.size()]
     return ray.JobID(job_id_str)
 

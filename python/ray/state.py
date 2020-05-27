@@ -12,7 +12,7 @@ from ray import (
 )
 
 from ray.utils import (decode, binary_to_hex, hex_to_binary,
-                       compute_job_id_from_driver, extrace_job_id_from_object)
+                       compute_job_id_from_driver, extract_job_id_from_object)
 
 from ray._raylet import GlobalStateAccessor
 
@@ -292,8 +292,11 @@ class GlobalState:
                 object_location_info = gcs_utils.ObjectLocationInfo.FromString(
                     object_table[i])
                 object_id = binary_to_hex(object_location_info.object_id)
-                if job_id == extrace_job_id_from_object(object_id).hex():
-                    results[object_id] = self._gen_object_info(object_location_info)
+                object_job_id = extract_job_id_from_object(
+                    object_location_info.object_id)
+                if job_id == object_job_id.hex():
+                    results[object_id] = self._gen_object_info(
+                        object_location_info)
             return results
 
     def _gen_object_info(self, object_location_info):
