@@ -122,7 +122,7 @@ def test_actor_creation_node_failure(ray_start_cluster):
                     children[i] = Child.remote(death_probability)
         # Remove a node. Any actor creation tasks that were forwarded to this
         # node must be resubmitted.
-        cluster.remove_node(get_non_head_nodes(cluster)[-1])
+        cluster.remove_node(get_other_nodes(cluster, True)[-1])
 
 
 @pytest.mark.skipif(
