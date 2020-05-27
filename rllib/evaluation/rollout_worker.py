@@ -533,7 +533,8 @@ class RolloutWorker(ParallelIteratorWorker):
             batch = self.input_reader.next()
             steps_so_far += batch.count
             batches.append(batch)
-        batch = batches[0].concat_samples(batches)
+        batch = batches[0].concat_samples(batches).slice(start=0,
+                                                         end=self.rollout_fragment_length)
 
         self.callbacks.on_sample_end(worker=self, samples=batch)
 
