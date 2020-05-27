@@ -63,7 +63,9 @@ public class GlobalStateAccessor {
 
   private void destroyGlobalStateAccessor() {
     synchronized (globalStateAccessorNativePointer) {
-      this.nativeDisconnect(globalStateAccessorNativePointer);
+      if (0 == globalStateAccessorNativePointer) {
+        return;
+      }
       this.nativeDestroyGlobalStateAccessor(globalStateAccessorNativePointer);
       globalStateAccessorNativePointer = 0L;
     }
