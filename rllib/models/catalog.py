@@ -5,7 +5,6 @@ import numpy as np
 
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     RLLIB_ACTION_DIST, _global_registry
-from ray.rllib.models.extra_spaces import Simplex
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor
@@ -25,7 +24,8 @@ from ray.rllib.utils import try_import_tf, try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.space_utils import flatten_space
+from ray.rllib.utils.spaces.simplex import Simplex
+from ray.rllib.utils.spaces.space_utils import flatten_space
 
 tf = try_import_tf()
 tree = try_import_tree()
