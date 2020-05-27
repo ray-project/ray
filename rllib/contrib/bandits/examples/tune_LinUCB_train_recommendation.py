@@ -8,7 +8,6 @@ from matplotlib import pyplot as plt
 import pandas as pd
 
 from ray import tune
-from ray.rllib.contrib.bandits.agents import LinUCBTrainer
 from ray.rllib.contrib.bandits.agents.lin_ucb import UCB_CONFIG
 from ray.rllib.contrib.bandits.envs import ParametricItemRecoEnv
 
