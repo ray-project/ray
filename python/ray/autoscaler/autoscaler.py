@@ -190,8 +190,7 @@ class StandardAutoscaler:
         if self.resource_demand_scheduler and self.resource_demand_vector:
             instances = (
                 self.resource_demand_scheduler.get_instances_to_launch(
-                    nodes,
-                    self.pending_launches.breakdown(),
+                    nodes, self.pending_launches.breakdown(),
                     self.resource_demand_vector))
             # TODO(ekl) also enforce max launch concurrency here?
             for instance_type, count in instances:

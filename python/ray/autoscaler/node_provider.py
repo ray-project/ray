@@ -220,7 +220,7 @@ class NodeProvider:
 
     def get_instance_type(self, node_config):
         """Returns the instance type of this node config.
-        
+
         This is an optional method only required if using the resource
         demand scheduler."""
         return None
