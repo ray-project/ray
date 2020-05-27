@@ -332,28 +332,7 @@ public class RayConfig {
 
   @Override
   public String toString() {
-    return "RayConfig{"
-        + ", nodeIp='" + nodeIp + '\''
-        + ", workerMode=" + workerMode
-        + ", runMode=" + runMode
-        + ", resources=" + resources
-        + ", jobId=" + jobId
-        + ", logDir='" + logDir + '\''
-        + ", libraryPath=" + libraryPath
-        + ", classpath=" + classpath
-        + ", jvmParameters=" + jvmParameters
-        + ", redisAddress='" + redisAddress + '\''
-        + ", redisIp='" + redisIp + '\''
-        + ", redisPort=" + redisPort
-        + ", headRedisPort=" + headRedisPort
-        + ", numberRedisShards=" + numberRedisShards
-        + ", objectStoreSocketName='" + objectStoreSocketName + '\''
-        + ", objectStoreSize=" + objectStoreSize
-        + ", rayletSocketName='" + rayletSocketName + '\''
-        + ", rayletConfigParameters=" + rayletConfigParameters
-        + ", jobResourcePath='" + jobResourcePath + '\''
-        + ", pythonWorkerCommand='" + pythonWorkerCommand + '\''
-        + '}';
+    return render();
   }
 
   /**
