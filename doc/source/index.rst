@@ -1,41 +1,17 @@
-Ray
-===
+What is Ray?
+============
 
-.. raw:: html
+.. include:: ray-overview/basics.rst
 
-  <embed>
-    <a href="https://github.com/ray-project/ray"><img style="position: absolute; top: 0; right: 0; border: 0;" src="https://camo.githubusercontent.com/365986a132ccd6a44c23a9169022c0b5c890c387/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f7265645f6161303030302e706e67" alt="Fork me on GitHub" data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png"></a>
-  </embed>
+Getting Started with Ray
+------------------------
 
-.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
+Check out :ref:`gentle-intro` to learn more about Ray and its ecosystem of libraries that enable things like distributed hyperparameter tuning,
+reinforcement learning, and distributed training.
 
-**Ray is a fast and simple framework for building and running distributed applications.**
-
-
-Ray is packaged with the following libraries for accelerating machine learning workloads:
-
-- `Tune`_: Scalable Hyperparameter Tuning
-- `RLlib`_: Scalable Reinforcement Learning
-- `RaySGD`_: Distributed Training Wrappers
-- :ref:`rayserve`
-
-
-Star us on `on GitHub`_. You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
-
-.. _`on GitHub`: https://github.com/ray-project/ray
-.. _`RaySGD`: raysgd/raysgd.html
-
-.. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
-
-
-Quick Start
------------
-
-First, install Ray with: ``pip install ray``
+Ray uses Tasks (functions) and Actors (Classes) to allow you to parallelize your Python code:
 
 .. code-block:: python
-
-    # Execute Python functions in parallel.
 
     import ray
     ray.init()
@@ -45,14 +21,7 @@ First, install Ray with: ``pip install ray``
         return x * x
 
     futures = [f.remote(i) for i in range(4)]
-    print(ray.get(futures))
-
-To use Ray's actor model:
-
-.. code-block:: python
-
-    import ray
-    ray.init()
+    print(ray.get(futures)) # [0, 1, 4, 9]
 
     @ray.remote
     class Counter(object):
@@ -68,97 +37,29 @@ To use Ray's actor model:
     counters = [Counter.remote() for i in range(4)]
     [c.increment.remote() for c in counters]
     futures = [c.read.remote() for c in counters]
-    print(ray.get(futures))
+    print(ray.get(futures)) # [1, 1, 1, 1]
 
-Visit the `Walkthrough <walkthrough.html>`_ page a more comprehensive overview of Ray features.
-
-Ray programs can run on a single machine, and can also seamlessly scale to large clusters. To execute the above Ray script in the cloud, just download `this configuration file <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-full.yaml>`__, and run:
-
-``ray submit [CLUSTER.YAML] example.py --start``
-
-Read more about `launching clusters <autoscaling.html>`_.
-
-Tune Quick Start
-----------------
-
-`Tune`_ is a library for hyperparameter tuning at any scale. With Tune, you can launch a multi-node distributed hyperparameter sweep in less than 10 lines of code. Tune supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
-
-.. note::
-
-    To run this example, you will need to install the following:
-
-    .. code-block:: bash
-
-        $ pip install ray torch torchvision filelock
-
-
-This example runs a small grid search to train a CNN using PyTorch and Tune.
-
-.. literalinclude:: ../../python/ray/tune/tests/example.py
-   :language: python
-   :start-after: __quick_start_begin__
-   :end-before: __quick_start_end__
-
-If TensorBoard is installed, automatically visualize all trial results:
-
-.. code-block:: bash
-
-    tensorboard --logdir ~/ray_results
-
-.. _`Tune`: tune.html
-
-RLlib Quick Start
+The Ray Community
 -----------------
 
-`RLlib`_ is an open-source library for reinforcement learning built on top of Ray that offers both high scalability and a unified API for a variety of applications.
+Ray is more than a framework for distributed applications but also an active community of developers, 
+researchers, and folks that love machine learning. 
 
-.. code-block:: bash
+You can join (and Star!) us on `on GitHub`_. 
+You can also join `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray! The community is extremely active in helping people succeed in building their ray applications.
 
-  pip install tensorflow  # or tensorflow-gpu
-  pip install ray[rllib]  # also recommended: ray[debug]
+You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
 
-.. code-block:: python
-
-    import gym
-    from gym.spaces import Discrete, Box
-    from ray import tune
-
-    class SimpleCorridor(gym.Env):
-        def __init__(self, config):
-            self.end_pos = config["corridor_length"]
-            self.cur_pos = 0
-            self.action_space = Discrete(2)
-            self.observation_space = Box(0.0, self.end_pos, shape=(1, ))
-
-        def reset(self):
-            self.cur_pos = 0
-            return [self.cur_pos]
-
-        def step(self, action):
-            if action == 0 and self.cur_pos > 0:
-                self.cur_pos -= 1
-            elif action == 1:
-                self.cur_pos += 1
-            done = self.cur_pos >= self.end_pos
-            return [self.cur_pos], 1 if done else 0, done, {}
-
-    tune.run(
-        "PPO",
-        config={
-            "env": SimpleCorridor,
-            "num_workers": 4,
-            "env_config": {"corridor_length": 5}})
-
-.. _`RLlib`: rllib.html
+.. _`on GitHub`: https://github.com/ray-project/ray
 
 
 More Information
-----------------
+================
 
 Here are some talks, papers, and press coverage involving Ray and its libraries. Please raise an issue if any of the below links are broken!
 
 Blog and Press
-~~~~~~~~~~~~~~
+--------------
 
   - `Modern Parallel and Distributed Python: A Quick Tutorial on Ray <https://towardsdatascience.com/modern-parallel-and-distributed-python-a-quick-tutorial-on-ray-99f8d70369b8>`_
   - `Why Every Python Developer Will Love Ray <https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/>`_
@@ -180,7 +81,7 @@ Blog and Press
 .. _`Ray Blog`: https://ray-project.github.io/
 
 Talks (Videos)
-~~~~~~~~~~~~~~
+--------------
 
  - `Programming at any Scale with Ray | SF Python Meetup Sept 2019 <https://www.youtube.com/watch?v=LfpHyIXBhlE>`_
  - `Ray for Reinforcement Learning | Data Council 2019 <https://www.youtube.com/watch?v=Ayc0ca150HI>`_
@@ -192,13 +93,14 @@ Talks (Videos)
  - `Tune: Distributed Hyperparameter Search | RISECamp 2018 <https://www.youtube.com/watch?v=38Yd_dXW51Q>`_
 
 Slides
-~~~~~~
+------
+
 - `Talk given at UC Berkeley DS100 <https://docs.google.com/presentation/d/1sF5T_ePR9R6fAi2R6uxehHzXuieme63O2n_5i9m7mVE/edit?usp=sharing>`_
 - `Talk given in October 2019 <https://docs.google.com/presentation/d/13K0JsogYQX3gUCGhmQ1PQ8HILwEDFysnq0cI2b88XbU/edit?usp=sharing>`_
 - [Tune] `Talk given at RISECamp 2019 <https://docs.google.com/presentation/d/1v3IldXWrFNMK-vuONlSdEuM82fuGTrNUDuwtfx4axsQ/edit?usp=sharing>`_
 
 Academic Papers
-~~~~~~~~~~~~~~~
+---------------
 
 - `Ray paper`_
 - `Ray HotOS paper`_
@@ -211,7 +113,7 @@ Academic Papers
 .. _`Tune paper`: https://arxiv.org/abs/1807.05118
 
 Getting Involved
-----------------
+================
 
 - `ray-dev@googlegroups.com`_: For discussions about development or any general
   questions.
@@ -226,10 +128,13 @@ Getting Involved
 
 
 
+
+
 .. toctree::
    :maxdepth: -1
-   :caption: Installation
+   :caption: Overview of Ray
 
+   ray-overview/index.rst
    installation.rst
 
 .. toctree::
