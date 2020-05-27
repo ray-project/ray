@@ -875,6 +875,64 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableReSubscribe) {
   WaitPendingDone(actor2_update_count, 1);
 }
 
+TEST_F(ServiceBasedGcsClientTest, TestObjectTableReSubscribe) {
+  ObjectID object_id = ObjectID::FromRandom();
+  ClientID node_id = ClientID::FromRandom();
+
+  // Subscribe to any update of an object's location.
+  std::atomic<int> object_add_count1(0);
+  std::atomic<int> object_remove_count(0);
+  auto on_subscribe = [&object_add_count1, &object_remove_count](
+                          const ObjectID &object_id,
+                          const gcs::ObjectChangeNotification &result) {
+    if (!result.GetData().empty()) {
+      if (result.IsAdded()) {
+        RAY_LOG(INFO) << "wangtao add count" << object_add_count1;
+        ++object_add_count1;
+      } else if (result.IsRemoved()) {
+        RAY_LOG(INFO) << "wangtao remove count" << object_remove_count;
+        ++object_remove_count;
+      }
+    }
+  };
+  RAY_LOG(INFO) << "wangtao subscribe 914";
+  ASSERT_TRUE(SubscribeToLocations(object_id, on_subscribe));
+  RAY_LOG(INFO) << "wangtao subscribe 916";
+
+  // Restart GCS.
+  //  RestartGcsServer();
+
+  RAY_LOG(INFO) << "wangtao add 921";
+  // Add location of object to GCS and check if resubscribe works.
+  ASSERT_TRUE(AddLocation(object_id, node_id));
+  WaitPendingDone(object_add_count1, 1);
+  RAY_LOG(INFO) << "wangtao add 925";
+
+  RAY_LOG(INFO) << "wangtao remove 927";
+  // Remove location of object from GCS and check if resubscribe works.
+  //  ASSERT_TRUE(RemoveLocation(object_id, node_id));
+  //  WaitPendingDone(object_remove_count, 1);
+  RAY_LOG(INFO) << "wangtao remove 932";
+  //  ASSERT_TRUE(GetLocations(object_id).empty());
+  RAY_LOG(INFO) << "wangtao get 934";
+
+  // Cancel subscription to any update of an object's location.
+  //  UnsubscribeToLocations(object_id);
+  usleep(100 * 1000);
+  RAY_LOG(INFO) << "wangtao unsubscribe 937";
+
+  // Restart GCS.
+  RestartGcsServer();
+  RAY_LOG(INFO) << "wangtao restart 941";
+  // Add location of object to GCS again and check if resubscribe works..
+  ASSERT_TRUE(AddLocation(object_id, node_id));
+  RAY_LOG(INFO) << "wangtao add 944";
+
+  // Assert unsubscribe succeeded.
+  //  usleep(100 * 1000);
+  ASSERT_EQ(object_add_count1, 1);
+}
+
 TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
   // Stop redis.
   TearDownTestCase();

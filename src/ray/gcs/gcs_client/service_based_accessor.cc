@@ -1047,47 +1047,64 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
   RAY_LOG(DEBUG) << "Subscribing object location, object id = " << object_id;
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe object location, object id = " << object_id;
-  auto on_subscribe = [object_id, subscribe](const std::string &id,
-                                             const std::string &data) {
-    rpc::ObjectLocationChange object_location_change;
-    object_location_change.ParseFromString(data);
-    std::vector<rpc::ObjectTableData> object_data_vector;
-    object_data_vector.emplace_back(object_location_change.data());
-    auto change_mode = object_location_change.is_add() ? rpc::GcsChangeMode::APPEND_OR_ADD
-                                                       : rpc::GcsChangeMode::REMOVE;
-    gcs::ObjectChangeNotification notification(change_mode, object_data_vector);
-    subscribe(object_id, notification);
+  auto subscribe_operation = [this, object_id, subscribe](const StatusCallback &done) {
+    auto on_subscribe = [object_id, subscribe](const std::string &id,
+                                               const std::string &data) {
+      rpc::ObjectLocationChange object_location_change;
+      object_location_change.ParseFromString(data);
+      std::vector<rpc::ObjectTableData> object_data_vector;
+      object_data_vector.emplace_back(object_location_change.data());
+      auto change_mode = object_location_change.is_add()
+                             ? rpc::GcsChangeMode::APPEND_OR_ADD
+                             : rpc::GcsChangeMode::REMOVE;
+      gcs::ObjectChangeNotification notification(change_mode, object_data_vector);
+      subscribe(object_id, notification);
+    };
+    auto on_done = [this, object_id, subscribe, done](const Status &status) {
+      if (status.ok()) {
+        auto callback = [object_id, subscribe, done](
+                            const Status &status,
+                            const std::vector<rpc::ObjectTableData> &result) {
+          if (status.ok()) {
+            gcs::ObjectChangeNotification notification(rpc::GcsChangeMode::APPEND_OR_ADD,
+                                                       result);
+            subscribe(object_id, notification);
+          }
+          if (done) {
+            done(status);
+          }
+        };
+        RAY_CHECK_OK(AsyncGetLocations(object_id, callback));
+      } else if (done) {
+        done(status);
+      }
+    };
+    auto status = client_impl_->GetGcsPubSub().Subscribe(OBJECT_CHANNEL, object_id.Hex(),
+                                                         on_subscribe, on_done);
+    RAY_LOG(DEBUG) << "Finished subscribing object location, object id = " << object_id;
+    return status;
   };
-  auto on_done = [this, object_id, subscribe, done](const Status &status) {
-    if (status.ok()) {
-      auto callback = [object_id, subscribe, done](
-                          const Status &status,
-                          const std::vector<rpc::ObjectTableData> &result) {
-        if (status.ok()) {
-          gcs::ObjectChangeNotification notification(rpc::GcsChangeMode::APPEND_OR_ADD,
-                                                     result);
-          subscribe(object_id, notification);
-        }
-        if (done) {
-          done(status);
-        }
-      };
-      RAY_CHECK_OK(AsyncGetLocations(object_id, callback));
-    } else if (done) {
-      done(status);
-    }
-  };
-  auto status = client_impl_->GetGcsPubSub().Subscribe(OBJECT_CHANNEL, object_id.Hex(),
-                                                       on_subscribe, on_done);
-  RAY_LOG(DEBUG) << "Finished subscribing object location, object id = " << object_id;
-  return status;
+  subscribe_object_operations_[object_id] = subscribe_operation;
+  return subscribe_operation(done);
+}
+
+Status ServiceBasedObjectInfoAccessor::AsyncReSubscribe() {
+  RAY_LOG(INFO) << "Reestablishing subscription for object locations.";
+  for (auto &item : subscribe_object_operations_) {
+    RAY_LOG(INFO) << "wangtao resubscribe " << item.first;
+    RAY_CHECK_OK(item.second(nullptr));
+  }
+  return Status::OK();
 }
 
 Status ServiceBasedObjectInfoAccessor::AsyncUnsubscribeToLocations(
     const ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "Unsubscribing object location, object id = " << object_id;
+  RAY_LOG(INFO) << "Unsubscribing object location, object id = "
+                << object_id;  // wangtao log level
   auto status = client_impl_->GetGcsPubSub().Unsubscribe(OBJECT_CHANNEL, object_id.Hex());
-  RAY_LOG(DEBUG) << "Finished unsubscribing object location, object id = " << object_id;
+  subscribe_object_operations_.erase(object_id);
+  RAY_LOG(INFO) << "Finished unsubscribing object location, object id = "
+                << object_id;  // wangtao log level
   return status;
 }
 
@@ -1164,55 +1181,56 @@ Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing worker failures.";
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-    rpc::WorkerFailureData worker_failure_data;
-    worker_failure_data.ParseFromString(data);
-    subscribe(WorkerID::FromBinary(id), worker_failure_data);
-  };
-  auto status = client_impl_->GetGcsPubSub().SubscribeAll(WORKER_FAILURE_CHANNEL,
-                                                          on_subscribe, done);
-  RAY_LOG(DEBUG) << "Finished subscribing worker failures.";
-  return status;
-}
+  auto on_subscribe =
+      [subscribe](const std::string &id, const std::string &data) {
+        rpc::WorkerFailureData worker_failure_data;
+        worker_failure_data.ParseFromString(data);
+        subscribe(WorkerID::FromBinary(id), worker_failure_data);
+        auto status = client_impl_->GetGcsPubSub().SubscribeAll(WORKER_FAILURE_CHANNEL,
+                                                                on_subscribe, done);
+        RAY_LOG(DEBUG) << "Finished subscribing worker failures.";
+        return status;
+      }
 
-Status ServiceBasedWorkerInfoAccessor::AsyncReportWorkerFailure(
-    const std::shared_ptr<rpc::WorkerFailureData> &data_ptr,
-    const StatusCallback &callback) {
-  rpc::Address worker_address = data_ptr->worker_address();
-  RAY_LOG(DEBUG) << "Reporting worker failure, " << worker_address.DebugString();
-  rpc::ReportWorkerFailureRequest request;
-  request.mutable_worker_failure()->CopyFrom(*data_ptr);
-  client_impl_->GetGcsRpcClient().ReportWorkerFailure(
-      request, [worker_address, callback](const Status &status,
-                                          const rpc::ReportWorkerFailureReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished reporting worker failure, "
-                       << worker_address.DebugString() << ", status = " << status;
-      });
-  return Status::OK();
-}
+  Status
+  ServiceBasedWorkerInfoAccessor::AsyncReportWorkerFailure(
+      const std::shared_ptr<rpc::WorkerFailureData> &data_ptr,
+      const StatusCallback &callback) {
+    rpc::Address worker_address = data_ptr->worker_address();
+    RAY_LOG(DEBUG) << "Reporting worker failure, " << worker_address.DebugString();
+    rpc::ReportWorkerFailureRequest request;
+    request.mutable_worker_failure()->CopyFrom(*data_ptr);
+    client_impl_->GetGcsRpcClient().ReportWorkerFailure(
+        request, [worker_address, callback](const Status &status,
+                                            const rpc::ReportWorkerFailureReply &reply) {
+          if (callback) {
+            callback(status);
+          }
+          RAY_LOG(DEBUG) << "Finished reporting worker failure, "
+                         << worker_address.DebugString() << ", status = " << status;
+        });
+    return Status::OK();
+  }
 
-Status ServiceBasedWorkerInfoAccessor::AsyncRegisterWorker(
-    rpc::WorkerType worker_type, const WorkerID &worker_id,
-    const std::unordered_map<std::string, std::string> &worker_info,
-    const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Registering the worker. worker id = " << worker_id;
-  rpc::RegisterWorkerRequest request;
-  request.set_worker_type(worker_type);
-  request.set_worker_id(worker_id.Binary());
-  request.mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
-  client_impl_->GetGcsRpcClient().RegisterWorker(
-      request,
-      [worker_id, callback](const Status &status, const rpc::RegisterWorkerReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished registering worker. worker id = " << worker_id;
-      });
-  return Status::OK();
-}
+  Status ServiceBasedWorkerInfoAccessor::AsyncRegisterWorker(
+      rpc::WorkerType worker_type, const WorkerID &worker_id,
+      const std::unordered_map<std::string, std::string> &worker_info,
+      const StatusCallback &callback) {
+    RAY_LOG(DEBUG) << "Registering the worker. worker id = " << worker_id;
+    rpc::RegisterWorkerRequest request;
+    request.set_worker_type(worker_type);
+    request.set_worker_id(worker_id.Binary());
+    request.mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
+    client_impl_->GetGcsRpcClient().RegisterWorker(
+        request, [worker_id, callback](const Status &status,
+                                       const rpc::RegisterWorkerReply &reply) {
+          if (callback) {
+            callback(status);
+          }
+          RAY_LOG(DEBUG) << "Finished registering worker. worker id = " << worker_id;
+        });
+    return Status::OK();
+  }
 
 }  // namespace gcs
-}  // namespace ray
+}  // namespace gcs
