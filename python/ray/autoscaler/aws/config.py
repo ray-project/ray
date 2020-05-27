@@ -38,8 +38,6 @@ DEFAULT_AMI = {
     "sa-east-1": "ami-0da2c49fe75e7e5ed",  # SA (Sao Paulo)
 }
 
-_RESOURCE_CACHE = {}
-
 
 assert StrictVersion(boto3.__version__) >= StrictVersion("1.4.8"), \
     "Boto3 version >= 1.4.8 required, try `pip install -U boto3`"
@@ -480,13 +478,17 @@ def _client(name, config):
 
 
 def _resource(name, config):
-    boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
+    region = config["provider"]["region"]
     aws_credentials = config["provider"].get("aws_credentials", {})
-    if name not in _RESOURCE_CACHE:
-        _RESOURCE_CACHE[name] = boto3.resource(
-            name,
-            config["provider"]["region"],
-            config=boto_config,
-            **aws_credentials,
-        )
-    return _RESOURCE_CACHE[name]
+    return _resource_cache(name, region, **aws_credentials)
+
+
+@lru_cache()
+def _resource_cache(name, region, **kwargs):
+    boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
+    return boto3.resource(
+        name,
+        region,
+        config=boto_config,
+        **kwargs,
+    )
