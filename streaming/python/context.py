@@ -163,7 +163,7 @@ class RuntimeContext(ABC):
     def get_job_config(self):
         """
         Returns:
-            The config with which the parallel task runs.
+            The job config.
         """
         pass
 
