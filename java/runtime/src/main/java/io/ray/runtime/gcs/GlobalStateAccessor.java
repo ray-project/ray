@@ -24,6 +24,7 @@ public class GlobalStateAccessor {
   public static synchronized void destroyInstance() {
     if (null != globalStateAccessor) {
       globalStateAccessor.destroyGlobalStateAccessor();
+      globalStateAccessor = null;
     }
   }
 
