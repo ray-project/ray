@@ -10,7 +10,12 @@ from ray.test_utils import (
     wait_for_condition, )
 
 
-def test_cached_object(ray_start_cluster):
+def shutdown_upon_termination(cluster):
+    ray.shutdown()
+    cluster.shutdown()
+
+
+def test_cached_object():
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
@@ -47,11 +52,11 @@ def test_cached_object(ray_start_cluster):
         large_object.options(resources={"node2": 1}).remote()
 
     ray.get(dependent_task.remote(obj))
+    shutdown_upon_termination(cluster)
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_reconstruction_cached_dependency(ray_start_cluster,
-                                          reconstruction_enabled):
+def test_reconstruction_cached_dependency(reconstruction_enabled):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
@@ -110,10 +115,11 @@ def test_reconstruction_cached_dependency(ray_start_cluster,
             ray.get(dependent_task.remote(obj))
             with pytest.raises(ray.exceptions.UnreconstructableError):
                 raise e.as_instanceof_cause()
+    shutdown_upon_termination(cluster)
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
+def test_basic_reconstruction(reconstruction_enabled):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
@@ -162,10 +168,11 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
             ray.get(dependent_task.remote(obj))
             with pytest.raises(ray.exceptions.UnreconstructableError):
                 raise e.as_instanceof_cause()
+    shutdown_upon_termination(cluster)
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
+def test_basic_reconstruction_put(reconstruction_enabled):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
@@ -217,10 +224,11 @@ def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
     else:
         with pytest.raises(ray.exceptions.UnreconstructableError):
             ray.get(result)
+    shutdown_upon_termination(cluster)
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
+def test_multiple_downstream_tasks(reconstruction_enabled):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
@@ -280,10 +288,11 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
                     }).remote(obj))
             with pytest.raises(ray.exceptions.UnreconstructableError):
                 raise e.as_instanceof_cause()
+    shutdown_upon_termination(cluster)
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
+def test_reconstruction_chain(reconstruction_enabled):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
@@ -327,6 +336,7 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
             ray.get(dependent_task.remote(obj))
             with pytest.raises(ray.exceptions.UnreconstructableError):
                 raise e.as_instanceof_cause()
+    shutdown_upon_termination(cluster)
 
 
 if __name__ == "__main__":
