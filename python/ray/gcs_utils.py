@@ -15,6 +15,7 @@ from ray.core.generated.gcs_pb2 import (
     TaskTableData,
     ResourceTableData,
     ObjectLocationInfo,
+    JobErrorInfo,
 )
 
 __all__ = [
@@ -35,6 +36,7 @@ __all__ = [
     "ResourceTableData",
     "construct_error_message",
     "ObjectLocationInfo",
+    "JobErrorInfo",
 ]
 
 FUNCTION_PREFIX = "RemoteFunction:"

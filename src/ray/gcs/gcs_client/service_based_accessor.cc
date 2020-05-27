@@ -1204,14 +1204,14 @@ Status ServiceBasedErrorInfoAccessor::AsyncReportJobError(
 }
 
 Status ServiceBasedErrorInfoAccessor::AsyncGetAll(
-    const MultiItemCallback<rpc::ErrorTableData> &callback) {
+    const MultiItemCallback<rpc::JobErrorInfo> &callback) {
   RAY_LOG(DEBUG) << "Getting all job error info.";
   RAY_CHECK(callback);
   rpc::GetAllJobErrorInfoRequest request;
   client_impl_->GetGcsRpcClient().GetAllJobErrorInfo(
       request,
       [callback](const Status &status, const rpc::GetAllJobErrorInfoReply &reply) {
-        auto result = VectorFromProtobuf(reply.error_info_list());
+        auto result = VectorFromProtobuf(reply.job_error_info_list());
         callback(status, result);
         RAY_LOG(DEBUG) << "Finished getting all job error info.";
       });
@@ -1219,7 +1219,7 @@ Status ServiceBasedErrorInfoAccessor::AsyncGetAll(
 }
 
 Status ServiceBasedErrorInfoAccessor::AsyncGet(
-    const JobID &job_id, const OptionalItemCallback<rpc::ErrorTableData> &callback) {
+    const JobID &job_id, const OptionalItemCallback<rpc::JobErrorInfo> &callback) {
   RAY_LOG(DEBUG) << "Getting job error info, job id = " << job_id;
   RAY_CHECK(callback);
   rpc::GetJobErrorInfoRequest request;
@@ -1227,8 +1227,8 @@ Status ServiceBasedErrorInfoAccessor::AsyncGet(
   client_impl_->GetGcsRpcClient().GetJobErrorInfo(
       request,
       [job_id, callback](const Status &status, const rpc::GetJobErrorInfoReply &reply) {
-        if (reply.has_error_info()) {
-          callback(status, reply.error_info());
+        if (reply.has_job_error_info()) {
+          callback(status, reply.job_error_info());
         } else {
           callback(status, boost::none);
         }

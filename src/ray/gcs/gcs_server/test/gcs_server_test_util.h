@@ -364,17 +364,17 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
-    Status AsyncGetAll(const gcs::MultiItemCallback<rpc::ErrorTableData> &callback) {
+    Status AsyncGetAll(const gcs::MultiItemCallback<rpc::JobErrorInfo> &callback) {
       if (callback) {
-        callback(Status::OK(), std::vector<rpc::ErrorTableData>());
+        callback(Status::OK(), std::vector<rpc::JobErrorInfo>());
       }
       return Status::OK();
     }
 
     Status AsyncGet(const JobID &job_id,
-                    const gcs::OptionalItemCallback<rpc::ErrorTableData> &callback) {
+                    const OptionalItemCallback<rpc::JobErrorInfo> &callback) {
       if (callback) {
-        callback(Status::OK(), boost::none);
+        callback(Status::OK(), std::vector<rpc::ErrorTableData>());
       }
       return Status::OK();
     }

@@ -831,31 +831,34 @@ class GlobalState:
             if error_info is None:
                 return []
             else:
-                error_table_data = gcs_utils.ErrorTableData.FromString(
+                job_error_info = gcs_utils.JobErrorInfo.FromString(
                     error_info)
-                return self._gen_error_messages(error_table_data)
+                return self._gen_error_messages(job_error_info)
         else:
             error_table = self.global_state_accessor.get_error_table()
             results = {}
             for i in range(len(error_table)):
-                error_table_data = gcs_utils.ErrorTableData.FromString(
+                job_error_info = gcs_utils.JobErrorInfo.FromString(
                     error_table[i])
-                results[binary_to_hex(error_table_data.job_id)] = \
-                    self._gen_error_messages(error_table_data)
+                results[binary_to_hex(job_error_info.job_id)] = \
+                    self._gen_error_messages(job_error_info)
             return results
 
-    def _gen_error_messages(self, error_data):
-        """Parse error table data.
+    def _gen_error_messages(self, job_error_info):
+        """Parse job error info.
         Returns:
-            Message from error table data.
+            Message from job error info.
         """
         error_messages = []
-        error_message = {
-            "type": error_data.type,
-            "message": error_data.error_message,
-            "timestamp": error_data.timestamp,
-        }
-        error_messages.append(error_message)
+
+        for i in range(len(job_error_info.error_info_list)):
+            error_data = job_error_info.error_info_list[i]
+            error_message = {
+                "type": error_data.type,
+                "message": error_data.error_message,
+                "timestamp": error_data.timestamp,
+            }
+            error_messages.append(error_message)
         return error_messages
 
     def actor_checkpoint_info(self, actor_id):

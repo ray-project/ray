@@ -584,7 +584,7 @@ class ErrorInfoAccessor {
   ///
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::ErrorTableData> &callback) = 0;
+  virtual Status AsyncGetAll(const MultiItemCallback<rpc::JobErrorInfo> &callback) = 0;
 
   /// Get error info of a job from GCS asynchronously.
   ///
@@ -592,7 +592,7 @@ class ErrorInfoAccessor {
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
   virtual Status AsyncGet(const JobID &job_id,
-                          const OptionalItemCallback<rpc::ErrorTableData> &callback) = 0;
+                          const OptionalItemCallback<rpc::JobErrorInfo> &callback) = 0;
 
  protected:
   ErrorInfoAccessor() = default;

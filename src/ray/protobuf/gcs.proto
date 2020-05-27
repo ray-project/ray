@@ -151,6 +151,12 @@ message ErrorTableData {
   double timestamp = 4;
 }
 
+message JobErrorInfo {
+  bytes job_id = 1;
+  // Data of job error.
+  repeated ErrorTableData error_info_list = 2;
+}
+
 message ProfileTableData {
   // Represents a profile event.
   message ProfileEvent {

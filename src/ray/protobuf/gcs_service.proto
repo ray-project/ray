@@ -410,7 +410,7 @@ message GetAllJobErrorInfoRequest {
 message GetAllJobErrorInfoReply {
   GcsStatus status = 1;
   // Data of job error.
-  repeated ErrorTableData error_info_list = 2;
+  repeated JobErrorInfo job_error_info_list = 2;
 }
 
 message GetJobErrorInfoRequest {
@@ -420,7 +420,7 @@ message GetJobErrorInfoRequest {
 message GetJobErrorInfoReply {
   GcsStatus status = 1;
   // Data of job error.
-  ErrorTableData error_info = 2;
+  JobErrorInfo job_error_info = 2;
 }
 
 // Service for error info access.

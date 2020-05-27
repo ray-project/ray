@@ -140,8 +140,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllJobErrorInfo() {
   std::vector<std::string> all_error_info;
   std::promise<bool> promise;
   auto on_done = [&all_error_info, &promise](
-                     const Status &status,
-                     const std::vector<rpc::ErrorTableData> &result) {
+                     const Status &status, const std::vector<rpc::JobErrorInfo> &result) {
     RAY_CHECK_OK(status);
     for (auto &data : result) {
       all_error_info.push_back(data.SerializeAsString());
@@ -158,7 +157,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetJobErrorInfo(const JobID &j
   std::promise<bool> promise;
   auto on_done = [&error_info, &promise](
                      const Status &status,
-                     const boost::optional<rpc::ErrorTableData> &result) {
+                     const boost::optional<rpc::JobErrorInfo> &result) {
     RAY_CHECK_OK(status);
     if (result) {
       error_info.reset(new std::string(result->SerializeAsString()));

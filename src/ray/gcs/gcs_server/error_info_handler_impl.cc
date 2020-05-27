@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "error_info_handler_impl.h"
+#include "ray/common/ray_config.h"
 
 namespace ray {
 namespace rpc {
@@ -23,24 +24,15 @@ void DefaultErrorInfoHandler::HandleReportJobError(
   JobID job_id = JobID::FromBinary(request.error_data().job_id());
   std::string type = request.error_data().type();
   RAY_LOG(DEBUG) << "Reporting job error, job id = " << job_id << ", type = " << type;
-  auto on_done = [this, job_id, type, request, reply,
-                  send_reply_callback](Status status) {
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to report job error, job id = " << job_id
-                     << ", type = " << type;
-    } else {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(ERROR_INFO_CHANNEL, job_id.Hex(),
-                                         request.error_data().SerializeAsString(),
-                                         nullptr));
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-
-  Status status =
-      gcs_table_storage_->ErrorInfoTable().Put(job_id, request.error_data(), on_done);
-  if (!status.ok()) {
-    on_done(status);
+  auto &list = job_to_errors_[job_id];
+  if (list.size() >= RayConfig::instance().error_info_entries_size_per_job()) {
+    list.pop_front();
   }
+  list.push_back(request.error_data());
+
+  RAY_CHECK_OK(gcs_pub_sub_->Publish(ERROR_INFO_CHANNEL, job_id.Hex(),
+                                     request.error_data().SerializeAsString(), nullptr));
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   RAY_LOG(DEBUG) << "Finished reporting job error, job id = " << job_id
                  << ", type = " << type;
 }
@@ -49,18 +41,18 @@ void DefaultErrorInfoHandler::HandleGetAllJobErrorInfo(
     const GetAllJobErrorInfoRequest &request, GetAllJobErrorInfoReply *reply,
     SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all job error info.";
-  auto on_done = [reply, send_reply_callback](
-                     const std::unordered_map<JobID, ErrorTableData> &result) {
-    for (auto &data : result) {
-      reply->add_error_info_list()->CopyFrom(data.second);
+
+  for (auto &item : job_to_errors_) {
+    JobErrorInfo job_error_info;
+    job_error_info.set_job_id(item.first.Binary());
+    for (auto &error_item : item.second) {
+      job_error_info.add_error_info_list()->CopyFrom(error_item);
     }
-    RAY_LOG(DEBUG) << "Finished getting all job error info.";
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  };
-  Status status = gcs_table_storage_->ErrorInfoTable().GetAll(on_done);
-  if (!status.ok()) {
-    on_done(std::unordered_map<JobID, ErrorTableData>());
+    reply->add_job_error_info_list()->CopyFrom(job_error_info);
   }
+
+  RAY_LOG(DEBUG) << "Finished getting all job error info.";
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 void DefaultErrorInfoHandler::HandleGetJobErrorInfo(
@@ -68,19 +60,17 @@ void DefaultErrorInfoHandler::HandleGetJobErrorInfo(
     SendReplyCallback send_reply_callback) {
   JobID job_id = JobID::FromBinary(request.job_id());
   RAY_LOG(DEBUG) << "Getting job error info, job id = " << job_id;
-  auto on_done = [job_id, reply, send_reply_callback](
-                     const Status &status,
-                     const boost::optional<ErrorTableData> &result) {
-    if (result) {
-      reply->mutable_error_info()->CopyFrom(*result);
+  auto list = job_to_errors_[job_id];
+  if (!list.empty()) {
+    rpc::JobErrorInfo job_error_info;
+    job_error_info.set_job_id(job_id.Binary());
+    for (auto &item : list) {
+      job_error_info.add_error_info_list()->CopyFrom(item);
     }
-    RAY_LOG(DEBUG) << "Finished getting job error info, job id = " << job_id;
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  };
-  Status status = gcs_table_storage_->ErrorInfoTable().Get(job_id, on_done);
-  if (!status.ok()) {
-    on_done(status, boost::none);
+    reply->mutable_job_error_info()->CopyFrom(job_error_info);
   }
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  RAY_LOG(DEBUG) << "Finished getting job error info, job id = " << job_id;
 }
 
 }  // namespace rpc

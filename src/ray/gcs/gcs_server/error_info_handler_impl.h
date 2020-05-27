@@ -15,6 +15,7 @@
 #ifndef RAY_GCS_ERROR_INFO_HANDLER_IMPL_H
 #define RAY_GCS_ERROR_INFO_HANDLER_IMPL_H
 
+#include <list>
 #include "gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_gcs_client.h"
@@ -45,6 +46,9 @@ class DefaultErrorInfoHandler : public rpc::ErrorInfoHandler {
                              SendReplyCallback send_reply_callback) override;
 
  private:
+  /// Mapping from job id to the queue of error info.
+  absl::flat_hash_map<JobID, std::list<gcs::ErrorTableData>> job_to_errors_;
+
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
 };
