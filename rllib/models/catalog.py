@@ -23,7 +23,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchMultiActionDistribution, TorchMultiCategorical
 from ray.rllib.utils import try_import_tf, try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.space_utils import flatten_space
 
@@ -81,14 +81,17 @@ MODEL_DEFAULTS = {
     # === Options for custom models ===
     # Name of a custom model to use
     "custom_model": None,
+    # Extra options to pass to the custom classes.
+    # These will be available in the Model's
+    "custom_model_config": {},
     # Name of a custom action distribution to use.
     "custom_action_dist": None,
-
-    # Extra options to pass to the custom classes
-    "custom_options": {},
     # Custom preprocessors are deprecated. Please use a wrapper class around
     # your environment instead to preprocess observations.
     "custom_preprocessor": None,
+
+    # Deprecated config keys.
+    "custom_options": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -280,6 +283,16 @@ class ModelCatalog:
         """
 
         if model_config.get("custom_model"):
+
+            if "custom_options" in model_config and \
+                    model_config["custom_options"] != DEPRECATED_VALUE:
+                deprecation_warning(
+                    "model.custom_options",
+                    "model.custom_model_config",
+                    error=False)
+                model_config["custom_model_config"] = \
+                    model_config.pop("custom_options")
+
             if isinstance(model_config["custom_model"], type):
                 model_cls = model_config["custom_model"]
             else:
@@ -304,7 +317,7 @@ class ModelCatalog:
                     with tf.variable_creator_scope(track_var_creation):
                         # Try calling with kwargs first (custom ModelV2 should
                         # accept these as kwargs, not get them from
-                        # config["custom_options"] anymore)
+                        # config["custom_model_config"] anymore).
                         try:
                             instance = model_cls(obs_space, action_space,
                                                  num_outputs, model_config,
@@ -315,7 +328,7 @@ class ModelCatalog:
                                 logger.warning(
                                     "Custom ModelV2 should accept all custom "
                                     "options as **kwargs, instead of expecting"
-                                    " them in config['custom_options']!")
+                                    " them in config['custom_model_config']!")
                                 instance = model_cls(obs_space, action_space,
                                                      num_outputs, model_config,
                                                      name)
