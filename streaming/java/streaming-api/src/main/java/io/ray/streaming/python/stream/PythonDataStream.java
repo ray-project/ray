@@ -6,8 +6,6 @@ import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.partition.Partition;
 import io.ray.streaming.api.stream.DataStream;
 import io.ray.streaming.api.stream.Stream;
-import io.ray.streaming.api.stream.UnionStream;
-import io.ray.streaming.operator.impl.UnionOperator;
 import io.ray.streaming.python.PythonFunction;
 import io.ray.streaming.python.PythonFunction.FunctionInterface;
 import io.ray.streaming.python.PythonOperator;

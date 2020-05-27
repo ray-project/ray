@@ -17,7 +17,6 @@ import io.ray.streaming.operator.impl.FlatMapOperator;
 import io.ray.streaming.operator.impl.KeyByOperator;
 import io.ray.streaming.operator.impl.MapOperator;
 import io.ray.streaming.operator.impl.SinkOperator;
-import io.ray.streaming.operator.impl.UnionOperator;
 import io.ray.streaming.python.stream.PythonDataStream;
 import java.util.Arrays;
 
