@@ -19,12 +19,15 @@ jobs:
         include:
           - name: ubuntu
             os: ubuntu-16.04
+            python-version: 3.6
           - name: windows
             os: windows-2019
+            python-version: 3.8
           - name: macos
             os: macos-10.15
+            python-version: 3.6
     env:
-      PYTHON: 3.6
+      PYTHON: ${{ matrix.python-version }}
       TRAVIS_BUILD_DIR: ${{ github.workspace }}
       TRAVIS_COMMIT: ${{ github.sha }}
       #TRAVIS_PULL_REQUEST is defined in the scripts to account for "false"
