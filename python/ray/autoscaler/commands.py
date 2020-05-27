@@ -15,7 +15,7 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
-from ray.autoscaler.autoscaler import validate_config, hash_runtime_conf, \
+from ray.autoscaler.util import validate_config, hash_runtime_conf, \
     hash_launch_conf, fillout_defaults
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
@@ -51,6 +51,7 @@ def _bootstrap_config(config):
     cache_key = os.path.join(tempfile.gettempdir(),
                              "ray-config-{}".format(hasher.hexdigest()))
     if os.path.exists(cache_key):
+        logger.info("Using cached config at {}".format(cache_key))
         return json.loads(open(cache_key).read())
     validate_config(config)
 
