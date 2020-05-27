@@ -11,6 +11,7 @@ import urllib
 import urllib.parse
 
 import ray.services as services
+from ray.autoscaler.autoscaler import debug_status, trim
 from ray.autoscaler.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips)
@@ -1014,6 +1015,21 @@ def stat(address):
             node_manager_pb2.GetNodeStatsRequest(include_memory_info=False),
             timeout=2.0)
         print(reply)
+
+
+@cli.command()
+@click.option(
+    "--address",
+    required=False,
+    type=str,
+    help="Override the address to connect to.")
+def memory(address):
+    """Print object references held in a Ray cluster."""
+    if not address:
+        address = services.find_redis_address_or_die()
+    logger.info("Connecting to Ray instance at {}.".format(address))
+    ray.init(address=address)
+    print(ray.internal.internal_api.memory_summary())
 
 
 @cli.command()

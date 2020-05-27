@@ -10,6 +10,7 @@ import ray.services as services
 from ray.autoscaler.node_provider import get_default_config
 from ray.autoscaler.docker import dockerize_if_needed
 
+TRIM_NODES_COMMAND = "TRIM_IDLE_NODES"
 REQUIRED, OPTIONAL = True, False
 RAY_SCHEMA_PATH = os.path.join(
     os.path.dirname(ray.autoscaler.__file__), "ray-schema.json")

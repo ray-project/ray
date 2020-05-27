@@ -18,12 +18,10 @@ from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.node_launcher import NodeLauncher
 from ray.autoscaler.resource_demand_scheduler import ResourceDemandScheduler
 from ray.autoscaler.util import ConcurrentCounter, validate_config, \
-    with_head_node_ip, hash_launch_conf, hash_runtime_conf
+    with_head_node_ip, hash_launch_conf, hash_runtime_conf, TRIM_NODES_COMMAND
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
-    AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S, \
-    AUTOSCALER_RESOURCE_REQUEST_CHANNEL
-import ray.services as services
+    AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
 from ray.worker import global_worker
 from six.moves import queue
 
@@ -433,7 +431,9 @@ class StandardAutoscaler:
     def request_resources(self, resources):
         logger.info(
             "StandardAutoscaler: resource_requests={}".format(resources))
-        if isinstance(resources, list):
+        if resources == TRIM_NODES_COMMAND:
+            print("TRIM NODES COMMAND")
+        elif isinstance(resources, list):
             self.resource_demand_vector = resources
         else:
             for resource, count in resources.items():
@@ -449,33 +449,6 @@ class StandardAutoscaler:
             len(nodes)))
 
 
-# Note: this is an (experimental) user-facing API, do not move.
-def request_resources(num_cpus=None, num_gpus=None, bundles=None):
-    """Remotely request some CPU or GPU resources from the autoscaler.
-
-    This function is to be called e.g. on a node before submitting a bunch of
-    ray.remote calls to ensure that resources rapidly become available.
-
-    In the future this could be extended to do GPU cores or other custom
-    resources.
-
-    This function is non blocking.
-
-    Args:
-        num_cpus: int -- the number of CPU cores to request
-        num_gpus: int -- the number of GPUs to request (Not implemented)
-        bundles: List[dict] -- list of resource bundles (Experimental)
-    """
-    if num_gpus is not None:
-        raise NotImplementedError(
-            "GPU resource is not yet supported through request_resources")
-    r = services.create_redis_client(
-        global_worker.node.redis_address,
-        password=global_worker.node.redis_password)
-    if num_cpus is not None and num_cpus > 0:
-        r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
-                  json.dumps({
-                      "CPU": num_cpus
-                  }))
-    if bundles:
-        r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(bundles))
+def request_resources(num_cpus=None, num_gpus=None):
+    raise DeprecationWarning(
+        "Please use ray.autoscaler.commands.request_resources instead.")

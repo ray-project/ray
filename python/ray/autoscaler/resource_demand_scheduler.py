@@ -69,6 +69,7 @@ class ResourceDemandScheduler:
         return instances
 
 
+# TODO(ekl) we could use ortools to minimize cost here instead.
 def get_instances_for(instance_types: Dict[str, dict],
                       existing_instances: Dict[str, int], max_to_add: int,
                       resources: List[dict]) -> List[Tuple[str, int]]:
