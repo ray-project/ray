@@ -85,7 +85,6 @@ if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
 build --color=yes
 build --curses=no
 build --disk_cache="$(test "${OSTYPE}" = msys || echo ~/ray-bazel-cache)"
-build --progress_report_interval=60
 # Use ray google cloud cache
 build --remote_cache="https://storage.googleapis.com/ray-bazel-cache"
 build --show_progress_rate_limit=15
