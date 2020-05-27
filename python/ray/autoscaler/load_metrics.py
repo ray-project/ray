@@ -79,6 +79,15 @@ class LoadMetrics:
     def num_workers_connected(self):
         return self._info()["NumNodesConnected"]
 
+    def get_node_resources(self):
+        """Return a list of node resources (static resource sizes.
+
+        Example:
+            >>> metrics.get_node_resources()
+            [{"CPU": 1}, {"CPU": 4, "GPU": 8}]  # for two different nodes
+        """
+        return self.static_resources_by_ip.values()
+
     def get_resource_usage(self):
         num_nodes = len(self.static_resources_by_ip)
         nodes_used = 0.0

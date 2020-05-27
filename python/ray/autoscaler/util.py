@@ -1,3 +1,4 @@
+import collections
 import os
 import json
 import threading
@@ -16,24 +17,24 @@ RAY_SCHEMA_PATH = os.path.join(
 
 class ConcurrentCounter:
     def __init__(self):
-        self._value = 0
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self._counter = collections.defaultdict(int)
 
-    def inc(self, count):
+    def inc(self, key, count):
         with self._lock:
-            self._value += count
-            return self._value
+            self._counter[key] += count
+            return self.value
 
-    def dec(self, count):
+    def dec(self, key, count):
         with self._lock:
-            assert self._value >= count, "counter cannot go negative"
-            self._value -= count
-            return self._value
+            self._counter[key] -= count
+            assert self._counter[key] >= 0, "counter cannot go negative"
+            return self.value
 
     @property
     def value(self):
         with self._lock:
-            return self._value
+            return sum(self._counter.values())
 
 
 def validate_config(config):

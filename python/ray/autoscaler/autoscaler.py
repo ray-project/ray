@@ -66,7 +66,7 @@ class StandardAutoscaler:
         if "available_instance_types" in self.config:
             self.instance_types = self.config["available_instance_types"]
             self.resource_demand_scheduler = ResourceDemandScheduler(
-                self.provider, self.load_metrics, self.instance_types,
+                self.load_metrics, self.instance_types,
                 self.config["max_workers"])
         else:
             self.instance_types = None
@@ -88,7 +88,7 @@ class StandardAutoscaler:
 
         # Node launchers
         self.launch_queue = queue.Queue()
-        self.num_launches_pending = ConcurrentCounter()
+        self.pending_launches = ConcurrentCounter()
         max_batches = math.ceil(
             max_concurrent_launches / float(max_launch_batch))
         for i in range(int(max_batches)):
@@ -96,7 +96,7 @@ class StandardAutoscaler:
                 provider=self.provider,
                 queue=self.launch_queue,
                 index=i,
-                pending=self.num_launches_pending)
+                pending=self.pending_launches)
             node_launcher.daemon = True
             node_launcher.start()
 
@@ -111,7 +111,9 @@ class StandardAutoscaler:
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
 
+        # Aggregate resources the user is requesting of the cluster.
         self.resource_requests = defaultdict(int)
+        # List of resource bundles the user is requesting of the cluster.
         self.resource_demand_vector = None
 
         logger.info("StandardAutoscaler: {}".format(self.config))
@@ -185,16 +187,18 @@ class StandardAutoscaler:
             self.log_info_string(nodes, target_workers)
 
         # First let the resource demand scheduler launch nodes, if enabled.
-        if self.resource_demand_scheduler:
+        if self.resource_demand_scheduler and self.resource_demand_vector:
             instances = (
                 self.resource_demand_scheduler.get_instances_to_launch(
-                    nodes, self.resource_demand_vector))
+                    nodes,
+                    self.pending_launches.breakdown(),
+                    self.resource_demand_vector))
             # TODO(ekl) also enforce max launch concurrency here?
             for instance_type, count in instances:
                 self.launch_new_node(count, instance_type=instance_type)
 
         # Launch additional nodes of the default type, if still needed.
-        num_pending = self.num_launches_pending.value
+        num_pending = self.pending_launches.value
         num_workers = len(nodes) + num_pending
         if num_workers < target_workers:
             max_allowed = min(self.max_launch_batch,
@@ -397,7 +401,11 @@ class StandardAutoscaler:
     def launch_new_node(self, count, instance_type):
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
-        self.num_launches_pending.inc(count)
+        # Try to fill in the default instance type so we can tag it properly.
+        if not instance_type:
+            instance_type = self.provider.get_instance_type(
+                self.config["worker_nodes"])
+        self.pending_launches.inc(instance_type, count)
         config = copy.deepcopy(self.config)
         self.launch_queue.put((config, count, instance_type))
 
@@ -412,8 +420,8 @@ class StandardAutoscaler:
 
     def info_string(self, nodes, target):
         suffix = ""
-        if self.num_launches_pending:
-            suffix += " ({} pending)".format(self.num_launches_pending.value)
+        if self.pending_launches:
+            suffix += " ({} pending)".format(self.pending_launches.value)
         if self.updaters:
             suffix += " ({} updating)".format(len(self.updaters))
         if self.num_failed_updates:

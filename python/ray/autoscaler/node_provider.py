@@ -212,9 +212,15 @@ class NodeProvider:
     def create_node_of_type(self, node_config, tags, instance_type, count):
         """Creates a number of nodes with a given instance type.
 
-        This is an optional method only required if implementing "auto"
-        instance types for worker nodes. This method should rewrite the given
-        node config to set the specified instance type.
+        This is an optional method only required if using the resource
+        demand scheduler.
         """
         assert instance_type is not None
         raise NotImplementedError
+
+    def get_instance_type(self, node_config):
+        """Returns the instance type of this node config.
+        
+        This is an optional method only required if using the resource
+        demand scheduler."""
+        return None

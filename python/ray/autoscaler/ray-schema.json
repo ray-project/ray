@@ -245,10 +245,10 @@
                 ".*": {
                     "type": "object",
                     "properties": {
-                       "max_count": {"type": "number"},
+                       "max_workers": {"type": "integer"},
                        "resources": {
                            "type": "object",
-                           ".*": {"type": "integer"}
+                           ".*": {"type": "number"}
                        }
                     },
                     "additionalProperties": false
