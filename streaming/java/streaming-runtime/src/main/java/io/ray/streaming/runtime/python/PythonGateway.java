@@ -162,8 +162,8 @@ public class PythonGateway {
             return true;
           } else if (paramsTypes.length == m.getParameterTypes().length) {
             for (int i = 0; i < m.getParameterTypes().length; i++) {
-              Class<?> pType = m.getParameterTypes()[i];
-              if (!pType.isAssignableFrom(paramsTypes[i])) {
+              Class<?> parameterType = m.getParameterTypes()[i];
+              if (!parameterType.isAssignableFrom(paramsTypes[i])) {
                 return false;
               }
             }
@@ -193,7 +193,7 @@ public class PythonGateway {
   }
 
   private static boolean isBasic(Object value) {
-    return value == null || (value instanceof Boolean) ||(value instanceof Number) ||
+    return value == null || (value instanceof Boolean) || (value instanceof Number) ||
         (value instanceof String) || (value instanceof byte[]);
   }
 
