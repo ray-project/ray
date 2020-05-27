@@ -44,9 +44,6 @@ public class RunManager {
 
   private static final int KILL_PROCESS_WAIT_TIMEOUT_SECONDS = 1;
 
-  // Configure file for workers.
-  private File workerConfigFile;
-
   public RunManager(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
     processes = new ArrayList<>();
@@ -356,7 +353,7 @@ public class RunManager {
 
     // Write current config to a file, and set the file path as Java worker's config file.
     // This allows users to set worker config by setting driver's system properties.
-    workerConfigFile = new File(rayConfig.sessionDir + "/java_worker.conf");
+    File workerConfigFile = new File(rayConfig.sessionDir + "/java_worker.conf");
     FileUtils.write(workerConfigFile, rayConfig.render(), Charset.defaultCharset());
     cmd.add("-Dray.config-file=" + workerConfigFile.getAbsolutePath());
 
