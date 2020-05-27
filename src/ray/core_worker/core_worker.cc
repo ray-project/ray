@@ -426,6 +426,18 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     };
   }
 
+  std::function<Status(const PlacementGroupSpecification &, const gcs::StatusCallback &)>
+    placement_group_create_callback = nullptr;
+  
+  if (RayConfig::instance().gcs_service_enabled() &&
+      RayConfig::instance().gcs_placement_group_service_enabled()) {
+        placement_group_create_callback = [this](const PlacementGroupSpecification &placement_group_spec,
+                                                 const gcs::StatusCallback &callback){
+        return gcs_client_->PlacementGroups().AsyncCreatePlacementGroup(placement_group_spec, callback);
+
+    };
+  }
+
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_,
                                              task_manager_));
@@ -1158,6 +1170,26 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   }
   return status;
 }
+
+Status CoreWorker::CreatePlacementGroup(const RayFunction &function,
+                    const PlacementGroupCreationOptions &placement_group_creation_options,
+                    PlacementGroupID *return_placement_group_id){
+  const PlacementGroupID placement_group_id = 
+  PlacementGroupID :: Of(worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
+                  worker_context_.GetNextTaskIndex());
+  PlacementGroupSpecBuilder builder;
+  builder.SetPlacementGroupSpec(placement_group_id, placement_group_creation_options.max_restarts,
+                                placement_group_creation_options.name,placement_group_creation_options.bundles,
+                                placement_group_creation_options.strategy);
+  PlacementGroupSpecification placement_group_spec = builder.Build();
+  *return_placement_group_id = placement_group_id;
+  
+  Status status;
+
+  return status;
+
+}
+
 
 Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
                                    const std::vector<TaskArg> &args,

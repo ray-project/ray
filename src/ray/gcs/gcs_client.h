@@ -135,6 +135,13 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *worker_accessor_;
   }
 
+  /// Get the sub-interface for accessing worker information in GCS.
+  /// This function is thread safe.
+  PlacementGroupInfoAccessor &PlacementGroups() {
+    RAY_CHECK(placement_group_accessor_ != nullptr);
+    return *placement_group_accessor_;
+  }
+
  protected:
   /// Constructor of GcsClient.
   ///
@@ -154,6 +161,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<ErrorInfoAccessor> error_accessor_;
   std::unique_ptr<StatsInfoAccessor> stats_accessor_;
   std::unique_ptr<WorkerInfoAccessor> worker_accessor_;
+  std::unique_ptr<PlacementGroupInfoAccessor> placement_group_accessor_;
 };
 
 }  // namespace gcs

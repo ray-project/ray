@@ -180,6 +180,46 @@ class ActorID : public BaseID<ActorID> {
   uint8_t id_[kLength];
 };
 
+class PlacementGroupID : public BaseID<PlacementGroupID> {
+ private:
+  static constexpr size_t kUniqueBytesLength = 4;
+
+ public:
+  /// Length of `PlacementGroupID` in bytes.
+  static constexpr size_t kLength = kUniqueBytesLength + JobID::kLength;
+
+  /// Size of `PlacementGroupID` in bytes.
+  ///
+  /// \return Size of `PlacementGroupID` in bytes.
+  static size_t Size() { return kLength; }
+
+  /// Creates a `PlacementGroupID` by hashing the given information.
+  ///
+  /// \param job_id The job id to which this placement group belongs.
+  /// \param parent_task_id The id of the task which created this placement group.
+  /// \param parent_task_counter The counter of the parent task.
+  ///
+  /// \return The random `ActorID`.
+  static PlacementGroupID Of(const JobID &job_id, const TaskID &parent_task_id,
+                    const size_t parent_task_counter);
+    /// Constructor of `PlacementGroupID`.
+  PlacementGroupID() : BaseID() {}
+
+  /// Get the job id to which this placement group belongs.
+  ///
+  /// \return The job id to which this placement group belongs.
+  JobID JobId() const;
+
+  MSGPACK_DEFINE(id_);
+
+private:
+  uint8_t id_[kLength];
+
+  // TODO(AlisaWu): fill the class of PlacementGroupID.
+
+
+};
+
 class TaskID : public BaseID<TaskID> {
  private:
   static constexpr size_t kUniqueBytesLength = 8;

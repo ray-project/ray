@@ -55,6 +55,11 @@ message ActorHandle {
   int64 max_task_retries = 9;
 }
 
+message PlacementGroupHandle {
+    // ID of the placement group.
+    bytes placement_group_id = 1;
+}
+
 message AssignTaskRequest {
   // The ID of the worker this message is intended for. This is used to
   // ensure that workers don't try to execute tasks assigned to workers

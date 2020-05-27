@@ -202,6 +202,15 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
   return h;
 }
 
+PlacementGroupID PlacementGroupID::Of(const JobID &job_id, const TaskID &parent_task_id,
+                    const size_t parent_task_counter) {
+  auto data = GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter,
+                                  PlacementGroupID::kUniqueBytesLength);
+  std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
+  RAY_CHECK(data.size() == kLength);
+  return PlacementGroupID::FromBinary(data);
+}
+
 ActorID ActorID::Of(const JobID &job_id, const TaskID &parent_task_id,
                     const size_t parent_task_counter) {
   auto data = GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter,
