@@ -35,18 +35,27 @@ class ResourceDemandScheduler:
 
         node_resources = []
         instance_type_counts = collections.defaultdict(int)
-        instance_type_counts.update(pending_nodes)
+
+        def add_instance(instance_type):
+            if instance_type not in self.instance_types:
+                raise RuntimeError(
+                    "Missing entry for instance_type {} in "
+                    "available_instance_types config: {}".format(
+                        instance_type, self.instance_types))
+            node_resources.append(
+                self.instance_types[instance_type]["resources"])
+            instance_type_counts[instance_type] += 1
+
         for node_id in nodes:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_INSTANCE_TYPE in tags:
                 instance_type = tags[TAG_RAY_INSTANCE_TYPE]
-                if instance_type not in self.instance_types:
-                    raise RuntimeError(
-                        "Missing entry for instance_type {} in "
-                        "available_instance_types config: {}".format(
-                            instance_type, self.instance_types))
-                node_resources.append(self.instance_types[instance_type]["resources"])
-                instance_type_counts[instance_type] += 1
+                add_instance(instance_type)
+
+        for instance_type, count in pending_nodes.items():
+            for _ in range(count):
+                add_instance(instance_type)
+
         logger.info("Cluster resources: {}".format(node_resources))
         logger.info("Instance counts: {}".format(instance_type_counts))
 
