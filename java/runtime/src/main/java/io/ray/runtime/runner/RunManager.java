@@ -109,11 +109,6 @@ public class RunManager {
       Files.createSymbolicLink(
           Paths.get(sessionLatest.getAbsolutePath()),
           Paths.get(rayConfig.sessionDir));
-
-      // Write current config to a file, and set the file path as Java worker's classpath.
-      // This allows users to set worker config by setting driver's system properties.
-      workerConfigFile = new File(rayConfig.sessionDir + "/" + RayConfig.DEFAULT_CONFIG_FILE);
-      FileUtils.write(workerConfigFile, rayConfig.render(), Charset.defaultCharset());
     } catch (IOException e) {
       LOGGER.error("Couldn't create temp directories.", e);
       throw new RuntimeException(e);
@@ -302,7 +297,7 @@ public class RunManager {
     return ip + ":" + port;
   }
 
-  private void startRaylet() {
+  private void startRaylet() throws IOException {
     int hardwareConcurrency = Runtime.getRuntime().availableProcessors();
     int maximumStartupConcurrency = Math.max(1,
         Math.min(rayConfig.resources.getOrDefault("CPU", 0.0).intValue(), hardwareConcurrency));
@@ -347,7 +342,7 @@ public class RunManager {
     return stream.filter(s -> !s.contains(" ")).collect(Collectors.joining(":"));
   }
 
-  private String buildWorkerCommand() {
+  private String buildWorkerCommand() throws IOException {
     List<String> cmd = new ArrayList<>();
     cmd.add("java");
     cmd.add("-classpath");
@@ -357,8 +352,13 @@ public class RunManager {
         rayConfig.classpath.stream(),
         Stream.of(System.getProperty("java.class.path").split(":"))
     ));
-    classpath = workerConfigFile.getAbsolutePath() + ":" + classpath;
     cmd.add(classpath);
+
+    // Write current config to a file, and set the file path as Java worker's config file.
+    // This allows users to set worker config by setting driver's system properties.
+    workerConfigFile = new File(rayConfig.sessionDir + "/java_worker.conf");
+    FileUtils.write(workerConfigFile, rayConfig.render(), Charset.defaultCharset());
+    cmd.add("-Dray.config-file=" + workerConfigFile.getAbsolutePath());
 
     cmd.add("RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER");
 

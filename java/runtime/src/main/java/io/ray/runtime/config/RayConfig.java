@@ -8,7 +8,6 @@ import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigRenderOptions;
 import com.typesafe.config.ConfigValue;
-import com.typesafe.config.ConfigValueFactory;
 import io.ray.api.id.JobId;
 import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.util.NetworkUtil;
@@ -222,8 +221,6 @@ public class RayConfig {
     Preconditions.checkNotNull(redisAddress);
     Preconditions.checkState(this.redisAddress == null, "Redis address was already set");
 
-    this.config = config.withValue("ray.redis.address",
-        ConfigValueFactory.fromAnyRef(redisAddress));
     this.redisAddress = redisAddress;
     String[] ipAndPort = redisAddress.split(":");
     Preconditions.checkArgument(ipAndPort.length == 2, "Invalid redis address.");
@@ -257,8 +254,6 @@ public class RayConfig {
 
   public void setSessionDir(String sessionDir) {
     this.sessionDir = sessionDir;
-    this.config = config.withValue("ray.session-dir",
-        ConfigValueFactory.fromAnyRef(sessionDir));
   }
 
   public String getSessionDir() {
@@ -273,7 +268,17 @@ public class RayConfig {
    * Renders the config value as a HOCON string.
    */
   public String render() {
-    return config.root().render(ConfigRenderOptions.concise());
+    // These items might be dynamically generated or mutated at runtime.
+    // Explicitly include them.
+    Map<String, Object> dynamic = new HashMap<>();
+    dynamic.put("ray.session-dir", sessionDir);
+    dynamic.put("ray.raylet.socket-name", rayletSocketName);
+    dynamic.put("ray.object-store.socket-name", objectStoreSocketName);
+    dynamic.put("ray.raylet.node-manager-port", nodeManagerPort);
+    dynamic.put("ray.redis.address", redisAddress);
+    dynamic.put("ray.job.resource-path", jobResourcePath);
+    Config toRender = ConfigFactory.parseMap(dynamic).withFallback(config);
+    return toRender.root().render(ConfigRenderOptions.concise());
   }
 
   private void updateSessionDir() {
@@ -360,14 +365,14 @@ public class RayConfig {
   public static RayConfig create() {
     ConfigFactory.invalidateCaches();
     Config config = ConfigFactory.systemProperties();
-    String configPath = System.getProperty("ray.config");
+    String configPath = System.getProperty("ray.config-file");
     if (Strings.isNullOrEmpty(configPath)) {
       config = config.withFallback(ConfigFactory.load(CUSTOM_CONFIG_FILE));
     } else {
       config = config.withFallback(ConfigFactory.parseFile(new File(configPath)));
     }
     config = config.withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE));
-    return new RayConfig(config);
+    return new RayConfig(config.withOnlyPath("ray"));
   }
 
 }
