@@ -113,8 +113,7 @@ public class RunManager {
       // Write current config to a file, and set the file path as Java worker's classpath.
       // This allows users to set worker config by setting driver's system properties.
       workerConfigFile = new File(rayConfig.sessionDir + "/" + RayConfig.DEFAULT_CONFIG_FILE);
-      FileUtils.write(workerConfigFile, rayConfig.getInternalConfig().getObject("ray").render(),
-          Charset.defaultCharset());
+      FileUtils.write(workerConfigFile, rayConfig.render(), Charset.defaultCharset());
     } catch (IOException e) {
       LOGGER.error("Couldn't create temp directories.", e);
       throw new RuntimeException(e);

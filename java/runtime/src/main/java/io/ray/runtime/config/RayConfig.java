@@ -6,6 +6,7 @@ import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.ConfigRenderOptions;
 import com.typesafe.config.ConfigValue;
 import io.ray.api.id.JobId;
 import io.ray.runtime.generated.Common.WorkerType;
@@ -261,6 +262,13 @@ public class RayConfig {
 
   public Config getInternalConfig() {
     return config;
+  }
+
+  /**
+   * Renders the config value as a HOCON string.
+   */
+  public String render() {
+    return config.root().render(ConfigRenderOptions.concise());
   }
 
   private void updateSessionDir() {
