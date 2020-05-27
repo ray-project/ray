@@ -22,12 +22,11 @@ class ResourceDemandScheduler:
         node_resources, instance_type_counts = self.calculate_node_resources(
             nodes, pending_nodes)
 
-        out = "Worker instance types:\n"
+        out = "Worker instance types:"
         for instance_type, count in instance_type_counts.items():
-            out += " - {}: {}".format(instance_type, count)
-            if instance_type in pending_nodes:
+            out += "\n - {}: {}".format(instance_type, count)
+            if pending_nodes.get(instance_type):
                 out += " ({} pending)".format(pending_nodes[instance_type])
-            out += "\n"
 
         return out
 
