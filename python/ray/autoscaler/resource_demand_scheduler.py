@@ -82,7 +82,8 @@ class ResourceDemandScheduler:
         logger.info("Instance counts: {}".format(instance_type_counts))
 
         unfulfilled = get_bin_pack_residual(node_resources, resource_demands)
-        logger.info("Unfulfilled resources: {}".format(unfulfilled))
+        logger.info("Resource demands: {}".format(resource_demands))
+        logger.info("Unfulfilled demands: {}".format(unfulfilled))
 
         instances = get_instances_for(
             self.instance_types, instance_type_counts,
