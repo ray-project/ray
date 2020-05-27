@@ -444,7 +444,6 @@ def request_resources(num_cpus=None, num_gpus=None, bundles=None):
     r = services.create_redis_client(
         global_worker.node.redis_address,
         password=global_worker.node.redis_password)
-    assert isinstance(num_cpus, int)
     if num_cpus > 0:
         r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
                   json.dumps({
