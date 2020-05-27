@@ -100,7 +100,6 @@ const MemoryRowGroup = (props: Props & WithStyles<typeof styles>) => {
       )}
     </React.Fragment>
   );
-}
-
+};
 
 export default withStyles(styles)(MemoryRowGroup);
