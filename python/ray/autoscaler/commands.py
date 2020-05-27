@@ -49,9 +49,11 @@ def debug_status():
     error = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
     if not status:
         status = "No cluster status."
+    else:
+        status = status.decode("utf-8")
     if error:
         status += "\n"
-        status += error
+        status += error.decode("utf-8")
     status += "\n---"
     return status
 

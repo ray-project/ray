@@ -414,7 +414,7 @@ class StandardAutoscaler:
             tag_filters={TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER})
 
     def log_info_string(self, nodes, target):
-        tmp = "== Cluster status ==\n"
+        tmp = "Cluster status: "
         tmp += self.info_string(nodes, target)
         tmp += "\n"
         tmp += self.load_metrics.info_string()
