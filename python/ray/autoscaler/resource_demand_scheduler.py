@@ -87,7 +87,6 @@ def get_instances_for(instance_types: Dict[str, dict],
         residual = get_bin_pack_residual(allocated_resources[-1:], resources)
         assert len(residual) < len(resources), (resources, residual)
         resources = residual
-        print("RES", best_instance_type, residual, utilization_scores)
 
     return list(instances_to_add.items())
 
@@ -139,7 +138,6 @@ def get_bin_pack_residual(node_resources: List[dict],
         for node in nodes:
             if _fits(node, demand):
                 _inplace_subtract(node, demand)
-                print("Subtract", node, demand)
                 found = True
                 break
         if not found:

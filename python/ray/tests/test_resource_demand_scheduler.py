@@ -97,6 +97,37 @@ def test_get_instances_packing_heuristic():
         [("m4.16xlarge", 1), ("p2.8xlarge", 1)]
 
 
+def test_get_instances_respects_max_limit():
+    types = {
+        "m4.large": {
+            "resources": {
+                "CPU": 2
+            },
+            "max_workers": 10,
+        },
+        "gpu": {
+            "resources": {
+                "GPU": 1
+            },
+            "max_workers": 99999,
+        },
+    }
+    assert get_instances_for(types, {}, 2, [{"CPU": 1}] * 10) == \
+        [("m4.large", 2)]
+    assert get_instances_for(types, {"m4.large": 9999}, 9999, [{
+        "CPU": 1
+    }] * 10) == []
+    assert get_instances_for(types, {"m4.large": 0}, 9999, [{
+        "CPU": 1
+    }] * 10) == [("m4.large", 5)]
+    assert get_instances_for(types, {"m4.large": 7}, 4, [{
+        "CPU": 1
+    }] * 10) == [("m4.large", 3)]
+    assert get_instances_for(types, {"m4.large": 7}, 2, [{
+        "CPU": 1
+    }] * 10) == [("m4.large", 2)]
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
