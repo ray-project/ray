@@ -1,9 +1,10 @@
 from ray.streaming import function
 from ray.streaming import operator
+from ray.streaming.operator import OperatorType
 from ray.streaming.runtime import gateway_client
 
 
-def test_create_operator():
+def test_create_operator_with_func():
     map_func = function.SimpleMapFunction(lambda x: x)
     map_operator = operator.create_operator_with_func(map_func)
     assert type(map_operator) is operator.MapOperator
@@ -15,7 +16,8 @@ class MapFunc(function.MapFunction):
 
 
 class TestOperator(operator.StreamOperator):
-    pass
+    def operator_type(self) -> OperatorType:
+        return OperatorType.ONE_INPUT
 
 
 def test_load_operator():
