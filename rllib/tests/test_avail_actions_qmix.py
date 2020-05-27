@@ -4,8 +4,8 @@ import unittest
 
 import ray
 from ray.tune import register_env
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.agents.qmix import QMixTrainer
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 
 class AvailActionsTestEnv(MultiAgentEnv):
