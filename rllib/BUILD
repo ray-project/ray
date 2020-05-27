@@ -356,7 +356,7 @@ py_test(
 py_test(
     name = "test_a2c",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/a3c/tests/test_a2c.py"]
 )
 
@@ -1259,7 +1259,7 @@ py_test(
     name = "test_rollout",
     main = "tests/test_rollout.py",
     tags = ["tests_dir", "tests_dir_R"],
-    size = "large",
+    size = "enormous",
     data = ["train.py", "rollout.py"],
     srcs = ["tests/test_rollout.py"]
 )
