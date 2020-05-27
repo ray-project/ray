@@ -186,7 +186,7 @@ TEST_F(GlobalStateAccessorTest, TestActorTable) {
   ASSERT_EQ(global_state_->GetAllActorInfo().size(), actor_count);
 
   for (auto &actor_id : actor_ids) {
-    ASSERT_TRUE(!global_state_->GetActorInfo(actor_id).empty());
+    ASSERT_TRUE(global_state_->GetActorInfo(actor_id));
   }
 }
 

@@ -51,5 +51,5 @@ cdef class GlobalStateAccessor:
     def get_actor_info(self, actor_id):
         actor_info = self.inner.get().GetActorInfo(CActorID.FromBinary(actor_id.binary()))
         if actor_info:
-            return c_string(object_info.get().data(), object_info.get().size())
+            return c_string(actor_info.get().data(), actor_info.get().size())
         return None

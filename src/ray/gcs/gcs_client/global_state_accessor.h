@@ -79,6 +79,21 @@ class GlobalStateAccessor {
   /// protobuf function.
   std::unique_ptr<std::string> GetObjectInfo(const ObjectID &object_id);
 
+  /// Get information of all actors from GCS Service.
+  ///
+  /// \return All actor info. To support multi-language, we serialize each ActorTableData
+  /// and return the serialized string. Where used, it needs to be deserialized with
+  /// protobuf function.
+  std::vector<std::string> GetAllActorInfo();
+
+  /// Get information of an actor from GCS Service.
+  ///
+  /// \param actor_id The ID of actor to look up in the GCS Service.
+  /// \return Actor info. To support multi-language, we serialize each ActorTableData and
+  /// return the serialized string. Where used, it needs to be deserialized with
+  /// protobuf function.
+  std::unique_ptr<std::string> GetActorInfo(const ActorID &actor_id);
+
  private:
   /// MultiItem tranformation helper in template style.
   ///
@@ -94,22 +109,6 @@ class GlobalStateAccessor {
     };
   }
 
-  /// Get information of all actors from GCS Service.
-  ///
-  /// \return All actor info. To support multi-language, we serialized each ActorTableData
-  /// and returned the serialized string. Where used, it needs to be deserialized with
-  /// protobuf function.
-  std::vector<std::string> GetAllActorInfo();
-
-  /// Get actor specification from GCS Service.
-  ///
-  /// \param actor_id The ID of actor to look up in the GCS Service.
-  /// \return Actor info. To support multi-language, we serialized each ActorTableData and
-  /// returned the serialized string. Where used, it needs to be deserialized with
-  /// protobuf function.
-  std::string GetActorInfo(const ActorID &actor_id);
-
- private:
   /// Whether this client is connected to gcs server.
   bool is_connected_{false};
 
