@@ -21,7 +21,12 @@
 
 namespace ray {
 
-class GlobalStateAccessorTest : public RedisServiceManagerForTest {
+class GlobalStateAccessorTest : public ::testing::Test {
+ public:
+  GlobalStateAccessorTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
+
+  virtual ~GlobalStateAccessorTest() { TestSetupUtil::ShutDownRedisServers(); }
+
  protected:
   void SetUp() override {
     config.grpc_server_port = 0;
@@ -29,7 +34,7 @@ class GlobalStateAccessorTest : public RedisServiceManagerForTest {
     config.grpc_server_thread_num = 1;
     config.redis_address = "127.0.0.1";
     config.is_test = true;
-    config.redis_port = REDIS_SERVER_PORTS.front();
+    config.redis_port = TEST_REDIS_SERVER_PORTS.front();
     gcs_server_.reset(new gcs::GcsServer(config));
     io_service_.reset(new boost::asio::io_service());
 
@@ -67,7 +72,7 @@ class GlobalStateAccessorTest : public RedisServiceManagerForTest {
     gcs_client_->Disconnect();
     global_state_->Disconnect();
     global_state_.reset();
-    FlushAll();
+    TestSetupUtil::FlushAllRedisServers();
   }
 
   bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms) {
@@ -103,6 +108,28 @@ TEST_F(GlobalStateAccessorTest, TestJobTable) {
     WaitReady(promise.get_future(), timeout_ms_);
   }
   ASSERT_EQ(global_state_->GetAllJobInfo().size(), job_count);
+}
+
+TEST_F(GlobalStateAccessorTest, TestNodeTable) {
+  int node_count = 100;
+  ASSERT_EQ(global_state_->GetAllNodeInfo().size(), 0);
+  // It's useful to check if index value will be marked as address suffix.
+  for (int index = 0; index < node_count; ++index) {
+    auto node_table_data =
+        Mocker::GenNodeInfo(index, std::string("127.0.0.") + std::to_string(index));
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
+        *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+    WaitReady(promise.get_future(), timeout_ms_);
+  }
+  auto node_table = global_state_->GetAllNodeInfo();
+  ASSERT_EQ(node_table.size(), node_count);
+  for (int index = 0; index < node_count; ++index) {
+    rpc::GcsNodeInfo node_data;
+    node_data.ParseFromString(node_table[index]);
+    ASSERT_EQ(node_data.node_manager_address(),
+              std::string("127.0.0.") + std::to_string(node_data.node_manager_port()));
+  }
 }
 
 TEST_F(GlobalStateAccessorTest, TestProfileTable) {
@@ -147,8 +174,8 @@ TEST_F(GlobalStateAccessorTest, TestObjectTable) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

@@ -1,0 +1,6 @@
+pendulum-impala-tf:
+    env: Pendulum-v0
+    run: IMPALA
+    stop:
+        episode_reward_mean: -700
+        timesteps_total: 500000
