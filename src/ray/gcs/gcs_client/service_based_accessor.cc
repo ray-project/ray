@@ -1151,5 +1151,21 @@ Status ServiceBasedWorkerInfoAccessor::AsyncRegisterWorker(
   return Status::OK();
 }
 
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
+    const ray::PlacementGroupSpecification &placement_group_spec, const ray::gcs::StatusCallback &callback) {
+  RAY_CHECK(callback);
+  rpc::CreatePlacementGroupRequest request;
+  request.mutable_placement_group_spec()->CopyFrom(placement_group_spec.GetMessage());
+  client_impl_->GetGcsRpcClient().CreatePlacementGroup(
+      request, [callback](const Status &, const rpc::CreatePlacementGroupReply &reply) {
+        auto status =
+            reply.status().code() == (int)StatusCode::OK
+                ? Status()
+                : Status(StatusCode(reply.status().code()), reply.status().message());
+        callback(status);
+      });
+  return Status::OK();
+}
+
 }  // namespace gcs
 }  // namespace ray

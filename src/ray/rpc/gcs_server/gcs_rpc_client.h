@@ -202,6 +202,10 @@ class GcsRpcClient {
   /// Register a worker to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, RegisterWorker,
                              worker_info_grpc_client_, )
+          
+  /// Create placement group via GCS Service.
+  VOID_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, CreatePlacementGroup, 
+                            placement_group_info_grpc_client_, )
 
  private:
   void Init(const std::string &address, const int port,
@@ -222,6 +226,8 @@ class GcsRpcClient {
         new GrpcClient<ErrorInfoGcsService>(address, port, client_call_manager));
     worker_info_grpc_client_ = std::unique_ptr<GrpcClient<WorkerInfoGcsService>>(
         new GrpcClient<WorkerInfoGcsService>(address, port, client_call_manager));
+    placement_group_info_grpc_client_ = std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>(
+        new GrpcClient<PlacementGroupInfoGcsService>(address, port, client_call_manager));
   }
 
   void Reconnect() {
@@ -243,6 +249,7 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<StatsGcsService>> stats_grpc_client_;
   std::unique_ptr<GrpcClient<ErrorInfoGcsService>> error_info_grpc_client_;
   std::unique_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
+  std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>> placement_group_info_grpc_client_;
 };
 
 }  // namespace rpc
