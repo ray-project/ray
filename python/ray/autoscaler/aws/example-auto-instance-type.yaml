@@ -11,6 +11,22 @@ provider:
     region: us-west-2
     availability_zone: us-west-2a
 
+# Tell the autoscaler the allowed node types and the resources they provide.
+# Setting this configuration enables the Tune resource demand scheduler.
+available_instance_types:
+    m4.xlarge:
+        resources: {"CPU": 4}
+        max_workers: 10
+    m4.4xlarge:
+        resources: {"CPU": 16}
+        max_workers: 10
+    p2.xlarge:
+        resources: {"CPU": 4, "GPU": 1}
+        max_workers: 4
+    p2.8xlarge:
+        resources: {"CPU": 32, "GPU": 8}
+        max_workers: 2
+
 # Configure the cluster for very conservative auto-scaling. This is fine
 # since Tune will manage scale-up separately.
 target_utilization_fraction: 1.0
@@ -31,19 +47,3 @@ head_node:
 worker_nodes:
     InstanceType: m4.xlarge
     ImageId: latest_dlami
-
-# Tell the autoscaler the allowed node types and the resources they provide.
-# Setting this configuration enables the Tune resource demand scheduler.
-available_instance_types:
-    m4.xlarge:
-        resources: {"CPU": 4}
-        max_workers: 10
-    m4.4xlarge:
-        resources: {"CPU": 16}
-        max_workers: 10
-    p2.xlarge:
-        resources: {"CPU": 4, "GPU": 1}
-        max_workers: 4
-    p2.8xlarge:
-        resources: {"CPU": 32, "GPU": 8}
-        max_workers: 2
