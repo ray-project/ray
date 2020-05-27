@@ -54,7 +54,6 @@ def debug_status():
     if error:
         status += "\n"
         status += error.decode("utf-8")
-    status += "\n---"
     return status
 
 
