@@ -16,7 +16,6 @@ from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  STATUS_UP_TO_DATE, NODE_TYPE_WORKER)
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.node_launcher import NodeLauncher
-from ray.autoscaler.resource_demand_scheduler import ResourceDemandScheduler
 from ray.autoscaler.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
@@ -172,16 +171,6 @@ class StandardAutoscaler:
             self.provider.terminate_nodes(nodes_to_terminate)
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
-
-        # First let the resource demand scheduler launch nodes, if enabled.
-        if self.resource_demand_scheduler and self.resource_demand_vector:
-            instances = (
-                self.resource_demand_scheduler.get_instances_to_launch(
-                    nodes, self.pending_launches.breakdown(),
-                    self.resource_demand_vector))
-            # TODO(ekl) also enforce max launch concurrency here?
-            for instance_type, count in instances:
-                self.launch_new_node(count, instance_type=instance_type)
 
         # Launch additional nodes of the default type, if still needed.
         num_pending = self.pending_launches.value
