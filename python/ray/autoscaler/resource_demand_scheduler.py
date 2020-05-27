@@ -2,7 +2,7 @@ import copy
 import numpy as np
 import logging
 import collections
-from typing import List, Dict
+from typing import List, Dict, Tuple
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_INSTANCE_TYPE
@@ -57,47 +57,56 @@ class ResourceDemandScheduler:
         return instances
 
 
-def get_instances_for(self, instance_types: Dict[str, dict],
+def get_instances_for(instance_types: Dict[str, dict],
                       existing_instances: Dict[str, int], max_to_add: int,
-                      resources: List[dict]) -> List[(str, int)]:
+                      resources: List[dict]) -> List[Tuple[str, int]]:
     instances_to_add = collections.defaultdict(int)
     allocated_resources = []
 
     while resources and sum(instances_to_add.values()) < max_to_add:
         utilization_scores = []
         for instance_type in instance_types:
-            if (existing_instances[instance_type] +
-                    instances_to_add[instance_type] >=
+            if (existing_instances.get(instance_type, 0) +
+                    instances_to_add.get(instance_type, 0) >=
                     instance_types[instance_type]["max_workers"]):
                 continue
             node_resources = instance_types[instance_type]["resources"]
-            utilization_scores.append((_utilization_score(
-                node_resources, resources), instance_type))
-        utilization_scores = sorted(utilization_scores, reverse=True)
+            score = _utilization_score(node_resources, resources)
+            if score is not None:
+                utilization_scores.append((score, instance_type))
 
         # Give up, no feasible node.
-        if utilization_scores[0] is None:
+        if not utilization_scores:
             break
 
+        utilization_scores = sorted(utilization_scores, reverse=True)
         best_instance_type = utilization_scores[0][1]
         instances_to_add[best_instance_type] += 1
         allocated_resources.append(
             instance_types[best_instance_type]["resources"])
-        residual = get_bin_pack_residual(allocated_resources, resources)
+        residual = get_bin_pack_residual(allocated_resources[-1:], resources)
         assert len(residual) < len(resources), (resources, residual)
         resources = residual
+        print("RES", best_instance_type, residual, utilization_scores)
 
     return list(instances_to_add.items())
 
 
 def _utilization_score(node_resources, resources):
-    if not _fits(node_resources, resources):
-        return None
+    remaining = copy.deepcopy(node_resources)
 
+    fittable = []
+    for r in resources:
+        if _fits(remaining, r):
+            fittable.append(r)
+            _inplace_subtract(remaining, r)
+    if not fittable:
+        return None
+    
     util_by_resources = []
-    for k, v in node_resources:
-        util = resources[k] / v
-        util_by_resources.append(util)
+    for k, v in node_resources.items():
+        util = (v - remaining[k]) / v
+        util_by_resources.append(v * (util ** 3))
 
     # Prioritize using all resources first, then prioritize overall balance
     # of multiple resources.
@@ -130,6 +139,7 @@ def get_bin_pack_residual(node_resources: List[dict],
         for node in nodes:
             if _fits(node, demand):
                 _inplace_subtract(node, demand)
+                print("Subtract", node, demand)
                 found = True
                 break
         if not found:
