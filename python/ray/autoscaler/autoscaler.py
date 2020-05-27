@@ -112,6 +112,8 @@ class StandardAutoscaler:
         self.resource_requests = defaultdict(int)
         # List of resource bundles the user is requesting of the cluster.
         self.resource_demand_vector = None
+        # Delete nodes idle from behind this horizon.
+        self.trim_horizon = 0
 
         logger.info("StandardAutoscaler: {}".format(self.config))
 
@@ -151,6 +153,7 @@ class StandardAutoscaler:
         # Terminate any idle or out of date nodes
         last_used = self.load_metrics.last_used_time_by_ip
         horizon = now - (60 * self.config["idle_timeout_minutes"])
+        horizon = max(self.trim_horizon, horizon)
 
         nodes_to_terminate = []
         for node_id in nodes:
@@ -432,7 +435,7 @@ class StandardAutoscaler:
         logger.info(
             "StandardAutoscaler: resource_requests={}".format(resources))
         if resources == TRIM_NODES_COMMAND:
-            print("TRIM NODES COMMAND")
+            self.trim_horizon = time.time() - 5  # a bit of buffer room
         elif isinstance(resources, list):
             self.resource_demand_vector = resources
         else:
