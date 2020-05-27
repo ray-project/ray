@@ -66,8 +66,7 @@ class StandardAutoscaler:
         if "available_instance_types" in self.config:
             self.instance_types = self.config["available_instance_types"]
             self.resource_demand_scheduler = ResourceDemandScheduler(
-                self.load_metrics, self.instance_types,
-                self.config["max_workers"])
+                self.provider, self.instance_types, self.config["max_workers"])
         else:
             self.instance_types = None
             self.resource_demand_scheduler = None
