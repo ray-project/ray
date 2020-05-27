@@ -108,8 +108,7 @@ void GcsNodeManager::NodeFailureDetector::ScheduleTick() {
 GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
                                gcs::NodeInfoAccessor &node_info_accessor,
                                gcs::ErrorInfoAccessor &error_info_accessor,
-                               std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-                               std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
+                               std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub)
     : node_info_accessor_(node_info_accessor),
       error_info_accessor_(error_info_accessor),
       node_failure_detector_(new NodeFailureDetector(
@@ -126,8 +125,7 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
               // TODO(Shanly): Remove node resources from resource table.
             }
           })),
-      gcs_pub_sub_(gcs_pub_sub),
-      gcs_table_storage_(gcs_table_storage) {
+      gcs_pub_sub_(gcs_pub_sub) {
   // TODO(Shanly): Load node info list from storage synchronously.
   // TODO(Shanly): Load cluster resources from storage synchronously.
 }
@@ -146,8 +144,7 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
                                        request.node_info().SerializeAsString(), nullptr));
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
-  RAY_CHECK_OK(
-      gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
+  RAY_CHECK_OK(node_info_accessor_.AsyncRegister(request.node_info(), on_done));
 }
 
 void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &request,
@@ -166,8 +163,7 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
                                          node->SerializeAsString(), nullptr));
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     };
-    // Update node state to DEAD instead of deleting it.
-    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
+    RAY_CHECK_OK(node_info_accessor_.AsyncUnregister(node_id, on_done));
     // TODO(Shanly): Remove node resources from resource table.
   }
 }
