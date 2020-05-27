@@ -1,5 +1,4 @@
 from collections import defaultdict
-from typing import List
 import copy
 import json
 import logging
@@ -188,7 +187,8 @@ class StandardAutoscaler:
         # First let the resource demand scheduler launch nodes, if enabled.
         if self.resource_demand_scheduler:
             instances = (
-                self.resource_demand_scheduler.get_instances_to_launch(nodes))
+                self.resource_demand_scheduler.get_instances_to_launch(
+                    nodes, self.resource_demand_vector))
             # TODO(ekl) also enforce max launch concurrency here?
             for instance_type, count in instances:
                 self.launch_new_node(count, instance_type=instance_type)
@@ -443,29 +443,8 @@ class StandardAutoscaler:
             len(nodes)))
 
 
-# Experimental API.
-def request_resource_bundles(resource_bundles: List[dict]):
-    """Remotely request some a vector of resource bundles from the autoscaler.
-
-    The autoscaler will try to ensure that the set of requested resource
-    bundles is placable on the cluster (assuming the cluster is otherwise
-    not utilized).
-
-    Examples:
-        >>> request_resource_bundles(
-        ...    [{"GPU": 4}, {"GPU": 4}, {"CPU": 8, "GPU": 4}])
-
-    This is an experimental feature, and only works if the resource demand
-    scheduler is enabled."""
-    r = services.create_redis_client(
-        global_worker.node.redis_address,
-        password=global_worker.node.redis_password)
-    r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
-              json.dumps(resource_bundles))
-
-
-# Note: this is a user-facing API, do not move.
-def request_resources(num_cpus=None, num_gpus=None):
+# Note: this is an (experimental) user-facing API, do not move.
+def request_resources(num_cpus=None, num_gpus=None, bundles=None):
     """Remotely request some CPU or GPU resources from the autoscaler.
 
     This function is to be called e.g. on a node before submitting a bunch of
@@ -477,10 +456,9 @@ def request_resources(num_cpus=None, num_gpus=None):
     This function is non blocking.
 
     Args:
-
         num_cpus: int -- the number of CPU cores to request
         num_gpus: int -- the number of GPUs to request (Not implemented)
-
+        bundles: List[dict] -- list of resource bundles (Experimental)
     """
     if num_gpus is not None:
         raise NotImplementedError(
@@ -494,3 +472,5 @@ def request_resources(num_cpus=None, num_gpus=None):
                   json.dumps({
                       "CPU": num_cpus
                   }))
+    if bundles:
+        r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(bundles))

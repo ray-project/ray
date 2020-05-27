@@ -12,5 +12,7 @@ class ResourceDemandScheduler:
         self.instance_types = instance_types
         self.max_workers = max_workers
 
-    def get_instances_to_launch(self, existing_nodes: List[str]):
-        return []
+    def get_instances_to_launch(self, existing_nodes: List[str],
+                                resource_demands: List[dict]):
+        if resource_demands is None:
+            return []
