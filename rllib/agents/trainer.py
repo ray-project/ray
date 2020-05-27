@@ -6,7 +6,7 @@ import os
 import pickle
 import time
 import tempfile
-from typing import Callable, List, Dict, Union
+from typing import Callable, List, Dict, Union, Any
 
 import ray
 from ray.exceptions import RayError
@@ -753,14 +753,14 @@ class Trainer(Trainable):
 
     @PublicAPI
     def compute_action(self,
-                       observation,
-                       state=None,
-                       prev_action=None,
-                       prev_reward=None,
-                       info=None,
-                       policy_id=DEFAULT_POLICY_ID,
-                       full_fetch=False,
-                       explore=None) -> TensorStructType:
+                       observation: TensorStructType,
+                       state: List[Any] = None,
+                       prev_action: TensorStructType = None,
+                       prev_reward: int = None,
+                       info: dict = None,
+                       policy_id: PolicyID = DEFAULT_POLICY_ID,
+                       full_fetch: bool = False,
+                       explore: bool = None) -> TensorStructType:
         """Computes an action for the specified policy on the local Worker.
 
         Note that you can also access the policy object through
