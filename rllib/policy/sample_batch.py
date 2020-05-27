@@ -163,18 +163,23 @@ class SampleBatch:
         return slices
 
     @PublicAPI
-    def slice(self, start, end):
+    def slice(self, start, end, inplace=False):
         """Returns a slice of the row data of this batch.
 
         Arguments:
             start (int): Starting index.
             end (int): Ending index.
+            inplace (bool): Inplace slicing the current SampleBatch
 
         Returns:
-            SampleBatch which has a slice of this batch's data.
+            SampleBatch which has a slice of this batch's data w/o inplace slicing.
         """
-
-        return SampleBatch({k: v[start:end] for k, v in self.data.items()})
+        if inplace:
+            for k in self.data.keys():
+                self.data[k] = self.data[k][start:end]
+            return self  # return itself
+        else:
+            return SampleBatch({k: v[start:end] for k, v in self.data.items()})
 
     @PublicAPI
     def keys(self):
