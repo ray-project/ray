@@ -8,6 +8,7 @@ import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigRenderOptions;
 import com.typesafe.config.ConfigValue;
+import com.typesafe.config.ConfigValueFactory;
 import io.ray.api.id.JobId;
 import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.util.NetworkUtil;
@@ -211,7 +212,7 @@ public class RayConfig {
     numWorkersPerProcess = config.getInt("ray.raylet.config.num_workers_per_process_java");
 
     gcsServiceEnabled = System.getenv("RAY_GCS_SERVICE_ENABLED") == null ||
-      System.getenv("RAY_GCS_SERVICE_ENABLED").toLowerCase().equals("true");
+        System.getenv("RAY_GCS_SERVICE_ENABLED").toLowerCase().equals("true");
 
     // Validate config.
     validate();
@@ -221,6 +222,8 @@ public class RayConfig {
     Preconditions.checkNotNull(redisAddress);
     Preconditions.checkState(this.redisAddress == null, "Redis address was already set");
 
+    this.config = config.withValue("ray.redis.address",
+        ConfigValueFactory.fromAnyRef(redisAddress));
     this.redisAddress = redisAddress;
     String[] ipAndPort = redisAddress.split(":");
     Preconditions.checkArgument(ipAndPort.length == 2, "Invalid redis address.");
@@ -254,6 +257,8 @@ public class RayConfig {
 
   public void setSessionDir(String sessionDir) {
     this.sessionDir = sessionDir;
+    this.config = config.withValue("ray.session-dir",
+        ConfigValueFactory.fromAnyRef(sessionDir));
   }
 
   public String getSessionDir() {
@@ -273,17 +278,14 @@ public class RayConfig {
 
   private void updateSessionDir() {
     // session dir
-    String localSessionDir = System.getProperty("ray.session-dir");
     if (workerMode == WorkerType.DRIVER) {
-      Preconditions.checkState(localSessionDir == null);
       final int minBound = 100000;
       final int maxBound = 999999;
       final String sessionName = String.format("session_%s_%d", DATE_TIME_FORMATTER.format(
           LocalDateTime.now()), RANDOM.nextInt(maxBound - minBound) + minBound);
       sessionDir = String.format("%s/%s", DEFAULT_TEMP_DIR, sessionName);
     } else if (workerMode == WorkerType.WORKER) {
-      Preconditions.checkState(localSessionDir != null);
-      sessionDir = removeTrailingSlash(localSessionDir);
+      sessionDir = removeTrailingSlash(config.getString("ray.session-dir"));
     } else {
       throw new RuntimeException("Unknown worker type.");
     }
