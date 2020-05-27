@@ -45,17 +45,18 @@ class ResourceDemandScheduler:
                         "Missing entry for instance_type {} in "
                         "available_instance_types config: {}".format(
                             instance_type, self.instance_types))
-                node_resources.append(self.instance_types[instance_type])
+                node_resources.append(self.instance_types[instance_type]["resources"])
                 instance_type_counts[instance_type] += 1
         logger.info("Cluster resources: {}".format(node_resources))
+        logger.info("Instance counts: {}".format(instance_type_counts))
 
         unfulfilled = get_bin_pack_residual(node_resources, resource_demands)
-        logger.info("Unfulfilled resources: {}".format(node_resources))
+        logger.info("Unfulfilled resources: {}".format(unfulfilled))
 
         instances = get_instances_for(
             self.instance_types, instance_type_counts,
             self.max_workers - len(nodes), unfulfilled)
-        logger.info("Instance requests: {}".format(node_resources))
+        logger.info("Instance requests: {}".format(instances))
         return instances
 
 
