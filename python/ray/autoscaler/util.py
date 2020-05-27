@@ -31,6 +31,10 @@ class ConcurrentCounter:
             assert self._counter[key] >= 0, "counter cannot go negative"
             return self.value
 
+    def breakdown(self):
+        with self._lock:
+            return dict(self._counter)
+
     @property
     def value(self):
         with self._lock:

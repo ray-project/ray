@@ -18,6 +18,7 @@ class ResourceDemandScheduler:
         self.max_workers = max_workers
 
     def get_instances_to_launch(self, nodes: List[str],
+                                pending_nodes: Dict[str, int],
                                 resource_demands: List[dict]):
         """Get a list of instance types that should be added to the cluster.
 
@@ -34,6 +35,7 @@ class ResourceDemandScheduler:
 
         node_resources = []
         instance_type_counts = collections.defaultdict(int)
+        instance_type_counts.update(pending_nodes)
         for node_id in nodes:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_INSTANCE_TYPE in tags:
