@@ -326,6 +326,9 @@ if __name__ == "__main__":
         # Something went wrong, so push an error to all drivers.
         redis_client = ray.services.create_redis_client(
             args.redis_address, password=args.redis_password)
+        # Set the redis client so _internal_kv works for autoscaler.
+        worker = ray.worker.global_worker
+        worker.redis_client = redis_client
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = "The monitor failed with the following error:\n{}".format(
             traceback_str)
