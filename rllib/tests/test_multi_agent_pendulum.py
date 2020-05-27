@@ -43,7 +43,7 @@ class TestMultiAgentPendulum(unittest.TestCase):
                             "fcnet_hiddens": [128, 128],
                         },
                         "batch_mode": "complete_episodes",
-                        "use_pytorch": fw == "torch",
+                        "framework": fw,
                     },
                 }
             })

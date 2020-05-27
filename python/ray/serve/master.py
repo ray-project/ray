@@ -50,9 +50,8 @@ class ServeMaster:
           requires all implementations here to be idempotent.
     """
 
-    async def __init__(self, cluster_name, start_http_proxy, http_node_id,
-                       http_proxy_host, http_proxy_port,
-                       metric_exporter_class):
+    async def __init__(self, cluster_name, http_node_id, http_proxy_host,
+                       http_proxy_port, metric_exporter_class):
         # Unique name of the serve cluster managed by this actor. Used to
         # namespace child actors and checkpoints.
         self.cluster_name = cluster_name
@@ -93,9 +92,8 @@ class ServeMaster:
         # components. If recovering, fetches their actor handles.
         self._get_or_start_metric_exporter(metric_exporter_class)
         self._get_or_start_router()
-        if start_http_proxy:
-            self._get_or_start_http_proxy(http_node_id, http_proxy_host,
-                                          http_proxy_port)
+        self._get_or_start_http_proxy(http_node_id, http_proxy_host,
+                                      http_proxy_port)
 
         # NOTE(edoakes): unfortunately, we can't completely recover from a
         # checkpoint in the constructor because we block while waiting for

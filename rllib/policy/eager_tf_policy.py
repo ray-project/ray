@@ -13,7 +13,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.space_utils import flatten_to_single_ndarray
+from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 
 tf = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -188,7 +188,7 @@ def build_eager_tf_policy(name,
     much simpler, but has lower performance.
 
     You shouldn't need to call this directly. Rather, prefer to build a TF
-    graph policy and use set {"eager": true} in the trainer config to have
+    graph policy and use set {"framework": "tfe"} in the trainer config to have
     it automatically be converted to an eager policy.
 
     This has the same signature as build_tf_policy()."""
