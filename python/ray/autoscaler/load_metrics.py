@@ -160,6 +160,7 @@ class LoadMetrics:
                     format_resource(rid, resources_used[rid]),
                     format_resource(rid, resources_total[rid]), rid)
                 for rid in sorted(resources_used)
+                if not rid.startswith("node:")
             ]),
             "NumNodesConnected": len(self.static_resources_by_ip),
             "NumNodesUsed": round(nodes_used, 2),
