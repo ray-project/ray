@@ -44,7 +44,7 @@ public class GlobalStateAccessor {
    */
   public List<byte[]> getAllJobInfo() {
     // Fetch a job list with protobuf bytes format from GCS.
-    synchronized (globalStateAccessorNativePointer) {
+    synchronized (GlobalStateAccessor.class) {
       Preconditions.checkState(globalStateAccessorNativePointer != 0);
       return this.nativeGetAllJobInfo(globalStateAccessorNativePointer);
     }
@@ -55,15 +55,17 @@ public class GlobalStateAccessor {
    */
   public List<byte[]> getAllNodeInfo() {
     // Fetch a node list with protobuf bytes format from GCS.
-    synchronized (globalStateAccessorNativePointer) {
+    synchronized (GlobalStateAccessor.class) {
       Preconditions.checkState(globalStateAccessorNativePointer != 0);
       return this.nativeGetAllNodeInfo(globalStateAccessorNativePointer);
     }
   }
 
   private void destroyGlobalStateAccessor() {
-    synchronized (globalStateAccessorNativePointer) {
-      this.nativeDisconnect(globalStateAccessorNativePointer);
+    synchronized (GlobalStateAccessor.class) {
+      if (0 == globalStateAccessorNativePointer) {
+        return;
+      }
       this.nativeDestroyGlobalStateAccessor(globalStateAccessorNativePointer);
       globalStateAccessorNativePointer = 0L;
     }
