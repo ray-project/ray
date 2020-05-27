@@ -67,7 +67,7 @@ if __name__ == "__main__":
         # Add torch option to exp configs.
         for exp in experiments.values():
             if args.torch:
-                exp["config"]["use_pytorch"] = True
+                exp["config"]["framework"] = "torch"
 
         # Try running each test 3 times and make sure it reaches the given
         # reward.

@@ -1,5 +1,6 @@
 import unittest
 
+import ray
 from ray import tune
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.models.catalog import ModelCatalog
@@ -12,13 +13,21 @@ class TestAttentionNetLearning(unittest.TestCase):
         "env": StatelessCartPole,
         "gamma": 0.99,
         "num_envs_per_worker": 20,
-        # "framework": "tf",
+        "framework": "tf",
     }
 
     stop = {
         "episode_reward_mean": 180.0,
         "timesteps_total": 5000000,
     }
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init(num_cpus=5, ignore_reinit_error=True)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
 
     def test_ppo_attention_net_learning(self):
         ModelCatalog.register_custom_model("attention_net", GTrXLNet)

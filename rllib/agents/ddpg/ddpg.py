@@ -203,7 +203,7 @@ def validate_config(config):
 
 
 def get_policy_class(config):
-    if config["use_pytorch"]:
+    if config["framework"] == "torch":
         from ray.rllib.agents.ddpg.ddpg_torch_policy import DDPGTorchPolicy
         return DDPGTorchPolicy
     else:

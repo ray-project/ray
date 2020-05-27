@@ -59,7 +59,7 @@ if __name__ == "__main__":
                 "ff_hidden_dim": 32,
             },
         },
-        "use_pytorch": args.torch,
+        "framework": "torch" if args.torch else "tf",
     }
 
     stop = {

@@ -188,7 +188,7 @@ def build_eager_tf_policy(name,
     much simpler, but has lower performance.
 
     You shouldn't need to call this directly. Rather, prefer to build a TF
-    graph policy and use set {"eager": true} in the trainer config to have
+    graph policy and use set {"framework": "tfe"} in the trainer config to have
     it automatically be converted to an eager policy.
 
     This has the same signature as build_tf_policy()."""

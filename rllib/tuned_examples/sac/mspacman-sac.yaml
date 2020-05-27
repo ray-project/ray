@@ -9,7 +9,7 @@ mspacman-sac-tf:
         timesteps_total: 100000
     config:
         # Works for both torch and tf.
-        use_pytorch: false
+        framework: tf
         gamma: 0.99
         # state-preprocessor=Our default Atari Conv2D-net.
         use_state_preprocessor: true

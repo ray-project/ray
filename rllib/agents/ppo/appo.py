@@ -101,7 +101,7 @@ def add_target_callback(config):
 
 
 def get_policy_class(config):
-    if config.get("use_pytorch") is True:
+    if config.get("framework") == "torch":
         from ray.rllib.agents.ppo.appo_torch_policy import AsyncPPOTorchPolicy
         return AsyncPPOTorchPolicy
     else:

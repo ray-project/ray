@@ -6,7 +6,7 @@ pendulum-appo-vtrace:
         timesteps_total: 500000
     config:
         # Works for both torch and tf.
-        use_pytorch: false
+        framework: tf
         vtrace: true
         num_gpus: 0
         num_workers: 1
