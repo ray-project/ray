@@ -1,3 +1,5 @@
+.. _rllib-index:
+
 RLlib: Scalable Reinforcement Learning
 ======================================
 
