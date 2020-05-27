@@ -21,7 +21,12 @@
 
 namespace ray {
 
-class GlobalStateAccessorTest : public RedisServiceManagerForTest {
+class GlobalStateAccessorTest : public ::testing::Test {
+ public:
+  GlobalStateAccessorTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
+
+  virtual ~GlobalStateAccessorTest() { TestSetupUtil::ShutDownRedisServers(); }
+
  protected:
   void SetUp() override {
     config.grpc_server_port = 0;
@@ -29,7 +34,7 @@ class GlobalStateAccessorTest : public RedisServiceManagerForTest {
     config.grpc_server_thread_num = 1;
     config.redis_address = "127.0.0.1";
     config.is_test = true;
-    config.redis_port = REDIS_SERVER_PORTS.front();
+    config.redis_port = TEST_REDIS_SERVER_PORTS.front();
     gcs_server_.reset(new gcs::GcsServer(config));
     io_service_.reset(new boost::asio::io_service());
 
@@ -67,7 +72,7 @@ class GlobalStateAccessorTest : public RedisServiceManagerForTest {
     gcs_client_->Disconnect();
     global_state_->Disconnect();
     global_state_.reset();
-    FlushAll();
+    TestSetupUtil::FlushAllRedisServers();
   }
 
   bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms) {
@@ -147,8 +152,8 @@ TEST_F(GlobalStateAccessorTest, TestObjectTable) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }
