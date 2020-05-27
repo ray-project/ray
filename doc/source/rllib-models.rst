@@ -71,7 +71,8 @@ Once implemented, the model can then be registered and used in place of a built-
     trainer = ppo.PPOTrainer(env="CartPole-v0", config={
         "model": {
             "custom_model": "my_model",
-            "custom_options": {},  # extra options to pass to your model
+            # Extra kwargs to be passed to your model's c'tor.
+            "custom_model_config": {},
         },
     })
 
@@ -132,7 +133,8 @@ Once implemented, the model can then be registered and used in place of a built-
         "use_pytorch": True,
         "model": {
             "custom_model": "my_model",
-            "custom_options": {},  # extra options to pass to your model
+            # Extra kwargs to be passed to your model's c'tor.
+            "custom_model_config": {},
         },
     })
 
@@ -165,7 +167,8 @@ Custom preprocessors should subclass the RLlib `preprocessor class <https://gith
     trainer = ppo.PPOTrainer(env="CartPole-v0", config={
         "model": {
             "custom_preprocessor": "my_prep",
-            "custom_options": {},  # extra options to pass to your preprocessor
+            # Extra kwargs to be passed to your model's c'tor.
+            "custom_model_config": {},
         },
     })
 
