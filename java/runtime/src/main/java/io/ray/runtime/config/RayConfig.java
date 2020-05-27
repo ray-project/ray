@@ -18,16 +18,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Configurations of Ray runtime.
  * See `ray.default.conf` for the meaning of each field.
  */
 public class RayConfig {
-
-  private static final Logger LOGGER = LoggerFactory.getLogger(RayConfig.class);
 
   public static final String DEFAULT_CONFIG_FILE = "ray.default.conf";
   public static final String CUSTOM_CONFIG_FILE = "ray.conf";
@@ -48,7 +44,6 @@ public class RayConfig {
   private JobId jobId;
   public String sessionDir;
   public String logDir;
-  public final boolean redirectOutput;
   public final List<String> libraryPath;
   public final List<String> classpath;
   public final List<String> jvmParameters;
@@ -136,8 +131,6 @@ public class RayConfig {
     if (isDriver) {
       if (!resources.containsKey("CPU")) {
         int numCpu = Runtime.getRuntime().availableProcessors();
-        LOGGER.warn("No CPU resource is set in configuration, "
-            + "setting it to the number of CPU cores: {}", numCpu);
         resources.put("CPU", numCpu * 1.0);
       }
     }
@@ -153,8 +146,6 @@ public class RayConfig {
     // Object store configurations.
     objectStoreSize = config.getBytes("ray.object-store.size");
 
-    // Redirect output.
-    redirectOutput = config.getBoolean("ray.redirect-output");
     // Library path.
     libraryPath = config.getStringList("ray.library.path");
     // Custom classpath.
@@ -223,7 +214,6 @@ public class RayConfig {
 
     // Validate config.
     validate();
-    LOGGER.debug("Created config: {}", this);
   }
 
   public void setRedisAddress(String redisAddress) {
@@ -269,6 +259,10 @@ public class RayConfig {
     return sessionDir;
   }
 
+  public Config getInternalConfig() {
+    return config;
+  }
+
   private void updateSessionDir() {
     // session dir
     String localSessionDir = System.getProperty("ray.session-dir");
@@ -288,8 +282,8 @@ public class RayConfig {
 
     // Log dir.
     String localLogDir = null;
-    if (config.hasPath("ray.log-dir")) {
-      localLogDir = removeTrailingSlash(config.getString("ray.log-dir"));
+    if (config.hasPath("ray.logging.dir")) {
+      localLogDir = removeTrailingSlash(config.getString("ray.logging.dir"));
     }
     if (Strings.isNullOrEmpty(localLogDir)) {
       logDir = String.format("%s/logs", sessionDir);
@@ -330,7 +324,6 @@ public class RayConfig {
         + ", resources=" + resources
         + ", jobId=" + jobId
         + ", logDir='" + logDir + '\''
-        + ", redirectOutput=" + redirectOutput
         + ", libraryPath=" + libraryPath
         + ", classpath=" + classpath
         + ", jvmParameters=" + jvmParameters
@@ -359,10 +352,8 @@ public class RayConfig {
     Config config = ConfigFactory.systemProperties();
     String configPath = System.getProperty("ray.config");
     if (Strings.isNullOrEmpty(configPath)) {
-      LOGGER.info("Loading config from \"ray.conf\" file in classpath.");
       config = config.withFallback(ConfigFactory.load(CUSTOM_CONFIG_FILE));
     } else {
-      LOGGER.info("Loading config from " + configPath + ".");
       config = config.withFallback(ConfigFactory.parseFile(new File(configPath)));
     }
     config = config.withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE));
