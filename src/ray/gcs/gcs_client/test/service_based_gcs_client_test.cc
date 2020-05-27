@@ -22,7 +22,12 @@
 
 namespace ray {
 
-class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
+class ServiceBasedGcsClientTest : public ::testing::Test {
+ public:
+  ServiceBasedGcsClientTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
+
+  virtual ~ServiceBasedGcsClientTest() { TestSetupUtil::ShutDownRedisServers(); }
+
  protected:
   void SetUp() override {
     config.grpc_server_port = 0;
@@ -30,7 +35,7 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     config.grpc_server_thread_num = 1;
     config.redis_address = "127.0.0.1";
     config.is_test = true;
-    config.redis_port = REDIS_SERVER_PORTS.front();
+    config.redis_port = TEST_REDIS_SERVER_PORTS.front();
     gcs_server_.reset(new gcs::GcsServer(config));
     io_service_.reset(new boost::asio::io_service());
 
@@ -60,7 +65,7 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     thread_io_service_->join();
     thread_gcs_server_->join();
     gcs_client_->Disconnect();
-    FlushAll();
+    TestSetupUtil::FlushAllRedisServers();
   }
 
   void RestartGcsServer() {
@@ -958,7 +963,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskTableReSubscribe) {
 
 TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
   // Stop redis.
-  TearDownTestCase();
+  TestSetupUtil::ShutDownRedisServers();
 
   // Sleep 3 times of gcs_redis_heartbeat_interval_milliseconds to make sure gcs_server
   // detects that the redis is failure and then stop itself.
@@ -974,8 +979,8 @@ TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }
