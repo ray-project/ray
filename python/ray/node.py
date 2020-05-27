@@ -4,6 +4,7 @@ import datetime
 import errno
 import os
 import logging
+import random
 import signal
 import socket
 import subprocess
@@ -400,6 +401,16 @@ class Node:
         s.bind(("", 0))
         port = s.getsockname()[1]
         s.close()
+
+        # Try to generate a port that is far above the 'next available' one
+        for _ in range(10):
+            new_port = random.randint(port, 65535)
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            error_val = s.connect_ex(("", new_port))
+            s.close()
+            if error_val != 0:
+                return new_port
+
         return port
 
     def _prepare_socket_file(self, socket_path, default_prefix):
