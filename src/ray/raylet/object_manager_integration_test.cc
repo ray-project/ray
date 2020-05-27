@@ -17,6 +17,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/status.h"
+#include "ray/common/test_util.h"
 #include "ray/raylet/raylet.h"
 #include "ray/util/filesystem.h"
 
@@ -25,7 +26,6 @@ namespace ray {
 namespace raylet {
 
 std::string test_executable;
-std::string store_executable;
 
 // TODO(hme): Get this working once the dust settles.
 class TestObjectManagerBase : public ::testing::Test {
@@ -35,17 +35,6 @@ class TestObjectManagerBase : public ::testing::Test {
 #ifdef _WIN32
     RAY_CHECK(false) << "port system() calls to Windows before running this test";
 #endif
-  }
-
-  std::string StartStore(const std::string &id) {
-    std::string store_id = ray::JoinPaths(ray::GetUserTempDir(), "store");
-    store_id = store_id + id;
-    std::string plasma_command = store_executable + " -m 1000000000 -s " + store_id +
-                                 " 1> /dev/null 2> /dev/null &";
-    RAY_LOG(INFO) << plasma_command;
-    int ec = system(plasma_command.c_str());
-    RAY_CHECK(ec == 0);
-    return store_id;
   }
 
   NodeManagerConfig GetNodeManagerConfig(std::string raylet_socket_name,
@@ -69,8 +58,8 @@ class TestObjectManagerBase : public ::testing::Test {
 
   void SetUp() {
     // start store
-    std::string store_sock_1 = StartStore("1");
-    std::string store_sock_2 = StartStore("2");
+    std::string store_sock_1 = TestSetupUtil::StartObjectStore("1");
+    std::string store_sock_2 = TestSetupUtil::StartObjectStore("2");
 
     // start first server
     gcs::GcsClientOptions client_options("127.0.0.1", 6379, /*password*/ "", true);
@@ -250,6 +239,6 @@ TEST_F(TestObjectManagerIntegration, StartTestObjectManagerPush) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   ray::raylet::test_executable = std::string(argv[0]);
-  ray::raylet::store_executable = std::string(argv[1]);
+  ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);
   return RUN_ALL_TESTS();
 }

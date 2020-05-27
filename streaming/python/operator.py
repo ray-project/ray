@@ -71,12 +71,13 @@ class StreamOperator(Operator, ABC):
     def open(self, collectors, runtime_context):
         self.collectors = collectors
         self.runtime_context = runtime_context
+        self.func.open(runtime_context)
 
     def finish(self):
         pass
 
     def close(self):
-        pass
+        self.func.close()
 
     def collect(self, record):
         for collector in self.collectors:
