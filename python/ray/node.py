@@ -404,8 +404,8 @@ class Node:
         s.close()
 
         # Try to generate a port that is far above the 'next available' one.
-        # This solves issue #8254 where GRPC segfaults because the port
-        # assigned from this method has been used by a different process.
+        # This solves issue #8254 where GRPC fails because the port assigned
+        # from this method has been used by a different process.
         for _ in range(NUMBER_OF_PORT_RETRIES):
             new_port = random.randint(port, 65535)
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
