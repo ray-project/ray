@@ -9,7 +9,8 @@ import threading
 import time
 import yaml
 
-from ray.experimental.internal_kv import _internal_kv_put
+from ray.experimental.internal_kv import _internal_kv_put, \
+    _internal_kv_initialized
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
@@ -124,7 +125,9 @@ class StandardAutoscaler:
         except Exception as e:
             logger.exception("StandardAutoscaler: "
                              "Error during autoscaling.")
-            _internal_kv_put(DEBUG_AUTOSCALING_ERROR, str(e), overwrite=True)
+            if _internal_kv_initialized():
+                _internal_kv_put(
+                    DEBUG_AUTOSCALING_ERROR, str(e), overwrite=True)
             self.num_failures += 1
             if self.num_failures > self.max_failures:
                 logger.critical("StandardAutoscaler: "
@@ -422,7 +425,8 @@ class StandardAutoscaler:
         if self.resource_demand_scheduler:
             tmp += self.resource_demand_scheduler.debug_string(
                 nodes, self.pending_launches.breakdown())
-        _internal_kv_put(DEBUG_AUTOSCALING_STATUS, tmp, overwrite=True)
+        if _internal_kv_initialized():
+            _internal_kv_put(DEBUG_AUTOSCALING_STATUS, tmp, overwrite=True)
         logger.info(tmp)
 
     def info_string(self, nodes, target):

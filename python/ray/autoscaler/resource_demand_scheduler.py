@@ -45,7 +45,7 @@ class ResourceDemandScheduler:
                     "available_instance_types config: {}".format(
                         instance_type, self.instance_types))
             node_resources.append(
-                self.instance_types[instance_type]["resources"])
+                copy.deepcopy(self.instance_types[instance_type]["resources"]))
             instance_type_counts[instance_type] += 1
 
         for node_id in nodes:
