@@ -1496,6 +1496,7 @@ cc_binary(
     linkstatic = 1,
     deps = [
         "//:core_worker_lib",
+        "//:global_state_accessor_lib",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
         "//streaming:jni",

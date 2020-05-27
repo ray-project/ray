@@ -53,8 +53,13 @@ GlobalStateAccessor::~GlobalStateAccessor() {
 }
 
 bool GlobalStateAccessor::Connect() {
-  is_connected_ = true;
-  return gcs_client_->Connect(*io_service_).ok();
+  if (!is_connected_) {
+    is_connected_ = true;
+    return gcs_client_->Connect(*io_service_).ok();
+  } else {
+    RAY_LOG(DEBUG) << "Duplicated connection for GlobalStateAccessor.";
+    return true;
+  }
 }
 
 void GlobalStateAccessor::Disconnect() {
@@ -67,32 +72,26 @@ void GlobalStateAccessor::Disconnect() {
 std::vector<std::string> GlobalStateAccessor::GetAllJobInfo() {
   std::vector<std::string> job_table_data;
   std::promise<bool> promise;
-  auto on_done = [&job_table_data, &promise](
-                     const Status &status, const std::vector<rpc::JobTableData> &result) {
-    RAY_CHECK_OK(status);
-    for (auto &data : result) {
-      job_table_data.push_back(data.SerializeAsString());
-    }
-    promise.set_value(true);
-  };
-  RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetAll(on_done));
+  RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetAll(
+      TransformForAccessorCallback<rpc::JobTableData>(job_table_data, promise)));
   promise.get_future().get();
   return job_table_data;
+}
+
+std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
+  std::vector<std::string> node_table_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
+      TransformForAccessorCallback<rpc::GcsNodeInfo>(node_table_data, promise)));
+  promise.get_future().get();
+  return node_table_data;
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllProfileInfo() {
   std::vector<std::string> profile_table_data;
   std::promise<bool> promise;
-  auto on_done = [&profile_table_data, &promise](
-                     const Status &status,
-                     const std::vector<rpc::ProfileTableData> &result) {
-    RAY_CHECK_OK(status);
-    for (auto &data : result) {
-      profile_table_data.push_back(data.SerializeAsString());
-    }
-    promise.set_value(true);
-  };
-  RAY_CHECK_OK(gcs_client_->Stats().AsyncGetAll(on_done));
+  RAY_CHECK_OK(gcs_client_->Stats().AsyncGetAll(
+      TransformForAccessorCallback<rpc::ProfileTableData>(profile_table_data, promise)));
   promise.get_future().get();
   return profile_table_data;
 }
