@@ -61,7 +61,6 @@ def accept_batch(f):
 
 
 def init(cluster_name=None,
-         blocking=False,
          http_host=DEFAULT_HTTP_HOST,
          http_port=DEFAULT_HTTP_PORT,
          ray_init_kwargs={
@@ -81,8 +80,6 @@ def init(cluster_name=None,
         cluster_name (str): A unique name for this serve cluster. This allows
             multiple serve clusters to run on the same ray cluster. Must be
             specified in all subsequent serve.init() calls.
-        blocking (bool): If true, the function will wait for the HTTP server to
-            be healthy, and other components to be ready before returns.
         http_host (str): Host for HTTP server. Default to "0.0.0.0".
         http_port (int): Port for HTTP server. Default to 8000.
         ray_init_kwargs (dict): Argument passed to ray.init, if there is no ray
@@ -125,9 +122,8 @@ def init(cluster_name=None,
         max_restarts=-1,
     ).remote(cluster_name, http_node_id, http_host, http_port, metric_exporter)
 
-    if blocking:
-        block_until_http_ready("http://{}:{}/-/routes".format(
-            http_host, http_port))
+    block_until_http_ready("http://{}:{}/-/routes".format(
+        http_host, http_port))
 
 
 @_ensure_connected

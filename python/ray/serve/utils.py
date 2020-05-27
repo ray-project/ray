@@ -87,9 +87,10 @@ def pformat_color_json(d):
     return colorful_json
 
 
-def block_until_http_ready(http_endpoint, num_retries=6, backoff_time_s=1):
+def block_until_http_ready(http_endpoint, num_retries=6, backoff_time_s=1, timeout=0):
     http_is_ready = False
     retries = num_retries
+    start_time = time.time()
 
     while not http_is_ready:
         try:
@@ -99,14 +100,18 @@ def block_until_http_ready(http_endpoint, num_retries=6, backoff_time_s=1):
         except Exception:
             pass
 
-        # Exponential backoff
-        time.sleep(backoff_time_s)
-        backoff_time_s *= 2
-
         retries -= 1
         if retries == 0:
             raise Exception(
                 "HTTP proxy not ready after {} retries.".format(num_retries))
+
+        if 0 < timeout < time.time() - start_time:
+            raise TimeoutError(
+                "HTTP proxy not ready after {} seconds.".format(timeout))
+
+        # Exponential backoff
+        time.sleep(backoff_time_s)
+        backoff_time_s *= 2
 
 
 def get_random_letters(length=6):

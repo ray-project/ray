@@ -32,7 +32,7 @@ subprocess.call([
 ])
 
 ray.init(address=cluster.address, include_webui=True, webui_host="0.0.0.0")
-serve.init(blocking=True)
+serve.init()
 
 
 @serve.accept_batch
