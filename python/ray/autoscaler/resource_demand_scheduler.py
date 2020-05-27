@@ -44,6 +44,7 @@ class ResourceDemandScheduler:
                     "Missing entry for instance_type {} in "
                     "available_instance_types config: {}".format(
                         instance_type, self.instance_types))
+            # Careful not to include the same dict object multiple times.
             node_resources.append(
                 copy.deepcopy(self.instance_types[instance_type]["resources"]))
             instance_type_counts[instance_type] += 1
