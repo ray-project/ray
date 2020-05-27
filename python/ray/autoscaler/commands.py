@@ -61,7 +61,8 @@ def debug_status():
 def trim_nodes():
     """Tell the autoscaler to delete idle nodes immediately."""
     r = _redis()
-    r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(TRIM_NODES_COMMAND))
+    r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
+              json.dumps(TRIM_NODES_COMMAND))
 
 
 def request_resources(num_cpus=None, bundles=None):
