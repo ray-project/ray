@@ -187,10 +187,11 @@ Getting Involved
    :maxdepth: -1
    :caption: Ray Serve
 
-   serve/overview.rst
-   serve/tutorials/tensorflow-tutorial.rst
-   serve/tutorials/pytorch-tutorial.rst
-   serve/tutorials/sklearn-tutorial.rst
+   serve/index.rst
+   serve/key-concepts.rst
+   serve/tutorials/index.rst
+   serve/deployment.rst
+   serve/advanced.rst
 
 .. toctree::
    :maxdepth: -1
