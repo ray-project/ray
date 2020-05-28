@@ -73,6 +73,8 @@ DEFAULT_CONFIG = with_common_config({
     # Whether to fake GPUs (using CPUs).
     # Set this to True for debugging on non-GPU machines (set `num_gpus` > 0).
     "_fake_gpus": False,
+    # Use PyTorch as framework?
+    "use_pytorch": False,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -136,13 +138,12 @@ def validate_config(config):
         logger.warning(
             "Using the simple minibatch optimizer. This will significantly "
             "reduce performance, consider simple_optimizer=False.")
-    # Multi-gpu not supported for PyTorch and tf-eager.
-    elif config["framework"] in ["tfe", "torch"]:
-        config["simple_optimizer"] = True
+    elif config["use_pytorch"] or (tf and tf.executing_eagerly()):
+        config["simple_optimizer"] = True  # multi-gpu not supported
 
 
 def get_policy_class(config):
-    if config["framework"] == "torch":
+    if config["use_pytorch"]:
         from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
         return PPOTorchPolicy
     else:

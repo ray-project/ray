@@ -130,7 +130,7 @@ Once implemented, the model can then be registered and used in place of a built-
 
     ray.init()
     trainer = a3c.A2CTrainer(env="CartPole-v0", config={
-        "framework": "torch",
+        "use_pytorch": True,
         "model": {
             "custom_model": "my_model",
             # Extra kwargs to be passed to your model's c'tor.

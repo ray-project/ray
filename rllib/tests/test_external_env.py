@@ -11,7 +11,6 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.tests.test_rollout_worker import (BadPolicy, MockPolicy,
                                                  MockEnv)
-from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import register_env
 
 
@@ -115,12 +114,10 @@ class MultiServing(ExternalEnv):
 
 
 class TestExternalEnv(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        ray.init(ignore_reinit_error=True)
+    def setUp(self) -> None:
+        ray.init()
 
-    @classmethod
-    def tearDownClass(cls) -> None:
+    def tearDown(self) -> None:
         ray.shutdown()
 
     def test_external_env_complete_episodes(self):
@@ -168,60 +165,41 @@ class TestExternalEnv(unittest.TestCase):
         register_env(
             "test3", lambda _: PartOffPolicyServing(
                 gym.make("CartPole-v0"), off_pol_frac=0.2))
-        config = {
-            "num_workers": 0,
-            "exploration_config": {
+        dqn = DQNTrainer(
+            env="test3",
+            config={"exploration_config": {
                 "epsilon_timesteps": 100
-            },
-        }
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            dqn = DQNTrainer(env="test3", config=config)
-            reached = False
-            for i in range(50):
-                result = dqn.train()
-                print("Iteration {}, reward {}, timesteps {}".format(
-                    i, result["episode_reward_mean"],
-                    result["timesteps_total"]))
-                if result["episode_reward_mean"] >= 80:
-                    reached = True
-                    break
-            if not reached:
-                raise Exception("failed to improve reward")
+            }})
+        for i in range(100):
+            result = dqn.train()
+            print("Iteration {}, reward {}, timesteps {}".format(
+                i, result["episode_reward_mean"], result["timesteps_total"]))
+            if result["episode_reward_mean"] >= 100:
+                return
+        raise Exception("failed to improve reward")
 
     def test_train_cartpole(self):
         register_env("test", lambda _: SimpleServing(gym.make("CartPole-v0")))
-        config = {"num_workers": 0}
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            pg = PGTrainer(env="test", config=config)
-            reached = False
-            for i in range(80):
-                result = pg.train()
-                print("Iteration {}, reward {}, timesteps {}".format(
-                    i, result["episode_reward_mean"],
-                    result["timesteps_total"]))
-                if result["episode_reward_mean"] >= 80:
-                    reached = True
-                    break
-            if not reached:
-                raise Exception("failed to improve reward")
+        pg = PGTrainer(env="test", config={"num_workers": 0})
+        for i in range(100):
+            result = pg.train()
+            print("Iteration {}, reward {}, timesteps {}".format(
+                i, result["episode_reward_mean"], result["timesteps_total"]))
+            if result["episode_reward_mean"] >= 100:
+                return
+        raise Exception("failed to improve reward")
 
     def test_train_cartpole_multi(self):
         register_env("test2",
                      lambda _: MultiServing(lambda: gym.make("CartPole-v0")))
-        config = {"num_workers": 0}
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            pg = PGTrainer(env="test2", config=config)
-            reached = False
-            for i in range(80):
-                result = pg.train()
-                print("Iteration {}, reward {}, timesteps {}".format(
-                    i, result["episode_reward_mean"],
-                    result["timesteps_total"]))
-                if result["episode_reward_mean"] >= 80:
-                    reached = True
-                    break
-            if not reached:
-                raise Exception("failed to improve reward")
+        pg = PGTrainer(env="test2", config={"num_workers": 0})
+        for i in range(100):
+            result = pg.train()
+            print("Iteration {}, reward {}, timesteps {}".format(
+                i, result["episode_reward_mean"], result["timesteps_total"]))
+            if result["episode_reward_mean"] >= 100:
+                return
+        raise Exception("failed to improve reward")
 
     def test_external_env_horizon_not_supported(self):
         ev = RolloutWorker(

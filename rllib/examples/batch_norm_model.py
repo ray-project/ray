@@ -33,7 +33,7 @@ if __name__ == "__main__":
             "custom_model": "bn_model",
         },
         "num_workers": 0,
-        "framework": "torch" if args.torch else "tf",
+        "use_pytorch": args.torch,
     }
 
     stop = {

@@ -49,7 +49,6 @@ if __name__ == "__main__":
                     "tmp_file3": tmp3,
                     "tmp_file4": tmp4,
                 },
-                "framework": "tf",
             },
             "stop": {
                 "training_iteration": 1

@@ -5,8 +5,7 @@ halfcheetah_sac:
     stop:
         episode_reward_mean: 9000
     config:
-        # Works for both torch and tf.
-        framework: tf
+        use_pytorch: false  # <- switch on/off torch
         horizon: 1000
         soft_horizon: false
         Q_model:

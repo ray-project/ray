@@ -58,7 +58,7 @@ class CentralizedValueMixin:
     """Add method to evaluate the central value function from the model."""
 
     def __init__(self):
-        if self.config["framework"] != "torch":
+        if not self.config["use_pytorch"]:
             self.compute_central_vf = make_tf_callable(self.get_session())(
                 self.model.central_value_function)
         else:
@@ -71,7 +71,7 @@ def centralized_critic_postprocessing(policy,
                                       sample_batch,
                                       other_agent_batches=None,
                                       episode=None):
-    pytorch = policy.config["framework"] == "torch"
+    pytorch = policy.config["use_pytorch"]
     if (pytorch and hasattr(policy, "compute_central_vf")) or \
             (not pytorch and policy.loss_initialized()):
         assert other_agent_batches is not None
@@ -126,9 +126,9 @@ def loss_with_central_critic(policy, model, dist_class, train_batch):
         train_batch[SampleBatch.CUR_OBS], train_batch[OPPONENT_OBS],
         train_batch[OPPONENT_ACTION])
 
-    func = TFLoss if not policy.config["framework"] == "torch" else TorchLoss
+    func = TFLoss if not policy.config["use_pytorch"] else TorchLoss
     adv = tf.ones_like(train_batch[Postprocessing.ADVANTAGES], dtype=tf.bool) \
-        if policy.config["framework"] != "torch" else \
+        if not policy.config["use_pytorch"] else \
         torch.ones_like(train_batch[Postprocessing.ADVANTAGES],
                         dtype=torch.bool)
 
@@ -194,8 +194,7 @@ CCPPOTorchPolicy = PPOTorchPolicy.with_updates(
 
 
 def get_policy_class(config):
-    return CCPPOTorchPolicy if config["framework"] == "torch" \
-        else CCPPOTFPolicy
+    return CCPPOTorchPolicy if config["use_pytorch"] else CCPPOTFPolicy
 
 
 CCTrainer = PPOTrainer.with_updates(
@@ -215,14 +214,15 @@ if __name__ == "__main__":
     config = {
         "env": TwoStepGame,
         "batch_mode": "complete_episodes",
+        "eager": False,
         "num_workers": 0,
         "multiagent": {
             "policies": {
                 "pol1": (None, Discrete(6), TwoStepGame.action_space, {
-                    "framework": "torch" if args.torch else "tf",
+                    "use_pytorch": args.torch
                 }),
                 "pol2": (None, Discrete(6), TwoStepGame.action_space, {
-                    "framework": "torch" if args.torch else "tf",
+                    "use_pytorch": args.torch
                 }),
             },
             "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
@@ -230,7 +230,7 @@ if __name__ == "__main__":
         "model": {
             "custom_model": "cc_model",
         },
-        "framework": "torch" if args.torch else "tf",
+        "use_pytorch": args.torch,
     }
 
     stop = {

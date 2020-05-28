@@ -32,7 +32,7 @@ if __name__ == "__main__":
 
     # Configure our Trainer.
     config = {
-        "framework": "torch" if args.torch else "tf",
+        "use_pytorch": args.torch,
         "model": {
             "custom_model": "my_model",
             # Extra config passed to the custom model's c'tor as kwargs.

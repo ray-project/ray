@@ -230,12 +230,10 @@ class NestedSpacesTest(unittest.TestCase):
             ValueError,
             "Subclasses of TorchModelV2 must also inherit from",
             lambda: PGTrainer(
-                env="CartPole-v0",
-                config={
+                env="CartPole-v0", config={
                     "model": {
                         "custom_model": "invalid",
                     },
-                    "framework": "torch",
                 }))
 
     def test_invalid_model2(self):
@@ -247,7 +245,6 @@ class NestedSpacesTest(unittest.TestCase):
                     "model": {
                         "custom_model": "invalid2",
                     },
-                    "framework": "tf",
                 }))
 
     def do_test_nested_dict(self, make_env, test_lstm=False):
@@ -263,7 +260,6 @@ class NestedSpacesTest(unittest.TestCase):
                     "custom_model": "composite",
                     "use_lstm": test_lstm,
                 },
-                "framework": "tf",
             })
         pg.train()
 
@@ -292,7 +288,6 @@ class NestedSpacesTest(unittest.TestCase):
                 "model": {
                     "custom_model": "composite2",
                 },
-                "framework": "tf",
             })
         pg.train()
 
@@ -363,7 +358,6 @@ class NestedSpacesTest(unittest.TestCase):
                         "tuple_agent": "tuple_policy",
                         "dict_agent": "dict_policy"}[a],
                 },
-                "framework": "tf",
             })
         pg.train()
 
@@ -392,13 +386,13 @@ class NestedSpacesTest(unittest.TestCase):
 
     def test_rollout_dict_space(self):
         register_env("nested", lambda _: NestedDictEnv())
-        agent = PGTrainer(env="nested", config={"framework": "tf"})
+        agent = PGTrainer(env="nested")
         agent.train()
         path = agent.save()
         agent.stop()
 
         # Test train works on restore
-        agent2 = PGTrainer(env="nested", config={"framework": "tf"})
+        agent2 = PGTrainer(env="nested")
         agent2.restore(path)
         agent2.train()
 
@@ -412,12 +406,12 @@ class NestedSpacesTest(unittest.TestCase):
             env="nested",
             config={
                 "num_workers": 0,
+                "use_pytorch": True,
                 "rollout_fragment_length": 5,
                 "train_batch_size": 5,
                 "model": {
                     "custom_model": "composite",
                 },
-                "framework": "torch",
             })
 
         a2c.train()

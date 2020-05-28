@@ -6,8 +6,7 @@ halfcheetah-ddpg:
         episode_reward_mean: 2000
         time_total_s: 5400 # 90 minutes
     config:
-        # Works for both torch and tf.
-        framework: tf
+        use_pytorch: false  # <- switch on/off torch
         # === Model ===
         actor_hiddens: [64, 64]
         critic_hiddens: [64, 64]

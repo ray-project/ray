@@ -71,10 +71,7 @@ class MSFTest(unittest.TestCase):
 
 class FilterManagerTest(unittest.TestCase):
     def setUp(self):
-        ray.init(
-            num_cpus=1,
-            object_store_memory=1000 * 1024 * 1024,
-            ignore_reinit_error=True)
+        ray.init(num_cpus=1, object_store_memory=1000 * 1024 * 1024)
 
     def tearDown(self):
         ray.shutdown()

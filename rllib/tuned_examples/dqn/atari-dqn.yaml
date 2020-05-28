@@ -9,8 +9,7 @@ atari-basic-dqn:
             - SpaceInvadersNoFrameskip-v4
     run: DQN
     config:
-        # Works for both torch and tf.
-        framework: tf
+        use_pytorch: false  # <- switch on/off torch
         double_q: false
         dueling: false
         num_atoms: 1

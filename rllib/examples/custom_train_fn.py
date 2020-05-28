@@ -44,7 +44,7 @@ if __name__ == "__main__":
     config = {
         "lr": 0.01,
         "num_workers": 0,
-        "framework": "torch" if args.torch else "tf",
+        "use_pytorch": args.torch,
     }
     resources = PPOTrainer.default_resource_request(config).to_json()
     tune.run(my_train_fn, resources_per_trial=resources, config=config)

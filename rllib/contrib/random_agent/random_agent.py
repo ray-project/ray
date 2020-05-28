@@ -12,7 +12,6 @@ class RandomAgent(Trainer):
     _name = "RandomAgent"
     _default_config = with_common_config({
         "rollouts_per_iteration": 10,
-        "framework": "tf",  # not used
     })
 
     @override(Trainer)

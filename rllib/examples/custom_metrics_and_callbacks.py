@@ -76,7 +76,6 @@ if __name__ == "__main__":
         config={
             "env": "CartPole-v0",
             "callbacks": MyCallbacks,
-            "framework": "tf",
         },
         return_trials=True)
 

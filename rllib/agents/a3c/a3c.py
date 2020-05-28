@@ -43,7 +43,7 @@ DEFAULT_CONFIG = with_common_config({
 
 
 def get_policy_class(config):
-    if config["framework"] == "torch":
+    if config["use_pytorch"]:
         from ray.rllib.agents.a3c.a3c_torch_policy import \
             A3CTorchPolicy
         return A3CTorchPolicy

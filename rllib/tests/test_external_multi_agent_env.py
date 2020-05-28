@@ -13,12 +13,10 @@ SimpleMultiServing = make_simple_serving(True, ExternalMultiAgentEnv)
 
 
 class TestExternalMultiAgentEnv(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        ray.init(ignore_reinit_error=True)
+    def setUp(self) -> None:
+        ray.init()
 
-    @classmethod
-    def tearDownClass(cls) -> None:
+    def tearDown(self) -> None:
         ray.shutdown()
 
     def test_external_multi_agent_env_complete_episodes(self):

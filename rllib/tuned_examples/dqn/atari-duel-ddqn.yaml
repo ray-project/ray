@@ -9,8 +9,7 @@ dueling-ddqn:
             - SpaceInvadersNoFrameskip-v4
     run: DQN
     config:
-        # Works for both torch and tf.
-        framework: tf
+        use_pytorch: false  # <- switch on/off torch
         double_q: true
         dueling: true
         num_atoms: 1

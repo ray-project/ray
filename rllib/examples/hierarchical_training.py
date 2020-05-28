@@ -60,7 +60,7 @@ if __name__ == "__main__":
             config={
                 "env": WindyMazeEnv,
                 "num_workers": 0,
-                "framework": "torch" if args.torch else "tf",
+                "use_pytorch": args.torch,
             },
         )
     else:
@@ -93,7 +93,7 @@ if __name__ == "__main__":
                 },
                 "policy_mapping_fn": function(policy_mapping_fn),
             },
-            "framework": "torch" if args.torch else "tf",
+            "use_pytorch": args.torch,
         }
 
         results = tune.run("PPO", stop=stop, config=config)

@@ -6,7 +6,8 @@ from ray.rllib.agents.registry import get_agent_class
 
 
 def check_support(alg, config, test_trace=True):
-    config["framework"] = "tfe"
+    config["eager"] = True
+
     # Test both continuous and discrete actions.
     for cont in [True, False]:
         if cont and alg in ["DQN", "APEX", "SimpleQ"]:
@@ -23,6 +24,7 @@ def check_support(alg, config, test_trace=True):
 
         a = get_agent_class(alg)
         config["log_level"] = "ERROR"
+
         config["eager_tracing"] = False
         tune.run(a, config=config, stop={"training_iteration": 1})
 
@@ -33,7 +35,7 @@ def check_support(alg, config, test_trace=True):
 
 class TestEagerSupport(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=4, local_mode=True)
+        ray.init(num_cpus=4)
 
     def tearDown(self):
         ray.shutdown()

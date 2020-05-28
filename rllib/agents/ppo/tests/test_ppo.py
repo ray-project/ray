@@ -49,7 +49,7 @@ class TestPPO(unittest.TestCase):
     def test_ppo_compilation(self):
         """Test whether a PPOTrainer can be built with both frameworks."""
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
-        config["num_workers"] = 1
+        config["num_workers"] = 0  # Run locally.
         num_iterations = 2
 
         for _ in framework_iterator(config):
@@ -64,7 +64,6 @@ class TestPPO(unittest.TestCase):
         # Fake GPU setup.
         config["num_gpus"] = 2
         config["_fake_gpus"] = True
-        config["framework"] = "tf"
         # Mimick tuned_example for PPO CartPole.
         config["num_workers"] = 1
         config["lr"] = 0.0003
@@ -165,7 +164,7 @@ class TestPPO(unittest.TestCase):
             init_std = get_value()
             assert init_std == 0.0, init_std
 
-            if fw in ["tf", "tfe"]:
+            if fw == "tf" or fw == "eager":
                 batch = postprocess_ppo_gae_tf(policy, FAKE_BATCH)
             else:
                 batch = postprocess_ppo_gae_torch(policy, FAKE_BATCH)
@@ -206,7 +205,7 @@ class TestPPO(unittest.TestCase):
             # to train_batch dict.
             # A = [0.99^2 * 0.5 + 0.99 * -1.0 + 1.0, 0.99 * 0.5 - 1.0, 0.5] =
             # [0.50005, -0.505, 0.5]
-            if fw == "tf" or fw == "tfe":
+            if fw == "tf" or fw == "eager":
                 train_batch = postprocess_ppo_gae_tf(policy, FAKE_BATCH)
             else:
                 train_batch = postprocess_ppo_gae_torch(policy, FAKE_BATCH)
@@ -217,7 +216,7 @@ class TestPPO(unittest.TestCase):
                   [0.50005, -0.505, 0.5])
 
             # Calculate actual PPO loss.
-            if fw == "tfe":
+            if fw == "eager":
                 ppo_surrogate_loss_tf(policy, policy.model, Categorical,
                                       train_batch)
             elif fw == "torch":

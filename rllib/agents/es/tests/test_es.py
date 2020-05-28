@@ -13,7 +13,6 @@ class TestES(unittest.TestCase):
         # Keep it simple.
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = None
-        config["noise_size"] = 2500000
 
         num_iterations = 2
 

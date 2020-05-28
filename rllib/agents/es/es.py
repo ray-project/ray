@@ -161,7 +161,7 @@ class Worker:
 
 
 def get_policy_class(config):
-    if config["framework"] == "torch":
+    if config["use_pytorch"]:
         from ray.rllib.agents.es.es_torch_policy import ESTorchPolicy
         policy_cls = ESTorchPolicy
     else:
@@ -202,13 +202,6 @@ class ESTrainer(Trainer):
         self.episodes_so_far = 0
         self.reward_list = []
         self.tstart = time.time()
-
-    @override(Trainer)
-    def get_policy(self, policy=DEFAULT_POLICY_ID):
-        if policy != DEFAULT_POLICY_ID:
-            raise ValueError("ES has no policy '{}'! Use {} "
-                             "instead.".format(policy, DEFAULT_POLICY_ID))
-        return self.policy
 
     @override(Trainer)
     def _train(self):

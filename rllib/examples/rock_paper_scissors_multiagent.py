@@ -35,7 +35,7 @@ def run_same_policy(args, stop):
     """Use the same policy for both agents (trivial case)."""
     config = {
         "env": RockPaperScissors,
-        "framework": "torch" if args.torch else "tf",
+        "use_pytorch": args.torch,
     }
 
     results = tune.run("PG", config=config, stop=stop)
@@ -77,12 +77,12 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
                     "model": {
                         "use_lstm": use_lstm
                     },
-                    "framework": "torch" if args.torch else "tf",
+                    "use_pytorch": args.torch,
                 }),
             },
             "policy_mapping_fn": select_policy,
         },
-        "framework": "torch" if args.torch else "tf",
+        "use_pytorch": args.torch,
     }
     cls = get_agent_class(trainer) if isinstance(trainer, str) else trainer
     trainer_obj = cls(config=config)

@@ -68,7 +68,6 @@ if __name__ == "__main__":
         "model": {
             "custom_model": "eager_model"
         },
-        "framework": "tfe",
     }
     stop = {
         "timesteps_total": args.stop_timesteps,

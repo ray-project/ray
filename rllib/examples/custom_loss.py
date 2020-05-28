@@ -57,7 +57,7 @@ if __name__ == "__main__":
                 "input_files": args.input_files,
             },
         },
-        "framework": "torch" if args.torch else "tf",
+        "use_pytorch": args.torch,
     }
 
     stop = {

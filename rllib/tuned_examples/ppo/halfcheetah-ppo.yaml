@@ -5,8 +5,7 @@ halfcheetah-ppo:
         episode_reward_mean: 9800
         time_total_s: 10800
     config:
-        # Works for both torch and tf.
-        framework: tf
+        use_pytorch: false  # <- switch on/off torch
         gamma: 0.99
         lambda: 0.95
         kl_coeff: 1.0

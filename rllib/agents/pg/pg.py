@@ -15,7 +15,7 @@ DEFAULT_CONFIG = with_common_config({
 
 
 def get_policy_class(config):
-    if config["framework"] == "torch":
+    if config["use_pytorch"]:
         from ray.rllib.agents.pg.pg_torch_policy import PGTorchPolicy
         return PGTorchPolicy
     else:

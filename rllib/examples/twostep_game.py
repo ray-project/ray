@@ -76,7 +76,7 @@ if __name__ == "__main__":
                 },
                 "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
             },
-            "framework": "torch" if args.torch else "tf",
+            "use_pytorch": args.torch,
         }
         group = False
     elif args.run == "QMIX":
@@ -91,11 +91,11 @@ if __name__ == "__main__":
                 "separate_state_space": True,
                 "one_hot_state_encoding": True
             },
-            "framework": "torch" if args.torch else "tf",
+            "use_pytorch": args.torch,
         }
         group = True
     else:
-        config = {"framework": "torch" if args.torch else "tf"}
+        config = {}
         group = False
 
     ray.init(num_cpus=args.num_cpus or None)

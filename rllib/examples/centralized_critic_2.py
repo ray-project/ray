@@ -99,7 +99,7 @@ if __name__ == "__main__":
         "model": {
             "custom_model": "cc_model",
         },
-        "framework": "torch" if args.torch else "tf",
+        "use_pytorch": args.torch,
     }
 
     stop = {

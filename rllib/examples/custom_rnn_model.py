@@ -46,7 +46,7 @@ if __name__ == "__main__":
             "custom_model": "rnn",
             "max_seq_len": 20,
         },
-        "framework": "torch" if args.torch else "tf",
+        "use_pytorch": args.torch,
     }
 
     stop = {
