@@ -95,18 +95,21 @@ void GcsServer::Start() {
       new rpc::WorkerInfoGrpcService(main_service_, *worker_info_handler_));
   rpc_server_.RegisterService(*worker_info_service_);
 
-  // Run rpc server.
-  rpc_server_.Run();
-
-  // Store gcs rpc server address in redis.
-  StoreGcsServerAddressInRedis();
-  is_started_ = true;
-
   // Run the event loop.
   // Using boost::asio::io_context::work to avoid ending the event loop when
   // there are no events to handle.
   boost::asio::io_context::work worker(main_service_);
   main_service_.run();
+
+  auto on_done = [this](Status status) {
+    // Run rpc server.
+    rpc_server_.Run();
+
+    // Store gcs rpc server address in redis.
+    StoreGcsServerAddressInRedis();
+    is_started_ = true;
+  };
+  ((GcsObjectManager *)object_info_handler_.get())->ReloadCache(on_done);
 }
 
 void GcsServer::Stop() {

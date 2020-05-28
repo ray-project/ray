@@ -266,6 +266,26 @@ std::shared_ptr<ObjectTableDataList> GcsObjectManager::GenObjectTableDataList(
   return object_table_data_list;
 }
 
+void GcsObjectManager::ReloadCache(const StatusCallback &done) {
+  auto callback = [this, done](
+                      const std::unordered_map<ObjectID, ObjectTableDataList> &result) {
+    absl::flat_hash_map<ClientID, ObjectSet> node_to_objects;
+    for (auto &item : result) {
+      auto object_list = item.second;
+      for (int index = 0; index < object_list.items_size(); ++index) {
+        node_to_objects[ClientID::FromBinary(object_list.items(index).manager())].insert(
+            item.first);
+      }
+    }
+
+    for (auto &item : node_to_objects) {
+      AddObjectsLocation(item.first, item.second);
+    }
+    done(Status::OK());
+  };
+  RAY_CHECK_OK(gcs_table_storage_->ObjectTable().GetAll(callback));
+}
+
 }  // namespace gcs
 
 }  // namespace ray

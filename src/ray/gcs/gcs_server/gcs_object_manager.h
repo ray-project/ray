@@ -54,6 +54,8 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
                                   rpc::RemoveObjectLocationReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
+  void ReloadCache(const StatusCallback &done);
+
  protected:
   typedef absl::flat_hash_set<ClientID> LocationSet;
 
