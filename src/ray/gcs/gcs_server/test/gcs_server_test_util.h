@@ -18,13 +18,13 @@
 #include <memory>
 #include <utility>
 
-#include "src/ray/common/task/task.h"
-#include "src/ray/common/task/task_util.h"
-#include "src/ray/common/test_util.h"
-#include "src/ray/gcs/gcs_server/gcs_actor_manager.h"
-#include "src/ray/gcs/gcs_server/gcs_actor_scheduler.h"
-#include "src/ray/gcs/gcs_server/gcs_node_manager.h"
-#include "src/ray/util/asio_util.h"
+#include "ray/common/task/task.h"
+#include "ray/common/task/task_util.h"
+#include "ray/common/test_util.h"
+#include "ray/gcs/gcs_server/gcs_actor_manager.h"
+#include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/util/asio_util.h"
 
 namespace ray {
 
