@@ -153,19 +153,18 @@ class RayletClient : public PinObjectsInterface,
   /// additional message will be sent to register as one.
   /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
   /// \param language Language of the worker.
+  /// \param ip_address The IP address of the worker.
   /// \param raylet_id This will be populated with the local raylet's ClientID.
   /// \param internal_config This will be populated with internal config parameters
   /// provided by the raylet.
-  /// \param ip_address The IP address of the worker.
-  /// \param port The port that the worker will listen on for gRPC requests, if
-  /// any.
+  /// \param port The port that the worker should listen on for gRPC requests. If
+  /// 0, the worker should choose a random port.
   RayletClient(boost::asio::io_service &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
                bool is_worker, const JobID &job_id, const Language &language,
-               ClientID *raylet_id,
-               std::unordered_map<std::string, std::string> *internal_config,
-               const std::string &ip_address, int port = -1);
+               const std::string &ip_address, ClientID *raylet_id, int *port,
+               std::unordered_map<std::string, std::string> *internal_config);
 
   /// Connect to the raylet via grpc only.
   ///
@@ -173,6 +172,12 @@ class RayletClient : public PinObjectsInterface,
   RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
+
+  /// Tell the raylet which port this worker's gRPC server is listening on.
+  ///
+  /// \param The port.
+  /// \return ray::Status.
+  Status AnnounceWorkerPort(int port);
 
   /// Submit a task using the raylet code path.
   ///

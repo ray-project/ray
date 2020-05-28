@@ -8,7 +8,8 @@ from ray.util.iter_metrics import SharedMetrics
 def Concurrently(ops: List[LocalIterator],
                  *,
                  mode="round_robin",
-                 output_indexes=None):
+                 output_indexes=None,
+                 round_robin_weights=None):
     """Operator that runs the given parent iterators concurrently.
 
     Arguments:
@@ -20,6 +21,12 @@ def Concurrently(ops: List[LocalIterator],
         output_indexes (list): If specified, only output results from the
             given ops. For example, if output_indexes=[0], only results from
             the first op in ops will be returned.
+        round_robin_weights (list): List of weights to use for round robin
+            mode. For example, [2, 1] will cause the iterator to pull twice
+            as many items from the first iterator as the second. [2, 1, *] will
+            cause as many items to be pulled as possible from the third
+            iterator without blocking. This is only allowed in round robin
+            mode.
 
         >>> sim_op = ParallelRollouts(...).for_each(...)
         >>> replay_op = LocalReplay(...).for_each(...)
@@ -32,8 +39,13 @@ def Concurrently(ops: List[LocalIterator],
         deterministic = True
     elif mode == "async":
         deterministic = False
+        if round_robin_weights:
+            raise ValueError(
+                "round_robin_weights cannot be specified in async mode")
     else:
         raise ValueError("Unknown mode {}".format(mode))
+    if round_robin_weights and all(r == "*" for r in round_robin_weights):
+        raise ValueError("Cannot specify all round robin weights = *")
 
     if output_indexes:
         for i in output_indexes:
@@ -44,7 +56,10 @@ def Concurrently(ops: List[LocalIterator],
 
         ops = [tag(op, i) for i, op in enumerate(ops)]
 
-    output = ops[0].union(*ops[1:], deterministic=deterministic)
+    output = ops[0].union(
+        *ops[1:],
+        deterministic=deterministic,
+        round_robin_weights=round_robin_weights)
 
     if output_indexes:
         output = (output.filter(lambda tup: tup[0] in output_indexes)
@@ -55,6 +70,8 @@ def Concurrently(ops: List[LocalIterator],
 
 class Enqueue:
     """Enqueue data items into a queue.Queue instance.
+
+    Returns the input item as output.
 
     The enqueue is non-blocking, so Enqueue operations can executed with
     Dequeue via the Concurrently() operator.
@@ -79,6 +96,7 @@ class Enqueue:
             self.queue.put_nowait(x)
         except queue.Full:
             return _NextValueNotReady()
+        return x
 
 
 def Dequeue(input_queue: queue.Queue, check=lambda: True):

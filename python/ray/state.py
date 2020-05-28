@@ -10,8 +10,9 @@ from ray import (
     gcs_utils,
     services,
 )
-from ray.utils import (decode, binary_to_object_id, binary_to_hex,
-                       hex_to_binary)
+from ray.utils import (decode, binary_to_hex, hex_to_binary)
+
+from ray._raylet import GlobalStateAccessor
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +126,8 @@ class GlobalState:
     Attributes:
         redis_client: The Redis client used to query the primary redis server.
         redis_clients: Redis clients for each of the Redis shards.
+        global_state_accessor: The client used to query gcs table from gcs
+            server.
     """
 
     def __init__(self):
@@ -134,6 +137,7 @@ class GlobalState:
         self.redis_client = None
         # Clients for the redis shards, storing the object table & task table.
         self.redis_clients = None
+        self.global_state_accessor = None
 
     def _check_connected(self):
         """Check that the object has been initialized before it is used.
@@ -150,10 +154,17 @@ class GlobalState:
             raise RuntimeError("The ray global state API cannot be used "
                                "before ray.init has been called.")
 
+        if self.global_state_accessor is None:
+            raise RuntimeError("The ray global state API cannot be used "
+                               "before ray.init has been called.")
+
     def disconnect(self):
         """Disconnect global state from GCS."""
         self.redis_client = None
         self.redis_clients = None
+        if self.global_state_accessor is not None:
+            self.global_state_accessor.disconnect()
+            self.global_state_accessor = None
 
     def _initialize_global_state(self,
                                  redis_address,
@@ -171,6 +182,9 @@ class GlobalState:
         """
         self.redis_client = services.create_redis_client(
             redis_address, redis_password)
+        self.global_state_accessor = GlobalStateAccessor(
+            redis_address, redis_password, False)
+        self.global_state_accessor.connect()
         start_time = time.time()
 
         num_redis_shards = None
@@ -241,38 +255,6 @@ class GlobalState:
             result.extend(list(client.scan_iter(match=pattern)))
         return result
 
-    def _object_table(self, object_id):
-        """Fetch and parse the object table information for a single object ID.
-
-        Args:
-            object_id: An object ID to get information about.
-
-        Returns:
-            A dictionary with information about the object ID in question.
-        """
-        # Allow the argument to be either an ObjectID or a hex string.
-        if not isinstance(object_id, ray.ObjectID):
-            object_id = ray.ObjectID(hex_to_binary(object_id))
-
-        # Return information about a single object ID.
-        message = self._execute_command(object_id, "RAY.TABLE_LOOKUP",
-                                        gcs_utils.TablePrefix.Value("OBJECT"),
-                                        "", object_id.binary())
-        if message is None:
-            return {}
-        gcs_entry = gcs_utils.GcsEntry.FromString(message)
-
-        assert len(gcs_entry.entries) > 0
-
-        entry = gcs_utils.ObjectTableData.FromString(gcs_entry.entries[0])
-
-        object_info = {
-            "DataSize": entry.object_size,
-            "Manager": entry.manager,
-        }
-
-        return object_info
-
     def object_table(self, object_id=None):
         """Fetch and parse the object table info for one or more object IDs.
 
@@ -284,22 +266,41 @@ class GlobalState:
             Information from the object table.
         """
         self._check_connected()
-        if object_id is not None:
-            # Return information about a single object ID.
-            return self._object_table(object_id)
-        else:
-            # Return the entire object table.
-            object_keys = self._keys(gcs_utils.TablePrefix_OBJECT_string + "*")
-            object_ids_binary = {
-                key[len(gcs_utils.TablePrefix_OBJECT_string):]
-                for key in object_keys
-            }
 
+        if object_id is not None:
+            object_id = ray.ObjectID(hex_to_binary(object_id))
+            object_info = self.global_state_accessor.get_object_info(object_id)
+            if object_info is None:
+                return {}
+            else:
+                object_location_info = gcs_utils.ObjectLocationInfo.FromString(
+                    object_info)
+                return self._gen_object_info(object_location_info)
+        else:
+            object_table = self.global_state_accessor.get_object_table()
             results = {}
-            for object_id_binary in object_ids_binary:
-                results[binary_to_object_id(object_id_binary)] = (
-                    self._object_table(binary_to_object_id(object_id_binary)))
+            for i in range(len(object_table)):
+                object_location_info = gcs_utils.ObjectLocationInfo.FromString(
+                    object_table[i])
+                results[binary_to_hex(object_location_info.object_id)] = \
+                    self._gen_object_info(object_location_info)
             return results
+
+    def _gen_object_info(self, object_location_info):
+        """Parse object location info.
+        Returns:
+            Information from object.
+        """
+        locations = []
+        for location in object_location_info.locations:
+            locations.append(ray.utils.binary_to_hex(location.manager))
+
+        object_info = {
+            "ObjectID": ray.utils.binary_to_hex(
+                object_location_info.object_id),
+            "Locations": locations,
+        }
+        return object_info
 
     def _actor_table(self, actor_id):
         """Fetch and parse the actor table information for a single actor ID.
@@ -333,7 +334,6 @@ class GlobalState:
                 "IPAddress": actor_table_data.owner_address.ip_address,
                 "Port": actor_table_data.owner_address.port
             },
-            "IsDirectCall": True,
             "State": actor_table_data.state,
             "Timestamp": actor_table_data.timestamp,
         }
@@ -383,47 +383,6 @@ class GlobalState:
             client["alive"] = client["Alive"]
         return client_table
 
-    def _job_table(self, job_id):
-        """Fetch and parse the job table information for a single job ID.
-
-        Args:
-            job_id: A job ID or hex string to get information about.
-
-        Returns:
-            A dictionary with information about the job ID in question.
-        """
-        # Allow the argument to be either a JobID or a hex string.
-        if not isinstance(job_id, ray.JobID):
-            assert isinstance(job_id, str)
-            job_id = ray.JobID(hex_to_binary(job_id))
-
-        # Return information about a single job ID.
-        message = self.redis_client.execute_command(
-            "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("JOB"), "",
-            job_id.binary())
-
-        if message is None:
-            return {}
-
-        gcs_entry = gcs_utils.GcsEntry.FromString(message)
-
-        assert len(gcs_entry.entries) > 0
-
-        job_info = {}
-
-        for i in range(len(gcs_entry.entries)):
-            entry = gcs_utils.JobTableData.FromString(gcs_entry.entries[i])
-            assert entry.job_id == job_id.binary()
-            job_info["JobID"] = job_id.hex()
-            job_info["DriverIPAddress"] = entry.driver_ip_address
-            job_info["DriverPid"] = entry.driver_pid
-            if entry.is_dead:
-                job_info["StopTime"] = entry.timestamp
-            else:
-                job_info["StartTime"] = entry.timestamp
-
-        return job_info
-
     def job_table(self):
         """Fetch and parse the Redis job table.
 
@@ -438,86 +397,51 @@ class GlobalState:
         """
         self._check_connected()
 
-        job_keys = self.redis_client.keys(gcs_utils.TablePrefix_JOB_string +
-                                          "*")
-
-        job_ids_binary = {
-            key[len(gcs_utils.TablePrefix_JOB_string):]
-            for key in job_keys
-        }
+        job_table = self.global_state_accessor.get_job_table()
 
         results = []
-
-        for job_id_binary in job_ids_binary:
-            results.append(self._job_table(binary_to_hex(job_id_binary)))
+        for i in range(len(job_table)):
+            entry = gcs_utils.JobTableData.FromString(job_table[i])
+            job_info = {}
+            job_info["JobID"] = entry.job_id.hex()
+            job_info["DriverIPAddress"] = entry.driver_ip_address
+            job_info["DriverPid"] = entry.driver_pid
+            if entry.is_dead:
+                job_info["StopTime"] = entry.timestamp
+            else:
+                job_info["StartTime"] = entry.timestamp
+            results.append(job_info)
 
         return results
 
-    def _profile_table(self, batch_id):
-        """Get the profile events for a given batch of profile events.
+    def profile_table(self):
+        self._check_connected()
 
-        Args:
-            batch_id: An identifier for a batch of profile events.
+        result = defaultdict(list)
+        profile_table = self.global_state_accessor.get_profile_table()
+        for i in range(len(profile_table)):
+            profile = gcs_utils.ProfileTableData.FromString(profile_table[i])
 
-        Returns:
-            A list of the profile events for the specified batch.
-        """
-        # TODO(rkn): This method should support limiting the number of log
-        # events and should also support returning a window of events.
-        message = self._execute_command(batch_id, "RAY.TABLE_LOOKUP",
-                                        gcs_utils.TablePrefix.Value("PROFILE"),
-                                        "", batch_id.binary())
+            component_type = profile.component_type
+            component_id = binary_to_hex(profile.component_id)
+            node_ip_address = profile.node_ip_address
 
-        if message is None:
-            return []
-
-        gcs_entries = gcs_utils.GcsEntry.FromString(message)
-
-        profile_events = []
-        for entry in gcs_entries.entries:
-            profile_table_message = gcs_utils.ProfileTableData.FromString(
-                entry)
-
-            component_type = profile_table_message.component_type
-            component_id = binary_to_hex(profile_table_message.component_id)
-            node_ip_address = profile_table_message.node_ip_address
-
-            for profile_event_message in profile_table_message.profile_events:
+            for event in profile.profile_events:
                 try:
-                    extra_data = json.loads(profile_event_message.extra_data)
+                    extra_data = json.loads(event.extra_data)
                 except ValueError:
                     extra_data = {}
                 profile_event = {
-                    "event_type": profile_event_message.event_type,
+                    "event_type": event.event_type,
                     "component_id": component_id,
                     "node_ip_address": node_ip_address,
                     "component_type": component_type,
-                    "start_time": profile_event_message.start_time,
-                    "end_time": profile_event_message.end_time,
+                    "start_time": event.start_time,
+                    "end_time": event.end_time,
                     "extra_data": extra_data
                 }
 
-                profile_events.append(profile_event)
-
-        return profile_events
-
-    def profile_table(self):
-        self._check_connected()
-        profile_table_keys = self._keys(gcs_utils.TablePrefix_PROFILE_string +
-                                        "*")
-        batch_identifiers_binary = [
-            key[len(gcs_utils.TablePrefix_PROFILE_string):]
-            for key in profile_table_keys
-        ]
-
-        result = defaultdict(list)
-        for batch_id in batch_identifiers_binary:
-            profile_data = self._profile_table(binary_to_object_id(batch_id))
-            # Note that if keys are being evicted from Redis, then it is
-            # possible that the batch will be evicted before we get it.
-            if len(profile_data) > 0:
-                component_id = profile_data[0]["component_id"]
-                result[component_id].extend(profile_data)
+                result[component_id].append(profile_event)
 
         return dict(result)
 

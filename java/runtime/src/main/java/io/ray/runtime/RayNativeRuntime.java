@@ -102,12 +102,14 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   @Override
   public void shutdown() {
-    nativeShutdown();
-    if (null != manager) {
-      manager.cleanup();
-      manager = null;
+    if (rayConfig.workerMode == WorkerType.DRIVER) {
+      nativeShutdown();
+      if (null != manager) {
+        manager.cleanup();
+        manager = null;
+      }
+      RayConfig.reset();
     }
-    RayConfig.reset();
     LOGGER.info("RayNativeRuntime shutdown");
   }
 
@@ -126,8 +128,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   }
 
   @Override
-  public void killActor(BaseActor actor, boolean noReconstruction) {
-    nativeKillActor(actor.getId().getBytes(), noReconstruction);
+  public void killActor(BaseActor actor, boolean noRestart) {
+    nativeKillActor(actor.getId().getBytes(), noRestart);
   }
 
   @Override
@@ -160,7 +162,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private static native void nativeSetResource(String resourceName, double capacity, byte[] nodeId);
 
-  private static native void nativeKillActor(byte[] actorId, boolean noReconstruction);
+  private static native void nativeKillActor(byte[] actorId, boolean noRestart);
 
   private static native void nativeSetCoreWorker(byte[] workerId);
 

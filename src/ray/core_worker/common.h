@@ -111,22 +111,30 @@ struct TaskOptions {
 /// Options for actor creation tasks.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(uint64_t max_reconstructions, int max_concurrency,
+  ActorCreationOptions(int64_t max_restarts, int64_t max_task_retries,
+                       int max_concurrency,
                        const std::unordered_map<std::string, double> &resources,
                        const std::unordered_map<std::string, double> &placement_resources,
                        const std::vector<std::string> &dynamic_worker_options,
-                       bool is_detached, bool is_asyncio)
-      : max_reconstructions(max_reconstructions),
+                       bool is_detached, std::string &name, bool is_asyncio)
+      : max_restarts(max_restarts),
+        max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
         resources(resources),
         placement_resources(placement_resources),
         dynamic_worker_options(dynamic_worker_options),
         is_detached(is_detached),
+        name(name),
         is_asyncio(is_asyncio){};
 
-  /// Maximum number of times that the actor should be reconstructed when it dies
-  /// unexpectedly. It must be non-negative. If it's 0, the actor won't be reconstructed.
-  const uint64_t max_reconstructions = 0;
+  /// Maximum number of times that the actor should be restarted if it dies
+  /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
+  /// actor won't be restarted.
+  const int64_t max_restarts = 0;
+  /// Maximum number of times that individual tasks can be retried at the
+  /// actor, if the actor dies unexpectedly. If -1, then the task may be
+  /// retried infinitely many times.
+  const int64_t max_task_retries = 0;
   /// The max number of concurrent tasks to run on this direct call actor.
   const int max_concurrency = 1;
   /// Resources required by the whole lifetime of this actor.
@@ -139,6 +147,10 @@ struct ActorCreationOptions {
   /// Whether to keep the actor persistent after driver exit. If true, this will set
   /// the worker to not be destroyed after the driver shutdown.
   const bool is_detached = false;
+  /// The name to give this detached actor that can be used to get a handle to it from
+  /// other drivers. This must be globally unique across the cluster.
+  /// This should set if and only if is_detached is true.
+  const std::string name;
   /// Whether to use async mode of direct actor call.
   const bool is_asyncio = false;
 };

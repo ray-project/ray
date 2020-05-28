@@ -51,6 +51,7 @@ namespace ray {
 #define STATUS_CODE_INTENTIONAL_SYSTEM_EXIT "IntentionalSystemExit"
 #define STATUS_CODE_UNEXPECTED_SYSTEM_EXIT "UnexpectedSystemExit"
 #define STATUS_CODE_UNKNOWN "Unknown"
+#define STATUS_CODE_NOT_FOUND "NotFound"
 
 Status::Status(StatusCode code, const std::string &msg) {
   assert(code != StatusCode::OK);
@@ -88,7 +89,8 @@ std::string Status::CodeAsString() const {
       {StatusCode::TimedOut, STATUS_CODE_TIMED_OUT},
       {StatusCode::Interrupted, STATUS_CODE_INTERRUPTED},
       {StatusCode::IntentionalSystemExit, STATUS_CODE_INTENTIONAL_SYSTEM_EXIT},
-      {StatusCode::UnexpectedSystemExit, STATUS_CODE_UNEXPECTED_SYSTEM_EXIT}};
+      {StatusCode::UnexpectedSystemExit, STATUS_CODE_UNEXPECTED_SYSTEM_EXIT},
+      {StatusCode::NotFound, STATUS_CODE_NOT_FOUND}};
 
   if (!code_to_str.count(code())) {
     return STATUS_CODE_UNKNOWN;

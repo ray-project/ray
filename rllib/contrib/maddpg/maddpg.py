@@ -14,7 +14,6 @@ import logging
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.contrib.maddpg.maddpg_policy import MADDPGTFPolicy
-from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 
 logger = logging.getLogger(__name__)
@@ -67,6 +66,13 @@ DEFAULT_CONFIG = with_common_config({
     # Observation compression. Note that compression makes simulation slow in
     # MPE.
     "compress_observations": False,
+    # In multi-agent mode, whether to replay experiences from the same time
+    # step for all policies. This is required for MADDPG.
+    "multiagent_sync_replay": True,
+    # If set, this will fix the ratio of sampled to replayed timesteps.
+    # Otherwise, replay will proceed at the native ratio determined by
+    # (train_batch_size / rollout_fragment_length).
+    "training_intensity": None,
 
     # === Optimization ===
     # Learning rate for the critic (Q-function) optimizer.
@@ -100,17 +106,9 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 1,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 0,
-
-    # TODO(ekl) support synchronized sampling.
-    "use_exec_api": False,
 })
 # __sphinx_doc_end__
 # yapf: enable
-
-
-def set_global_timestep(trainer):
-    global_timestep = trainer.optimizer.num_steps_sampled
-    trainer.train_start_timestep = global_timestep
 
 
 def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
@@ -146,29 +144,21 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
     return MultiAgentBatch(policy_batches, train_batch_size)
 
 
-def make_optimizer(workers, config):
-    return SyncReplayOptimizer(
-        workers,
-        learning_starts=config["learning_starts"],
-        buffer_size=config["buffer_size"],
-        train_batch_size=config["train_batch_size"],
-        before_learn_on_batch=before_learn_on_batch,
-        synchronize_sampling=True,
-        prioritized_replay=False)
+def add_maddpg_postprocessing(config):
+    """Add the before learn on batch hook.
 
+    This hook is called explicitly prior to TrainOneStep() in the execution
+    setups for DQN and APEX.
+    """
 
-def add_trainer_metrics(trainer, result):
-    global_timestep = trainer.optimizer.num_steps_sampled
-    result.update(
-        timesteps_this_iter=global_timestep - trainer.train_start_timestep,
-        info=dict({
-            "num_target_updates": trainer.state["num_target_updates"],
-        }, **trainer.optimizer.stats()))
+    def f(batch, workers, config):
+        policies = dict(workers.local_worker()
+                        .foreach_trainable_policy(lambda p, i: (i, p)))
+        return before_learn_on_batch(batch, policies,
+                                     config["train_batch_size"])
 
-
-def collect_metrics(trainer):
-    result = trainer.collect_metrics()
-    return result
+    config["before_learn_on_batch"] = f
+    return config
 
 
 MADDPGTrainer = GenericOffPolicyTrainer.with_updates(
@@ -176,9 +166,4 @@ MADDPGTrainer = GenericOffPolicyTrainer.with_updates(
     default_config=DEFAULT_CONFIG,
     default_policy=MADDPGTFPolicy,
     get_policy_class=None,
-    before_init=None,
-    before_train_step=set_global_timestep,
-    make_policy_optimizer=make_optimizer,
-    after_train_result=add_trainer_metrics,
-    collect_metrics_fn=collect_metrics,
-    before_evaluate_fn=None)
+    validate_config=add_maddpg_postprocessing)

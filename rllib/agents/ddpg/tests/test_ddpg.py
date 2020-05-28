@@ -2,15 +2,17 @@ import numpy as np
 import re
 import unittest
 
+import ray
 import ray.rllib.agents.ddpg as ddpg
 from ray.rllib.agents.ddpg.ddpg_torch_policy import ddpg_actor_critic_loss as \
     loss_torch
 from ray.rllib.agents.sac.tests.test_sac import SimpleEnv
-from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, l2_loss, relu, sigmoid
-from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.test_utils import check, framework_iterator, \
+    check_compute_action
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
 tf = try_import_tf()
@@ -18,19 +20,31 @@ torch, _ = try_import_torch()
 
 
 class TestDDPG(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_ddpg_compilation(self):
         """Test whether a DDPGTrainer can be built with both frameworks."""
         config = ddpg.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
+        config["num_workers"] = 1
+        config["num_envs_per_worker"] = 2
+        config["learning_starts"] = 0
+        config["exploration_config"]["random_timesteps"] = 100
 
         num_iterations = 2
 
         # Test against all frameworks.
-        for _ in framework_iterator(config, ("torch", "tf")):
+        for _ in framework_iterator(config, ("tf", "torch")):
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)
+            check_compute_action(trainer)
 
     def test_ddpg_exploration_and_with_random_prerun(self):
         """Tests DDPG's Exploration (w/ random actions for n timesteps)."""
@@ -362,9 +376,11 @@ class TestDDPG(unittest.TestCase):
                         else:
                             torch_var = policy.model.state_dict()[map_[tf_key]]
                         if tf_var.shape != torch_var.shape:
-                            check(tf_var, np.transpose(torch_var), rtol=0.07)
+                            check(tf_var, np.transpose(torch_var), atol=0.1)
                         else:
-                            check(tf_var, torch_var, rtol=0.07)
+                            check(tf_var, torch_var, atol=0.1)
+
+            trainer.stop()
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
         return {

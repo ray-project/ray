@@ -76,6 +76,9 @@ struct CoreWorkerOptions {
   JobID job_id;
   /// Options for the GCS client.
   gcs::GcsClientOptions gcs_options;
+  /// Initialize logging if true. Otherwise, it must be initialized and cleaned up by the
+  /// caller.
+  bool enable_logging;
   /// Directory to write logs to. If this is empty, logs won't be written to a file.
   std::string log_dir;
   /// If false, will not call `RayLog::InstallFailureSignalHandler()`.
@@ -585,10 +588,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
   /// \param[in] actor_id ID of the actor to kill.
-  /// \param[in] no_reconstruction If set to true, the killed actor will not be
-  /// reconstructed anymore.
+  /// \param[in] no_restart If set to true, the killed actor will not be
+  /// restarted anymore.
   /// \param[out] Status
-  Status KillActor(const ActorID &actor_id, bool force_kill, bool no_reconstruction);
+  Status KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
 
   /// Stops the task associated with the given Object ID.
   ///
@@ -664,6 +667,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status::Invalid if we don't have this actor handle.
   Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
 
+  /// Get a handle to a named actor.
+  ///
+  /// \param[in] name The name of the actor whose handle to get.
+  /// \param[out] actor_handle A handle to the requested actor.
+  /// \return Status::NotFound if an actor with the specified name wasn't found.
+  Status GetNamedActorHandle(const std::string &name, ActorHandle **actor_handle);
+
   ///
   /// The following methods are handlers for the core worker's gRPC server, which follow
   /// a macro-generated call convention. These are executed on the io_service_ and
@@ -689,6 +699,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,
                              rpc::GetObjectStatusReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
+  void HandleWaitForActorOutOfScope(const rpc::WaitForActorOutOfScopeRequest &request,
+                                    rpc::WaitForActorOutOfScopeReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleWaitForObjectEviction(const rpc::WaitForObjectEvictionRequest &request,
@@ -742,7 +757,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Perform async get from in-memory store.
   ///
-  /// \param[in] object_id The id to call get on. Assumes object_id.IsDirectCallType().
+  /// \param[in] object_id The id to call get on.
   /// \param[in] success_callback The callback to use the result object.
   /// \param[in] fallback_callback The callback to use when failed to get result.
   /// \param[in] python_future the void* object to be passed to SetResultCallback
@@ -934,7 +949,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   boost::asio::steady_timer internal_timer_;
 
   /// RPC server used to receive tasks to execute.
-  rpc::GrpcServer core_worker_server_;
+  std::unique_ptr<rpc::GrpcServer> core_worker_server_;
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;
@@ -988,6 +1003,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Manages recovery of objects stored in remote plasma nodes.
   std::unique_ptr<ObjectRecoveryManager> object_recovery_manager_;
 
+  // TODO(swang): Refactor to merge actor_handles_mutex_ and all fields that it
+  // protects into the ActorManager.
   /// The `actor_handles_` field could be mutated concurrently due to multi-threading, we
   /// need a mutex to protect it.
   mutable absl::Mutex actor_handles_mutex_;
@@ -995,6 +1012,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Map from actor ID to a handle to that actor.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(actor_handles_mutex_);
+
+  /// Map from actor ID to a callback to call when all local handles to that
+  /// actor have gone out of scpoe.
+  absl::flat_hash_map<ActorID, std::function<void(const ActorID &)>>
+      actor_out_of_scope_callbacks_ GUARDED_BY(actor_handles_mutex_);
 
   ///
   /// Fields related to task execution.

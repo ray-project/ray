@@ -22,7 +22,6 @@ from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.actors import TaskPool, create_colocated
-from ray.rllib.utils.memory import ray_get_and_free
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
 
@@ -166,8 +165,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
 
     @override(PolicyOptimizer)
     def stats(self):
-        replay_stats = ray_get_and_free(self.replay_actors[0].stats.remote(
-            self.debug))
+        replay_stats = ray.get(self.replay_actors[0].stats.remote(self.debug))
         timing = {
             "{}_time_ms".format(k): round(1000 * self.timers[k].mean, 3)
             for k in self.timers
@@ -218,7 +216,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                 counts = {
                     i: v
                     for i, v in enumerate(
-                        ray_get_and_free([c[1][1] for c in completed]))
+                        ray.get([c[1][1] for c in completed]))
                 }
             # If there are failed workers, try to recover the still good ones
             # (via non-batched ray.get()) and store the first error (to raise
@@ -227,7 +225,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                 counts = {}
                 for i, c in enumerate(completed):
                     try:
-                        counts[i] = ray_get_and_free(c[1][1])
+                        counts[i] = ray.get(c[1][1])
                     except RayError as e:
                         logger.exception(
                             "Error in completed task: {}".format(e))
@@ -272,7 +270,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                     self.num_samples_dropped += 1
                 else:
                     with self.timers["get_samples"]:
-                        samples = ray_get_and_free(replay)
+                        samples = ray.get(replay)
                     # Defensive copy against plasma crashes, see #2610 #3452
                     self.learner.inqueue.put((ra, samples and samples.copy()))
 
@@ -303,12 +301,14 @@ class LocalReplayBuffer(ParallelIteratorWorker):
                  replay_batch_size,
                  prioritized_replay_alpha=0.6,
                  prioritized_replay_beta=0.4,
-                 prioritized_replay_eps=1e-6):
+                 prioritized_replay_eps=1e-6,
+                 multiagent_sync_replay=False):
         self.replay_starts = learning_starts // num_shards
         self.buffer_size = buffer_size // num_shards
         self.replay_batch_size = replay_batch_size
         self.prioritized_replay_beta = prioritized_replay_beta
         self.prioritized_replay_eps = prioritized_replay_eps
+        self.multiagent_sync_replay = multiagent_sync_replay
 
         def gen_replay():
             while True:
@@ -369,10 +369,17 @@ class LocalReplayBuffer(ParallelIteratorWorker):
 
         with self.replay_timer:
             samples = {}
+            idxes = None
             for policy_id, replay_buffer in self.replay_buffers.items():
+                if self.multiagent_sync_replay:
+                    if idxes is None:
+                        idxes = replay_buffer.sample_idxes(
+                            self.replay_batch_size)
+                else:
+                    idxes = replay_buffer.sample_idxes(self.replay_batch_size)
                 (obses_t, actions, rewards, obses_tp1, dones, weights,
-                 batch_indexes) = replay_buffer.sample(
-                     self.replay_batch_size, beta=self.prioritized_replay_beta)
+                 batch_indexes) = replay_buffer.sample_with_idxes(
+                     idxes, beta=self.prioritized_replay_beta)
                 samples[policy_id] = SampleBatch({
                     "obs": obses_t,
                     "actions": actions,

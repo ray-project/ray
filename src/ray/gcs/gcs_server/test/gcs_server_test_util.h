@@ -179,6 +179,17 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
+    Status AsyncGetAll(
+        const gcs::MultiItemCallback<rpc::ActorTableData> &callback) override {
+      return Status::NotImplemented("");
+    }
+
+    Status AsyncGetByName(
+        const std::string &name,
+        const gcs::OptionalItemCallback<rpc::ActorTableData> &callback) override {
+      return Status::NotImplemented("");
+    }
+
     Status AsyncCreateActor(const TaskSpecification &task_spec,
                             const gcs::StatusCallback &callback) override {
       return Status::NotImplemented("");
@@ -211,8 +222,7 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status AsyncUnsubscribe(const ActorID &actor_id,
-                            const gcs::StatusCallback &done) override {
+    Status AsyncUnsubscribe(const ActorID &actor_id) override {
       return Status::NotImplemented("");
     }
 
@@ -232,6 +242,8 @@ struct GcsServerMocker {
         const gcs::OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override {
       return Status::NotImplemented("");
     }
+
+    Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
   };
 
   class MockedNodeInfoAccessor : public gcs::NodeInfoAccessor {
@@ -308,8 +320,7 @@ struct GcsServerMocker {
     }
 
     Status AsyncSubscribeToResources(
-        const gcs::SubscribeCallback<ClientID, gcs::ResourceChangeNotification>
-            &subscribe,
+        const gcs::ItemCallback<rpc::NodeResourceChange> &subscribe,
         const gcs::StatusCallback &done) override {
       return Status::NotImplemented("");
     }
@@ -339,6 +350,8 @@ struct GcsServerMocker {
         const gcs::StatusCallback &done) override {
       return Status::NotImplemented("");
     }
+
+    Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
   };
 
   class MockedErrorInfoAccessor : public gcs::ErrorInfoAccessor {
@@ -348,6 +361,17 @@ struct GcsServerMocker {
       if (callback) {
         callback(Status::OK());
       }
+      return Status::OK();
+    }
+  };
+
+  class MockGcsPubSub : public gcs::GcsPubSub {
+   public:
+    MockGcsPubSub(std::shared_ptr<gcs::RedisClient> redis_client)
+        : GcsPubSub(redis_client) {}
+
+    Status Publish(const std::string &channel, const std::string &id,
+                   const std::string &data, const gcs::StatusCallback &done) override {
       return Status::OK();
     }
   };

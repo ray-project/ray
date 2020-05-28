@@ -467,11 +467,9 @@ For even finer-grained control over training, you can use RLlib's lower-level `b
 
 Global Coordination
 ~~~~~~~~~~~~~~~~~~~
-Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *named actors* (learn more about Ray actors `here <actors.html>`__). As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
+Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *detached actors* (learn more about Ray actors `here <actors.html>`__). These actors are assigned a global name and handles to them can be retrieved using these names. As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
 
 .. code-block:: python
-
-    from ray.util import named_actors
 
     @ray.remote
     class Counter:
@@ -483,12 +481,11 @@ Sometimes, it is necessary to coordinate between pieces of code that live in dif
           return self.count
 
     # on the driver
-    counter = Counter.remote()
-    named_actors.register_actor("global_counter", counter)
+    counter = Counter.options(name="global_counter").remote()
     print(ray.get(counter.get.remote()))  # get the latest count
 
     # in your envs
-    counter = named_actors.get_actor("global_counter")
+    counter = ray.get_actor("global_counter")
     counter.inc.remote(1)  # async call to increment the global count
 
 Ray actors provide high levels of performance, so in more complex cases they can be used implement communication patterns such as parameter servers and allreduce.

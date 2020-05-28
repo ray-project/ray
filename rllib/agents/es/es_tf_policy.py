@@ -6,13 +6,13 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.evaluation.sampler import unbatch_actions
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.space_utils import get_base_struct_from_space
+from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
+    unbatch
 
 tf = try_import_tf()
 tree = try_import_tree()
@@ -68,6 +68,7 @@ def make_session(single_threaded):
 
 class ESTFPolicy:
     def __init__(self, obs_space, action_space, config):
+        self.observation_space = obs_space
         self.action_space = action_space
         self.action_space_struct = get_base_struct_from_space(action_space)
         self.action_noise_std = config["action_noise_std"]
@@ -110,7 +111,7 @@ class ESTFPolicy:
                                          self.action_space_struct)
         # Convert `flat_actions` to a list of lists of action components
         # (list of single actions).
-        actions = unbatch_actions(actions)
+        actions = unbatch(actions)
         return actions
 
     def _add_noise(self, single_action, single_action_space):

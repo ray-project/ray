@@ -180,8 +180,8 @@ Package Reference
 *  `ray.rllib.agents <rllib-package-ref.html#module-ray.rllib.agents>`__
 *  `ray.rllib.env <rllib-package-ref.html#module-ray.rllib.env>`__
 *  `ray.rllib.evaluation <rllib-package-ref.html#module-ray.rllib.evaluation>`__
+*  `ray.rllib.execution <rllib-package-ref.html#module-ray.rllib.execution>`__
 *  `ray.rllib.models <rllib-package-ref.html#module-ray.rllib.models>`__
-*  `ray.rllib.optimizers <rllib-package-ref.html#module-ray.rllib.optimizers>`__
 *  `ray.rllib.utils <rllib-package-ref.html#module-ray.rllib.utils>`__
 
 Troubleshooting

@@ -7,7 +7,7 @@ from ray.rllib.utils import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, \
     SMALL_NUMBER, try_import_tree
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-from ray.rllib.utils.space_utils import get_base_struct_from_space
+from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 
 tf = try_import_tf()
 tfp = try_import_tfp()
@@ -326,6 +326,11 @@ class SquashedGaussian(TFActionDistribution):
         unsquashed = tf.math.atanh(save_normed_values)
         return unsquashed
 
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.prod(action_space.shape) * 2
+
 
 class Beta(TFActionDistribution):
     """
@@ -370,6 +375,11 @@ class Beta(TFActionDistribution):
 
     def _unsquash(self, values):
         return (values - self.low) / (self.high - self.low)
+
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.prod(action_space.shape) * 2
 
 
 class Deterministic(TFActionDistribution):

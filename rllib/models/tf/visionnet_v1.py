@@ -7,7 +7,7 @@ from ray.rllib.utils.framework import get_activation_fn, try_import_tf
 tf = try_import_tf()
 
 
-# Deprecated: see as an alternative models/tf/visionnet_v2.py
+# Deprecated: see as an alternative models/tf.visionnet.py
 class VisionNetwork(Model):
     """Generic vision network."""
 

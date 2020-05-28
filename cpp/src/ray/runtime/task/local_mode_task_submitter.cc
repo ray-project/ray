@@ -39,8 +39,8 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation, TaskTy
   } else if (type == TaskType::ACTOR_TASK) {
     const TaskID actor_creation_task_id =
         TaskID::ForActorCreationTask(invocation.actor_id);
-    const ObjectID actor_creation_dummy_object_id = ObjectID::ForTaskReturn(
-        actor_creation_task_id, 1, static_cast<int>(ray::TaskTransportType::RAYLET));
+    const ObjectID actor_creation_dummy_object_id =
+        ObjectID::ForTaskReturn(actor_creation_task_id, 1);
     builder.SetActorTaskSpec(invocation.actor_id, actor_creation_dummy_object_id,
                              ObjectID(), invocation.actor_counter);
   } else {
@@ -52,8 +52,7 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation, TaskTy
   /// TODO(Guyang Song): Use both 'AddByRefArg' and 'AddByValueArg' to distinguish
   builder.AddByValueArg(::ray::RayObject(buffer, nullptr, std::vector<ObjectID>()));
   auto task_specification = builder.Build();
-  ObjectID return_object_id =
-      task_specification.ReturnId(0, ray::TaskTransportType::RAYLET);
+  ObjectID return_object_id = task_specification.ReturnId(0);
 
   std::shared_ptr<msgpack::sbuffer> actor;
   std::shared_ptr<absl::Mutex> mutex;

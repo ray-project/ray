@@ -334,19 +334,19 @@ def test_identical_function_names(ray_start_regular):
         return 1
 
     @ray.remote  # noqa: F811
-    def g():
+    def g():  # noqa: F811
         return 2
 
     @ray.remote  # noqa: F811
-    def g():
+    def g():  # noqa: F811
         return 3
 
     @ray.remote  # noqa: F811
-    def g():
+    def g():  # noqa: F811
         return 4
 
     @ray.remote  # noqa: F811
-    def g():
+    def g():  # noqa: F811
         return 5
 
     result_values = ray.get([g.remote() for _ in range(num_calls)])
