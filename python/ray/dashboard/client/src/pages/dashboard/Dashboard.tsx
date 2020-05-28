@@ -14,7 +14,7 @@ import {
   getRayletInfo,
   getTuneAvailability,
   getMemoryTable,
-  stopMemoryTable,
+  stopMemoryTableCollection
 } from "../../api";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";
@@ -58,17 +58,14 @@ class Dashboard extends React.Component<
   tabs = [
     { label: "Machine view", component: NodeInfo },
     { label: "Logical view", component: LogicalView },
-    { label: "Ray config", component: RayConfig },
     { label: "Memory", component: MemoryInfo },
+    { label: "Ray config", component: RayConfig },
     { label: "Tune", component: Tune },
   ];
 
-  refershInfo = async () => {
-    let shouldObtainMemoryTable = this.props.shouldObtainMemoryTable;
+  refreshInfo = async () => {
+    let { shouldObtainMemoryTable } = this.props;
     try {
-      if (!shouldObtainMemoryTable) {
-        await Promise.all([stopMemoryTable()]);
-      }
       const [
         nodeInfo,
         rayletInfo,
@@ -89,24 +86,25 @@ class Dashboard extends React.Component<
     } catch (error) {
       this.props.setError(error.toString());
     } finally {
-      this.timeoutId = window.setTimeout(this.refershInfo, 1000);
+      this.timeoutId = window.setTimeout(this.refreshInfo, 1000);
     }
   };
 
   async componentDidMount() {
-    await this.refershInfo();
+    await this.refreshInfo();
   }
 
   componentWillUnmount() {
     clearTimeout(this.timeoutId);
   }
 
-  handleTabChange = (event: React.ChangeEvent<{}>, value: number) => {
+  handleTabChange = async (event: React.ChangeEvent<{}>, value: number) => {
     this.props.setTab(value);
     if (this.tabs[value].label === "Memory") {
       this.props.setShouldObtainMemoryTable(true);
     } else {
       this.props.setShouldObtainMemoryTable(false);
+      await stopMemoryTableCollection();
     }
   };
 

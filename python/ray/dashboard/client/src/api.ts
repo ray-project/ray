@@ -288,6 +288,7 @@ export type MemoryTableSummary = {
   total_actor_handles: number;
   total_captured_in_objects: number;
   total_local_ref_count: number;
+  // The measurement is B.
   total_object_size: number;
   total_pinned_in_memory: number;
   total_used_by_pending_task: number;
@@ -324,5 +325,5 @@ export const getMemoryTable = (shouldObtainMemoryTable: boolean) => {
   }
 };
 
-export const stopMemoryTable = () =>
+export const stopMemoryTableCollection = () =>
   get<StopMemoryTableResponse>("/api/stop_memory_table", {});

@@ -10,11 +10,14 @@ import {
   WithStyles,
   Button,
 } from "@material-ui/core";
+import PauseIcon from '@material-ui/icons/Pause';
+import PlayArrowIcon from '@material-ui/icons/PlayArrow';
 import React from "react";
 import { StoreState } from "../../../store";
 import { connect } from "react-redux";
 import MemoryRowGroup from "./MemoryRowGroup";
 import { dashboardActions } from "../state";
+import {stopMemoryTableCollection} from "../../../api";
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -24,22 +27,20 @@ const styles = (theme: Theme) =>
     cell: {
       padding: theme.spacing(1),
       textAlign: "center",
-      "&:last-child": {
-        paddingRight: theme.spacing(1),
-      },
     },
   });
 
 const mapStateToProps = (state: StoreState) => ({
   tab: state.dashboard.tab,
   memoryTable: state.dashboard.memoryTable,
+  shouldObtainMemoryTable: state.dashboard.shouldObtainMemoryTable,
 });
 
 const mapDispatchToProps = dashboardActions;
 
 type State = {
-  // If memory table is captured, it should stop reneweing memory table.
-  memoryTableCapture: boolean;
+  // If memory table is captured, it should stop renewing memory table.
+  pauseMemoryTable: boolean;
 };
 
 class MemoryInfo extends React.Component<
@@ -48,40 +49,49 @@ class MemoryInfo extends React.Component<
     typeof mapDispatchToProps,
   State
 > {
-  state: State = {
-    memoryTableCapture: false,
+
+  handlePauseMemoryTable = async () => {
+    const { shouldObtainMemoryTable } = this.props;
+    this.props.setShouldObtainMemoryTable(!shouldObtainMemoryTable)
+    if (shouldObtainMemoryTable) {
+      await stopMemoryTableCollection()
+    }
   };
 
-  handleMemoryTableCapture = () => {
-    this.setState((state) => ({
-      memoryTableCapture: !state.memoryTableCapture,
-    }));
-    this.props.setShouldObtainMemoryTable(this.state.memoryTableCapture);
-  };
+  renderIcon = () => {
+    if (this.props.shouldObtainMemoryTable) {
+      return (<PauseIcon />);
+    } else {
+      return (<PlayArrowIcon />);
+    }
+  }
 
   render() {
     const { classes, memoryTable } = this.props;
-    // console.log(memoryTable);
+    const memoryTableHeaders = [
+      "", // Padding
+      "IP Address",
+      "Pid",
+      "Type",
+      "Object ID",
+      "Object Size",
+      "Reference Type",
+      "Call Site"
+    ]
     return (
       <React.Fragment>
         {memoryTable !== null ? (
           <React.Fragment>
-            <Button color="primary" onClick={this.handleMemoryTableCapture}>
-              {this.state.memoryTableCapture
-                ? "Stop capturing"
-                : "Capture Memory Table"}
+            <Button color="primary" onClick={this.handlePauseMemoryTable}>
+              {this.renderIcon()}
+              {this.props.shouldObtainMemoryTable
+                ? "Pause Collection"
+                : "Resume Collection"}
             </Button>
             <Table className={classes.table}>
               <TableHead>
                 <TableRow>
-                  <TableCell className={classes.cell} />
-                  <TableCell className={classes.cell}>IP Adress</TableCell>
-                  <TableCell className={classes.cell}>Pid</TableCell>
-                  <TableCell className={classes.cell}>Type</TableCell>
-                  <TableCell className={classes.cell}>Object ID</TableCell>
-                  <TableCell className={classes.cell}>Object Size</TableCell>
-                  <TableCell className={classes.cell}>Reference Type</TableCell>
-                  <TableCell className={classes.cell}>Call Site</TableCell>
+                  {memoryTableHeaders.map((header, index) => <TableCell key={index} className={classes.cell}>{header}</TableCell>)}
                 </TableRow>
               </TableHead>
               <TableBody>

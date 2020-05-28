@@ -22,9 +22,6 @@ const styles = (theme: Theme) =>
     cell: {
       padding: theme.spacing(1),
       textAlign: "center",
-      "&:last-child": {
-        paddingRight: theme.spacing(1),
-      },
     },
     expandCollapseCell: {
       cursor: "pointer",
@@ -108,33 +105,24 @@ class MemoryRowGroup extends React.Component<
               initialExpanded={false}
               memoryTableSummary={summary}
             />
-            {entries.map((memory_table_entry, index) => {
+            {entries.map((memoryTableEntry, index) => {
               const object_size =
-                memory_table_entry.object_size === -1
+                memoryTableEntry.object_size === -1
                   ? "?"
-                  : memory_table_entry.object_size + " B";
+                  : `${memoryTableEntry.object_size}  B`;
+              const memoryTableEntryValues = [
+                "", // Padding
+                memoryTableEntry.node_ip_address,
+                memoryTableEntry.pid,
+                memoryTableEntry.type,
+                memoryTableEntry.object_id,
+                object_size,
+                memoryTableEntry.reference_type,
+                memoryTableEntry.call_site
+              ]
               return (
                 <TableRow hover key={index}>
-                  <TableCell className={classes.cell} />
-                  <TableCell className={classes.cell}>
-                    {memory_table_entry.node_ip_address}
-                  </TableCell>
-                  <TableCell className={classes.cell}>
-                    {memory_table_entry.pid}
-                  </TableCell>
-                  <TableCell className={classes.cell}>
-                    {memory_table_entry.type}
-                  </TableCell>
-                  <TableCell className={classes.cell}>
-                    {memory_table_entry.object_id}
-                  </TableCell>
-                  <TableCell className={classes.cell}>{object_size}</TableCell>
-                  <TableCell className={classes.cell}>
-                    {memory_table_entry.reference_type}
-                  </TableCell>
-                  <TableCell className={classes.cell}>
-                    {memory_table_entry.call_site}
-                  </TableCell>
+                  {memoryTableEntryValues.map((value, index) => <TableCell key={index} className={classes.cell}>{value}</TableCell>)}
                 </TableRow>
               );
             })}
