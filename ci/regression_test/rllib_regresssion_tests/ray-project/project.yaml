@@ -38,7 +38,9 @@ commands:
     help: "Show tail of the workoad output."
 
   - name: run-regression-tests
-    command: source activate tensorflow_p36 && rllib train -f compact-regression-test.yaml
+    command: |
+      source activate tensorflow_p36 && pip install torch torchvision
+      source activate tensorflow_p36 && rllib train -f compact-regression-test.yaml
     help: "Run rllib regression tests"
 
 # Pathnames for files and directories that should be saved
