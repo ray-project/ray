@@ -2,7 +2,7 @@
 name: Bug report
 about: Report a bug on the latest version of Ray.
 title: ''
-labels: bug
+labels: bug, triage
 assignees: ''
 
 ---
