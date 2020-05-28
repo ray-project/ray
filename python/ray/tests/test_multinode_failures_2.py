@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.test_utils import get_other_nodes, get_non_head_nodes
+from ray.test_utils import get_other_nodes
 import ray.ray_constants as ray_constants
 
 
