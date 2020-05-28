@@ -103,7 +103,7 @@ void GcsServer::Start() {
     StoreGcsServerAddressInRedis();
     is_started_ = true;
   };
-  ((GcsObjectManager *)object_info_handler_.get())->ReloadCache(on_done);
+  ((GcsObjectManager *)object_info_handler_.get())->LoadInitialData(on_done);
 
   // Run the event loop.
   // Using boost::asio::io_context::work to avoid ending the event loop when

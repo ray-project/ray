@@ -266,8 +266,8 @@ std::shared_ptr<ObjectTableDataList> GcsObjectManager::GenObjectTableDataList(
   return object_table_data_list;
 }
 
-void GcsObjectManager::ReloadCache(const StatusCallback &done) {
-  RAY_LOG(INFO) << "Reloading objects' locations and nodes' objects cache.";
+void GcsObjectManager::LoadInitialData(const StatusCallback &done) {
+  RAY_LOG(INFO) << "Loading initial data.";
   auto callback = [this, done](
                       const std::unordered_map<ObjectID, ObjectTableDataList> &result) {
     absl::flat_hash_map<ClientID, ObjectSet> node_to_objects;
@@ -282,7 +282,7 @@ void GcsObjectManager::ReloadCache(const StatusCallback &done) {
     for (auto &item : node_to_objects) {
       AddObjectsLocation(item.first, item.second);
     }
-    RAY_LOG(INFO) << "Finished reloading objects' locations and nodes' objects cache.";
+    RAY_LOG(INFO) << "Finished loading initial data.";
     done(Status::OK());
   };
   RAY_CHECK_OK(gcs_table_storage_->ObjectTable().GetAll(callback));
