@@ -132,7 +132,7 @@ class Resources(
 
     def get(self, key):
         return self.custom_resources.get(key, 0)
-    
+
     def as_dict(self):
         return {"CPU": self.cpu, "GPU": self.gpu}
 
