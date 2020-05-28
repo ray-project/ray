@@ -43,6 +43,10 @@ enum TablePrefix {
   DIRECT_ACTOR = 18;
   WORKER_FAILURE = 19;
   TABLE_PREFIX_MAX = 20;
+  PLACEMENT_GROUP_RESOURCE = 21;
+  PLACEMENT_GROUP = 22;
+  PLACEMENT_GROUP_SCHEDULE = 23;
+  PLACEMENT_GROUP_NAME = 24;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -140,6 +144,28 @@ message ActorTableData {
   TaskSpec task_spec = 14;
 }
 
+message PlacementGroupTableData {
+    // State of a placement group.
+    enum PlacementGroupState {
+      // Placement Group is pending or scheduling
+      PENDING = 0;
+      // Placement Group is alive.
+      ALIVE = 1;
+      // Placement Group is already dead and won't be reschedule.
+      DEAD = 2;
+    }
+    
+    PlacementGroupSpec placement_group_spec = 1;
+
+}
+
+message PlacementGroupName {
+  string name = 1;
+}
+
+message ScheduleData {
+  bytes client_id = 1;
+}
 message ErrorTableData {
   // The ID of the job that the error is for.
   bytes job_id = 1;
@@ -304,6 +330,15 @@ message WorkerFailureData {
   int64 timestamp = 3;
   // Is intentional disconnect
   bool intentional_disconnect = 4;
+}
+
+message PlacementGroupResourceData{
+  int64 available_count = 1;
+  int64 tot_count = 2;
+}
+
+message PlacementGroupResourceMap{
+  map<string,PlacementGroupResourceData> items = 1;
 }
 
 message ResourceMap {

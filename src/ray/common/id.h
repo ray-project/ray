@@ -220,6 +220,25 @@ private:
 
 };
 
+class BundleID : public BaseID<BundleID> {
+ public:
+  static constexpr int64_t kLength = 8;
+
+  static BundleID FromInt(uint16_t value);
+
+  static size_t Size() { return kLength; }
+
+  // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
+  static BundleID FromRandom() = delete;
+
+  BundleID() : BaseID() {}
+
+  MSGPACK_DEFINE(id_);
+
+ private:
+  uint8_t id_[kLength];
+};
+
 class TaskID : public BaseID<TaskID> {
  private:
   static constexpr size_t kUniqueBytesLength = 8;
@@ -405,12 +424,18 @@ static_assert(sizeof(TaskID) == TaskID::kLength + sizeof(size_t),
               "TaskID size is not as expected");
 static_assert(sizeof(ObjectID) == ObjectID::kLength + sizeof(size_t),
               "ObjectID size is not as expected");
+static_assert(sizeof(PlacementGroupID) == PlacementGroupID::kLength + sizeof(size_t),
+              "PlacementGroupID size is not as expected");
+static_assert(sizeof(BundleID) == BundleID::kLength + sizeof(size_t),
+              "BundleID size is not as expected");
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
 std::ostream &operator<<(std::ostream &os, const JobID &id);
 std::ostream &operator<<(std::ostream &os, const ActorID &id);
 std::ostream &operator<<(std::ostream &os, const TaskID &id);
 std::ostream &operator<<(std::ostream &os, const ObjectID &id);
+std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
+std::ostream &operator<<(std::ostream &os, const BundleID &id);
 
 #define DEFINE_UNIQUE_ID(type)                                                 \
   class RAY_EXPORT type : public UniqueID {                                    \
@@ -541,6 +566,8 @@ DEFINE_UNIQUE_ID(JobID);
 DEFINE_UNIQUE_ID(ActorID);
 DEFINE_UNIQUE_ID(TaskID);
 DEFINE_UNIQUE_ID(ObjectID);
+DEFINE_UNIQUE_ID(PlacementGroupID);
+DEFINE_UNIQUE_ID(BundleID);
 #include "id_def.h"
 
 #undef DEFINE_UNIQUE_ID
