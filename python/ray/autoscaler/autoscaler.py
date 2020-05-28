@@ -213,7 +213,6 @@ class StandardAutoscaler:
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
         elif self.load_metrics.num_workers_connected() >= target_workers:
-            logger.info("Ending bringup phase")
             self.bringup = False
             self.log_info_string(nodes, target_workers)
 
