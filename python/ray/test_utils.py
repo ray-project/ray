@@ -288,3 +288,17 @@ def wait_until_server_available(address,
         s.close()
         return True
     return False
+
+
+def get_other_nodes(cluster, exclude_head=False):
+    """Get all nodes except the one that we're connected to."""
+    return [
+        node for node in cluster.list_all_nodes() if
+        node._raylet_socket_name != ray.worker._global_node._raylet_socket_name
+        and (exclude_head is False or node.head is False)
+    ]
+
+
+def get_non_head_nodes(cluster):
+    """Get all non-head nodes."""
+    return list(filter(lambda x: x.head is False, cluster.list_all_nodes()))

@@ -369,19 +369,35 @@ class GlobalState:
                     ray.ActorID(actor_id_binary))
             return results
 
-    def client_table(self):
-        """Fetch and parse the Redis DB client table.
-
+    def node_table(self):
+        """Fetch and parse the Gcs node info table.
         Returns:
-            Information about the Ray clients in the cluster.
+            Information about the node in the cluster.
         """
         self._check_connected()
-        client_table = _parse_client_table(self.redis_client)
 
-        for client in client_table:
-            # These are equivalent and is better for application developers.
-            client["alive"] = client["Alive"]
-        return client_table
+        node_table = self.global_state_accessor.get_node_table()
+
+        results = []
+        for node_info_item in node_table:
+            item = gcs_utils.GcsNodeInfo.FromString(node_info_item)
+            node_info = {
+                "NodeID": ray.utils.binary_to_hex(item.node_id),
+                "Alive": item.state ==
+                gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE"),
+                "NodeManagerAddress": item.node_manager_address,
+                "NodeManagerHostname": item.node_manager_hostname,
+                "NodeManagerPort": item.node_manager_port,
+                "ObjectManagerPort": item.object_manager_port,
+                "ObjectStoreSocketName": item.object_store_socket_name,
+                "RayletSocketName": item.raylet_socket_name
+            }
+            node_info["alive"] = node_info["Alive"]
+            node_info["Resources"] = _parse_resource_table(
+                self.redis_client,
+                node_info["NodeID"]) if node_info["Alive"] else {}
+            results.append(node_info)
+        return results
 
     def job_table(self):
         """Fetch and parse the Redis job table.
@@ -597,7 +613,7 @@ class GlobalState:
         self._check_connected()
 
         node_id_to_address = {}
-        for node_info in self.client_table():
+        for node_info in self.node_table():
             node_id_to_address[node_info["NodeID"]] = "{}:{}".format(
                 node_info["NodeManagerAddress"],
                 node_info["ObjectManagerPort"])
@@ -728,7 +744,7 @@ class GlobalState:
         self._check_connected()
 
         resources = defaultdict(int)
-        clients = self.client_table()
+        clients = self.node_table()
         for client in clients:
             # Only count resources from latest entries of live clients.
             if client["Alive"]:
@@ -740,7 +756,7 @@ class GlobalState:
         """Returns a set of client IDs corresponding to clients still alive."""
         return {
             client["NodeID"]
-            for client in self.client_table() if (client["Alive"])
+            for client in self.node_table() if (client["Alive"])
         }
 
     def available_resources(self):
@@ -929,7 +945,7 @@ def nodes():
     Returns:
         Information about the Ray clients in the cluster.
     """
-    return state.client_table()
+    return state.node_table()
 
 
 def current_node_id():
