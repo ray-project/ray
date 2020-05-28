@@ -99,7 +99,7 @@ py_test(
     name = "run_regression_tests_cartpole_appo_torch",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_torch", "learning_tests_cartpole"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = [
         "tuned_examples/ppo/cartpole-appo.yaml",
@@ -184,7 +184,7 @@ py_test(
     name = "run_regression_tests_cartpole_es_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf", "learning_tests_cartpole"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/es/cartpole-es.yaml"],
     args = ["--yaml-dir=tuned_examples/es"]
@@ -194,7 +194,7 @@ py_test(
     name = "run_regression_tests_cartpole_es_torch",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_torch", "learning_tests_cartpole"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/es/cartpole-es.yaml"],
     args = ["--yaml-dir=tuned_examples/es", "--torch"]
@@ -205,7 +205,7 @@ py_test(
     name = "run_regression_tests_cartpole_impala_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf", "learning_tests_cartpole"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/impala/cartpole-impala.yaml"],
     args = ["--yaml-dir=tuned_examples/impala"]
@@ -215,7 +215,7 @@ py_test(
     name = "run_regression_tests_cartpole_impala_torch",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_torch", "learning_tests_cartpole"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/impala/cartpole-impala.yaml"],
     args = ["--yaml-dir=tuned_examples/impala", "--torch"]
@@ -298,7 +298,7 @@ py_test(
     name = "run_regression_tests_cartpole_sac_torch",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_torch", "learning_tests_cartpole"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/cartpole-sac.yaml"],
     args = ["--yaml-dir=tuned_examples/sac", "--torch"]
@@ -1305,6 +1305,13 @@ py_test(
 # it correctly by its starting letter, e.g. tags=["tests_dir", "tests_dir_A"]
 # for `tests/test_all_stuff.py`.
 # --------------------------------------------------------------------
+
+py_test(
+    name = "tests/test_attention_net_learning",
+    tags = ["tests_dir", "tests_dir_A"],
+    size = "large",
+    srcs = ["tests/test_attention_net_learning.py"]
+)
 
 py_test(
     name = "tests/test_avail_actions_qmix",

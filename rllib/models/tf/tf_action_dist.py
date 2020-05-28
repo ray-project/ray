@@ -7,7 +7,7 @@ from ray.rllib.utils import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, \
     SMALL_NUMBER, try_import_tree
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-from ray.rllib.utils.space_utils import get_base_struct_from_space
+from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 
 tf = try_import_tf()
 tfp = try_import_tfp()

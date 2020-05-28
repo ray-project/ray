@@ -10,7 +10,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.space_utils import unbatch
+from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
 torch, _ = try_import_torch()

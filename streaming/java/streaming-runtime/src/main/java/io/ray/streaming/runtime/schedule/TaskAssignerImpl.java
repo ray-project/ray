@@ -38,7 +38,7 @@ public class TaskAssignerImpl implements TaskAssigner {
     Map<Integer, ExecutionNode> idToExecutionNode = new HashMap<>();
     for (JobVertex jobVertex : jobVertices) {
       ExecutionNode executionNode = new ExecutionNode(jobVertex.getVertexId(),
-          jobVertex.getParallelism());
+          jobVertex.getParallelism(), jobVertex.getConfig());
       executionNode.setNodeType(jobVertex.getVertexType());
       List<ExecutionTask> vertexTasks = new ArrayList<>();
       for (int taskIndex = 0; taskIndex < jobVertex.getParallelism(); taskIndex++) {

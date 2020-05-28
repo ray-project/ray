@@ -83,6 +83,7 @@ class StreamTask(ABC):
             import atexit
             atexit.register(exit_handler)
 
+        # TODO(chaokunyang) add task/job config
         runtime_context = RuntimeContextImpl(
             self.worker.execution_task.task_id,
             self.worker.execution_task.task_index, execution_node.parallelism)
