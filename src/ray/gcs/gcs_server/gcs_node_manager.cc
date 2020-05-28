@@ -219,7 +219,7 @@ void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &re
                                            rpc::UpdateResourcesReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
+  RAY_LOG(INFO) << "Updating resources, node id = " << node_id;
   auto iter = cluster_resources_.find(node_id);
   if (iter != cluster_resources_.end()) {
     auto to_be_updated_resources = std::make_shared<gcs::NodeInfoAccessor::ResourceMap>();
@@ -229,6 +229,12 @@ void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &re
     }
     for (auto &entry : *to_be_updated_resources) {
       iter->second[entry.first] = entry.second;
+    }
+    rpc::ResourceMap rpc_resources_map;
+    auto resources_map = rpc_resources_map.mutable_items();
+    for (auto &entry : iter->second) {
+      (*resources_map)[entry.first].set_resource_capacity(
+          entry.second->resource_capacity());
     }
     auto on_done = [this, node_id, to_be_updated_resources, reply,
                     send_reply_callback](const Status &status) {
@@ -247,8 +253,8 @@ void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &re
       RAY_LOG(DEBUG) << "Finished updating resources, node id = " << node_id;
     };
 
-    RAY_CHECK_OK(node_info_accessor_.AsyncUpdateResources(
-        node_id, *to_be_updated_resources, on_done));
+    RAY_CHECK_OK(
+        gcs_table_storage_->NodeResourceTable().Put(node_id, rpc_resources_map, on_done));
   } else {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::Invalid("Node is not exist."));
     RAY_LOG(ERROR) << "Failed to update resources as node " << node_id
@@ -281,8 +287,13 @@ void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &re
 
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     };
+    rpc::ResourceMap rpc_resources_map;
+    auto resources_map = rpc_resources_map.mutable_items();
+    for (auto &entry : iter->second) {
+      (*resources_map)[entry.first] = *entry.second;
+    }
     RAY_CHECK_OK(
-        node_info_accessor_.AsyncDeleteResources(node_id, resource_names, on_done));
+        gcs_table_storage_->NodeResourceTable().Put(node_id, rpc_resources_map, on_done));
   } else {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
     RAY_LOG(DEBUG) << "Finished deleting node resources, node id = " << node_id;

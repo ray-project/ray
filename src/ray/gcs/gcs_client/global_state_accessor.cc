@@ -136,5 +136,27 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
   return object_info;
 }
 
+std::unordered_map<std::string, std::string> GlobalStateAccessor::GetNodeResourceInfo(
+    const ClientID &node_id) {
+  std::unordered_map<std::string, std::string> node_resource_map;
+  std::promise<void> promise;
+  auto on_done =
+      [&node_id, &node_resource_map, &promise](
+          const Status &status,
+          const boost::optional<ray::gcs::NodeInfoAccessor::ResourceMap> &result) {
+        RAY_CHECK_OK(status);
+        if (result) {
+          auto result_value = result.get();
+          for (auto &data : result_value) {
+            node_resource_map[data.first] = data.second->SerializeAsString();
+          }
+        }
+        promise.set_value();
+      };
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetResources(node_id, on_done));
+  promise.get_future().get();
+  return node_resource_map;
+}
+
 }  // namespace gcs
 }  // namespace ray
