@@ -238,8 +238,9 @@ void DefaultActorInfoHandler::HandleGetActorCheckpoint(
                      const Status &status,
                      const boost::optional<ActorCheckpointData> &result) {
     if (status.ok()) {
-      RAY_DCHECK(result);
-      reply->mutable_checkpoint_data()->CopyFrom(*result);
+      if (result) {
+        reply->mutable_checkpoint_data()->CopyFrom(*result);
+      }
       RAY_LOG(DEBUG) << "Finished getting actor checkpoint, job id = " << actor_id.JobId()
                      << ", checkpoint id = " << checkpoint_id;
     } else {
