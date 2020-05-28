@@ -71,9 +71,9 @@ void GcsServer::Start() {
       new rpc::NodeInfoGrpcService(main_service_, *gcs_node_manager_));
   rpc_server_.RegisterService(*node_info_service_);
 
-  object_info_handler_ = InitObjectInfoHandler();
+  object_manager_ = InitObjectManager();
   object_info_service_.reset(
-      new rpc::ObjectInfoGrpcService(main_service_, *object_info_handler_));
+      new rpc::ObjectInfoGrpcService(main_service_, *object_manager_));
   rpc_server_.RegisterService(*object_info_service_);
 
   task_info_handler_ = InitTaskInfoHandler();
@@ -103,7 +103,7 @@ void GcsServer::Start() {
     StoreGcsServerAddressInRedis();
     is_started_ = true;
   };
-  ((GcsObjectManager *)object_info_handler_.get())->LoadInitialData(on_done);
+  object_manager_->LoadInitialData(on_done);
 
   // Run the event loop.
   // Using boost::asio::io_context::work to avoid ending the event loop when
@@ -201,7 +201,7 @@ std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
       new rpc::DefaultJobInfoHandler(gcs_table_storage_, gcs_pub_sub_));
 }
 
-std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
+std::unique_ptr<GcsObjectManager> GcsServer::InitObjectManager() {
   return std::unique_ptr<GcsObjectManager>(
       new GcsObjectManager(gcs_table_storage_, gcs_pub_sub_, *gcs_node_manager_));
 }
