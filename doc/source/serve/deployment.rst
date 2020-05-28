@@ -135,8 +135,8 @@ is due to us running the two models in parallel that we created above.
 Upon concluding the above tutorial, you'll want to run ``ray stop`` to 
 shutdown the Ray cluster on your local machine.
 
-Deploying on Kubernetes
-=======================
+Deploying as a Kubernetes Service
+=================================
 
 In order to deploy Ray Serve on Kubernetes, we need to do the following:
 
