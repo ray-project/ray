@@ -4,7 +4,7 @@ from multiprocessing import cpu_count
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 SERVE_MASTER_NAME)
+                                 SERVE_MASTER_NAME, HTTP_PROXY_TIMEOUT)
 from ray.serve.master import ServeMaster
 from ray.serve.handle import RayServeHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
@@ -122,8 +122,9 @@ def init(cluster_name=None,
         max_restarts=-1,
     ).remote(cluster_name, http_node_id, http_host, http_port, metric_exporter)
 
-    block_until_http_ready("http://{}:{}/-/routes".format(
-        http_host, http_port))
+    block_until_http_ready(
+        "http://{}:{}/-/routes".format(http_host, http_port),
+        timeout=HTTP_PROXY_TIMEOUT)
 
 
 @_ensure_connected
