@@ -12,6 +12,7 @@ import os
 import ray
 import requests
 from pygments import formatters, highlight, lexers
+from ray.serve.constants import HTTP_PROXY_TIMEOUT
 from ray.serve.context import FakeFlaskRequest, TaskContext
 from ray.serve.http_util import build_flask_request
 import numpy as np
@@ -87,7 +88,9 @@ def pformat_color_json(d):
     return colorful_json
 
 
-def block_until_http_ready(http_endpoint, backoff_time_s=1, timeout=0):
+def block_until_http_ready(http_endpoint,
+                           backoff_time_s=1,
+                           timeout=HTTP_PROXY_TIMEOUT):
     http_is_ready = False
     start_time = time.time()
 
