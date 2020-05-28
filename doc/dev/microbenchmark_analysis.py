@@ -11,7 +11,8 @@ from collections import defaultdict
 
 FRIST_VERSION = 0
 LAST_VERSION = 5
-FILES = sorted(glob.glob("./release_logs/[0-9].[0-9].[0-9]/microbenchmark.txt"))
+FILES = sorted(
+    glob.glob("./release_logs/[0-9].[0-9].[0-9]/microbenchmark.txt"))
 
 task_info = defaultdict(list)
 task_std_info = defaultdict(list)

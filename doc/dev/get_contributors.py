@@ -69,7 +69,7 @@ def run(access_token, prev_release_commit, curr_release_commit):
 
     def get_category(line):
         if line[0] == "[":
-            return (line.split("]")[0].strip(' ') + "]").upper()
+            return (line.split("]")[0].strip(" ") + "]").upper()
         else:
             return NO_CATEGORY
 
