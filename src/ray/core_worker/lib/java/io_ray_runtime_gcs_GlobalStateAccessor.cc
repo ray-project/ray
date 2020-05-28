@@ -99,7 +99,7 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetActorInfo(JNIEnv *env, jobj
   if (actor_info) {
     return NativeStringToJavaByteArray(env, *actor_info);
   }
-  return NativeStringToJavaByteArray(env, "");
+  return nullptr;
 }
 
 JNIEXPORT jbyteArray JNICALL
@@ -112,7 +112,7 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetActorCheckpointId(
   if (actor_checkpoint_id) {
     return NativeStringToJavaByteArray(env, *actor_checkpoint_id);
   }
-  return NativeStringToJavaByteArray(env, "");
+  return nullptr;
 }
 
 #ifdef __cplusplus

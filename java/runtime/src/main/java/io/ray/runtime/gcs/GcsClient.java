@@ -118,7 +118,7 @@ public class GcsClient {
    */
   public boolean actorExists(ActorId actorId) {
     byte[] result = globalStateAccessor.getActorInfo(actorId);
-    return result.length != 0;
+    return result != null;
   }
 
   public boolean wasCurrentActorRestarted(ActorId actorId) {
@@ -129,7 +129,7 @@ public class GcsClient {
 
     // TODO(ZhuSenlin): Get the actor table data from CoreWorker later.
     byte[] value = globalStateAccessor.getActorInfo(actorId);
-    if (value.length == 0) {
+    if (value == null) {
       return false;
     }
     Gcs.ActorTableData actorTableData = null;
@@ -138,7 +138,7 @@ public class GcsClient {
     } catch (InvalidProtocolBufferException e) {
       throw new RuntimeException("Received invalid protobuf data from GCS.");
     }
-    return actorTableData.getNumRestarts() != 0; 
+    return actorTableData.getNumRestarts() != 0;
   }
 
   /**
