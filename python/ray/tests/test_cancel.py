@@ -1,3 +1,4 @@
+import pickle
 import pytest
 import ray
 import random
@@ -226,6 +227,25 @@ def test_fast(shutdown_only, use_force):
             ray.get(obj_id)
         except Exception as e:
             assert isinstance(e, valid_exceptions(use_force))
+
+
+@pytest.mark.parametrize("use_force", [True, False])
+def test_cancel_with_no_owner_info(ray_start_regular, use_force):
+    signaler = SignalActor.remote()
+
+    @ray.remote
+    def wait_for(x):
+        return ray.get(x[0])
+
+    sig = signaler.wait.remote()
+
+    pickled = pickle.dumps(wait_for.remote([sig]))
+    unpickled = pickle.loads(pickled)
+
+    ray.cancel(unpickled, use_force)
+
+    with pytest.raises(valid_exceptions(use_force)):
+        ray.get(unpickled, 10)
 
 
 @pytest.mark.parametrize("use_force", [True, False])

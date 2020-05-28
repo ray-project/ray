@@ -1207,7 +1207,9 @@ Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill) {
   }
 
   // Check for locally submitted tasks first to avoid a situation where the
-  // TaskId is known, but the ownership information is missing.
+  // TaskId is known, but the ownership information is missing. This happens
+  // if the ObjectID information is discarded, but the TaskSpec remains
+  // because the task is still executing.
   auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
   if (task_spec.has_value() && !task_spec.value().IsActorCreationTask()) {
     return direct_task_submitter_->CancelTask(task_spec.value(), force_kill);
