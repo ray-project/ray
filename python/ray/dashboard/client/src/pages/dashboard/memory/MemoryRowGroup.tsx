@@ -94,8 +94,10 @@ class MemoryRowGroup extends React.Component<
           </TableCell>
           {features.map((feature, index) => (
             <TableCell className={classes.cell} key={index}>
-              {// TODO(sang): For now, it is always grouped by node_ip_address.
-              feature === "node_ip_address" ? groupKey : ""}
+              {
+                // TODO(sang): For now, it is always grouped by node_ip_address.
+                feature === "node_ip_address" ? groupKey : ""
+              }
             </TableCell>
           ))}
         </TableRow>
@@ -118,11 +120,15 @@ class MemoryRowGroup extends React.Component<
                 memoryTableEntry.object_id,
                 object_size,
                 memoryTableEntry.reference_type,
-                memoryTableEntry.call_site
-              ]
+                memoryTableEntry.call_site,
+              ];
               return (
                 <TableRow hover key={index}>
-                  {memoryTableEntryValues.map((value, index) => <TableCell key={index} className={classes.cell}>{value}</TableCell>)}
+                  {memoryTableEntryValues.map((value, index) => (
+                    <TableCell key={index} className={classes.cell}>
+                      {value}
+                    </TableCell>
+                  ))}
                 </TableRow>
               );
             })}

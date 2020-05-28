@@ -10,14 +10,14 @@ import {
   WithStyles,
   Button,
 } from "@material-ui/core";
-import PauseIcon from '@material-ui/icons/Pause';
-import PlayArrowIcon from '@material-ui/icons/PlayArrow';
+import PauseIcon from "@material-ui/icons/Pause";
+import PlayArrowIcon from "@material-ui/icons/PlayArrow";
 import React from "react";
 import { StoreState } from "../../../store";
 import { connect } from "react-redux";
 import MemoryRowGroup from "./MemoryRowGroup";
 import { dashboardActions } from "../state";
-import {stopMemoryTableCollection} from "../../../api";
+import { stopMemoryTableCollection } from "../../../api";
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -49,22 +49,21 @@ class MemoryInfo extends React.Component<
     typeof mapDispatchToProps,
   State
 > {
-
   handlePauseMemoryTable = async () => {
     const { shouldObtainMemoryTable } = this.props;
-    this.props.setShouldObtainMemoryTable(!shouldObtainMemoryTable)
+    this.props.setShouldObtainMemoryTable(!shouldObtainMemoryTable);
     if (shouldObtainMemoryTable) {
-      await stopMemoryTableCollection()
+      await stopMemoryTableCollection();
     }
   };
 
   renderIcon = () => {
     if (this.props.shouldObtainMemoryTable) {
-      return (<PauseIcon />);
+      return <PauseIcon />;
     } else {
-      return (<PlayArrowIcon />);
+      return <PlayArrowIcon />;
     }
-  }
+  };
 
   render() {
     const { classes, memoryTable } = this.props;
@@ -76,8 +75,8 @@ class MemoryInfo extends React.Component<
       "Object ID",
       "Object Size",
       "Reference Type",
-      "Call Site"
-    ]
+      "Call Site",
+    ];
     return (
       <React.Fragment>
         {memoryTable !== null ? (
@@ -91,7 +90,11 @@ class MemoryInfo extends React.Component<
             <Table className={classes.table}>
               <TableHead>
                 <TableRow>
-                  {memoryTableHeaders.map((header, index) => <TableCell key={index} className={classes.cell}>{header}</TableCell>)}
+                  {memoryTableHeaders.map((header, index) => (
+                    <TableCell key={index} className={classes.cell}>
+                      {header}
+                    </TableCell>
+                  ))}
                 </TableRow>
               </TableHead>
               <TableBody>

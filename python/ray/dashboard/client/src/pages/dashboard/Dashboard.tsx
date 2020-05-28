@@ -14,7 +14,7 @@ import {
   getRayletInfo,
   getTuneAvailability,
   getMemoryTable,
-  stopMemoryTableCollection
+  stopMemoryTableCollection,
 } from "../../api";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";
@@ -110,7 +110,7 @@ class Dashboard extends React.Component<
 
   render() {
     const { classes, tab, tuneAvailability } = this.props;
-    let tabs = this.tabs.slice()
+    let tabs = this.tabs.slice();
 
     // if Tune information is not available, remove Tune tab from the dashboard
     if (tuneAvailability === null || !tuneAvailability.available) {

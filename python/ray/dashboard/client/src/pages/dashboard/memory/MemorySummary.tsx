@@ -58,24 +58,29 @@ class MemorySummary extends React.Component<
   render() {
     const { classes, memoryTableSummary } = this.props;
 
-    const memorySummaries = memoryTableSummary !== null 
-    ? [
-      "", // Padding
-      `Total Local Reference Count: ${memoryTableSummary.total_local_ref_count}`,
-      `Total Pinned In Memory Count: ${memoryTableSummary.total_pinned_in_memory}`,
-      `Total Used By Pending Tasks Count: ${memoryTableSummary.total_used_by_pending_task}`,
-      `Total Caputed In Objects Count: ${memoryTableSummary.total_captured_in_objects}`,
-      `Total Object Size: ${memoryTableSummary.total_object_size} B`,
-      `Total Actor Handle Count: ${memoryTableSummary.total_actor_handles}`,
-      "", // Padding
-    ] 
-    : ["No Summary Provided"];
+    const memorySummaries =
+      memoryTableSummary !== null
+        ? [
+            "", // Padding
+            `Total Local Reference Count: ${memoryTableSummary.total_local_ref_count}`,
+            `Total Pinned In Memory Count: ${memoryTableSummary.total_pinned_in_memory}`,
+            `Total Used By Pending Tasks Count: ${memoryTableSummary.total_used_by_pending_task}`,
+            `Total Caputed In Objects Count: ${memoryTableSummary.total_captured_in_objects}`,
+            `Total Object Size: ${memoryTableSummary.total_object_size} B`,
+            `Total Actor Handle Count: ${memoryTableSummary.total_actor_handles}`,
+            "", // Padding
+          ]
+        : ["No Summary Provided"];
 
     return (
       memoryTableSummary !== null && (
         <React.Fragment>
           <TableRow hover>
-            {memorySummaries.map((summary, index) => <TableCell key={index} className={classes.cell}>{summary}</TableCell>)}
+            {memorySummaries.map((summary, index) => (
+              <TableCell key={index} className={classes.cell}>
+                {summary}
+              </TableCell>
+            ))}
           </TableRow>
         </React.Fragment>
       )
