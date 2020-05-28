@@ -53,6 +53,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
     RAY_CHECK_OK(node_accessor_->AsyncReSubscribe());
     RAY_CHECK_OK(task_accessor_->AsyncReSubscribe());
     RAY_CHECK_OK(object_accessor_->AsyncReSubscribe());
+    RAY_CHECK_OK(worker_accessor_->AsyncReSubscribe());
   };
 
   // Connect to gcs service.
