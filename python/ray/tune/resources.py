@@ -134,7 +134,14 @@ class Resources(
         return self.custom_resources.get(key, 0)
 
     def as_dict(self):
-        return {"CPU": self.cpu, "GPU": self.gpu}
+        resources = {}
+        cpu = self.cpu_total()
+        gpu = self.gpu_total()
+        if cpu:
+            resources["CPU"] = cpu
+        if gpu:
+            resources["GPU"] = gpu
+        return resources
 
     def is_nonnegative(self):
         all_values = [self.cpu, self.gpu, self.extra_cpu, self.extra_gpu]
