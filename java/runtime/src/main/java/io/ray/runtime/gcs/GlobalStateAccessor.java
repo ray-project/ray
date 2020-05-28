@@ -87,6 +87,17 @@ public class GlobalStateAccessor {
     }
   }
 
+  /**
+   * @return An actor checkpoint id data with ActorCheckpointIdData protobuf schema.
+   */
+  public byte[] getActorCheckpointId(ActorId actorId) {
+    // Fetch an actor checkpoint id with protobuf bytes format from GCS.
+    synchronized (GlobalStateAccessor.class) {
+      Preconditions.checkState(globalStateAccessorNativePointer != 0);
+      return this.nativeGetActorCheckpointId(globalStateAccessorNativePointer, actorId.getBytes());
+    }
+  }
+
   private void destroyGlobalStateAccessor() {
     synchronized (GlobalStateAccessor.class) {
       if (0 == globalStateAccessorNativePointer) {
@@ -112,4 +123,6 @@ public class GlobalStateAccessor {
   private native List<byte[]> nativeGetAllActorInfo(long nativePtr);
 
   private native byte[] nativeGetActorInfo(long nativePtr, byte[] actorId);
+
+  private native byte[] nativeGetActorCheckpointId(long nativePtr, byte[] actorId);
 }

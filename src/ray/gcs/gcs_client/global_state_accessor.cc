@@ -138,13 +138,17 @@ std::vector<std::string> GlobalStateAccessor::GetAllActorInfo() {
 }
 
 std::unique_ptr<std::string> GlobalStateAccessor::GetActorInfo(const ActorID &actor_id) {
+  RAY_LOG(INFO) << "GlobalStateAccessor::GetActorInfo, actor id = " << actor_id;
   std::unique_ptr<std::string> actor_table_data;
   std::promise<bool> promise;
   auto on_done = [&actor_table_data, &promise](
                      const Status &status,
                      const boost::optional<rpc::ActorTableData> &result) {
+    RAY_LOG(INFO) << "GlobalStateAccessor::GetActorInfo receive reply...111...";
     RAY_CHECK_OK(status);
     if (result) {
+      RAY_LOG(INFO) << "GlobalStateAccessor::GetActorInfo receive reply...222..., num = "
+                    << result->num_restarts();
       actor_table_data.reset(new std::string(result->SerializeAsString()));
     }
     promise.set_value(true);
@@ -152,6 +156,28 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetActorInfo(const ActorID &ac
   RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(actor_id, on_done));
   promise.get_future().get();
   return actor_table_data;
+}
+
+std::unique_ptr<std::string> GlobalStateAccessor::GetActorCheckpointId(
+    const ActorID &actor_id) {
+  RAY_LOG(INFO) << "GlobalStateAccessor::GetActorCheckpointId, actor id = " << actor_id;
+  std::unique_ptr<std::string> actor_checkpoint_id_data;
+  std::promise<bool> promise;
+  auto on_done = [&actor_checkpoint_id_data, &promise](
+                     const Status &status,
+                     const boost::optional<rpc::ActorCheckpointIdData> &result) {
+    RAY_LOG(INFO) << "GlobalStateAccessor::GetActorCheckpointId receive reply...aaa...";
+    RAY_CHECK_OK(status);
+    if (result) {
+      RAY_LOG(INFO)
+          << "GlobalStateAccessor::GetActorCheckpointId receive reply...bbb..., num = ";
+      actor_checkpoint_id_data.reset(new std::string(result->SerializeAsString()));
+    }
+    promise.set_value(true);
+  };
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpointID(actor_id, on_done));
+  promise.get_future().get();
+  return actor_checkpoint_id_data;
 }
 
 }  // namespace gcs

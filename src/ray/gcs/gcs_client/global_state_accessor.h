@@ -94,6 +94,14 @@ class GlobalStateAccessor {
   /// protobuf function.
   std::unique_ptr<std::string> GetActorInfo(const ActorID &actor_id);
 
+  /// Get checkpoint id of an actor from GCS Service.
+  ///
+  /// \param actor_id The ID of actor to look up in the GCS Service.
+  /// \return Actor info. To support multi-language, we serialize each
+  /// ActorCheckpointIdData and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::unique_ptr<std::string> GetActorCheckpointId(const ActorID &actor_id);
+
  private:
   /// MultiItem tranformation helper in template style.
   ///

@@ -156,11 +156,7 @@ public class GcsClient {
    */
   public List<Checkpoint> getCheckpointsForActor(ActorId actorId) {
     List<Checkpoint> checkpoints = new ArrayList<>();
-    final String prefix = TablePrefix.ACTOR_CHECKPOINT_ID.toString();
-    final byte[] key = ArrayUtils.addAll(prefix.getBytes(), actorId.getBytes());
-    RedisClient client = getShardClient(actorId);
-
-    byte[] result = client.get(key);
+    byte[] result = globalStateAccessor.getActorCheckpointId(actorId);
     if (result != null) {
       ActorCheckpointIdData data = null;
       try {

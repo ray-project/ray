@@ -102,6 +102,19 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetActorInfo(JNIEnv *env, jobj
   return NativeStringToJavaByteArray(env, "");
 }
 
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetActorCheckpointId(
+    JNIEnv *env, jobject o, jlong gcs_accessor_ptr, jbyteArray actorId) {
+  const auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
+  auto *gcs_accessor =
+      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
+  auto actor_checkpoint_id = gcs_accessor->GetActorCheckpointId(actor_id);
+  if (actor_checkpoint_id) {
+    return NativeStringToJavaByteArray(env, *actor_checkpoint_id);
+  }
+  return NativeStringToJavaByteArray(env, "");
+}
+
 #ifdef __cplusplus
 }
 #endif
