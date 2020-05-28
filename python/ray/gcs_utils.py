@@ -42,10 +42,8 @@ LOG_FILE_CHANNEL = "RAY_LOG_CHANNEL"
 REPORTER_CHANNEL = "RAY_REPORTER"
 
 # xray heartbeats
-XRAY_HEARTBEAT_CHANNEL = str(
-    TablePubsub.Value("HEARTBEAT_PUBSUB")).encode("ascii")
-XRAY_HEARTBEAT_BATCH_CHANNEL = str(
-    TablePubsub.Value("HEARTBEAT_BATCH_PUBSUB")).encode("ascii")
+XRAY_HEARTBEAT_CHANNEL = "HEARTBEAT".encode("ascii")
+XRAY_HEARTBEAT_BATCH_CHANNEL = "HEARTBEAT_BATCH".encode("ascii")
 
 # xray job updates
 XRAY_JOB_CHANNEL = "JOB".encode("ascii")
