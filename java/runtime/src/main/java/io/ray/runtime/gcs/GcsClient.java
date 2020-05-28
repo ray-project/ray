@@ -192,7 +192,7 @@ public class GcsClient {
    */
   public void destroy() {
     // Only ray shutdown should call gcs client destroy.
-    LOGGER.info("Destroy global state accessor.");
+    LOGGER.debug("Destroying global state accessor.");
     GlobalStateAccessor.destroyInstance();
   }
 
