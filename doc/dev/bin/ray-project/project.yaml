@@ -15,7 +15,7 @@ commands:
     command: |      
       export RAY_VERSION={{ray_version}}
       export RAY_HASH={{commit}}
-      chmod 555 ./pip_download_test.sh
+      chmod +x ./pip_download_test.sh
       ./pip_download_test.sh
     params:
     - name: ray_version # Ray version string.

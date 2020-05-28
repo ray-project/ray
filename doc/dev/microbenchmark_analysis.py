@@ -5,15 +5,13 @@ implemented yet.
 
 Usage: python microbenchmark_analysis.py
 """
+import glob
 
 from collections import defaultdict
 
 FRIST_VERSION = 0
 LAST_VERSION = 5
-FILES = [
-    "release_logs/0.8.{}/microbenchmark.txt".format(num)
-    for num in range(FRIST_VERSION, LAST_VERSION + 1)
-]
+FILES = sorted(glob.glob("./release_logs/[0-9].[0-9].[0-9]/microbenchmark.txt"))
 
 task_info = defaultdict(list)
 task_std_info = defaultdict(list)
