@@ -1021,6 +1021,22 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerTableReSubscribe) {
   WaitPendingDone(worker_failure_count, 1);
 }
 
+TEST_F(ServiceBasedGcsClientTest, TestObjectTableReload) {
+  ObjectID object_id = ObjectID::FromRandom();
+  ClientID node_id = ClientID::FromRandom();
+
+  // Add location of object to GCS.
+  ASSERT_TRUE(AddLocation(object_id, node_id));
+
+  // Restart GCS
+  RestartGcsServer();
+
+  // Get object's locations from GCS.
+  auto locations = GetLocations(object_id);
+  ASSERT_EQ(locations.size(), 1);
+  ASSERT_EQ(locations.back().manager(), node_id.Binary());
+}
+
 TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
   // Stop redis.
   TestSetupUtil::ShutDownRedisServers();

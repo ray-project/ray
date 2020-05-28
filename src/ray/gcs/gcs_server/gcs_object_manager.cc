@@ -267,8 +267,10 @@ std::shared_ptr<ObjectTableDataList> GcsObjectManager::GenObjectTableDataList(
 }
 
 void GcsObjectManager::ReloadCache(const StatusCallback &done) {
+  RAY_LOG(INFO) << "Reloading objects' locations and nodes' objects cache.";
   auto callback = [this, done](
                       const std::unordered_map<ObjectID, ObjectTableDataList> &result) {
+    RAY_LOG(INFO) << "Finished reloading objects' locations and nodes' objects cache.";
     absl::flat_hash_map<ClientID, ObjectSet> node_to_objects;
     for (auto &item : result) {
       auto object_list = item.second;
