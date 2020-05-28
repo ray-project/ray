@@ -796,7 +796,7 @@ class GlobalState:
             client_ids = self._live_client_ids()
 
             # Remove disconnected clients
-            for client_id in available_resources_by_id.keys():
+            for client_id in list(available_resources_by_id.keys()):
                 if client_id not in client_ids:
                     del available_resources_by_id[client_id]
 

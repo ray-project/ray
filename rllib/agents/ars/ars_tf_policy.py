@@ -11,7 +11,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.space_utils import unbatch
+from ray.rllib.utils.spaces.space_utils import unbatch
 
 tf = try_import_tf()
 

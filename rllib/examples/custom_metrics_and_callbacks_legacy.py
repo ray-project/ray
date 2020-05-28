@@ -72,6 +72,7 @@ if __name__ == "__main__":
                 "on_train_result": on_train_result,
                 "on_postprocess_traj": on_postprocess_traj,
             },
+            "framework": "tf",
         },
         return_trials=True)
 

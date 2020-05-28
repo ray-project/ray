@@ -243,6 +243,10 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
       const std::shared_ptr<TaskReconstructionData> &data_ptr,
       const StatusCallback &callback) override;
 
+  Status AsyncReSubscribe() override {
+    return Status::NotImplemented("AsyncReSubscribe not implemented");
+  }
+
  private:
   RedisGcsClient *client_impl_{nullptr};
   // Use a random ClientID for task subscription. Because:
@@ -372,6 +376,10 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
   Status AsyncSubscribeBatchHeartbeat(
       const ItemCallback<HeartbeatBatchTableData> &subscribe,
       const StatusCallback &done) override;
+
+  Status AsyncReSubscribe() override {
+    return Status::NotImplemented("AsyncReSubscribe not implemented");
+  }
 
  private:
   RedisGcsClient *client_impl_{nullptr};

@@ -9,9 +9,9 @@ Tuned Examples
 --------------
 
 - `Tuned examples <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples>`__:
-   Collection of tuned algorithm hyperparameters.
-- `Atari benchmarks <https://github.com/ray-project/rl-experiments>`__:
-   Collection of reasonably optimized Atari results.
+   Collection of tuned hyperparameters by algorithm.
+- `MuJoCo and Atari benchmarks <https://github.com/ray-project/rl-experiments>`__:
+   Collection of reasonably optimized Atari and MuJoCo results.
 
 Blog Posts
 ----------
