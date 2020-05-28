@@ -12,8 +12,14 @@ import ray.ray_constants as ray_constants
 import ray.test_utils
 import ray.cluster_utils
 from ray.test_utils import (
-    relevant_errors, wait_for_condition, wait_for_errors, wait_for_pid_to_exit,
-    generate_internal_config_map, get_non_head_nodes, get_other_nodes)
+    relevant_errors,
+    wait_for_condition,
+    wait_for_errors,
+    wait_for_pid_to_exit,
+    generate_internal_config_map,
+    get_non_head_nodes,
+    get_other_nodes,
+)
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
