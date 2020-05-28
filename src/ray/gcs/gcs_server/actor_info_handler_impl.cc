@@ -42,8 +42,8 @@ void DefaultActorInfoHandler::HandleGetActorInfo(
     const rpc::GetActorInfoRequest &request, rpc::GetActorInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
-  RAY_LOG(INFO) << "Getting actor info"
-                << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
+  RAY_LOG(DEBUG) << "Getting actor info"
+                 << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
 
   auto on_done = [actor_id, reply, send_reply_callback](
                      const Status &status,
@@ -51,8 +51,8 @@ void DefaultActorInfoHandler::HandleGetActorInfo(
     if (result) {
       reply->mutable_actor_table_data()->CopyFrom(*result);
     }
-    RAY_LOG(INFO) << "Finished getting actor info, job id = " << actor_id.JobId()
-                  << ", actor id = " << actor_id << ", status = " << status;
+    RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
+                   << ", actor id = " << actor_id << ", status = " << status;
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
 
@@ -261,17 +261,17 @@ void DefaultActorInfoHandler::HandleGetActorCheckpointID(
     const GetActorCheckpointIDRequest &request, GetActorCheckpointIDReply *reply,
     SendReplyCallback send_reply_callback) {
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
-  RAY_LOG(INFO) << "Getting actor checkpoint id, job id = " << actor_id.JobId()
-                << ", actor id = " << actor_id;
+  RAY_LOG(DEBUG) << "Getting actor checkpoint id, job id = " << actor_id.JobId()
+                 << ", actor id = " << actor_id;
   auto on_done = [actor_id, reply, send_reply_callback](
                      const Status &status,
                      const boost::optional<ActorCheckpointIdData> &result) {
     if (status.ok()) {
       if (result) {
-        reply->mutable_checkpoint_id_data()->CopyFrom(*result); 
+        reply->mutable_checkpoint_id_data()->CopyFrom(*result);
       }
-      RAY_LOG(INFO) << "Finished getting actor checkpoint id, job id = "
-                    << actor_id.JobId() << ", actor id = " << actor_id;
+      RAY_LOG(DEBUG) << "Finished getting actor checkpoint id, job id = "
+                     << actor_id.JobId() << ", actor id = " << actor_id;
     } else {
       RAY_LOG(ERROR) << "Failed to get actor checkpoint id: " << status.ToString()
                      << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
