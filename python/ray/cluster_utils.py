@@ -96,9 +96,9 @@ class Cluster:
             self.redis_password = node_args.get(
                 "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD)
             self.webui_url = self.head_node.webui_url
-            if self.global_state.global_state_accessor is None:
-                self.global_state._initialize_global_state(
-                    self.redis_address, self.redis_password)
+            # Init global state accessor when creating head node.
+            self.global_state._initialize_global_state(self.redis_address,
+                                                       self.redis_password)
         else:
             ray_params.update_if_absent(redis_address=self.redis_address)
             # We only need one log monitor per physical node.
