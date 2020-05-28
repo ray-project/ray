@@ -10,6 +10,7 @@ import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.runtimecontext.NodeInfo;
 import io.ray.runtime.config.RayConfig;
+import io.ray.runtime.gcs.GlobalStateAccessor;
 import io.ray.runtime.generated.Gcs;
 import io.ray.runtime.generated.Gcs.ActorCheckpointIdData;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
@@ -116,9 +117,8 @@ public class GcsClient {
    * If the actor exists in GCS.
    */
   public boolean actorExists(ActorId actorId) {
-    byte[] key = ArrayUtils.addAll(
-        TablePrefix.ACTOR.toString().getBytes(), actorId.getBytes());
-    return primary.exists(key);
+    byte[] result = globalStateAccessor.getActorInfo(actorId);
+    return result.length != 0;
   }
 
   public boolean wasCurrentActorRestarted(ActorId actorId) {
@@ -128,8 +128,8 @@ public class GcsClient {
     }
 
     // TODO(ZhuSenlin): Get the actor table data from CoreWorker later.
-    byte[] value = primary.get(key);
-    if (value == null) {
+    byte[] value = globalStateAccessor.getActorInfo(actorId);
+    if (value.length == 0) {
       return false;
     }
     Gcs.ActorTableData actorTableData = null;

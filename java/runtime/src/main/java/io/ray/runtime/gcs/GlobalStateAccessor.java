@@ -2,6 +2,7 @@ package io.ray.runtime.gcs;
 
 import com.google.common.base.Preconditions;
 import java.util.List;
+import io.ray.api.id.ActorId;
 
 /**
  * `GlobalStateAccessor` is used for accessing information from GCS.
@@ -64,6 +65,28 @@ public class GlobalStateAccessor {
     }
   }
 
+  /**
+   * @return A list of actor info with ActorInfo protobuf schema.
+   */
+  public List<byte[]> getAllActorInfo() {
+    // Fetch a actor list with protobuf bytes format from GCS.
+    synchronized (GlobalStateAccessor.class) {
+      Preconditions.checkState(globalStateAccessorNativePointer != 0);
+      return this.nativeGetAllActorInfo(globalStateAccessorNativePointer);
+    }
+  }
+
+  /**
+   * @return An actor info with ActorInfo protobuf schema.
+   */
+  public byte[] getActorInfo(ActorId actorId) {
+    // Fetch an actor with protobuf bytes format from GCS.
+    synchronized (GlobalStateAccessor.class) {
+      Preconditions.checkState(globalStateAccessorNativePointer != 0);
+      return this.nativeGetActorInfo(globalStateAccessorNativePointer, actorId.getBytes());
+    }
+  }
+
   private void destroyGlobalStateAccessor() {
     synchronized (GlobalStateAccessor.class) {
       if (0 == globalStateAccessorNativePointer) {
@@ -85,4 +108,8 @@ public class GlobalStateAccessor {
   private native List<byte[]> nativeGetAllJobInfo(long nativePtr);
 
   private native List<byte[]> nativeGetAllNodeInfo(long nativePtr);
+
+  private native List<byte[]> nativeGetAllActorInfo(long nativePtr);
+
+  private native byte[] nativeGetActorInfo(long nativePtr, byte[] actorId);
 }
