@@ -24,6 +24,7 @@ public class GlobalStateAccessor {
   public static synchronized void destroyInstance() {
     if (null != globalStateAccessor) {
       globalStateAccessor.destroyGlobalStateAccessor();
+      globalStateAccessor = null;
     }
   }
 
@@ -45,7 +46,8 @@ public class GlobalStateAccessor {
   public List<byte[]> getAllJobInfo() {
     // Fetch a job list with protobuf bytes format from GCS.
     synchronized (GlobalStateAccessor.class) {
-      Preconditions.checkState(globalStateAccessorNativePointer != 0);
+      Preconditions.checkState(globalStateAccessorNativePointer != 0,
+          "Get all job info when global state accessor have been destroyed.");
       return this.nativeGetAllJobInfo(globalStateAccessorNativePointer);
     }
   }
@@ -56,7 +58,8 @@ public class GlobalStateAccessor {
   public List<byte[]> getAllNodeInfo() {
     // Fetch a node list with protobuf bytes format from GCS.
     synchronized (GlobalStateAccessor.class) {
-      Preconditions.checkState(globalStateAccessorNativePointer != 0);
+      Preconditions.checkState(globalStateAccessorNativePointer != 0,
+          "Get all node info when global state accessor have been destroyed.");
       return this.nativeGetAllNodeInfo(globalStateAccessorNativePointer);
     }
   }

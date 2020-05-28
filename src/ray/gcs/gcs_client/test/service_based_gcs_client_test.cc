@@ -961,6 +961,24 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskTableReSubscribe) {
   WaitPendingDone(task_count, 1);
 }
 
+TEST_F(ServiceBasedGcsClientTest, TestWorkerTableReSubscribe) {
+  // Subscribe to all unexpected failure of workers from GCS.
+  std::atomic<int> worker_failure_count(0);
+  auto on_subscribe = [&worker_failure_count](const WorkerID &worker_id,
+                                              const rpc::WorkerFailureData &result) {
+    ++worker_failure_count;
+  };
+  ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
+
+  // Restart GCS
+  RestartGcsServer();
+
+  // Report a worker failure to GCS and check if resubscribe works.
+  auto worker_failure_data = Mocker::GenWorkerFailureData();
+  ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
+  WaitPendingDone(worker_failure_count, 1);
+}
+
 TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
   // Stop redis.
   TestSetupUtil::ShutDownRedisServers();
