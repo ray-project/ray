@@ -4,8 +4,10 @@
 FROM ray-project/base-deps
 ADD ray.tar /ray
 ADD git-rev /ray/git-rev
-RUN /ray/ci/travis/install-bazel.sh
+RUN git init && /ray/ci/travis/install-bazel.sh
 ENV PATH=$PATH:/root/bin
-WORKDIR /ray/python
+WORKDIR /ray/
+RUN bazel build //:ray_pkg || bazel build --jobs 1 //:ray_pkg
+WORKDIR /ray/python/
 RUN pip install -e .
 WORKDIR /ray
