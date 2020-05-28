@@ -5,7 +5,6 @@ import numpy as np
 import pytest
 
 import ray
-from ray.cluster_utils import Cluster
 from ray.test_utils import (
     wait_for_condition, )
 
@@ -50,7 +49,8 @@ def test_cached_object(ray_start_cluster):
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_reconstruction_cached_dependency(ray_start_cluster, reconstruction_enabled):
+def test_reconstruction_cached_dependency(ray_start_cluster,
+                                          reconstruction_enabled):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
