@@ -10,19 +10,12 @@ from ray.test_utils import (
     wait_for_condition, )
 
 
-@pytest.fixture
-def cluster():
-    cluster_instance = Cluster()
-    yield cluster_instance
-    ray.shutdown()
-    cluster_instance.shutdown()
-
-
-def test_cached_object(cluster):
+def test_cached_object(ray_start_cluster):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
     })
+    cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _internal_config=config)
     # Node to place the initial object.
@@ -57,13 +50,14 @@ def test_cached_object(cluster):
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_reconstruction_cached_dependency(cluster, reconstruction_enabled):
+def test_reconstruction_cached_dependency(ray_start_cluster, reconstruction_enabled):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
     })
+    cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _internal_config=config)
     # Node to place the initial object.
@@ -118,13 +112,14 @@ def test_reconstruction_cached_dependency(cluster, reconstruction_enabled):
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_basic_reconstruction(cluster, reconstruction_enabled):
+def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
     })
+    cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _internal_config=config)
     # Node to place the initial object.
@@ -169,13 +164,14 @@ def test_basic_reconstruction(cluster, reconstruction_enabled):
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_basic_reconstruction_put(cluster, reconstruction_enabled):
+def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
     })
+    cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _internal_config=config)
     # Node to place the initial object.
@@ -223,13 +219,14 @@ def test_basic_reconstruction_put(cluster, reconstruction_enabled):
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_multiple_downstream_tasks(cluster, reconstruction_enabled):
+def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
     })
+    cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _internal_config=config)
     # Node to place the initial object.
@@ -285,13 +282,14 @@ def test_multiple_downstream_tasks(cluster, reconstruction_enabled):
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_reconstruction_chain(cluster, reconstruction_enabled):
+def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
     })
+    cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0, _internal_config=config, object_store_memory=10**8)
