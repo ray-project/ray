@@ -179,35 +179,6 @@ struct GcsServerMocker {
       return status;
     }
 
-    Status AsyncSubscribe(
-        const ActorID &actor_id,
-        const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-        const gcs::StatusCallback &done) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncUnsubscribe(const ActorID &actor_id) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncAddCheckpoint(const std::shared_ptr<rpc::ActorCheckpointData> &data_ptr,
-                              const gcs::StatusCallback &callback) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncGetCheckpoint(
-        const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
-        const gcs::OptionalItemCallback<rpc::ActorCheckpointData> &callback) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncGetCheckpointID(
-        const ActorID &actor_id,
-        const gcs::OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
    private:
     boost::asio::io_service main_io_service_;
     std::shared_ptr<gcs::StoreClient> store_client_ =
