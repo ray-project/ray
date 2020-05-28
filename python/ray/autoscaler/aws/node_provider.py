@@ -1,4 +1,5 @@
 import random
+import copy
 import threading
 from collections import defaultdict
 import logging
@@ -186,8 +187,6 @@ class AWSNodeProvider(NodeProvider):
 
     def create_node_of_type(self, node_config, tags, instance_type, count):
         assert instance_type is not None
-        assert TAG_RAY_INSTANCE_TYPE in tags, tags
-        assert tags[TAG_RAY_INSTANCE_TYPE] == instance_type, tags
         node_config["InstanceType"] = instance_type
         return self.create_node(node_config, tags, count)
 
@@ -195,6 +194,10 @@ class AWSNodeProvider(NodeProvider):
         return node_config["InstanceType"]
 
     def create_node(self, node_config, tags, count):
+        # Always add the instance type tag, since node reuse is unsafe
+        # otherwise.
+        tags = copy.deepcopy(tags)
+        tags[TAG_RAY_INSTANCE_TYPE] = node_config["InstanceType"]
         # Try to reuse previously stopped nodes with compatible configs
         if self.cache_stopped_nodes:
             filters = [
@@ -209,6 +212,10 @@ class AWSNodeProvider(NodeProvider):
                 {
                     "Name": "tag:{}".format(TAG_RAY_NODE_TYPE),
                     "Values": [tags[TAG_RAY_NODE_TYPE]],
+                },
+                {
+                    "Name": "tag:{}".format(TAG_RAY_INSTANCE_TYPE),
+                    "Values": [tags[TAG_RAY_INSTANCE_TYPE]],
                 },
                 {
                     "Name": "tag:{}".format(TAG_RAY_LAUNCH_CONFIG),
