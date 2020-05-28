@@ -1229,56 +1229,66 @@ Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing worker failures.";
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe =
-      [subscribe](const std::string &id, const std::string &data) {
-        rpc::WorkerFailureData worker_failure_data;
-        worker_failure_data.ParseFromString(data);
-        subscribe(WorkerID::FromBinary(id), worker_failure_data);
-        auto status = client_impl_->GetGcsPubSub().SubscribeAll(WORKER_FAILURE_CHANNEL,
-                                                                on_subscribe, done);
-        RAY_LOG(DEBUG) << "Finished subscribing worker failures.";
-        return status;
-      }
+  subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
+    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+      rpc::WorkerFailureData worker_failure_data;
+      worker_failure_data.ParseFromString(data);
+      subscribe(WorkerID::FromBinary(id), worker_failure_data);
+    };
+    auto status = client_impl_->GetGcsPubSub().SubscribeAll(WORKER_FAILURE_CHANNEL,
+                                                            on_subscribe, done);
+    RAY_LOG(DEBUG) << "Finished subscribing worker failures.";
+    return status;
+  };
+  return subscribe_operation_(done);
+}
 
-  Status
-  ServiceBasedWorkerInfoAccessor::AsyncReportWorkerFailure(
-      const std::shared_ptr<rpc::WorkerFailureData> &data_ptr,
-      const StatusCallback &callback) {
-    rpc::Address worker_address = data_ptr->worker_address();
-    RAY_LOG(DEBUG) << "Reporting worker failure, " << worker_address.DebugString();
-    rpc::ReportWorkerFailureRequest request;
-    request.mutable_worker_failure()->CopyFrom(*data_ptr);
-    client_impl_->GetGcsRpcClient().ReportWorkerFailure(
-        request, [worker_address, callback](const Status &status,
-                                            const rpc::ReportWorkerFailureReply &reply) {
-          if (callback) {
-            callback(status);
-          }
-          RAY_LOG(DEBUG) << "Finished reporting worker failure, "
-                         << worker_address.DebugString() << ", status = " << status;
-        });
-    return Status::OK();
+Status ServiceBasedWorkerInfoAccessor::AsyncReSubscribe() {
+  RAY_LOG(INFO) << "Reestablishing subscription for worker failures.";
+  if (subscribe_operation_ != nullptr) {
+    return subscribe_operation_(nullptr);
   }
+  return Status::OK();
+}
 
-  Status ServiceBasedWorkerInfoAccessor::AsyncRegisterWorker(
-      rpc::WorkerType worker_type, const WorkerID &worker_id,
-      const std::unordered_map<std::string, std::string> &worker_info,
-      const StatusCallback &callback) {
-    RAY_LOG(DEBUG) << "Registering the worker. worker id = " << worker_id;
-    rpc::RegisterWorkerRequest request;
-    request.set_worker_type(worker_type);
-    request.set_worker_id(worker_id.Binary());
-    request.mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
-    client_impl_->GetGcsRpcClient().RegisterWorker(
-        request, [worker_id, callback](const Status &status,
-                                       const rpc::RegisterWorkerReply &reply) {
-          if (callback) {
-            callback(status);
-          }
-          RAY_LOG(DEBUG) << "Finished registering worker. worker id = " << worker_id;
-        });
-    return Status::OK();
-  }
+Status ServiceBasedWorkerInfoAccessor::AsyncReportWorkerFailure(
+    const std::shared_ptr<rpc::WorkerFailureData> &data_ptr,
+    const StatusCallback &callback) {
+  rpc::Address worker_address = data_ptr->worker_address();
+  RAY_LOG(DEBUG) << "Reporting worker failure, " << worker_address.DebugString();
+  rpc::ReportWorkerFailureRequest request;
+  request.mutable_worker_failure()->CopyFrom(*data_ptr);
+  client_impl_->GetGcsRpcClient().ReportWorkerFailure(
+      request, [worker_address, callback](const Status &status,
+                                          const rpc::ReportWorkerFailureReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+        RAY_LOG(DEBUG) << "Finished reporting worker failure, "
+                       << worker_address.DebugString() << ", status = " << status;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedWorkerInfoAccessor::AsyncRegisterWorker(
+    rpc::WorkerType worker_type, const WorkerID &worker_id,
+    const std::unordered_map<std::string, std::string> &worker_info,
+    const StatusCallback &callback) {
+  RAY_LOG(DEBUG) << "Registering the worker. worker id = " << worker_id;
+  rpc::RegisterWorkerRequest request;
+  request.set_worker_type(worker_type);
+  request.set_worker_id(worker_id.Binary());
+  request.mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
+  client_impl_->GetGcsRpcClient().RegisterWorker(
+      request,
+      [worker_id, callback](const Status &status, const rpc::RegisterWorkerReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+        RAY_LOG(DEBUG) << "Finished registering worker. worker id = " << worker_id;
+      });
+  return Status::OK();
+}
 
 }  // namespace gcs
-}  // namespace gcs
+}  // namespace ray
