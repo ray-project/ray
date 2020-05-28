@@ -70,7 +70,6 @@ class KubernetesNodeProvider(NodeProvider):
         pod_spec = node_config.copy()
         tags[TAG_RAY_CLUSTER_NAME] = self.cluster_name
         pod_spec["metadata"]["namespace"] = self.namespace
-        print(pod_spec)
         if "labels" in pod_spec["metadata"]:
             pod_spec["metadata"]["labels"].update(tags)
         else:
