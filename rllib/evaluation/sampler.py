@@ -525,7 +525,7 @@ def _process_observations(
                 episode.batch_builder.postprocess_batch_so_far(episode)
 
         if all_agents_done:
-            # Handle episode termination
+            # Handle episode termination.
             batch_builder_pool.append(episode.batch_builder)
             # Call each policy's Exploration.on_episode_end method.
             for p in policies.values():
@@ -548,13 +548,13 @@ def _process_observations(
                 del active_episodes[env_id]
                 resetted_obs = base_env.try_reset(env_id)
             if resetted_obs is None:
-                # Reset not supported, drop this env from the ready list
+                # Reset not supported, drop this env from the ready list.
                 if horizon != float("inf"):
                     raise ValueError(
                         "Setting episode horizon requires reset() support "
                         "from the environment.")
             elif resetted_obs != ASYNC_RESET_RETURN:
-                # Creates a new episode if this is not async return
+                # Creates a new episode if this is not async return.
                 # If reset is async, we will get its result in some future poll
                 episode = active_episodes[env_id]
                 if observation_fn:

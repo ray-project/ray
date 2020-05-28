@@ -2,8 +2,10 @@
 Example of running a Unity3D (MLAgents) Policy server that can learn
 Policies via sampling inside many connected Unity game clients (possibly
 running in the cloud on n nodes).
+For a locally running Unity3D example, see:
+`examples/unity3d_env_local.py`
 
-To try this out:
+To run this script against one or more possibly cloud-based clients:
 1) Install Unity3D and `pip install mlagents`.
 
 2) Compile a Unity3D example game with MLAgents support (e.g. 3DBall or any
@@ -20,14 +22,12 @@ To try this out:
    Alternatively, use one of the two already existing setups (3DBall or
    SoccerStrikersVsGoalie).
 
-4) Then run (in two separate shells):
+4) Then run (two separate shells/machines):
 $ python unity3d_server.py --env 3DBall
 $ python unity3d_client.py --inference-mode=local --game [path to game binary]
 """
 
 import argparse
-from gym.spaces import Box, MultiDiscrete, Tuple
-import numpy as np
 import os
 
 import ray
@@ -35,6 +35,7 @@ from ray.tune import register_env
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.env.policy_server_input import PolicyServerInput
 from ray.rllib.examples.env.random_env import RandomMultiAgentEnv
+from ray.rllib.examples.env.unity3d_env import Unity3DEnv
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = 9900
@@ -42,7 +43,12 @@ CHECKPOINT_FILE = "last_checkpoint_{}.out"
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--env", type=str, choices=["3DBall", "SoccerStrikersVsGoalie"])
+    "--env",
+    type=str,
+    default="3DBall",
+    choices=["3DBall", "SoccerStrikersVsGoalie"],
+    help="The name of the Env to run in the Unity3D editor. Either `3DBall` "
+    "or `SoccerStrikersVsGoalie` (feel free to add more to this script!)")
 parser.add_argument(
     "--port",
     type=int,
@@ -70,45 +76,8 @@ if __name__ == "__main__":
     # matter either (multi-agent config below defines Spaces per Policy).
     register_env("fake_unity", lambda c: RandomMultiAgentEnv(c))
 
-    # The RLlib server must know about the Spaces that the Client will be
-    # using inside Unity3D, up-front.
-    obs_spaces = {
-        # SoccerStrikersVsGoalie.
-        "Striker": Tuple([
-            Box(float("-inf"), float("inf"), (231, )),
-            Box(float("-inf"), float("inf"), (63, )),
-        ]),
-        "Goalie": Box(float("-inf"), float("inf"), (738, )),
-        # 3DBall.
-        "Agent": Box(float("-inf"), float("inf"), (8, )),
-    }
-    action_spaces = {
-        # SoccerStrikersVsGoalie.
-        "Striker": MultiDiscrete([3, 3, 3]),
-        "Goalie": MultiDiscrete([3, 3, 3]),
-        # 3DBall.
-        "Agent": Box(float("-inf"), float("inf"), (2, ), dtype=np.float32),
-    }
-
-    # Policies (Unity: "behaviors") and agent-to-policy mapping fns.
-    if args.env == "SoccerStrikersVsGoalie":
-        policies = {
-            "Striker": (None, obs_spaces["Striker"], action_spaces["Striker"],
-                        {}),
-            "Goalie": (None, obs_spaces["Goalie"], action_spaces["Goalie"],
-                       {}),
-        }
-
-        def policy_mapping_fn(agent_id):
-            return "Striker" if "Striker" in agent_id else "Goalie"
-
-    else:  # 3DBall
-        policies = {
-            "Agent": (None, obs_spaces["Agent"], action_spaces["Agent"], {})
-        }
-
-        def policy_mapping_fn(agent_id):
-            return "Agent"
+    policies, policy_mapping_fn = \
+        Unity3DEnv.get_policy_configs_for_game(args.env)
 
     # The entire config will be sent to connecting clients so they can
     # build their own samplers (and also Policy objects iff
@@ -131,13 +100,14 @@ if __name__ == "__main__":
             "policies": policies,
             "policy_mapping_fn": policy_mapping_fn,
         },
+        "framework": "tf",
     }
 
+    # Create the Trainer used for Policy serving.
     trainer = PPOTrainer(env="fake_unity", config=config)
 
-    checkpoint_path = CHECKPOINT_FILE.format(args.env)
-
     # Attempt to restore from checkpoint if possible.
+    checkpoint_path = CHECKPOINT_FILE.format(args.env)
     if not args.no_restore and os.path.exists(checkpoint_path):
         checkpoint_path = open(checkpoint_path).read()
         print("Restoring from checkpoint path", checkpoint_path)
@@ -146,6 +116,8 @@ if __name__ == "__main__":
     # Serving and training loop.
     count = 0
     while True:
+        # Calls to train() will block on the configured `input` in the Trainer
+        # config above (PolicyServerInput).
         print(trainer.train())
         if count % args.checkpoint_freq == 0:
             print("Saving learning progress to checkpoint file.")

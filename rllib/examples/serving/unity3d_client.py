@@ -2,8 +2,11 @@
 Example of running a Unity3D client instance against an RLlib Policy server.
 Unity3D clients can be run in distributed fashion on n nodes in the cloud
 and all connect to the same RLlib server for faster sample collection.
+For a locally running Unity3D example, see:
+`examples/unity3d_env_local.py`
 
-To try this out:
+To run this script on possibly different machines
+against a central Policy server:
 1) Install Unity3D and `pip install mlagents`.
 
 2) Compile a Unity3D example game with MLAgents support (e.g. 3DBall or any
@@ -20,7 +23,7 @@ To try this out:
    Alternatively, use one of the two already existing setups (3DBall or
    SoccerStrikersVsGoalie).
 
-4) Then run (in two separate shells):
+4) Then run (two separate shells/machines):
 $ python unity3d_server.py --env 3DBall
 $ python unity3d_client.py --inference-mode=local --game [path to game binary]
 """

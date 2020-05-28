@@ -1,10 +1,11 @@
+from gym.spaces import Box, MultiDiscrete, Tuple
 import logging
 import mlagents_envs
 from mlagents_envs.environment import UnityEnvironment
+import numpy as np
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import override
-
 
 logger = logging.getLogger(__name__)
 
@@ -110,10 +111,12 @@ class Unity3DEnv(MultiAgentEnv):
         """
 
         # Set only the required actions (from the DecisionSteps) in Unity3D.
+        all_agents = []
         for behavior_name in self.unity_env.get_behavior_names():
             for agent_id in self.unity_env.get_steps(behavior_name)[
                     0].agent_id_to_index.keys():
                 key = behavior_name + "_{}".format(agent_id)
+                all_agents.append(key)
                 self.unity_env.set_action_for_agent(behavior_name, agent_id,
                                                     action_dict[key])
         # Do the step.
@@ -122,10 +125,13 @@ class Unity3DEnv(MultiAgentEnv):
         obs, rewards, dones, infos = self._get_step_results()
 
         # Global horizon reached? -> Return __all__ done=True, so user
-        # can reset.
+        # can reset. Set all agents' individual `done` to True as well.
         self.episode_timesteps += 1
         if self.episode_timesteps > self.episode_horizon:
-            return obs, rewards, {"__all__": True}, infos
+            return obs, rewards, dict({
+                "__all__": True
+            }, **{agent_id: True
+                  for agent_id in all_agents}), infos
 
         return obs, rewards, dones, infos
 
@@ -168,9 +174,59 @@ class Unity3DEnv(MultiAgentEnv):
                 rewards[key] = decision_steps.reward[idx]  # rewards vector
             for agent_id, idx in terminal_steps.agent_id_to_index.items():
                 key = behavior_name + "_{}".format(agent_id)
-                # Only overwrite rewards (last reward in episode), b/c as obs
+                # Only overwrite rewards (last reward in episode), b/c obs
                 # here is the last obs (which doesn't matter anyways).
+                # Unless key does not exist in obs.
+                if key not in obs:
+                    os = tuple(o[idx] for o in terminal_steps.obs)
+                    obs[key] = os = os[0] if len(os) == 1 else os
                 rewards[key] = terminal_steps.reward[idx]  # rewards vector
 
         # Only use dones if all agents are done, then we should do a reset.
         return obs, rewards, {"__all__": False}, infos
+
+    @staticmethod
+    def get_policy_configs_for_game(game_name):
+
+        # The RLlib server must know about the Spaces that the Client will be
+        # using inside Unity3D, up-front.
+        obs_spaces = {
+            # SoccerStrikersVsGoalie.
+            "Striker": Tuple([
+                Box(float("-inf"), float("inf"), (231, )),
+                Box(float("-inf"), float("inf"), (63, )),
+            ]),
+            "Goalie": Box(float("-inf"), float("inf"), (738, )),
+            # 3DBall.
+            "Agent": Box(float("-inf"), float("inf"), (8, )),
+        }
+        action_spaces = {
+            # SoccerStrikersVsGoalie.
+            "Striker": MultiDiscrete([3, 3, 3]),
+            "Goalie": MultiDiscrete([3, 3, 3]),
+            # 3DBall.
+            "Agent": Box(float("-inf"), float("inf"), (2, ), dtype=np.float32),
+        }
+
+        # Policies (Unity: "behaviors") and agent-to-policy mapping fns.
+        if game_name == "SoccerStrikersVsGoalie":
+            policies = {
+                "Striker": (None, obs_spaces["Striker"],
+                            action_spaces["Striker"], {}),
+                "Goalie": (None, obs_spaces["Goalie"], action_spaces["Goalie"],
+                           {}),
+            }
+
+            def policy_mapping_fn(agent_id):
+                return "Striker" if "Striker" in agent_id else "Goalie"
+
+        else:  # 3DBall
+            policies = {
+                "Agent": (None, obs_spaces["Agent"], action_spaces["Agent"],
+                          {})
+            }
+
+            def policy_mapping_fn(agent_id):
+                return "Agent"
+
+        return policies, policy_mapping_fn

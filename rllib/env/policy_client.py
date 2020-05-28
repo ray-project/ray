@@ -251,11 +251,14 @@ class _LocalInferenceThread(threading.Thread):
                 logger.info("Generating new batch of experiences.")
                 samples = self.rollout_worker.sample()
                 metrics = self.rollout_worker.get_metrics()
-                logger.info("Sending batch of {} steps (per-agent) back to "
-if samples.count != samples.total():
-   logger.info("Sending batch of {} env steps ({} agent steps) to server".format(samples.count, samples.total()))
-   else:
-     logger.info("Sending batch of {} steps back to server.".format(samples.count))
+                if samples.count != samples.total():
+                    logger.info(
+                        "Sending batch of {} env steps ({} agent steps) to "
+                        "server".format(samples.count, samples.total()))
+                else:
+                    logger.info(
+                        "Sending batch of {} steps back to server.".format(
+                            samples.count))
                 self.send_fn({
                     "command": PolicyClient.REPORT_SAMPLES,
                     "samples": samples,
