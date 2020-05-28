@@ -85,8 +85,7 @@ class GlobalStateAccessor {
   /// \return node resource map info. To support multi-language, we serialize each
   /// ResourceTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
-  std::unordered_map<std::string, std::string> GetNodeResourceInfo(
-      const ClientID &node_id);
+  std::string GetNodeResourceInfo(const ClientID &node_id);
 
  private:
   /// MultiItem tranformation helper in template style.

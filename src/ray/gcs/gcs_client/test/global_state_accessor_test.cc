@@ -156,13 +156,15 @@ TEST_F(GlobalStateAccessorTest, TestNodeResourceTable) {
   for (int index = 0; index < node_count; ++index) {
     rpc::GcsNodeInfo node_data;
     node_data.ParseFromString(node_table[index]);
-    auto resouce_map =
+    auto resource_map_str =
         global_state_->GetNodeResourceInfo(ClientID::FromBinary(node_data.node_id()));
-    rpc::ResourceTableData resource_table_data;
-    resource_table_data.ParseFromString(
-        resouce_map[std::to_string(node_data.node_manager_port())]);
-    ASSERT_EQ(static_cast<uint32_t>(resource_table_data.resource_capacity()),
-              node_data.node_manager_port() + 1);
+    rpc::ResourceMap resource_map;
+    resource_map.ParseFromString(resource_map_str);
+    ASSERT_EQ(
+        static_cast<uint32_t>(
+            (*resource_map.mutable_items())[std::to_string(node_data.node_manager_port())]
+                .resource_capacity()),
+        node_data.node_manager_port() + 1);
   }
 }
 
