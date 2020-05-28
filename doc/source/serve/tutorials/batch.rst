@@ -91,7 +91,7 @@ the web server or the Python API. Ray Serve will guarantee there won't be querie
 with mixed origins.
 
 When the batch of requests comes from the web API, Ray Serve will fill the first
-argument ``flask_requests`` with a list of `Flask.Request` objects and set
+argument ``flask_requests`` with a list of ``Flask.Request`` objects and set
 ``serve.context.web = True``. When the batch of requests comes from the Python API,
 Ray Serve will fill ``flask_requests`` arguments with placeholders, and directly inject
 Python objects into the keyword arguments. In this case, the ``numbers`` argument
