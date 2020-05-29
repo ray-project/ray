@@ -1,8 +1,8 @@
 package io.ray.runtime.gcs;
 
 import com.google.common.base.Preconditions;
-import java.util.List;
 import io.ray.api.id.ActorId;
+import java.util.List;
 
 /**
  * `GlobalStateAccessor` is used for accessing information from GCS.
