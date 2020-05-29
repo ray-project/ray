@@ -98,8 +98,8 @@ void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_
 }
 
 void ActorHandle::Serialize(std::string *output) { inner_.SerializeToString(output); }
-  
-void ActorHandle::SetIsPersistedToGCSIfNeeded() { 
+
+void ActorHandle::SetIsPersistedToGCSIfNeeded() {
   absl::MutexLock guard(&mutex_);
   if (!inner_.is_persisted_to_gcs()) {
     inner_.set_is_persisted_to_gcs(true);

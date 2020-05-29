@@ -1280,18 +1280,23 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   if (!actor_handle->IsPersistedToGCS()) {
     // Call a function instead and test it.
     rpc::Address owner_address = actor_handle->GetOwnerAddress();
-    WorkerID worker_id = WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
+    WorkerID worker_id =
+        WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
     ActorID actor_id = actor_handle->GetActorID();
     // SANG-TODO delete this.
-    RAY_LOG(ERROR) << "Location is not resolved Yet! actor id: " << actor_id << " owner worker id: " << worker_id;
-    auto on_worker_failure = [this, actor_id, worker_id](const WorkerID &id, const gcs::WorkerFailureData &worker_failure_data) {
+    RAY_LOG(ERROR) << "Location is not resolved Yet! actor id: " << actor_id
+                   << " owner worker id: " << worker_id;
+    auto on_worker_failure = [this, actor_id, worker_id](
+                                 const WorkerID &id,
+                                 const gcs::WorkerFailureData &worker_failure_data) {
       RAY_LOG(ERROR) << "Worker failure!!";
-      if (id ==  worker_id) {
+      if (id == worker_id) {
         direct_actor_submitter_->DisconnectActor(actor_id, true);
       }
       // SANG-TODO: Should unsubscribe.
     };
-    RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(on_worker_failure, /*done_callback=*/nullptr));
+    RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
+        on_worker_failure, /*done_callback=*/nullptr));
   }
 
   bool inserted;
@@ -1308,7 +1313,8 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
       RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
       // If the notification comes in, that means this actor is persisted to GCS.
       actor_handle->SetIsPersistedToGCSIfNeeded();
-      RAY_LOG(ERROR) << "Location is resolved! actor id: " << actor_id << "is persisted to GCS: " << actor_handle->IsPersistedToGCS();
+      RAY_LOG(ERROR) << "Location is resolved! actor id: " << actor_id
+                     << "is persisted to GCS: " << actor_handle->IsPersistedToGCS();
 
       if (actor_data.state() == gcs::ActorTableData::PENDING) {
         // The actor is being created and not yet ready, just ignore!
