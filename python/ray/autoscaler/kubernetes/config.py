@@ -21,6 +21,10 @@ def using_existing_msg(resource_type, name):
     return "using existing {} '{}'".format(resource_type, name)
 
 
+def updating_existing_msg(resource_type, name):
+    return "updating existing {} '{}'".format(resource_type, name)
+
+
 def not_found_msg(resource_type, name):
     return "{} '{}' not found, attempting to create it".format(
         resource_type, name)
@@ -43,6 +47,7 @@ def bootstrap_kubernetes(config):
     _configure_autoscaler_service_account(namespace, config["provider"])
     _configure_autoscaler_role(namespace, config["provider"])
     _configure_autoscaler_role_binding(namespace, config["provider"])
+    _configure_services(namespace, config["provider"])
     return config
 
 
@@ -151,3 +156,36 @@ def _configure_autoscaler_role_binding(namespace, provider_config):
     logger.info(log_prefix + not_found_msg(binding_field, name))
     auth_api().create_namespaced_role_binding(namespace, binding)
     logger.info(log_prefix + created_msg(binding_field, name))
+
+
+def _configure_services(namespace, provider_config):
+    service_field = "services"
+    if service_field not in provider_config:
+        logger.info(log_prefix + not_provided_msg(service_field))
+        return
+
+    services = provider_config[service_field]
+    for service in services:
+        if "namespace" not in service["metadata"]:
+            service["metadata"]["namespace"] = namespace
+        elif service["metadata"]["namespace"] != namespace:
+            raise InvalidNamespaceError(service_field, namespace)
+
+        name = service["metadata"]["name"]
+        field_selector = "metadata.name={}".format(name)
+        services = core_api().list_namespaced_service(
+            namespace, field_selector=field_selector).items
+        if len(services) > 0:
+            assert len(services) == 1
+            existing_service = services[0]
+            if service == existing_service:
+                logger.info(log_prefix + using_existing_msg("service", name))
+                return
+            else:
+                logger.info(log_prefix +
+                            updating_existing_msg("service", name))
+                core_api().patch_namespaced_service(name, namespace, service)
+        else:
+            logger.info(log_prefix + not_found_msg("service", name))
+            core_api().create_namespaced_service(namespace, service)
+            logger.info(log_prefix + created_msg("service", name))
