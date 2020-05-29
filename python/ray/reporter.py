@@ -10,7 +10,6 @@ import socket
 import subprocess
 import sys
 from concurrent import futures
-from typing import Dict, Any
 import ray
 import psutil
 import ray.ray_constants as ray_constants
@@ -28,7 +27,9 @@ try:
     import gpustat.core as gpustat
 except ImportError:
     gpustat = None
-    logger.warning("Install gpustat with 'pip install gpustat' to enable GPU monitoring.")
+    logger.warning(
+        "Install gpustat with 'pip install gpustat' to enable GPU monitoring.")
+
 
 class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
     def __init__(self):
@@ -121,12 +122,15 @@ class Reporter:
         try:
             gpus = gpustat.new_query().gpus
         except Exception as e:
-            logger.debug("gpustat failed to retrieve GPU information: {}".format(e))
+            logger.debug(
+                "gpustat failed to retrieve GPU information: {}".format(e))
         for gpu in gpus:
             # Note the keys in this dict have periods which throws
             # off javascript so we change .s to _s
-            gpu_data = {'_'.join(key.split('.')): val 
-                for key, val in gpu.entry.items()}
+            gpu_data = {
+                "_".join(key.split(".")): val
+                for key, val in gpu.entry.items()
+            }
             gpu_utilizations.append(gpu_data)
         return gpu_utilizations
 
