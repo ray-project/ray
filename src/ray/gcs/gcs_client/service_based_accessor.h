@@ -357,7 +357,13 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
       const std::unordered_map<std::string, std::string> &worker_info,
       const StatusCallback &callback) override;
 
+  Status AsyncReSubscribe() override;
+
  private:
+  /// Save the subscribe operation in this function, so we can call it again when GCS
+  /// restarts from a failure.
+  SubscribeOperation subscribe_operation_;
+
   ServiceBasedGcsClient *client_impl_;
 };
 

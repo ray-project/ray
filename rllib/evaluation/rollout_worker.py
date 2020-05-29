@@ -264,7 +264,7 @@ class RolloutWorker(ParallelIteratorWorker):
         ParallelIteratorWorker.__init__(self, gen_rollouts, False)
 
         policy_config = policy_config or {}
-        if (tf and policy_config.get("eager")
+        if (tf and policy_config.get("framework") == "tfe"
                 and not policy_config.get("no_eager_on_workers")
                 # This eager check is necessary for certain all-framework tests
                 # that use tf's eager_mode() context generator.

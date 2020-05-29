@@ -1,7 +1,5 @@
 package io.ray.streaming.runtime.worker.context;
 
-import static io.ray.streaming.util.Config.STREAMING_BATCH_MAX_COUNT;
-
 import com.google.common.base.Preconditions;
 import io.ray.streaming.api.context.RuntimeContext;
 import io.ray.streaming.runtime.core.graph.ExecutionTask;
@@ -21,8 +19,6 @@ import java.util.Map;
  * Use Ray to implement RuntimeContext.
  */
 public class RayRuntimeContext implements RuntimeContext {
-
-  private final Long maxBatch;
   /**
    * Backend for keyed state. This might be empty if we're not on a keyed stream.
    */
@@ -43,11 +39,6 @@ public class RayRuntimeContext implements RuntimeContext {
     this.config = config;
     this.taskIndex = executionTask.getTaskIndex();
     this.parallelism = parallelism;
-    if (config.containsKey(STREAMING_BATCH_MAX_COUNT)) {
-      this.maxBatch = Long.valueOf(config.get(STREAMING_BATCH_MAX_COUNT));
-    } else {
-      this.maxBatch = Long.MAX_VALUE;
-    }
   }
 
   @Override
@@ -66,6 +57,16 @@ public class RayRuntimeContext implements RuntimeContext {
   }
 
   @Override
+  public Map<String, String> getConfig() {
+    return config;
+  }
+
+  @Override
+  public Map<String, String> getJobConfig() {
+    return config;
+  }
+
+  @Override
   public Long getCheckpointId() {
     return checkpointId;
   }
@@ -80,17 +81,6 @@ public class RayRuntimeContext implements RuntimeContext {
     }
     this.checkpointId = checkpointId;
   }
-
-  @Override
-  public Long getMaxBatch() {
-    return maxBatch;
-  }
-
-  @Override
-  public Map<String, String> getConfig() {
-    return config;
-  }
-
 
   @Override
   public void setCurrentKey(Object key) {

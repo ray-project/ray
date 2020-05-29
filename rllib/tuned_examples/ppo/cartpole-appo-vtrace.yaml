@@ -6,7 +6,7 @@ cartpole-appo-vtrace:
         timesteps_total: 200000
     config:
         # Works for both torch and tf.
-        use_pytorch: false
+        framework: tf
         rollout_fragment_length: 10
         train_batch_size: 10
         num_envs_per_worker: 5

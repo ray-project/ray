@@ -20,13 +20,19 @@ public interface RuntimeContext {
 
   int getParallelism();
 
+  /**
+   * @return config of current function
+   */
+  Map<String, String> getConfig();
+
+  /**
+   * @return config of the job
+   */
+  Map<String, String> getJobConfig();
+
   Long getCheckpointId();
 
   void setCheckpointId(long checkpointId);
-
-  Long getMaxBatch();
-
-  Map<String, String> getConfig();
 
   void setCurrentKey(Object key);
 

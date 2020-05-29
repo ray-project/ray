@@ -9,9 +9,9 @@ In particular, we show:
 - How to load the model from file system in your Ray Serve definition
 - How to parse the JSON request and evaluated in Tensorflow
 
-Please see the :ref:`overview <rayserve-overview>` to learn more general information about Ray Serve.
+Please see the :doc:`../key-concepts` to learn more general information about Ray Serve.
 
-Ray Serve makes it easy to deploy models from :ref:`all popular frameworks <serve_frameworks>`.
+Ray Serve is framework agnostic you can use any version of Tensorflow.
 However, for this tutorial, we use Tensorflow 2 and Keras. Please make sure you have
 Tensorflow 2 installed.
 

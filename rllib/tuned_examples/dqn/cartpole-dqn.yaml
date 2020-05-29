@@ -6,6 +6,6 @@ cartpole-dqn:
         timesteps_total: 50000
     config:
         # Works for both torch and tf.
-        use_pytorch: false
+        framework: tf
         n_step: 3
         gamma: 0.95

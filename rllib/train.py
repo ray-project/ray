@@ -176,9 +176,9 @@ def run(args, parser):
         if not exp.get("env") and not exp.get("config", {}).get("env"):
             parser.error("the following arguments are required: --env")
         if args.eager:
-            exp["config"]["eager"] = True
-        if args.torch:
-            exp["config"]["use_pytorch"] = True
+            exp["config"]["framework"] = "tfe"
+        elif args.torch:
+            exp["config"]["framework"] = "torch"
         if args.v:
             exp["config"]["log_level"] = "INFO"
             verbose = 2
@@ -186,7 +186,7 @@ def run(args, parser):
             exp["config"]["log_level"] = "DEBUG"
             verbose = 3
         if args.trace:
-            if not exp["config"].get("eager"):
+            if exp["config"]["framework"] != "tfe":
                 raise ValueError("Must enable --eager to enable tracing.")
             exp["config"]["eager_tracing"] = True
 
