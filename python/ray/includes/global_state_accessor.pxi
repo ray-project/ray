@@ -1,5 +1,6 @@
 from ray.includes.unique_ids cimport (
-    CObjectID
+    CActorID,
+    CObjectID,
 )
 
 from ray.includes.global_state_accessor cimport (
@@ -42,4 +43,13 @@ cdef class GlobalStateAccessor:
         object_info = self.inner.get().GetObjectInfo(CObjectID.FromBinary(object_id.binary()))
         if object_info:
             return c_string(object_info.get().data(), object_info.get().size())
+        return None
+
+    def get_actor_table(self):
+        return self.inner.get().GetAllActorInfo()
+
+    def get_actor_info(self, actor_id):
+        actor_info = self.inner.get().GetActorInfo(CActorID.FromBinary(actor_id.binary()))
+        if actor_info:
+            return c_string(actor_info.get().data(), actor_info.get().size())
         return None

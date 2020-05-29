@@ -233,7 +233,7 @@ inline jobject IdToJavaByteBuffer(JNIEnv *env, const ID &id) {
 }
 
 /// Convert C++ String to a Java ByteArray.
-inline jobject NativeStringToJavaByteArray(JNIEnv *env, const std::string &str) {
+inline jbyteArray NativeStringToJavaByteArray(JNIEnv *env, const std::string &str) {
   jbyteArray array = env->NewByteArray(str.size());
   env->SetByteArrayRegion(array, 0, str.size(),
                           reinterpret_cast<const jbyte *>(str.c_str()));

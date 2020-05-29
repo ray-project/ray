@@ -73,12 +73,17 @@ class GcsActorManagerTest : public ::testing::Test {
       : mock_actor_scheduler_(new MockActorScheduler()),
         worker_client_(new MockWorkerClient()) {
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
+    store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
+    gcs_actor_table_ =
+        std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
     gcs_actor_manager_.reset(new gcs::GcsActorManager(
-        mock_actor_scheduler_, actor_info_accessor_, gcs_pub_sub_,
+        mock_actor_scheduler_, *gcs_actor_table_, gcs_pub_sub_,
         [&](const rpc::Address &addr) { return worker_client_; }));
   }
 
-  GcsServerMocker::MockedActorInfoAccessor actor_info_accessor_;
+  boost::asio::io_service io_service_;
+  std::shared_ptr<gcs::StoreClient> store_client_;
+  std::shared_ptr<GcsServerMocker::MockedGcsActorTable> gcs_actor_table_;
   std::shared_ptr<MockActorScheduler> mock_actor_scheduler_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;

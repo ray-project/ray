@@ -354,7 +354,7 @@ def test_cluster_name():
     backend = "backend"
     endpoint = "endpoint"
 
-    serve.init(cluster_name="cluster1", blocking=True, http_port=8001)
+    serve.init(cluster_name="cluster1", http_port=8001)
     serve.create_endpoint(endpoint, route=route)
 
     def function():
@@ -367,7 +367,7 @@ def test_cluster_name():
 
     # Create a second cluster on port 8002. Create an endpoint and backend with
     # the same names and check that they don't collide.
-    serve.init(cluster_name="cluster2", blocking=True, http_port=8002)
+    serve.init(cluster_name="cluster2", http_port=8002)
     serve.create_endpoint(endpoint, route=route)
 
     def function():

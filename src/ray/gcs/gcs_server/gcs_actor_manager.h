@@ -24,6 +24,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "gcs_actor_scheduler.h"
+#include "gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 
 namespace ray {
@@ -116,10 +117,10 @@ class GcsActorManager {
   /// Create a GcsActorManager
   ///
   /// \param scheduler Used to schedule actor creation tasks.
-  /// \param actor_info_accessor Used to flush actor data to storage.
+  /// \param gcs_actor_table Used to flush actor data to storage.
   /// \param gcs_pub_sub Used to publish gcs message.
   GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> scheduler,
-                  gcs::ActorInfoAccessor &actor_info_accessor,
+                  gcs::GcsActorTable &gcs_actor_table,
                   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
                   const rpc::ClientFactoryFn &worker_client_factory = nullptr);
 
@@ -234,7 +235,7 @@ class GcsActorManager {
   /// The scheduler to schedule all registered actors.
   std::shared_ptr<gcs::GcsActorSchedulerInterface> gcs_actor_scheduler_;
   /// Actor table. Used to update actor information upon creation, deletion, etc.
-  gcs::ActorInfoAccessor &actor_info_accessor_;
+  gcs::GcsActorTable &gcs_actor_table_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Factory to produce clients to workers. This is used to communicate with
