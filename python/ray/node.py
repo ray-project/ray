@@ -25,7 +25,7 @@ from ray.utils import try_to_create_directory, try_to_symlink
 logger = logging.getLogger(__name__)
 
 SESSION_LATEST = "session_latest"
-NUMBER_OF_PORT_RETRIES = 10
+NUMBER_OF_PORT_RETRIES = 40
 
 
 class Node:
