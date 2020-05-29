@@ -155,8 +155,22 @@ message PlacementGroupTableData {
       DEAD = 2;
     }
     
-    PlacementGroupSpec placement_group_spec = 1;
+    // ID of the PlacementGroup.
+    bytes placement_group_id = 1;
+    // The max number of times this placement group should be recontructed.
+    // If this number is 0 the placement group won't be restarted.
+    // If this number is -1 the placement group will be restarted indefinitely.
+    int64 max_placement_group_restart = 2;
 
+    int64 num_restarts = 3;
+    // The name of the placement group.
+    string name = 4;
+
+    repeated Bundle bundles =  5;
+
+    PlacementStrategy strategy = 6;
+
+    PlacementGroupState state = 7;
 }
 
 message PlacementGroupName {

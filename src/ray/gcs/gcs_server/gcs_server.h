@@ -100,6 +100,9 @@ class GcsServer {
   /// The worker info handler
   virtual std::unique_ptr<rpc::WorkerInfoHandler> InitWorkerInfoHandler();
 
+  /// The placement group info handler
+  virtual std::unique_ptr<rpc::PlacementGroupInfoHandler> InitPlacementGroupInfoHandler();
+
  private:
   /// Store the address of GCS server in Redis.
   ///
@@ -145,6 +148,9 @@ class GcsServer {
   /// Worker info handler and service
   std::unique_ptr<rpc::WorkerInfoHandler> worker_info_handler_;
   std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
+  /// Placement Group info handler and service
+  std::unique_ptr<rpc::PlacementGroupInfoHandler> placement_group_info_handler_;
+  std::unique_ptr<rpc::PlacementGroupInfoGrpcService> placement_group_info_service_;
   /// Backend client
   std::shared_ptr<RedisGcsClient> redis_gcs_client_;
   /// A publisher for publishing gcs messages.
