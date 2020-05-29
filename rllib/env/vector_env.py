@@ -97,9 +97,9 @@ class _VectorizedGymEnv(VectorEnv):
         """Initializes a _VectorizedGymEnv object.
 
         Args:
-            make_env (Optional[callable]): Factory that produces a new gym env.
-                Must be defined if the number of `existing_envs` is less than
-                `num_envs`.
+            make_env (Optional[callable]): Factory that produces a new gym env
+                taking a single `config` dict arg. Must be defined if the
+                number of `existing_envs` is less than `num_envs`.
             existing_envs (Optional[List[Env]]): Optional list of already
                 instantiated sub environments.
             num_envs (int): Total number of sub environments in this VectorEnv.
@@ -110,20 +110,18 @@ class _VectorizedGymEnv(VectorEnv):
             env_config (Optional[dict]): Additional sub env config to pass to
                 make_env as first arg.
         """
-        assert len(existing_envs) > 0 or (observation_space is not None
-                                          and action_space is not None)
-        super().__init__(
-            observation_space=observation_space
-            or existing_envs[0].observation_space,
-            action_space=action_space or existing_envs[0].action_space,
-            num_envs=num_envs)
-
         self.make_env = make_env
         self.envs = existing_envs
         while len(self.envs) < num_envs:
             to_create = num_envs - len(self.envs)
             for _ in range(to_create):
                 self.envs.append(self.make_env(env_config or {}))
+
+        super().__init__(
+            observation_space=observation_space
+            or self.envs[0].observation_space,
+            action_space=action_space or self.envs[0].action_space,
+            num_envs=num_envs)
 
     @override(VectorEnv)
     def vector_reset(self):
