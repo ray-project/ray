@@ -154,21 +154,21 @@ There is already a default head node service defined in the ``services`` field o
 
 .. code-block:: yaml
 
-	# Service that maps to the head node of the Ray cluster.
-	- apiVersion: v1
-		kind: Service
-		metadata:
-				name: ray-head
-		spec:
+  # Service that maps to the head node of the Ray cluster.
+  - apiVersion: v1
+    kind: Service
+    metadata:
+        name: ray-head
+    spec:
         # Must match the label in the head pod spec below.
-				selector:
-						component: ray-head
-				ports:
-						- protocol: TCP
+        selector:
+            component: ray-head
+        ports:
+            - protocol: TCP
               # Port that this service will listen on.
-							port: 8000
+              port: 8000
               # Port that requests will be sent to in pods backing the service.
-							targetPort: 8000
+              targetPort: 8000
 
 Then, we also need to make sure that the head node pod spec matches the selector defined here and exposes the same port:
 
@@ -177,22 +177,22 @@ Then, we also need to make sure that the head node pod spec matches the selector
   head_node:
     apiVersion: v1
     kind: Pod
-		metadata:
-			# Automatically generates a name for the pod with this prefix.
-			generateName: ray-head-
+    metadata:
+      # Automatically generates a name for the pod with this prefix.
+      generateName: ray-head-
 
-			# Matches the selector in the service definition above.
-			labels:
-					component: ray-head
+      # Matches the selector in the service definition above.
+      labels:
+          component: ray-head
 
     spec:
       # ...
-			containers:
-			- name: ray-node
-				# ...
-				ports:
-						- containerPort: 8000 # Ray Serve default port.
-			# ...
+      containers:
+      - name: ray-node
+        # ...
+        ports:
+            - containerPort: 8000 # Ray Serve default port.
+      # ...
 
 The rest of the config remains unchanged for this example, though you may want to change the container image or the number of worker pods started by default when running your own deployment.
 Now, we just need to start the cluster:
