@@ -34,8 +34,7 @@ class TestSyncFunctionality(unittest.TestCase):
                     "stop": {
                         "training_iteration": 1
                     },
-                    "sync_to_cloud": "echo {source} {target}",
-                    "config": {"framework": "tf"},
+                    "sync_to_cloud": "echo {source} {target}"
                 }).trials
 
     @patch("ray.tune.sync_client.S3_PREFIX", "test")
@@ -50,8 +49,7 @@ class TestSyncFunctionality(unittest.TestCase):
                         "training_iteration": 1
                     },
                     "upload_dir": "test",
-                    "sync_to_cloud": "ls {target}",
-                    "config": {"framework": "tf"},
+                    "sync_to_cloud": "ls {target}"
                 }).trials
 
         with self.assertRaises(ValueError):
@@ -64,8 +62,7 @@ class TestSyncFunctionality(unittest.TestCase):
                         "training_iteration": 1
                     },
                     "upload_dir": "test",
-                    "sync_to_cloud": "ls {source}",
-                    "config": {"framework": "tf"},
+                    "sync_to_cloud": "ls {source}"
                 }).trials
 
         tmpdir = tempfile.mkdtemp()
@@ -80,8 +77,7 @@ class TestSyncFunctionality(unittest.TestCase):
                     "training_iteration": 1
                 },
                 "upload_dir": "test",
-                "sync_to_cloud": "echo {source} {target} > " + logfile,
-                "config": {"framework": "tf"},
+                "sync_to_cloud": "echo {source} {target} > " + logfile
             }).trials
         with open(logfile) as f:
             lines = f.read()
@@ -100,8 +96,7 @@ class TestSyncFunctionality(unittest.TestCase):
                     "stop": {
                         "training_iteration": 1
                     },
-                    "sync_to_driver": "ls {target}",
-                    "config": {"framework": "tf"},
+                    "sync_to_driver": "ls {target}"
                 }).trials
 
         with self.assertRaises(TuneError):
@@ -114,8 +109,7 @@ class TestSyncFunctionality(unittest.TestCase):
                     "stop": {
                         "training_iteration": 1
                     },
-                    "sync_to_driver": "ls {source}",
-                    "config": {"framework": "tf"},
+                    "sync_to_driver": "ls {source}"
                 }).trials
 
         with patch.object(CommandBasedClient, "_execute") as mock_fn:
@@ -129,8 +123,7 @@ class TestSyncFunctionality(unittest.TestCase):
                         "stop": {
                             "training_iteration": 1
                         },
-                        "sync_to_driver": "echo {source} {target}",
-                        "config": {"framework": "tf"},
+                        "sync_to_driver": "echo {source} {target}"
                     }).trials
                 self.assertGreater(mock_fn.call_count, 0)
 

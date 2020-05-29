@@ -28,10 +28,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
 
-    # TODO: (sven) Could we get this information from talking to the client?
-    #  Including action_space and obs_space.
     env = "CartPole-v0"
-
     connector_config = {
         # Use the connector server to generate experiences.
         "input": (
