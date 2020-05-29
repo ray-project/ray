@@ -101,6 +101,7 @@ class GcsPubSub {
   absl::Mutex mutex_;
 
   std::unordered_map<std::string, int64_t> subscribe_callback_index_ GUARDED_BY(mutex_);
+  std::unordered_map<std::string, int64_t> unsubscribe_callback_index_ GUARDED_BY(mutex_);
 };
 
 }  // namespace gcs

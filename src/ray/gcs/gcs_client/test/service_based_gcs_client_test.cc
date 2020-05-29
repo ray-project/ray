@@ -22,7 +22,12 @@
 
 namespace ray {
 
-class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
+class ServiceBasedGcsClientTest : public ::testing::Test {
+ public:
+  ServiceBasedGcsClientTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
+
+  virtual ~ServiceBasedGcsClientTest() { TestSetupUtil::ShutDownRedisServers(); }
+
  protected:
   void SetUp() override {
     config.grpc_server_port = 0;
@@ -30,7 +35,7 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     config.grpc_server_thread_num = 1;
     config.redis_address = "127.0.0.1";
     config.is_test = true;
-    config.redis_port = REDIS_SERVER_PORTS.front();
+    config.redis_port = TEST_REDIS_SERVER_PORTS.front();
     gcs_server_.reset(new gcs::GcsServer(config));
     io_service_.reset(new boost::asio::io_service());
 
@@ -60,7 +65,7 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     thread_io_service_->join();
     thread_gcs_server_->join();
     gcs_client_->Disconnect();
-    FlushAll();
+    TestSetupUtil::FlushAllRedisServers();
   }
 
   void RestartGcsServer() {
@@ -260,9 +265,12 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     return resource_map;
   }
 
-  bool UpdateResources(const ClientID &node_id,
-                       const gcs::NodeInfoAccessor::ResourceMap &resource_map) {
+  bool UpdateResources(const ClientID &node_id, const std::string &key) {
     std::promise<bool> promise;
+    gcs::NodeInfoAccessor::ResourceMap resource_map;
+    auto resource = std::make_shared<rpc::ResourceTableData>();
+    resource->set_resource_capacity(1.0);
+    resource_map[key] = resource;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncUpdateResources(
         node_id, resource_map,
         [&promise](Status status) { promise.set_value(status.ok()); }));
@@ -639,12 +647,8 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeResources) {
 
   // Update resources of node in GCS.
   ClientID node_id = ClientID::FromBinary(node_info->node_id());
-  gcs::NodeInfoAccessor::ResourceMap resource_map;
   std::string key = "CPU";
-  auto resource = std::make_shared<rpc::ResourceTableData>();
-  resource->set_resource_capacity(1.0);
-  resource_map[key] = resource;
-  ASSERT_TRUE(UpdateResources(node_id, resource_map));
+  ASSERT_TRUE(UpdateResources(node_id, key));
   WaitPendingDone(add_count, 1);
   ASSERT_TRUE(GetResources(node_id).count(key));
 
@@ -832,6 +836,7 @@ TEST_F(ServiceBasedGcsClientTest, TestJobTableReSubscribe) {
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestActorTableReSubscribe) {
+  // Test that subscription of the actor table can still work when GCS server restarts.
   JobID job_id = JobID::FromInt(1);
   auto actor1_table_data = Mocker::GenActorTableData(job_id);
   auto actor1_id = ActorID::FromBinary(actor1_table_data->actor_id());
@@ -875,9 +880,108 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableReSubscribe) {
   WaitPendingDone(actor2_update_count, 1);
 }
 
+TEST_F(ServiceBasedGcsClientTest, TestNodeTableReSubscribe) {
+  // Test that subscription of the node table can still work when GCS server restarts.
+  // Subscribe to node addition and removal events from GCS and cache those information.
+  std::atomic<int> node_change_count(0);
+  auto node_subscribe = [&node_change_count](const ClientID &id,
+                                             const rpc::GcsNodeInfo &result) {
+    ++node_change_count;
+  };
+  ASSERT_TRUE(SubscribeToNodeChange(node_subscribe));
+
+  // Subscribe to node resource changes.
+  std::atomic<int> resource_change_count(0);
+  auto resource_subscribe =
+      [&resource_change_count](const rpc::NodeResourceChange &result) {
+        ++resource_change_count;
+      };
+  ASSERT_TRUE(SubscribeToResources(resource_subscribe));
+
+  // Subscribe batched state of all nodes from GCS.
+  std::atomic<int> batch_heartbeat_count(0);
+  auto batch_heartbeat_subscribe =
+      [&batch_heartbeat_count](const rpc::HeartbeatBatchTableData &result) {
+        ++batch_heartbeat_count;
+      };
+  ASSERT_TRUE(SubscribeBatchHeartbeat(batch_heartbeat_subscribe));
+
+  RestartGcsServer();
+
+  auto node_info = Mocker::GenNodeInfo(1);
+  ASSERT_TRUE(RegisterNode(*node_info));
+  ClientID node_id = ClientID::FromBinary(node_info->node_id());
+  std::string key = "CPU";
+  ASSERT_TRUE(UpdateResources(node_id, key));
+  auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
+  heartbeat->set_client_id(node_info->node_id());
+  ASSERT_TRUE(ReportHeartbeat(heartbeat));
+
+  WaitPendingDone(node_change_count, 1);
+  WaitPendingDone(resource_change_count, 1);
+  WaitPendingDone(batch_heartbeat_count, 1);
+}
+
+TEST_F(ServiceBasedGcsClientTest, TestTaskTableReSubscribe) {
+  JobID job_id = JobID::FromInt(6);
+  TaskID task_id = TaskID::ForDriverTask(job_id);
+  auto task_table_data = Mocker::GenTaskTableData(job_id.Binary(), task_id.Binary());
+
+  // Subscribe to the event that the given task is added in GCS.
+  std::atomic<int> task_count(0);
+  auto task_subscribe = [&task_count](const TaskID &task_id,
+                                      const gcs::TaskTableData &data) { ++task_count; };
+  ASSERT_TRUE(SubscribeTask(task_id, task_subscribe));
+
+  // Subscribe to the event that the given task lease is added in GCS.
+  std::atomic<int> task_lease_count(0);
+  auto task_lease_subscribe = [&task_lease_count](
+                                  const TaskID &task_id,
+                                  const boost::optional<rpc::TaskLeaseData> &data) {
+    if (data) {
+      ++task_lease_count;
+    }
+  };
+  ASSERT_TRUE(SubscribeTaskLease(task_id, task_lease_subscribe));
+
+  ASSERT_TRUE(AddTask(task_table_data));
+  ClientID node_id = ClientID::FromRandom();
+  auto task_lease = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
+  ASSERT_TRUE(AddTaskLease(task_lease));
+  WaitPendingDone(task_count, 1);
+  WaitPendingDone(task_lease_count, 1);
+  UnsubscribeTask(task_id);
+
+  RestartGcsServer();
+
+  node_id = ClientID::FromRandom();
+  task_lease = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
+  ASSERT_TRUE(AddTaskLease(task_lease));
+  WaitPendingDone(task_lease_count, 3);
+  WaitPendingDone(task_count, 1);
+}
+
+TEST_F(ServiceBasedGcsClientTest, TestWorkerTableReSubscribe) {
+  // Subscribe to all unexpected failure of workers from GCS.
+  std::atomic<int> worker_failure_count(0);
+  auto on_subscribe = [&worker_failure_count](const WorkerID &worker_id,
+                                              const rpc::WorkerFailureData &result) {
+    ++worker_failure_count;
+  };
+  ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
+
+  // Restart GCS
+  RestartGcsServer();
+
+  // Report a worker failure to GCS and check if resubscribe works.
+  auto worker_failure_data = Mocker::GenWorkerFailureData();
+  ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
+  WaitPendingDone(worker_failure_count, 1);
+}
+
 TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
   // Stop redis.
-  TearDownTestCase();
+  TestSetupUtil::ShutDownRedisServers();
 
   // Sleep 3 times of gcs_redis_heartbeat_interval_milliseconds to make sure gcs_server
   // detects that the redis is failure and then stop itself.
@@ -893,8 +997,8 @@ TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

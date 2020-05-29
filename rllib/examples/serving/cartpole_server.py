@@ -21,6 +21,8 @@ CHECKPOINT_FILE = "last_checkpoint_{}.out"
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="DQN")
+parser.add_argument(
+    "--framework", type=str, choices=["tf", "torch"], default="tf")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -54,6 +56,7 @@ if __name__ == "__main__":
                     "learning_starts": 100,
                     "timesteps_per_iteration": 200,
                     "log_level": "INFO",
+                    "framework": args.framework,
                 }))
     elif args.run == "PPO":
         # Example of using PPO (does NOT support off-policy actions).
@@ -63,6 +66,7 @@ if __name__ == "__main__":
                 connector_config, **{
                     "sample_batch_size": 1000,
                     "train_batch_size": 4000,
+                    "framework": args.framework,
                 }))
     else:
         raise ValueError("--run must be DQN or PPO")

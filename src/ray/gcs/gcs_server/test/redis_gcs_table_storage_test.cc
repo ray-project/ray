@@ -22,12 +22,13 @@ namespace ray {
 
 class RedisGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
  public:
-  static void SetUpTestCase() { RedisServiceManagerForTest::SetUpTestCase(); }
+  static void SetUpTestCase() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
 
-  static void TearDownTestCase() { RedisServiceManagerForTest::TearDownTestCase(); }
+  static void TearDownTestCase() { TestSetupUtil::ShutDownRedisServers(); }
 
   void SetUp() override {
-    gcs::RedisClientOptions options("127.0.0.1", REDIS_SERVER_PORTS.front(), "", true);
+    gcs::RedisClientOptions options("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "",
+                                    true);
     redis_client_ = std::make_shared<gcs::RedisClient>(options);
     RAY_CHECK_OK(redis_client_->Connect(io_service_pool_->GetAll()));
 
@@ -49,8 +50,8 @@ TEST_F(RedisGcsTableStorageTest, TestGcsTableWithJobIdApi) { TestGcsTableWithJob
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

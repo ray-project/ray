@@ -18,7 +18,8 @@ from ray.rllib.offline import InputReader
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.space_utils import flatten_to_single_ndarray, unbatch
+from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray, \
+    unbatch
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 tree = try_import_tree()

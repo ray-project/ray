@@ -63,9 +63,6 @@ class SourceFunction(Function):
         """
         pass
 
-    def close(self):
-        pass
-
 
 class MapFunction(Function):
     """
