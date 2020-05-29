@@ -21,8 +21,8 @@ def using_existing_msg(resource_type, name):
     return "using existing {} '{}'".format(resource_type, name)
 
 
-def deleting_existing_msg(resource_type, name):
-    return "deleting existing {} '{}'".format(resource_type, name)
+def updating_existing_msg(resource_type, name):
+    return "updating existing {} '{}'".format(resource_type, name)
 
 
 def not_found_msg(resource_type, name):
@@ -179,15 +179,13 @@ def _configure_services(namespace, provider_config):
             assert len(services) == 1
             existing_service = services[0]
             if service == existing_service:
-                logger.info(log_prefix +
-                            using_existing_msg(service_field, name))
+                logger.info(log_prefix + using_existing_msg("service", name))
                 return
             else:
                 logger.info(log_prefix +
-                            deleting_existing_msg(service_field, name))
-                core_api().delete_namespaced_service(name, namespace)
+                            updating_existing_msg("service", name))
+                core_api().patch_namespaced_service(name, namespace, service)
         else:
-            logger.info(log_prefix + not_found_msg(service_field, name))
-
-        core_api().create_namespaced_service(namespace, service)
-        logger.info(log_prefix + created_msg(service_field, name))
+            logger.info(log_prefix + not_found_msg("service", name))
+            core_api().create_namespaced_service(namespace, service)
+            logger.info(log_prefix + created_msg("service", name))
