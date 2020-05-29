@@ -77,6 +77,7 @@ public class JobGraphBuilder {
     } else {
       throw new UnsupportedOperationException("Unsupported stream: " + stream);
     }
+    jobVertex.setConfig(stream.getConfig());
     this.jobGraph.addVertex(jobVertex);
   }
 

@@ -63,8 +63,9 @@ def build_sac_model(policy, obs_space, action_space, config):
         action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
-        framework="torch" if config["use_pytorch"] else "tf",
-        model_interface=SACTorchModel if config["use_pytorch"] else SACTFModel,
+        framework=config["framework"],
+        model_interface=SACTorchModel
+        if config["framework"] == "torch" else SACTFModel,
         name="sac_model",
         actor_hidden_activation=config["policy_model"]["fcnet_activation"],
         actor_hiddens=config["policy_model"]["fcnet_hiddens"],
@@ -79,8 +80,9 @@ def build_sac_model(policy, obs_space, action_space, config):
         action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
-        framework="torch" if config["use_pytorch"] else "tf",
-        model_interface=SACTorchModel if config["use_pytorch"] else SACTFModel,
+        framework=config["framework"],
+        model_interface=SACTorchModel
+        if config["framework"] == "torch" else SACTFModel,
         name="target_sac_model",
         actor_hidden_activation=config["policy_model"]["fcnet_activation"],
         actor_hiddens=config["policy_model"]["fcnet_hiddens"],

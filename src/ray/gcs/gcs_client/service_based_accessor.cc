@@ -1212,15 +1212,26 @@ Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing worker failures.";
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-    rpc::WorkerFailureData worker_failure_data;
-    worker_failure_data.ParseFromString(data);
-    subscribe(WorkerID::FromBinary(id), worker_failure_data);
+  subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
+    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+      rpc::WorkerFailureData worker_failure_data;
+      worker_failure_data.ParseFromString(data);
+      subscribe(WorkerID::FromBinary(id), worker_failure_data);
+    };
+    auto status = client_impl_->GetGcsPubSub().SubscribeAll(WORKER_FAILURE_CHANNEL,
+                                                            on_subscribe, done);
+    RAY_LOG(DEBUG) << "Finished subscribing worker failures.";
+    return status;
   };
-  auto status = client_impl_->GetGcsPubSub().SubscribeAll(WORKER_FAILURE_CHANNEL,
-                                                          on_subscribe, done);
-  RAY_LOG(DEBUG) << "Finished subscribing worker failures.";
-  return status;
+  return subscribe_operation_(done);
+}
+
+Status ServiceBasedWorkerInfoAccessor::AsyncReSubscribe() {
+  RAY_LOG(INFO) << "Reestablishing subscription for worker failures.";
+  if (subscribe_operation_ != nullptr) {
+    return subscribe_operation_(nullptr);
+  }
+  return Status::OK();
 }
 
 Status ServiceBasedWorkerInfoAccessor::AsyncReportWorkerFailure(

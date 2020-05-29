@@ -6,6 +6,7 @@ import io.ray.streaming.operator.StreamOperator;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A node in the physical execution graph.
@@ -13,15 +14,17 @@ import java.util.List;
 public class ExecutionNode implements Serializable {
   private int nodeId;
   private int parallelism;
+  private Map<String, String> config;
   private NodeType nodeType;
   private StreamOperator streamOperator;
   private List<ExecutionTask> executionTasks;
   private List<ExecutionEdge> inputsEdges;
   private List<ExecutionEdge> outputEdges;
 
-  public ExecutionNode(int nodeId, int parallelism) {
+  public ExecutionNode(int nodeId, int parallelism, Map<String, String> config) {
     this.nodeId = nodeId;
     this.parallelism = parallelism;
+    this.config = config;
     this.executionTasks = new ArrayList<>();
     this.inputsEdges = new ArrayList<>();
     this.outputEdges = new ArrayList<>();
@@ -41,6 +44,10 @@ public class ExecutionNode implements Serializable {
 
   public void setParallelism(int parallelism) {
     this.parallelism = parallelism;
+  }
+
+  public Map<String, String> getConfig() {
+    return config;
   }
 
   public List<ExecutionTask> getExecutionTasks() {

@@ -9,7 +9,8 @@ atari-a2c:
             - SpaceInvadersNoFrameskip-v4
     run: A2C
     config:
-        use_pytorch: false  # <- switch on/off torch
+        # Works for both torch and tf.
+        framework: tf
         rollout_fragment_length: 20
         clip_rewards: True
         num_workers: 5

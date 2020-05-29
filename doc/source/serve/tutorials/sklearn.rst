@@ -9,9 +9,9 @@ In particular, we show:
 - How to load the model from file system in your Ray Serve definition
 - How to parse the JSON request and evaluated in sklearn model
 
-Please see the :ref:`overview <rayserve-overview>` to learn more general information about Ray Serve.
+Please see the :doc:`../key-concepts` to learn more general information about Ray Serve.
 
-Ray Serve supports :ref:`arbitrary frameworks <serve_frameworks>`. You can use any version of sklearn.
+Ray Serve is framework agnostic. You can use any version of sklearn.
 
 .. code-block:: bash
 

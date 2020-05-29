@@ -32,6 +32,7 @@ public class GcsClient {
   private RedisClient primary;
 
   private List<RedisClient> shards;
+  private GlobalStateAccessor globalStateAccessor;
 
   public GcsClient(String redisAddress, String redisPassword) {
     primary = new RedisClient(redisAddress, redisPassword);
@@ -49,16 +50,11 @@ public class GcsClient {
     shards = shardAddresses.stream().map((byte[] address) -> {
       return new RedisClient(new String(address), redisPassword);
     }).collect(Collectors.toList());
+    globalStateAccessor = GlobalStateAccessor.getInstance(redisAddress, redisPassword);
   }
 
   public List<NodeInfo> getAllNodeInfo() {
-    final String prefix = TablePrefix.CLIENT.toString();
-    final byte[] key = ArrayUtils.addAll(prefix.getBytes(), UniqueId.NIL.getBytes());
-    List<byte[]> results = primary.lrange(key, 0, -1);
-
-    if (results == null) {
-      return new ArrayList<>();
-    }
+    List<byte[]> results = globalStateAccessor.getAllNodeInfo();
 
     // This map is used for deduplication of node entries.
     Map<UniqueId, NodeInfo> nodes = new HashMap<>();
@@ -189,6 +185,15 @@ public class GcsClient {
   public JobId nextJobId() {
     int jobCounter = (int) primary.incr("JobCounter".getBytes());
     return JobId.fromInt(jobCounter);
+  }
+
+  /**
+   * Destroy global state accessor when ray native runtime will be shutdown.
+   */
+  public void destroy() {
+    // Only ray shutdown should call gcs client destroy.
+    LOGGER.debug("Destroying global state accessor.");
+    GlobalStateAccessor.destroyInstance();
   }
 
   private RedisClient getShardClient(BaseId key) {
