@@ -73,8 +73,9 @@ a backend in serve for our model (and versioned it with a string).
 
 What serve does when we run this code is store the model as a Ray actor 
 and route traffic to it as the endpoint is queried, in this case over HTTP.
+Note that in order for this endpoint to be accessible from other machines, we need to specify ``http_host="0.0.0.0"`` in ``serve.init`` like we did here.
 
-Let's now query our endpoint to see the result.
+Now let's query our endpoint to see the result.
 
 Querying our Endpoint
 ---------------------
@@ -133,6 +134,136 @@ is due to us running the two models in parallel that we created above.
 
 Upon concluding the above tutorial, you'll want to run ``ray stop`` to 
 shutdown the Ray cluster on your local machine.
+
+Deploying as a Kubernetes Service
+=================================
+
+In order to deploy Ray Serve on Kubernetes, we need to do the following:
+
+1. Start a Ray cluster on Kubernetes.
+2. Expose the head node of the cluster as a `Service`_.
+3. Start Ray Serve on the cluster.
+
+There are multiple ways to start a Ray cluster on Kubernetes, see :doc:`../deploy-on-kubernetes` for more information.
+Here, we will be using the :doc:`../autoscaling` tool, which has support for Kubernetes as a backend.
+
+The autoscaler takes in a yaml config file that describes the cluster.
+Here, we'll be using the `Kubernetes default config`_ with a few small modifications.
+First, we need to make sure that the head node of the cluster, where Ray Serve will run its HTTP server, is exposed as a Kubernetes `Service`_.
+There is already a default head node service defined in the ``services`` field of the config, so we just need to make sure that it's exposing the right port: 8000, which Ray Serve binds on by default.
+
+.. code-block:: yaml
+
+  # Service that maps to the head node of the Ray cluster.
+  - apiVersion: v1
+    kind: Service
+    metadata:
+        name: ray-head
+    spec:
+        # Must match the label in the head pod spec below.
+        selector:
+            component: ray-head
+        ports:
+            - protocol: TCP
+              # Port that this service will listen on.
+              port: 8000
+              # Port that requests will be sent to in pods backing the service.
+              targetPort: 8000
+
+Then, we also need to make sure that the head node pod spec matches the selector defined here and exposes the same port:
+
+.. code-block:: yaml
+
+  head_node:
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      # Automatically generates a name for the pod with this prefix.
+      generateName: ray-head-
+
+      # Matches the selector in the service definition above.
+      labels:
+          component: ray-head
+
+    spec:
+      # ...
+      containers:
+      - name: ray-node
+        # ...
+        ports:
+            - containerPort: 8000 # Ray Serve default port.
+      # ...
+
+The rest of the config remains unchanged for this example, though you may want to change the container image or the number of worker pods started by default when running your own deployment.
+Now, we just need to start the cluster:
+
+.. code-block:: shell
+
+    # Start the cluster.
+    $ ray up ray/python/ray/autoscaler/kubernetes/example-full.yaml
+
+    # Check the status of the service pointing to the head node. If configured
+    # properly, you should see the 'Endpoints' field populated with an IP
+    # address like below. If not, make sure the head node pod started
+    # successfully and the selector/labels match.
+    $ kubectl -n ray describe service ray-head
+      Name:              ray-head
+      Namespace:         ray
+      Labels:            <none>
+      Annotations:       <none>
+      Selector:          component=ray-head
+      Type:              ClusterIP
+      IP:                10.100.188.203
+      Port:              <unset>  8000/TCP
+      TargetPort:        8000/TCP
+      Endpoints:         192.168.73.98:8000
+      Session Affinity:  None
+      Events:            <none>
+
+With the cluster now running, we can run a simple script to start Ray Serve and deploy a "hello world" backend:
+
+  .. code-block:: python
+
+    import ray
+    from ray import serve
+    
+    # Connect to the running Ray cluster.
+    ray.init(address="auto")
+    # Bind on 0.0.0.0 to expose the HTTP server on external IPs.
+    serve.init(http_host="0.0.0.0")
+
+    def hello():
+        return "hello world"
+
+    serve.create_backend("hello_backend", hello)
+    serve.create_endpoint("hello_endpoint", route="/hello")
+    serve.set_traffic("hello_endpoint", {"hello_backend": 1.0})
+
+Save this script locally as ``deploy.py`` and run it on the head node using ``ray submit``:
+
+  .. code-block:: shell
+
+    $ ray submit ray/python/ray/autoscaler/kubernetes/example-full.yaml deploy.py
+
+Now we can try querying the service by sending an HTTP request to the service from within the Kubernetes cluster.
+
+  .. code-block:: shell
+
+    # Get a shell inside of the head node.
+    $ ray attach ray/python/ray/autoscaler/kubernetes/example-full.yaml
+
+    # Query the Ray Serve endpoint. This can be run from anywhere in the
+    # Kubernetes cluster.
+    $ curl -X GET http://$RAY_HEAD_SERVICE_HOST:8000/hello
+    hello world
+
+In order to expose the Ray Serve endpoint externally, we would need to deploy the Service we created here behind an `Ingress`_ or a `NodePort`_.
+Please refer to the Kubernetes documentation for more information.
+
+.. _`Kubernetes default config`: https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/example-full.yaml
+.. _`Service`: https://kubernetes.io/docs/concepts/services-networking/service/
+.. _`Ingress`: https://kubernetes.io/docs/concepts/services-networking/ingress/
+.. _`NodePort`: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
 
 Deployment FAQ
 ==============
