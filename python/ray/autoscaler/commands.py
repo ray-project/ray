@@ -262,8 +262,10 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         if len(ray_start_cmd) and not \
                 any(["autoscaling-config" in x for x in ray_start_cmd]):
             logger.warning(
-                "Head node start command does not have the flag --autoscaling"
-                "-config set. The head node will not launch workers.")
+                "Ray start on the head node does not have the flag"
+                "--autoscaling-config set. The head node will not launch"
+                "workers. Add --autoscaling-config=~/ray_bootstrap_config.yaml"
+                "to ray start in the head_start_ray_commands section.")
 
         updater = NodeUpdaterThread(
             node_id=head_node,
