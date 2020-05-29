@@ -23,11 +23,11 @@ public class LoggingUtil {
     WriterAppender appender;
     Config config = rayConfig.getInternalConfig();
     if (rayConfig.workerMode == WorkerType.DRIVER) {
-      // Logs in driver are printed to console.
+      // Logs of drivers are printed to console.
       appender = new ConsoleAppender();
       appender.setName("console");
     } else {
-      // Logs in driver are printed to files.
+      // Logs of workers are printed to files.
       RollingFileAppender rfAppender = new RollingFileAppender();
       appender = rfAppender;
 

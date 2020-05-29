@@ -38,7 +38,7 @@ public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
       runtime.start();
       return runtime;
     } catch (Exception e) {
-      logger.error("Failed to initialize ray runtime", e);
+      logger.error("Failed to initialize ray runtime, with config " + rayConfig, e);
       throw new RuntimeException("Failed to initialize ray runtime", e);
     }
   }
