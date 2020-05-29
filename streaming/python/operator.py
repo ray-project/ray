@@ -219,6 +219,10 @@ class SinkOperator(StreamOperator, OneInputOperator):
 
 class UnionOperator(StreamOperator, OneInputOperator):
     """Operator for union operation"""
+
+    def __init__(self):
+        super().__init__(function.EmptyFunction())
+
     def process_element(self, record):
         self.collect(record)
 
@@ -258,6 +262,7 @@ def load_operator(descriptor_operator_bytes: bytes):
         mod = importlib.import_module(module_name)
         cls = getattr(mod, class_name)
         assert issubclass(cls, Operator)
+        print("cls", cls)
         return cls()
 
 

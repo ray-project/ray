@@ -2,17 +2,22 @@ package io.ray.streaming.python.stream;
 
 import io.ray.streaming.python.PythonOperator;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
+/**
+ * Represents a union DataStream.
+ *
+ * <p>This stream does not create a physical operation, it only affects how upstream data are
+ *  connected to downstream data.
+ */
 public class PythonUnionStream extends PythonDataStream {
   private List<PythonDataStream> unionStreams;
 
-  public PythonUnionStream(PythonDataStream input, PythonDataStream... others) {
+  public PythonUnionStream(PythonDataStream input, List<PythonDataStream> others) {
     super(input, new PythonOperator(
         "ray.streaming.operator", "UnionOperator"));
     this.unionStreams = new ArrayList<>();
-    Arrays.stream(others).forEach(this::addStream);
+    others.forEach(this::addStream);
   }
 
   void addStream(PythonDataStream stream) {

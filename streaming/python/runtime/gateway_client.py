@@ -10,7 +10,7 @@ class GatewayClient:
     """GatewayClient is used to interact with `PythonGateway` java actor"""
 
     _PYTHON_GATEWAY_CLASSNAME = \
-        b"io.ray.streaming.runtime.python.PythonGateway"
+        b"com.alipay.streaming.runtime.python.PythonGateway"
 
     def __init__(self):
         self._python_gateway_actor = ray.java_actor_class(
@@ -30,7 +30,7 @@ class GatewayClient:
 
     def create_py_stream_source(self, serialized_func):
         assert isinstance(serialized_func, bytes)
-        call = self._python_gateway_actor.createPythonStreamSource\
+        call = self._python_gateway_actor.createPythonStreamSource \
             .remote(serialized_func)
         return deserialize(ray.get(call))
 
@@ -41,8 +41,14 @@ class GatewayClient:
 
     def create_py_partition(self, serialized_partition):
         assert isinstance(serialized_partition, bytes)
-        call = self._python_gateway_actor.createPyPartition\
+        call = self._python_gateway_actor.createPyPartition \
             .remote(serialized_partition)
+        return deserialize(ray.get(call))
+
+    def union(self, *streams):
+        serialized_streams = serialize(streams)
+        call = self._python_gateway_actor.union \
+            .remote(serialized_streams)
         return deserialize(ray.get(call))
 
     def call_function(self, java_class, java_function, *args):

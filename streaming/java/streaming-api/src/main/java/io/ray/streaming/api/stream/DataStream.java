@@ -1,7 +1,5 @@
 package io.ray.streaming.api.stream;
 
-
-import com.google.common.base.Preconditions;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.function.impl.FilterFunction;
@@ -18,10 +16,13 @@ import io.ray.streaming.operator.impl.KeyByOperator;
 import io.ray.streaming.operator.impl.MapOperator;
 import io.ray.streaming.operator.impl.SinkOperator;
 import io.ray.streaming.python.stream.PythonDataStream;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Represents a stream of data.
+ *
  * <p>This class defines all the streaming operations.
  *
  * @param <T> Type of data in the stream.
@@ -83,17 +84,32 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
   }
 
   /**
-   * Apply union transformations to this stream.
+   * Apply union transformations to this stream by merging {@link DataStream} outputs of
+   * the same type with each other.
+   *
+   * @param stream The DataStream to union output with.
+   * @param others The other DataStreams to union output with.
+   * @return A new UnionStream.
+   */
+  @SafeVarargs
+  public final DataStream<T> union(DataStream<T> stream, DataStream<T>... others) {
+    List<DataStream<T>> streams = new ArrayList<>();
+    streams.add(stream);
+    streams.addAll(Arrays.asList(others));
+    return union(streams);
+  }
+
+  /**
+   * Apply union transformations to this stream by merging {@link DataStream} outputs of
+   * the same type with each other.
    *
    * @param streams The DataStreams to union output with.
    * @return A new UnionStream.
    */
-  @SafeVarargs
-  public final DataStream<T> union(DataStream<T>... streams) {
-    Preconditions.checkArgument(streams.length >= 1);
+  public final DataStream<T> union(List<DataStream<T>> streams) {
     if (this instanceof UnionStream) {
       UnionStream<T> unionStream = (UnionStream<T>) this;
-      Arrays.stream(streams).forEach(unionStream::addStream);
+      streams.forEach(unionStream::addStream);
       return unionStream;
     } else {
       return new UnionStream<>(this, streams);

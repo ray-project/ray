@@ -23,6 +23,15 @@ class Function(ABC):
         pass
 
 
+class EmptyFunction(Function):
+    """Default function which does nothing"""
+    def open(self, runtime_context):
+        pass
+
+    def close(self):
+        pass
+
+
 class SourceContext(ABC):
     """
     Interface that source functions use to emit elements, and possibly
@@ -52,6 +61,9 @@ class SourceFunction(Function):
         """Starts the source. Implementations can use the
          :class:`SourceContext` to emit elements.
         """
+        pass
+
+    def close(self):
         pass
 
 
@@ -216,7 +228,7 @@ class SimpleFlatMapFunction(FlatMapFunction):
         self.func = func
         self.process_func = None
         sig = inspect.signature(func)
-        assert len(sig.parameters) <= 2,\
+        assert len(sig.parameters) <= 2, \
             "func should receive value [, collector] as arguments"
         if len(sig.parameters) == 2:
 
@@ -292,7 +304,7 @@ def load_function(descriptor_func_bytes: bytes):
         a streaming function
     """
     assert len(descriptor_func_bytes) > 0
-    function_bytes, module_name, function_name, function_interface\
+    function_bytes, module_name, function_name, function_interface \
         = gateway_client.deserialize(descriptor_func_bytes)
     if function_bytes:
         return deserialize(function_bytes)

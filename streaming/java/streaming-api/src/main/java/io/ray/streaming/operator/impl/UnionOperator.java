@@ -14,7 +14,7 @@ public class UnionOperator<T> extends StreamOperator<Function> implements
   }
 
   @Override
-  public void processElement(Record<T> record) throws Exception {
+  public void processElement(Record<T> record) {
     collect(record);
   }
 

@@ -1,6 +1,5 @@
 package io.ray.streaming.python.stream;
 
-import com.google.common.base.Preconditions;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.partition.Partition;
@@ -10,7 +9,9 @@ import io.ray.streaming.python.PythonFunction;
 import io.ray.streaming.python.PythonFunction.FunctionInterface;
 import io.ray.streaming.python.PythonOperator;
 import io.ray.streaming.python.PythonPartition;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Represents a stream of data whose transformations will be executed in python.
@@ -93,16 +94,31 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   }
 
   /**
-   * Apply union transformations to this stream.
+   * Apply union transformations to this stream by merging {@link PythonDataStream} outputs of
+   * the same type with each other.
+   *
+   * @param stream The DataStream to union output with.
+   * @param others The other DataStreams to union output with.
+   * @return A new UnionStream.
+   */
+  public final PythonDataStream union(PythonDataStream stream, PythonDataStream... others) {
+    List<PythonDataStream> streams = new ArrayList<>();
+    streams.add(stream);
+    streams.addAll(Arrays.asList(others));
+    return union(streams);
+  }
+
+  /**
+   * Apply union transformations to this stream by merging {@link PythonDataStream} outputs of
+   * the same type with each other.
    *
    * @param streams The DataStreams to union output with.
    * @return A new UnionStream.
    */
-  public final PythonDataStream union(PythonDataStream... streams) {
-    Preconditions.checkArgument(streams.length >= 1);
+  public final PythonDataStream union(List<PythonDataStream> streams) {
     if (this instanceof PythonUnionStream) {
       PythonUnionStream unionStream = (PythonUnionStream) this;
-      Arrays.stream(streams).forEach(unionStream::addStream);
+      streams.forEach(unionStream::addStream);
       return unionStream;
     } else {
       return new PythonUnionStream(this, streams);

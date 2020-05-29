@@ -15,7 +15,10 @@ class MapFunc(function.MapFunction):
         return str(value)
 
 
-class TestOperator(operator.StreamOperator):
+class EmptyOperator(operator.StreamOperator):
+    def __init__(self):
+        super().__init__(function.EmptyFunction())
+
     def operator_type(self) -> OperatorType:
         return OperatorType.ONE_INPUT
 
@@ -29,6 +32,6 @@ def test_load_operator():
     map_operator = operator.load_operator(descriptor_op_bytes)
     assert type(map_operator) is operator.MapOperator
     descriptor_op_bytes = gateway_client.serialize(
-        [None, __name__, TestOperator.__name__])
+        [None, __name__, EmptyOperator.__name__])
     test_operator = operator.load_operator(descriptor_op_bytes)
-    assert isinstance(test_operator, TestOperator)
+    assert isinstance(test_operator, EmptyOperator)

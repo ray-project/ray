@@ -2,22 +2,23 @@ package io.ray.streaming.api.stream;
 
 import io.ray.streaming.operator.impl.UnionOperator;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 /**
  * Represents a union DataStream.
+ *
+ * <p>This stream does not create a physical operation, it only affects how upstream data are
+ *  connected to downstream data.
  *
  * @param <T> The type of union data.
  */
 public class UnionStream<T> extends DataStream<T> {
   private List<DataStream<T>> unionStreams;
 
-  @SafeVarargs
-  public UnionStream(DataStream<T> input, DataStream<T>... others) {
+  public UnionStream(DataStream<T> input, List<DataStream<T>> streams) {
     super(input, new UnionOperator());
     this.unionStreams = new ArrayList<>();
-    Arrays.stream(others).forEach(this::addStream);
+    streams.forEach(this::addStream);
   }
 
   void addStream(DataStream<T> stream) {

@@ -5,6 +5,7 @@ import io.ray.streaming.api.context.RuntimeContext;
 import io.ray.streaming.operator.OperatorType;
 import io.ray.streaming.operator.StreamOperator;
 import java.util.List;
+import java.util.StringJoiner;
 
 /**
  * Represents a {@link StreamOperator} that wraps python {@link PythonFunction}.
@@ -61,5 +62,18 @@ public class PythonOperator extends StreamOperator {
 
   public String getClassName() {
     return className;
+  }
+
+  @Override
+  public String toString() {
+    StringJoiner stringJoiner = new StringJoiner(", ",
+        PythonOperator.class.getSimpleName() + "[", "]");
+    if (function != null) {
+      stringJoiner.add("function='" + function + "'");
+    } else {
+      stringJoiner.add("moduleName='" + moduleName + "'")
+          .add("className='" + className + "'");
+    }
+    return stringJoiner.toString();
   }
 }
