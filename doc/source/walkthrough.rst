@@ -34,6 +34,8 @@ Ray will then be able to utilize all cores of your machine. Find out how to conf
 
 To start a multi-node Ray cluster, see the `cluster setup page <using-ray-on-a-cluster.html>`__.
 
+.. _ray-remote-functions:
+
 Remote functions (Tasks)
 ------------------------
 
@@ -86,6 +88,8 @@ The invocations are executed in parallel because the call to ``remote_function.r
 All computation is performed in the background, driven by Ray's internal event loop.
 
 See the `ray.remote package reference <package-ref.html>`__ page for specific documentation on how to use ``ray.remote``.
+
+.. _ray-object-ids:
 
 **Object IDs** can also be passed into remote functions. When the function actually gets executed, **the argument will be a retrieved as a regular Python object**. For example, take this function:
 
@@ -176,7 +180,7 @@ Remote functions can be canceled by calling ``ray.cancel`` on the returned Objec
   def blocking_operation():
       time.sleep(10e6)
       return 100
-  
+
   obj_id = blocking_operation.remote()
   ray.cancel(obj_id)
 
