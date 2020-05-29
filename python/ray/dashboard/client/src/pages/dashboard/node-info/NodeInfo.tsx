@@ -13,8 +13,8 @@ import {
 import React from "react";
 import { connect } from "react-redux";
 import { RayletInfoResponse } from "../../../api";
+import { sum } from "../../../common/util";
 import { StoreState } from "../../../store";
-import {sum} from "../../../common/util";
 import Errors from "./dialogs/errors/Errors";
 import Logs from "./dialogs/logs/Logs";
 import NodeRowGroup from "./NodeRowGroup";
@@ -118,9 +118,11 @@ class NodeInfo extends React.Component<
     // the node info can contain data from more than one cluster
     // if more than one cluster is running on a machine.
     const clusterWorkerPidsByIp = clusterWorkerPids(rayletInfo);
-    const clusterTotalWorkers = sum(Array.from(
-      clusterWorkerPidsByIp.values(),
-    ).map(workerSet => workerSet.size));
+    const clusterTotalWorkers = sum(
+      Array.from(clusterWorkerPidsByIp.values()).map(
+        (workerSet) => workerSet.size,
+      ),
+    );
     // Initialize inner structure of the count objects
     for (const client of nodeInfo.clients) {
       const clusterWorkerPids = clusterWorkerPidsByIp.get(client.ip);
@@ -130,7 +132,9 @@ class NodeInfo extends React.Component<
       const filteredLogEntries = Object.entries(
         nodeInfo.log_counts[client.ip] || {},
       ).filter(([pid, _]) => clusterWorkerPids.has(pid));
-      const totalLogEntries = sum(filteredLogEntries.map(([_, count]) => count));
+      const totalLogEntries = sum(
+        filteredLogEntries.map(([_, count]) => count),
+      );
       logCounts[client.ip] = {
         perWorker: Object.fromEntries(filteredLogEntries),
         total: totalLogEntries,
@@ -139,7 +143,9 @@ class NodeInfo extends React.Component<
       const filteredErrEntries = Object.entries(
         nodeInfo.error_counts[client.ip] || {},
       ).filter(([pid, _]) => clusterWorkerPids.has(pid));
-      const totalErrEntries = sum(filteredErrEntries.map(([_, count]) => count));
+      const totalErrEntries = sum(
+        filteredErrEntries.map(([_, count]) => count),
+      );
       errorCounts[client.ip] = {
         perWorker: Object.fromEntries(filteredErrEntries),
         total: totalErrEntries,

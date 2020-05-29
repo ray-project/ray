@@ -12,7 +12,7 @@ import {
 
 const nodeGRAMUtilization = (node: Node) => {
   const utilization = (gpu: GPUStats) => gpu.memory_used / gpu.memory_total;
-  const utilizationSum = sum(node.gpus.map(gpu => utilization(gpu)));
+  const utilizationSum = sum(node.gpus.map((gpu) => utilization(gpu)));
   const avgUtilization = utilizationSum / node.gpus.length;
   // Convert to a percent before returning
   return avgUtilization * 100;

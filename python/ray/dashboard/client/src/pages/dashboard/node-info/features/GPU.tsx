@@ -18,7 +18,7 @@ const clusterUtilization = (nodes: Array<Node>): number => {
 };
 
 const nodeUtilization = (node: Node): number => {
-  const utilizationSum = sum(node.gpus.map(gpu => gpu.utilization_gpu));
+  const utilizationSum = sum(node.gpus.map((gpu) => gpu.utilization_gpu));
   const avgUtilization = utilizationSum / node.gpus.length;
   return avgUtilization;
 };
