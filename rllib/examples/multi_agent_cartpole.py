@@ -30,7 +30,7 @@ parser.add_argument("--num-agents", type=int, default=4)
 parser.add_argument("--num-policies", type=int, default=2)
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-reward", type=float, default=150)
-parser.add_argument("--stop-timesteps", type=int, default=500000)
+parser.add_argument("--stop-timesteps", type=int, default=100000)
 parser.add_argument("--simple", action="store_true")
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument("--as-test", action="store_true")
@@ -55,7 +55,6 @@ if __name__ == "__main__":
     # Each policy can have a different configuration (including custom model).
     def gen_policy(i):
         config = {
-            "num_envs_per_worker": 5,
             "model": {
                 "custom_model": ["model1", "model2"][i % 2],
             },
@@ -75,7 +74,6 @@ if __name__ == "__main__":
         "env_config": {
             "num_agents": args.num_agents,
         },
-        "num_envs_per_worker": 5,
         "simple_optimizer": args.simple,
         "num_sgd_iter": 10,
         "multiagent": {

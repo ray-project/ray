@@ -152,5 +152,4 @@ class ExternalMultiAgentEnv(ExternalEnv):
 
         episode = self._get(episode_id)
         self._finished.add(episode.episode_id)
-        del self._episodes[episode_id]
         episode.done(observation_dict)
