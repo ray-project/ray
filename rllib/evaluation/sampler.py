@@ -431,7 +431,7 @@ def _process_observations(
                 "to terminate (batch_mode=`complete_episodes`). Make sure it "
                 "does at some point.")
 
-        # Check episode termination conditions
+        # Check episode termination conditions.
         if dones[env_id]["__all__"] or episode.length >= horizon:
             hit_horizon = (episode.length >= horizon
                            and not dones[env_id]["__all__"])
@@ -525,8 +525,8 @@ def _process_observations(
                 episode.batch_builder.check_missing_dones()
 
             # Reached end of episode and we are not allowed to pack the
-            # next episode into the same SampleBatch -> Build the batch and
-            # reset the episode's batch builder.
+            # next episode into the same SampleBatch -> Build the SampleBatch
+            # and add it to "outputs".
             if (all_done and not pack_multiple_episodes_in_batch) or \
                     episode.batch_builder.count >= rollout_fragment_length:
                 outputs.append(episode.batch_builder.build_and_reset(episode))
