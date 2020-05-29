@@ -40,6 +40,7 @@ Custom Envs and Models
    Example of how to setup an RLlib Trainer against a locally running Unity3D editor instance to
    learn any Unity3D game (including support for multi-agent).
    Use this example to try things out and watch the game and the learning progress live in the editor.
+   Providing a compiled game, this example could also run in distributed fashion with `num_workers > 0`.
    For a more heavy-weight, distributed, cloud-based example, see `Unity3D client/server`_ below.
 - `Registering a custom env and model <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__:
    Example of defining and registering a gym env and model for use with RLlib.
@@ -65,8 +66,10 @@ Serving and Offline
 
 - `Unity3D client/server <https://github.com/ray-project/ray/tree/master/rllib/examples/serving/unity3d_server.py>`__:
    Example of how to setup n distributed Unity3D (compiled) games in the cloud that function as data collecting
-   clients against a central RLlib Policy server that learns how to play the game.
-   Uses Unity's MLAgents SDK (>=1.0) and supports all provided MLAgents example games and multi-agent setups.
+   clients against a central RLlib Policy server learning how to play the game.
+   The n distributed clients could themselves be servers for external/human players and allow for control
+   being fully in the hands of the Unity entities instead of RLlib.
+   Note: Uses Unity's MLAgents SDK (>=1.0) and supports all provided MLAgents example games and multi-agent setups.
 - `CartPole client/server <https://github.com/ray-project/ray/tree/master/rllib/examples/serving/cartpole_server.py>`__:
    Example of online serving of predictions for a simple CartPole policy.
 - `Saving experiences <https://github.com/ray-project/ray/blob/master/rllib/examples/saving_experiences.py>`__:
