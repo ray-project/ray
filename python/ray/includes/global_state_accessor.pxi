@@ -1,5 +1,6 @@
 from ray.includes.unique_ids cimport (
-    CObjectID
+    CClientID,
+    CObjectID,
 )
 
 from ray.includes.global_state_accessor cimport (
@@ -43,3 +44,6 @@ cdef class GlobalStateAccessor:
         if object_info:
             return c_string(object_info.get().data(), object_info.get().size())
         return None
+
+    def get_node_resource_info(self, node_id):
+        return self.inner.get().GetNodeResourceInfo(CClientID.FromBinary(node_id.binary()))

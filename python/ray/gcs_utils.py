@@ -13,6 +13,7 @@ from ray.core.generated.gcs_pb2 import (
     TablePrefix,
     TablePubsub,
     TaskTableData,
+    ResourceMap,
     ResourceTableData,
     ObjectLocationInfo,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "TablePrefix",
     "TablePubsub",
     "TaskTableData",
+    "ResourceMap",
     "ResourceTableData",
     "construct_error_message",
     "ObjectLocationInfo",
