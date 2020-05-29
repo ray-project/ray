@@ -672,6 +672,7 @@ void CoreWorker::InternalHeartbeat(const boost::system::error_code &error) {
     }
     to_resubmit_.pop_front();
   }
+  // SANG-TODO Add Location resolving logic.
   internal_timer_.expires_at(internal_timer_.expiry() +
                              boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
   internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));
@@ -1273,6 +1274,26 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   reference_counter_->AddLocalReference(actor_creation_return_id, CurrentCallSite());
   direct_actor_submitter_->AddActorQueueIfNotExists(actor_id);
 
+  // If actor handle is not persisted to GCS yet, we should subscribe
+  // worker failure events to figure out if actor is dead or not.
+  // SANG-TODO Add a link to the issue.
+  if (!actor_handle->IsPersistedToGCS()) {
+    // Call a function instead and test it.
+    rpc::Address owner_address = actor_handle->GetOwnerAddress();
+    WorkerID worker_id = WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
+    ActorID actor_id = actor_handle->GetActorID();
+    // SANG-TODO delete this.
+    RAY_LOG(ERROR) << "Location is not resolved Yet! actor id: " << actor_id << " owner worker id: " << worker_id;
+    auto on_worker_failure = [this, actor_id, worker_id](const WorkerID &id, const gcs::WorkerFailureData &worker_failure_data) {
+      RAY_LOG(ERROR) << "Worker failure!!";
+      if (id ==  worker_id) {
+        direct_actor_submitter_->DisconnectActor(actor_id, true);
+      }
+      // SANG-TODO: Should unsubscribe.
+    };
+    RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(on_worker_failure, /*done_callback=*/nullptr));
+  }
+
   bool inserted;
   {
     absl::MutexLock lock(&actor_handles_mutex_);
@@ -1283,6 +1304,12 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     // Register a callback to handle actor notifications.
     auto actor_notification_callback = [this](const ActorID &actor_id,
                                               const gcs::ActorTableData &actor_data) {
+      ActorHandle *actor_handle = nullptr;
+      RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
+      // If the notification comes in, that means this actor is persisted to GCS.
+      actor_handle->SetIsPersistedToGCSIfNeeded();
+      RAY_LOG(ERROR) << "Location is resolved! actor id: " << actor_id << "is persisted to GCS: " << actor_handle->IsPersistedToGCS();
+
       if (actor_data.state() == gcs::ActorTableData::PENDING) {
         // The actor is being created and not yet ready, just ignore!
       } else if (actor_data.state() == gcs::ActorTableData::RESTARTING) {

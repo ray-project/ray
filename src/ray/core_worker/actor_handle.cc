@@ -35,6 +35,8 @@ ray::rpc::ActorHandle CreateInnerActorHandle(
   inner.set_actor_cursor(initial_cursor.Binary());
   inner.set_extension_data(extension_data);
   inner.set_max_task_retries(max_task_retries);
+  // When actor handle is manually created, it is not persisted to gcs yet.
+  inner.set_is_persisted_to_gcs(false);
   return inner;
 }
 
@@ -58,6 +60,8 @@ ray::rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
   inner.set_actor_cursor(task_spec.ReturnId(0).Binary());
   inner.set_extension_data(
       actor_table_data.task_spec().actor_creation_task_spec().extension_data());
+  // If it is from actor table data, it means that it has been persisted to
+  inner.set_is_persisted_to_gcs(true);
   return inner;
 }
 
@@ -94,5 +98,12 @@ void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_
 }
 
 void ActorHandle::Serialize(std::string *output) { inner_.SerializeToString(output); }
+  
+void ActorHandle::SetIsPersistedToGCSIfNeeded() { 
+  absl::MutexLock guard(&mutex_);
+  if (!inner_.is_persisted_to_gcs()) {
+    inner_.set_is_persisted_to_gcs(true);
+  }
+}
 
 }  // namespace ray
