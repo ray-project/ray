@@ -28,6 +28,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "gcs_node_manager.h"
+#include "gcs_table_storage.h"
 
 namespace ray {
 namespace gcs {
@@ -67,7 +68,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// Create a GcsActorScheduler
   ///
   /// \param io_context The main event loop.
-  /// \param actor_info_accessor Used to flush actor info to storage.
+  /// \param gcs_actor_table Used to flush actor info to storage.
   /// \param gcs_node_manager The node manager which is used when scheduling.
   /// \param schedule_failure_handler Invoked when there are no available nodes to
   /// schedule actors.
@@ -78,7 +79,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param client_factory Factory to create remote core worker client, default factor
   /// will be used if not set.
   explicit GcsActorScheduler(
-      boost::asio::io_context &io_context, gcs::ActorInfoAccessor &actor_info_accessor,
+      boost::asio::io_context &io_context, gcs::GcsActorTable &gcs_actor_table,
       const GcsNodeManager &gcs_node_manager, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
@@ -230,7 +231,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// execute_after).
   boost::asio::io_context &io_context_;
   /// The actor info accessor.
-  gcs::ActorInfoAccessor &actor_info_accessor_;
+  gcs::GcsActorTable &gcs_actor_table_;
   /// Map from node ID to the set of actors for whom we are trying to acquire a lease from
   /// that node. This is needed so that we can retry lease requests from the node until we
   /// receive a reply or the node is removed.

@@ -76,6 +76,45 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllNodeInfo(JNIEnv *env, jo
       });
 }
 
+JNIEXPORT jobject JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllActorInfo(
+    JNIEnv *env, jobject o, jlong gcs_accessor_ptr) {
+  auto *gcs_accessor =
+      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
+  auto actor_info_list = gcs_accessor->GetAllActorInfo();
+  return NativeVectorToJavaList<std::string>(
+      env, actor_info_list, [](JNIEnv *env, const std::string &str) {
+        return NativeStringToJavaByteArray(env, str);
+      });
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetActorInfo(JNIEnv *env, jobject o,
+                                                               jlong gcs_accessor_ptr,
+                                                               jbyteArray actorId) {
+  const auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
+  auto *gcs_accessor =
+      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
+  auto actor_info = gcs_accessor->GetActorInfo(actor_id);
+  if (actor_info) {
+    return NativeStringToJavaByteArray(env, *actor_info);
+  }
+  return nullptr;
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetActorCheckpointId(
+    JNIEnv *env, jobject o, jlong gcs_accessor_ptr, jbyteArray actorId) {
+  const auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
+  auto *gcs_accessor =
+      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
+  auto actor_checkpoint_id = gcs_accessor->GetActorCheckpointId(actor_id);
+  if (actor_checkpoint_id) {
+    return NativeStringToJavaByteArray(env, *actor_checkpoint_id);
+  }
+  return nullptr;
+}
+
 #ifdef __cplusplus
 }
 #endif
