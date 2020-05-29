@@ -293,22 +293,6 @@ class GlobalState:
                 for key, value in node_resource_info.items.items()
             }
 
-    def _gen_object_info(self, object_location_info):
-        """Parse object location info.
-        Returns:
-            Information from object.
-        """
-        locations = []
-        for location in object_location_info.locations:
-            locations.append(ray.utils.binary_to_hex(location.manager))
-
-        object_info = {
-            "ObjectID": ray.utils.binary_to_hex(
-                object_location_info.object_id),
-            "Locations": locations,
-        }
-        return object_info
-
     def node_table(self):
         """Fetch and parse the Gcs node info table.
         Returns:
