@@ -33,7 +33,7 @@ class RayTrialExecutorTest(unittest.TestCase):
 
     def testAsyncSave(self):
         """Tests that saved checkpoint value not immediately set."""
-        trial = Trial("__fake", config={"framework": "tf"})
+        trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         trial.last_result = self.trial_executor.fetch_result(trial)
@@ -46,7 +46,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(Trial.TERMINATED, trial.status)
 
     def testSaveRestore(self):
-        trial = Trial("__fake", config={"framework": "tf"})
+        trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         trial.last_result = self.trial_executor.fetch_result(trial)
@@ -70,7 +70,7 @@ class RayTrialExecutorTest(unittest.TestCase):
 
     def testSavePauseResumeErrorRestore(self):
         """Tests that pause checkpoint does not replace restore checkpoint."""
-        trial = Trial("__fake", config={"framework": "tf"})
+        trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         trial.last_result = self.trial_executor.fetch_result(trial)
         # Save
@@ -104,7 +104,7 @@ class RayTrialExecutorTest(unittest.TestCase):
 
     def testPauseResume2(self):
         """Tests that pausing works for trials being processed."""
-        trial = Trial("__fake", config={"framework": "tf"})
+        trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         self.trial_executor.fetch_result(trial)
@@ -117,7 +117,7 @@ class RayTrialExecutorTest(unittest.TestCase):
 
     def testPauseUnpause(self):
         """Tests that unpausing works for trials being processed."""
-        trial = Trial("__fake", config={"framework": "tf"})
+        trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         trial.last_result = self.trial_executor.fetch_result(trial)
@@ -135,7 +135,7 @@ class RayTrialExecutorTest(unittest.TestCase):
 
     def testNoResetTrial(self):
         """Tests that reset handles NotImplemented properly."""
-        trial = Trial("__fake", config={"framework": "tf"})
+        trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         exists = self.trial_executor.reset_trial(trial, {}, "modified_mock")
         self.assertEqual(exists, False)
@@ -155,8 +155,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         trials = self.generate_trials({
             "run": B,
             "config": {
-                "foo": 0,
-                "framework": "tf",
+                "foo": 0
             },
         }, "grid_search")
         trial = trials[0]
@@ -218,10 +217,7 @@ class RayExecutorQueueTest(unittest.TestCase):
 
     def testHeadBlocking(self):
         def create_trial(cpu, gpu=0):
-            return Trial(
-                "__fake",
-                config={"framework": "tf"},
-                resources=Resources(cpu=cpu, gpu=gpu))
+            return Trial("__fake", resources=Resources(cpu=cpu, gpu=gpu))
 
         gpu_trial = create_trial(1, 1)
         self.assertTrue(self.trial_executor.has_resources(gpu_trial.resources))

@@ -113,7 +113,6 @@ class TestMemoryScheduling(unittest.TestCase):
                     "env": "CartPole-v0",
                     "num_workers": 1,
                     "memory_per_worker": 100 * 1024 * 1024,  # too little
-                    "framework": "tf",
                 },
                 raise_on_failed_trial=False)
             self.assertEqual(result.trials[0].status, "ERROR")
