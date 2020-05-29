@@ -606,6 +606,8 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
     for policy_id, eval_data in to_eval.items():
         rnn_in = [t.rnn_state for t in eval_data]
         policy = _get_or_raise(policies, policy_id)
+        # If tf (non eager) AND TFPolicy's compute_action method has not been
+        # overridden -> Use `policy._build_compute_actions()`.
         if builder and (policy.compute_actions.__code__ is
                         TFPolicy.compute_actions.__code__):
 

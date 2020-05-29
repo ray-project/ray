@@ -115,20 +115,20 @@ class MultiAgentSampleBatchBuilder:
         if agent_id not in self.agent_builders:
             self.agent_builders[agent_id] = SampleBatchBuilder()
             self.agent_to_policy[agent_id] = policy_id
-        builder = self.agent_builders[agent_id]
-        builder.add_values(**values)
+        self.agent_builders[agent_id].add_values(**values)
 
-    def postprocess_batch_so_far(self, episode):
+    def postprocess_batch_so_far(self, episode=None):
         """Apply policy postprocessors to any unprocessed rows.
 
         This pushes the postprocessed per-agent batches onto the per-policy
         builders, clearing per-agent state.
 
-        Arguments:
-            episode: current MultiAgentEpisode object or None
+        Args:
+            episode (Optional[MultiAgentEpisode]): The Episode object that
+                holds this MultiAgentBatchBuilder object.
         """
 
-        # Materialize the batches so far
+        # Materialize the batches so far.
         pre_batches = {}
         for agent_id, builder in self.agent_builders.items():
             pre_batches[agent_id] = (
@@ -137,9 +137,15 @@ class MultiAgentSampleBatchBuilder:
 
         # Apply postprocessor
         post_batches = {}
-        if self.clip_rewards:
+        if self.clip_rewards is True:
             for _, (_, pre_batch) in pre_batches.items():
                 pre_batch["rewards"] = np.sign(pre_batch["rewards"])
+        elif self.clip_rewards:
+            for _, (_, pre_batch) in pre_batches.items():
+                pre_batch["rewards"] = np.clip(
+                    pre_batch["rewards"],
+                    a_min=-self.clip_rewards,
+                    a_max=self.clip_rewards)
         for agent_id, (_, pre_batch) in pre_batches.items():
             other_batches = pre_batches.copy()
             del other_batches[agent_id]
