@@ -1062,12 +1062,12 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
     cluster = Cluster()
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _internal_config=config)
+    ray.init(address=cluster.address)
     # Node to place the parent actor.
     node_to_kill = cluster.add_node(num_cpus=1, resources={"parent": 1})
     # Node to place the child actor.
     cluster.add_node(num_cpus=1, resources={"child": 1})
     cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
 
     @ray.remote
     def sleep():

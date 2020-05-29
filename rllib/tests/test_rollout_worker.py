@@ -15,7 +15,7 @@ from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
-from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.tune.registry import register_env
 
 
@@ -100,6 +100,7 @@ class MockEnv2(gym.Env):
 
 class MockVectorEnv(VectorEnv):
     def __init__(self, episode_length, num_envs):
+        super().__init__()
         self.envs = [MockEnv(episode_length) for _ in range(num_envs)]
         self.observation_space = gym.spaces.Discrete(1)
         self.action_space = gym.spaces.Discrete(2)
@@ -171,82 +172,95 @@ class TestRolloutWorker(unittest.TestCase):
     def test_global_vars_update(self):
         # Allow for Unittest run.
         ray.init(num_cpus=5, ignore_reinit_error=True)
-        agent = A2CTrainer(
-            env="CartPole-v0",
-            config={
-                "num_workers": 1,
-                "lr_schedule": [[0, 0.1], [100000, 0.000001]],
-            })
-        result = agent.train()
-        for i in range(10):
+        for fw in framework_iterator(frameworks=()):
+            agent = A2CTrainer(
+                env="CartPole-v0",
+                config={
+                    "num_workers": 1,
+                    "lr_schedule": [[0, 0.1], [100000, 0.000001]],
+                    "framework": fw,
+                })
             result = agent.train()
-            print("num_steps_sampled={}".format(
-                result["info"]["num_steps_sampled"]))
-            print("num_steps_trained={}".format(
-                result["info"]["num_steps_trained"]))
-            print("num_steps_sampled={}".format(
-                result["info"]["num_steps_sampled"]))
-            print("num_steps_trained={}".format(
-                result["info"]["num_steps_trained"]))
-            if i == 0:
-                self.assertGreater(
-                    result["info"]["learner"]["default_policy"]["cur_lr"],
-                    0.01)
-            if result["info"]["learner"]["default_policy"]["cur_lr"] < 0.07:
-                break
-        self.assertLess(result["info"]["learner"]["default_policy"]["cur_lr"],
-                        0.07)
+            for i in range(10):
+                result = agent.train()
+                print("num_steps_sampled={}".format(
+                    result["info"]["num_steps_sampled"]))
+                print("num_steps_trained={}".format(
+                    result["info"]["num_steps_trained"]))
+                print("num_steps_sampled={}".format(
+                    result["info"]["num_steps_sampled"]))
+                print("num_steps_trained={}".format(
+                    result["info"]["num_steps_trained"]))
+                if i == 0:
+                    self.assertGreater(
+                        result["info"]["learner"]["default_policy"]["cur_lr"],
+                        0.01)
+                if result["info"]["learner"]["default_policy"]["cur_lr"] < \
+                        0.07:
+                    break
+            self.assertLess(
+                result["info"]["learner"]["default_policy"]["cur_lr"], 0.07)
 
     def test_no_step_on_init(self):
         # Allow for Unittest run.
         ray.init(num_cpus=5, ignore_reinit_error=True)
         register_env("fail", lambda _: FailOnStepEnv())
-        pg = PGTrainer(env="fail", config={"num_workers": 1})
-        self.assertRaises(Exception, lambda: pg.train())
+        for fw in framework_iterator(frameworks=()):
+            pg = PGTrainer(
+                env="fail", config={
+                    "num_workers": 1,
+                    "framework": fw,
+                })
+            self.assertRaises(Exception, lambda: pg.train())
 
     def test_callbacks(self):
-        counts = Counter()
-        pg = PGTrainer(
-            env="CartPole-v0", config={
-                "num_workers": 0,
-                "rollout_fragment_length": 50,
-                "train_batch_size": 50,
-                "callbacks": {
-                    "on_episode_start": lambda x: counts.update({"start": 1}),
-                    "on_episode_step": lambda x: counts.update({"step": 1}),
-                    "on_episode_end": lambda x: counts.update({"end": 1}),
-                    "on_sample_end": lambda x: counts.update({"sample": 1}),
-                },
-            })
-        pg.train()
-        pg.train()
-        pg.train()
-        pg.train()
-        self.assertGreater(counts["sample"], 0)
-        self.assertGreater(counts["start"], 0)
-        self.assertGreater(counts["end"], 0)
-        self.assertGreater(counts["step"], 0)
+        for fw in framework_iterator(frameworks=("torch", "tf")):
+            counts = Counter()
+            pg = PGTrainer(
+                env="CartPole-v0", config={
+                    "num_workers": 0,
+                    "rollout_fragment_length": 50,
+                    "train_batch_size": 50,
+                    "callbacks": {
+                        "on_episode_start":
+                            lambda x: counts.update({"start": 1}),
+                        "on_episode_step":
+                            lambda x: counts.update({"step": 1}),
+                        "on_episode_end": lambda x: counts.update({"end": 1}),
+                        "on_sample_end":
+                            lambda x: counts.update({"sample": 1}),
+                    },
+                    "framework": fw,
+                })
+            pg.train()
+            pg.train()
+            self.assertGreater(counts["sample"], 0)
+            self.assertGreater(counts["start"], 0)
+            self.assertGreater(counts["end"], 0)
+            self.assertGreater(counts["step"], 0)
 
     def test_query_evaluators(self):
         # Allow for Unittest run.
         ray.init(num_cpus=5, ignore_reinit_error=True)
         register_env("test", lambda _: gym.make("CartPole-v0"))
-        pg = PGTrainer(
-            env="test",
-            config={
-                "num_workers": 2,
-                "rollout_fragment_length": 5,
-                "num_envs_per_worker": 2,
-            })
-        results = pg.workers.foreach_worker(
-            lambda ev: ev.rollout_fragment_length)
-        results2 = pg.workers.foreach_worker_with_index(
-            lambda ev, i: (i, ev.rollout_fragment_length))
-        results3 = pg.workers.foreach_worker(
-            lambda ev: ev.foreach_env(lambda env: 1))
-        self.assertEqual(results, [10, 10, 10])
-        self.assertEqual(results2, [(0, 10), (1, 10), (2, 10)])
-        self.assertEqual(results3, [[1, 1], [1, 1], [1, 1]])
+        for fw in framework_iterator(frameworks=("torch", "tf")):
+            pg = PGTrainer(
+                env="test",
+                config={
+                    "num_workers": 2,
+                    "rollout_fragment_length": 5,
+                    "num_envs_per_worker": 2,
+                    "framework": fw,
+                })
+            results = pg.workers.foreach_worker(
+                lambda ev: ev.rollout_fragment_length)
+            results2 = pg.workers.foreach_worker_with_index(
+                lambda ev, i: (i, ev.rollout_fragment_length))
+            results3 = pg.workers.foreach_worker(
+                lambda ev: ev.foreach_env(lambda env: 1))
+            self.assertEqual(results, [10, 10, 10])
+            self.assertEqual(results2, [(0, 10), (1, 10), (2, 10)])
+            self.assertEqual(results3, [[1, 1], [1, 1], [1, 1]])
 
     def test_reward_clipping(self):
         # clipping on

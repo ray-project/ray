@@ -20,6 +20,8 @@
 #include <functional>
 #include <string>
 
+#include <boost/optional.hpp>
+
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "ray/util/util.h"
@@ -39,6 +41,9 @@ static const int64_t SHOULD_CHECK_MESSAGE_ORDER = 123450000;
 /// \return Whether the condition is met.
 bool WaitForCondition(std::function<bool()> condition, int timeout_ms);
 
+/// Used to kill process whose pid is stored in `socket_name.id` file.
+void KillProcessBySocketName(std::string socket_name);
+
 // A helper function to return a random task id.
 TaskID RandomTaskId();
 
@@ -48,24 +53,62 @@ std::shared_ptr<RayObject> GenerateRandomObject(
     const std::vector<ObjectID> &inlined_ids = {});
 
 /// Path to redis server executable binary.
-extern std::string REDIS_SERVER_EXEC_PATH;
+extern std::string TEST_REDIS_SERVER_EXEC_PATH;
 /// Path to redis client executable binary.
-extern std::string REDIS_CLIENT_EXEC_PATH;
+extern std::string TEST_REDIS_CLIENT_EXEC_PATH;
 /// Path to redis module library.
-extern std::string REDIS_MODULE_LIBRARY_PATH;
+extern std::string TEST_REDIS_MODULE_LIBRARY_PATH;
 /// Ports of redis server.
-extern std::vector<int> REDIS_SERVER_PORTS;
+extern std::vector<int> TEST_REDIS_SERVER_PORTS;
 
-/// Test helper class, it will start redis server before the test runs,
-/// and stop redis server after the test is completed.
-class RedisServiceManagerForTest : public ::testing::Test {
+/// Path to object store executable binary.
+extern std::string TEST_STORE_EXEC_PATH;
+
+/// Path to gcs server executable binary.
+extern std::string TEST_GCS_SERVER_EXEC_PATH;
+
+/// Path to raylet executable binary.
+extern std::string TEST_RAYLET_EXEC_PATH;
+/// Path to mock worker executable binary. Required by raylet.
+extern std::string TEST_MOCK_WORKER_EXEC_PATH;
+/// Path to raylet monitor executable binary.
+extern std::string TEST_RAYLET_MONITOR_EXEC_PATH;
+
+//--------------------------------------------------------------------------------
+// COMPONENT MANAGEMENT CLASSES FOR TEST CASES
+//--------------------------------------------------------------------------------
+/// Test cases can use it to
+/// 1. start/stop/flush redis server(s)
+/// 2. start/stop object store
+/// 3. start/stop gcs server
+/// 4. start/stop raylet
+/// 5. start/stop raylet monitor
+class TestSetupUtil {
  public:
-  static void SetUpTestCase();
-  static int StartUpRedisServer(int port);
-  static void TearDownTestCase();
-  static void ShutDownRedisServer(int port);
-  static void FlushAll();
-  static void FlushRedisServer(int port);
+  static void StartUpRedisServers(const std::vector<int> &redis_server_ports);
+  static void ShutDownRedisServers();
+  static void FlushAllRedisServers();
+
+  static std::string StartObjectStore(
+      const boost::optional<std::string> &socket_name = boost::none);
+  static void StopObjectStore(const std::string &store_socket_name);
+
+  static std::string StartGcsServer(const std::string &redis_address);
+  static void StopGcsServer(const std::string &gcs_server_socket_name);
+
+  static std::string StartRaylet(const std::string &store_socket_name,
+                                 const std::string &node_ip_address, const int &port,
+                                 const std::string &redis_address,
+                                 const std::string &resource);
+  static void StopRaylet(const std::string &raylet_socket_name);
+
+  static std::string StartRayletMonitor(const std::string &redis_address);
+  static void StopRayletMonitor(const std::string &raylet_monitor_socket_name);
+
+ private:
+  static int StartUpRedisServer(const int &port);
+  static void ShutDownRedisServer(const int &port);
+  static void FlushRedisServer(const int &port);
 };
 
 }  // namespace ray

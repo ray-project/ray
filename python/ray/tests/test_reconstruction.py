@@ -17,13 +17,13 @@ def test_cached_object(ray_start_cluster):
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _internal_config=config)
+    ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
         num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
     cluster.add_node(
         num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
     cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
 
     @ray.remote
     def large_object():
@@ -60,6 +60,7 @@ def test_reconstruction_cached_dependency(ray_start_cluster,
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _internal_config=config)
+    ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
         num_cpus=1,
@@ -72,7 +73,6 @@ def test_reconstruction_cached_dependency(ray_start_cluster,
         object_store_memory=10**8,
         _internal_config=config)
     cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
 
     @ray.remote(max_retries=0)
     def large_object():
@@ -122,6 +122,7 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _internal_config=config)
+    ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
         num_cpus=1,
@@ -134,7 +135,6 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
         object_store_memory=10**8,
         _internal_config=config)
     cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
 
     @ray.remote(max_retries=1 if reconstruction_enabled else 0)
     def large_object():
@@ -174,6 +174,7 @@ def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _internal_config=config)
+    ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
         num_cpus=1,
@@ -186,7 +187,6 @@ def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
         object_store_memory=10**8,
         _internal_config=config)
     cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
 
     @ray.remote(max_retries=1 if reconstruction_enabled else 0)
     def large_object():
@@ -229,6 +229,7 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _internal_config=config)
+    ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
         num_cpus=1,
@@ -241,7 +242,6 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
         object_store_memory=10**8,
         _internal_config=config)
     cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
 
     @ray.remote(max_retries=1 if reconstruction_enabled else 0)
     def large_object():
@@ -293,10 +293,10 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0, _internal_config=config, object_store_memory=10**8)
+    ray.init(address=cluster.address)
     node_to_kill = cluster.add_node(
         num_cpus=1, object_store_memory=10**8, _internal_config=config)
     cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
 
     @ray.remote(max_retries=1 if reconstruction_enabled else 0)
     def large_object():

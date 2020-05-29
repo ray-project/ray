@@ -106,7 +106,7 @@ DEFAULT_CONFIG = with_common_config({
     # === Callbacks ===
     "callbacks": AlphaZeroDefaultCallbacks,
 
-    "use_pytorch": True,
+    "framework": "torch",  # Only PyTorch supported so far.
 })
 
 

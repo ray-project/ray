@@ -33,13 +33,14 @@ EOF
   rm -f $file
 }
 
-generate_one org.ray.runtime.RayNativeRuntime
-generate_one org.ray.runtime.task.NativeTaskSubmitter
-generate_one org.ray.runtime.context.NativeWorkerContext
-generate_one org.ray.runtime.actor.NativeRayActor
-generate_one org.ray.runtime.object.NativeObjectStore
-generate_one org.ray.runtime.task.NativeTaskExecutor
+generate_one io.ray.runtime.RayNativeRuntime
+generate_one io.ray.runtime.task.NativeTaskSubmitter
+generate_one io.ray.runtime.context.NativeWorkerContext
+generate_one io.ray.runtime.actor.NativeRayActor
+generate_one io.ray.runtime.object.NativeObjectStore
+generate_one io.ray.runtime.task.NativeTaskExecutor
+generate_one io.ray.runtime.gcs.GlobalStateAccessor
 
 # Remove empty files
-rm -f org_ray_runtime_RayNativeRuntime_AsyncContext.h
-rm -f org_ray_runtime_task_NativeTaskExecutor_NativeActorContext.h
+rm -f io_ray_runtime_RayNativeRuntime_AsyncContext.h
+rm -f io_ray_runtime_task_NativeTaskExecutor_NativeActorContext.h

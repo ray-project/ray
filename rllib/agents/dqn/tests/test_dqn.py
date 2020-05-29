@@ -1,6 +1,7 @@
 import numpy as np
 import unittest
 
+import ray
 import ray.rllib.agents.dqn as dqn
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check, framework_iterator, \
@@ -10,11 +11,19 @@ tf = try_import_tf()
 
 
 class TestDQN(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_dqn_compilation(self):
         """Test whether a DQNTrainer can be built on all frameworks."""
         config = dqn.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
-        num_iterations = 2
+        config["num_workers"] = 2
+        num_iterations = 1
 
         for fw in framework_iterator(config):
             # double-dueling DQN.

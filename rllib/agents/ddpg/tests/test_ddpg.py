@@ -2,6 +2,7 @@ import numpy as np
 import re
 import unittest
 
+import ray
 import ray.rllib.agents.ddpg as ddpg
 from ray.rllib.agents.ddpg.ddpg_torch_policy import ddpg_actor_critic_loss as \
     loss_torch
@@ -19,10 +20,18 @@ torch, _ = try_import_torch()
 
 
 class TestDDPG(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_ddpg_compilation(self):
         """Test whether a DDPGTrainer can be built with both frameworks."""
         config = ddpg.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
+        config["num_workers"] = 1
         config["num_envs_per_worker"] = 2
         config["learning_starts"] = 0
         config["exploration_config"]["random_timesteps"] = 100
@@ -367,9 +376,9 @@ class TestDDPG(unittest.TestCase):
                         else:
                             torch_var = policy.model.state_dict()[map_[tf_key]]
                         if tf_var.shape != torch_var.shape:
-                            check(tf_var, np.transpose(torch_var), rtol=0.07)
+                            check(tf_var, np.transpose(torch_var), atol=0.1)
                         else:
-                            check(tf_var, torch_var, rtol=0.07)
+                            check(tf_var, torch_var, atol=0.1)
 
             trainer.stop()
 

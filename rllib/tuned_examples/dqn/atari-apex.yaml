@@ -8,7 +8,8 @@ apex:
             - SpaceInvadersNoFrameskip-v4
     run: APEX
     config:
-        use_pytorch: false  # <- switch on/off torch
+        # Works for both torch and tf.
+        framework: tf
         double_q: false
         dueling: false
         num_atoms: 1

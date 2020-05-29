@@ -26,8 +26,10 @@ class GcsActorSchedulerTest : public ::testing::Test {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
     worker_client_ = std::make_shared<GcsServerMocker::MockWorkerClient>();
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
+    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
-        io_service_, node_info_accessor_, error_info_accessor_, gcs_pub_sub_);
+        io_service_, node_info_accessor_, error_info_accessor_, gcs_pub_sub_,
+        gcs_table_storage_);
     gcs_actor_scheduler_ = std::make_shared<GcsServerMocker::MockedGcsActorScheduler>(
         io_service_, actor_info_accessor_, *gcs_node_manager_, gcs_pub_sub_,
         /*schedule_failure_handler=*/
@@ -57,6 +59,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::vector<std::shared_ptr<gcs::GcsActor>> success_actors_;
   std::vector<std::shared_ptr<gcs::GcsActor>> failure_actors_;
   std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
+  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
 };
 
