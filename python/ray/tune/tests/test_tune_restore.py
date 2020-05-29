@@ -36,6 +36,7 @@ class TuneRestoreTest(unittest.TestCase):
             local_dir=tmpdir,
             config={
                 "env": "CartPole-v0",
+                "framework": "tf",
             },
         )
 
@@ -58,6 +59,7 @@ class TuneRestoreTest(unittest.TestCase):
             restore=self.checkpoint_path,  # Restore the checkpoint
             config={
                 "env": "CartPole-v0",
+                "framework": "tf",
             },
         )
 
@@ -73,6 +75,7 @@ class TuneRestoreTest(unittest.TestCase):
             restore=self.checkpoint_path,
             config={
                 "env": "CartPole-v0",
+                "framework": "tf",
             },
         )
         self.assertTrue(os.path.isfile(self.checkpoint_path))

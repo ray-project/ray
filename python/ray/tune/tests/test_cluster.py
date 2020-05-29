@@ -554,7 +554,7 @@ ray.init(address="{address}")
 tune.run(
     "PG",
     name="experiment",
-    config=dict(env="CartPole-v1"),
+    config=dict(env="CartPole-v1", framework="tf"),
     stop=dict(training_iteration=10),
     local_dir="{checkpoint_dir}",
     checkpoint_freq=1,
@@ -593,7 +593,7 @@ tune.run(
             "experiment": {
                 "run": "PG",
                 "checkpoint_freq": 1,
-                "local_dir": dirpath
+                "local_dir": dirpath,
             }
         },
         resume=True)
