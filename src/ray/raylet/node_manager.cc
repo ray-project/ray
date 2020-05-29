@@ -1845,6 +1845,32 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   SubmitTask(task, Lineage());
 }
 
+void NodeManager::HandleRequestResourceLease(const rpc::RequestResourceLeaseRequest &request,
+                                            rpc::RequestResourceLeaseReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback){
+  rpc::Bundle bundle;
+  bundle = request.bundle_spec();
+  // TODO(AlisaWu): This is a hack impliementation, I will pack the below code into a class.
+  ::ray::rpc::ResourceMapEntry *resource;
+  auto resource_map = bundle.unit_resources();
+  bool first = true;
+  for(auto iter = resource_map.begin(); iter != resource_map.end();iter ++){
+    if(first){
+      resource = reply->add_resource_mapping();
+      // resource->set_name(new_resource_scheduler_->GetResourceNameFromIndex(0));
+      first = false;
+    }
+    auto rid = resource->add_resource_ids();
+    int inst_idx = -1;
+    if(iter->first == "CPU") inst_idx = CPU;
+    else if(iter->first == "GPU") inst_idx = GPU;
+    else if(iter->first == "MEM") inst_idx = MEM;
+    rid->set_index(inst_idx);
+    rid->set_quantity(iter->second);
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                                      rpc::ReturnWorkerReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
@@ -1908,6 +1934,12 @@ void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &r
   // the client that requested the lease.
   reply->set_success(canceled);
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandleCancelResourceLease(const rpc::CancelResourceLeaseRequest &request,
+                                          rpc::CancelResourceLeaseReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+    // TODO(AlisaWu): fill this function.
 }
 
 void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,

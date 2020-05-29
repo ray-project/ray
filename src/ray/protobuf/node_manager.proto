@@ -40,20 +40,24 @@ message RequestWorkerLeaseReply {
 // TODO(AlisaWu): merge the two Request.
 
 // Request a worker from the raylet with the specified resources.
-message RequestWorkerLeaseForBundleRequest {
+message RequestResourceLeaseRequest {
   // Bundle containing the requested resources.
   Bundle bundle_spec = 1;
 }
 
-message RequestWorkerLeaseForBundleReply {
-  // Address of the leased worker. If this is empty, then the request should be
-  // retried at the provided raylet address.
-  Address worker_address = 1;
+message RequestResourceLeaseReply {
   // Resource mapping ids acquired by the leased worker.
-  repeated ResourceMapEntry resource_mapping = 2;
-  // Whether this lease request was canceled. In this case, the
-  // client should try again if the resources are still required.
-  bool canceled = 3;
+  repeated ResourceMapEntry resource_mapping = 1;
+}
+
+// Request a worker from the raylet with the specified resources.
+message CancelResourceLeaseRequest {
+  // Bundle containing the requested resources.
+  repeated ResourceMapEntry resource_mapping = 1;
+}
+
+message CancelResourceLeaseReply {
+  
 }
 
 // Release a worker back to its raylet.
@@ -148,13 +152,15 @@ message FormatGlobalMemoryInfoReply {
 service NodeManagerService {
   // Request a worker from the raylet.
   rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
-  // Request a worker from the raylet for a bundle.
-  rpc RequestWorkerLeaseForBundle(RequestWorkerLeaseForBundleRequest) returns (RequestWorkerLeaseForBundleReply);
+  // Request resource from the raylet for a bundle.
+  rpc RequestResourceLease(RequestResourceLeaseRequest) returns (RequestResourceLeaseReply);
   // Release a worker back to its raylet.
   rpc ReturnWorker(ReturnWorkerRequest) returns (ReturnWorkerReply);
   // Cancel a pending lease request. This only returns success if the
   // lease request was not yet granted.
   rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
+  // lease request was not yet granted.
+  rpc CancelResourceLease(CancelResourceLeaseRequest) returns (CancelResourceLeaseReply);
   // Forward a task and its uncommitted lineage to the remote node manager.
   rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
   // Pin the provided object IDs.

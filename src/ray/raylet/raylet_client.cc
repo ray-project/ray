@@ -393,6 +393,14 @@ ray::Status raylet::RayletClient::CancelWorkerLease(
   return grpc_client_->CancelWorkerLease(request, callback);
 }
 
+Status raylet::RayletClient::RequestResourceLease(
+      const ray::rpc::Bundle &bundle_spec,
+      const ray::rpc::ClientCallback<ray::rpc::RequestResourceLeaseReply> &callback) {
+  rpc::RequestResourceLeaseRequest request;
+  request.CopyFrom(bundle_spec);
+  return grpc_client_->RequestResourceLease(request, callback);
+}
+
 Status raylet::RayletClient::PinObjectIDs(
     const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
     const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) {

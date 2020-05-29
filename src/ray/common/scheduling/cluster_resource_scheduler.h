@@ -152,6 +152,7 @@ class TaskRequest {
 
 // Data structure specifying the capacity of each instance of each resource
 // allocated to a task.
+// TODO(AlisaWu): rename this class, because it will support allocated to a placement group.
 class TaskResourceInstances {
  public:
   /// The list of instances of each predifined resource allocated to a task.

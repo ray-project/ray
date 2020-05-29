@@ -584,6 +584,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
                                 rpc::RequestWorkerLeaseReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
+                
+  /// Handle a `ResourcesLease` request.
+  void HandleRequestResourceLease(const rpc::RequestResourceLeaseRequest &request,
+                            rpc::RequestResourceLeaseReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReturnWorker` request.
   void HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
@@ -594,6 +599,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
                                rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleCancelResourceLease(const rpc::CancelResourceLeaseRequest &request,
+                                          rpc::CancelResourceLeaseReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ForwardTask` request.
   void HandleForwardTask(const rpc::ForwardTaskRequest &request,

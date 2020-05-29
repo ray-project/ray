@@ -67,7 +67,7 @@ void GcsPlacementGroupScheduler::Schedule(std::shared_ptr<GcsPlacementGroup> pla
     bool lease_success = true;
     Status status;
     for(int i = 0;i < bundles.size();i ++) {
-      status = LeaseWorkerFromNode(bundles[i], gcs_node_manager_.GetNode(schedule_bundles[i]));
+      status = LeaseResourceFromNode(bundles[i], gcs_node_manager_.GetNode(schedule_bundles[i]));
       if (status.ok()) {
           continue;
       } else {
@@ -87,12 +87,12 @@ void GcsPlacementGroupScheduler::Schedule(std::shared_ptr<GcsPlacementGroup> pla
 
 }
 
-Status GcsPlacementGroupScheduler::LeaseWorkerFromNode(const rpc::Bundle &bundle,
+Status GcsPlacementGroupScheduler::LeaseResourceFromNode(const rpc::Bundle &bundle,
                                             std::shared_ptr<rpc::GcsNodeInfo> node) {
   RAY_CHECK(node);
 
   auto node_id = ClientID::FromBinary(node->node_id());
-  RAY_LOG(INFO) << "Start leasing worker from node " << node_id << " for bundle "
+  RAY_LOG(INFO) << "Start leasing resource from node " << node_id << " for bundle "
                 << bundle.bundle_id();
 
   rpc::Address remote_address;
@@ -101,38 +101,35 @@ Status GcsPlacementGroupScheduler::LeaseWorkerFromNode(const rpc::Bundle &bundle
   remote_address.set_port(node->node_manager_port());
   auto lease_client = GetOrConnectLeaseClient(remote_address);
   // TODO(AlisaWu): add a api to connect gcs with client to lease resourse. 
-  // ray::TaskSpecification task_spec;
-  // task_spec.required_resources = MapFromProtobuf(bundle.unit_resources());
-  // 
-  // auto status = lease_client->RequestWorkerLease(
-  //     task_spec,
-  //     [this,node_id, bundle, node](const Status &status,
-  //                                  const rpc::RequestWorkerLeaseForBundleReply &reply) {
-  //         if (status.ok()) {
-  //           RAY_LOG(INFO) << "Finished leasing worker from " <<  node_id << " for bundle "
-  //                         << bundle.bundle_id();
-  //           return HandleWorkerLeasedForBundleReply(bundle, reply);
-  //         } else {
-  //           return Status::OutOfMemory("Lease resource for placement group");
-  //         }
-  //       }
-  //     );
-  // if (!status.ok()) {
-  //   return Status::OutOfMemory("Lease resource for placement group");
-  // }
-  return Status::OK();
-}
-
-Status GcsPlacementGroupScheduler::HandleWorkerLeasedForBundleReply(
-  const rpc::Bundle &bundle, const ray::rpc::RequestWorkerLeaseForBundleReply &reply) {
-  const auto &worker_address = reply.worker_address();
-  if (worker_address.raylet_id().empty()) {
-      return Status::OutOfMemory("Lease resource for placement group");
+  
+  auto status = lease_client->RequestResourceLease(
+      bundle,
+      [this,node_id, bundle, node](const Status &status,
+                                   const rpc::RequestResourceLeaseReply &reply) {
+          if (status.ok()) {
+            RAY_LOG(INFO) << "Finished leasing worker from " <<  node_id << " for bundle "
+                          << bundle.bundle_id();
+            return HandleResourceLeasedReply(bundle, reply);
+          } else {
+            return Status::OutOfMemory("Lease resource for placement group");
+          }
+        }
+      );
+  if (!status.ok()) {
+    return Status::OutOfMemory("Lease resource for placement group");
   }
   return Status::OK();
 }
 
-std::shared_ptr<WorkerLeaseInterface> GcsPlacementGroupScheduler::GetOrConnectLeaseClient(
+Status GcsPlacementGroupScheduler::HandleResourceLeasedReply(
+  const rpc::Bundle &bundle, const ray::rpc::RequestResourceLeaseReply &reply) {
+  if (reply.resource_mapping_size() == 0){
+    return Status::OutOfMemory("Lease resource for placement group");
+  }
+  return Status::OK();
+}
+
+std::shared_ptr<ResourceLeaseInterface> GcsPlacementGroupScheduler::GetOrConnectLeaseClient(
     const rpc::Address &raylet_address) {
   auto node_id = ClientID::FromBinary(raylet_address.raylet_id());
   auto iter = remote_lease_clients_.find(node_id);

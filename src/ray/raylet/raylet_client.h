@@ -83,6 +83,20 @@ class WorkerLeaseInterface {
 
   virtual ~WorkerLeaseInterface(){};
 };
+// TODO(AlisaWu): fill the class
+/// Interface for leasing resource.
+class ResourceLeaseInterface {
+ public:
+  /// Requests a resource from the raylet. The callback will be sent via gRPC.
+  /// \param resource_spec Resources that should be allocated for the worker.
+  /// \return ray::Status
+  virtual ray::Status RequestResourceLease(
+      const ray::rpc::Bundle &bundle_spec,
+      const ray::rpc::ClientCallback<ray::rpc::RequestResourceLeaseReply> &callback) = 0;
+
+  virtual ~ResourceLeaseInterface(){};
+
+};
 
 /// Interface for waiting dependencies. Abstract for testing.
 class DependencyWaiterInterface {
@@ -142,6 +156,7 @@ class RayletConnection {
 
 class RayletClient : public PinObjectsInterface,
                      public WorkerLeaseInterface,
+                     public ResourceLeaseInterface,
                      public DependencyWaiterInterface {
  public:
   /// Connect to the raylet.
@@ -307,6 +322,12 @@ class RayletClient : public PinObjectsInterface,
   ray::Status CancelWorkerLease(
       const TaskID &task_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override;
+
+  /// Implements WorkerLeaseInterface.
+  ray::Status RequestResourceLease(
+      const ray::rpc::Bundle &bundle_spec,
+      const ray::rpc::ClientCallback<ray::rpc::RequestResourceLeaseReply> &callback)
+      override;
 
   ray::Status PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,

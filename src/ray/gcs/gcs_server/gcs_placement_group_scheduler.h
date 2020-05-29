@@ -124,14 +124,14 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param bundle A description of the placement_group to create. This object has the resource
   /// specification needed to lease workers from the specified node.
   /// \param node The node that the worker will be leased from.
-    Status LeaseWorkerFromNode(const rpc::Bundle &bundle, std::shared_ptr<rpc::GcsNodeInfo> node);
+    Status LeaseResourceFromNode(const rpc::Bundle &bundle, std::shared_ptr<rpc::GcsNodeInfo> node);
 
   /// Handler to process a granted lease.
   ///
   /// \param bundle Contains the resources needed to lease workers from the specified node.
   /// \param reply The reply of `RequestWorkerLeaseForBundleRequest`.
-    Status HandleWorkerLeasedForBundleReply(const rpc::Bundle &bundle, 
-                                            const ray::rpc::RequestWorkerLeaseForBundleReply &reply);
+    Status HandleResourceLeasedReply(const rpc::Bundle &bundle, 
+                                            const ray::rpc::RequestResourceLeaseReply &reply);
 
   /// Get an existing lease client or connect a new one.
   std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(
