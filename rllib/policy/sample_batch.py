@@ -117,7 +117,13 @@ class SampleBatch:
 
     @PublicAPI
     def columns(self, keys):
-        """Returns a list of just the specified columns.
+        """Returns a list of the batch-data in the specified columns.
+
+        Args:
+            keys (List[str]): List of column names fo which to return the data.
+
+        Returns:
+            
 
         Examples:
             >>> batch = SampleBatch({"a": [1], "b": [2], "c": [3]})
@@ -143,7 +149,7 @@ class SampleBatch:
         """Splits this batch's data by `eps_id`.
 
         Returns:
-            list of SampleBatch, one per distinct episode.
+            List[SampleBatch]: List of batches, one per distinct episode.
         """
 
         slices = []
@@ -234,23 +240,35 @@ class SampleBatch:
 @PublicAPI
 class MultiAgentBatch:
     """A batch of experiences from multiple policies in the environment.
-
-    Attributes:
-        policy_batches (dict): Mapping from policy id to a normal SampleBatch
-            of experiences. Note that these batches may be of different length.
-        count (int): The number of timesteps in the environment this batch
-            contains. This will be less than the number of transitions this
-            batch contains across all policies in total.
     """
 
     @PublicAPI
     def __init__(self, policy_batches, count):
+        """Initializes a MultiAgentBatch object.
+
+        Args:
+            policy_batches (dict): Mapping from policy id (str) to a
+                SampleBatch of experiences. Note that these batches may be of
+                different length.
+            count (int): The number of timesteps in the environment this batch
+                contains. This will be less than the number of transitions this
+                batch contains across all policies in total.
+        """
         self.policy_batches = policy_batches
         self.count = count
 
     @staticmethod
     @PublicAPI
     def wrap_as_needed(batches, count):
+        """
+        
+        Args:
+            batches (:
+            count:
+
+        Returns:
+
+        """
         if len(batches) == 1 and DEFAULT_POLICY_ID in batches:
             return batches[DEFAULT_POLICY_ID]
         return MultiAgentBatch(batches, count)
@@ -258,6 +276,14 @@ class MultiAgentBatch:
     @staticmethod
     @PublicAPI
     def concat_samples(samples):
+        """
+        
+        Args:
+            samples:
+
+        Returns:
+
+        """
         policy_batches = collections.defaultdict(list)
         total_count = 0
         for s in samples:
@@ -272,12 +298,22 @@ class MultiAgentBatch:
 
     @PublicAPI
     def copy(self):
+        """
+        
+        Returns:
+
+        """
         return MultiAgentBatch(
             {k: v.copy()
              for (k, v) in self.policy_batches.items()}, self.count)
 
     @PublicAPI
     def total(self):
+        """
+        
+        Returns:
+
+        """
         ct = 0
         for batch in self.policy_batches.values():
             ct += batch.count
@@ -285,11 +321,28 @@ class MultiAgentBatch:
 
     @DeveloperAPI
     def compress(self, bulk=False, columns=frozenset(["obs", "new_obs"])):
+        """
+        
+        Args:
+            bulk:
+            columns:
+
+        Returns:
+
+        """
         for batch in self.policy_batches.values():
             batch.compress(bulk=bulk, columns=columns)
 
     @DeveloperAPI
     def decompress_if_needed(self, columns=frozenset(["obs", "new_obs"])):
+        """
+        
+        Args:
+            columns:
+
+        Returns:
+
+        """
         for batch in self.policy_batches.values():
             batch.decompress_if_needed(columns)
         return self
