@@ -114,20 +114,21 @@ class Reporter:
 
     @staticmethod
     def get_gpu_usage():
-        if gpustat is not None:
-            gpu_utilizations = []
-            gpus = []
-            try:
-                gpus = gpustat.new_query().gpus
-            except Exception:
-                logger.debug("gpustat failed to retrieve GPU information.")
-            for gpu in gpus:
-                # Note the keys in this dict have periods which throws
-                # off javascript so we change .s to _s
-                gpu_data: Dict[str, Any] = {'_'.join(key.split('.')): val 
-                    for key, val in gpu.entry.items()}
-                gpu_utilizations.append(gpu_data)
-            return gpu_utilizations
+        if gpustat is None:
+            return []
+        gpu_utilizations = []
+        gpus = []
+        try:
+            gpus = gpustat.new_query().gpus
+        except Exception as e:
+            logger.debug("gpustat failed to retrieve GPU information: {}".format(e))
+        for gpu in gpus:
+            # Note the keys in this dict have periods which throws
+            # off javascript so we change .s to _s
+            gpu_data = {'_'.join(key.split('.')): val 
+                for key, val in gpu.entry.items()}
+            gpu_utilizations.append(gpu_data)
+        return gpu_utilizations
 
     @staticmethod
     def get_boot_time():

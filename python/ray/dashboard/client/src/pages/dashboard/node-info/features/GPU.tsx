@@ -1,6 +1,6 @@
 import React from "react";
 import UsageBar from "../../../../common/UsageBar";
-import { getWeightedAverage } from "../../../../common/util";
+import { getWeightedAverage, sum } from "../../../../common/util";
 import {
   ClusterFeatureComponent,
   Node,
@@ -18,10 +18,7 @@ const clusterUtilization = (nodes: Array<Node>): number => {
 };
 
 const nodeUtilization = (node: Node): number => {
-  const utilizationSum = node.gpus.reduce(
-    (acc, gpu) => acc + gpu.utilization_gpu,
-    0,
-  );
+  const utilizationSum = sum(node.gpus.map(gpu => gpu.utilization_gpu));
   const avgUtilization = utilizationSum / node.gpus.length;
   return avgUtilization;
 };

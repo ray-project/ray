@@ -2,7 +2,7 @@ import React from "react";
 import { GPUStats } from "../../../../api";
 import { MiBRatio } from "../../../../common/formatUtils";
 import UsageBar from "../../../../common/UsageBar";
-import { getWeightedAverage } from "../../../../common/util";
+import { getWeightedAverage, sum } from "../../../../common/util";
 import {
   ClusterFeatureComponent,
   Node,
@@ -12,10 +12,7 @@ import {
 
 const nodeGRAMUtilization = (node: Node) => {
   const utilization = (gpu: GPUStats) => gpu.memory_used / gpu.memory_total;
-  const utilizationSum = node.gpus.reduce(
-    (acc, gpu) => acc + utilization(gpu),
-    0,
-  );
+  const utilizationSum = sum(node.gpus.map(gpu => utilization(gpu)));
   const avgUtilization = utilizationSum / node.gpus.length;
   // Convert to a percent before returning
   return avgUtilization * 100;
@@ -60,9 +57,8 @@ export const WorkerGRAM: WorkerFeatureComponent = ({ worker, node }) => {
   const workerUtilPerGPU = workerProcessPerGPU.map(
     (proc) => proc?.gpu_memory_usage || 0,
   );
-  const totalGRAMperGPU = node.gpus.map((gpu) => gpu.memory_total);
-  const totalNodeGRAM = totalGRAMperGPU.reduce((acc, usage) => acc + usage, 0);
-  const usedGRAM = workerUtilPerGPU.reduce((acc, usage) => acc + usage, 0);
+  const totalNodeGRAM = sum(node.gpus.map((gpu) => gpu.memory_total));
+  const usedGRAM = sum(workerUtilPerGPU);
   return (
     <div style={{ minWidth: 60 }}>
       <UsageBar

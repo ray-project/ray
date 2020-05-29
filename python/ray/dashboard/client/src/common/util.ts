@@ -16,3 +16,5 @@ export const getWeightedAverage = (
   }
   return totalWeightTimesValue / totalWeight;
 };
+
+export const sum = (vals: number[]) => vals.reduce((acc, val) => acc + val, 0);
