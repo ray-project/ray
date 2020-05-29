@@ -1,9 +1,6 @@
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
-from ray.rllib.evaluation.policy_graph import PolicyGraph
-from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
-from ray.rllib.evaluation.torch_policy_graph import TorchPolicyGraph
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch
 from ray.rllib.evaluation.sample_batch_builder import (
     SampleBatchBuilder, MultiAgentSampleBatchBuilder)
@@ -14,9 +11,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 
 __all__ = [
     "RolloutWorker",
-    "PolicyGraph",
-    "TFPolicyGraph",
-    "TorchPolicyGraph",
     "SampleBatch",
     "MultiAgentBatch",
     "SampleBatchBuilder",

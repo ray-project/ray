@@ -420,11 +420,16 @@ class RolloutWorker(ParallelIteratorWorker):
             remote_env_batch_wait_ms=remote_env_batch_wait_ms)
         self.num_envs = num_envs
 
+        # `truncate_episodes`: Allow a batch to contain more than one episode
+        # (fragments) and always make the batch `rollout_fragment_length`
+        # long.
         if self.batch_mode == "truncate_episodes":
-            pack_episodes = True
+            pack = True
+        # `complete_episodes`: Never cut episodes and sampler will return
+        # exactly one (complete) episode per poll.
         elif self.batch_mode == "complete_episodes":
-            rollout_fragment_length = float("inf")  # never cut episodes
-            pack_episodes = False  # sampler will return 1 episode per poll
+            rollout_fragment_length = float("inf")
+            pack = False
         else:
             raise ValueError("Unsupported batch mode: {}".format(
                 self.batch_mode))
@@ -460,7 +465,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 rollout_fragment_length,
                 self.callbacks,
                 horizon=episode_horizon,
-                pack=pack_episodes,
+                pack_multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
                 blackhole_outputs="simulation" in input_evaluation,
@@ -480,7 +485,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 rollout_fragment_length,
                 self.callbacks,
                 horizon=episode_horizon,
-                pack=pack_episodes,
+                pack_multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
                 soft_horizon=soft_horizon,

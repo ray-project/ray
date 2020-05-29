@@ -75,30 +75,47 @@ class MultiAgentSampleBatchBuilder:
     def __init__(self, policy_map, clip_rewards, callbacks):
         """Initialize a MultiAgentSampleBatchBuilder.
 
-        Arguments:
-            policy_map (dict): Maps policy ids to policy instances.
-            clip_rewards (bool): Whether to clip rewards before postprocessing.
+        Args:
+            policy_map (Dict[str,Policy]): Maps policy ids to policy instances.
+            clip_rewards (Union[bool,float]): Whether to clip rewards before
+                postprocessing (at +/-1.0) or the actual value to +/- clip.
             callbacks (DefaultCallbacks): RLlib callbacks.
         """
 
         self.policy_map = policy_map
         self.clip_rewards = clip_rewards
+        # Build the Policies' SampleBatchBuilders.
         self.policy_builders = {
             k: SampleBatchBuilder()
             for k in policy_map.keys()
         }
+        # Whenever we observe a new agent, add a new SampleBatchBuilder for
+        # this agent.
         self.agent_builders = {}
+        # Internal agent-to-policy map.
         self.agent_to_policy = {}
         self.callbacks = callbacks
-        self.count = 0  # increment this manually
+        # Number of "inference" steps taken in the environment.
+        # Regardless of the number of agents involved in each of these steps.
+        self.count = 0
 
     def total(self):
-        """Returns summed number of steps across all agent buffers."""
+        """Returns the total number of steps taken in the env (all agents).
+
+        Returns: 
+            int: The number of steps taken in total in the environment over all
+                agents.
+        """
 
         return sum(a.count for a in self.agent_builders.values())
 
     def has_pending_agent_data(self):
-        """Returns whether there is pending unprocessed data."""
+        """Returns whether there is pending unprocessed data.
+
+        Returns:
+            bool: True if there is at least one per-agent builder (with data
+                in it).
+        """
 
         return len(self.agent_builders) > 0
 
@@ -135,7 +152,7 @@ class MultiAgentSampleBatchBuilder:
                 self.policy_map[self.agent_to_policy[agent_id]],
                 builder.build_and_reset())
 
-        # Apply postprocessor
+        # Apply postprocessor.
         post_batches = {}
         if self.clip_rewards is True:
             for _, (_, pre_batch) in pre_batches.items():
@@ -198,14 +215,15 @@ class MultiAgentSampleBatchBuilder:
                     "Alternatively, set no_done_at_end=True to allow this.")
 
     @DeveloperAPI
-    def build_and_reset(self, episode):
+    def build_and_reset(self, episode=None):
         """Returns the accumulated sample batches for each policy.
 
         Any unprocessed rows will be first postprocessed with a policy
         postprocessor. The internal state of this builder will be reset.
 
-        Arguments:
-            episode: current MultiAgentEpisode object or None
+        Args:
+            episode (Optional[MultiAgentEpisode]): Current MultiAgentEpisode
+                object or None.
         """
 
         self.postprocess_batch_so_far(episode)

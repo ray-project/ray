@@ -1,4 +1,6 @@
-from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.utils import renamed_class
+from ray.rllib.utils.deprecation import deprecation_warning
 
-TorchPolicyGraph = renamed_class(TorchPolicy, old_name="TorchPolicyGraph")
+deprecation_warning(
+    old="rllib.evaluation.torch_policy_graph",
+    new="rllib.policy.torch_policy",
+    error=True)

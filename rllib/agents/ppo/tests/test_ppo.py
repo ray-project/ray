@@ -40,7 +40,7 @@ FAKE_BATCH = {
 class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -49,10 +49,10 @@ class TestPPO(unittest.TestCase):
     def test_ppo_compilation(self):
         """Test whether a PPOTrainer can be built with both frameworks."""
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
-        config["num_workers"] = 1
+        config["num_workers"] = 0
         num_iterations = 2
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks=("torch", "tf", "tfe")):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 trainer.train()

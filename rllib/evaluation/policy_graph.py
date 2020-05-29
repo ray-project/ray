@@ -1,4 +1,6 @@
-from ray.rllib.policy.policy import Policy
-from ray.rllib.utils import renamed_class
+from ray.rllib.utils.deprecation import deprecation_warning
 
-PolicyGraph = renamed_class(Policy, old_name="PolicyGraph")
+deprecation_warning(
+    old="rllib.evaluation.policy_graph",
+    new="rllib.policy.policy",
+    error=True)

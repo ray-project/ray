@@ -1,4 +1,6 @@
-from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.utils import renamed_class
+from ray.rllib.utils.deprecation import deprecation_warning
 
-TFPolicyGraph = renamed_class(TFPolicy, old_name="TFPolicyGraph")
+deprecation_warning(
+    old="rllib.evaluation.tf_policy_graph",
+    new="rllib.policy.tf_policy",
+    error=True)
