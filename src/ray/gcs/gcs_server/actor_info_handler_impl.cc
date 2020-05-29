@@ -27,8 +27,8 @@ void DefaultActorInfoHandler::HandleCreateActor(
 
   RAY_LOG(INFO) << "Registering actor, actor id = " << actor_id;
   Status status = gcs_actor_manager_.RegisterActor(
-      request,
-      [reply, send_reply_callback, actor_id](std::shared_ptr<gcs::GcsActor> actor) {
+      request, [reply, send_reply_callback,
+                actor_id](const std::shared_ptr<gcs::GcsActor> &actor) {
         RAY_LOG(INFO) << "Registered actor, actor id = " << actor_id;
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       });
@@ -57,7 +57,7 @@ void DefaultActorInfoHandler::HandleGetActorInfo(
   };
 
   // Look up the actor_id in the GCS.
-  Status status = gcs_client_.Actors().AsyncGet(actor_id, on_done);
+  Status status = gcs_table_storage_->ActorTable().Get(actor_id, on_done);
   if (!status.ok()) {
     on_done(status, boost::none);
   }
@@ -68,18 +68,18 @@ void DefaultActorInfoHandler::HandleGetAllActorInfo(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all actor info.";
 
-  auto on_done = [reply, send_reply_callback](const Status &status,
-                                              const std::vector<ActorTableData> &result) {
+  auto on_done = [reply, send_reply_callback](
+                     const std::unordered_map<ActorID, ActorTableData> &result) {
     for (auto &it : result) {
-      reply->add_actor_table_data()->CopyFrom(it);
+      reply->add_actor_table_data()->CopyFrom(it.second);
     }
     RAY_LOG(DEBUG) << "Finished getting all actor info.";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
 
-  Status status = gcs_client_.Actors().AsyncGetAll(on_done);
+  Status status = gcs_table_storage_->ActorTable().GetAll(on_done);
   if (!status.ok()) {
-    on_done(status, std::vector<ActorTableData>());
+    on_done(std::unordered_map<ActorID, ActorTableData>());
   }
 }
 
@@ -91,7 +91,8 @@ void DefaultActorInfoHandler::HandleGetNamedActorInfo(
                  << ", name = " << name;
 
   auto on_done = [name, reply, send_reply_callback](
-                     Status status, const boost::optional<ActorTableData> &result) {
+                     const Status &status,
+                     const boost::optional<ActorTableData> &result) {
     if (status.ok()) {
       if (result) {
         reply->mutable_actor_table_data()->CopyFrom(*result);
@@ -113,7 +114,7 @@ void DefaultActorInfoHandler::HandleGetNamedActorInfo(
     on_done(Status::NotFound(stream.str()), boost::none);
   } else {
     // Look up the actor_id in the GCS.
-    Status status = gcs_client_.Actors().AsyncGet(actor_id, on_done);
+    Status status = gcs_table_storage_->ActorTable().Get(actor_id, on_done);
     if (!status.ok()) {
       on_done(status, boost::none);
     }
@@ -127,8 +128,7 @@ void DefaultActorInfoHandler::HandleRegisterActorInfo(
   ActorID actor_id = ActorID::FromBinary(request.actor_table_data().actor_id());
   RAY_LOG(DEBUG) << "Registering actor info, job id = " << actor_id.JobId()
                  << ", actor id = " << actor_id;
-  auto actor_table_data = std::make_shared<ActorTableData>();
-  actor_table_data->CopyFrom(request.actor_table_data());
+  const auto &actor_table_data = request.actor_table_data();
   auto on_done = [this, actor_id, actor_table_data, reply,
                   send_reply_callback](const Status &status) {
     if (!status.ok()) {
@@ -136,14 +136,15 @@ void DefaultActorInfoHandler::HandleRegisterActorInfo(
                      << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
     } else {
       RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
-                                         actor_table_data->SerializeAsString(), nullptr));
+                                         actor_table_data.SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished registering actor info, job id = " << actor_id.JobId()
                      << ", actor id = " << actor_id;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_client_.Actors().AsyncRegister(actor_table_data, on_done);
+  Status status =
+      gcs_table_storage_->ActorTable().Put(actor_id, actor_table_data, on_done);
   if (!status.ok()) {
     on_done(status);
   }
@@ -155,8 +156,7 @@ void DefaultActorInfoHandler::HandleUpdateActorInfo(
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
   RAY_LOG(DEBUG) << "Updating actor info, job id = " << actor_id.JobId()
                  << ", actor id = " << actor_id;
-  auto actor_table_data = std::make_shared<ActorTableData>();
-  actor_table_data->CopyFrom(request.actor_table_data());
+  const auto &actor_table_data = request.actor_table_data();
   auto on_done = [this, actor_id, actor_table_data, reply,
                   send_reply_callback](const Status &status) {
     if (!status.ok()) {
@@ -164,14 +164,15 @@ void DefaultActorInfoHandler::HandleUpdateActorInfo(
                      << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
     } else {
       RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
-                                         actor_table_data->SerializeAsString(), nullptr));
+                                         actor_table_data.SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished updating actor info, job id = " << actor_id.JobId()
                      << ", actor id = " << actor_id;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_client_.Actors().AsyncUpdate(actor_id, actor_table_data, on_done);
+  Status status =
+      gcs_table_storage_->ActorTable().Put(actor_id, actor_table_data, on_done);
   if (!status.ok()) {
     on_done(status);
   }
@@ -185,22 +186,41 @@ void DefaultActorInfoHandler::HandleAddActorCheckpoint(
       ActorCheckpointID::FromBinary(request.checkpoint_data().checkpoint_id());
   RAY_LOG(DEBUG) << "Adding actor checkpoint, job id = " << actor_id.JobId()
                  << ", actor id = " << actor_id << ", checkpoint id = " << checkpoint_id;
-  auto actor_checkpoint_data = std::make_shared<ActorCheckpointData>();
-  actor_checkpoint_data->CopyFrom(request.checkpoint_data());
-  auto on_done = [actor_id, checkpoint_id, reply, send_reply_callback](Status status) {
+  auto on_done = [this, actor_id, checkpoint_id, reply,
+                  send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add actor checkpoint: " << status.ToString()
                      << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id
                      << ", checkpoint id = " << checkpoint_id;
     } else {
-      RAY_LOG(DEBUG) << "Finished adding actor checkpoint, job id = " << actor_id.JobId()
-                     << ", actor id = " << actor_id
-                     << ", checkpoint id = " << checkpoint_id;
+      auto on_get_done = [this, actor_id, checkpoint_id, reply, send_reply_callback](
+                             const Status &status,
+                             const boost::optional<ActorCheckpointIdData> &result) {
+        ActorCheckpointIdData actor_checkpoint_id;
+        if (result) {
+          actor_checkpoint_id.CopyFrom(*result);
+        } else {
+          actor_checkpoint_id.set_actor_id(actor_id.Binary());
+        }
+        actor_checkpoint_id.add_checkpoint_ids(checkpoint_id.Binary());
+        actor_checkpoint_id.add_timestamps(absl::GetCurrentTimeNanos() / 1000000);
+        auto on_put_done = [actor_id, checkpoint_id, reply,
+                            send_reply_callback](const Status &status) {
+          RAY_LOG(DEBUG) << "Finished adding actor checkpoint, job id = "
+                         << actor_id.JobId() << ", actor id = " << actor_id
+                         << ", checkpoint id = " << checkpoint_id;
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+        };
+        RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointIdTable().Put(
+            actor_id, actor_checkpoint_id, on_put_done));
+      };
+      RAY_CHECK_OK(
+          gcs_table_storage_->ActorCheckpointIdTable().Get(actor_id, on_get_done));
     }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_client_.Actors().AsyncAddCheckpoint(actor_checkpoint_data, on_done);
+  Status status = gcs_table_storage_->ActorCheckpointTable().Put(
+      checkpoint_id, request.checkpoint_data(), on_done);
   if (!status.ok()) {
     on_done(status);
   }
@@ -218,8 +238,9 @@ void DefaultActorInfoHandler::HandleGetActorCheckpoint(
                      const Status &status,
                      const boost::optional<ActorCheckpointData> &result) {
     if (status.ok()) {
-      RAY_DCHECK(result);
-      reply->mutable_checkpoint_data()->CopyFrom(*result);
+      if (result) {
+        reply->mutable_checkpoint_data()->CopyFrom(*result);
+      }
       RAY_LOG(DEBUG) << "Finished getting actor checkpoint, job id = " << actor_id.JobId()
                      << ", checkpoint id = " << checkpoint_id;
     } else {
@@ -230,8 +251,7 @@ void DefaultActorInfoHandler::HandleGetActorCheckpoint(
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status =
-      gcs_client_.Actors().AsyncGetCheckpoint(checkpoint_id, actor_id, on_done);
+  Status status = gcs_table_storage_->ActorCheckpointTable().Get(checkpoint_id, on_done);
   if (!status.ok()) {
     on_done(status, boost::none);
   }
@@ -247,8 +267,9 @@ void DefaultActorInfoHandler::HandleGetActorCheckpointID(
                      const Status &status,
                      const boost::optional<ActorCheckpointIdData> &result) {
     if (status.ok()) {
-      RAY_DCHECK(result);
-      reply->mutable_checkpoint_id_data()->CopyFrom(*result);
+      if (result) {
+        reply->mutable_checkpoint_id_data()->CopyFrom(*result);
+      }
       RAY_LOG(DEBUG) << "Finished getting actor checkpoint id, job id = "
                      << actor_id.JobId() << ", actor id = " << actor_id;
     } else {
@@ -258,7 +279,7 @@ void DefaultActorInfoHandler::HandleGetActorCheckpointID(
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_client_.Actors().AsyncGetCheckpointID(actor_id, on_done);
+  Status status = gcs_table_storage_->ActorCheckpointIdTable().Get(actor_id, on_done);
   if (!status.ok()) {
     on_done(status, boost::none);
   }

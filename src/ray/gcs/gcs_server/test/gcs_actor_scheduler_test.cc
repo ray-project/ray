@@ -30,8 +30,11 @@ class GcsActorSchedulerTest : public ::testing::Test {
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
         io_service_, node_info_accessor_, error_info_accessor_, gcs_pub_sub_,
         gcs_table_storage_);
+    store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
+    gcs_actor_table_ =
+        std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
     gcs_actor_scheduler_ = std::make_shared<GcsServerMocker::MockedGcsActorScheduler>(
-        io_service_, actor_info_accessor_, *gcs_node_manager_, gcs_pub_sub_,
+        io_service_, *gcs_actor_table_, *gcs_node_manager_, gcs_pub_sub_,
         /*schedule_failure_handler=*/
         [this](std::shared_ptr<gcs::GcsActor> actor) {
           failure_actors_.emplace_back(std::move(actor));
@@ -48,7 +51,9 @@ class GcsActorSchedulerTest : public ::testing::Test {
 
  protected:
   boost::asio::io_service io_service_;
-  GcsServerMocker::MockedActorInfoAccessor actor_info_accessor_;
+  std::shared_ptr<gcs::StoreClient> store_client_;
+  std::shared_ptr<GcsServerMocker::MockedGcsActorTable> gcs_actor_table_;
+
   GcsServerMocker::MockedNodeInfoAccessor node_info_accessor_;
   GcsServerMocker::MockedErrorInfoAccessor error_info_accessor_;
 

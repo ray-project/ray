@@ -5,7 +5,7 @@ import time
 import pandas as pd
 from tqdm import tqdm
 
-serve.init(blocking=True)
+serve.init()
 
 
 def noop(_):

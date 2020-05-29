@@ -26,7 +26,7 @@ class MagicCounter:
         return ""
 
 
-serve.init(blocking=True)
+serve.init()
 serve.create_endpoint("magic_counter", "/counter")
 # specify max_batch_size in BackendConfig
 backend_config = {"max_batch_size": 5}
