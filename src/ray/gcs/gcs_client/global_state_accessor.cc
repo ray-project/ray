@@ -140,7 +140,7 @@ std::string GlobalStateAccessor::GetNodeResourceInfo(const ClientID &node_id) {
   rpc::ResourceMap node_resource_map;
   std::promise<void> promise;
   auto on_done =
-      [&node_id, &node_resource_map, &promise](
+      [&node_resource_map, &promise](
           const Status &status,
           const boost::optional<ray::gcs::NodeInfoAccessor::ResourceMap> &result) {
         RAY_CHECK_OK(status);

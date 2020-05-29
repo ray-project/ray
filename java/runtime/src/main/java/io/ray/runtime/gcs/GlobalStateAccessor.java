@@ -1,6 +1,8 @@
 package io.ray.runtime.gcs;
 
 import com.google.common.base.Preconditions;
+import io.ray.api.id.UniqueId;
+
 import java.util.List;
 
 /**
@@ -64,6 +66,14 @@ public class GlobalStateAccessor {
     }
   }
 
+  public byte[] getNodeResourceInfo(UniqueId nodeId) {
+    synchronized (GlobalStateAccessor.class) {
+      Preconditions.checkState(globalStateAccessorNativePointer != 0,
+          "Get resource info by node id when global state accessor have been destroyed.");
+      return nativeGetNodeResourceInfo(globalStateAccessorNativePointer, nodeId.getBytes());
+    }
+  }
+
   private void destroyGlobalStateAccessor() {
     synchronized (GlobalStateAccessor.class) {
       if (0 == globalStateAccessorNativePointer) {
@@ -85,4 +95,6 @@ public class GlobalStateAccessor {
   private native List<byte[]> nativeGetAllJobInfo(long nativePtr);
 
   private native List<byte[]> nativeGetAllNodeInfo(long nativePtr);
+
+  private native byte[] nativeGetNodeResourceInfo(long nativePtr, byte[] nodeId);
 }
