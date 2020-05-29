@@ -4,8 +4,8 @@ rm -f last_checkpoint.out
 pkill -f cartpole_server.py
 sleep 1
 
-if [ -f cartpole_server.py ]; then
-    basedir="."
+if [ -f test_local_inference.sh ]; then
+    basedir="../../examples/serving"
 else
     basedir="rllib/examples/serving"  # In bazel.
 fi
@@ -19,5 +19,5 @@ while ! curl localhost:9900; do
 done
 
 sleep 2
-python $basedir/cartpole_client.py --stop-reward=100 --inference-mode=local
+python $basedir/cartpole_client.py --stop-reward=150 --inference-mode=local
 kill $pid

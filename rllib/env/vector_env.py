@@ -113,9 +113,7 @@ class _VectorizedGymEnv(VectorEnv):
         self.make_env = make_env
         self.envs = existing_envs
         while len(self.envs) < num_envs:
-            to_create = num_envs - len(self.envs)
-            for _ in range(to_create):
-                self.envs.append(self.make_env(env_config or {}))
+            self.envs.append(self.make_env(len(self.envs)))
 
         super().__init__(
             observation_space=observation_space

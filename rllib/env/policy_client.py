@@ -11,6 +11,7 @@ import time
 import ray.cloudpickle as pickle
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env import ExternalEnv, MultiAgentEnv, ExternalMultiAgentEnv
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -161,8 +162,9 @@ class PolicyClient:
             self._update_local_policy()
             if multiagent_done_dict is not None:
                 assert isinstance(reward, dict)
-            return self.env.log_returns(episode_id, reward, info,
-                                        multiagent_done_dict)
+                return self.env.log_returns(episode_id, reward, info,
+                                            multiagent_done_dict)
+            return self.env.log_returns(episode_id, reward, info)
 
         self._send({
             "command": PolicyClient.LOG_RETURNS,
@@ -251,10 +253,10 @@ class _LocalInferenceThread(threading.Thread):
                 logger.info("Generating new batch of experiences.")
                 samples = self.rollout_worker.sample()
                 metrics = self.rollout_worker.get_metrics()
-                if samples.count != samples.total():
+                if isinstance(samples, MultiAgentBatch):
                     logger.info(
                         "Sending batch of {} env steps ({} agent steps) to "
-                        "server".format(samples.count, samples.total()))
+                        "server.".format(samples.count, samples.total()))
                 else:
                     logger.info(
                         "Sending batch of {} steps back to server.".format(
