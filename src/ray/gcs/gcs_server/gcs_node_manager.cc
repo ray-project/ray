@@ -80,7 +80,7 @@ void GcsNodeManager::NodeFailureDetector::SendBatchedHeartbeat() {
       batch->add_batch()->CopyFrom(heartbeat.second);
     }
 
-    RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, ClientID::Nil().Hex(),
+    RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, "",
                                        batch->SerializeAsString(), nullptr));
     heartbeat_buffer_.clear();
   }
