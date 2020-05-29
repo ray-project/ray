@@ -1,0 +1,19 @@
+# can expect improvement to -140 reward in ~300-500k timesteps
+swimmer-ars:
+    env: Swimmer-v2
+    run: ARS
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        noise_stdev: 0.01
+        num_rollouts: 1
+        rollouts_used: 1
+        num_workers: 1
+        sgd_stepsize: 0.02
+        noise_size: 250000000
+        eval_prob: 0.2
+        offset: 0
+        observation_filter: NoFilter
+        report_length: 3
+        model:
+            fcnet_hiddens: []  # a linear policy

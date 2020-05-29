@@ -109,8 +109,13 @@ upload_wheels() {
 
 test_python() {
   if [ "${OSTYPE}" = msys ]; then
-    # Windows -- most tests won't work yet; just do the ones we know work
-    PYTHONPATH=python python -m pytest --durations=5 --timeout=300 python/ray/tests/test_mini.py
+    # Increased timeout from default of timeout=300 due to test_basic
+    bazel test -k --config=ci --test_timeout=600 --build_tests_only -- \
+      python/ray/tests:test_actor \
+      python/ray/tests:test_basic \
+      python/ray/tests:test_debug_tools \
+      python/ray/tests:test_mini \
+      ;
   fi
 }
 
@@ -190,7 +195,7 @@ install_ray() {
   (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
-    keep_alive pip install -e .
+    pip install -v -e .
   )
 }
 
@@ -411,7 +416,7 @@ init() {
 
 build() {
   if ! need_wheels; then
-    bazel build -k "//:*"   # Do a full build first to ensure everything passes
+    bazel build ${ENABLE_ASAN-} -k "//:*"   # Do a full build first to ensure everything passes
     install_ray
     if [ "${LINT-}" = 1 ]; then
       # Try generating Sphinx documentation. To do this, we need to install Ray first.

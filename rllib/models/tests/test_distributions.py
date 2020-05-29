@@ -150,7 +150,7 @@ class TestDistributions(unittest.TestCase):
         low, high = -2.0, 1.0
 
         for fw, sess in framework_iterator(
-                frameworks=("torch", "tf", "eager"), session=True):
+                frameworks=("torch", "tf", "tfe"), session=True):
             cls = SquashedGaussian if fw != "torch" else TorchSquashedGaussian
 
             # Do a stability test using extreme NN outputs to see whether
@@ -296,7 +296,7 @@ class TestDistributions(unittest.TestCase):
     def test_gumbel_softmax(self):
         """Tests the GumbelSoftmax ActionDistribution (tf + eager only)."""
         for fw, sess in framework_iterator(
-                frameworks=["tf", "eager"], session=True):
+                frameworks=["tf", "tfe"], session=True):
             batch_size = 1000
             num_categories = 5
             input_space = Box(-1.0, 1.0, shape=(batch_size, num_categories))

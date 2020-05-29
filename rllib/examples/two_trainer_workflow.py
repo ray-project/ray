@@ -139,7 +139,7 @@ if __name__ == "__main__":
             "policy_mapping_fn": policy_mapping_fn,
             "policies_to_train": ["dqn_policy", "ppo_policy"],
         },
-        "use_pytorch": args.torch,
+        "framework": "torch" if args.torch else "tf",
     }
 
     stop = {

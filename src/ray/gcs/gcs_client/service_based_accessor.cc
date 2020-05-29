@@ -61,19 +61,30 @@ Status ServiceBasedJobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
 
 Status ServiceBasedJobInfoAccessor::AsyncSubscribeToFinishedJobs(
     const SubscribeCallback<JobID, JobTableData> &subscribe, const StatusCallback &done) {
-  RAY_LOG(DEBUG) << "Subscribing finished job.";
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-    JobTableData job_data;
-    job_data.ParseFromString(data);
-    if (job_data.is_dead()) {
-      subscribe(JobID::FromBinary(id), job_data);
-    }
+  subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
+    RAY_LOG(DEBUG) << "Subscribing finished job.";
+    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+      JobTableData job_data;
+      job_data.ParseFromString(data);
+      if (job_data.is_dead()) {
+        subscribe(JobID::FromBinary(id), job_data);
+      }
+    };
+    Status status =
+        client_impl_->GetGcsPubSub().SubscribeAll(JOB_CHANNEL, on_subscribe, done);
+    RAY_LOG(DEBUG) << "Finished subscribing finished job.";
+    return status;
   };
-  Status status =
-      client_impl_->GetGcsPubSub().SubscribeAll(JOB_CHANNEL, on_subscribe, done);
-  RAY_LOG(DEBUG) << "Finished subscribing finished job.";
-  return status;
+  return subscribe_operation_(done);
+}
+
+Status ServiceBasedJobInfoAccessor::AsyncReSubscribe() {
+  RAY_LOG(INFO) << "Reestablishing subscription for job info.";
+  if (subscribe_operation_ != nullptr) {
+    return subscribe_operation_(nullptr);
+  }
+  return Status::OK();
 }
 
 Status ServiceBasedJobInfoAccessor::AsyncGetAll(
@@ -224,32 +235,35 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribeAll(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing register or update operations of actors.";
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-    ActorTableData actor_data;
-    actor_data.ParseFromString(data);
-    subscribe(ActorID::FromBinary(actor_data.actor_id()), actor_data);
+  subscribe_all_operation_ = [this, subscribe](const StatusCallback &done) {
+    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+      ActorTableData actor_data;
+      actor_data.ParseFromString(data);
+      subscribe(ActorID::FromBinary(actor_data.actor_id()), actor_data);
+    };
+    auto on_done = [this, subscribe, done](const Status &status) {
+      if (status.ok()) {
+        auto callback = [subscribe, done](
+                            const Status &status,
+                            const std::vector<rpc::ActorTableData> &actor_info_list) {
+          for (auto &actor_info : actor_info_list) {
+            subscribe(ActorID::FromBinary(actor_info.actor_id()), actor_info);
+          }
+          if (done) {
+            done(status);
+          }
+        };
+        RAY_CHECK_OK(AsyncGetAll(callback));
+      } else if (done) {
+        done(status);
+      }
+    };
+    auto status =
+        client_impl_->GetGcsPubSub().SubscribeAll(ACTOR_CHANNEL, on_subscribe, on_done);
+    RAY_LOG(DEBUG) << "Finished subscribing register or update operations of actors.";
+    return status;
   };
-  auto on_done = [this, subscribe, done](const Status &status) {
-    if (status.ok()) {
-      auto callback = [subscribe, done](
-                          const Status &status,
-                          const std::vector<rpc::ActorTableData> &actor_info_list) {
-        for (auto &actor_info : actor_info_list) {
-          subscribe(ActorID::FromBinary(actor_info.actor_id()), actor_info);
-        }
-        if (done) {
-          done(status);
-        }
-      };
-      RAY_CHECK_OK(AsyncGetAll(callback));
-    } else if (done) {
-      done(status);
-    }
-  };
-  auto status =
-      client_impl_->GetGcsPubSub().SubscribeAll(ACTOR_CHANNEL, on_subscribe, on_done);
-  RAY_LOG(DEBUG) << "Finished subscribing register or update operations of actors.";
-  return status;
+  return subscribe_all_operation_(done);
 }
 
 Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
@@ -258,38 +272,43 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing update operations of actor, actor id = " << actor_id;
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe actor, actor id = " << actor_id;
-  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-    ActorTableData actor_data;
-    actor_data.ParseFromString(data);
-    subscribe(ActorID::FromBinary(actor_data.actor_id()), actor_data);
+  auto subscribe_operation = [this, actor_id, subscribe](const StatusCallback &done) {
+    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+      ActorTableData actor_data;
+      actor_data.ParseFromString(data);
+      subscribe(ActorID::FromBinary(actor_data.actor_id()), actor_data);
+    };
+    auto on_done = [this, actor_id, subscribe, done](const Status &status) {
+      if (status.ok()) {
+        auto callback = [actor_id, subscribe, done](
+                            const Status &status,
+                            const boost::optional<rpc::ActorTableData> &result) {
+          if (result) {
+            subscribe(actor_id, *result);
+          }
+          if (done) {
+            done(status);
+          }
+        };
+        RAY_CHECK_OK(AsyncGet(actor_id, callback));
+      } else if (done) {
+        done(status);
+      }
+    };
+    auto status = client_impl_->GetGcsPubSub().Subscribe(ACTOR_CHANNEL, actor_id.Hex(),
+                                                         on_subscribe, on_done);
+    RAY_LOG(DEBUG) << "Finished subscribing update operations of actor, actor id = "
+                   << actor_id;
+    return status;
   };
-  auto on_done = [this, actor_id, subscribe, done](const Status &status) {
-    if (status.ok()) {
-      auto callback = [actor_id, subscribe, done](
-                          const Status &status,
-                          const boost::optional<rpc::ActorTableData> &result) {
-        if (result) {
-          subscribe(actor_id, *result);
-        }
-        if (done) {
-          done(status);
-        }
-      };
-      RAY_CHECK_OK(AsyncGet(actor_id, callback));
-    } else if (done) {
-      done(status);
-    }
-  };
-  auto status = client_impl_->GetGcsPubSub().Subscribe(ACTOR_CHANNEL, actor_id.Hex(),
-                                                       on_subscribe, on_done);
-  RAY_LOG(DEBUG) << "Finished subscribing update operations of actor, actor id = "
-                 << actor_id;
-  return status;
+  subscribe_operations_[actor_id] = subscribe_operation;
+  return subscribe_operation(done);
 }
 
 Status ServiceBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {
   RAY_LOG(DEBUG) << "Cancelling subscription to an actor, actor id = " << actor_id;
   auto status = client_impl_->GetGcsPubSub().Unsubscribe(ACTOR_CHANNEL, actor_id.Hex());
+  subscribe_operations_.erase(actor_id);
   RAY_LOG(DEBUG) << "Finished cancelling subscription to an actor, actor id = "
                  << actor_id;
   return status;
@@ -363,6 +382,17 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
         RAY_LOG(DEBUG) << "Finished getting actor checkpoint id, status = " << status
                        << ", actor id = " << actor_id;
       });
+  return Status::OK();
+}
+
+Status ServiceBasedActorInfoAccessor::AsyncReSubscribe() {
+  RAY_LOG(INFO) << "Reestablishing subscription for actor info.";
+  if (subscribe_all_operation_ != nullptr) {
+    RAY_CHECK_OK(subscribe_all_operation_(nullptr));
+  }
+  for (auto &item : subscribe_operations_) {
+    RAY_CHECK_OK(item.second(nullptr));
+  }
   return Status::OK();
 }
 
@@ -484,31 +514,35 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
   RAY_CHECK(node_change_callback_ == nullptr);
   node_change_callback_ = subscribe;
 
-  auto on_subscribe = [this](const std::string &id, const std::string &data) {
-    GcsNodeInfo node_info;
-    node_info.ParseFromString(data);
-    HandleNotification(node_info);
-  };
-
-  auto on_done = [this, subscribe, done](const Status &status) {
-    // Get nodes from GCS Service.
-    auto callback = [this, subscribe, done](
-                        const Status &status,
-                        const std::vector<GcsNodeInfo> &node_info_list) {
-      for (auto &node_info : node_info_list) {
-        HandleNotification(node_info);
-      }
-      if (done) {
-        done(status);
-      }
+  RAY_CHECK(subscribe != nullptr);
+  subscribe_node_operation_ = [this, subscribe](const StatusCallback &done) {
+    auto on_subscribe = [this](const std::string &id, const std::string &data) {
+      GcsNodeInfo node_info;
+      node_info.ParseFromString(data);
+      HandleNotification(node_info);
     };
-    RAY_CHECK_OK(AsyncGetAll(callback));
-  };
 
-  auto status =
-      client_impl_->GetGcsPubSub().SubscribeAll(NODE_CHANNEL, on_subscribe, on_done);
-  RAY_LOG(DEBUG) << "Finished subscribing node change.";
-  return status;
+    auto on_done = [this, subscribe, done](const Status &status) {
+      // Get nodes from GCS Service.
+      auto callback = [this, subscribe, done](
+                          const Status &status,
+                          const std::vector<GcsNodeInfo> &node_info_list) {
+        for (auto &node_info : node_info_list) {
+          HandleNotification(node_info);
+        }
+        if (done) {
+          done(status);
+        }
+      };
+      RAY_CHECK_OK(AsyncGetAll(callback));
+    };
+
+    auto status =
+        client_impl_->GetGcsPubSub().SubscribeAll(NODE_CHANNEL, on_subscribe, on_done);
+    RAY_LOG(DEBUG) << "Finished subscribing node change.";
+    return status;
+  };
+  return subscribe_node_operation_(done);
 }
 
 boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
@@ -611,16 +645,19 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
   RAY_LOG(DEBUG) << "Subscribing node resources change.";
   RAY_CHECK(subscribe != nullptr);
 
-  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-    rpc::NodeResourceChange node_resource_change;
-    node_resource_change.ParseFromString(data);
-    subscribe(node_resource_change);
-  };
+  subscribe_resource_operation_ = [this, subscribe](const StatusCallback &done) {
+    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+      rpc::NodeResourceChange node_resource_change;
+      node_resource_change.ParseFromString(data);
+      subscribe(node_resource_change);
+    };
 
-  auto status = client_impl_->GetGcsPubSub().SubscribeAll(NODE_RESOURCE_CHANNEL,
-                                                          on_subscribe, done);
-  RAY_LOG(DEBUG) << "Finished subscribing node resources change.";
-  return status;
+    auto status = client_impl_->GetGcsPubSub().SubscribeAll(NODE_RESOURCE_CHANNEL,
+                                                            on_subscribe, done);
+    RAY_LOG(DEBUG) << "Finished subscribing node resources change.";
+    return status;
+  };
+  return subscribe_resource_operation_(done);
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
@@ -660,15 +697,19 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing batch heartbeat.";
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-    rpc::HeartbeatBatchTableData heartbeat_batch_table_data;
-    heartbeat_batch_table_data.ParseFromString(data);
-    subscribe(heartbeat_batch_table_data);
+
+  subscribe_batch_heartbeat_operation_ = [this, subscribe](const StatusCallback &done) {
+    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+      rpc::HeartbeatBatchTableData heartbeat_batch_table_data;
+      heartbeat_batch_table_data.ParseFromString(data);
+      subscribe(heartbeat_batch_table_data);
+    };
+    auto status = client_impl_->GetGcsPubSub().Subscribe(
+        HEARTBEAT_BATCH_CHANNEL, ClientID::Nil().Hex(), on_subscribe, done);
+    RAY_LOG(DEBUG) << "Finished subscribing batch heartbeat.";
+    return status;
   };
-  auto status = client_impl_->GetGcsPubSub().Subscribe(
-      HEARTBEAT_BATCH_CHANNEL, ClientID::Nil().Hex(), on_subscribe, done);
-  RAY_LOG(DEBUG) << "Finished subscribing batch heartbeat.";
-  return status;
+  return subscribe_batch_heartbeat_operation_(done);
 }
 
 void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
@@ -708,6 +749,20 @@ void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_in
     GcsNodeInfo &cache_data = node_cache_[node_id];
     node_change_callback_(node_id, cache_data);
   }
+}
+
+Status ServiceBasedNodeInfoAccessor::AsyncReSubscribe() {
+  RAY_LOG(INFO) << "Reestablishing subscription for node info.";
+  if (subscribe_node_operation_ != nullptr) {
+    return subscribe_node_operation_(nullptr);
+  }
+  if (subscribe_resource_operation_ != nullptr) {
+    return subscribe_resource_operation_(nullptr);
+  }
+  if (subscribe_batch_heartbeat_operation_ != nullptr) {
+    return subscribe_batch_heartbeat_operation_(nullptr);
+  }
+  return Status::OK();
 }
 
 ServiceBasedTaskInfoAccessor::ServiceBasedTaskInfoAccessor(
@@ -775,38 +830,44 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing task, task id = " << task_id;
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe task, task id = " << task_id;
-  auto on_subscribe = [task_id, subscribe](const std::string &id,
-                                           const std::string &data) {
-    TaskTableData task_data;
-    task_data.ParseFromString(data);
-    subscribe(task_id, task_data);
+
+  auto subscribe_operation = [this, task_id, subscribe](const StatusCallback &done) {
+    auto on_subscribe = [task_id, subscribe](const std::string &id,
+                                             const std::string &data) {
+      TaskTableData task_data;
+      task_data.ParseFromString(data);
+      subscribe(task_id, task_data);
+    };
+    auto on_done = [this, task_id, subscribe, done](const Status &status) {
+      if (status.ok()) {
+        auto callback = [task_id, subscribe, done](
+                            const Status &status,
+                            const boost::optional<rpc::TaskTableData> &result) {
+          if (result) {
+            subscribe(task_id, *result);
+          }
+          if (done) {
+            done(status);
+          }
+        };
+        RAY_CHECK_OK(AsyncGet(task_id, callback));
+      } else if (done) {
+        done(status);
+      }
+    };
+    auto status = client_impl_->GetGcsPubSub().Subscribe(TASK_CHANNEL, task_id.Hex(),
+                                                         on_subscribe, on_done);
+    RAY_LOG(DEBUG) << "Finished subscribing task, task id = " << task_id;
+    return status;
   };
-  auto on_done = [this, task_id, subscribe, done](const Status &status) {
-    if (status.ok()) {
-      auto callback = [task_id, subscribe, done](
-                          const Status &status,
-                          const boost::optional<rpc::TaskTableData> &result) {
-        if (result) {
-          subscribe(task_id, *result);
-        }
-        if (done) {
-          done(status);
-        }
-      };
-      RAY_CHECK_OK(AsyncGet(task_id, callback));
-    } else if (done) {
-      done(status);
-    }
-  };
-  auto status = client_impl_->GetGcsPubSub().Subscribe(TASK_CHANNEL, task_id.Hex(),
-                                                       on_subscribe, on_done);
-  RAY_LOG(DEBUG) << "Finished subscribing task, task id = " << task_id;
-  return status;
+  subscribe_task_operations_[task_id] = subscribe_operation;
+  return subscribe_operation(done);
 }
 
 Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Unsubscribing task, task id = " << task_id;
   auto status = client_impl_->GetGcsPubSub().Unsubscribe(TASK_CHANNEL, task_id.Hex());
+  subscribe_task_operations_.erase(task_id);
   RAY_LOG(DEBUG) << "Finished unsubscribing task, task id = " << task_id;
   return status;
 }
@@ -857,37 +918,43 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
   RAY_LOG(DEBUG) << "Subscribing task lease, task id = " << task_id;
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe task lease, task id = " << task_id;
-  auto on_subscribe = [task_id, subscribe](const std::string &id,
-                                           const std::string &data) {
-    TaskLeaseData task_lease_data;
-    task_lease_data.ParseFromString(data);
-    subscribe(task_id, task_lease_data);
+
+  auto subscribe_operation = [this, task_id, subscribe](const StatusCallback &done) {
+    auto on_subscribe = [task_id, subscribe](const std::string &id,
+                                             const std::string &data) {
+      TaskLeaseData task_lease_data;
+      task_lease_data.ParseFromString(data);
+      subscribe(task_id, task_lease_data);
+    };
+    auto on_done = [this, task_id, subscribe, done](const Status &status) {
+      if (status.ok()) {
+        auto callback = [task_id, subscribe, done](
+                            const Status &status,
+                            const boost::optional<rpc::TaskLeaseData> &result) {
+          subscribe(task_id, result);
+          if (done) {
+            done(status);
+          }
+        };
+        RAY_CHECK_OK(AsyncGetTaskLease(task_id, callback));
+      } else if (done) {
+        done(status);
+      }
+    };
+    auto status = client_impl_->GetGcsPubSub().Subscribe(
+        TASK_LEASE_CHANNEL, task_id.Hex(), on_subscribe, on_done);
+    RAY_LOG(DEBUG) << "Finished subscribing task lease, task id = " << task_id;
+    return status;
   };
-  auto on_done = [this, task_id, subscribe, done](const Status &status) {
-    if (status.ok()) {
-      auto callback = [task_id, subscribe, done](
-                          const Status &status,
-                          const boost::optional<rpc::TaskLeaseData> &result) {
-        subscribe(task_id, result);
-        if (done) {
-          done(status);
-        }
-      };
-      RAY_CHECK_OK(AsyncGetTaskLease(task_id, callback));
-    } else if (done) {
-      done(status);
-    }
-  };
-  auto status = client_impl_->GetGcsPubSub().Subscribe(TASK_LEASE_CHANNEL, task_id.Hex(),
-                                                       on_subscribe, on_done);
-  RAY_LOG(DEBUG) << "Finished subscribing task lease, task id = " << task_id;
-  return status;
+  subscribe_task_lease_operations_[task_id] = subscribe_operation;
+  return subscribe_operation(done);
 }
 
 Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribeTaskLease(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Unsubscribing task lease, task id = " << task_id;
   auto status =
       client_impl_->GetGcsPubSub().Unsubscribe(TASK_LEASE_CHANNEL, task_id.Hex());
+  subscribe_task_lease_operations_.erase(task_id);
   RAY_LOG(DEBUG) << "Finished unsubscribing task lease, task id = " << task_id;
   return status;
 }
@@ -914,6 +981,17 @@ Status ServiceBasedTaskInfoAccessor::AttemptTaskReconstruction(
   return Status::OK();
 }
 
+Status ServiceBasedTaskInfoAccessor::AsyncReSubscribe() {
+  RAY_LOG(INFO) << "Reestablishing subscription for task info.";
+  for (auto &item : subscribe_task_operations_) {
+    RAY_CHECK_OK(item.second(nullptr));
+  }
+  for (auto &item : subscribe_task_lease_operations_) {
+    RAY_CHECK_OK(item.second(nullptr));
+  }
+  return Status::OK();
+}
+
 ServiceBasedObjectInfoAccessor::ServiceBasedObjectInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
@@ -934,6 +1012,24 @@ Status ServiceBasedObjectInfoAccessor::AsyncGetLocations(
         callback(status, result);
         RAY_LOG(DEBUG) << "Finished getting object locations, status = " << status
                        << ", object id = " << object_id;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedObjectInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<rpc::ObjectLocationInfo> &callback) {
+  RAY_LOG(DEBUG) << "Getting all object locations.";
+  rpc::GetAllObjectLocationsRequest request;
+  client_impl_->GetGcsRpcClient().GetAllObjectLocations(
+      request,
+      [callback](const Status &status, const rpc::GetAllObjectLocationsReply &reply) {
+        std::vector<rpc::ObjectLocationInfo> result;
+        result.reserve((reply.object_location_info_list_size()));
+        for (int index = 0; index < reply.object_location_info_list_size(); ++index) {
+          result.emplace_back(reply.object_location_info_list(index));
+        }
+        callback(status, result);
+        RAY_LOG(DEBUG) << "Finished getting all object locations, status = " << status;
       });
   return Status::OK();
 }
@@ -1068,6 +1164,21 @@ Status ServiceBasedStatsInfoAccessor::AsyncAddProfileData(
   return Status::OK();
 }
 
+Status ServiceBasedStatsInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<rpc::ProfileTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting all profile info.";
+  RAY_CHECK(callback);
+  rpc::GetAllProfileInfoRequest request;
+  client_impl_->GetGcsRpcClient().GetAllProfileInfo(
+      request,
+      [callback](const Status &status, const rpc::GetAllProfileInfoReply &reply) {
+        auto result = VectorFromProtobuf(reply.profile_info_list());
+        callback(status, result);
+        RAY_LOG(DEBUG) << "Finished getting all job info.";
+      });
+  return Status::OK();
+}
+
 ServiceBasedErrorInfoAccessor::ServiceBasedErrorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
@@ -1101,15 +1212,26 @@ Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing worker failures.";
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-    rpc::WorkerFailureData worker_failure_data;
-    worker_failure_data.ParseFromString(data);
-    subscribe(WorkerID::FromBinary(id), worker_failure_data);
+  subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
+    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+      rpc::WorkerFailureData worker_failure_data;
+      worker_failure_data.ParseFromString(data);
+      subscribe(WorkerID::FromBinary(id), worker_failure_data);
+    };
+    auto status = client_impl_->GetGcsPubSub().SubscribeAll(WORKER_FAILURE_CHANNEL,
+                                                            on_subscribe, done);
+    RAY_LOG(DEBUG) << "Finished subscribing worker failures.";
+    return status;
   };
-  auto status = client_impl_->GetGcsPubSub().SubscribeAll(WORKER_FAILURE_CHANNEL,
-                                                          on_subscribe, done);
-  RAY_LOG(DEBUG) << "Finished subscribing worker failures.";
-  return status;
+  return subscribe_operation_(done);
+}
+
+Status ServiceBasedWorkerInfoAccessor::AsyncReSubscribe() {
+  RAY_LOG(INFO) << "Reestablishing subscription for worker failures.";
+  if (subscribe_operation_ != nullptr) {
+    return subscribe_operation_(nullptr);
+  }
+  return Status::OK();
 }
 
 Status ServiceBasedWorkerInfoAccessor::AsyncReportWorkerFailure(

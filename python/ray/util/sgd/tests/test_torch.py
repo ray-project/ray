@@ -649,7 +649,7 @@ def test_resize(ray_start_2_cpus):  # noqa: F811
 
         if self._num_failures < 1:
             time.sleep(1)  # Make the batch will fail correctly.
-            self.remote_workers[0].__ray_kill__()
+            ray.kill(self.remote_workers[0])
 
         try:
             local_worker_stats = self.local_worker.train_epoch(**params)
@@ -698,7 +698,7 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
 
         if self._num_failures < 2:
             time.sleep(1)  # Make the batch will fail correctly.
-            self.remote_workers[0].__ray_kill__()
+            ray.kill(self.remote_workers[0])
 
         try:
             local_worker_stats = self.local_worker.train_epoch(**params)

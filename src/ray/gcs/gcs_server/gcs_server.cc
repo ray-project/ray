@@ -18,8 +18,8 @@
 #include "error_info_handler_impl.h"
 #include "gcs_actor_manager.h"
 #include "gcs_node_manager.h"
+#include "gcs_object_manager.h"
 #include "job_info_handler_impl.h"
-#include "object_info_handler_impl.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "stats_handler_impl.h"
@@ -133,9 +133,9 @@ void GcsServer::InitBackendClient() {
 
 void GcsServer::InitGcsNodeManager() {
   RAY_CHECK(redis_gcs_client_ != nullptr);
-  gcs_node_manager_ =
-      std::make_shared<GcsNodeManager>(main_service_, redis_gcs_client_->Nodes(),
-                                       redis_gcs_client_->Errors(), gcs_pub_sub_);
+  gcs_node_manager_ = std::make_shared<GcsNodeManager>(
+      main_service_, redis_gcs_client_->Nodes(), redis_gcs_client_->Errors(),
+      gcs_pub_sub_, gcs_table_storage_);
 }
 
 void GcsServer::InitGcsActorManager() {
@@ -183,15 +183,17 @@ void GcsServer::InitGcsActorManager() {
         // the GCS.
         gcs_actor_manager_->OnNodeDead(ClientID::FromBinary(node->node_id()));
       });
-  RAY_CHECK_OK(redis_gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
-      [this](const WorkerID &id, const rpc::WorkerFailureData &worker_failure_data) {
-        auto &worker_address = worker_failure_data.worker_address();
-        WorkerID worker_id = WorkerID::FromBinary(worker_address.worker_id());
-        ClientID node_id = ClientID::FromBinary(worker_address.raylet_id());
-        gcs_actor_manager_->OnWorkerDead(node_id, worker_id,
-                                         worker_failure_data.intentional_disconnect());
-      },
-      /*done_callback=*/nullptr));
+
+  auto on_subscribe = [this](const std::string &id, const std::string &data) {
+    rpc::WorkerFailureData worker_failure_data;
+    worker_failure_data.ParseFromString(data);
+    auto &worker_address = worker_failure_data.worker_address();
+    WorkerID worker_id = WorkerID::FromBinary(id);
+    ClientID node_id = ClientID::FromBinary(worker_address.raylet_id());
+    gcs_actor_manager_->OnWorkerDead(node_id, worker_id,
+                                     worker_failure_data.intentional_disconnect());
+  };
+  RAY_CHECK_OK(gcs_pub_sub_->SubscribeAll(WORKER_FAILURE_CHANNEL, on_subscribe, nullptr));
 }
 
 std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
@@ -205,8 +207,8 @@ std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {
 }
 
 std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
-  return std::unique_ptr<rpc::DefaultObjectInfoHandler>(
-      new rpc::DefaultObjectInfoHandler(*redis_gcs_client_, gcs_pub_sub_));
+  return std::unique_ptr<GcsObjectManager>(
+      new GcsObjectManager(gcs_table_storage_, gcs_pub_sub_, *gcs_node_manager_));
 }
 
 void GcsServer::StoreGcsServerAddressInRedis() {
@@ -224,12 +226,12 @@ void GcsServer::StoreGcsServerAddressInRedis() {
 
 std::unique_ptr<rpc::TaskInfoHandler> GcsServer::InitTaskInfoHandler() {
   return std::unique_ptr<rpc::DefaultTaskInfoHandler>(
-      new rpc::DefaultTaskInfoHandler(*redis_gcs_client_, gcs_pub_sub_));
+      new rpc::DefaultTaskInfoHandler(gcs_table_storage_, gcs_pub_sub_));
 }
 
 std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {
   return std::unique_ptr<rpc::DefaultStatsHandler>(
-      new rpc::DefaultStatsHandler(*redis_gcs_client_));
+      new rpc::DefaultStatsHandler(gcs_table_storage_));
 }
 
 std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
@@ -238,8 +240,8 @@ std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
 }
 
 std::unique_ptr<rpc::WorkerInfoHandler> GcsServer::InitWorkerInfoHandler() {
-  return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(
-      new rpc::DefaultWorkerInfoHandler(*redis_gcs_client_, gcs_pub_sub_));
+  return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(new rpc::DefaultWorkerInfoHandler(
+      *redis_gcs_client_, gcs_table_storage_, gcs_pub_sub_));
 }
 
 }  // namespace gcs
