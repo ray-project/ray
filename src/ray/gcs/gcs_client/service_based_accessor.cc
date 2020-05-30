@@ -1139,7 +1139,6 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
 Status ServiceBasedObjectInfoAccessor::AsyncReSubscribe() {
   RAY_LOG(INFO) << "Reestablishing subscription for object locations.";
   for (auto &item : subscribe_object_operations_) {
-    RAY_LOG(INFO) << "wangtao resubscribe " << item.first;
     RAY_CHECK_OK(item.second(nullptr));
   }
   return Status::OK();
@@ -1147,12 +1146,10 @@ Status ServiceBasedObjectInfoAccessor::AsyncReSubscribe() {
 
 Status ServiceBasedObjectInfoAccessor::AsyncUnsubscribeToLocations(
     const ObjectID &object_id) {
-  RAY_LOG(INFO) << "Unsubscribing object location, object id = "
-                << object_id;  // wangtao log level
+  RAY_LOG(DEBUG) << "Unsubscribing object location, object id = " << object_id;
   auto status = client_impl_->GetGcsPubSub().Unsubscribe(OBJECT_CHANNEL, object_id.Hex());
   subscribe_object_operations_.erase(object_id);
-  RAY_LOG(INFO) << "Finished unsubscribing object location, object id = "
-                << object_id;  // wangtao log level
+  RAY_LOG(DEBUG) << "Finished unsubscribing object location, object id = " << object_id;
   return status;
 }
 
