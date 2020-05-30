@@ -14,7 +14,7 @@ class ExternalMultiAgentEnv(ExternalEnv):
 
         ExternalMultiAgentEnv subclasses must call this during their __init__.
 
-        Arguments:
+        Args:
             action_space (gym.Space): Action space of the env.
             observation_space (gym.Space): Observation space of the env.
             max_concurrent (int): Max number of active episodes to allow at
@@ -135,10 +135,7 @@ class ExternalMultiAgentEnv(ExternalEnv):
 
         if multiagent_done_dict:
             for agent, done in multiagent_done_dict.items():
-                if agent in episode.cur_done_dict:
-                    episode.cur_done_dict[agent] = done
-                else:
-                    episode.cur_done_dict[agent] = done
+                episode.cur_done_dict[agent] = done
 
         if info_dict:
             episode.cur_info_dict = info_dict or {}
