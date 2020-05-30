@@ -1,10 +1,12 @@
 import os
 import shutil
+import subprocess
+import sys
 import time
+
 import pytest
 import ray
 import ray.ray_constants as ray_constants
-import subprocess
 from ray.cluster_utils import Cluster
 
 
@@ -73,9 +75,12 @@ def test_tempdir_commandline():
 
 
 def test_tempdir_long_path():
-    temp_dir = os.path.join(ray.utils.get_user_temp_dir(), "z" * 108)
-    with pytest.raises(OSError):
-        ray.init(temp_dir=temp_dir)  # path should be too long
+    if sys.platform != "win32":
+        # Test AF_UNIX limits for sockaddr_un->sun_path on POSIX OSes
+        maxlen = 104 if sys.platform.startswith("darwin") else 108
+        temp_dir = os.path.join(ray.utils.get_user_temp_dir(), "z" * maxlen)
+        with pytest.raises(OSError):
+            ray.init(temp_dir=temp_dir)  # path should be too long
 
 
 def test_raylet_socket_name(shutdown_only):
@@ -196,7 +201,6 @@ def test_session_dir_uniqueness():
 
 
 if __name__ == "__main__":
-    import sys
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
