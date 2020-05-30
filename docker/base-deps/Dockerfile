@@ -22,7 +22,7 @@ RUN apt-get update \
     && /opt/conda/bin/conda install -y \
         libgcc python=3.6.9 \
     && /opt/conda/bin/conda clean -y --all \
-    && /opt/conda/bin/pip install \
+    && /opt/conda/bin/pip install --no-cache-dir \
         flatbuffers \
         cython==0.29.0 \
         numpy==1.15.4 \
