@@ -704,8 +704,8 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
       heartbeat_batch_table_data.ParseFromString(data);
       subscribe(heartbeat_batch_table_data);
     };
-    auto status = client_impl_->GetGcsPubSub().Subscribe(
-        HEARTBEAT_BATCH_CHANNEL, ClientID::Nil().Hex(), on_subscribe, done);
+    auto status = client_impl_->GetGcsPubSub().Subscribe(HEARTBEAT_BATCH_CHANNEL, "",
+                                                         on_subscribe, done);
     RAY_LOG(DEBUG) << "Finished subscribing batch heartbeat.";
     return status;
   };

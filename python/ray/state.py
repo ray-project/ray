@@ -763,7 +763,8 @@ class GlobalState:
 
         available_resources_by_id = {}
 
-        subscribe_client = self.redis_client.pubsub(ignore_subscribe_messages=True)
+        subscribe_client = self.redis_client.pubsub(
+            ignore_subscribe_messages=True)
         subscribe_client.psubscribe(gcs_utils.XRAY_HEARTBEAT_PATTERN)
 
         client_ids = self._live_client_ids()
