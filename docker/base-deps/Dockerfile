@@ -1,6 +1,6 @@
 # The base-deps Docker image installs main libraries needed to run Ray
 
-FROM ubuntu:bionic
+FROM ubuntu:xenial
 RUN apt-get update \
     && apt-get install -y \
         git \

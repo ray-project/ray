@@ -9,7 +9,6 @@ RUN apt-get update \
                         screen \
                         rsync \
                         apt-transport-https \
-                        gnupg2 \
     && curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - \
     && touch /etc/apt/sources.list.d/kubernetes.list \
     && echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | tee -a /etc/apt/sources.list.d/kubernetes.list \
