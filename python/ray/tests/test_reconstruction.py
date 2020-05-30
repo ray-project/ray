@@ -5,7 +5,6 @@ import numpy as np
 import pytest
 
 import ray
-from ray.cluster_utils import Cluster
 from ray.test_utils import (
     wait_for_condition, )
 
@@ -15,7 +14,7 @@ def test_cached_object(ray_start_cluster):
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
     })
-    cluster = Cluster()
+    cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _internal_config=config)
     ray.init(address=cluster.address)
@@ -58,7 +57,7 @@ def test_reconstruction_cached_dependency(ray_start_cluster,
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
     })
-    cluster = Cluster()
+    cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _internal_config=config)
     ray.init(address=cluster.address)
@@ -120,7 +119,7 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
     })
-    cluster = Cluster()
+    cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _internal_config=config)
     ray.init(address=cluster.address)
@@ -172,7 +171,7 @@ def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
     })
-    cluster = Cluster()
+    cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _internal_config=config)
     ray.init(address=cluster.address)
@@ -227,7 +226,7 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
     })
-    cluster = Cluster()
+    cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _internal_config=config)
     ray.init(address=cluster.address)
@@ -290,7 +289,7 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
     })
-    cluster = Cluster()
+    cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0, _internal_config=config, object_store_memory=10**8)

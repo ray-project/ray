@@ -73,7 +73,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllJobInfo() {
   std::vector<std::string> job_table_data;
   std::promise<bool> promise;
   RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetAll(
-      TransformForAccessorCallback<rpc::JobTableData>(job_table_data, promise)));
+      TransformForMultiItemCallback<rpc::JobTableData>(job_table_data, promise)));
   promise.get_future().get();
   return job_table_data;
 }
@@ -82,7 +82,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
   std::vector<std::string> node_table_data;
   std::promise<bool> promise;
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
-      TransformForAccessorCallback<rpc::GcsNodeInfo>(node_table_data, promise)));
+      TransformForMultiItemCallback<rpc::GcsNodeInfo>(node_table_data, promise)));
   promise.get_future().get();
   return node_table_data;
 }
@@ -91,26 +91,19 @@ std::vector<std::string> GlobalStateAccessor::GetAllProfileInfo() {
   std::vector<std::string> profile_table_data;
   std::promise<bool> promise;
   RAY_CHECK_OK(gcs_client_->Stats().AsyncGetAll(
-      TransformForAccessorCallback<rpc::ProfileTableData>(profile_table_data, promise)));
+      TransformForMultiItemCallback<rpc::ProfileTableData>(profile_table_data, promise)));
   promise.get_future().get();
   return profile_table_data;
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllObjectInfo() {
-  std::vector<std::string> all_object_info;
+  std::vector<std::string> object_table_data;
   std::promise<bool> promise;
-  auto on_done = [&all_object_info, &promise](
-                     const Status &status,
-                     const std::vector<rpc::ObjectLocationInfo> &result) {
-    RAY_CHECK_OK(status);
-    for (auto &data : result) {
-      all_object_info.push_back(data.SerializeAsString());
-    }
-    promise.set_value(true);
-  };
-  RAY_CHECK_OK(gcs_client_->Objects().AsyncGetAll(on_done));
+  RAY_CHECK_OK(gcs_client_->Objects().AsyncGetAll(
+      TransformForMultiItemCallback<rpc::ObjectLocationInfo>(object_table_data,
+                                                             promise)));
   promise.get_future().get();
-  return all_object_info;
+  return object_table_data;
 }
 
 std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
@@ -134,6 +127,36 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
   RAY_CHECK_OK(gcs_client_->Objects().AsyncGetLocations(object_id, on_done));
   promise.get_future().get();
   return object_info;
+}
+
+std::vector<std::string> GlobalStateAccessor::GetAllActorInfo() {
+  std::vector<std::string> actor_table_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAll(
+      TransformForMultiItemCallback<rpc::ActorTableData>(actor_table_data, promise)));
+  promise.get_future().get();
+  return actor_table_data;
+}
+
+std::unique_ptr<std::string> GlobalStateAccessor::GetActorInfo(const ActorID &actor_id) {
+  std::unique_ptr<std::string> actor_table_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(
+      actor_id,
+      TransformForOptionalItemCallback<rpc::ActorTableData>(actor_table_data, promise)));
+  promise.get_future().get();
+  return actor_table_data;
+}
+
+std::unique_ptr<std::string> GlobalStateAccessor::GetActorCheckpointId(
+    const ActorID &actor_id) {
+  std::unique_ptr<std::string> actor_checkpoint_id_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpointID(
+      actor_id, TransformForOptionalItemCallback<rpc::ActorCheckpointIdData>(
+                    actor_checkpoint_id_data, promise)));
+  promise.get_future().get();
+  return actor_checkpoint_id_data;
 }
 
 }  // namespace gcs

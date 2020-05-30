@@ -16,6 +16,7 @@
 #define RAY_GCS_ACTOR_INFO_HANDLER_IMPL_H
 
 #include "gcs_actor_manager.h"
+#include "gcs_table_storage.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
@@ -25,10 +26,11 @@ namespace rpc {
 /// This implementation class of `ActorInfoHandler`.
 class DefaultActorInfoHandler : public rpc::ActorInfoHandler {
  public:
-  explicit DefaultActorInfoHandler(gcs::RedisGcsClient &gcs_client,
-                                   gcs::GcsActorManager &gcs_actor_manager,
-                                   std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub)
-      : gcs_client_(gcs_client),
+  explicit DefaultActorInfoHandler(
+      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+      gcs::GcsActorManager &gcs_actor_manager,
+      std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub)
+      : gcs_table_storage_(std::move(gcs_table_storage)),
         gcs_actor_manager_(gcs_actor_manager),
         gcs_pub_sub_(gcs_pub_sub) {}
 
@@ -67,7 +69,7 @@ class DefaultActorInfoHandler : public rpc::ActorInfoHandler {
                                   SendReplyCallback send_reply_callback) override;
 
  private:
-  gcs::RedisGcsClient &gcs_client_;
+  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   gcs::GcsActorManager &gcs_actor_manager_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
 };
