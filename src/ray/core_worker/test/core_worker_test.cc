@@ -88,9 +88,6 @@ class CoreWorkerTest : public ::testing::Test {
  public:
   CoreWorkerTest(int num_nodes)
       : num_nodes_(num_nodes), gcs_options_("127.0.0.1", 6379, "") {
-#ifdef _WIN32
-    RAY_CHECK(false) << "port system() calls to Windows before running this test";
-#endif
     TestSetupUtil::StartUpRedisServers(std::vector<int>{6379, 6380});
 
     // flush redis first.
@@ -401,7 +398,7 @@ void CoreWorkerTest::TestActorRestart(
     for (int i = 0; i < num_tasks; i++) {
       if (i == task_index_to_kill_worker) {
         RAY_LOG(INFO) << "killing worker";
-        ASSERT_EQ(system("pkill mock_worker"), 0);
+        ASSERT_EQ(KillAllExecutable(GetFileName(TEST_MOCK_WORKER_EXEC_PATH)), 0);
 
         // Wait for actor restruction event, and then for alive event.
         auto check_actor_restart_func = [this, pid, &actor_id, &resources]() -> bool {
@@ -453,7 +450,7 @@ void CoreWorkerTest::TestActorFailure(
     for (int i = 0; i < num_tasks; i++) {
       if (i == task_index_to_kill_worker) {
         RAY_LOG(INFO) << "killing worker";
-        ASSERT_EQ(system("pkill mock_worker"), 0);
+        ASSERT_EQ(KillAllExecutable(GetFileName(TEST_MOCK_WORKER_EXEC_PATH)), 0);
       }
 
       // wait for actor being restarted.
