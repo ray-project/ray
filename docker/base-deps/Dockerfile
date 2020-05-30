@@ -1,6 +1,6 @@
 # The base-deps Docker image installs main libraries needed to run Ray
 
-FROM ubuntu:xenial
+FROM ubuntu:bionic
 RUN apt-get update \
     && apt-get install -y \
         git \
@@ -25,11 +25,9 @@ RUN apt-get update \
     && /opt/conda/bin/pip install \
         flatbuffers \
         cython==0.29.0 \
-        numpy==1.15.4
-        
-
-# To avoid the following error on Jenkins:
-# AttributeError: 'numpy.ufunc' object has no attribute '__module__'
-RUN /opt/conda/bin/pip uninstall -y dask
+        numpy==1.15.4 \
+    # To avoid the following error on Jenkins:
+    # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
+    && /opt/conda/bin/pip uninstall -y dask
 
 ENV PATH "/opt/conda/bin:$PATH"
