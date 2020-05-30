@@ -778,8 +778,7 @@ class GlobalState:
             data = raw_message["data"]
             pub_message = gcs_utils.PubSubMessage.FromString(data)
             heartbeat_data = pub_message.data
-            message = gcs_utils.HeartbeatTableData.FromString(
-                heartbeat_data)
+            message = gcs_utils.HeartbeatTableData.FromString(heartbeat_data)
             # Calculate available resources for this client
             num_resources = len(message.resources_available_label)
             dynamic_resources = {}
