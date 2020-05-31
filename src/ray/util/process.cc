@@ -29,6 +29,7 @@
 #include <string>
 #include <vector>
 
+#include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
@@ -62,21 +63,36 @@ class ProcessFD {
     for (size_t i = 0; argv[i]; ++i) {
       args.push_back(argv[i]);
     }
-    // Calling CreateCommandLine() here wouldn't make sense here if the
-    // Microsoft C runtime properly quoted each command-argument argument.
-    // However, it doesn't quote at all. It just joins arguments with a space.
-    // So we have to do the quoting manually and pass everything as a single argument.
-    fd = _spawnlp(P_NOWAIT, args[0].c_str(), CreateCommandLine(args).c_str(), NULL);
-    if (fd != -1) {
-      pid = static_cast<pid_t>(GetProcessId(reinterpret_cast<HANDLE>(fd)));
-      if (pid == 0) {
-        pid = -1;
-      }
-    } else {
-      pid = -1;
+    std::string cmds[] = {std::string(), CreateCommandLine(args)};
+    if (GetFileName(args.at(0)).find('.') == std::string::npos) {
+      // Some executables might be missing an extension.
+      // Append a single "." to prevent automatic appending of extensions by the system.
+      std::vector<std::string> args_direct_call = args;
+      args_direct_call[0] += ".";
+      cmds[0] = CreateCommandLine(args_direct_call);
     }
-    if (pid == -1) {
+    bool succeeded = false;
+    PROCESS_INFORMATION pi = {};
+    for (int attempt = 0; attempt < sizeof(cmds) / sizeof(*cmds); ++attempt) {
+      std::string &cmd = cmds[attempt];
+      if (!cmd.empty()) {
+        (void)cmd.c_str();  // We'll need this to be null-terminated (but mutable) below
+        TCHAR *cmdline = &*cmd.begin();
+        STARTUPINFO si = {sizeof(si)};
+        if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+          succeeded = true;
+          break;
+        }
+      }
+    }
+    if (succeeded) {
+      CloseHandle(pi.hThread);
+      fd = reinterpret_cast<intptr_t>(pi.hProcess);
+      pid = pi.dwProcessId;
+    } else {
       ec = std::error_code(GetLastError(), std::system_category());
+      fd = -1;
+      pid = -1;
     }
 #else
     // TODO(mehrdadn): Use clone() on Linux or posix_spawnp() on Mac to avoid duplicating
