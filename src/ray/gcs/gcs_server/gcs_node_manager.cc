@@ -338,5 +338,21 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
   return removed_node;
 }
 
+void GcsNodeManager::LoadInitialData(const StatusCallback &done) {
+  RAY_LOG(INFO) << "Loading initial data.";
+  auto callback = [this, done](const std::unordered_map<ClientID, GcsNodeInfo> &result) {
+    for (auto &item : result) {
+      if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
+        alive_nodes_.emplace(item.first, std::make_shared<rpc::GcsNodeInfo>(item.second));
+      } else if (item.second.state() == rpc::GcsNodeInfo::DEAD) {
+        dead_nodes_.emplace(item.first, std::make_shared<rpc::GcsNodeInfo>(item.second));
+      }
+    }
+    RAY_LOG(INFO) << "Finished loading initial data.";
+    done(Status::OK());
+  };
+  RAY_CHECK_OK(gcs_table_storage_->NodeTable().GetAll(callback));
+}
+
 }  // namespace gcs
 }  // namespace ray

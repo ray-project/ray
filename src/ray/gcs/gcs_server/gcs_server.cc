@@ -71,9 +71,9 @@ void GcsServer::Start() {
       new rpc::NodeInfoGrpcService(main_service_, *gcs_node_manager_));
   rpc_server_.RegisterService(*node_info_service_);
 
-  object_manager_ = InitObjectManager();
+  gcs_object_manager_ = InitObjectManager();
   object_info_service_.reset(
-      new rpc::ObjectInfoGrpcService(main_service_, *object_manager_));
+      new rpc::ObjectInfoGrpcService(main_service_, *gcs_object_manager_));
   rpc_server_.RegisterService(*object_info_service_);
 
   task_info_handler_ = InitTaskInfoHandler();
@@ -95,15 +95,23 @@ void GcsServer::Start() {
       new rpc::WorkerInfoGrpcService(main_service_, *worker_info_handler_));
   rpc_server_.RegisterService(*worker_info_service_);
 
-  auto on_done = [this](const Status &status) {
-    // Run rpc server.
-    rpc_server_.Run();
+  auto load_completed_count = std::make_shared<int>(0);
+  int load_count = 3;
+  auto on_done = [this, load_count, load_completed_count](const Status &status) {
+    ++(*load_completed_count);
 
-    // Store gcs rpc server address in redis.
-    StoreGcsServerAddressInRedis();
-    is_started_ = true;
+    if (*load_completed_count == load_count) {
+      // Run rpc server.
+      rpc_server_.Run();
+
+      // Store gcs rpc server address in redis.
+      StoreGcsServerAddressInRedis();
+      is_started_ = true;
+    }
   };
-  object_manager_->LoadInitialData(on_done);
+  gcs_actor_manager_->LoadInitialData(on_done);
+  gcs_object_manager_->LoadInitialData(on_done);
+  gcs_node_manager_->LoadInitialData(on_done);
 
   // Run the event loop.
   // Using boost::asio::io_context::work to avoid ending the event loop when

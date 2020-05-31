@@ -128,7 +128,7 @@ class GcsServer {
   /// Node info handler and service
   std::unique_ptr<rpc::NodeInfoGrpcService> node_info_service_;
   /// Object info handler and service
-  std::unique_ptr<gcs::GcsObjectManager> object_manager_;
+  std::unique_ptr<gcs::GcsObjectManager> gcs_object_manager_;
   std::unique_ptr<rpc::ObjectInfoGrpcService> object_info_service_;
   /// Task info handler and service
   std::unique_ptr<rpc::TaskInfoHandler> task_info_handler_;

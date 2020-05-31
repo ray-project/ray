@@ -127,6 +127,11 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     node_added_listeners_.emplace_back(std::move(listener));
   }
 
+  /// Load data from gcs storage to memory cache asynchronously.
+  ///
+  /// \param done Callback that will be called when load is complete.
+  void LoadInitialData(const StatusCallback &done);
+
  protected:
   class NodeFailureDetector {
    public:
