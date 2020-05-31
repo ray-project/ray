@@ -80,11 +80,8 @@ void GcsNodeManager::NodeFailureDetector::SendBatchedHeartbeat() {
       batch->add_batch()->CopyFrom(heartbeat.second);
     }
 
-    auto done = [this, batch](Status status) {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, ClientID::Nil().Hex(),
-                                         batch->SerializeAsString(), nullptr));
-    };
-    RAY_CHECK_OK(node_info_accessor_.AsyncReportBatchHeartbeat(batch, done));
+    RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, "",
+                                       batch->SerializeAsString(), nullptr));
     heartbeat_buffer_.clear();
   }
 }
@@ -108,7 +105,8 @@ void GcsNodeManager::NodeFailureDetector::ScheduleTick() {
 GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
                                gcs::NodeInfoAccessor &node_info_accessor,
                                gcs::ErrorInfoAccessor &error_info_accessor,
-                               std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub)
+                               std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+                               std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
     : node_info_accessor_(node_info_accessor),
       error_info_accessor_(error_info_accessor),
       node_failure_detector_(new NodeFailureDetector(
@@ -125,7 +123,8 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
               // TODO(Shanly): Remove node resources from resource table.
             }
           })),
-      gcs_pub_sub_(gcs_pub_sub) {
+      gcs_pub_sub_(gcs_pub_sub),
+      gcs_table_storage_(gcs_table_storage) {
   // TODO(Shanly): Load node info list from storage synchronously.
   // TODO(Shanly): Load cluster resources from storage synchronously.
 }
@@ -144,7 +143,8 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
                                        request.node_info().SerializeAsString(), nullptr));
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
-  RAY_CHECK_OK(node_info_accessor_.AsyncRegister(request.node_info(), on_done));
+  RAY_CHECK_OK(
+      gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
 }
 
 void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &request,
@@ -163,7 +163,8 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
                                          node->SerializeAsString(), nullptr));
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     };
-    RAY_CHECK_OK(node_info_accessor_.AsyncUnregister(node_id, on_done));
+    // Update node state to DEAD instead of deleting it.
+    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
     // TODO(Shanly): Remove node resources from resource table.
   }
 }
@@ -190,10 +191,8 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
   heartbeat_data->CopyFrom(request.heartbeat());
   node_failure_detector_->HandleHeartbeat(node_id, *heartbeat_data);
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  // TODO(Shanly): Remove it later.
-  // The heartbeat data is reported here because some python unit tests rely on the
-  // heartbeat data in redis.
-  RAY_CHECK_OK(node_info_accessor_.AsyncReportHeartbeat(heartbeat_data, nullptr));
+  RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_CHANNEL, node_id.Hex(),
+                                     heartbeat_data->SerializeAsString(), nullptr));
 }
 
 void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,

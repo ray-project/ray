@@ -185,7 +185,15 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
       const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
       const StatusCallback &done) override;
 
+  Status AsyncReSubscribe() override;
+
  private:
+  /// Save the subscribe operation in this function, so we can call it again when GCS
+  /// restarts from a failure.
+  SubscribeOperation subscribe_node_operation_;
+  SubscribeOperation subscribe_resource_operation_;
+  SubscribeOperation subscribe_batch_heartbeat_operation_;
+
   void HandleNotification(const GcsNodeInfo &node_info);
 
   ServiceBasedGcsClient *client_impl_;
@@ -249,7 +257,14 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
       const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
       const StatusCallback &callback) override;
 
+  Status AsyncReSubscribe() override;
+
  private:
+  /// Save the subscribe operation in this function, so we can call it again when GCS
+  /// restarts from a failure.
+  std::unordered_map<TaskID, SubscribeOperation> subscribe_task_operations_;
+  std::unordered_map<TaskID, SubscribeOperation> subscribe_task_lease_operations_;
+
   ServiceBasedGcsClient *client_impl_;
 };
 
@@ -342,7 +357,13 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
       const std::unordered_map<std::string, std::string> &worker_info,
       const StatusCallback &callback) override;
 
+  Status AsyncReSubscribe() override;
+
  private:
+  /// Save the subscribe operation in this function, so we can call it again when GCS
+  /// restarts from a failure.
+  SubscribeOperation subscribe_operation_;
+
   ServiceBasedGcsClient *client_impl_;
 };
 

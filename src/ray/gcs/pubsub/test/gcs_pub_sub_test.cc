@@ -20,7 +20,12 @@
 
 namespace ray {
 
-class GcsPubSubTest : public RedisServiceManagerForTest {
+class GcsPubSubTest : public ::testing::Test {
+ public:
+  GcsPubSubTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
+
+  virtual ~GcsPubSubTest() { TestSetupUtil::ShutDownRedisServers(); }
+
  protected:
   virtual void SetUp() override {
     thread_io_service_.reset(new std::thread([this] {
@@ -29,8 +34,8 @@ class GcsPubSubTest : public RedisServiceManagerForTest {
       io_service_.run();
     }));
 
-    gcs::RedisClientOptions redis_client_options("127.0.0.1", REDIS_SERVER_PORTS.front(),
-                                                 "", true);
+    gcs::RedisClientOptions redis_client_options(
+        "127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "", true);
     client_ = std::make_shared<gcs::RedisClient>(redis_client_options);
     RAY_CHECK_OK(client_->Connect(io_service_));
     pub_sub_ = std::make_shared<gcs::GcsPubSub>(client_);
@@ -205,8 +210,8 @@ TEST_F(GcsPubSubTest, TestPubSubWithTableData) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

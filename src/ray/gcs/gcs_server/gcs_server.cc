@@ -14,7 +14,6 @@
 
 #include "gcs_server.h"
 
-#include "actor_info_handler_impl.h"
 #include "error_info_handler_impl.h"
 #include "gcs_actor_manager.h"
 #include "gcs_node_manager.h"
@@ -64,9 +63,8 @@ void GcsServer::Start() {
   job_info_service_.reset(new rpc::JobInfoGrpcService(main_service_, *job_info_handler_));
   rpc_server_.RegisterService(*job_info_service_);
 
-  actor_info_handler_ = InitActorInfoHandler();
   actor_info_service_.reset(
-      new rpc::ActorInfoGrpcService(main_service_, *actor_info_handler_));
+      new rpc::ActorInfoGrpcService(main_service_, *gcs_actor_manager_));
   rpc_server_.RegisterService(*actor_info_service_);
 
   node_info_service_.reset(
@@ -133,15 +131,15 @@ void GcsServer::InitBackendClient() {
 
 void GcsServer::InitGcsNodeManager() {
   RAY_CHECK(redis_gcs_client_ != nullptr);
-  gcs_node_manager_ =
-      std::make_shared<GcsNodeManager>(main_service_, redis_gcs_client_->Nodes(),
-                                       redis_gcs_client_->Errors(), gcs_pub_sub_);
+  gcs_node_manager_ = std::make_shared<GcsNodeManager>(
+      main_service_, redis_gcs_client_->Nodes(), redis_gcs_client_->Errors(),
+      gcs_pub_sub_, gcs_table_storage_);
 }
 
 void GcsServer::InitGcsActorManager() {
-  RAY_CHECK(redis_gcs_client_ != nullptr && gcs_node_manager_ != nullptr);
+  RAY_CHECK(gcs_table_storage_ != nullptr && gcs_node_manager_ != nullptr);
   auto scheduler = std::make_shared<GcsActorScheduler>(
-      main_service_, redis_gcs_client_->Actors(), *gcs_node_manager_, gcs_pub_sub_,
+      main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
       /*schedule_failure_handler=*/
       [this](std::shared_ptr<GcsActor> actor) {
         // When there are no available nodes to schedule the actor the
@@ -166,8 +164,7 @@ void GcsServer::InitGcsActorManager() {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      scheduler, redis_gcs_client_->Actors(), gcs_pub_sub_,
-      [this](const rpc::Address &address) {
+      scheduler, gcs_table_storage_, gcs_pub_sub_, [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
   gcs_node_manager_->AddNodeAddedListener(
@@ -183,25 +180,22 @@ void GcsServer::InitGcsActorManager() {
         // the GCS.
         gcs_actor_manager_->OnNodeDead(ClientID::FromBinary(node->node_id()));
       });
-  RAY_CHECK_OK(redis_gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
-      [this](const WorkerID &id, const rpc::WorkerFailureData &worker_failure_data) {
-        auto &worker_address = worker_failure_data.worker_address();
-        WorkerID worker_id = WorkerID::FromBinary(worker_address.worker_id());
-        ClientID node_id = ClientID::FromBinary(worker_address.raylet_id());
-        gcs_actor_manager_->OnWorkerDead(node_id, worker_id,
-                                         worker_failure_data.intentional_disconnect());
-      },
-      /*done_callback=*/nullptr));
+
+  auto on_subscribe = [this](const std::string &id, const std::string &data) {
+    rpc::WorkerFailureData worker_failure_data;
+    worker_failure_data.ParseFromString(data);
+    auto &worker_address = worker_failure_data.worker_address();
+    WorkerID worker_id = WorkerID::FromBinary(id);
+    ClientID node_id = ClientID::FromBinary(worker_address.raylet_id());
+    gcs_actor_manager_->OnWorkerDead(node_id, worker_id,
+                                     worker_failure_data.intentional_disconnect());
+  };
+  RAY_CHECK_OK(gcs_pub_sub_->SubscribeAll(WORKER_FAILURE_CHANNEL, on_subscribe, nullptr));
 }
 
 std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
   return std::unique_ptr<rpc::DefaultJobInfoHandler>(
       new rpc::DefaultJobInfoHandler(gcs_table_storage_, gcs_pub_sub_));
-}
-
-std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {
-  return std::unique_ptr<rpc::DefaultActorInfoHandler>(new rpc::DefaultActorInfoHandler(
-      *redis_gcs_client_, *gcs_actor_manager_, gcs_pub_sub_));
 }
 
 std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
@@ -224,7 +218,7 @@ void GcsServer::StoreGcsServerAddressInRedis() {
 
 std::unique_ptr<rpc::TaskInfoHandler> GcsServer::InitTaskInfoHandler() {
   return std::unique_ptr<rpc::DefaultTaskInfoHandler>(
-      new rpc::DefaultTaskInfoHandler(*redis_gcs_client_, gcs_pub_sub_));
+      new rpc::DefaultTaskInfoHandler(gcs_table_storage_, gcs_pub_sub_));
 }
 
 std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {

@@ -309,6 +309,12 @@ class TaskInfoAccessor {
       const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
       const StatusCallback &callback) = 0;
 
+  /// Reestablish subscription.
+  /// This should be called when GCS server restarts from a failure.
+  ///
+  /// \return Status
+  virtual Status AsyncReSubscribe() = 0;
+
  protected:
   TaskInfoAccessor() = default;
 };
@@ -542,6 +548,12 @@ class NodeInfoAccessor {
       const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
       const StatusCallback &done) = 0;
 
+  /// Reestablish subscription.
+  /// This should be called when GCS server restarts from a failure.
+  ///
+  /// \return Status
+  virtual Status AsyncReSubscribe() = 0;
+
  protected:
   NodeInfoAccessor() = default;
 };
@@ -637,6 +649,12 @@ class WorkerInfoAccessor {
       rpc::WorkerType worker_type, const WorkerID &worker_id,
       const std::unordered_map<std::string, std::string> &worker_info,
       const StatusCallback &callback) = 0;
+
+  /// Reestablish subscription.
+  /// This should be called when GCS server restarts from a failure.
+  ///
+  /// \return Status
+  virtual Status AsyncReSubscribe() = 0;
 
  protected:
   WorkerInfoAccessor() = default;

@@ -50,6 +50,9 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   auto re_subscribe = [this]() {
     RAY_CHECK_OK(job_accessor_->AsyncReSubscribe());
     RAY_CHECK_OK(actor_accessor_->AsyncReSubscribe());
+    RAY_CHECK_OK(node_accessor_->AsyncReSubscribe());
+    RAY_CHECK_OK(task_accessor_->AsyncReSubscribe());
+    RAY_CHECK_OK(worker_accessor_->AsyncReSubscribe());
   };
 
   // Connect to gcs service.
@@ -78,7 +81,7 @@ void ServiceBasedGcsClient::Disconnect() {
   gcs_pub_sub_.reset();
   redis_gcs_client_->Disconnect();
   redis_gcs_client_.reset();
-  RAY_LOG(INFO) << "ServiceBasedGcsClient Disconnected.";
+  RAY_LOG(DEBUG) << "ServiceBasedGcsClient Disconnected.";
 }
 
 void ServiceBasedGcsClient::GetGcsServerAddressFromRedis(

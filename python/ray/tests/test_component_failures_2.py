@@ -9,7 +9,7 @@ import pytest
 import ray
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
-from ray.test_utils import RayTestTimeoutException
+from ray.test_utils import RayTestTimeoutException, get_other_nodes
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -90,7 +90,7 @@ def _test_component_failed(cluster, component_type):
     # execute. Do this in a loop while submitting tasks between each
     # component failure.
     time.sleep(0.1)
-    worker_nodes = cluster.list_all_nodes()[1:]
+    worker_nodes = get_other_nodes(cluster)
     assert len(worker_nodes) > 0
     for node in worker_nodes:
         process = node.all_processes[component_type][0].process
@@ -119,7 +119,7 @@ def _test_component_failed(cluster, component_type):
 
 def check_components_alive(cluster, component_type, check_component_alive):
     """Check that a given component type is alive on all worker nodes."""
-    worker_nodes = cluster.list_all_nodes()[1:]
+    worker_nodes = get_other_nodes(cluster)
     assert len(worker_nodes) > 0
     for node in worker_nodes:
         process = node.all_processes[component_type][0].process
