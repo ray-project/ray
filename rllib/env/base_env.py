@@ -1,7 +1,7 @@
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
-from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.utils.annotations import override, PublicAPI
 
 ASYNC_RESET_RETURN = "async_reset_return"
@@ -99,16 +99,13 @@ class BaseEnv:
                         make_env=make_env,
                         existing_envs=[env],
                         num_envs=num_envs)
-            elif isinstance(env, ExternalMultiAgentEnv):
-                if num_envs != 1:
-                    raise ValueError(
-                        "ExternalMultiAgentEnv does not currently support "
-                        "num_envs > 1.")
-                env = _ExternalEnvToBaseEnv(env, multiagent=True)
             elif isinstance(env, ExternalEnv):
                 if num_envs != 1:
                     raise ValueError(
-                        "ExternalEnv does not currently support num_envs > 1.")
+                        "External(MultiAgent)Env does not currently support "
+                        "num_envs > 1. One way of solving this would be to "
+                        "treat your Env as a MultiAgentEnv hosting only one "
+                        "type of agent but with several copies.")
                 env = _ExternalEnvToBaseEnv(env)
             elif isinstance(env, VectorEnv):
                 env = _VectorEnvToBaseEnv(env)
@@ -166,11 +163,15 @@ class BaseEnv:
         raise NotImplementedError
 
     @PublicAPI
-    def try_reset(self, env_id):
-        """Attempt to reset the env with the given id.
+    def try_reset(self, env_id=None):
+        """Attempt to reset the sub-env with the given id or all sub-envs.
 
         If the environment does not support synchronous reset, None can be
         returned here.
+
+        Args:
+            env_id (Optional[int]): The sub-env ID if applicable. If None,
+                reset the entire Env (i.e. all sub-envs).
 
         Returns:
             obs (dict|None): Resetted observation or None if not supported.
@@ -206,10 +207,10 @@ def _with_dummy_agent_id(env_id_to_values, dummy_id=_DUMMY_AGENT_ID):
 class _ExternalEnvToBaseEnv(BaseEnv):
     """Internal adapter of ExternalEnv to BaseEnv."""
 
-    def __init__(self, external_env, preprocessor=None, multiagent=False):
+    def __init__(self, external_env, preprocessor=None):
         self.external_env = external_env
         self.prep = preprocessor
-        self.multiagent = multiagent
+        self.multiagent = issubclass(type(external_env), ExternalMultiAgentEnv)
         self.action_space = external_env.action_space
         if preprocessor:
             self.observation_space = preprocessor.observation_space
@@ -262,8 +263,8 @@ class _ExternalEnvToBaseEnv(BaseEnv):
                 if "off_policy_action" in data:
                     off_policy_actions[eid] = data["off_policy_action"]
         if self.multiagent:
-            # ensure a consistent set of keys
-            # rely on all_obs having all possible keys for now
+            # Ensure a consistent set of keys
+            # rely on all_obs having all possible keys for now.
             for eid, eid_dict in all_obs.items():
                 for agent_id in eid_dict.keys():
 

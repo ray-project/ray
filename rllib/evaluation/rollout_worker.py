@@ -303,11 +303,11 @@ class RolloutWorker(ParallelIteratorWorker):
         self.fake_sampler = fake_sampler
 
         self.env = _validate_env(env_creator(env_context))
-        if isinstance(self.env, MultiAgentEnv) or \
-                isinstance(self.env, BaseEnv):
+        if isinstance(self.env, (BaseEnv, MultiAgentEnv)):
 
             def wrap(env):
                 return env  # we can't auto-wrap these env types
+
         elif is_atari(self.env) and \
                 not model_config.get("custom_preprocessor") and \
                 preprocessor_pref == "deepmind":
@@ -411,7 +411,7 @@ class RolloutWorker(ParallelIteratorWorker):
         if self.worker_index == 0:
             logger.info("Built filter map: {}".format(self.filters))
 
-        # Always use vector env for consistency even if num_envs = 1
+        # Always use vector env for consistency even if num_envs = 1.
         self.async_env = BaseEnv.to_base_env(
             self.env,
             make_env=make_env,

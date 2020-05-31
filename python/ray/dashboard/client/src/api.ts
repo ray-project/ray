@@ -283,3 +283,47 @@ export const setTuneExperiment = (experiment: string) =>
 
 export const enableTuneTensorBoard = () =>
   post<{}>("/api/enable_tune_tensorboard", {});
+
+export type MemoryTableSummary = {
+  total_actor_handles: number;
+  total_captured_in_objects: number;
+  total_local_ref_count: number;
+  // The measurement is B.
+  total_object_size: number;
+  total_pinned_in_memory: number;
+  total_used_by_pending_task: number;
+} | null;
+
+export type MemoryTableEntry = {
+  node_ip_address: string;
+  pid: number;
+  type: string;
+  object_id: string;
+  object_size: number;
+  reference_type: string;
+  call_site: string;
+};
+
+export type MemoryTableResponse = {
+  group: {
+    [groupKey: string]: {
+      entries: MemoryTableEntry[];
+      summary: MemoryTableSummary;
+    };
+  };
+  summary: MemoryTableSummary;
+};
+
+// This doesn't return anything.
+export type StopMemoryTableResponse = {};
+
+export const getMemoryTable = (shouldObtainMemoryTable: boolean) => {
+  if (shouldObtainMemoryTable) {
+    return get<MemoryTableResponse>("/api/memory_table", {});
+  } else {
+    return null;
+  }
+};
+
+export const stopMemoryTableCollection = () =>
+  get<StopMemoryTableResponse>("/api/stop_memory_table", {});

@@ -2,10 +2,10 @@ import collections
 import logging
 import numpy as np
 
-from ray.util.debug import log_once
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.debug import summarize
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ class MultiAgentSampleBatchBuilder:
     def total(self):
         """Returns the total number of steps taken in the env (all agents).
 
-        Returns: 
+        Returns:
             int: The number of steps taken in total in the environment over all
                 agents.
         """
@@ -222,8 +222,8 @@ class MultiAgentSampleBatchBuilder:
         postprocessor. The internal state of this builder will be reset.
 
         Args:
-            episode (Optional[MultiAgentEpisode]): Current MultiAgentEpisode
-                object or None.
+            episode (Optional[MultiAgentEpisode]): The Episode object that
+                holds this MultiAgentBatchBuilder object or None.
         """
 
         self.postprocess_batch_so_far(episode)

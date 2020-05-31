@@ -32,8 +32,7 @@ if __name__ == "__main__":
     connector_config = {
         # Use the connector server to generate experiences.
         "input": (
-            lambda ioctx: PolicyServerInput( \
-                ioctx, SERVER_ADDRESS, SERVER_PORT)
+            lambda ioctx: PolicyServerInput(ioctx, SERVER_ADDRESS, SERVER_PORT)
         ),
         # Use a single worker process to run the server.
         "num_workers": 0,

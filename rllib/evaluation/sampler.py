@@ -343,7 +343,7 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
     while True:
         perf_stats.iters += 1
         t0 = time.time()
-        # Get observations from all ready agents
+        # Get observations from all ready agents.
         unfiltered_obs, rewards, dones, infos, off_policy_actions = \
             base_env.poll()
         perf_stats.env_wait_time += time.time() - t0
@@ -353,7 +353,7 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
                 summarize(unfiltered_obs)))
             logger.info("Info return from env: {}".format(summarize(infos)))
 
-        # Process observations and prepare for policy evaluation
+        # Process observations and prepare for policy evaluation.
         t1 = time.time()
         active_envs, to_eval, outputs = _process_observations(
             worker, base_env, policies, batch_builder_pool, active_episodes,
@@ -365,13 +365,13 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
         for o in outputs:
             yield o
 
-        # Do batched policy eval
+        # Do batched policy eval (accross vectorized envs).
         t2 = time.time()
         eval_results = _do_policy_eval(tf_sess, to_eval, policies,
                                        active_episodes)
         perf_stats.inference_time += time.time() - t2
 
-        # Process results and update episode state
+        # Process results and update episode state.
         t3 = time.time()
         actions_to_send = _process_policy_eval_results(
             to_eval, eval_results, active_episodes, active_envs,
@@ -407,9 +407,9 @@ def _process_observations(
 
     # For each environment.
     for env_id, agent_obs in unfiltered_obs.items():
-        new_episode = env_id not in active_episodes
+        is_new_episode = env_id not in active_episodes
         episode = active_episodes[env_id]
-        if not new_episode:
+        if not is_new_episode:
             episode.length += 1
             episode.batch_builder.count += 1
             episode._add_agent_rewards(rewards[env_id])
@@ -435,7 +435,7 @@ def _process_observations(
         if dones[env_id]["__all__"] or episode.length >= horizon:
             hit_horizon = (episode.length >= horizon
                            and not dones[env_id]["__all__"])
-            all_done = True
+            all_agents_done = True
             atari_metrics = _fetch_atari_metrics(base_env)
             if atari_metrics is not None:
                 for m in atari_metrics:
@@ -449,7 +449,7 @@ def _process_observations(
                                    episode.hist_data))
         else:
             hit_horizon = False
-            all_done = False
+            all_agents_done = False
             active_envs.add(env_id)
 
         # Custom observation function is applied before preprocessing.
@@ -477,7 +477,7 @@ def _process_observations(
             if log_once("filtered_obs"):
                 logger.info("Filtered obs: {}".format(summarize(filtered_obs)))
 
-            agent_done = bool(all_done or dones[env_id].get(agent_id))
+            agent_done = bool(all_agents_done or dones[env_id].get(agent_id))
             if not agent_done:
                 to_eval[policy_id].append(
                     PolicyEvalData(env_id, agent_id, filtered_obs,
@@ -527,15 +527,15 @@ def _process_observations(
             # Reached end of episode and we are not allowed to pack the
             # next episode into the same SampleBatch -> Build the SampleBatch
             # and add it to "outputs".
-            if (all_done and not pack_multiple_episodes_in_batch) or \
+            if (all_agents_done and not pack_multiple_episodes_in_batch) or \
                     episode.batch_builder.count >= rollout_fragment_length:
                 outputs.append(episode.batch_builder.build_and_reset(episode))
             # Make sure postprocessor stays within one episode.
-            elif all_done:
+            elif all_agents_done:
                 episode.batch_builder.postprocess_batch_so_far(episode)
 
-        if all_done:
-            # Handle episode termination
+        if all_agents_done:
+            # Handle episode termination.
             batch_builder_pool.append(episode.batch_builder)
             # Call each policy's Exploration.on_episode_end method.
             for p in policies.values():
@@ -558,13 +558,13 @@ def _process_observations(
                 del active_episodes[env_id]
                 resetted_obs = base_env.try_reset(env_id)
             if resetted_obs is None:
-                # Reset not supported, drop this env from the ready list
+                # Reset not supported, drop this env from the ready list.
                 if horizon != float("inf"):
                     raise ValueError(
                         "Setting episode horizon requires reset() support "
                         "from the environment.")
             elif resetted_obs != ASYNC_RESET_RETURN:
-                # Creates a new episode if this is not async return
+                # Creates a new episode if this is not async return.
                 # If reset is async, we will get its result in some future poll
                 episode = active_episodes[env_id]
                 if observation_fn:
@@ -635,7 +635,6 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                 prev_reward_batch=prev_reward_batch,
                 timestep=policy.global_timestep)
         else:
-            # TODO(sven): Does this work for LSTM torch?
             rnn_in_cols = [
                 np.stack([row[i] for row in rnn_in])
                 for i in range(len(rnn_in[0]))

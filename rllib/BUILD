@@ -984,6 +984,29 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# Env tests
+# rllib/env/
+#
+# Tag: env
+# --------------------------------------------------------------------
+
+sh_test(
+    name = "env/tests/test_local_inference",
+    tags = ["env"],
+    size = "medium",
+    srcs = ["env/tests/test_local_inference.sh"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "env/tests/test_remote_inference",
+    tags = ["env"],
+    size = "medium",
+    srcs = ["env/tests/test_remote_inference.sh"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+# --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
 #
@@ -1692,7 +1715,7 @@ py_test(
     name = "examples/multi_agent_cartpole_torch",
     main = "examples/multi_agent_cartpole.py",
     tags = ["examples", "examples_M"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_cartpole.py"],
     args = ["--as-test", "--torch", "--stop-reward=70.0", "--num-cpus=4"]
 )
@@ -1820,22 +1843,6 @@ py_test(
     size = "medium",
     srcs = ["examples/rock_paper_scissors_multiagent.py"],
     args = ["--as-test", "--torch"],
-)
-
-sh_test(
-    name = "examples/serving/test_local_inference",
-    tags = ["examples", "examples_S", "exclusive"],
-    size = "medium",
-    srcs = ["examples/serving/test_local_inference.sh"],
-    data = glob(["examples/serving/*.py"]),
-)
-
-sh_test(
-    name = "examples/serving/test_remote_inference",
-    tags = ["examples", "examples_S", "exclusive"],
-    size = "medium",
-    srcs = ["examples/serving/test_remote_inference.sh"],
-    data = glob(["examples/serving/*.py"]),
 )
 
 py_test(

@@ -100,11 +100,11 @@ class MockEnv2(gym.Env):
 
 class MockVectorEnv(VectorEnv):
     def __init__(self, episode_length, num_envs):
-        super().__init__()
+        super().__init__(
+            observation_space=gym.spaces.Discrete(1),
+            action_space=gym.spaces.Discrete(2),
+            num_envs=num_envs)
         self.envs = [MockEnv(episode_length) for _ in range(num_envs)]
-        self.observation_space = gym.spaces.Discrete(1)
-        self.action_space = gym.spaces.Discrete(2)
-        self.num_envs = num_envs
 
     def vector_reset(self):
         return [e.reset() for e in self.envs]
