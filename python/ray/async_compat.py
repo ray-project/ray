@@ -3,9 +3,8 @@ This file should only be imported from Python 3.
 It will raise SyntaxError when importing from Python 2.
 """
 import asyncio
-from collections import namedtuple, Counter
+from collections import namedtuple
 import time
-import threading
 import inspect
 
 import ray
