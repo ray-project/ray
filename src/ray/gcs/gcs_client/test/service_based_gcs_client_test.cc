@@ -1032,7 +1032,7 @@ TEST_F(ServiceBasedGcsClientTest, TestGcsTableReload) {
   // Add location of object to GCS.
   ASSERT_TRUE(AddLocation(object_id, node_id));
 
-  // Restart GCS
+  // Restart GCS.
   RestartGcsServer();
 
   // Get information of nodes from GCS.
