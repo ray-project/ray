@@ -75,6 +75,33 @@ JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllNodeInfo(JNIEnv *, jobject,
                                                                  jlong);
 
+/*
+ * Class:     io_ray_runtime_gcs_GlobalStateAccessor
+ * Method:    nativeGetAllActorInfo
+ * Signature: (J)Ljava/util/List;
+ */
+JNIEXPORT jobject JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllActorInfo(JNIEnv *, jobject,
+                                                                  jlong);
+
+/*
+ * Class:     io_ray_runtime_gcs_GlobalStateAccessor
+ * Method:    nativeGetActorInfo
+ * Signature: (J[B)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetActorInfo(JNIEnv *, jobject, jlong,
+                                                               jbyteArray);
+
+/*
+ * Class:     io_ray_runtime_gcs_GlobalStateAccessor
+ * Method:    nativeGetActorCheckpointId
+ * Signature: (J[B)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetActorCheckpointId(JNIEnv *, jobject,
+                                                                       jlong, jbyteArray);
+
 #ifdef __cplusplus
 }
 #endif

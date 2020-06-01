@@ -123,7 +123,7 @@ class ModelSupportedSpaces(unittest.TestCase):
         check_support(
             "ARS", {
                 "num_workers": 1,
-                "noise_size": 100000,
+                "noise_size": 1500000,
                 "num_rollouts": 1,
                 "rollouts_used": 1
             })
@@ -147,7 +147,7 @@ class ModelSupportedSpaces(unittest.TestCase):
         check_support(
             "ES", {
                 "num_workers": 1,
-                "noise_size": 100000,
+                "noise_size": 1500000,
                 "episodes_per_batch": 1,
                 "train_batch_size": 1
             })

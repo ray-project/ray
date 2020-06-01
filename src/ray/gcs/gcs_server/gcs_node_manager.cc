@@ -80,11 +80,8 @@ void GcsNodeManager::NodeFailureDetector::SendBatchedHeartbeat() {
       batch->add_batch()->CopyFrom(heartbeat.second);
     }
 
-    auto done = [this, batch](Status status) {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, ClientID::Nil().Hex(),
-                                         batch->SerializeAsString(), nullptr));
-    };
-    RAY_CHECK_OK(node_info_accessor_.AsyncReportBatchHeartbeat(batch, done));
+    RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, "",
+                                       batch->SerializeAsString(), nullptr));
     heartbeat_buffer_.clear();
   }
 }
@@ -194,10 +191,8 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
   heartbeat_data->CopyFrom(request.heartbeat());
   node_failure_detector_->HandleHeartbeat(node_id, *heartbeat_data);
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  // TODO(Shanly): Remove it later.
-  // The heartbeat data is reported here because some python unit tests rely on the
-  // heartbeat data in redis.
-  RAY_CHECK_OK(node_info_accessor_.AsyncReportHeartbeat(heartbeat_data, nullptr));
+  RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_CHANNEL, node_id.Hex(),
+                                     heartbeat_data->SerializeAsString(), nullptr));
 }
 
 void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,

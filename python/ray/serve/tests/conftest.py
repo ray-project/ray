@@ -11,7 +11,7 @@ if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False):
 
 @pytest.fixture(scope="session")
 def _shared_serve_instance():
-    serve.init(blocking=True, ray_init_kwargs={"num_cpus": 36})
+    serve.init(ray_init_kwargs={"num_cpus": 36})
     yield
 
 
