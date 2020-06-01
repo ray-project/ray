@@ -146,7 +146,7 @@ class GTrXLNet(RecurrentNetwork):
     Examples:
         >> config["model"]["custom_model"] = GTrXLNet
         >> config["model"]["max_seq_len"] = 10
-        >> config["model"]["custom_options"] = {
+        >> config["model"]["custom_model_config"] = {
         >>     num_transformer_units=1,
         >>     attn_dim=32,
         >>     num_heads=2,

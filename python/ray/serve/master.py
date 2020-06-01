@@ -50,9 +50,8 @@ class ServeMaster:
           requires all implementations here to be idempotent.
     """
 
-    async def __init__(self, cluster_name, start_http_proxy, http_node_id,
-                       http_proxy_host, http_proxy_port,
-                       metric_exporter_class):
+    async def __init__(self, cluster_name, http_node_id, http_proxy_host,
+                       http_proxy_port, metric_exporter_class):
         # Unique name of the serve cluster managed by this actor. Used to
         # namespace child actors and checkpoints.
         self.cluster_name = cluster_name
@@ -93,9 +92,8 @@ class ServeMaster:
         # components. If recovering, fetches their actor handles.
         self._get_or_start_metric_exporter(metric_exporter_class)
         self._get_or_start_router()
-        if start_http_proxy:
-            self._get_or_start_http_proxy(http_node_id, http_proxy_host,
-                                          http_proxy_port)
+        self._get_or_start_http_proxy(http_node_id, http_proxy_host,
+                                      http_proxy_port)
 
         # NOTE(edoakes): unfortunately, we can't completely recover from a
         # checkpoint in the constructor because we block while waiting for
@@ -127,11 +125,10 @@ class ServeMaster:
         """
         router_name = format_actor_name(SERVE_ROUTER_NAME, self.cluster_name)
         try:
-            self.router = ray.util.get_actor(router_name)
+            self.router = ray.get_actor(router_name)
         except ValueError:
             logger.info("Starting router with name '{}'".format(router_name))
             self.router = async_retryable(ray.remote(Router)).options(
-                detached=True,
                 name=router_name,
                 max_concurrency=ASYNC_CONCURRENCY,
                 max_restarts=-1,
@@ -148,13 +145,12 @@ class ServeMaster:
         """
         proxy_name = format_actor_name(SERVE_PROXY_NAME, self.cluster_name)
         try:
-            self.http_proxy = ray.util.get_actor(proxy_name)
+            self.http_proxy = ray.get_actor(proxy_name)
         except ValueError:
             logger.info(
                 "Starting HTTP proxy with name '{}' on node '{}'".format(
                     proxy_name, node_id))
             self.http_proxy = async_retryable(HTTPProxyActor).options(
-                detached=True,
                 name=proxy_name,
                 max_concurrency=ASYNC_CONCURRENCY,
                 max_restarts=-1,
@@ -180,12 +176,11 @@ class ServeMaster:
         metric_sink_name = format_actor_name(SERVE_METRIC_SINK_NAME,
                                              self.cluster_name)
         try:
-            self.metric_exporter = ray.util.get_actor(metric_sink_name)
+            self.metric_exporter = ray.get_actor(metric_sink_name)
         except ValueError:
             logger.info("Starting metric exporter with name '{}'".format(
                 metric_sink_name))
             self.metric_exporter = MetricExporterActor.options(
-                detached=True,
                 name=metric_sink_name).remote(metric_exporter_class)
 
     def get_metric_exporter(self):
@@ -246,7 +241,7 @@ class ServeMaster:
             for replica_tag in replica_tags:
                 replica_name = format_actor_name(replica_tag,
                                                  self.cluster_name)
-                self.workers[backend_tag][replica_tag] = ray.util.get_actor(
+                self.workers[backend_tag][replica_tag] = ray.get_actor(
                     replica_name)
 
         # Push configuration state to the router.
@@ -311,7 +306,6 @@ class ServeMaster:
 
         replica_name = format_actor_name(replica_tag, self.cluster_name)
         worker_handle = async_retryable(ray.remote(backend_worker)).options(
-            detached=True,
             name=replica_name,
             max_restarts=-1,
             **replica_config.ray_actor_options).remote(
@@ -323,6 +317,23 @@ class ServeMaster:
         await worker_handle.ready.remote()
         return worker_handle
 
+    async def _start_replica(self, backend_tag, replica_tag):
+        # NOTE(edoakes): the replicas may already be created if we
+        # failed after creating them but before writing a
+        # checkpoint.
+        try:
+            worker_handle = ray.get_actor(replica_tag)
+        except ValueError:
+            worker_handle = await self._start_backend_worker(
+                backend_tag, replica_tag)
+
+        self.replicas[backend_tag].append(replica_tag)
+        self.workers[backend_tag][replica_tag] = worker_handle
+
+        # Register the worker with the router.
+        await self.router.add_new_worker.remote(backend_tag, replica_tag,
+                                                worker_handle)
+
     async def _start_pending_replicas(self):
         """Starts the pending backend replicas in self.replicas_to_start.
 
@@ -332,46 +343,42 @@ class ServeMaster:
 
         Clears self.replicas_to_start.
         """
+        replica_started_futures = []
         for backend_tag, replicas_to_create in self.replicas_to_start.items():
             for replica_tag in replicas_to_create:
-                # NOTE(edoakes): the replicas may already be created if we
-                # failed after creating them but before writing a checkpoint.
-                try:
-                    worker_handle = ray.util.get_actor(replica_tag)
-                except ValueError:
-                    worker_handle = await self._start_backend_worker(
-                        backend_tag, replica_tag)
+                replica_started_futures.append(
+                    self._start_replica(backend_tag, replica_tag))
 
-                self.replicas[backend_tag].append(replica_tag)
-                self.workers[backend_tag][replica_tag] = worker_handle
-
-                # Register the worker with the router.
-                await self.router.add_new_worker.remote(
-                    backend_tag, replica_tag, worker_handle)
+        # Wait on all creation task futures together.
+        await asyncio.gather(*replica_started_futures)
 
         self.replicas_to_start.clear()
 
     async def _stop_pending_replicas(self):
         """Stops the pending backend replicas in self.replicas_to_stop.
 
-        Stops workers by telling the router to remove them.
-
-        Clears self.replicas_to_stop.
+        Removes workers from the router, kills them, and clears
+        self.replicas_to_stop.
         """
         for backend_tag, replicas_to_stop in self.replicas_to_stop.items():
             for replica_tag in replicas_to_stop:
                 # NOTE(edoakes): the replicas may already be stopped if we
                 # failed after stopping them but before writing a checkpoint.
                 try:
-                    # Remove the replica from router.
-                    # This will also submit __ray_terminate__ on the worker.
-                    # NOTE(edoakes): we currently need to kill the worker from
-                    # the router to guarantee that the router won't submit any
-                    # more requests to it.
-                    await self.router.remove_worker.remote(
-                        backend_tag, replica_tag)
+                    replica = ray.get_actor(replica_tag)
                 except ValueError:
-                    pass
+                    continue
+
+                # Remove the replica from router. This call is idempotent.
+                await self.router.remove_worker.remote(backend_tag,
+                                                       replica_tag)
+
+                # TODO(edoakes): this logic isn't ideal because there may be
+                # pending tasks still executing on the replica. However, if we
+                # use replica.__ray_terminate__, we may send it while the
+                # replica is being restarted and there's no way to tell if it
+                # successfully killed the worker or not.
+                ray.kill(replica, no_restart=True)
 
         self.replicas_to_stop.clear()
 

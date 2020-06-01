@@ -62,14 +62,18 @@ class KubernetesNodeProvider(NodeProvider):
         return pod.status.pod_ip
 
     def set_node_tags(self, node_id, tags):
-        body = {"metadata": {"labels": tags}}
-        core_api().patch_namespaced_pod(node_id, self.namespace, body)
+        pod = core_api().read_namespaced_pod_status(node_id, self.namespace)
+        pod.metadata.labels.update(tags)
+        core_api().patch_namespaced_pod(node_id, self.namespace, pod)
 
     def create_node(self, node_config, tags, count):
         pod_spec = node_config.copy()
         tags[TAG_RAY_CLUSTER_NAME] = self.cluster_name
         pod_spec["metadata"]["namespace"] = self.namespace
-        pod_spec["metadata"]["labels"] = tags
+        if "labels" in pod_spec["metadata"]:
+            pod_spec["metadata"]["labels"].update(tags)
+        else:
+            pod_spec["metadata"]["labels"] = tags
         logger.info(log_prefix + "calling create_namespaced_pod "
                     "(count={}).".format(count))
         for _ in range(count):

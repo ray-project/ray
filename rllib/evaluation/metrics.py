@@ -8,7 +8,6 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimate
 from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.memory import ray_get_and_free
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +17,8 @@ def get_learner_stats(grad_info):
     """Return optimization stats reported from the policy.
 
     Example:
-        >>> grad_info = evaluator.learn_on_batch(samples)
+        >>> grad_info = worker.learn_on_batch(samples)
+        {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}
         >>> print(get_stats(grad_info))
         {"vf_loss": ..., "policy_loss": ...}
     """
@@ -68,7 +68,7 @@ def collect_episodes(local_worker=None,
             logger.warning(
                 "WARNING: collected no metrics in {} seconds".format(
                     timeout_seconds))
-        metric_lists = ray_get_and_free(collected)
+        metric_lists = ray.get(collected)
     else:
         metric_lists = []
 

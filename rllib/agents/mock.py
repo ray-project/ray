@@ -18,6 +18,7 @@ class _MockTrainer(Trainer):
         "user_checkpoint_freq": 0,
         "object_store_memory_per_worker": 0,
         "object_store_memory": 0,
+        "framework": "tf",
     })
 
     @classmethod

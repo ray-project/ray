@@ -14,7 +14,7 @@ def echo(flask_request):
     return "hello " + flask_request.args.get("name", "serve!")
 
 
-serve.init(blocking=True)
+serve.init()
 
 serve.create_endpoint("my_endpoint", "/echo")
 serve.create_backend("echo:v1", echo)

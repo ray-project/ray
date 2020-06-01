@@ -1,4 +1,6 @@
 import time
+import asyncio
+
 import pytest
 import requests
 
@@ -352,7 +354,7 @@ def test_cluster_name():
     backend = "backend"
     endpoint = "endpoint"
 
-    serve.init(cluster_name="cluster1", blocking=True, http_port=8001)
+    serve.init(cluster_name="cluster1", http_port=8001)
     serve.create_endpoint(endpoint, route=route)
 
     def function():
@@ -365,7 +367,7 @@ def test_cluster_name():
 
     # Create a second cluster on port 8002. Create an endpoint and backend with
     # the same names and check that they don't collide.
-    serve.init(cluster_name="cluster2", blocking=True, http_port=8002)
+    serve.init(cluster_name="cluster2", http_port=8002)
     serve.create_endpoint(endpoint, route=route)
 
     def function():
@@ -386,3 +388,41 @@ def test_cluster_name():
     serve.init(cluster_name="cluster1")
     serve.delete_endpoint(endpoint)
     serve.delete_backend(backend)
+
+
+def test_parallel_start(serve_instance):
+    # Test the ability to start multiple replicas in parallel.
+    # In the past, when Serve scale up a backend, it does so one by one and
+    # wait for each replica to initialize. This test avoid this by preventing
+    # the first replica to finish initialization unless the second replica is
+    # also started.
+    @ray.remote
+    class Barrier:
+        def __init__(self, release_on):
+            self.release_on = release_on
+            self.current_waiters = 0
+            self.event = asyncio.Event()
+
+        async def wait(self):
+            self.current_waiters += 1
+            if self.current_waiters == self.release_on:
+                self.event.set()
+            else:
+                await self.event.wait()
+
+    barrier = Barrier.remote(release_on=2)
+
+    class LongStartingServable:
+        def __init__(self):
+            ray.get(barrier.wait.remote(), timeout=10)
+
+        def __call__(self, _):
+            return "Ready"
+
+    serve.create_endpoint("test-parallel")
+    serve.create_backend(
+        "p:v0", LongStartingServable, config={"num_replicas": 2})
+    serve.set_traffic("test-parallel", {"p:v0": 1})
+    handle = serve.get_handle("test-parallel")
+
+    ray.get(handle.remote(), timeout=10)
