@@ -57,7 +57,7 @@ Batching to improve performance
 ===============================
 
 You can also have Ray Serve batch requests for performance. In order to do use this feature, you need to:
-1. Set the `max_batch_size` in the `BackendConfig`.
+1. Set the ``max_batch_size`` in the ``config`` dictionary.
 2. Modify your backend implementation to accept a list of requests and return a list of responses instead of handling a single request.
 
 
@@ -79,6 +79,9 @@ You can also have Ray Serve batch requests for performance. In order to do use t
   config = {"max_batch_size": 5}
   serve.create_backend("counter1", BatchingExample, config=config)
   serve.set_traffic("counter1", {"counter1": 1.0})
+
+Please take a look at :ref:`Batching Tutorial<serve-batch-tutorial>` for a deep
+dive.
 
 .. _`serve-split-traffic`:
 

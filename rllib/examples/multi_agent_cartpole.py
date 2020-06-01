@@ -28,7 +28,7 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument("--num-agents", type=int, default=4)
 parser.add_argument("--num-policies", type=int, default=2)
-parser.add_argument("--stop-iters", type=int, default=20)
+parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-reward", type=float, default=150)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 parser.add_argument("--simple", action="store_true")
@@ -74,7 +74,6 @@ if __name__ == "__main__":
         "env_config": {
             "num_agents": args.num_agents,
         },
-        "log_level": "DEBUG",
         "simple_optimizer": args.simple,
         "num_sgd_iter": 10,
         "multiagent": {
@@ -89,7 +88,7 @@ if __name__ == "__main__":
         "training_iteration": args.stop_iters,
     }
 
-    results = tune.run("PPO", stop=stop, config=config)
+    results = tune.run("PPO", stop=stop, config=config, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

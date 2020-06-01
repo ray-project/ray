@@ -167,83 +167,22 @@ struct GcsServerMocker {
     int num_retry_creating_count_ = 0;
   };
 
-  class MockedActorInfoAccessor : public gcs::ActorInfoAccessor {
+  class MockedGcsActorTable : public gcs::GcsActorTable {
    public:
-    Status GetAll(std::vector<rpc::ActorTableData> *actor_table_data_list) override {
-      return Status::NotImplemented("");
+    MockedGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
+        : GcsActorTable(store_client) {}
+
+    Status Put(const ActorID &key, const rpc::ActorTableData &value,
+               const gcs::StatusCallback &callback) override {
+      auto status = Status::OK();
+      callback(status);
+      return status;
     }
 
-    Status AsyncGet(
-        const ActorID &actor_id,
-        const gcs::OptionalItemCallback<rpc::ActorTableData> &callback) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncGetAll(
-        const gcs::MultiItemCallback<rpc::ActorTableData> &callback) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncGetByName(
-        const std::string &name,
-        const gcs::OptionalItemCallback<rpc::ActorTableData> &callback) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncCreateActor(const TaskSpecification &task_spec,
-                            const gcs::StatusCallback &callback) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncRegister(const std::shared_ptr<rpc::ActorTableData> &data_ptr,
-                         const gcs::StatusCallback &callback) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncUpdate(const ActorID &actor_id,
-                       const std::shared_ptr<rpc::ActorTableData> &data_ptr,
-                       const gcs::StatusCallback &callback) override {
-      if (callback) {
-        callback(Status::OK());
-      }
-      return Status::OK();
-    }
-
-    Status AsyncSubscribeAll(
-        const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-        const gcs::StatusCallback &done) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncSubscribe(
-        const ActorID &actor_id,
-        const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-        const gcs::StatusCallback &done) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncUnsubscribe(const ActorID &actor_id) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncAddCheckpoint(const std::shared_ptr<rpc::ActorCheckpointData> &data_ptr,
-                              const gcs::StatusCallback &callback) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncGetCheckpoint(
-        const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
-        const gcs::OptionalItemCallback<rpc::ActorCheckpointData> &callback) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncGetCheckpointID(
-        const ActorID &actor_id,
-        const gcs::OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
+   private:
+    boost::asio::io_service main_io_service_;
+    std::shared_ptr<gcs::StoreClient> store_client_ =
+        std::make_shared<gcs::InMemoryStoreClient>(main_io_service_);
   };
 
   class MockedNodeInfoAccessor : public gcs::NodeInfoAccessor {

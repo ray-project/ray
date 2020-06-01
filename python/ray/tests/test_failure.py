@@ -529,29 +529,6 @@ def test_version_mismatch(shutdown_only):
     ray.__version__ = ray_version
 
 
-def test_warning_monitor_died(ray_start_2_cpus):
-    @ray.remote
-    def f():
-        pass
-
-    # Wait for the monitor process to start.
-    ray.get(f.remote())
-    time.sleep(1)
-
-    # Cause the monitor to raise an exception by pushing a malformed message to
-    # Redis. This will probably kill the raylet and the raylet_monitor in
-    # addition to the monitor.
-    fake_id = 20 * b"\x00"
-    malformed_message = "asdf"
-    redis_client = ray.worker.global_worker.redis_client
-    redis_client.execute_command(
-        "RAY.TABLE_ADD", ray.gcs_utils.TablePrefix.Value("HEARTBEAT_BATCH"),
-        ray.gcs_utils.TablePubsub.Value("HEARTBEAT_BATCH_PUBSUB"), fake_id,
-        malformed_message)
-
-    wait_for_errors(ray_constants.MONITOR_DIED_ERROR, 1)
-
-
 def test_export_large_objects(ray_start_regular):
     import ray.ray_constants as ray_constants
 

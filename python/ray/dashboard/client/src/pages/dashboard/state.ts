@@ -5,6 +5,7 @@ import {
   RayletInfoResponse,
   TuneAvailabilityResponse,
   TuneJobResponse,
+  MemoryTableResponse,
 } from "../../api";
 
 const name = "dashboard";
@@ -18,6 +19,8 @@ type State = {
   tuneAvailability: TuneAvailabilityResponse | null;
   lastUpdatedAt: number | null;
   error: string | null;
+  memoryTable: MemoryTableResponse | null;
+  shouldObtainMemoryTable: boolean;
 };
 
 const initialState: State = {
@@ -29,6 +32,8 @@ const initialState: State = {
   tuneAvailability: null,
   lastUpdatedAt: null,
   error: null,
+  memoryTable: null,
+  shouldObtainMemoryTable: false,
 };
 
 const slice = createSlice({
@@ -65,6 +70,15 @@ const slice = createSlice({
     },
     setError: (state, action: PayloadAction<string | null>) => {
       state.error = action.payload;
+    },
+    setMemoryTable: (
+      state,
+      action: PayloadAction<MemoryTableResponse | null>,
+    ) => {
+      state.memoryTable = action.payload;
+    },
+    setShouldObtainMemoryTable: (state, action: PayloadAction<boolean>) => {
+      state.shouldObtainMemoryTable = action.payload;
     },
   },
 });

@@ -6,8 +6,7 @@ import ray.serve as serve
 import time
 
 # initialize ray serve system.
-# blocking=True will wait for HTTP server to be ready to serve request.
-serve.init(blocking=True)
+serve.init()
 
 
 # a backend can be a function or class.
