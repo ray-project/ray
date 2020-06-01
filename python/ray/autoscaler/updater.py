@@ -265,17 +265,7 @@ class SSHCommandRunner:
 
         try:
             if with_output:
-                if interactive:
-                    ssh_process = self.process_runner.Popen(
-                        final_cmd, stderr=subprocess.PIPE)
-                    err = self.process_runner.check_output(
-                        ["grep", "-v", "Shared Connection to .* closed"],
-                        stdin=ssh_process.stderr)
-                    if err:
-                        print(err, file=sys.stderr)
-                    return ssh_process.stdout.read()
-                else:
-                    return self.process_runner.check_output(final_cmd)
+                return self.process_runner.check_output(final_cmd)
             else:
                 self.process_runner.check_call(final_cmd)
         except subprocess.CalledProcessError:
