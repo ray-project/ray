@@ -10,7 +10,9 @@ atari-sac-tf-and-torch:
     stop:
         timesteps_total: 20000000
     config:
-        use_pytorch: false  # <- switch on/off torch
+        # Works for both torch and tf.
+        framework:
+            grid_search: [tf, torch]
         gamma: 0.99
         # state-preprocessor=Our default Atari Conv2D-net.
         use_state_preprocessor: true

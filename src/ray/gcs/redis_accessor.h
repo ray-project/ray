@@ -296,6 +296,8 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
 
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
 
+  Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
+
  private:
   RedisGcsClient *client_impl_{nullptr};
 
@@ -451,6 +453,8 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
       rpc::WorkerType worker_type, const WorkerID &worker_id,
       const std::unordered_map<std::string, std::string> &worker_info,
       const StatusCallback &callback) override;
+
+  Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
 
  private:
   RedisGcsClient *client_impl_{nullptr};

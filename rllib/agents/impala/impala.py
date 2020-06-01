@@ -147,7 +147,7 @@ def make_learner_thread(local_worker, config):
 
 
 def get_policy_class(config):
-    if config["use_pytorch"]:
+    if config["framework"] == "torch":
         if config["vtrace"]:
             from ray.rllib.agents.impala.vtrace_torch_policy import \
                 VTraceTorchPolicy

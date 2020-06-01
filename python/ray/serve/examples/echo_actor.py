@@ -24,7 +24,7 @@ class MagicCounter:
         return base_number + self.increment
 
 
-serve.init(blocking=True)
+serve.init()
 serve.create_endpoint("magic_counter", "/counter")
 serve.create_backend("counter:v1", MagicCounter, 42)  # increment=42
 serve.set_traffic("magic_counter", {"counter:v1": 1.0})

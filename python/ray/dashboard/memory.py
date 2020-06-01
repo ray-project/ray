@@ -290,6 +290,5 @@ def construct_memory_table(workers_info_by_node: dict) -> MemoryTable:
                     pid=pid)
                 if memory_table_entry.is_valid():
                     memory_table_entries.append(memory_table_entry)
-
     memory_table = MemoryTable(memory_table_entries)
     return memory_table

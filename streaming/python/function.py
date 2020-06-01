@@ -2,7 +2,6 @@ import enum
 import importlib
 import inspect
 import sys
-import typing
 from abc import ABC, abstractmethod
 
 from ray import cloudpickle
@@ -17,7 +16,7 @@ class Language(enum.Enum):
 class Function(ABC):
     """The base interface for all user-defined functions."""
 
-    def open(self, conf: typing.Dict[str, str]):
+    def open(self, runtime_context):
         pass
 
     def close(self):
@@ -53,9 +52,6 @@ class SourceFunction(Function):
         """Starts the source. Implementations can use the
          :class:`SourceContext` to emit elements.
         """
-        pass
-
-    def close(self):
         pass
 
 

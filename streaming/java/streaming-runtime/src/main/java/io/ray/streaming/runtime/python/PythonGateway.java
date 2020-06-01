@@ -31,13 +31,12 @@ import org.slf4j.LoggerFactory;
 public class PythonGateway {
   private static final Logger LOG = LoggerFactory.getLogger(PythonGateway.class);
   private static final String REFERENCE_ID_PREFIX = "__gateway_reference_id__";
+  private static MsgPackSerializer serializer = new MsgPackSerializer();
 
-  private MsgPackSerializer serializer;
   private Map<String, Object> referenceMap;
   private StreamingContext streamingContext;
 
   public PythonGateway() {
-    serializer = new MsgPackSerializer();
     referenceMap = new HashMap<>();
     LOG.info("PythonGateway created");
   }
@@ -156,8 +155,23 @@ public class PythonGateway {
         .map((Function<Class, Class>) Primitives::unwrap)
         .toArray(Class[]::new);
     Optional<Method> any = methods.stream()
-        .filter(m -> Arrays.equals(m.getParameterTypes(), paramsTypes) ||
-            Arrays.equals(m.getParameterTypes(), unwrappedTypes))
+        .filter(m -> {
+          boolean exactMatch = Arrays.equals(m.getParameterTypes(), paramsTypes) ||
+              Arrays.equals(m.getParameterTypes(), unwrappedTypes);
+          if (exactMatch) {
+            return true;
+          } else if (paramsTypes.length == m.getParameterTypes().length) {
+            for (int i = 0; i < m.getParameterTypes().length; i++) {
+              Class<?> parameterType = m.getParameterTypes()[i];
+              if (!parameterType.isAssignableFrom(paramsTypes[i])) {
+                return false;
+              }
+            }
+            return true;
+          } else {
+            return false;
+          }
+        })
         .findAny();
     Preconditions.checkArgument(any.isPresent(),
         String.format("Method %s with type %s doesn't exist on class %s",
@@ -166,7 +180,21 @@ public class PythonGateway {
   }
 
   private static boolean returnReference(Object value) {
-    return !(value instanceof Number) && !(value instanceof String) && !(value instanceof byte[]);
+    if (isBasic(value)) {
+      return false;
+    } else {
+      try {
+        serializer.serialize(value);
+        return false;
+      } catch (Exception e) {
+        return true;
+      }
+    }
+  }
+
+  private static boolean isBasic(Object value) {
+    return value == null || (value instanceof Boolean) || (value instanceof Number) ||
+        (value instanceof String) || (value instanceof byte[]);
   }
 
   public byte[] newInstance(byte[] classNameBytes) {

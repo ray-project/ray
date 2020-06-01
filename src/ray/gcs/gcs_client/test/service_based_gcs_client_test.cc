@@ -22,7 +22,12 @@
 
 namespace ray {
 
-class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
+class ServiceBasedGcsClientTest : public ::testing::Test {
+ public:
+  ServiceBasedGcsClientTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
+
+  virtual ~ServiceBasedGcsClientTest() { TestSetupUtil::ShutDownRedisServers(); }
+
  protected:
   void SetUp() override {
     config.grpc_server_port = 0;
@@ -30,7 +35,7 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     config.grpc_server_thread_num = 1;
     config.redis_address = "127.0.0.1";
     config.is_test = true;
-    config.redis_port = REDIS_SERVER_PORTS.front();
+    config.redis_port = TEST_REDIS_SERVER_PORTS.front();
     gcs_server_.reset(new gcs::GcsServer(config));
     io_service_.reset(new boost::asio::io_service());
 
@@ -60,7 +65,7 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     thread_io_service_->join();
     thread_gcs_server_->join();
     gcs_client_->Disconnect();
-    FlushAll();
+    TestSetupUtil::FlushAllRedisServers();
   }
 
   void RestartGcsServer() {
@@ -875,6 +880,48 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableReSubscribe) {
   WaitPendingDone(actor2_update_count, 1);
 }
 
+TEST_F(ServiceBasedGcsClientTest, TestObjectTableReSubscribe) {
+  ObjectID object1_id = ObjectID::FromRandom();
+  ObjectID object2_id = ObjectID::FromRandom();
+  ClientID node_id = ClientID::FromRandom();
+
+  // Subscribe to any update of an object's location.
+  std::atomic<int> object1_change_count(0);
+  std::atomic<int> object2_change_count(0);
+  ASSERT_TRUE(SubscribeToLocations(
+      object1_id, [&object1_change_count](const ObjectID &object_id,
+                                          const gcs::ObjectChangeNotification &result) {
+        if (!result.GetData().empty()) {
+          ++object1_change_count;
+        }
+      }));
+  ASSERT_TRUE(SubscribeToLocations(
+      object2_id, [&object2_change_count](const ObjectID &object_id,
+                                          const gcs::ObjectChangeNotification &result) {
+        if (!result.GetData().empty()) {
+          ++object2_change_count;
+        }
+      }));
+
+  ASSERT_TRUE(AddLocation(object1_id, node_id));
+  WaitPendingDone(object1_change_count, 1);
+  ASSERT_TRUE(AddLocation(object2_id, node_id));
+  WaitPendingDone(object2_change_count, 1);
+
+  // Cancel subscription to any update of an object's location.
+  UnsubscribeToLocations(object1_id);
+  usleep(100 * 1000);
+
+  // Restart GCS.
+  RestartGcsServer();
+
+  // Add location of object to GCS again and check if resubscribe works.
+  ASSERT_TRUE(AddLocation(object1_id, node_id));
+  WaitPendingDone(object1_change_count, 1);
+  ASSERT_TRUE(AddLocation(object2_id, node_id));
+  WaitPendingDone(object2_change_count, 2);
+}
+
 TEST_F(ServiceBasedGcsClientTest, TestNodeTableReSubscribe) {
   // Test that subscription of the node table can still work when GCS server restarts.
   // Subscribe to node addition and removal events from GCS and cache those information.
@@ -956,9 +1003,27 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskTableReSubscribe) {
   WaitPendingDone(task_count, 1);
 }
 
+TEST_F(ServiceBasedGcsClientTest, TestWorkerTableReSubscribe) {
+  // Subscribe to all unexpected failure of workers from GCS.
+  std::atomic<int> worker_failure_count(0);
+  auto on_subscribe = [&worker_failure_count](const WorkerID &worker_id,
+                                              const rpc::WorkerFailureData &result) {
+    ++worker_failure_count;
+  };
+  ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
+
+  // Restart GCS
+  RestartGcsServer();
+
+  // Report a worker failure to GCS and check if resubscribe works.
+  auto worker_failure_data = Mocker::GenWorkerFailureData();
+  ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
+  WaitPendingDone(worker_failure_count, 1);
+}
+
 TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
   // Stop redis.
-  TearDownTestCase();
+  TestSetupUtil::ShutDownRedisServers();
 
   // Sleep 3 times of gcs_redis_heartbeat_interval_milliseconds to make sure gcs_server
   // detects that the redis is failure and then stop itself.
@@ -974,8 +1039,8 @@ TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

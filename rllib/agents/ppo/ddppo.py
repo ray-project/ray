@@ -49,7 +49,7 @@ DEFAULT_CONFIG = with_base_config(ppo.DEFAULT_CONFIG, {
 
     # *** WARNING: configs below are DDPPO overrides over PPO; you
     #     shouldn't need to adjust them. ***
-    "use_pytorch": True,  # DDPPO requires PyTorch distributed.
+    "framework": "torch",  # DDPPO requires PyTorch distributed.
     "num_gpus": 0,  # Learning is no longer done on the driver process, so
                     # giving GPUs to the driver does not make sense!
     "num_gpus_per_worker": 1,  # Each rollout worker gets a GPU.
@@ -70,7 +70,7 @@ def validate_config(config):
         raise ValueError(
             "Set rollout_fragment_length instead of train_batch_size "
             "for DDPPO.")
-    if not config["use_pytorch"]:
+    if config["framework"] != "torch":
         raise ValueError(
             "Distributed data parallel is only supported for PyTorch")
     if config["num_gpus"]:

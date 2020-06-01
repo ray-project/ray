@@ -8,7 +8,8 @@ cartpole-marwil:
     stop:
         timesteps_total: 500000
     config:
-        use_pytorch: false  # <- switch on/off torch
+        # Works for both torch and tf.
+        framework: tf
         beta:
             grid_search: [0, 1]   # compare IL (beta=0) vs MARWIL
         input: /tmp/out
