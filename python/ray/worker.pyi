@@ -16,7 +16,7 @@ Y = TypeVar('Y')
 Z = TypeVar('Z')
 
 
-class RemoteFunction(Generic[Y], Generic[Z]):
+class RemoteFunction(Y, Z):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         pass
 
