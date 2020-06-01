@@ -23,7 +23,7 @@ public abstract class Stream<S extends Stream<S, T>, T>
   private final int id;
   private final StreamingContext streamingContext;
   private final Stream inputStream;
-  private final StreamOperator operator;
+  private StreamOperator operator;
   private int parallelism = 1;
   private Map<String, String> config = new HashMap<>();
   private Partition<T> partition;
@@ -73,6 +73,7 @@ public abstract class Stream<S extends Stream<S, T>, T>
     this.streamingContext = originalStream.getStreamingContext();
     this.inputStream = originalStream.getInputStream();
     this.operator = originalStream.getOperator();
+    Preconditions.checkNotNull(operator);
   }
 
   @SuppressWarnings("unchecked")
@@ -102,6 +103,13 @@ public abstract class Stream<S extends Stream<S, T>, T>
 
   public StreamOperator getOperator() {
     return operator;
+  }
+
+  protected void setOperator(StreamOperator operator) {
+    this.operator = operator;
+    if (isProxyStream()) {
+      getOriginalStream().setOperator(operator);
+    }
   }
 
   @SuppressWarnings("unchecked")
