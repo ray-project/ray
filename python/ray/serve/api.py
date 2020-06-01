@@ -205,7 +205,8 @@ def create_backend(backend_tag,
 
     replica_config = ReplicaConfig(
         func_or_class, *actor_init_args, ray_actor_options=ray_actor_options)
-    backend_config = BackendConfig(config, replica_config.accepts_batches)
+    backend_config = BackendConfig(config, replica_config.accepts_batches,
+                                   replica_config.is_blocking)
 
     retry_actor_failures(master_actor.create_backend, backend_tag,
                          backend_config, replica_config)

@@ -201,12 +201,12 @@ def chain_future(src, dst):
 
 
 @chain_future.register(asyncio.Future)
-def chain_future_(src: asyncio.Future, dst: asyncio.Future):
+def _chain_future_single(src: asyncio.Future, dst: asyncio.Future):
     asyncio.futures._chain_future(src, dst)
 
 
 @chain_future.register(list)
-def chain_future_(src: List[asyncio.Future], dst: List[asyncio.Future]):
+def _chain_future_list(src: List[asyncio.Future], dst: List[asyncio.Future]):
     if len(src) != len(dst):
         raise ValueError(
             "Source and destination list doesn't have the same length. "

@@ -15,7 +15,10 @@ from ray.serve.exceptions import RayServeException
 pytestmark = pytest.mark.asyncio
 
 
-def setup_worker(name, func_or_class, init_args=None):
+def setup_worker(name,
+                 func_or_class,
+                 init_args=None,
+                 backend_config=BackendConfig({})):
     if init_args is None:
         init_args = ()
 
@@ -23,13 +26,16 @@ def setup_worker(name, func_or_class, init_args=None):
     class WorkerActor:
         def __init__(self):
             self.worker = create_backend_worker(func_or_class)(
-                name, name + ":tag", init_args)
+                name, name + ":tag", init_args, backend_config)
 
         def ready(self):
             pass
 
         async def handle_request(self, *args, **kwargs):
             return await self.worker.handle_request(*args, **kwargs)
+
+        def update_config(self, new_config):
+            return self.worker.update_config(new_config)
 
     worker = WorkerActor.remote()
     ray.get(worker.ready.remote())
@@ -165,14 +171,16 @@ async def test_task_runner_custom_method_batch(serve_instance):
     CONSUMER_NAME = "runner"
     PRODUCER_NAME = "producer"
 
-    worker = setup_worker(CONSUMER_NAME, Batcher)
+    backend_config = BackendConfig(
+        {
+            "max_batch_size": 4,
+            "batch_wait_timeout": 2
+        }, accepts_batches=True)
+    worker = setup_worker(
+        CONSUMER_NAME, Batcher, backend_config=backend_config)
 
     await q.set_traffic.remote(PRODUCER_NAME, {CONSUMER_NAME: 1.0})
-    await q.set_backend_config.remote(
-        CONSUMER_NAME,
-        BackendConfig({
-            "max_batch_size": 10
-        }, accepts_batches=True))
+    await q.set_backend_config.remote(CONSUMER_NAME, backend_config)
 
     def make_request_param(call_method):
         return RequestMetadata(
