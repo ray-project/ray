@@ -27,6 +27,8 @@ namespace {
 
 // Duration between internal book-keeping heartbeats.
 const int kInternalHeartbeatMillis = 1000;
+// Duration between resolving locations of actors that haven't been reported to GCS.
+// The duration should be long otherwise it will poll the GCS service unnecessarily.
 const int kLocationResolveHeartbeatMillis = 3000;
 
 void BuildCommonTaskSpec(
@@ -687,20 +689,36 @@ void CoreWorker::LocationResolveHeartBeat(const boost::system::error_code &error
   if (error == boost::asio::error::operation_aborted) {
     return;
   }
+  // Note: This will poll the GCS service every certain period.
+  // This exists to resolve scenarios such as
+  // https://github.com/ray-project/ray/pull/8679/files
+  ResolveActorsLocationNotPersistedToGCS();
+  internal_timer_.expires_at(
+      internal_timer_.expiry() +
+      boost::asio::chrono::milliseconds(kLocationResolveHeartbeatMillis));
+  internal_timer_.async_wait(
+      boost::bind(&CoreWorker::LocationResolveHeartBeat, this, _1));
+}
+
+void CoreWorker::ResolveActorsLocationNotPersistedToGCS() {
   absl::MutexLock lock(&actor_location_resolve_waiters_mutex_);
-  for (auto &actor_id : actor_location_resolve_waiters_) {
+  for (auto it = actor_location_resolve_waiters_.begin();
+       it != actor_location_resolve_waiters_.end();) {
+    auto current = it++;
+    const auto &actor_id = *current;
     ActorHandle *actor_handle = nullptr;
     RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
 
     if (actor_handle->IsPersistedToGCS()) {
-      // if an actor is already persisted to GCS, this doesn't need to be in waiter
-      // anymore.
+      // if an actor is already persisted to GCS, GCS will be responsible for reporting
+      // state of actors, so just remove it from the waiter.
       actor_location_resolve_waiters_.erase(actor_id);
     } else {
-      // If it is still not persisted to GCS, check worker/node is still alive. Otherwise,
-      // there's no way to know if they are alive as actor information is not in GCS yet.
-      // Question? Is worker failure reported only once? If it stores historical data, it
-      // can cause some problems.
+      // If it is still not persisted to GCS, check worker/node is still alive.
+      // Disconnect actors if the worker or node is dead.
+      // This is needed because until the owner's local depedencies are resolved,
+      // actors won't be persisted to GCS, and there's no way we can know the states of
+      // them. Question? Is is possible worker is restarted after reporting failures?
       const WorkerID &worker_id =
           WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
       RAY_CHECK_OK(gcs_client_->Workers().AsyncGetWorkerFailure(
@@ -722,12 +740,6 @@ void CoreWorker::LocationResolveHeartBeat(const boost::system::error_code &error
       }
     }
   }
-
-  internal_timer_.expires_at(
-      internal_timer_.expiry() +
-      boost::asio::chrono::milliseconds(kLocationResolveHeartbeatMillis));
-  internal_timer_.async_wait(
-      boost::bind(&CoreWorker::LocationResolveHeartBeat, this, _1));
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
@@ -1346,7 +1358,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
       ActorHandle *actor_handle = nullptr;
       RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
       // If the notification comes in, that means this actor is persisted to GCS.
-      actor_handle->SetIsPersistedToGCSIfNeeded();
+      actor_handle->SetIsPersistedToGCSFlag();
       RAY_LOG(ERROR) << "Location is resolved! actor id: " << actor_id
                      << "is persisted to GCS: " << actor_handle->IsPersistedToGCS();
 

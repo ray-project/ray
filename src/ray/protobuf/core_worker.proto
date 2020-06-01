@@ -53,9 +53,6 @@ message ActorHandle {
 
   // How many times tasks may be retried on this actor if the actor fails.
   int64 max_task_retries = 9;
-
-  // Optional. If false, it means this handle is not reported to GCS yet.
-  bool is_persisted_to_gcs = 10;
 }
 
 message AssignTaskRequest {

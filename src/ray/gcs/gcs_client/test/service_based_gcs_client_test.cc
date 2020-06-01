@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
+
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_client/service_based_accessor.h"
@@ -453,6 +454,8 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  bool GetWorkerFailiure() {}
+
   bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms) {
     auto status = future.wait_for(timeout_ms);
     return status == std::future_status::ready && future.get();
@@ -807,6 +810,9 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerInfo) {
   auto worker_failure_data = Mocker::GenWorkerFailureData();
   ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
   WaitPendingDone(worker_failure_count, 1);
+
+  // Get worker failure data.
+  // SANG-TODO Implement this.
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestErrorInfo) {

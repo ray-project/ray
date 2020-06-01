@@ -804,6 +804,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Heartbeat for resolving location of actors that haven't been registered to GCS.
   void LocationResolveHeartBeat(const boost::system::error_code &error);
 
+  /// Resolve locations of actors that are not persisted to GCS yet.
+  void ResolveActorsLocationNotPersistedToGCS();
+
   ///
   /// Private methods related to task submission.
   ///

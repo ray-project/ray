@@ -70,13 +70,13 @@ class ActorHandle {
 
   int64_t MaxTaskRetries() const { return inner_.max_task_retries(); }
 
-  bool IsPersistedToGCS() const { return inner_.is_persisted_to_gcs(); }
+  bool IsPersistedToGCS() const { return is_persisted_to_gcs_; }
 
-  void SetIsPersistedToGCSIfNeeded();
+  void SetIsPersistedToGCSFlag();
 
  private:
   // Protobuf-defined persistent state of the actor handle.
-  ray::rpc::ActorHandle inner_;
+  const ray::rpc::ActorHandle inner_;
 
   /// The unique id of the dummy object returned by the previous task.
   /// TODO: This can be removed once we schedule actor tasks by task counter
@@ -85,6 +85,10 @@ class ActorHandle {
   ObjectID actor_cursor_ GUARDED_BY(mutex_);
   // Number of tasks that have been submitted on this handle.
   uint64_t task_counter_ GUARDED_BY(mutex_) = 0;
+  // False if actor handle is not persisted to GCS yet.
+  // This value will become true when the actor
+  // information is reported from GCS through pub/sub.
+  bool is_persisted_to_gcs_ GUARDED_BY(mutex_) = false;
 
   /// Mutex to protect fields in the actor handle.
   mutable absl::Mutex mutex_;
