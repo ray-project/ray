@@ -11,8 +11,8 @@ import RemoveIcon from "@material-ui/icons/Remove";
 import classNames from "classnames";
 import React from "react";
 import {
-  MemoryTableResponse,
   MemoryTableEntry,
+  MemoryTableResponse,
   MemoryTableSummary,
 } from "../../../api";
 import MemorySummary from "./MemorySummary";
