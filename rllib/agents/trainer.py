@@ -28,7 +28,7 @@ from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
 from ray.tune.resources import Resources
-from ray.tune.logger import UnifiedLogger
+from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
 tf = try_import_tf()
@@ -408,7 +408,7 @@ class Trainer(Trainable):
     def __init__(self,
                  config: dict = None,
                  env: str = None,
-                 logger_creator: Callable[[], ray.tune.Logger] = None):
+                 logger_creator: Callable[[], Logger] = None):
         """Initialize an RLLib trainer.
 
         Args:
