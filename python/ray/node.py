@@ -169,9 +169,8 @@ class Node:
                 # NOTE: There is a possible but unlikely race condition where
                 # the port is bound by another process between now and when the
                 # raylet starts.
-                self._ray_params.node_manager_port = self._get_unused_port()
-                self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.socket.bind(("", self.node_manager_port))
+                self._ray_params.node_manager_port, self.socket = \
+                    self._get_unused_port()
 
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
@@ -399,24 +398,30 @@ class Node:
         log_stderr_file = open(log_stderr, "a", buffering=1)
         return log_stdout_file, log_stderr_file
 
-    def _get_unused_port(self):
+    def _get_unused_port(self, close_on_exit=True):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.bind(("", 0))
         port = s.getsockname()[1]
-        s.close()
 
         # Try to generate a port that is far above the 'next available' one.
         # This solves issue #8254 where GRPC fails because the port assigned
         # from this method has been used by a different process.
         for _ in range(NUMBER_OF_PORT_RETRIES):
             new_port = random.randint(port, 65535)
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            error_val = s.connect_ex(("", new_port))
+            new_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                new_s.bind(("", new_port))
+            except OSError:
+                new_s.close()
+                continue
             s.close()
-            if error_val != 0:
-                return new_port
+            if close_on_exit:
+                new_s.close()
+            return new_port, new_s
         logger.error("Unable to succeed in selecting a random port.")
-        return port
+        if close_on_exit:
+            s.close()
+        return port, s
 
     def _prepare_socket_file(self, socket_path, default_prefix):
         """Prepare the socket file for raylet and plasma.
@@ -433,7 +438,7 @@ class Node:
         if sys.platform == "win32":
             if socket_path is None:
                 result = "tcp://{}:{}".format(self._localhost,
-                                              self._get_unused_port())
+                                              self._get_unused_port()[0])
         else:
             if socket_path is None:
                 result = self._make_inc_temp(
