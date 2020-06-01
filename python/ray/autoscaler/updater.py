@@ -262,9 +262,20 @@ class SSHCommandRunner:
             # We do this because `-o ControlMaster` causes the `-N` flag to
             # still create an interactive shell in some ssh versions.
             final_cmd.append(quote("while true; do sleep 86400; done"))
+
         try:
             if with_output:
-                return self.process_runner.check_output(final_cmd)
+                if interactive:
+                    ssh_process = self.process_runner.Popen(final_cmd,
+                                                            stderr=subprocess.PIPE)
+                    err = self.process_runner.check_output(["grep", "-v",
+                                                            "Shared Connection to .* closed"],
+                                                           stdin=ssh_prrocess.stderr)
+                    if err:
+                        print(err, file=sys.stderr)
+                    return ssh_process.stdout.read()
+                else:
+                    return self.process_runner.check_output(final_cmd)
             else:
                 self.process_runner.check_call(final_cmd)
         except subprocess.CalledProcessError:
