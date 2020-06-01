@@ -12,6 +12,7 @@ from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models import ModelCatalog
+from ray.rllib.models.extra_spaces import Repeated
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -49,8 +50,21 @@ TUPLE_SPACE = spaces.Tuple([
                   spaces.Box(low=0, high=1, shape=(10, 10, 3)))),
     spaces.Discrete(5),
 ])
-
 TUPLE_SAMPLES = [TUPLE_SPACE.sample() for _ in range(10)]
+
+# Constraints on the Repeated space.
+MAX_PLAYERS = 4
+MAX_ITEMS = 7
+MAX_EFFECTS = 2
+ITEM_SPACE = Discrete(5)
+EFFECT_SPACE = Box(9000, 9999, shape=(4, ))
+REPEATED_SPACE = Dict({
+    "location": Box(-100, 100, shape=(2, )),
+    "status": Box(-1, 1, shape=(10, )),
+    "items": Repeated(ITEM_SPACE, max_len=MAX_ITEMS),
+    "effects": Repeated(EFFECT_SPACE, max_len=MAX_EFFECTS),
+})
+REPEATED_SAMPLES = [REPEATED_SPACE.sample() for _ in range(10)]
 
 
 def one_hot(i, n):
@@ -89,6 +103,22 @@ class NestedTupleEnv(gym.Env):
     def step(self, action):
         self.steps += 1
         return TUPLE_SAMPLES[self.steps], 1, self.steps >= 5, {}
+
+
+class RepeatedSpaceEnv(gym.Env):
+    def __init__(self):
+        self.action_space = spaces.Discrete(2)
+        self.observation_space = REPEATED_SPACE
+        self._spec = EnvSpec("RepeatedSpaceEnv-v0")
+        self.steps = 0
+
+    def reset(self):
+        self.steps = 0
+        return REPEATED_SAMPLES[0]
+
+    def step(self, action):
+        self.steps += 1
+        return REPEATED_SAMPLES[self.steps], 1, self.steps >= 5, {}
 
 
 class NestedMultiAgentEnv(MultiAgentEnv):
