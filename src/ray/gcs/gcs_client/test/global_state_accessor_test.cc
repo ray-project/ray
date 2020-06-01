@@ -148,8 +148,8 @@ TEST_F(GlobalStateAccessorTest, TestNodeResourceTable) {
     resource_table_data.set_resource_capacity(static_cast<double>(index + 1) + 0.1);
     resources[std::to_string(index)] =
         std::make_shared<rpc::ResourceTableData>(resource_table_data);
-    gcs_client_->Nodes().AsyncUpdateResources(
-        node_id, resources, [](Status status) { RAY_CHECK(status.ok()); });
+    RAY_IGNORE_EXPR(gcs_client_->Nodes().AsyncUpdateResources(
+        node_id, resources, [](Status status) { RAY_CHECK(status.ok()); }));
   }
   auto node_table = global_state_->GetAllNodeInfo();
   ASSERT_EQ(node_table.size(), node_count);

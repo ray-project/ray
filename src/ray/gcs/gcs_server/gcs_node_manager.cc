@@ -214,7 +214,7 @@ void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &re
                                            rpc::UpdateResourcesReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_id());
-  RAY_LOG(INFO) << "Updating resources, node id = " << node_id;
+  RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
   auto iter = cluster_resources_.find(node_id);
   if (iter != cluster_resources_.end()) {
     auto to_be_updated_resources = std::make_shared<gcs::NodeInfoAccessor::ResourceMap>();
