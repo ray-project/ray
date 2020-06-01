@@ -256,35 +256,6 @@ class GlobalState:
         }
         return actor_info
 
-    def actor_table(self, actor_id=None):
-        """Fetch and parse the actor table information for one or more actor IDs.
-
-        Args:
-            actor_id: A hex string of the actor ID to fetch information about.
-                If this is None, then the actor table is fetched.
-
-        Returns:
-            Information from the actor table.
-        """
-        self._check_connected()
-        if actor_id is not None:
-            actor_id = ray.ActorID(hex_to_binary(actor_id))
-            return self._actor_table(actor_id)
-        else:
-            actor_table_keys = list(
-                self.redis_client.scan_iter(
-                    match=gcs_utils.TablePrefix_ACTOR_string + "*"))
-            actor_ids_binary = [
-                key[len(gcs_utils.TablePrefix_ACTOR_string):]
-                for key in actor_table_keys
-            ]
-
-            results = {}
-            for actor_id_binary in actor_ids_binary:
-                results[binary_to_hex(actor_id_binary)] = self._actor_table(
-                    ray.ActorID(actor_id_binary))
-            return results
-
     def node_resource_table(self, node_id=None):
         """Fetch and parse the node resource table info for one.
 
