@@ -358,7 +358,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   internal_timer_.expires_from_now(
       boost::asio::chrono::milliseconds(kLocationResolveHeartbeatMillis));
-  internal_timer_.async_wait(boost::bind(&CoreWorker::LocationResolveHeartBeat, this, _1));
+  internal_timer_.async_wait(
+      boost::bind(&CoreWorker::LocationResolveHeartBeat, this, _1));
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket, local_raylet_client_, options_.check_signals,
@@ -692,33 +693,41 @@ void CoreWorker::LocationResolveHeartBeat(const boost::system::error_code &error
     RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
 
     if (actor_handle->IsPersistedToGCS()) {
-      // if an actor is already persisted to GCS, this doesn't need to be in waiter anymore.
+      // if an actor is already persisted to GCS, this doesn't need to be in waiter
+      // anymore.
       actor_location_resolve_waiters_.erase(actor_id);
     } else {
-      // If it is still not persisted to GCS, check worker/node is still alive. Otherwise, there's no way to know
-      // if they are alive as actor information is not in GCS yet.
-      // Question? Is worker failure reported only once? If it stores historical data, it can cause some problems.
-      const WorkerID &worker_id = WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
+      // If it is still not persisted to GCS, check worker/node is still alive. Otherwise,
+      // there's no way to know if they are alive as actor information is not in GCS yet.
+      // Question? Is worker failure reported only once? If it stores historical data, it
+      // can cause some problems.
+      const WorkerID &worker_id =
+          WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
       RAY_CHECK_OK(gcs_client_->Workers().AsyncGetWorkerFailure(
-        worker_id,
-        [this, actor_id](Status status, const boost::optional<gcs::WorkerFailureData> &result) {
-          if (status.ok() && result) {
-            direct_actor_submitter_->DisconnectActor(actor_id, true);
-          }
-      }));
+          worker_id,
+          [this, actor_id](Status status,
+                           const boost::optional<gcs::WorkerFailureData> &result) {
+            if (status.ok() && result) {
+              direct_actor_submitter_->DisconnectActor(actor_id, true);
+            }
+          }));
 
-      const ClientID &node_id = ClientID::FromBinary(actor_handle->GetOwnerAddress().raylet_id());
+      const ClientID &node_id =
+          ClientID::FromBinary(actor_handle->GetOwnerAddress().raylet_id());
       const auto &optional_node_info = gcs_client_->Nodes().Get(node_id);
       RAY_CHECK(optional_node_info) << "Node information for an actor_id is not found.";
-      if (optional_node_info->state() == rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD) {
+      if (optional_node_info->state() ==
+          rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD) {
         direct_actor_submitter_->DisconnectActor(actor_id, true);
       }
     }
   }
 
-  internal_timer_.expires_at(internal_timer_.expiry() +
-                             boost::asio::chrono::milliseconds(kLocationResolveHeartbeatMillis));
-  internal_timer_.async_wait(boost::bind(&CoreWorker::LocationResolveHeartBeat, this, _1));
+  internal_timer_.expires_at(
+      internal_timer_.expiry() +
+      boost::asio::chrono::milliseconds(kLocationResolveHeartbeatMillis));
+  internal_timer_.async_wait(
+      boost::bind(&CoreWorker::LocationResolveHeartBeat, this, _1));
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
@@ -1318,8 +1327,8 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   direct_actor_submitter_->AddActorQueueIfNotExists(actor_id);
 
   if (!actor_handle->IsPersistedToGCS()) {
-    // When an actor information is not persisted to GCS yet, worker failure & node failure
-    // should be tracked so that it can know if actors have been failed or not.
+    // When an actor information is not persisted to GCS yet, worker failure & node
+    // failure should be tracked so that it can know if actors have been failed or not.
     absl::MutexLock lock(&actor_location_resolve_waiters_mutex_);
     actor_location_resolve_waiters_.insert(actor_id);
   }

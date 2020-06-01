@@ -69,8 +69,7 @@ void DefaultWorkerInfoHandler::HandleRegisterWorker(
 }
 
 void DefaultWorkerInfoHandler::HandleGetWorkerFailure(
-    const GetWorkerFailureRequest &request,
-    GetWorkerFailureReply *reply,
+    const GetWorkerFailureRequest &request, GetWorkerFailureReply *reply,
     SendReplyCallback send_reply_callback) {
   RAY_LOG(ERROR) << "Sangbinsangbin";
   WorkerID worker_id = WorkerID::FromBinary(request.worker_id());

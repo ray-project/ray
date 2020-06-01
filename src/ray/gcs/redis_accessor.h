@@ -16,6 +16,7 @@
 #define RAY_GCS_REDIS_ACCESSOR_H
 
 #include <ray/common/task/task_spec.h>
+
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/callback.h"
@@ -454,8 +455,9 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
 
   Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
 
-  Status AsyncGetWorkerFailure(const WorkerID &worker_id,
-                               const OptionalItemCallback<rpc::WorkerFailureData> &callback);
+  Status AsyncGetWorkerFailure(
+      const WorkerID &worker_id,
+      const OptionalItemCallback<rpc::WorkerFailureData> &callback);
 
  private:
   RedisGcsClient *client_impl_{nullptr};

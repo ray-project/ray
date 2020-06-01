@@ -16,6 +16,7 @@
 #define RAY_GCS_SERVICE_BASED_ACCESSOR_H
 
 #include <ray/common/task/task_spec.h>
+
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/util/sequencer.h"
@@ -359,8 +360,9 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
 
   Status AsyncReSubscribe() override;
 
-  Status AsyncGetWorkerFailure(const WorkerID &worker_id,
-                               const OptionalItemCallback<rpc::WorkerFailureData> &callback) override;
+  Status AsyncGetWorkerFailure(
+      const WorkerID &worker_id,
+      const OptionalItemCallback<rpc::WorkerFailureData> &callback) override;
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when GCS

@@ -1087,7 +1087,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// List of actor ids that didn't resolve its location in GCS yet.
   /// This means that these actor information hasn't been persisted to GCS.
   /// It happens only when the actor is not created yet because local dependencies
-  /// for actor creation task hasn't been resolved. 
+  /// for actor creation task hasn't been resolved.
   absl::flat_hash_set<ActorID> actor_location_resolve_waiters_
       GUARDED_BY(actor_location_resolve_waiters_mutex_);
 

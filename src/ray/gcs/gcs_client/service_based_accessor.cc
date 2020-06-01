@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_client/service_based_accessor.h"
+
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 namespace ray {
@@ -1280,8 +1281,8 @@ Status ServiceBasedWorkerInfoAccessor::AsyncGetWorkerFailure(
   rpc::GetWorkerFailureRequest request;
   request.set_worker_id(worker_id.Binary());
   client_impl_->GetGcsRpcClient().GetWorkerFailure(
-      request,
-      [worker_id, callback](const Status &status, const rpc::GetWorkerFailureReply &reply) {
+      request, [worker_id, callback](const Status &status,
+                                     const rpc::GetWorkerFailureReply &reply) {
         if (reply.has_worker_failure_data()) {
           callback(status, reply.worker_failure_data());
         } else {
