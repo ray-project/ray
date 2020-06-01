@@ -241,8 +241,6 @@ class DashboardController(BaseDashboardController):
         return self.memory_table
 
     def stop_collecting_memory_table_info(self):
-        # Reset memory table.
-        self.memory_table = MemoryTable([])
         self.raylet_stats.include_memory_info = False
 
     def tune_info(self):

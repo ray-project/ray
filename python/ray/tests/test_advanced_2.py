@@ -251,10 +251,8 @@ def test_zero_cpus(shutdown_only):
 def test_zero_cpus_actor(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
-    cluster.add_node(num_cpus=2)
+    valid_node = cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
-
-    node_id = ray.worker.global_worker.node.unique_id
 
     @ray.remote
     class Foo:
@@ -263,7 +261,7 @@ def test_zero_cpus_actor(ray_start_cluster):
 
     # Make sure tasks and actors run on the remote raylet.
     a = Foo.remote()
-    assert ray.get(a.method.remote()) != node_id
+    assert valid_node.unique_id == ray.get(a.method.remote())
 
 
 def test_fractional_resources(shutdown_only):
@@ -446,7 +444,8 @@ def test_multiple_raylets(ray_start_cluster):
 def test_custom_resources(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=3, resources={"CustomResource": 0})
-    cluster.add_node(num_cpus=3, resources={"CustomResource": 1})
+    custom_resource_node = cluster.add_node(
+        num_cpus=3, resources={"CustomResource": 1})
     ray.init(address=cluster.address)
 
     @ray.remote
@@ -467,12 +466,10 @@ def test_custom_resources(ray_start_cluster):
     # The f tasks should be scheduled on both raylets.
     assert len(set(ray.get([f.remote() for _ in range(500)]))) == 2
 
-    node_id = ray.worker.global_worker.node.unique_id
-
     # The g tasks should be scheduled only on the second raylet.
     raylet_ids = set(ray.get([g.remote() for _ in range(50)]))
     assert len(raylet_ids) == 1
-    assert list(raylet_ids)[0] != node_id
+    assert list(raylet_ids)[0] == custom_resource_node.unique_id
 
     # Make sure that resource bookkeeping works when a task that uses a
     # custom resources gets blocked.
@@ -506,7 +503,7 @@ def test_two_custom_resources(ray_start_cluster):
             "CustomResource1": 1,
             "CustomResource2": 2
         })
-    cluster.add_node(
+    custom_resource_node = cluster.add_node(
         num_cpus=3, resources={
             "CustomResource1": 3,
             "CustomResource2": 4
@@ -542,12 +539,10 @@ def test_two_custom_resources(ray_start_cluster):
     assert len(set(ray.get([f.remote() for _ in range(500)]))) == 2
     assert len(set(ray.get([g.remote() for _ in range(500)]))) == 2
 
-    node_id = ray.worker.global_worker.node.unique_id
-
     # The h tasks should be scheduled only on the second raylet.
     raylet_ids = set(ray.get([h.remote() for _ in range(50)]))
     assert len(raylet_ids) == 1
-    assert list(raylet_ids)[0] != node_id
+    assert list(raylet_ids)[0] == custom_resource_node.unique_id
 
     # Make sure that tasks with unsatisfied custom resource requirements do
     # not get scheduled.

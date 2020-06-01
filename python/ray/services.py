@@ -171,11 +171,10 @@ def get_address_info_from_redis_helper(redis_address,
                                        node_ip_address,
                                        redis_password=None):
     redis_ip_address, redis_port = redis_address.split(":")
-    # For this command to work, some other client (on the same machine as
-    # Redis) must have run "CONFIG SET protected-mode no".
-    redis_client = create_redis_client(redis_address, password=redis_password)
-
-    client_table = ray.state._parse_client_table(redis_client)
+    # Get node table from global state accessor.
+    global_state = ray.state.GlobalState()
+    global_state._initialize_global_state(redis_address, redis_password)
+    client_table = global_state.node_table()
     if len(client_table) == 0:
         raise RuntimeError(
             "Redis has started but no raylets have registered yet.")

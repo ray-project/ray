@@ -76,14 +76,11 @@ class GcsServer {
   /// cluster.
   virtual void InitGcsNodeManager();
 
-  /// Initialize the gcs node manager.
+  /// Initialize the gcs actor manager.
   virtual void InitGcsActorManager();
 
   /// The job info handler
   virtual std::unique_ptr<rpc::JobInfoHandler> InitJobInfoHandler();
-
-  /// The actor info handler
-  virtual std::unique_ptr<rpc::ActorInfoHandler> InitActorInfoHandler();
 
   /// The object info handler
   virtual std::unique_ptr<rpc::ObjectInfoHandler> InitObjectInfoHandler();
@@ -125,8 +122,7 @@ class GcsServer {
   /// Job info handler and service
   std::unique_ptr<rpc::JobInfoHandler> job_info_handler_;
   std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;
-  /// Actor info handler and service
-  std::unique_ptr<rpc::ActorInfoHandler> actor_info_handler_;
+  /// Actor info service
   std::unique_ptr<rpc::ActorInfoGrpcService> actor_info_service_;
   /// Node info handler and service
   std::unique_ptr<rpc::NodeInfoGrpcService> node_info_service_;

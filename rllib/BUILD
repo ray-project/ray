@@ -717,7 +717,8 @@ py_test(
 
 py_test(
     name = "test_impala_cartpole_v0_buffers_2_lstm",
-    main = "train.py", srcs = ["train.py"],
+    main = "train.py",
+    srcs = ["train.py"],
     tags = ["quick_train"],
     args = [
         "--env", "CartPole-v0",
@@ -730,12 +731,14 @@ py_test(
 
 py_test(
     name = "test_impala_pong_deterministic_v4_40k_ts_1G_obj_store",
-    main = "train.py", srcs = ["train.py"],
+    main = "train.py",
+    srcs = ["train.py"],
     tags = ["quick_train"],
+    size = "medium",
     args = [
         "--env", "PongDeterministic-v4",
         "--run", "IMPALA",
-        "--stop", "'{\"timesteps_total\": 40000}'",
+        "--stop", "'{\"timesteps_total\": 30000}'",
         "--ray-object-store-memory=1000000000",
         "--config", "'{\"framework\": \"tf\", \"num_workers\": 1, \"num_gpus\": 0, \"num_envs_per_worker\": 32, \"rollout_fragment_length\": 50, \"train_batch_size\": 50, \"learner_queue_size\": 1}'"
         ]
@@ -978,6 +981,29 @@ py_test(
         "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"num_gpus\": 0}'",
         "--ray-num-cpus", "4"
         ]
+)
+
+# --------------------------------------------------------------------
+# Env tests
+# rllib/env/
+#
+# Tag: env
+# --------------------------------------------------------------------
+
+sh_test(
+    name = "env/tests/test_local_inference",
+    tags = ["env"],
+    size = "medium",
+    srcs = ["env/tests/test_local_inference.sh"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "env/tests/test_remote_inference",
+    tags = ["env"],
+    size = "medium",
+    srcs = ["env/tests/test_remote_inference.sh"],
+    data = glob(["examples/serving/*.py"]),
 )
 
 # --------------------------------------------------------------------
@@ -1689,7 +1715,7 @@ py_test(
     name = "examples/multi_agent_cartpole_torch",
     main = "examples/multi_agent_cartpole.py",
     tags = ["examples", "examples_M"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_cartpole.py"],
     args = ["--as-test", "--torch", "--stop-reward=70.0", "--num-cpus=4"]
 )
@@ -1817,22 +1843,6 @@ py_test(
     size = "medium",
     srcs = ["examples/rock_paper_scissors_multiagent.py"],
     args = ["--as-test", "--torch"],
-)
-
-sh_test(
-    name = "examples/serving/test_local_inference",
-    tags = ["examples", "examples_S", "exclusive"],
-    size = "medium",
-    srcs = ["examples/serving/test_local_inference.sh"],
-    data = glob(["examples/serving/*.py"]),
-)
-
-sh_test(
-    name = "examples/serving/test_remote_inference",
-    tags = ["examples", "examples_S", "exclusive"],
-    size = "medium",
-    srcs = ["examples/serving/test_remote_inference.sh"],
-    data = glob(["examples/serving/*.py"]),
 )
 
 py_test(

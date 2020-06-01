@@ -232,7 +232,7 @@ class TorchPolicy(Policy):
         loss_out = force_list(
             self._loss(self, self.model, self.dist_class, train_batch))
         assert len(loss_out) == len(self._optimizers)
-        # assert not any(np.isnan(l.detach().numpy()) for l in loss_out)
+        # assert not any(torch.isnan(l) for l in loss_out)
 
         # Loop through all optimizers.
         grad_info = {"allreduce_latency": 0.0}
