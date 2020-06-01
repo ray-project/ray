@@ -270,7 +270,7 @@ class SSHCommandRunner:
                         final_cmd, stderr=subprocess.PIPE)
                     err = self.process_runner.check_output(
                         ["grep", "-v", "Shared Connection to .* closed"],
-                        stdin=ssh_prrocess.stderr)
+                        stdin=ssh_process.stderr)
                     if err:
                         print(err, file=sys.stderr)
                     return ssh_process.stdout.read()
