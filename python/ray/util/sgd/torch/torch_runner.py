@@ -116,6 +116,9 @@ class TorchRunner:
         if not isinstance(self.criterions, Iterable):
             self.criterions = [self.criterions]
 
+        if type(self.criterions) is tuple:
+            self.criterions = list(self.criterions)
+
         if self.use_gpu and torch.cuda.is_available():
             for i, criterion in enumerate(self.criterions):
                 if hasattr(criterion, "cuda"):

@@ -64,6 +64,12 @@ def accuracy(output, target, topk=(1,)):
         for k in topk
     ]
 
+amp = None
+try:
+    from apex import amp
+except ImportError:
+    pass
+
 # todo: none of the custom checkpointing actually works. at all
 # but actually we should be saving most of the state properly
 class ImagenetOperator(TrainingOperator):
@@ -103,9 +109,10 @@ class ImagenetOperator(TrainingOperator):
         has_apex = False
         try:
             from apex.parallel import DistributedDataParallel as DDP
-            from apex import convert_syncbn_model
+            from apex.parallel import convert_syncbn_model
             has_apex = True
-        except ImportError:
+        except ImportError as e:
+            logging.warning("APEX ImportError: {}.".format(e))
             from torch.nn.parallel import DistributedDataParallel as DDP
             pass
 
@@ -169,7 +176,8 @@ class ImagenetOperator(TrainingOperator):
         if self.scheduler is not None and real_start_epoch > 0:
             self.scheduler.step(real_start_epoch)
 
-        logging.info("Scheduled epochs: {}".format(real_start_epoch))
+        # fixme: we must only run num_epochs - real_start_epoch epochs
+        # logging.info("Scheduled epochs: {}".format(num_epochs))
 
     def train_batch(self, batch, batch_info):
         input, target = batch
@@ -250,6 +258,7 @@ class ImagenetOperator(TrainingOperator):
 
         batch_time_m = AverageMeter()
         data_time_m = AverageMeter()
+        aux_time_m = AverageMeter()
         losses_m = AverageMeter()
 
         self.model.train()
@@ -270,6 +279,8 @@ class ImagenetOperator(TrainingOperator):
 
             batch_time_m.update(time.time() - end)
 
+            aux_start = time.time()
+
             # Logging
             lrl = [
                 param_group["lr"]
@@ -277,9 +288,8 @@ class ImagenetOperator(TrainingOperator):
             ]
             lr = sum(lrl) / len(lrl)
 
-            reduced_loss = reduce_tensor(
-                    metrics["train_loss"].data, sgd_utils.world_size())
-            losses_m.update(reduced_loss.item(), metrics[NUM_SAMPLES])
+            losses_m.update(
+                metrics["train_loss"].item(), metrics[NUM_SAMPLES])
 
             total_samples = (metrics[NUM_SAMPLES] * args.ray_num_workers)
 
@@ -296,7 +306,10 @@ class ImagenetOperator(TrainingOperator):
                 "Average Sample Rate": total_samples / batch_time_m.avg,
                 "Learning Rate": lr,
                 "Data Time": data_time_m.val,
-                "Average Data Time": data_time_m.avg
+                "Average Data Time": data_time_m.avg,
+
+                "Auxiliary Time": aux_time_m.val,
+                "Average Auxiliary Time": aux_time_m.avg,
             })
             if last_batch or batch_idx % args.log_interval == 0:
                 _progress_bar.write(
@@ -306,7 +319,9 @@ class ImagenetOperator(TrainingOperator):
                     "({batch_time.avg:.3f}s, {rate_avg:>7.2f}/s)  "
                     "LR: {lr:.3e}  "
                     "Data: {data_time.val:.3f} "
-                    "({data_time.avg:.3f})".format(
+                    "({data_time.avg:.3f}) "
+                    "Auxiliary: {aux_time.val:.3f} "
+                    "({aux_time.avg:.3f})".format(
                         info["epoch_idx"],
                         batch_idx, len(loader),
                         100. * batch_idx / last_idx,
@@ -315,7 +330,8 @@ class ImagenetOperator(TrainingOperator):
                         rate=total_samples / batch_time_m.val,
                         rate_avg=total_samples / batch_time_m.avg,
                         lr=lr,
-                        data_time=data_time_m))
+                        data_time=data_time_m,
+                        aux_time=aux_time_m))
 
                 # todo: calculate output_dir
                 # if args.save_images and output_dir:
@@ -348,6 +364,7 @@ class ImagenetOperator(TrainingOperator):
                     num_updates=self.global_step, metric=losses_m.avg)
 
             end = time.time()
+            aux_time_m.update(end - aux_start)
             self.global_step += 1
         _progress_bar.close()
 
@@ -604,8 +621,11 @@ def data_creator(config):
             # throwing makes more sense, but we have to preserve the exit code
             exit(1)
 
+    logging.info("Loading datasets.")
     dataset_train = Dataset(train_dir)
+    logging.info("Training dataset created.")
     dataset_eval = Dataset(val_dir)
+    logging.info("Validation dataset created.")
 
     collate_fn = None
     if args.prefetcher and args.mixup > 0:
@@ -619,7 +639,7 @@ def data_creator(config):
         use_prefetcher=args.prefetcher,
         mean=data_config["mean"],
         std=data_config["std"],
-        num_workers=1,
+        num_workers=8,
         # we add the samplers ourselves, since they need distributed to be
         # setup
         distributed=False,
@@ -639,6 +659,7 @@ def data_creator(config):
         interpolation=args.train_interpolation,
         num_aug_splits=args.num_aug_splits,  # always 0 right now
         **common_params)
+    logging.info("Training dataloader created.")
     eval_loader = create_loader(
         dataset_eval,
         is_training=False,
@@ -646,6 +667,7 @@ def data_creator(config):
         interpolation=data_config["interpolation"],
         crop_pct=data_config["crop_pct"],
         **common_params)
+    logging.info("Validation dataloader created.")
 
     return train_loader, eval_loader
 
@@ -693,8 +715,10 @@ def main():
         wandb.init(
             project="ray-sgd-imagenet",
             name=str(datetime.now()))
+        wandb.config.update(args)
 
     ray.init(address=args.ray_address, log_to_driver=False)
+    # ray.init(address=args.ray_address)
 
     trainer = TorchTrainer(
         model_creator=model_creator,
@@ -775,6 +799,8 @@ def main():
 
     # if best_metric is not None:
     #         logging.info('*** Best metric: {0} (epoch {1})'.format(best_metric, best_epoch))
+
+    trainer.save('./finished_checkpoint')
 
     if platform.system() != "Darwin":
         # this hangs on Mac OS :shrug:
