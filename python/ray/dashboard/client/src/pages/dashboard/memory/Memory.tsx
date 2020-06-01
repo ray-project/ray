@@ -1,4 +1,5 @@
 import {
+  Button,
   createStyles,
   Table,
   TableBody,
@@ -6,18 +7,17 @@ import {
   TableHead,
   TableRow,
   Theme,
-  withStyles,
   WithStyles,
-  Button,
+  withStyles,
 } from "@material-ui/core";
 import PauseIcon from "@material-ui/icons/Pause";
 import PlayArrowIcon from "@material-ui/icons/PlayArrow";
 import React from "react";
-import { StoreState } from "../../../store";
 import { connect } from "react-redux";
-import MemoryRowGroup from "./MemoryRowGroup";
-import { dashboardActions } from "../state";
 import { stopMemoryTableCollection } from "../../../api";
+import { StoreState } from "../../../store";
+import { dashboardActions } from "../state";
+import MemoryRowGroup from "./MemoryRowGroup";
 
 const styles = (theme: Theme) =>
   createStyles({
