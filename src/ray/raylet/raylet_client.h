@@ -323,7 +323,7 @@ class RayletClient : public PinObjectsInterface,
       const TaskID &task_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override;
 
-  /// Implements WorkerLeaseInterface.
+  /// Implements ResourceLeaseInterface.
   ray::Status RequestResourceLease(
       const ray::rpc::Bundle &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestResourceLeaseReply> &callback)

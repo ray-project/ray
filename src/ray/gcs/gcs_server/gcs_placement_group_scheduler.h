@@ -31,7 +31,7 @@ namespace ray {
 namespace gcs {
 
 using LeaseClientFactoryFn =
-    std::function<std::shared_ptr<WorkerLeaseInterface>(const rpc::Address &address)>;
+    std::function<std::shared_ptr<ResourceLeaseInterface>(const rpc::Address &address)>;
 
 class GcsPlacementGroup;
 
@@ -62,7 +62,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       boost::asio::io_context &io_context, gcs::PlacementGroupInfoAccessor &placement_group_info_accessor,
       const GcsNodeManager &gcs_node_manager,std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_failure_handler,
-      std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_success_handler);
+      std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_success_handler,
+      LeaseClientFactoryFn lease_client_factory = nullptr);
   virtual ~GcsPlacementGroupScheduler() = default;
 
   /// Schedule the specified placement_group.
@@ -134,7 +135,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
                                             const ray::rpc::RequestResourceLeaseReply &reply);
 
   /// Get an existing lease client or connect a new one.
-  std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(
+  std::shared_ptr<ResourceLeaseInterface> GetOrConnectLeaseClient(
       const rpc::Address &raylet_address);
 
  protected:
@@ -156,7 +157,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Fplacement_groupy for producing new core worker clients.
   rpc::ClientFactoryFn client_fplacement_groupy_;
     /// The cached node clients which are used to communicate with raylet to lease workers.
-  absl::flat_hash_map<ClientID, std::shared_ptr<WorkerLeaseInterface>>
+  absl::flat_hash_map<ClientID, std::shared_ptr<ResourceLeaseInterface>>
       remote_lease_clients_;
   /// Factory for producing new clients to request leases from remote nodes.
   LeaseClientFactoryFn lease_client_factory_;

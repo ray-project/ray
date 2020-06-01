@@ -20,17 +20,20 @@ namespace ray {
 namespace gcs {
 
 GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
-    boost::asio::io_context &io_context, gcs::PlacementGroupInfoAccessor &placement_group_info_accessor,
+    boost::asio::io_context &io_context, 
+    gcs::PlacementGroupInfoAccessor &placement_group_info_accessor,
     const gcs::GcsNodeManager &gcs_node_manager,
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_failure_handler,
-    std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_success_handler)
+    std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_success_handler,
+    LeaseClientFactoryFn lease_client_factory)
     : io_context_(io_context),
       placement_group_info_accessor_(placement_group_info_accessor),
       gcs_node_manager_(gcs_node_manager),
       gcs_pub_sub_(std::move(gcs_pub_sub)),
       schedule_failure_handler_(std::move(schedule_failure_handler)),
-      schedule_success_handler_(std::move(schedule_success_handler)) {
+      schedule_success_handler_(std::move(schedule_success_handler)),
+      lease_client_factory_(std::move(lease_client_factory)){
   RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
 }
 

@@ -144,8 +144,6 @@ class GcsPlacementGroupManager {
 
 
   Status ScheduleBundles(const rpc::CreatePlacementGroupRequest &request);
-  Status LeaseWorkerFromNode(const rpc::Bundle &bundle, std::shared_ptr<rpc::GcsNodeInfo> node);
-  std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(const rpc::Address &raylet_address);
 
  private:
 
