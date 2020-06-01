@@ -133,7 +133,7 @@ struct Mocker {
     worker_failure_data->set_timestamp(std::time(nullptr));
     rpc::Address address;
     worker_failure_data->mutable_worker_address()->set_raylet_id(
-      ClientID::FromRandom().Binary());
+        ClientID::FromRandom().Binary());
     return worker_failure_data;
   }
 };

@@ -459,7 +459,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     RAY_CHECK_OK(gcs_client_->Workers().AsyncGetWorkerFailure(
         worker_id,
         [&promise](Status status, const boost::optional<gcs::WorkerFailureData> &result) {
-          promise.set_value(status.ok()); 
+          promise.set_value(status.ok());
         }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
@@ -822,7 +822,7 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerInfo) {
   // Get worker failure data.
   // SANG-TODO Implement this.
   ASSERT_TRUE(GetWorkerFailiure(
-    WorkerID::FromBinary(worker_failure_data->worker_address().raylet_id())));
+      WorkerID::FromBinary(worker_failure_data->worker_address().raylet_id())));
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestErrorInfo) {
