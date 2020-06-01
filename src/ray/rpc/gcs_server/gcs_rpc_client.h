@@ -206,6 +206,10 @@ class GcsRpcClient {
   /// Create placement group via GCS Service.
   VOID_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, CreatePlacementGroup, 
                             placement_group_info_grpc_client_, )
+                    
+  ///  Update placement group info in GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, UpdatePlacementGroupInfo,
+                             placement_group_info_grpc_client_, )
 
  private:
   void Init(const std::string &address, const int port,

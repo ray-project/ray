@@ -204,12 +204,7 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
                     const size_t parent_task_counter);
     /// Constructor of `PlacementGroupID`.
   PlacementGroupID() : BaseID() {}
-
-  /// Get the job id to which this placement group belongs.
-  ///
-  /// \return The job id to which this placement group belongs.
-  JobID JobId() const;
-
+  
   MSGPACK_DEFINE(id_);
 
 private:

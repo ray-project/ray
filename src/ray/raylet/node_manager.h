@@ -30,6 +30,7 @@
 #include "ray/common/scheduling/cluster_resource_scheduler.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
+#include "ray/raylet/bundle.h"
 #include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
@@ -642,11 +643,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Dispatch tasks to available workers.
   void DispatchScheduledTasksToWorkers();
 
+  /// Dispatch bundles.
+  void DispatchScheduledBundles();
+
   /// For the pending task at the head of tasks_to_schedule_, return a node
   /// in the system (local or remote) that has enough resources available to
   /// run the task, if any such node exist.
   /// Repeat the process as long as we can schedule a task.
   void NewSchedulerSchedulePendingTasks();
+
+  /// For the pending bundle at the head of bundles_to_schedule_, check if the node 
+  /// we assign have enough resource.
+  void NewSchedulerSchedulePendingBundles();
 
   /// Whether a task is an actor creation task.
   bool IsActorCreationTask(const TaskID &task_id);
@@ -756,9 +764,21 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                              std::string address, int port)>
       ScheduleFn;
 
+  typedef std::function<void(std::shared_ptr<Bundle>, ClientID spillback_to,
+                            std::string address, int port)>
+      ScheduleBundleFn;
+
   /// Queue of lease requests that are waiting for resources to become available.
   /// TODO this should be a queue for each SchedulingClass
   std::deque<std::pair<ScheduleFn, Task>> tasks_to_schedule_;
+
+  /// Queue of lease requests that are waiting for resources to become available.
+  /// TODO this should be a queue for each SchedulingClass
+  std::deque<std::pair<ScheduleBundleFn, rpc::Bundle>> bundles_to_schedule_;
+
+  /// Queue of lease requests that should be scheduled.
+  std::deque<std::pair<ScheduleBundleFn,rpc::Bundle>>bundles_to_dispatch_;
+
   /// Queue of lease requests that should be scheduled onto workers.
   std::deque<std::pair<ScheduleFn, Task>> tasks_to_dispatch_;
   /// Queue tasks waiting for arguments to be transferred locally.

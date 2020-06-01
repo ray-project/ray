@@ -162,6 +162,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Factory for producing new clients to request leases from remote nodes.
   LeaseClientFactoryFn lease_client_factory_;
 
+  /// Map from node ID to the set of actors for whom we are trying to acquire a lease from
+  /// that node. This is needed so that we can retry lease requests from the node until we
+  /// receive a reply or the node is removed.
+  absl::flat_hash_map<ClientID, absl::flat_hash_set<BundleID>>
+      node_to_bundles_when_leasing_;
 };
 
 }

@@ -37,7 +37,6 @@ message RequestWorkerLeaseReply {
   bool canceled = 4;
 }
 
-// TODO(AlisaWu): merge the two Request.
 
 // Request a worker from the raylet with the specified resources.
 message RequestResourceLeaseRequest {

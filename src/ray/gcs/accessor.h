@@ -627,6 +627,17 @@ class PlacementGroupInfoAccessor {
   /// \return Status
   virtual Status AsyncCreatePlacementGroup(const PlacementGroupSpecification &placement_group_spec,
                                   const StatusCallback &callback) = 0;
+                        
+  /// Update dynamic states of placement group in GCS asynchronously.
+  ///
+  /// \param placement_group_id ID of the placement_group to update.
+  /// \param data_ptr Data of the placement_group to update.
+  /// \param callback Callback that will be called after update finishes.
+  /// \return Status
+  /// updating dynamic states.
+  virtual Status AsyncUpdate(const PlacementGroupID &placement_group_id,
+                             const std::shared_ptr<rpc::PlacementGroupTableData> &data_ptr,
+                             const StatusCallback &callback) = 0;
  protected:
   PlacementGroupInfoAccessor() = default;
 };

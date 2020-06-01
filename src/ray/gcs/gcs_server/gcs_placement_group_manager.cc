@@ -50,9 +50,12 @@ rpc::PlacementStrategy GcsPlacementGroup::GetStrategy() const {
   return placement_group_table_data_.strategy();
 }
 
-
+const rpc::PlacementGroupTableData &GcsPlacementGroup::GetPlacementGroupTableData() {
+  return placement_group_table_data_;
+}
 
 /////////////////////////////////////////////////////////////////////////////////////////
+
 GcsPlacementGroupManager::GcsPlacementGroupManager(std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
                                  gcs::PlacementGroupInfoAccessor &placement_group_info_accessor,
                                  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub)
@@ -115,18 +118,16 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(std::shared_ptr<G
   auto placement_group_id = placement_group->GetPlacementGroupID();
   RAY_CHECK(registered_placement_groups_.count(placement_group_id) > 0);
   placement_group->UpdateState(rpc::PlacementGroupTableData::ALIVE);
-
-  // TODO(AlisaWu) :pub_sub
   
-  // auto placement_group_table_data =
-  //     std::make_shared<rpc::PlacementGroupTableData>(placement_group->GetPlacementGroupTableData());
+  auto placement_group_table_data =
+      std::make_shared<rpc::PlacementGroupTableData>(placement_group->GetPlacementGroupTableData());
   // The backend storage is reliable in the future, so the status must be ok.
-  // RAY_CHECK_OK(placement_group_info_accessor_.AsyncUpdate(
-  //     placement_group_id, placement_group_table_data, [this, placement_group_id, placement_group_table_data](Status status) {
-  //       RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, placement_group_id.Hex(),
-  //                                          placement_group_table_data->SerializeAsString(),
-  //                                          nullptr));
-  //     }));
+  RAY_CHECK_OK(placement_group_info_accessor_.AsyncUpdate(
+      placement_group_id, placement_group_table_data, [this, placement_group_id, placement_group_table_data](Status status) {
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, placement_group_id.Hex(),
+                                           placement_group_table_data->SerializeAsString(),
+                                           nullptr));
+      }));
 
   // Invoke all callbacks for all registration requests of this placement_group (duplicated
   // requests are included) and remove all of them from placement_group_to_register_callbacks_.

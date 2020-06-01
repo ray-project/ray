@@ -54,8 +54,10 @@ class GcsPlacementGroup {
     // TODO(AlisaWu) : fix the proto.
      // placement_group_table_data_.set_bundles(placement_group_spec.bundles());
     placement_group_table_data_.set_strategy(placement_group_spec.strategy());
-
   }
+  
+  /// Get the immutable PlacementGroupTableData of this placement group.
+  const rpc::PlacementGroupTableData &GetPlacementGroupTableData();
 
   /// Update the `Address` of this placement_group (see gcs.proto).
   // void UpdateAddress(const rpc::Address &address);

@@ -299,8 +299,13 @@ public:
   Status AsyncCreatePlacementGroup(const PlacementGroupSpecification &placement_group_spec,
                     const StatusCallback &callback) override;
 
+  Status AsyncUpdate(const PlacementGroupID &placement_group_id,
+                             const std::shared_ptr<rpc::PlacementGroupTableData> &data_ptr,
+                             const StatusCallback &callback) override;
+
 private:
   ServiceBasedGcsClient *client_impl_;
+  Sequencer<PlacementGroupID> sequencer_;
 };
 
 /// \class ServiceBasedErrorInfoAccessor
