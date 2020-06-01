@@ -12,6 +12,9 @@ import {
 
 const nodeGRAMUtilization = (node: Node) => {
   const utilization = (gpu: GPUStats) => gpu.memory_used / gpu.memory_total;
+  if (node.gpus.length === 0) {
+    return NaN;
+  }
   const utilizationSum = sum(node.gpus.map((gpu) => utilization(gpu)));
   const avgUtilization = utilizationSum / node.gpus.length;
   // Convert to a percent before returning
@@ -19,22 +22,30 @@ const nodeGRAMUtilization = (node: Node) => {
 };
 
 const clusterGRAMUtilization = (nodes: Array<Node>) => {
-  return getWeightedAverage(
-    nodes.map((node) => ({
+  const utils = nodes
+    .map((node) => ({
       weight: node.gpus.length,
       value: nodeGRAMUtilization(node),
-    })),
-  );
+    }))
+    .filter((util) => !isNaN(util.value));
+  if (utils.length === 0) {
+    return NaN;
+  }
+  return getWeightedAverage(utils);
 };
 
 export const ClusterGRAM: ClusterFeatureComponent = ({ nodes }) => {
   const clusterAverageUtilization = clusterGRAMUtilization(nodes);
   return (
     <div style={{ minWidth: 60 }}>
-      <UsageBar
-        percent={clusterAverageUtilization}
-        text={`${clusterAverageUtilization.toFixed(1)}%`}
-      />
+      {isNaN(clusterAverageUtilization) ? (
+        <b>No GPUs</b>
+      ) : (
+        <UsageBar
+          percent={clusterAverageUtilization}
+          text={`${clusterAverageUtilization.toFixed(1)}%`}
+        />
+      )}
     </div>
   );
 };
@@ -43,7 +54,11 @@ export const NodeGRAM: NodeFeatureComponent = ({ node }) => {
   const gramUtil = nodeGRAMUtilization(node);
   return (
     <div style={{ minWidth: 60 }}>
-      <UsageBar percent={gramUtil} text={`${gramUtil.toFixed(1)}%`} />
+      {isNaN(gramUtil) ? (
+        <b>No GPUs</b>
+      ) : (
+        <UsageBar percent={gramUtil} text={`${gramUtil.toFixed(1)}%`} />
+      )}
     </div>
   );
 };
@@ -61,10 +76,14 @@ export const WorkerGRAM: WorkerFeatureComponent = ({ worker, node }) => {
   const usedGRAM = sum(workerUtilPerGPU);
   return (
     <div style={{ minWidth: 60 }}>
-      <UsageBar
-        percent={100 * (usedGRAM / totalNodeGRAM)}
-        text={MiBRatio(usedGRAM, totalNodeGRAM)}
-      />
+      {node.gpus.length === 0 ? (
+        <b>No GPUs</b>
+      ) : (
+        <UsageBar
+          percent={100 * (usedGRAM / totalNodeGRAM)}
+          text={MiBRatio(usedGRAM, totalNodeGRAM)}
+        />
+      )}
     </div>
   );
 };
