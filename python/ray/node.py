@@ -169,7 +169,7 @@ class Node:
                 # NOTE: There is a possible but unlikely race condition where
                 # the port is bound by another process between now and when the
                 # raylet starts.
-                self._ray_params.node_manager_port, self.socket = \
+                self._ray_params.node_manager_port, self._socket = \
                     self._get_unused_port(close_on_exit=False)
 
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
@@ -302,6 +302,14 @@ class Node:
     def node_manager_port(self):
         """Get the node manager's port."""
         return self._ray_params.node_manager_port
+
+    @property
+    def socket(self):
+        """Get the socket reserving the node manager's port"""
+        try:
+            return self._socket
+        except AttributeError:
+            return None
 
     @property
     def address_info(self):
