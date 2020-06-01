@@ -247,6 +247,7 @@ class NodeStats(threading.Thread):
                             "timestamp": actor_data.timestamp
                         }
                     else:
+                        print('Received data about a client')
                         data = json.loads(ray.utils.decode(data))
                         self._node_stats[data["hostname"]] = data
 
