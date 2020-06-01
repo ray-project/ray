@@ -1,4 +1,5 @@
 import collections
+from typing import List
 
 from ray.util.timer import _Timer
 
@@ -18,8 +19,6 @@ class MetricsContext:
         current_actor (ActorHandle): reference to the actor handle that
             produced the current iterator output. This is automatically set
             for gather_async().
-        parent_metrics (list): list of other MetricsContexts that have been
-            attached to this due to LocalIterator.union().
     """
 
     def __init__(self):
@@ -27,7 +26,6 @@ class MetricsContext:
         self.timers = collections.defaultdict(_Timer)
         self.info = {}
         self.current_actor = None
-        self.parent_metrics = []
 
     def save(self):
         """Return a serializable copy of this context."""
@@ -35,7 +33,6 @@ class MetricsContext:
             "counters": dict(self.counters),
             "info": dict(self.info),
             "timers": None,  # TODO(ekl) consider persisting timers too
-            "parent_state": [u.save() for u in self.parent_metrics],
         }
 
     def restore(self, values):
@@ -44,5 +41,26 @@ class MetricsContext:
         self.counters.update(values["counters"])
         self.timers.clear()
         self.info = values["info"]
-        for u, state in zip(self.parent_metrics, values["parent_state"]):
-            u.restore(state)
+
+
+class SharedMetrics:
+    """Holds an indirect reference to a (shared) metrics context.
+
+    This is used by LocalIterator.union() to point the metrics contexts of
+    entirely separate iterator chains to the same underlying context."""
+
+    def __init__(self,
+                 metrics: MetricsContext = None,
+                 parents: List["SharedMetrics"] = None):
+        self.metrics = metrics or MetricsContext()
+        self.parents = parents or []
+        self.set(self.metrics)
+
+    def set(self, metrics):
+        """Recursively set self and parents to point to the same metrics."""
+        self.metrics = metrics
+        for parent in self.parents:
+            parent.set(metrics)
+
+    def get(self):
+        return self.metrics

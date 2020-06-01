@@ -22,10 +22,11 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
     This class coordinates the data transfers between the learner thread
     and remote workers (IMPALA actors).
     """
+
     def __init__(self,
                  workers,
                  train_batch_size=500,
-                 sample_batch_size=50,
+                 rollout_fragment_length=50,
                  num_envs_per_worker=1,
                  num_gpus=0,
                  lr=0.0005,
@@ -90,7 +91,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                     max_sample_requests_in_flight_per_worker),
                 replay_buffer_num_slots=replay_buffer_num_slots,
                 train_batch_size=train_batch_size,
-                sample_batch_size=sample_batch_size,
+                rollout_fragment_length=rollout_fragment_length,
                 broadcast_interval=broadcast_interval)
         else:
             self.aggregator = SimpleAggregator(
@@ -100,7 +101,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                     max_sample_requests_in_flight_per_worker),
                 replay_buffer_num_slots=replay_buffer_num_slots,
                 train_batch_size=train_batch_size,
-                sample_batch_size=sample_batch_size,
+                rollout_fragment_length=rollout_fragment_length,
                 broadcast_interval=broadcast_interval)
 
     def add_stat_val(self, key, val):

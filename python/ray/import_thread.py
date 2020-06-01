@@ -150,7 +150,7 @@ class ImportThread:
         # TODO(rkn): We may need to bring back the case of
         # fetching actor classes here.
         else:
-            raise Exception("This code should be unreachable.")
+            assert False, "This code should be unreachable."
 
     def fetch_and_execute_function_to_run(self, key):
         """Run on arbitrary function on the worker."""

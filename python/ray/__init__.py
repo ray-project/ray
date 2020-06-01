@@ -9,9 +9,13 @@ logger = logging.getLogger(__name__)
 # raylet modules.
 
 if "pickle5" in sys.modules:
-    raise ImportError("Ray must be imported before pickle5 because Ray "
-                      "requires a specific version of pickle5 (which is "
-                      "packaged along with Ray).")
+    import pkg_resources
+    version_info = pkg_resources.require("pickle5")
+    version = tuple(int(n) for n in version_info[0].version.split("."))
+    if version < (0, 0, 10):
+        raise ImportError("You are using an old version of pickle5 that "
+                          "leaks memory, please run 'pip install pickle5 -U' "
+                          "to upgrade")
 
 if "OMP_NUM_THREADS" not in os.environ:
     logger.debug("[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
@@ -30,6 +34,10 @@ thirdparty_files = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "thirdparty_files")
 sys.path.insert(0, thirdparty_files)
 
+if sys.platform == "win32":
+    import ray.compat  # noqa: E402
+    ray.compat.patch_redis_empty_recv()
+
 # Expose ray ABI symbols which may be dependent by other shared
 # libraries such as _streaming.so. See BUILD.bazel:_raylet
 python_shared_lib_suffix = ".so" if sys.platform != "win32" else ".pyd"
@@ -40,14 +48,6 @@ if os.path.exists(so_path):
     CDLL(so_path, ctypes.RTLD_GLOBAL)
 
 import ray._raylet  # noqa: E402
-
-# See https://github.com/ray-project/ray/issues/131.
-helpful_message = """
-
-If you are using Anaconda, try fixing this problem by running:
-
-    conda install libgcc
-"""
 
 from ray._raylet import (
     ActorCheckpointID,
@@ -67,16 +67,18 @@ from ray._raylet import (
 _config = _Config()
 
 from ray.profiling import profile  # noqa: E402
-from ray.state import (jobs, nodes, actors, tasks, objects, timeline,
+from ray.state import (jobs, nodes, actors, objects, timeline,
                        object_transfer_timeline, cluster_resources,
                        available_resources, errors)  # noqa: E402
 from ray.worker import (
     LOCAL_MODE,
     SCRIPT_MODE,
     WORKER_MODE,
+    cancel,
     connect,
     disconnect,
     get,
+    get_actor,
     get_gpu_ids,
     get_resource_ids,
     get_webui_url,
@@ -96,7 +98,6 @@ import ray.projects  # noqa: E402
 # some functions in the worker.
 import ray.actor  # noqa: F401
 from ray.actor import method  # noqa: E402
-from ray.runtime_context import _get_runtime_context  # noqa: E402
 from ray.cross_language import java_function, java_actor_class  # noqa: E402
 from ray import util  # noqa: E402
 
@@ -108,7 +109,6 @@ __all__ = [
     "jobs",
     "nodes",
     "actors",
-    "tasks",
     "objects",
     "timeline",
     "object_transfer_timeline",
@@ -123,9 +123,11 @@ __all__ = [
     "_config",
     "_get_runtime_context",
     "actor",
+    "cancel",
     "connect",
     "disconnect",
     "get",
+    "get_actor",
     "get_gpu_ids",
     "get_resource_ids",
     "get_webui_url",

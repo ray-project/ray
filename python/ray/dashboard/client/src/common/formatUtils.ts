@@ -1,6 +1,6 @@
 export const formatByteAmount = (
   amount: number,
-  unit: "mebibyte" | "gibibyte"
+  unit: "mebibyte" | "gibibyte",
 ) =>
   `${(
     amount / (unit === "mebibyte" ? Math.pow(1024, 2) : Math.pow(1024, 3))
@@ -9,7 +9,7 @@ export const formatByteAmount = (
 export const formatUsage = (
   used: number,
   total: number,
-  unit: "mebibyte" | "gibibyte"
+  unit: "mebibyte" | "gibibyte",
 ) => {
   const usedFormatted = formatByteAmount(used, unit);
   const totalFormatted = formatByteAmount(total, unit);
@@ -27,6 +27,6 @@ export const formatDuration = (durationInSeconds: number) => {
     durationDays ? `${durationDays}d` : "",
     `${pad(durationHours)}h`,
     `${pad(durationMinutes)}m`,
-    `${pad(durationSeconds)}s`
+    `${pad(durationSeconds)}s`,
   ].join(" ");
 };

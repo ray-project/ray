@@ -2,10 +2,10 @@ import collections
 import logging
 import numpy as np
 
-from ray.util.debug import log_once
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.debug import summarize
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -72,13 +72,13 @@ class MultiAgentSampleBatchBuilder:
     corresponding policy batch for the agent's policy.
     """
 
-    def __init__(self, policy_map, clip_rewards, postp_callback):
+    def __init__(self, policy_map, clip_rewards, callbacks):
         """Initialize a MultiAgentSampleBatchBuilder.
 
         Arguments:
             policy_map (dict): Maps policy ids to policy instances.
             clip_rewards (bool): Whether to clip rewards before postprocessing.
-            postp_callback: function to call on each postprocessed batch.
+            callbacks (DefaultCallbacks): RLlib callbacks.
         """
 
         self.policy_map = policy_map
@@ -89,15 +89,15 @@ class MultiAgentSampleBatchBuilder:
         }
         self.agent_builders = {}
         self.agent_to_policy = {}
-        self.postp_callback = postp_callback
+        self.callbacks = callbacks
         self.count = 0  # increment this manually
 
     def total(self):
         """Returns summed number of steps across all agent buffers."""
 
-        return sum(p.count for p in self.policy_builders.values())
+        return sum(a.count for a in self.agent_builders.values())
 
-    def has_pending_data(self):
+    def has_pending_agent_data(self):
         """Returns whether there is pending unprocessed data."""
 
         return len(self.agent_builders) > 0
@@ -124,8 +124,9 @@ class MultiAgentSampleBatchBuilder:
         This pushes the postprocessed per-agent batches onto the per-policy
         builders, clearing per-agent state.
 
-        Arguments:
-            episode: current MultiAgentEpisode object or None
+        Args:
+            episode (Optional[MultiAgentEpisode]): Current MultiAgentEpisode
+                object.
         """
 
         # Materialize the batches so far
@@ -151,6 +152,11 @@ class MultiAgentSampleBatchBuilder:
                     "from a single trajectory.", pre_batch)
             post_batches[agent_id] = policy.postprocess_trajectory(
                 pre_batch, other_batches, episode)
+            # Call the Policy's Exploration's postprocess method.
+            if getattr(policy, "exploration", None) is not None:
+                policy.exploration.postprocess_trajectory(
+                    policy, post_batches[agent_id],
+                    getattr(policy, "_sess", None))
 
         if log_once("after_post"):
             logger.info(
@@ -158,17 +164,18 @@ class MultiAgentSampleBatchBuilder:
                 format(summarize(post_batches)))
 
         # Append into policy batches and reset
+        from ray.rllib.evaluation.rollout_worker import get_global_worker
         for agent_id, post_batch in sorted(post_batches.items()):
+            self.callbacks.on_postprocess_trajectory(
+                worker=get_global_worker(),
+                episode=episode,
+                agent_id=agent_id,
+                policy_id=self.agent_to_policy[agent_id],
+                policies=self.policy_map,
+                postprocessed_batch=post_batch,
+                original_batches=pre_batches)
             self.policy_builders[self.agent_to_policy[agent_id]].add_batch(
                 post_batch)
-            if self.postp_callback:
-                self.postp_callback({
-                    "episode": episode,
-                    "agent_id": agent_id,
-                    "pre_batch": pre_batches[agent_id],
-                    "post_batch": post_batch,
-                    "all_pre_batches": pre_batches,
-                })
 
         self.agent_builders.clear()
         self.agent_to_policy.clear()
@@ -192,8 +199,9 @@ class MultiAgentSampleBatchBuilder:
         Any unprocessed rows will be first postprocessed with a policy
         postprocessor. The internal state of this builder will be reset.
 
-        Arguments:
-            episode: current MultiAgentEpisode object or None
+        Args:
+            episode (Optional[MultiAgentEpisode]): Current MultiAgentEpisode
+                object.
         """
 
         self.postprocess_batch_so_far(episode)

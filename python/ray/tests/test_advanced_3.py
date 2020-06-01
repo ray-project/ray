@@ -94,15 +94,6 @@ def wait_for_num_actors(num_actors, timeout=10):
     raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
-def wait_for_num_tasks(num_tasks, timeout=10):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        if len(ray.tasks()) >= num_tasks:
-            return
-        time.sleep(0.1)
-    raise RayTestTimeoutException("Timed out while waiting for global state.")
-
-
 def wait_for_num_objects(num_objects, timeout=10):
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -124,9 +115,6 @@ def test_global_state_api(shutdown_only):
         ray.actors()
 
     with pytest.raises(Exception, match=error_message):
-        ray.tasks()
-
-    with pytest.raises(Exception, match=error_message):
         ray.nodes()
 
     with pytest.raises(Exception, match=error_message):
@@ -142,22 +130,6 @@ def test_global_state_api(shutdown_only):
 
     job_id = ray.utils.compute_job_id_from_driver(
         ray.WorkerID(ray.worker.global_worker.worker_id))
-    driver_task_id = ray.worker.global_worker.current_task_id.hex()
-
-    # One task is put in the task table which corresponds to this driver.
-    wait_for_num_tasks(1)
-    task_table = ray.tasks()
-    assert len(task_table) == 1
-    assert driver_task_id == list(task_table.keys())[0]
-    task_spec = task_table[driver_task_id]["TaskSpec"]
-    nil_actor_id_hex = ray.ActorID.nil().hex()
-
-    assert task_spec["TaskID"] == driver_task_id
-    assert task_spec["ActorID"] == nil_actor_id_hex
-    assert task_spec["Args"] == []
-    assert task_spec["JobID"] == job_id.hex()
-    assert task_spec["FunctionDescriptor"]["type"] == "EmptyFunctionDescriptor"
-    assert task_spec["ReturnObjectIDs"] == []
 
     client_table = ray.nodes()
     node_ip_address = ray.worker.global_worker.node_ip_address
@@ -187,7 +159,7 @@ def test_global_state_api(shutdown_only):
 
     assert len(job_table) == 1
     assert job_table[0]["JobID"] == job_id.hex()
-    assert job_table[0]["NodeManagerAddress"] == node_ip_address
+    assert job_table[0]["DriverIPAddress"] == node_ip_address
 
 
 # TODO(rkn): Pytest actually has tools for capturing stdout and stderr, so we
@@ -299,12 +271,12 @@ def test_specific_job_id():
     ray.init(num_cpus=1, job_id=dummy_driver_id)
 
     # in driver
-    assert dummy_driver_id == ray._get_runtime_context().current_driver_id
+    assert dummy_driver_id == ray.worker.global_worker.current_job_id
 
     # in worker
     @ray.remote
     def f():
-        return ray._get_runtime_context().current_driver_id
+        return ray.worker.global_worker.current_job_id
 
     assert dummy_driver_id == ray.get(f.remote())
 
@@ -465,7 +437,8 @@ def test_pandas_parquet_serialization():
 
 def test_socket_dir_not_existing(shutdown_only):
     random_name = ray.ObjectID.from_random().hex()
-    temp_raylet_socket_dir = "/tmp/ray/tests/{}".format(random_name)
+    temp_raylet_socket_dir = os.path.join(ray.utils.get_ray_temp_dir(),
+                                          "tests", random_name)
     temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
                                            "raylet_socket")
     ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)
@@ -527,8 +500,8 @@ def test_put_pins_object(ray_start_object_store_memory):
     del x_id
     for _ in range(10):
         ray.put(np.zeros(10 * 1024 * 1024))
-    with pytest.raises(ray.exceptions.UnreconstructableError):
-        ray.get(ray.ObjectID(x_binary))
+    assert not ray.worker.global_worker.core_worker.object_exists(
+        ray.ObjectID(x_binary))
 
     # weakref put
     y_id = ray.put("HI", weakref=True)
@@ -536,26 +509,6 @@ def test_put_pins_object(ray_start_object_store_memory):
         ray.put(np.zeros(10 * 1024 * 1024))
     with pytest.raises(ray.exceptions.UnreconstructableError):
         ray.get(y_id)
-
-
-@pytest.mark.parametrize(
-    "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
-def test_redis_lru_with_set(ray_start_object_store_memory):
-    x = np.zeros(8 * 10**7, dtype=np.uint8)
-    x_id = ray.put(x, weakref=True)
-
-    # Remove the object from the object table to simulate Redis LRU eviction.
-    removed = False
-    start_time = time.time()
-    while time.time() < start_time + 10:
-        if ray.state.state.redis_clients[0].delete(b"OBJECT" +
-                                                   x_id.binary()) == 1:
-            removed = True
-            break
-    assert removed
-
-    # Now evict the object from the object store.
-    ray.put(x)  # This should not crash.
 
 
 def test_decorated_function(ray_start_regular):
@@ -686,6 +639,60 @@ def test_move_log_files_to_old(shutdown_only):
 
     # Make sure that nothing has died.
     assert ray.services.remaining_processes_alive()
+
+
+def test_lease_request_leak(shutdown_only):
+    ray.init(
+        num_cpus=1,
+        _internal_config=json.dumps({
+            "initial_reconstruction_timeout_milliseconds": 200
+        }))
+    assert len(ray.objects()) == 0
+
+    @ray.remote
+    def f(x):
+        time.sleep(0.1)
+        return
+
+    # Submit pairs of tasks. Tasks in a pair can reuse the same worker leased
+    # from the raylet.
+    tasks = []
+    for _ in range(10):
+        oid = ray.put(1)
+        for _ in range(2):
+            tasks.append(f.remote(oid))
+        del oid
+    ray.get(tasks)
+
+    time.sleep(
+        1)  # Sleep for an amount longer than the reconstruction timeout.
+    assert len(ray.objects()) == 0, ray.objects()
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 0,
+        "num_nodes": 1,
+        "do_init": False,
+    }],
+    indirect=True)
+def test_ray_address_environment_variable(ray_start_cluster):
+    address = ray_start_cluster.address
+    # In this test we use zero CPUs to distinguish between starting a local
+    # ray cluster and connecting to an existing one.
+
+    # Make sure we connect to an existing cluster if
+    # RAY_ADDRESS is set.
+    os.environ["RAY_ADDRESS"] = address
+    ray.init()
+    assert "CPU" not in ray.state.cluster_resources()
+    del os.environ["RAY_ADDRESS"]
+    ray.shutdown()
+
+    # Make sure we start a new cluster if RAY_ADDRESS is not set.
+    ray.init()
+    assert "CPU" in ray.state.cluster_resources()
+    ray.shutdown()
 
 
 if __name__ == "__main__":

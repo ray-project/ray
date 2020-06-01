@@ -1,7 +1,12 @@
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.qmix.qmix_policy import QMixTorchPolicy
-from ray.rllib.optimizers import SyncBatchReplayOptimizer
+from ray.rllib.execution.replay_ops import SimpleReplayBuffer, Replay, \
+    StoreToReplayBuffer
+from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.execution.concurrency_ops import Concurrently
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -59,7 +64,7 @@ DEFAULT_CONFIG = with_common_config({
     "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.
-    "sample_batch_size": 4,
+    "rollout_fragment_length": 4,
     # Size of a batched sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
@@ -87,16 +92,29 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def make_sync_batch_optimizer(workers, config):
-    return SyncBatchReplayOptimizer(
-        workers,
-        learning_starts=config["learning_starts"],
-        buffer_size=config["buffer_size"],
-        train_batch_size=config["train_batch_size"])
+def execution_plan(workers, config):
+    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+    replay_buffer = SimpleReplayBuffer(config["buffer_size"])
+
+    store_op = rollouts \
+        .for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
+
+    train_op = Replay(local_buffer=replay_buffer) \
+        .combine(
+            ConcatBatches(min_batch_size=config["train_batch_size"])) \
+        .for_each(TrainOneStep(workers)) \
+        .for_each(UpdateTargetNetwork(
+            workers, config["target_network_update_freq"]))
+
+    merged_op = Concurrently(
+        [store_op, train_op], mode="round_robin", output_indexes=[1])
+
+    return StandardMetricsReporting(merged_op, workers, config)
 
 
 QMixTrainer = GenericOffPolicyTrainer.with_updates(
     name="QMIX",
     default_config=DEFAULT_CONFIG,
     default_policy=QMixTorchPolicy,
-    make_policy_optimizer=make_sync_batch_optimizer)
+    get_policy_class=None,
+    execution_plan=execution_plan)

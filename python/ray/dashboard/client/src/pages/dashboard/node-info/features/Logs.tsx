@@ -1,10 +1,10 @@
-import Typography from "@material-ui/core/Typography";
+import { Typography } from "@material-ui/core";
 import React from "react";
 import SpanButton from "../../../../common/SpanButton";
 import {
   ClusterFeatureComponent,
   NodeFeatureComponent,
-  WorkerFeatureComponent
+  WorkerFeatureComponent,
 } from "./types";
 
 export const makeClusterLogs = (logCounts: {
@@ -37,7 +37,7 @@ export const makeNodeLogs = (
     perWorker: { [pid: string]: number };
     total: number;
   },
-  setLogDialog: (hostname: string, pid: number | null) => void
+  setLogDialog: (hostname: string, pid: number | null) => void,
 ): NodeFeatureComponent => ({ node }) =>
   logCounts.total === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
@@ -55,15 +55,15 @@ export const makeWorkerLogs = (
     perWorker: { [pid: string]: number };
     total: number;
   },
-  setLogDialog: (hostname: string, pid: number | null) => void
+  setLogDialog: (hostname: string, pid: number | null) => void,
 ): WorkerFeatureComponent => ({ node, worker }) =>
-  logCounts.perWorker[worker.pid] === 0 ? (
-    <Typography color="textSecondary" component="span" variant="inherit">
-      No logs
-    </Typography>
-  ) : (
+  logCounts.perWorker[worker.pid] ? (
     <SpanButton onClick={() => setLogDialog(node.hostname, worker.pid)}>
       View log ({logCounts.perWorker[worker.pid].toLocaleString()}{" "}
       {logCounts.perWorker[worker.pid] === 1 ? "line" : "lines"})
     </SpanButton>
+  ) : (
+    <Typography color="textSecondary" component="span" variant="inherit">
+      No logs
+    </Typography>
   );

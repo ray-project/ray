@@ -1,7 +1,10 @@
+"""DEPRECATED: Please use rllib.env.PolicyClient instead."""
+
 import logging
 import pickle
 
 from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.deprecation import deprecation_warning
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +19,7 @@ except ImportError:
 
 @PublicAPI
 class PolicyClient:
-    """REST client to interact with a RLlib policy server."""
+    """DEPRECATED: Please use rllib.env.PolicyClient instead."""
 
     START_EPISODE = "START_EPISODE"
     GET_ACTION = "GET_ACTION"
@@ -26,6 +29,8 @@ class PolicyClient:
 
     @PublicAPI
     def __init__(self, address):
+        deprecation_warning(
+            "rllib.utils.PolicyServer", new="rllib.env.PolicyServerInput")
         self._address = address
 
     @PublicAPI
@@ -33,8 +38,8 @@ class PolicyClient:
         """Record the start of an episode.
 
         Arguments:
-            episode_id (str): Unique string id for the episode or None for
-                it to be auto-assigned.
+            episode_id (Optional[str]): Unique string id for the episode or
+                None for it to be auto-assigned.
             training_enabled (bool): Whether to use experiences for this
                 episode to improve the policy.
 

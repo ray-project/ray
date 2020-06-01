@@ -15,19 +15,17 @@ import copyreg
 import io
 import itertools
 import logging
-
 import sys
 import types
 import weakref
-
-import numpy
+import typing
 
 from .cloudpickle import (
     _is_dynamic, _extract_code_globals, _BUILTIN_TYPE_NAMES, DEFAULT_PROTOCOL,
-    _find_imported_submodules, _get_cell_contents, _is_global, _builtin_type,
-    Enum, _ensure_tracking,  _make_skeleton_class, _make_skeleton_enum,
-    _extract_class_dict, dynamic_subimport, subimport, cell_set,
-    _make_empty_cell
+    _find_imported_submodules, _get_cell_contents, _is_importable_by_name, _builtin_type,
+    Enum, _get_or_create_tracker_id,  _make_skeleton_class, _make_skeleton_enum,
+    _extract_class_dict, dynamic_subimport, subimport, _typevar_reduce, _get_bases,
+    cell_set, _make_empty_cell,
 )
 
 if sys.version_info[:2] < (3, 8):
@@ -39,6 +37,8 @@ else:
     import pickle
     from _pickle import Pickler
     load, loads = _pickle.load, _pickle.loads
+
+import numpy
 
 
 # Shorthands similar to pickle.dump/pickle.dumps
@@ -83,14 +83,14 @@ def _class_getnewargs(obj):
     if isinstance(__dict__, property):
         type_kwargs['__dict__'] = __dict__
 
-    return (type(obj), obj.__name__, obj.__bases__, type_kwargs,
-            _ensure_tracking(obj), None)
+    return (type(obj), obj.__name__, _get_bases(obj), type_kwargs,
+            _get_or_create_tracker_id(obj), None)
 
 
 def _enum_getnewargs(obj):
     members = dict((e.name, e.value) for e in obj)
     return (obj.__bases__, obj.__name__, obj.__qualname__, members,
-            obj.__module__, _ensure_tracking(obj), None)
+            obj.__module__, _get_or_create_tracker_id(obj), None)
 
 
 # COLLECTION OF OBJECTS RECONSTRUCTORS
@@ -116,6 +116,7 @@ def _function_getstate(func):
         "__defaults__": func.__defaults__,
         "__module__": func.__module__,
         "__doc__": func.__doc__,
+        "__closure__": func.__closure__,
     }
 
     f_globals_ref = _extract_code_globals(func.__code__)
@@ -143,18 +144,32 @@ def _class_getstate(obj):
     clsdict = _extract_class_dict(obj)
     clsdict.pop('__weakref__', None)
 
-    # TODO: not sure if we are going to implement it for python < 3.7.
-    # But we are sure that we didn't have the '_abc_impl' field in python < 3.7,
-    # and there are currently no reported issues about it.
-    if sys.version_info >= (3, 7):
-        if issubclass(type(obj), abc.ABCMeta):
-            # If obj is an instance of an ABCMeta subclass, dont pickle the
-            # cache/negative caches populated during isinstance/issubclass
-            # checks, but pickle the list of registered subclasses of obj.
-            clsdict.pop('_abc_impl', None)
-            (registry, _, _, _) = abc._get_dump(obj)
-            clsdict["_abc_impl"] = [subclass_weakref()
-                                    for subclass_weakref in registry]
+    if issubclass(type(obj), abc.ABCMeta):
+        # If obj is an instance of an ABCMeta subclass, dont pickle the
+        # cache/negative caches populated during isinstance/issubclass
+        # checks, but pickle the list of registered subclasses of obj.
+        clsdict.pop('_abc_cache', None)
+        clsdict.pop('_abc_negative_cache', None)
+        clsdict.pop('_abc_negative_cache_version', None)
+        clsdict.pop('_abc_impl', None)
+        registry = clsdict.pop('_abc_registry', None)
+        if registry is None:
+            # in Python3.7+, the abc caches and registered subclasses of a
+            # class are bundled into the single _abc_impl attribute
+            if hasattr(abc, '_get_dump'):
+                (registry, _, _, _) = abc._get_dump(obj)
+                clsdict["_abc_impl"] = [subclass_weakref()
+                                        for subclass_weakref in registry]
+            else:
+                # FIXME(suquark): The upstream cloudpickle cannot work in Ray
+                # because sometimes both '_abc_registry' and '_get_dump' does
+                # not exist. Some strange typing objects may cause this issue.
+                # Here the workaround just set "_abc_impl" to None.
+                clsdict["_abc_impl"] = None
+        else:
+            # In the above if clause, registry is a set of weakrefs -- in
+            # this case, registry is a WeakSet
+            clsdict["_abc_impl"] = [type_ for type_ in registry]
 
     if "__slots__" in clsdict:
         # pickle string length optimization: member descriptors of obj are
@@ -364,7 +379,7 @@ def _class_reduce(obj):
         return type, (NotImplemented,)
     elif obj in _BUILTIN_TYPE_NAMES:
         return _builtin_type, (_BUILTIN_TYPE_NAMES[obj],)
-    elif not _is_global(obj):
+    elif not _is_importable_by_name(obj):
         return _dynamic_class_reduce(obj)
     return NotImplemented
 
@@ -386,6 +401,7 @@ def _function_setstate(obj, state):
     obj.__dict__.update(state)
 
     obj_globals = slotstate.pop("__globals__")
+    obj_closure = slotstate.pop("__closure__")
     # _cloudpickle_subimports is a set of submodules that must be loaded for
     # the pickled function to work correctly at unpickling time. Now that these
     # submodules are depickled (hence imported), they can be removed from the
@@ -395,6 +411,14 @@ def _function_setstate(obj, state):
 
     obj.__globals__.update(obj_globals)
     obj.__globals__["__builtins__"] = __builtins__
+
+    if obj_closure is not None:
+        for i, cell in enumerate(obj_closure):
+            try:
+                value = cell.cell_contents
+            except ValueError:  # cell is empty
+                continue
+            cell_set(obj.__closure__[i], value)
 
     for k, v in slotstate.items():
         setattr(obj, k, v)
@@ -421,7 +445,7 @@ def _numpy_frombuffer(buffer, dtype, shape, order):
     array = _frombuffer(buffer, dtype, shape, order)
     # Unfortunately, numpy does not follow the standard, so we still
     # have to set the readonly flag for it here.
-    array.setflags(write=not buffer.readonly)
+    array.setflags(write=isinstance(buffer, bytearray) or not buffer.readonly)
     return array
 
 
@@ -493,6 +517,7 @@ class CloudPickler(Pickler):
     dispatch[types.MethodType] = _method_reduce
     dispatch[types.MappingProxyType] = _mappingproxy_reduce
     dispatch[weakref.WeakSet] = _weakset_reduce
+    dispatch[typing.TypeVar] = _typevar_reduce
 
     def __init__(self, file, protocol=None, buffer_callback=None):
         if protocol is None:
@@ -584,7 +609,7 @@ class CloudPickler(Pickler):
         As opposed to cloudpickle.py, There no special handling for builtin
         pypy functions because cloudpickle_fast is CPython-specific.
         """
-        if _is_global(obj):
+        if _is_importable_by_name(obj):
             return NotImplemented
         else:
             return self._dynamic_function_reduce(obj)
@@ -612,7 +637,19 @@ class CloudPickler(Pickler):
                 if k in func.__globals__:
                     base_globals[k] = func.__globals__[k]
 
-        return code, base_globals, None, None, func.__closure__
+        # Do not bind the free variables before the function is created to
+        # avoid infinite recursion.
+        if func.__closure__ is None:
+            closure = None
+        else:
+            if sys.version_info[:2] >= (3, 8):
+                closure = tuple(
+                    types.CellType() for _ in range(len(code.co_freevars)))
+            else:
+                closure = tuple(
+                    _make_empty_cell() for _ in range(len(code.co_freevars)))
+
+        return code, base_globals, None, None, closure
 
     def dump(self, obj):
         try:

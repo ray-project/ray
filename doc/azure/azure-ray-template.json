@@ -1,0 +1,514 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "adminUsername": {
+            "type": "string",
+            "defaultValue": "ubuntu",
+            "metadata": {
+                "description": "Username for the Virtual Machine."
+            }
+        },
+        "publicKey": {
+            "type": "securestring",
+            "metadata": {
+                "description": "SSH Key for the Virtual Machine"
+            }
+        },
+        "adminPassword": {
+            "type": "securestring",
+            "metadata": {
+                "description": "Password for the Virtual Machine and JupyterLab"
+            }
+        },
+        "headNodeSize": {
+            "type": "string",
+            "defaultValue": "Standard_D2s_v3",
+            "metadata": {
+                "description": "The size of the head-node Virtual Machine"
+            }
+        },
+        "headNodePriority": {
+            "type": "string",
+            "defaultValue": "Regular",
+            "allowedValues": ["Regular", "Low", "Spot"],
+            "metadata": { 
+                "description": "Use Azure Spot instance for worker nodes"
+            }
+        },
+         "workerNodeSize": {
+            "type": "string",
+            "defaultValue": "Standard_D2s_v3",
+            "metadata": {
+                "description": "The size of the worker node Virtual Machine"
+            }
+        },
+        "workerNodePriority": {
+            "type": "string",
+            "defaultValue": "Spot",
+            "allowedValues": ["Regular", "Low", "Spot"],
+            "metadata": { 
+                "description": "Use Azure Spot instance for worker nodes"
+            }
+        },
+        "workerInitial": {
+            "type": "int",
+            "defaultValue": 1,
+            "minValue": 0,
+            "metadata": {
+                "description": "Initial number of worker nodes"
+            }
+        },
+        "workerMin": {
+            "type": "int",
+            "defaultValue": 1,
+            "minValue": 0,
+            "metadata": {
+                "description": "Minimum number of worker nodes"
+            }
+        },
+        "workerMax": {
+            "type": "int",
+            "defaultValue": 1,
+            "minValue": 0,
+            "metadata": {
+                "description": "Maximum number of worker nodes"
+            }
+        },
+        "condaEnv": {
+            "type": "string",
+            "defaultValue": "py37_tensorflow",
+            "allowedValues": [
+                "azureml_py36_automl",
+                "azureml_py36_pytorch",
+                "azureml_py36_tensorflow",
+                "py37_default",
+                "py37_pytorch",
+                "py37_tensorflow"
+            ],
+            "metadata": {
+                "description": "Conda environment to select (installed on DSVM)"
+            }
+        },
+        "PythonPackages": {
+            "type": "string",
+            "defaultValue": "ray[rllib] gym[atari]",
+            "metadata": {
+                "description": "Python packages to install (space separated)"
+            }
+        },
+        "PublicWebUI": {
+            "type": "bool",
+            "defaultValue": true,
+            "metadata": {
+                "description": "Open port for web UI"
+            }
+        }
+    },
+    "variables": {
+        "azureScriptInitUrl": "https://raw.githubusercontent.com/ray-project/ray/master/doc/azure/azure-init.sh",
+        "vmName": "ray-node",
+        "subnetWorkers": "10.32.0.0/16",
+        "subnetHead": "10.33.0.0/16",
+        "publicIpAddressName": "[concat(variables('vmName'), '-ip' )]",
+        "networkIpConfig": "[guid(resourceGroup().id, variables('vmName'))]",
+        "subnetRef": "[resourceId('Microsoft.Network/virtualNetworks/subnets', 'ray-vnet', 'ray-subnet')]",
+        "subnetHeadRef": "[resourceId('Microsoft.Network/virtualNetworks/subnets', 'ray-vnet', 'ray-subnet-head')]",
+        "osDiskType": "Standard_LRS",
+        "vmNameHead": "[concat(variables('vmName'), '-head')]",
+        "vmNameWorker": "[concat(variables('vmName'), '-workers')]",
+        "networkInterfaceName": "[concat(variables('vmName'), '-nic')]",
+        "subnetNetwork": "[split(variables('subnetHead'), '/')[0]]",
+        "headInternalIP": "[concat(substring(variables('subnetNetwork'), 0, lastIndexOf(variables('subnetNetwork'), '.')), '.5')]",
+        "imagePublisher": "microsoft-dsvm",
+        "imageOffer": "ubuntu-1804",
+        "imageSku": "1804",
+        "imageVersion": "latest"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2019-02-01",
+            "name": "ray-nsg",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "SSH",
+                        "properties": {
+                            "priority": 1000,
+                            "protocol": "TCP",
+                            "access": "Allow",
+                            "direction": "Inbound",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*",
+                            "destinationAddressPrefix": "*",
+                            "destinationPortRange": "22"
+                        }
+                    },
+                    {
+                        "name": "JupyterLab",
+                        "properties": {
+                            "priority": 1001,
+                            "protocol": "TCP",
+                            "access": "Allow",
+                            "direction": "Inbound",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*",
+                            "destinationAddressPrefix": "*",
+                            "destinationPortRange": "8000"
+                        }
+                    },
+                    {
+                        "name": "RayWebUI",
+                        "properties": {
+                            "priority": 1002,
+                            "protocol": "TCP",
+                            "access": "[if(parameters('PublicWebUI'), 'Allow', 'Deny')]",
+                            "direction": "Inbound",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*",
+                            "destinationAddressPrefix": "*",
+                            "destinationPortRange": "8265"
+                        }
+                    },
+                    {
+                        "name": "TensorBoard",
+                        "properties": {
+                            "priority": 1003,
+                            "protocol": "TCP",
+                            "access": "[if(parameters('PublicWebUI'), 'Allow', 'Deny')]",
+                            "direction": "Inbound",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*",
+                            "destinationAddressPrefix": "*",
+                            "destinationPortRange": "6006"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2019-11-01",
+            "name": "ray-vnet",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[variables('subnetHead')]",
+                        "[variables('subnetWorkers')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "ray-subnet",
+                        "properties": {
+                            "addressPrefix": "[variables('subnetWorkers')]"
+                        }
+                    },
+                    {
+                        "name": "ray-subnet-head",
+                        "properties": {
+                            "addressPrefix": "[variables('subnetHead')]"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/publicIpAddresses",
+            "apiVersion": "2019-02-01",
+            "name": "[variables('publicIpAddressName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "publicIpAllocationMethod": "Static",
+                "publicIPAddressVersion": "IPv4"
+            },
+            "sku": {
+                "name": "Basic",
+                "tier": "Regional"
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2018-10-01",
+            "name": "[variables('networkInterfaceName')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIpAddresses/', variables('publicIpAddressName'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups','ray-nsg')]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "[variables('networkIpConfig')]",
+                        "properties": {
+                            "subnet": {
+                                "id": "[variables('subnetHeadRef')]"
+                            },
+                            "privateIPAllocationMethod": "Static",
+                            "privateIPAddress": "[variables('headInternalIP')]",
+                            "publicIpAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))]"
+                            }
+                        }
+                    }
+                ],
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups','ray-nsg')]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2019-07-01",
+            "name": "[variables('vmNameHead')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces/', variables('networkInterfaceName'))]"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[parameters('headNodeSize')]"
+                },
+                "priority": "[parameters('headNodePriority')]",
+                "storageProfile": {
+                    "osDisk": {
+                        "createOption": "fromImage",
+                        "managedDisk": {
+                            "storageAccountType": "[variables('osDiskType')]"
+                        }
+                    },
+                    "imageReference": {
+                        "publisher": "[variables('imagePublisher')]",
+                        "offer": "[variables('imageOffer')]",
+                        "sku": "[variables('imageSku')]",
+                        "version": "[variables('imageVersion')]"
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('networkInterfaceName'))]"
+                        }
+                    ]
+                },
+                "osProfile": {
+                    "computerName": "[variables('vmNameHead')]",
+                    "adminUsername": "[parameters('adminUsername')]",
+                    "adminPassword": "[parameters('adminPassword')]",
+                    "linuxConfiguration": {
+                        "disablePasswordAuthentication": false,
+                        "ssh": {
+                            "publicKeys": [
+                                {
+                                    "path": "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]",
+                                    "keyData": "[parameters('publicKey')]"
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "resources": [
+                {
+                    "type": "Microsoft.Compute/virtualMachines/extensions",
+                    "name": "[concat(variables('vmNameHead'), '/HeadNodeInitScript')]",
+                    "apiVersion": "2017-03-30",
+                    "location": "[resourceGroup().location]",
+                    "dependsOn": [
+                        "[concat('Microsoft.Compute/virtualMachines/', variables('vmNameHead'))]"
+                    ],
+                    "properties": {
+                        "publisher": "Microsoft.Azure.Extensions",
+                        "type": "CustomScript",
+                        "typeHandlerVersion": "2.1",
+                        "autoUpgradeMinorVersion": true,
+                        "settings": {
+                            "commandToExecute": "[concat('sh azure-init.sh ', parameters('adminUsername'), ' ', parameters('condaEnv'), ' \"', parameters('PythonPackages'), '\" ignore head 2>&1 >/var/log/ray-head.log')]",
+                            "fileUris": [
+                                "[variables('azureScriptInitUrl')]"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachineScaleSets",
+            "name": "[variables('vmNameWorker')]",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2019-07-01",
+            "dependsOn": [
+                "Microsoft.Network/virtualNetworks/ray-vnet"
+            ],
+            "sku": {
+                "name": "[parameters('workerNodeSize')]",
+                "tier": "Standard",
+                "capacity": "[parameters('workerInitial')]"
+            },
+            "properties": {
+                "upgradePolicy": {
+                    "mode": "Manual"
+                },
+                "virtualMachineProfile": {
+                    "priority": "[parameters('workerNodePriority')]",
+                    "storageProfile": {
+                        "osDisk": {
+                            "createOption": "fromImage",
+                            "managedDisk": {
+                                "storageAccountType": "[variables('osDiskType')]"
+                            }
+                        },
+                        "imageReference": {
+                            "publisher": "[variables('imagePublisher')]",
+                            "offer": "[variables('imageOffer')]",
+                            "sku": "[variables('imageSku')]",
+                            "version": "[variables('imageVersion')]"
+                        }
+                    },
+                    "osProfile": {
+                        "computerNamePrefix": "[variables('vmNameWorker')]",
+                        "adminUsername": "[parameters('adminUsername')]",
+                        "adminPassword": "[parameters('adminPassword')]",
+                        "linuxConfiguration": {
+                            "disablePasswordAuthentication": false,
+                            "ssh": {
+                                "publicKeys": [
+                                    {
+                                        "path": "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]",
+                                        "keyData": "[parameters('publicKey')]"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "networkProfile": {
+                        "networkInterfaceConfigurations": [
+                            {
+                                "name": "[concat(variables('vmNameWorker'),'-nic')]",
+                                "properties": {
+                                    "primary": true,
+                                    "ipConfigurations": [
+                                        {
+                                            "name": "worker-ip-config",
+                                            "properties": {
+                                                "subnet": {
+                                                    "id": "[variables('subnetRef')]"
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    },
+                    "extensionProfile": {
+                        "extensions": [
+                            {
+                                "name": "RayWorkerInitScript",
+                                "properties": {
+                                    "publisher": "Microsoft.Azure.Extensions",
+                                    "type": "CustomScript",
+                                    "typeHandlerVersion": "2.1",
+                                    "autoUpgradeMinorVersion": true,
+                                    "settings": {
+                                        "commandToExecute": "[concat('sh azure-init.sh ', parameters('adminUsername'), ' ', parameters('condaEnv'), ' \"', parameters('PythonPackages'), '\" ', variables('headInternalIP'), ' worker 2>&1 >/var/log/ray-worker.log')]",
+                                        "fileUris": [
+                                            "[variables('azureScriptInitUrl')]"
+                                        ]
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Insights/autoscaleSettings",
+            "apiVersion": "2015-04-01",
+            "name": "cpuautoscale",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[concat('Microsoft.Compute/virtualMachineScaleSets/', variables('vmNameWorker'))]"
+            ],
+            "properties": {
+                "name": "cpuautoscale",
+                "targetResourceUri": "[concat('/subscriptions/',subscription().subscriptionId, '/resourceGroups/',  resourceGroup().name, '/providers/Microsoft.Compute/virtualMachineScaleSets/', variables('vmNameWorker'))]",
+                "enabled": true,
+                "profiles": [
+                    {
+                        "name": "Profile1",
+                        "capacity": {
+                            "minimum": "[parameters('workerMin')]",
+                            "maximum": "[parameters('workerMax')]",
+                            "default": "[parameters('workerInitial')]"
+                        },
+                        "rules": [
+                            {
+                                "metricTrigger": {
+                                    "metricName": "Percentage CPU",
+                                    "metricNamespace": "",
+                                    "metricResourceUri": "[concat('/subscriptions/',subscription().subscriptionId, '/resourceGroups/',  resourceGroup().name, '/providers/Microsoft.Compute/virtualMachineScaleSets/', variables('vmNameWorker'))]",
+                                    "timeGrain": "PT1M",
+                                    "statistic": "Average",
+                                    "timeWindow": "PT10M",
+                                    "timeAggregation": "Average",
+                                    "operator": "GreaterThan",
+                                    "threshold": 80
+                                },
+                                "scaleAction": {
+                                    "direction": "Increase",
+                                    "type": "ChangeCount",
+                                    "value": "1",
+                                    "cooldown": "PT5M"
+                                }
+                            },
+                            {
+                                "metricTrigger": {
+                                    "metricName": "Percentage CPU",
+                                    "metricNamespace": "",
+                                    "metricResourceUri": "[concat('/subscriptions/',subscription().subscriptionId, '/resourceGroups/',  resourceGroup().name, '/providers/Microsoft.Compute/virtualMachineScaleSets/', variables('vmNameWorker'))]",
+                                    "timeGrain": "PT1M",
+                                    "statistic": "Average",
+                                    "timeWindow": "PT30M",
+                                    "timeAggregation": "Average",
+                                    "operator": "LessThan",
+                                    "threshold": 20
+                                },
+                                "scaleAction": {
+                                    "direction": "Decrease",
+                                    "type": "ChangeCount",
+                                    "value": "1",
+                                    "cooldown": "PT5M"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    ],
+    "outputs": {
+        "JupyterLabURL": {
+            "type": "string",
+            "value": "[concat('https://', reference(variables('publicIpAddressName')).ipAddress, ':8000')]"
+        },
+        "SSH": {
+            "type": "string",
+            "value": "[concat('ssh -t -L 8265:localhost:8265 -L 8888:localhost:8888 ', parameters('adminUsername'),'@', reference(variables('publicIpAddressName')).ipAddress)]"
+        },
+        "RayWebUIURL": {
+            "type": "string",
+            "value": "[concat('http://', reference(variables('publicIpAddressName')).ipAddress, ':8265')]",
+            "condition": "[parameters('PublicWebUI')]"
+        },
+        "TensorBoard": {
+            "type": "string",
+            "value": "[concat('http://', reference(variables('publicIpAddressName')).ipAddress, ':6006')]",
+            "condition": "[parameters('PublicWebUI')]"
+        }
+    }
+}

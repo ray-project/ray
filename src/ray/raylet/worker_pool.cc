@@ -1,6 +1,18 @@
-#include "ray/raylet/worker_pool.h"
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
-#include <sys/wait.h>
+#include "ray/raylet/worker_pool.h"
 
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
@@ -18,7 +30,7 @@ namespace {
 // A helper function to get a worker from a list.
 std::shared_ptr<ray::raylet::Worker> GetWorker(
     const std::unordered_set<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
-    const std::shared_ptr<ray::LocalClientConnection> &connection) {
+    const std::shared_ptr<ray::ClientConnection> &connection) {
   for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
     if ((*it)->Connection() == connection) {
       return (*it);
@@ -43,13 +55,15 @@ namespace raylet {
 /// A constructor that initializes a worker pool with num_workers workers for
 /// each language.
 WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
-                       int maximum_startup_concurrency,
-                       std::shared_ptr<gcs::GcsClient> gcs_client,
+                       int maximum_startup_concurrency, int min_worker_port,
+                       int max_worker_port, std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands,
+                       const std::unordered_map<std::string, std::string> &raylet_config,
                        std::function<void()> starting_worker_timeout_callback)
     : io_service_(&io_service),
       maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
+      raylet_config_(raylet_config),
       starting_worker_timeout_callback_(starting_worker_timeout_callback) {
   RAY_CHECK(maximum_startup_concurrency > 0);
 #ifndef _WIN32
@@ -83,6 +97,18 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
     state.worker_command = entry.second;
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
   }
+  // Initialize free ports list with all ports in the specified range.
+  if (min_worker_port != 0) {
+    if (max_worker_port == 0) {
+      max_worker_port = 65535;  // Maximum valid port number.
+    }
+    RAY_CHECK(min_worker_port > 0 && min_worker_port <= 65535);
+    RAY_CHECK(max_worker_port >= min_worker_port && max_worker_port <= 65535);
+    free_ports_ = std::unique_ptr<std::queue<int>>(new std::queue<int>());
+    for (int port = min_worker_port; port <= max_worker_port; port++) {
+      free_ports_->push(port);
+    }
+  }
   Start(num_workers);
 }
 
@@ -112,9 +138,7 @@ WorkerPool::~WorkerPool() {
   }
   for (Process proc : procs_to_kill) {
     proc.Kill();
-  }
-  for (Process proc : procs_to_kill) {
-    proc.Wait();
+    // NOTE: Avoid calling Wait() here. It fails with ECHILD, as SIGCHLD is disabled.
   }
 }
 
@@ -159,7 +183,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
   // Extract pointers from the worker command to pass into execvp.
   std::vector<std::string> worker_command_args;
   size_t dynamic_option_index = 0;
-  bool num_workers_arg_replaced = false;
+  bool worker_raylet_config_placeholder_found = false;
   for (auto const &token : state.worker_command) {
     const auto option_placeholder =
         kWorkerDynamicOptionPlaceholderPrefix + std::to_string(dynamic_option_index);
@@ -167,28 +191,53 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
     if (token == option_placeholder) {
       if (!dynamic_options.empty()) {
         RAY_CHECK(dynamic_option_index < dynamic_options.size());
-        auto options = SplitStrByWhitespaces(dynamic_options[dynamic_option_index]);
+        auto options = ParseCommandLine(dynamic_options[dynamic_option_index]);
         worker_command_args.insert(worker_command_args.end(), options.begin(),
                                    options.end());
         ++dynamic_option_index;
       }
-    } else {
-      size_t num_workers_index = token.find(kWorkerNumWorkersPlaceholder);
-      if (num_workers_index != std::string::npos) {
-        std::string arg = token;
-        worker_command_args.push_back(arg.replace(num_workers_index,
-                                                  strlen(kWorkerNumWorkersPlaceholder),
-                                                  std::to_string(workers_to_start)));
-        num_workers_arg_replaced = true;
-      } else {
-        worker_command_args.push_back(token);
-      }
+      continue;
     }
+
+    if (token == kWorkerRayletConfigPlaceholder) {
+      worker_raylet_config_placeholder_found = true;
+      switch (language) {
+      case Language::JAVA:
+        for (auto &entry : raylet_config_) {
+          if (entry.first == "num_workers_per_process_java") {
+            continue;
+          }
+          std::string arg;
+          arg.append("-Dray.raylet.config.");
+          arg.append(entry.first);
+          arg.append("=");
+          arg.append(entry.second);
+          worker_command_args.push_back(arg);
+        }
+        // The value of `num_workers_per_process_java` may change depends on whether
+        // dynamic options is empty, so we can't use the value in `RayConfig`. We always
+        // overwrite the value here.
+        worker_command_args.push_back(
+            "-Dray.raylet.config.num_workers_per_process_java=" +
+            std::to_string(workers_to_start));
+        break;
+      default:
+        RAY_LOG(FATAL)
+            << "Raylet config placeholder is not supported for worker language "
+            << language;
+      }
+      continue;
+    }
+
+    worker_command_args.push_back(token);
   }
-  RAY_CHECK(num_workers_arg_replaced || state.num_workers_per_process == 1)
-      << "Expect to start " << state.num_workers_per_process << " workers per "
-      << Language_Name(language) << " worker process. But the "
-      << kWorkerNumWorkersPlaceholder << "placeholder is not found in worker command.";
+
+  // Currently only Java worker process supports multi-worker.
+  if (language == Language::JAVA) {
+    RAY_CHECK(worker_raylet_config_placeholder_found)
+        << "The " << kWorkerRayletConfigPlaceholder
+        << " placeholder is not found in worker command.";
+  }
 
   Process proc = StartProcess(worker_command_args);
   RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start
@@ -246,15 +295,38 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   return child;
 }
 
-Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t pid) {
-  const auto port = worker->Port();
-  RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << port;
+Status WorkerPool::GetNextFreePort(int *port) {
+  if (free_ports_) {
+    if (free_ports_->empty()) {
+      return Status::Invalid(
+          "Ran out of ports to allocate to workers. Please specify a wider port range.");
+    }
+    *port = free_ports_->front();
+    free_ports_->pop();
+  } else {
+    *port = 0;
+  }
+  return Status::OK();
+}
+
+void WorkerPool::MarkPortAsFree(int port) {
+  if (free_ports_) {
+    RAY_CHECK(port != 0) << "";
+    free_ports_->push(port);
+  }
+}
+
+Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t pid,
+                                  int *port) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   auto it = state.starting_worker_processes.find(Process::FromPid(pid));
   if (it == state.starting_worker_processes.end()) {
     RAY_LOG(WARNING) << "Received a register request from an unknown worker " << pid;
     return Status::Invalid("Unknown worker");
   }
+  RAY_RETURN_NOT_OK(GetNextFreePort(port));
+  RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << *port;
+  worker->SetAssignedPort(*port);
   worker->SetProcess(it->first);
   it->second--;
   if (it->second == 0) {
@@ -265,15 +337,17 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t p
   return Status::OK();
 }
 
-Status WorkerPool::RegisterDriver(const std::shared_ptr<Worker> &driver) {
+Status WorkerPool::RegisterDriver(const std::shared_ptr<Worker> &driver, int *port) {
   RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
+  RAY_RETURN_NOT_OK(GetNextFreePort(port));
+  driver->SetAssignedPort(*port);
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
   return Status::OK();
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
-    const std::shared_ptr<LocalClientConnection> &connection) const {
+    const std::shared_ptr<ClientConnection> &connection) const {
   for (const auto &entry : states_by_lang_) {
     auto worker = GetWorker(entry.second.registered_workers, connection);
     if (worker != nullptr) {
@@ -284,7 +358,7 @@ std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredDriver(
-    const std::shared_ptr<LocalClientConnection> &connection) const {
+    const std::shared_ptr<ClientConnection> &connection) const {
   for (const auto &entry : states_by_lang_) {
     auto driver = GetWorker(entry.second.registered_drivers, connection);
     if (driver != nullptr) {
@@ -379,6 +453,7 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
       0, {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(worker->GetProcess().GetId())}});
 
+  MarkPortAsFree(worker->AssignedPort());
   return RemoveWorker(state.idle, worker);
 }
 
@@ -388,6 +463,7 @@ void WorkerPool::DisconnectDriver(const std::shared_ptr<Worker> &driver) {
   stats::CurrentDriver().Record(
       0, {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(driver->GetProcess().GetId())}});
+  MarkPortAsFree(driver->AssignedPort());
 }
 
 inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &language) {
@@ -411,24 +487,28 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForJob(
   return workers;
 }
 
-const std::vector<std::shared_ptr<Worker>> WorkerPool::GetAllWorkers() const {
+const std::vector<std::shared_ptr<Worker>> WorkerPool::GetAllRegisteredWorkers() const {
   std::vector<std::shared_ptr<Worker>> workers;
 
   for (const auto &entry : states_by_lang_) {
     for (const auto &worker : entry.second.registered_workers) {
-      workers.push_back(worker);
+      if (worker->IsRegistered()) {
+        workers.push_back(worker);
+      }
     }
   }
 
   return workers;
 }
 
-const std::vector<std::shared_ptr<Worker>> WorkerPool::GetAllDrivers() const {
+const std::vector<std::shared_ptr<Worker>> WorkerPool::GetAllRegisteredDrivers() const {
   std::vector<std::shared_ptr<Worker>> drivers;
 
   for (const auto &entry : states_by_lang_) {
     for (const auto &driver : entry.second.registered_drivers) {
-      drivers.push_back(driver);
+      if (driver->IsRegistered()) {
+        drivers.push_back(driver);
+      }
     }
   }
 

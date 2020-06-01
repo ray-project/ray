@@ -191,6 +191,31 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertEqual(trials[0].num_failures, 3)
 
+    def testFailFast(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner(fail_fast=True)
+        kwargs = {
+            "resources": Resources(cpu=1, gpu=1),
+            "checkpoint_freq": 1,
+            "max_failures": 0,
+            "config": {
+                "mock_error": True,
+                "persistent_error": True,
+            },
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        runner.add_trial(Trial("__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()  # Start trial
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()  # Process result, dispatch save
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()  # Process save
+        runner.step()  # Error
+        self.assertEqual(trials[0].status, Trial.ERROR)
+        self.assertRaises(TuneError, lambda: runner.step())
+
     def testCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
         runner = TrialRunner()
@@ -239,7 +264,6 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.step()  # Start trial
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
-        # checkpoint = runner.trial_executor.save(trials[0])
         runner.step()  # Process result, dispatch save
         runner.step()  # Process save
         runner.trial_executor.stop_trial(trials[0])
@@ -316,7 +340,8 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()
+        runner.step()  # Start trial
+        runner.step()  # Process result
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.get_info.remote()), None)
 
@@ -327,12 +352,9 @@ class TrialRunnerTest2(unittest.TestCase):
 
         runner.trial_executor.resume_trial(trials[0])
         self.assertEqual(trials[0].status, Trial.RUNNING)
-
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.get_info.remote()), 1)
 
-        runner.step()
+        runner.step()  # Process result
         self.assertEqual(trials[0].status, Trial.TERMINATED)
 
 

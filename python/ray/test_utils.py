@@ -1,4 +1,5 @@
 import asyncio
+import errno
 import json
 import fnmatch
 import os
@@ -6,10 +7,14 @@ import subprocess
 import sys
 import tempfile
 import time
+import socket
 
 import ray
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
+
+if sys.platform == "win32":
+    import _winapi
 
 
 class RayTestTimeoutException(Exception):
@@ -26,11 +31,24 @@ def _pid_alive(pid):
     Returns:
         This returns false if the process is dead. Otherwise, it returns true.
     """
+    no_such_process = errno.EINVAL if sys.platform == "win32" else errno.ESRCH
+    alive = True
     try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
+        if sys.platform == "win32":
+            SYNCHRONIZE = 0x00100000  # access mask defined in <winnt.h>
+            handle = _winapi.OpenProcess(SYNCHRONIZE, False, pid)
+            try:
+                alive = (_winapi.WaitForSingleObject(handle, 0) !=
+                         _winapi.WAIT_OBJECT_0)
+            finally:
+                _winapi.CloseHandle(handle)
+        else:
+            os.kill(pid, 0)
+    except OSError as ex:
+        if ex.errno != no_such_process:
+            raise
+        alive = False
+    return alive
 
 
 def wait_for_pid_to_exit(pid, timeout=20):
@@ -136,25 +154,21 @@ def wait_for_errors(error_type, num_errors, timeout=20):
         num_errors, error_type))
 
 
-def wait_for_condition(condition_predictor,
-                       timeout_ms=1000,
-                       retry_interval_ms=100):
+def wait_for_condition(condition_predictor, timeout=30, retry_interval_ms=100):
     """A helper function that waits until a condition is met.
 
     Args:
         condition_predictor: A function that predicts the condition.
-        timeout_ms: Maximum timeout in milliseconds.
+        timeout: Maximum timeout in seconds.
         retry_interval_ms: Retry interval in milliseconds.
 
     Return:
         Whether the condition is met within the timeout.
     """
-    time_elapsed = 0
     start = time.time()
-    while time_elapsed <= timeout_ms:
+    while time.time() - start <= timeout:
         if condition_predictor():
             return True
-        time_elapsed = (time.time() - start) * 1000
         time.sleep(retry_interval_ms / 1000.0)
     return False
 
@@ -226,12 +240,65 @@ class SignalActor:
             await self.ready_event.wait()
 
 
-class RemoteSignal:
-    def __init__(self):
-        self.signal_actor = SignalActor.remote()
+@ray.remote(num_cpus=0)
+class Semaphore:
+    def __init__(self, value=1):
+        self._sema = asyncio.Semaphore(value=value)
 
-    def send(self):
-        ray.get(self.signal_actor.send.remote())
+    async def acquire(self):
+        self._sema.acquire()
 
-    def wait(self):
-        ray.get(self.signal_actor.wait.remote())
+    async def release(self):
+        self._sema.release()
+
+    async def locked(self):
+        return self._sema.locked()
+
+
+@ray.remote
+def _put(obj):
+    return obj
+
+
+def put_object(obj, use_ray_put):
+    if use_ray_put:
+        return ray.put(obj)
+    else:
+        return _put.remote(obj)
+
+
+def wait_until_server_available(address,
+                                timeout_ms=5000,
+                                retry_interval_ms=100):
+    ip_port = address.split(":")
+    ip = ip_port[0]
+    port = int(ip_port[1])
+    time_elapsed = 0
+    start = time.time()
+    while time_elapsed <= timeout_ms:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(1)
+        try:
+            s.connect((ip, port))
+        except Exception:
+            time_elapsed = (time.time() - start) * 1000
+            time.sleep(retry_interval_ms / 1000.0)
+            s.close()
+            continue
+        s.close()
+        return True
+    return False
+
+
+def get_other_nodes(cluster, exclude_head=False):
+    """Get all nodes except the one that we're connected to."""
+    return [
+        node for node in cluster.list_all_nodes() if
+        node._raylet_socket_name != ray.worker._global_node._raylet_socket_name
+        and (exclude_head is False or node.head is False)
+    ]
+
+
+def get_non_head_nodes(cluster):
+    """Get all non-head nodes."""
+    return list(filter(lambda x: x.head is False, cluster.list_all_nodes()))

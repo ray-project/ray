@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/util/process.h"
 
 #ifdef _WIN32
@@ -14,6 +28,7 @@
 #include <vector>
 
 #include "ray/util/logging.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
@@ -40,7 +55,15 @@ class ProcessFD {
     intptr_t fd;
     pid_t pid;
 #ifdef _WIN32
-    fd = _spawnvp(P_NOWAIT, argv[0], argv);
+    std::vector<std::string> args;
+    for (size_t i = 0; argv[i]; ++i) {
+      args.push_back(argv[i]);
+    }
+    // Calling CreateCommandLine() here wouldn't make sense here if the
+    // Microsoft C runtime properly quoted each command-argument argument.
+    // However, it doesn't quote at all. It just joins arguments with a space.
+    // So we have to do the quoting manually and pass everything as a single argument.
+    fd = _spawnlp(P_NOWAIT, args[0].c_str(), CreateCommandLine(args).c_str(), NULL);
     if (fd != -1) {
       pid = static_cast<pid_t>(GetProcessId(reinterpret_cast<HANDLE>(fd)));
       if (pid == 0) {
@@ -280,7 +303,7 @@ void Process::Kill() {
       }
 #endif
       if (error) {
-        RAY_LOG(ERROR) << "Failed to kill processs " << pid << " with error " << error
+        RAY_LOG(ERROR) << "Failed to kill process " << pid << " with error " << error
                        << ": " << error.message();
       }
     } else {

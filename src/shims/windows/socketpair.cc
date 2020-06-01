@@ -51,6 +51,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #ifdef _WIN32
+#ifndef _WINSOCKAPI_
+#include <WinSock2.h>
+#endif
 #include <Windows.h>
 #include <io.h>
 #include <ws2tcpip.h> /* socklen_t, et al (MSVC20xx) */
@@ -108,7 +111,7 @@ int dumb_socketpair(SOCKET socks[2]) {
 
     if (listen(listener, 1) == SOCKET_ERROR) break;
 
-    socks[0] = WSASocket(AF_INET, SOCK_STREAM, 0, NULL, 0, 0);
+    socks[0] = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (socks[0] == -1) break;
     if (connect(socks[0], &a.addr, sizeof(a.inaddr)) == SOCKET_ERROR) break;
 

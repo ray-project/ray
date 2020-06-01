@@ -25,11 +25,6 @@ def _import_qmix():
     return qmix.QMixTrainer
 
 
-def _import_apex_qmix():
-    from ray.rllib.agents import qmix
-    return qmix.ApexQMixTrainer
-
-
 def _import_ddpg():
     from ray.rllib.agents import ddpg
     return ddpg.DDPGTrainer
@@ -116,7 +111,6 @@ ALGORITHMS = {
     "PG": _import_pg,
     "IMPALA": _import_impala,
     "QMIX": _import_qmix,
-    "APEX_QMIX": _import_apex_qmix,
     "APPO": _import_appo,
     "DDPPO": _import_ddppo,
     "MARWIL": _import_marwil,

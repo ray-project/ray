@@ -10,11 +10,11 @@ type NodeFeatureData = { node: Node };
 type WorkerFeatureData = { node: Node; worker: Worker };
 
 export type ClusterFeatureComponent = (
-  data: ClusterFeatureData
+  data: ClusterFeatureData,
 ) => React.ReactElement;
 export type NodeFeatureComponent = (
-  data: NodeFeatureData
+  data: NodeFeatureData,
 ) => React.ReactElement;
 export type WorkerFeatureComponent = (
-  data: WorkerFeatureData
+  data: WorkerFeatureData,
 ) => React.ReactElement;

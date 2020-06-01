@@ -1,5 +1,5 @@
 import ray
-from ray.rllib.agents.dqn.dqn_policy import minimize_and_clip, _adjust_nstep
+from ray.rllib.agents.dqn.dqn_tf_policy import minimize_and_clip, _adjust_nstep
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
@@ -48,6 +48,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
     def __init__(self, obs_space, act_space, config):
         # _____ Initial Configuration
         config = dict(ray.rllib.contrib.maddpg.DEFAULT_CONFIG, **config)
+        self.config = config
         self.global_step = tf.train.get_or_create_global_step()
 
         # FIXME: Get done from info is required since agentwise done is not
@@ -73,14 +74,12 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                     "Space {} is not supported.".format(space))
 
         obs_space_n = [
-            _make_continuous_space(space)
-            for _, (_, space, _,
-                    _) in sorted(config["multiagent"]["policies"].items())
+            _make_continuous_space(space) for _, (_, space, _, _) in
+            sorted(config["multiagent"]["policies"].items())
         ]
         act_space_n = [
-            _make_continuous_space(space)
-            for _, (_, _, space,
-                    _) in sorted(config["multiagent"]["policies"].items())
+            _make_continuous_space(space) for _, (_, _, space, _) in
+            sorted(config["multiagent"]["policies"].items())
         ]
 
         # _____ Placeholders
@@ -247,7 +246,8 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             obs_input=obs_ph_n[agent_id],
             sampled_action=act_sampler,
             loss=actor_loss + critic_loss,
-            loss_inputs=loss_inputs)
+            loss_inputs=loss_inputs,
+            dist_inputs=actor_feature)
 
         self.sess.run(tf.global_variables_initializer())
 

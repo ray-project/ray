@@ -23,10 +23,10 @@ def format_args(worker, args, kwargs):
         List of args and kwargs (if supported).
     """
     if not worker.load_code_from_local:
-        raise Exception("Cross language feature needs "
-                        "--load-code-from-local to be set.")
+        raise ValueError("Cross language feature needs "
+                         "--load-code-from-local to be set.")
     if kwargs:
-        raise Exception("Cross language remote functions "
+        raise TypeError("Cross language remote functions "
                         "does not support kwargs.")
     return args
 
@@ -76,7 +76,8 @@ def java_actor_class(class_name):
     return ActorClass._ray_from_function_descriptor(
         Language.JAVA,
         JavaFunctionDescriptor(class_name, "<init>", ""),
-        0,  # max_reconstructions,
+        0,  # max_restarts,
+        0,  # max_task_retries,
         None,  # num_cpus,
         None,  # num_gpus,
         None,  # memory,

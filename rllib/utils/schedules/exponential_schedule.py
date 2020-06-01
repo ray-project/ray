@@ -1,12 +1,13 @@
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules.schedule import Schedule
 
 
 class ExponentialSchedule(Schedule):
     def __init__(self,
                  schedule_timesteps,
+                 framework,
                  initial_p=1.0,
-                 decay_rate=0.1,
-                 framework=None):
+                 decay_rate=0.1):
         """
         Exponential decay schedule from initial_p to final_p over
         schedule_timesteps. After this many time steps always `final_p` is
@@ -28,10 +29,9 @@ class ExponentialSchedule(Schedule):
         self.initial_p = initial_p
         self.decay_rate = decay_rate
 
+    @override(Schedule)
     def _value(self, t):
-        """
-        Returns the result of:
-        initial_p * decay_rate ** (`t`/t_max)
+        """Returns the result of: initial_p * decay_rate ** (`t`/t_max)
         """
         return self.initial_p * \
             self.decay_rate ** (t / self.schedule_timesteps)

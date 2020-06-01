@@ -3,8 +3,7 @@ import json
 import logging
 import os
 import random
-import six
-from six.moves.urllib.parse import urlparse
+from urllib.parse import urlparse
 
 try:
     from smart_open import smart_open
@@ -39,7 +38,7 @@ class JsonReader(InputReader):
         """
 
         self.ioctx = ioctx or IOContext()
-        if isinstance(inputs, six.string_types):
+        if isinstance(inputs, str):
             inputs = os.path.abspath(os.path.expanduser(inputs))
             if os.path.isdir(inputs):
                 inputs = os.path.join(inputs, "*.json")

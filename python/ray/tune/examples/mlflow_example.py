@@ -20,9 +20,8 @@ def easy_objective(config):
         result = dict(
             timesteps_total=i,
             mean_loss=(config["height"] - 14)**2 - abs(config["width"] - 3))
-        tune.track.log(**result)
+        tune.report(**result)
         time.sleep(0.02)
-    tune.track.log(done=True)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,8 @@
 import importlib
+import inspect
 from abc import ABC, abstractmethod
 
-import cloudpickle
+from ray import cloudpickle
 from ray.streaming.runtime import gateway_client
 
 
@@ -88,7 +89,7 @@ def load_partition(descriptor_partition_bytes: bytes):
     Deserialize `descriptor_partition_bytes` to get partition info, then
     get or load partition function.
     Note that this function must be kept in sync with
-     `org.ray.streaming.runtime.python.GraphPbBuilder.serializePartition`
+     `io.ray.streaming.runtime.python.GraphPbBuilder.serializePartition`
 
     Args:
         descriptor_partition_bytes: serialized partition info
@@ -96,22 +97,22 @@ def load_partition(descriptor_partition_bytes: bytes):
     Returns:
         partition function
     """
-    partition_bytes, module_name, class_name, function_name =\
+    assert len(descriptor_partition_bytes) > 0
+    partition_bytes, module_name, function_name =\
         gateway_client.deserialize(descriptor_partition_bytes)
     if partition_bytes:
         return deserialize(partition_bytes)
     else:
         assert module_name
         mod = importlib.import_module(module_name)
-        # If class_name is not None, user partition is a sub class
-        # of Partition.
-        # If function_name is not None, user partition is a simple python
+        assert function_name
+        func = getattr(mod, function_name)
+        # If func is a python function, user partition is a simple python
         # function, which will be wrapped as a SimplePartition.
-        if class_name:
-            assert function_name is None
-            cls = getattr(mod, class_name)
-            return cls()
-        else:
-            assert function_name
-            func = getattr(mod, function_name)
+        # If func is a python class, user partition is a sub class
+        # of Partition.
+        if inspect.isfunction(func):
             return SimplePartition(func)
+        else:
+            assert issubclass(func, Partition)
+            return func()

@@ -1,3 +1,4 @@
+import os
 import shutil
 import tempfile
 import threading
@@ -5,6 +6,7 @@ import time
 import unittest
 import yaml
 import copy
+from jsonschema.exceptions import ValidationError
 
 import ray
 import ray.services as services
@@ -164,7 +166,7 @@ SMALL_CLUSTER = {
     },
     "auth": {
         "ssh_user": "ubuntu",
-        "ssh_private_key": "/dev/null",
+        "ssh_private_key": os.devnull,
     },
     "head_node": {
         "TestProp": 1,
@@ -309,7 +311,7 @@ class AutoscalingTest(unittest.TestCase):
         return path
 
     def testInvalidConfig(self):
-        invalid_config = "/dev/null"
+        invalid_config = os.devnull
         with pytest.raises(ValueError):
             StandardAutoscaler(
                 invalid_config, LoadMetrics(), update_interval_s=0)
@@ -323,17 +325,12 @@ class AutoscalingTest(unittest.TestCase):
             self.fail("Test config did not pass validation test!")
 
         config["blah"] = "blah"
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationError):
             validate_config(config)
         del config["blah"]
 
-        config["provider"]["blah"] = "blah"
-        with pytest.raises(ValueError):
-            validate_config(config)
-        del config["provider"]["blah"]
-
         del config["provider"]
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationError):
             validate_config(config)
 
     def testValidateDefaultConfig(self):
@@ -346,7 +343,7 @@ class AutoscalingTest(unittest.TestCase):
         config = fillout_defaults(config)
         try:
             validate_config(config)
-        except Exception:
+        except ValidationError:
             self.fail("Default config did not pass validation test!")
 
     def testScaleUp(self):

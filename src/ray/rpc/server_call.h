@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_RPC_SERVER_CALL_H
 #define RAY_RPC_SERVER_CALL_H
 
@@ -78,8 +92,6 @@ class ServerCallFactory {
  public:
   /// Create a new `ServerCall` and request gRPC runtime to start accepting the
   /// corresponding type of requests.
-  ///
-  /// \return Pointer to the `ServerCall` object.
   virtual void CreateCall() const = 0;
 
   virtual ~ServerCallFactory() = default;
@@ -141,6 +153,10 @@ class ServerCallImpl : public ServerCall {
     // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
     // a different thread, and will cause `this` to be deleted.
     const auto &factory = factory_;
+    // Create a new `ServerCall` to accept the next incoming request.
+    // We create this before handling the request so that the it can be populated by
+    // the completion queue in the background if a new request comes in.
+    factory.CreateCall();
     (service_handler_.*handle_request_function_)(
         request_, &reply_,
         [this](Status status, std::function<void()> success,
@@ -155,9 +171,6 @@ class ServerCallImpl : public ServerCall {
           // this server call might be deleted
           SendReply(status);
         });
-    // We've finished handling this request,
-    // create a new `ServerCall` to accept the next incoming request.
-    factory.CreateCall();
   }
 
   void OnReplySent() override {

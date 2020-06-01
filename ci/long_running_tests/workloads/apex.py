@@ -40,7 +40,7 @@ run_experiments({
             "num_gpus": 0,
             "buffer_size": 10000,
             "learning_starts": 0,
-            "sample_batch_size": 1,
+            "rollout_fragment_length": 1,
             "train_batch_size": 1,
             "min_iter_time_s": 10,
             "timesteps_per_iteration": 10,

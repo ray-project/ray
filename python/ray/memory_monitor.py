@@ -53,11 +53,9 @@ class RayOutOfMemoryError(Exception):
                     round(get_shared(psutil.virtual_memory()) / (1024**3), 2))
                 + "currently being used by the Ray object store. You can set "
                 "the object store size with the `object_store_memory` "
-                "parameter when starting Ray, and the max Redis size with "
-                "`redis_max_memory`. Note that Ray assumes all system "
-                "memory is available for use by workers. If your system "
-                "has other applications running, you should manually set "
-                "these memory limits to a lower value.")
+                "parameter when starting Ray.\n---\n"
+                "--- Tip: Use the `ray memory` command to list active "
+                "objects in the cluster.\n---\n")
 
 
 class MemoryMonitor:
@@ -94,10 +92,10 @@ class MemoryMonitor:
         except IOError:
             self.cgroup_memory_limit_gb = sys.maxsize / (1024**3)
         if not psutil:
-            print("WARNING: Not monitoring node memory since `psutil` is not "
-                  "installed. Install this with `pip install psutil` "
-                  "(or ray[debug]) to enable debugging of memory-related "
-                  "crashes.")
+            logger.warn("WARNING: Not monitoring node memory since `psutil` "
+                        "is not installed. Install this with "
+                        "`pip install psutil` (or ray[debug]) to enable "
+                        "debugging of memory-related crashes.")
 
     def set_heap_limit(self, worker_name, limit_bytes):
         self.heap_limit = limit_bytes
@@ -116,6 +114,13 @@ class MemoryMonitor:
                 with open("/sys/fs/cgroup/memory/memory.usage_in_bytes",
                           "rb") as f:
                     used_gb = int(f.read()) / (1024**3)
+                # Exclude the page cache
+                with open("/sys/fs/cgroup/memory/memory.stat", "r") as f:
+                    for line in f.readlines():
+                        if line.split(" ")[0] == "cache":
+                            used_gb = \
+                                used_gb - int(line.split(" ")[1]) / (1024**3)
+                assert used_gb >= 0
             if used_gb > total_gb * self.error_threshold:
                 raise RayOutOfMemoryError(
                     RayOutOfMemoryError.get_message(used_gb, total_gb,

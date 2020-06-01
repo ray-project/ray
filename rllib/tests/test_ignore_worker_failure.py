@@ -4,6 +4,7 @@ import unittest
 import ray
 from ray.rllib import _register_all
 from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import register_env
 
 
@@ -25,16 +26,16 @@ class FaultInjectEnv(gym.Env):
 
 
 class IgnoresWorkerFailure(unittest.TestCase):
-    def doTest(self, alg, config, fn=None):
-        fn = fn or self._doTestFaultRecover
+    def do_test(self, alg, config, fn=None):
+        fn = fn or self._do_test_fault_recover
         try:
-            ray.init(num_cpus=6)
+            ray.init(num_cpus=6, ignore_reinit_error=True)
             fn(alg, config)
         finally:
             ray.shutdown()
             _register_all()  # re-register the evicted objects
 
-    def _doTestFaultRecover(self, alg, config):
+    def _do_test_fault_recover(self, alg, config):
         register_env("fault_env", lambda c: FaultInjectEnv(c))
         agent_cls = get_agent_class(alg)
 
@@ -42,32 +43,34 @@ class IgnoresWorkerFailure(unittest.TestCase):
         config["num_workers"] = 2
         config["ignore_worker_failures"] = True
         config["env_config"] = {"bad_indices": [1]}
-        a = agent_cls(config=config, env="fault_env")
-        result = a.train()
-        self.assertTrue(result["num_healthy_workers"], 1)
-        a.stop()
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+            a = agent_cls(config=config, env="fault_env")
+            result = a.train()
+            self.assertTrue(result["num_healthy_workers"], 1)
+            a.stop()
 
-    def _doTestFaultFatal(self, alg, config):
+    def _do_test_fault_fatal(self, alg, config):
         register_env("fault_env", lambda c: FaultInjectEnv(c))
         agent_cls = get_agent_class(alg)
-
         # Test raises real error when out of workers
         config["num_workers"] = 2
         config["ignore_worker_failures"] = True
         config["env_config"] = {"bad_indices": [1, 2]}
-        a = agent_cls(config=config, env="fault_env")
-        self.assertRaises(Exception, lambda: a.train())
-        a.stop()
 
-    def testFatal(self):
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+            a = agent_cls(config=config, env="fault_env")
+            self.assertRaises(Exception, lambda: a.train())
+            a.stop()
+
+    def test_fatal(self):
         # test the case where all workers fail
-        self.doTest("PG", {"optimizer": {}}, fn=self._doTestFaultFatal)
+        self.do_test("PG", {"optimizer": {}}, fn=self._do_test_fault_fatal)
 
-    def testAsyncGrads(self):
-        self.doTest("A3C", {"optimizer": {"grads_per_step": 1}})
+    def test_async_grads(self):
+        self.do_test("A3C", {"optimizer": {"grads_per_step": 1}})
 
-    def testAsyncReplay(self):
-        self.doTest(
+    def test_async_replay(self):
+        self.do_test(
             "APEX", {
                 "timesteps_per_iteration": 1000,
                 "num_gpus": 0,
@@ -80,27 +83,29 @@ class IgnoresWorkerFailure(unittest.TestCase):
                 },
             })
 
-    def testAsyncSamples(self):
-        self.doTest("IMPALA", {"num_gpus": 0})
+    def test_async_samples(self):
+        self.do_test("IMPALA", {"num_gpus": 0})
 
-    def testSyncReplay(self):
-        self.doTest("DQN", {"timesteps_per_iteration": 1})
+    def test_sync_replay(self):
+        self.do_test("DQN", {"timesteps_per_iteration": 1})
 
-    def testMultiGPU(self):
-        self.doTest(
+    def test_multi_g_p_u(self):
+        self.do_test(
             "PPO", {
                 "num_sgd_iter": 1,
                 "train_batch_size": 10,
-                "sample_batch_size": 10,
+                "rollout_fragment_length": 10,
                 "sgd_minibatch_size": 1,
             })
 
-    def testSyncSamples(self):
-        self.doTest("PG", {"optimizer": {}})
+    def test_sync_samples(self):
+        self.do_test("PG", {"optimizer": {}})
 
-    def testAsyncSamplingOption(self):
-        self.doTest("PG", {"optimizer": {}, "sample_async": True})
+    def test_async_sampling_option(self):
+        self.do_test("PG", {"optimizer": {}, "sample_async": True})
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

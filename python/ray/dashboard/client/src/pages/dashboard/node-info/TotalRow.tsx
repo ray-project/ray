@@ -1,8 +1,11 @@
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
-import TableCell from "@material-ui/core/TableCell";
-import TableRow from "@material-ui/core/TableRow";
+import {
+  createStyles,
+  TableCell,
+  TableRow,
+  Theme,
+  WithStyles,
+  withStyles,
+} from "@material-ui/core";
 import LayersIcon from "@material-ui/icons/Layers";
 import React from "react";
 import { NodeInfoResponse } from "../../../api";
@@ -26,18 +29,19 @@ const styles = (theme: Theme) =>
       padding: theme.spacing(1),
       textAlign: "center",
       "&:last-child": {
-        paddingRight: theme.spacing(1)
-      }
+        paddingRight: theme.spacing(1),
+      },
     },
     totalIcon: {
       color: theme.palette.text.secondary,
       fontSize: "1.5em",
-      verticalAlign: "middle"
-    }
+      verticalAlign: "middle",
+    },
   });
 
-interface Props {
+type Props = {
   nodes: NodeInfoResponse["clients"];
+  clusterTotalWorkers: number;
   logCounts: {
     [ip: string]: {
       perWorker: { [pid: string]: number };
@@ -50,15 +54,21 @@ interface Props {
       total: number;
     };
   };
-}
+};
 
 class TotalRow extends React.Component<Props & WithStyles<typeof styles>> {
   render() {
-    const { classes, nodes, logCounts, errorCounts } = this.props;
+    const {
+      classes,
+      nodes,
+      clusterTotalWorkers,
+      logCounts,
+      errorCounts,
+    } = this.props;
 
     const features = [
       { ClusterFeature: ClusterHost },
-      { ClusterFeature: ClusterWorkers },
+      { ClusterFeature: ClusterWorkers(clusterTotalWorkers) },
       { ClusterFeature: ClusterUptime },
       { ClusterFeature: ClusterCPU },
       { ClusterFeature: ClusterRAM },
@@ -66,7 +76,7 @@ class TotalRow extends React.Component<Props & WithStyles<typeof styles>> {
       { ClusterFeature: ClusterSent },
       { ClusterFeature: ClusterReceived },
       { ClusterFeature: makeClusterLogs(logCounts) },
-      { ClusterFeature: makeClusterErrors(errorCounts) }
+      { ClusterFeature: makeClusterErrors(errorCounts) },
     ];
 
     return (

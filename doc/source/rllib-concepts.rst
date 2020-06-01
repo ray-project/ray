@@ -217,6 +217,10 @@ In the above section you saw how to compose a simple policy gradient algorithm w
 
 Besides some boilerplate for defining the PPO configuration and some warnings, there are two important arguments to take note of here: ``make_policy_optimizer=choose_policy_optimizer``, and ``after_optimizer_step=update_kl``.
 
+.. warning::
+
+    Policy optimizers are deprecated. This documentation will be updated in the future.
+
 The ``choose_policy_optimizer`` function chooses which `Policy Optimizer <#policy-optimization>`__ to use for distributed training. You can think of these policy optimizers as coordinating the distributed workflow needed to improve the policy. Depending on the trainer config, PPO can switch between a simple synchronous optimizer, or a multi-GPU optimizer that implements minibatch SGD (the default):
 
 .. code-block:: python
@@ -233,7 +237,7 @@ The ``choose_policy_optimizer`` function chooses which `Policy Optimizer <#polic
             sgd_batch_size=config["sgd_minibatch_size"],
             num_sgd_iter=config["num_sgd_iter"],
             num_gpus=config["num_gpus"],
-            sample_batch_size=config["sample_batch_size"],
+            rollout_fragment_length=config["rollout_fragment_length"],
             num_envs_per_worker=config["num_envs_per_worker"],
             train_batch_size=config["train_batch_size"],
             standardize_fields=["advantages"],
@@ -275,7 +279,7 @@ Now let's take a look at the ``update_kl`` function. This is used to adaptively 
             # multi-agent
             trainer.workers.local_worker().foreach_trainable_policy(update)
 
-The ``update_kl`` method on the policy is defined in `PPOTFPolicy <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo_policy.py>`__ via the ``KLCoeffMixin``, along with several other advanced features. Let's look at each new feature used by the policy:
+The ``update_kl`` method on the policy is defined in `PPOTFPolicy <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo_tf_policy.py>`__ via the ``KLCoeffMixin``, along with several other advanced features. Let's look at each new feature used by the policy:
 
 .. code-block:: python
 
@@ -581,6 +585,10 @@ Here is an example of creating a set of rollout workers and using them gather ex
 Policy Optimization
 -------------------
 
+.. warning::
+
+    Policy optimizers are deprecated. This documentation will be updated in the future.
+
 Similar to how a `gradient-descent optimizer <https://www.tensorflow.org/api_docs/python/tf/train/GradientDescentOptimizer>`__ can be used to improve a model, RLlib's `policy optimizers <https://github.com/ray-project/ray/tree/master/rllib/optimizers>`__ implement different strategies for improving a policy.
 
 For example, in A3C you'd want to compute gradients asynchronously on different workers, and apply them to a central policy replica. This strategy is implemented by the `AsyncGradientsOptimizer <https://github.com/ray-project/ray/blob/master/rllib/optimizers/async_gradients_optimizer.py>`__. Another alternative is to gather experiences synchronously in parallel and optimize the model centrally, as in `SyncSamplesOptimizer <https://github.com/ray-project/ray/blob/master/rllib/optimizers/sync_samples_optimizer.py>`__. Policy optimizers abstract these strategies away into reusable modules.
@@ -605,7 +613,7 @@ This is how the example in the previous section looks when written using a polic
 Trainers
 --------
 
-Trainers are the boilerplate classes that put the above components together, making algorithms accessible via Python API and the command line. They manage algorithm configuration, setup of the rollout workers and optimizer, and collection of training metrics. Trainers also implement the `Trainable API <tune-usage.html#trainable-api>`__ for easy experiment management.
+Trainers are the boilerplate classes that put the above components together, making algorithms accessible via Python API and the command line. They manage algorithm configuration, setup of the rollout workers and optimizer, and collection of training metrics. Trainers also implement the :ref:`Tune Trainable API <tune-60-seconds>` for easy experiment management.
 
 Example of three equivalent ways of interacting with the PPO trainer, all of which log results in ``~/ray_results``:
 

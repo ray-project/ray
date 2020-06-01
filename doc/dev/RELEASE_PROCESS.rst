@@ -66,6 +66,9 @@ This document describes the process for creating new releases.
 
    The results should be checked in under ``doc/dev/release_logs/<version>``.
 
+   You can also get the performance change rate from the previous version using 
+   microbenchmark_analysis.py
+
 5. **Resolve release-blockers:** If a release blocking issue arises, there are
    two ways the issue can be resolved: 1) Fix the issue on the master branch and
    cherry-pick the relevant commit  (using ``git cherry-pick``) onto the release
@@ -117,13 +120,15 @@ This document describes the process for creating new releases.
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-macosx_10_13_intel.whl
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-macosx_10_13_intel.whl
 
+   This can be tested if you use the script source ./bin/download_wheels.sh
+
 8. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
    ``twine``.
 
    .. code-block:: bash
 
      # Downloads all of the wheels to the current directory.
-     RAY_VERSION=<version> COMMIT=<commit_sha> bash download_wheels.sh
+     RAY_VERSION=<version> RAY_HASH=<commit_sha> bash download_wheels.sh
 
      # Will ask for your PyPI test credentials and require that you're a maintainer
      # on PyPI test. If you are not, ask @robertnishihara to add you.
@@ -147,6 +152,11 @@ This document describes the process for creating new releases.
 
    Do this at least for MacOS and Linux.
 
+   This process is automated. Run ./bin/pip_download_test.sh. 
+   This will download the ray from the test pypi repository and run the minimum 
+   sanity check from all the Python version supported. (3.5, 3.6, 3.7, 3.8)
+
+
 9. **Upload to PyPI:** Now that you've tested the wheels on the PyPI test
    repository, they can be uploaded to the main PyPI repository. Be careful,
    **it will not be possible to modify wheels once you upload them**, so any
@@ -165,14 +175,19 @@ This document describes the process for creating new releases.
 
      pip install -U ray
 
-10. **Create a point release on readthedocs page:** In the `read the docs project page`_,
-    mark the release branch as "active" so there is a point release for the documentation.
-    Add @richardliaw to add you if you don't have access.
+10. **Create a point release on readthedocs page:** Go to the `Ray Readthedocs version page`_.
+    Scroll to "Activate a version" and mark the *release branch* as "active" and "public". This creates a point release for the documentation.
+    Message @richardliaw to add you if you don't have access.
 
-11. **Improve the release process:** Find some way to improve the release
+11. **Update 'Default Branch' on the readthedocs page:** Go to the `Ray Readthedocs advanced settings page`_.
+    In 'Global Settings', set the 'Default Branch' to the *release branch*. This redirects the documentation to the latest pip release.
+    Message @richardliaw to add you if you don't have access.
+
+12. **Improve the release process:** Find some way to improve the release
     process so that whoever manages the release next will have an easier time.
 
 .. _`sample PR for bumping a minor release version`: https://github.com/ray-project/ray/pull/6303
 .. _`sample commit for bumping the release branch version`: https://github.com/ray-project/ray/commit/a39325d818339970e51677708d5596f4b8f790ce
 .. _`GitHub release`: https://github.com/ray-project/ray/releases
-.. _`read the docs project page`: https://readthedocs.org/projects/ray/
+.. _`Ray Readthedocs version page`: https://readthedocs.org/projects/ray/versions/
+.. _`Ray Readthedocs advanced settings page`: https://readthedocs.org/dashboard/ray/advanced/

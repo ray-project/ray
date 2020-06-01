@@ -29,8 +29,9 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
     A number of SGD passes are then taken over the in-memory data. For more
     details, see `multi_gpu_impl.LocalSyncParallelOptimizer`.
 
-    This optimizer is Tensorflow-specific and require the underlying
-    Policy to be a TFPolicy instance that support `.copy()`.
+    This optimizer is Tensorflow-specific and requires the underlying
+    Policy to be a TFPolicy instance that implements the `copy()` method
+    for multi-GPU tower generation.
 
     Note that all replicas of the TFPolicy will merge their
     extra_compute_grad and apply_grad feed_dicts and fetches. This
@@ -41,19 +42,21 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                  workers,
                  sgd_batch_size=128,
                  num_sgd_iter=10,
-                 sample_batch_size=200,
+                 rollout_fragment_length=200,
                  num_envs_per_worker=1,
                  train_batch_size=1024,
                  num_gpus=0,
                  standardize_fields=[],
-                 shuffle_sequences=True):
+                 shuffle_sequences=True,
+                 _fake_gpus=False):
         """Initialize a synchronous multi-gpu optimizer.
 
         Arguments:
             workers (WorkerSet): all workers
             sgd_batch_size (int): SGD minibatch size within train batch size
             num_sgd_iter (int): number of passes to learn on per train batch
-            sample_batch_size (int): size of batches to sample from workers
+            rollout_fragment_length (int): size of batches to sample from
+                workers.
             num_envs_per_worker (int): num envs in each rollout worker
             train_batch_size (int): size of batches to learn on
             num_gpus (int): number of GPUs to use for data-parallel SGD
@@ -61,21 +64,28 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 to normalize
             shuffle_sequences (bool): whether to shuffle the train batch prior
                 to SGD to break up correlations
+            _fake_gpus (bool): Whether to use fake-GPUs (CPUs) instead of
+                actual GPUs (should only be used for testing on non-GPU
+                machines).
         """
         PolicyOptimizer.__init__(self, workers)
 
         self.batch_size = sgd_batch_size
         self.num_sgd_iter = num_sgd_iter
         self.num_envs_per_worker = num_envs_per_worker
-        self.sample_batch_size = sample_batch_size
+        self.rollout_fragment_length = rollout_fragment_length
         self.train_batch_size = train_batch_size
         self.shuffle_sequences = shuffle_sequences
+
+        # Collect actual devices to use.
         if not num_gpus:
-            self.devices = ["/cpu:0"]
-        else:
-            self.devices = [
-                "/gpu:{}".format(i) for i in range(int(math.ceil(num_gpus)))
-            ]
+            _fake_gpus = True
+            num_gpus = 1
+        type_ = "cpu" if _fake_gpus else "gpu"
+        self.devices = [
+            "/{}:{}".format(type_, i) for i in range(int(math.ceil(num_gpus)))
+        ]
+
         self.batch_size = int(sgd_batch_size / len(self.devices)) * len(
             self.devices)
         assert self.batch_size % len(self.devices) == 0
@@ -132,9 +142,10 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
         with self.sample_timer:
             if self.workers.remote_workers():
-                samples = collect_samples(
-                    self.workers.remote_workers(), self.sample_batch_size,
-                    self.num_envs_per_worker, self.train_batch_size)
+                samples = collect_samples(self.workers.remote_workers(),
+                                          self.rollout_fragment_length,
+                                          self.num_envs_per_worker,
+                                          self.train_batch_size)
                 if samples.count > self.train_batch_size * 2:
                     logger.info(
                         "Collected more training samples than expected "

@@ -22,6 +22,8 @@ def get_default_fixure_internal_config():
     internal_config = json.dumps({
         "initial_reconstruction_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
+        "object_store_full_max_retries": 3,
+        "object_store_full_initial_delay_ms": 100,
     })
     return internal_config
 
@@ -103,8 +105,10 @@ def _ray_start_cluster(**kwargs):
     remote_nodes = []
     for _ in range(num_nodes):
         remote_nodes.append(cluster.add_node(**init_kwargs))
-    if do_init:
-        ray.init(address=cluster.address)
+        # We assume driver will connect to the head (first node),
+        # so ray init will be invoked if do_init is true
+        if len(remote_nodes) == 1 and do_init:
+            ray.init(address=cluster.address)
     yield cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -151,7 +155,10 @@ def ray_start_object_store_memory(request):
 
 @pytest.fixture
 def call_ray_start(request):
-    parameter = getattr(request, "param", "ray start --head --num-cpus=1")
+    parameter = getattr(
+        request, "param",
+        "ray start --head --num-cpus=1 --min-worker-port=0 --max-worker-port=0"
+    )
     command_args = parameter.split(" ")
     out = ray.utils.decode(
         subprocess.check_output(command_args, stderr=subprocess.STDOUT))

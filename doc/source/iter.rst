@@ -1,4 +1,4 @@
-Distributed Iterators
+Parallel Iterators
 =====================
 
 .. _`issue on GitHub`: https://github.com/ray-project/ray/issues
@@ -204,4 +204,3 @@ API Reference
 .. automodule:: ray.util.iter
     :members:
     :show-inheritance:
-    :special-members:

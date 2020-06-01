@@ -1,13 +1,14 @@
 import time
 from ray.serve.constants import DEFAULT_LATENCY_SLO_MS
+import ray.cloudpickle as pickle
 
 
 class RequestMetadata:
     """
-    Request Arguments required for enqueuing a request to the service
-    queue.
+    Request arguments required for enqueuing a request to the endpoint queue.
+
     Args:
-        service(str): A registered service endpoint.
+        endpoint(str): A registered endpoint.
         request_context(TaskContext): Context of a request.
         request_slo_ms(float): Expected time for the query to get
             completed.
@@ -16,18 +17,22 @@ class RequestMetadata:
     """
 
     def __init__(self,
-                 service,
+                 endpoint,
                  request_context,
                  relative_slo_ms=None,
-                 absolute_slo_ms=None):
+                 absolute_slo_ms=None,
+                 call_method="__call__",
+                 shard_key=None):
 
-        self.service = service
+        self.endpoint = endpoint
         self.request_context = request_context
         self.relative_slo_ms = relative_slo_ms
         self.absolute_slo_ms = absolute_slo_ms
+        self.call_method = call_method
+        self.shard_key = shard_key
 
     def adjust_relative_slo_ms(self) -> float:
-        """Normalize the input latency objective to absoluate timestamp.
+        """Normalize the input latency objective to absolute timestamp.
 
         """
         slo_ms = self.relative_slo_ms
@@ -35,3 +40,11 @@ class RequestMetadata:
             slo_ms = DEFAULT_LATENCY_SLO_MS
         current_time_ms = time.time() * 1000
         return current_time_ms + slo_ms
+
+    def ray_serialize(self):
+        return pickle.dumps(self.__dict__, protocol=5)
+
+    @staticmethod
+    def ray_deserialize(value):
+        kwargs = pickle.loads(value)
+        return RequestMetadata(**kwargs)

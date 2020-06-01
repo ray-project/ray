@@ -1,13 +1,20 @@
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
-import TableCell from "@material-ui/core/TableCell";
-import TableRow from "@material-ui/core/TableRow";
+import {
+  createStyles,
+  TableCell,
+  TableRow,
+  Theme,
+  withStyles,
+  WithStyles,
+} from "@material-ui/core";
 import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
 import classNames from "classnames";
 import React from "react";
-import { NodeInfoResponse, RayletInfoResponse } from "../../../api";
+import {
+  NodeInfoResponse,
+  NodeInfoResponseWorker,
+  RayletInfoResponse,
+} from "../../../api";
 import { NodeCPU, WorkerCPU } from "./features/CPU";
 import { NodeDisk, WorkerDisk } from "./features/Disk";
 import { makeNodeErrors, makeWorkerErrors } from "./features/Errors";
@@ -25,28 +32,29 @@ const styles = (theme: Theme) =>
       padding: theme.spacing(1),
       textAlign: "center",
       "&:last-child": {
-        paddingRight: theme.spacing(1)
-      }
+        paddingRight: theme.spacing(1),
+      },
     },
     expandCollapseCell: {
-      cursor: "pointer"
+      cursor: "pointer",
     },
     expandCollapseIcon: {
       color: theme.palette.text.secondary,
       fontSize: "1.5em",
-      verticalAlign: "middle"
+      verticalAlign: "middle",
     },
     extraInfo: {
       fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
-      whiteSpace: "pre"
-    }
+      whiteSpace: "pre",
+    },
   });
 
 type ArrayType<T> = T extends Array<infer U> ? U : never;
 type Node = ArrayType<NodeInfoResponse["clients"]>;
 
-interface Props {
+type Props = {
   node: Node;
+  clusterWorkers: Array<NodeInfoResponseWorker>;
   raylet: RayletInfoResponse["nodes"][keyof RayletInfoResponse["nodes"]] | null;
   logCounts: {
     perWorker: { [pid: string]: number };
@@ -59,23 +67,23 @@ interface Props {
   setLogDialog: (hostname: string, pid: number | null) => void;
   setErrorDialog: (hostname: string, pid: number | null) => void;
   initialExpanded: boolean;
-}
+};
 
-interface State {
+type State = {
   expanded: boolean;
-}
+};
 
 class NodeRowGroup extends React.Component<
   Props & WithStyles<typeof styles>,
   State
 > {
   state: State = {
-    expanded: this.props.initialExpanded
+    expanded: this.props.initialExpanded,
   };
 
   toggleExpand = () => {
-    this.setState(state => ({
-      expanded: !state.expanded
+    this.setState((state) => ({
+      expanded: !state.expanded,
     }));
   };
 
@@ -84,16 +92,19 @@ class NodeRowGroup extends React.Component<
       classes,
       node,
       raylet,
+      clusterWorkers,
       logCounts,
       errorCounts,
       setLogDialog,
-      setErrorDialog
+      setErrorDialog,
     } = this.props;
     const { expanded } = this.state;
-
     const features = [
       { NodeFeature: NodeHost, WorkerFeature: WorkerHost },
-      { NodeFeature: NodeWorkers, WorkerFeature: WorkerWorkers },
+      {
+        NodeFeature: NodeWorkers(clusterWorkers.length),
+        WorkerFeature: WorkerWorkers,
+      },
       { NodeFeature: NodeUptime, WorkerFeature: WorkerUptime },
       { NodeFeature: NodeCPU, WorkerFeature: WorkerCPU },
       { NodeFeature: NodeRAM, WorkerFeature: WorkerRAM },
@@ -102,12 +113,12 @@ class NodeRowGroup extends React.Component<
       { NodeFeature: NodeReceived, WorkerFeature: WorkerReceived },
       {
         NodeFeature: makeNodeLogs(logCounts, setLogDialog),
-        WorkerFeature: makeWorkerLogs(logCounts, setLogDialog)
+        WorkerFeature: makeWorkerLogs(logCounts, setLogDialog),
       },
       {
         NodeFeature: makeNodeErrors(errorCounts, setErrorDialog),
-        WorkerFeature: makeWorkerErrors(errorCounts, setErrorDialog)
-      }
+        WorkerFeature: makeWorkerErrors(errorCounts, setErrorDialog),
+      },
     ];
 
     return (
@@ -142,7 +153,7 @@ class NodeRowGroup extends React.Component<
                 </TableCell>
               </TableRow>
             )}
-            {node.workers.map((worker, index: number) => (
+            {clusterWorkers.map((worker, index: number) => (
               <TableRow hover key={index}>
                 <TableCell className={classes.cell} />
                 {features.map(({ WorkerFeature }, index) => (

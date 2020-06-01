@@ -1,16 +1,14 @@
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
+import { createStyles, Theme, withStyles, WithStyles } from "@material-ui/core";
 import React from "react";
 
 const blend = (
   [r1, g1, b1]: number[],
   [r2, g2, b2]: number[],
-  ratio: number
+  ratio: number,
 ) => [
   r1 * (1 - ratio) + r2 * ratio,
   g1 * (1 - ratio) + g2 * ratio,
-  b1 * (1 - ratio) + b2 * ratio
+  b1 * (1 - ratio) + b2 * ratio,
 ];
 
 const styles = (theme: Theme) =>
@@ -18,18 +16,18 @@ const styles = (theme: Theme) =>
     root: {
       borderColor: theme.palette.divider,
       borderStyle: "solid",
-      borderWidth: 1
+      borderWidth: 1,
     },
     inner: {
       paddingLeft: theme.spacing(1),
-      paddingRight: theme.spacing(1)
-    }
+      paddingRight: theme.spacing(1),
+    },
   });
 
-interface Props {
+type Props = {
   percent: number;
   text: string;
-}
+};
 
 class UsageBar extends React.Component<Props & WithStyles<typeof styles>> {
   render() {

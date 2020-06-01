@@ -1,4 +1,19 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/gcs/subscription_executor.h"
+
 #include "gtest/gtest.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/entry_change_notification.h"
@@ -11,12 +26,13 @@ namespace gcs {
 
 class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData> {
  public:
-  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable> ActorSubExecutor;
+  typedef SubscriptionExecutor<ActorID, ActorTableData, LogBasedActorTable>
+      ActorSubExecutor;
 
   virtual void SetUp() {
     AccessorTestBase<ActorID, ActorTableData>::SetUp();
 
-    actor_sub_executor_.reset(new ActorSubExecutor(gcs_client_->actor_table()));
+    actor_sub_executor_.reset(new ActorSubExecutor(gcs_client_->log_based_actor_table()));
 
     subscribe_ = [this](const ActorID &id, const ActorTableData &data) {
       const auto it = id_to_data_.find(id);
@@ -46,8 +62,8 @@ class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData
   virtual void GenTestData() {
     for (size_t i = 0; i < 100; ++i) {
       std::shared_ptr<ActorTableData> actor = std::make_shared<ActorTableData>();
-      actor->set_max_reconstructions(1);
-      actor->set_remaining_reconstructions(1);
+      actor->set_max_restarts(1);
+      actor->set_num_restarts(0);
       JobID job_id = JobID::FromInt(i);
       actor->set_job_id(job_id.Binary());
       actor->set_state(ActorTableData::ALIVE);
@@ -202,8 +218,8 @@ TEST_F(SubscriptionExecutorTest, UnsubscribeTest) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

@@ -36,6 +36,7 @@ worker_nodes:
 setup_commands:
     # Install latest TensorFlow
     - source activate tensorflow_p36 && conda remove -y --force wrapt || true
+    - source activate tensorflow_p36 && pip install --upgrade pip
     - source activate tensorflow_p36 && pip install -U tensorflow==1.14
     - echo set-window-option -g mouse on > ~/.tmux.conf
     - echo 'termcapinfo xterm* ti@:te@' > ~/.screenrc

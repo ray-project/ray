@@ -2,6 +2,8 @@
 import heapq
 import logging
 
+from ray.tune.result import TRAINING_ITERATION
+
 logger = logging.getLogger(__name__)
 
 
@@ -84,6 +86,14 @@ class CheckpointManager:
         self._best_checkpoints = []
         self._membership = set()
 
+    @property
+    def newest_checkpoint(self):
+        """Returns the newest checkpoint (based on training iteration)."""
+        newest_checkpoint = max(
+            [self.newest_persistent_checkpoint, self.newest_memory_checkpoint],
+            key=lambda c: c.result.get(TRAINING_ITERATION, -1))
+        return newest_checkpoint
+
     def on_checkpoint(self, checkpoint):
         """Starts tracking checkpoint metadata on checkpoint.
 
@@ -127,7 +137,7 @@ class CheckpointManager:
                 self.delete(worst)
 
     def best_checkpoints(self):
-        """Returns best checkpoints, sorted by score."""
+        """Returns best PERSISTENT checkpoints, sorted by score."""
         checkpoints = sorted(self._best_checkpoints, key=lambda c: c.priority)
         return [queue_item.value for queue_item in checkpoints]
 

@@ -113,8 +113,8 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
     loop.set_debug(True)
 
     # This is needed for async plasma
-    from ray.experimental.async_api import _async_init
-    await _async_init()
+    from ray.experimental.async_api import init
+    init()
 
     # Test Async Plasma
     @ray.remote
@@ -163,19 +163,18 @@ def test_asyncio_actor_async_get(ray_start_regular_shared):
     def remote_task():
         return 1
 
-    plasma_object = ray.put(2)
-
     @ray.remote
     class AsyncGetter:
         async def get(self):
             return await remote_task.remote()
 
-        async def plasma_get(self):
-            return await plasma_object
+        async def plasma_get(self, plasma_object):
+            return await plasma_object[0]
 
-    getter = AsyncGetter.options().remote()
+    plasma_object = ray.put(2)
+    getter = AsyncGetter.remote()
     assert ray.get(getter.get.remote()) == 1
-    assert ray.get(getter.plasma_get.remote()) == 2
+    assert ray.get(getter.plasma_get.remote([plasma_object])) == 2
 
 
 if __name__ == "__main__":

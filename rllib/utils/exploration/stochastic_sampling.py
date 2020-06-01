@@ -1,10 +1,16 @@
+from typing import Union
+
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.tuple_actions import TupleActions
+from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
+    TensorType
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
+tree = try_import_tree()
 
 
 class StochasticSampling(Exploration):
@@ -16,55 +22,30 @@ class StochasticSampling(Exploration):
     lowering stddev, temperature, etc.. over time.
     """
 
-    def __init__(self,
-                 action_space,
-                 *,
-                 static_params=None,
-                 time_dependent_params=None,
-                 framework="tf",
+    def __init__(self, action_space, *, framework: str, model: ModelV2,
                  **kwargs):
         """Initializes a StochasticSampling Exploration object.
 
         Args:
             action_space (Space): The gym action space used by the environment.
-            static_params (Optional[dict]): Parameters to be passed as-is into
-                the action distribution class' constructor.
-            time_dependent_params (dict): Parameters to be evaluated based on
-                `timestep` and then passed into the action distribution
-                class' constructor.
-            framework (Optional[str]): One of None, "tf", "torch".
+            framework (str): One of None, "tf", "torch".
         """
         assert framework is not None
-        super().__init__(action_space, framework=framework, **kwargs)
-
-        self.static_params = static_params or {}
-
-        # TODO(sven): Support scheduled params whose values depend on timestep
-        #  and that will be passed into the distribution's c'tor.
-        self.time_dependent_params = time_dependent_params or {}
+        super().__init__(
+            action_space, model=model, framework=framework, **kwargs)
 
     @override(Exploration)
     def get_exploration_action(self,
-                               distribution_inputs,
-                               action_dist_class,
-                               model=None,
-                               explore=True,
-                               timestep=None):
-        kwargs = self.static_params.copy()
-
-        # TODO(sven): create schedules for these via easy-config patterns
-        #  These can be used anywhere in configs, where schedules are wanted:
-        #  e.g. lr=[0.003, 0.00001, 100k] <- linear anneal from 0.003, to
-        #  0.00001 over 100k ts.
-        # if self.time_dependent_params:
-        #    for k, v in self.time_dependent_params:
-        #        kwargs[k] = v(timestep)
-        action_dist = action_dist_class(distribution_inputs, model, **kwargs)
-
+                               *,
+                               action_distribution: ActionDistribution,
+                               timestep: Union[int, TensorType],
+                               explore: bool = True):
         if self.framework == "torch":
-            return self._get_torch_exploration_action(action_dist, explore)
+            return self._get_torch_exploration_action(action_distribution,
+                                                      explore)
         else:
-            return self._get_tf_exploration_action_op(action_dist, explore)
+            return self._get_tf_exploration_action_op(action_distribution,
+                                                      explore)
 
     def _get_tf_exploration_action_op(self, action_dist, explore):
         sample = action_dist.sample()
@@ -75,11 +56,7 @@ class StochasticSampling(Exploration):
             false_fn=lambda: deterministic_sample)
 
         def logp_false_fn():
-            # TODO(sven): Move into (deterministic_)sample(logp=True|False)
-            if isinstance(sample, TupleActions):
-                batch_size = tf.shape(action[0])[0]
-            else:
-                batch_size = tf.shape(action)[0]
+            batch_size = tf.shape(tree.flatten(action)[0])[0]
             return tf.zeros(shape=(batch_size, ), dtype=tf.float32)
 
         logp = tf.cond(
@@ -87,8 +64,7 @@ class StochasticSampling(Exploration):
             true_fn=lambda: action_dist.sampled_action_logp(),
             false_fn=logp_false_fn)
 
-        return TupleActions(action) if isinstance(sample, TupleActions) \
-            else action, logp
+        return action, logp
 
     @staticmethod
     def _get_torch_exploration_action(action_dist, explore):

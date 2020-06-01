@@ -1,12 +1,29 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_GCS_SERVICE_BASED_ACCESSOR_H
 #define RAY_GCS_SERVICE_BASED_ACCESSOR_H
 
+#include <ray/common/task/task_spec.h>
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/util/sequencer.h"
 
 namespace ray {
 namespace gcs {
+
+using SubscribeOperation = std::function<Status(const StatusCallback &done)>;
 
 class ServiceBasedGcsClient;
 
@@ -28,11 +45,16 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
       const SubscribeCallback<JobID, JobTableData> &subscribe,
       const StatusCallback &done) override;
 
- private:
-  ServiceBasedGcsClient *client_impl_;
+  Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) override;
 
-  typedef SubscriptionExecutor<JobID, JobTableData, JobTable> JobSubscriptionExecutor;
-  JobSubscriptionExecutor job_sub_executor_;
+  Status AsyncReSubscribe() override;
+
+ private:
+  /// Save the subscribe operation in this function, so we can call it again when GCS
+  /// restarts from a failure.
+  SubscribeOperation subscribe_operation_;
+
+  ServiceBasedGcsClient *client_impl_;
 };
 
 /// \class ServiceBasedActorInfoAccessor
@@ -44,8 +66,19 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
 
   virtual ~ServiceBasedActorInfoAccessor() = default;
 
+  Status GetAll(std::vector<ActorTableData> *actor_table_data_list) override;
+
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<rpc::ActorTableData> &callback) override;
+
+  Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData> &callback) override;
+
+  Status AsyncGetByName(
+      const std::string &name,
+      const OptionalItemCallback<rpc::ActorTableData> &callback) override;
+
+  Status AsyncCreateActor(const TaskSpecification &task_spec,
+                          const StatusCallback &callback) override;
 
   Status AsyncRegister(const std::shared_ptr<rpc::ActorTableData> &data_ptr,
                        const StatusCallback &callback) override;
@@ -62,27 +95,29 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
                         const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
                         const StatusCallback &done) override;
 
-  Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done) override;
+  Status AsyncUnsubscribe(const ActorID &actor_id) override;
 
   Status AsyncAddCheckpoint(const std::shared_ptr<rpc::ActorCheckpointData> &data_ptr,
                             const StatusCallback &callback) override;
 
   Status AsyncGetCheckpoint(
-      const ActorCheckpointID &checkpoint_id,
+      const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
       const OptionalItemCallback<rpc::ActorCheckpointData> &callback) override;
 
   Status AsyncGetCheckpointID(
       const ActorID &actor_id,
       const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override;
 
+  Status AsyncReSubscribe() override;
+
  private:
+  /// Save the subscribe operation in this function, so we can call it again when GCS
+  /// restarts from a failure.
+  SubscribeOperation subscribe_all_operation_;
+  /// Save the subscribe operation of actors.
+  std::unordered_map<ActorID, SubscribeOperation> subscribe_operations_;
+
   ServiceBasedGcsClient *client_impl_;
-
-  ClientID subscribe_id_;
-
-  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
-      ActorSubscriptionExecutor;
-  ActorSubscriptionExecutor actor_sub_executor_;
 
   Sequencer<ActorID> sequencer_;
 };
@@ -132,9 +167,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
                               const std::vector<std::string> &resource_names,
                               const StatusCallback &callback) override;
 
-  Status AsyncSubscribeToResources(
-      const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
-      const StatusCallback &done) override;
+  Status AsyncSubscribeToResources(const ItemCallback<rpc::NodeResourceChange> &subscribe,
+                                   const StatusCallback &done) override;
 
   Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
                               const StatusCallback &callback) override;
@@ -151,25 +185,34 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
       const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
       const StatusCallback &done) override;
 
+  Status AsyncReSubscribe() override;
+
  private:
+  /// Save the subscribe operation in this function, so we can call it again when GCS
+  /// restarts from a failure.
+  SubscribeOperation subscribe_node_operation_;
+  SubscribeOperation subscribe_resource_operation_;
+  SubscribeOperation subscribe_batch_heartbeat_operation_;
+
+  void HandleNotification(const GcsNodeInfo &node_info);
+
   ServiceBasedGcsClient *client_impl_;
 
-  typedef SubscriptionExecutor<ClientID, ResourceChangeNotification, DynamicResourceTable>
-      DynamicResourceSubscriptionExecutor;
-  DynamicResourceSubscriptionExecutor resource_sub_executor_;
-
-  typedef SubscriptionExecutor<ClientID, HeartbeatTableData, HeartbeatTable>
-      HeartbeatSubscriptionExecutor;
-  HeartbeatSubscriptionExecutor heartbeat_sub_executor_;
-
-  typedef SubscriptionExecutor<ClientID, HeartbeatBatchTableData, HeartbeatBatchTable>
-      HeartbeatBatchSubscriptionExecutor;
-  HeartbeatBatchSubscriptionExecutor heartbeat_batch_sub_executor_;
+  using NodeChangeCallback =
+      std::function<void(const ClientID &id, const GcsNodeInfo &node_info)>;
 
   GcsNodeInfo local_node_info_;
   ClientID local_node_id_;
 
   Sequencer<ClientID> sequencer_;
+
+  /// The callback to call when a new node is added or a node is removed.
+  NodeChangeCallback node_change_callback_{nullptr};
+
+  /// A cache for information about all nodes.
+  std::unordered_map<ClientID, GcsNodeInfo> node_cache_;
+  /// The set of removed nodes.
+  std::unordered_set<ClientID> removed_nodes_;
 };
 
 /// \class ServiceBasedTaskInfoAccessor
@@ -194,35 +237,35 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
                         const SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
                         const StatusCallback &done) override;
 
-  Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done) override;
+  Status AsyncUnsubscribe(const TaskID &task_id) override;
 
   Status AsyncAddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
                            const StatusCallback &callback) override;
+
+  Status AsyncGetTaskLease(
+      const TaskID &task_id,
+      const OptionalItemCallback<rpc::TaskLeaseData> &callback) override;
 
   Status AsyncSubscribeTaskLease(
       const TaskID &task_id,
       const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
-                                   const StatusCallback &done) override;
+  Status AsyncUnsubscribeTaskLease(const TaskID &task_id) override;
 
   Status AttemptTaskReconstruction(
       const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
       const StatusCallback &callback) override;
 
+  Status AsyncReSubscribe() override;
+
  private:
+  /// Save the subscribe operation in this function, so we can call it again when GCS
+  /// restarts from a failure.
+  std::unordered_map<TaskID, SubscribeOperation> subscribe_task_operations_;
+  std::unordered_map<TaskID, SubscribeOperation> subscribe_task_lease_operations_;
+
   ServiceBasedGcsClient *client_impl_;
-
-  ClientID subscribe_id_;
-
-  typedef SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>
-      TaskSubscriptionExecutor;
-  TaskSubscriptionExecutor task_sub_executor_;
-
-  typedef SubscriptionExecutor<TaskID, boost::optional<TaskLeaseData>, TaskLeaseTable>
-      TaskLeaseSubscriptionExecutor;
-  TaskLeaseSubscriptionExecutor task_lease_sub_executor_;
 };
 
 /// \class ServiceBasedObjectInfoAccessor
@@ -238,6 +281,8 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
       const ObjectID &object_id,
       const MultiItemCallback<rpc::ObjectTableData> &callback) override;
 
+  Status AsyncGetAll(const MultiItemCallback<rpc::ObjectLocationInfo> &callback) override;
+
   Status AsyncAddLocation(const ObjectID &object_id, const ClientID &node_id,
                           const StatusCallback &callback) override;
 
@@ -249,17 +294,16 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
       const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncUnsubscribeToLocations(const ObjectID &object_id,
-                                     const StatusCallback &done) override;
+  Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
+
+  Status AsyncReSubscribe() override;
 
  private:
+  /// Save the subscribe operation in this function, so we can call it again when GCS
+  /// restarts from a failure.
+  std::unordered_map<ObjectID, SubscribeOperation> subscribe_object_operations_;
+
   ServiceBasedGcsClient *client_impl_;
-
-  ClientID subscribe_id_;
-
-  typedef SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>
-      ObjectSubscriptionExecutor;
-  ObjectSubscriptionExecutor object_sub_executor_;
 
   Sequencer<ObjectID> sequencer_;
 };
@@ -275,6 +319,8 @@ class ServiceBasedStatsInfoAccessor : public StatsInfoAccessor {
 
   Status AsyncAddProfileData(const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
                              const StatusCallback &callback) override;
+
+  Status AsyncGetAll(const MultiItemCallback<rpc::ProfileTableData> &callback) override;
 
  private:
   ServiceBasedGcsClient *client_impl_;
@@ -312,12 +358,19 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
   Status AsyncReportWorkerFailure(const std::shared_ptr<rpc::WorkerFailureData> &data_ptr,
                                   const StatusCallback &callback) override;
 
- private:
-  ServiceBasedGcsClient *client_impl_;
+  Status AsyncRegisterWorker(
+      rpc::WorkerType worker_type, const WorkerID &worker_id,
+      const std::unordered_map<std::string, std::string> &worker_info,
+      const StatusCallback &callback) override;
 
-  typedef SubscriptionExecutor<WorkerID, WorkerFailureData, WorkerFailureTable>
-      WorkerFailureSubscriptionExecutor;
-  WorkerFailureSubscriptionExecutor worker_failure_sub_executor_;
+  Status AsyncReSubscribe() override;
+
+ private:
+  /// Save the subscribe operation in this function, so we can call it again when GCS
+  /// restarts from a failure.
+  SubscribeOperation subscribe_operation_;
+
+  ServiceBasedGcsClient *client_impl_;
 };
 
 }  // namespace gcs

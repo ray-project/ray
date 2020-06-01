@@ -42,6 +42,8 @@ typedef unsigned int useconds_t;
 int usleep(useconds_t usec);
 unsigned sleep(unsigned seconds);
 
+pid_t getppid();
+
 __declspec(
     deprecated("Killing a process by ID has an inherent race condition on Windows"
                " and is HIGHLY discouraged. "

@@ -3,12 +3,15 @@ import pickle
 import shutil
 import unittest
 
+import ray.utils
+
 from ray.tune.trainable import TrainableUtil
 
 
 class TrainableUtilTest(unittest.TestCase):
     def setUp(self):
-        self.checkpoint_dir = "/tmp/tune/MyTrainable123"
+        self.checkpoint_dir = os.path.join(ray.utils.get_user_temp_dir(),
+                                           "tune", "MyTrainable123")
         TrainableUtil.make_checkpoint_dir(self.checkpoint_dir)
 
     def tearDown(self):

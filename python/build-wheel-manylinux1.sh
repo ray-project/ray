@@ -13,11 +13,13 @@ chmod +x /usr/bin/nproc
 
 PYTHONS=("cp35-cp35m"
          "cp36-cp36m"
-         "cp37-cp37m")
+         "cp37-cp37m"
+         "cp38-cp38")
 
 # The minimum supported numpy version is 1.14, see
 # https://issues.apache.org/jira/browse/ARROW-3141
 NUMPY_VERSIONS=("1.14.5"
+                "1.14.5"
                 "1.14.5"
                 "1.14.5")
 
@@ -55,7 +57,7 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   pushd python
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
-    /opt/python/${PYTHON}/bin/pip install -q numpy==${NUMPY_VERSION} cython==0.29.0
+    /opt/python/${PYTHON}/bin/pip install -q numpy==${NUMPY_VERSION} cython==0.29.15
     # Set the commit SHA in __init__.py.
     if [ -n "$TRAVIS_COMMIT" ]; then
       sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak

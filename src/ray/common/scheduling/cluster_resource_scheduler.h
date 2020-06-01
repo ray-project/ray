@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_COMMON_SCHEDULING_SCHEDULING_H
 #define RAY_COMMON_SCHEDULING_SCHEDULING_H
 
@@ -16,23 +30,97 @@ enum PredefinedResources { CPU, MEM, GPU, TPU, PredefinedResources_MAX };
 // Specify resources that consists of unit-size instances.
 static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
 
-// Helper function to compare two vectors with double values.
-bool EqualVectors(const std::vector<double> &v1, const std::vector<double> &v2);
+/// Fixed point data type.
+class FixedPoint {
+#define RESOURCE_UNIT_SCALING 1000
+ private:
+  int64_t i_;
+
+ public:
+  FixedPoint(double d = 0) { i_ = (int64_t)(d * RESOURCE_UNIT_SCALING); }
+
+  FixedPoint operator+(FixedPoint const &ru) {
+    FixedPoint res;
+    res.i_ = i_ + ru.i_;
+    return res;
+  }
+
+  FixedPoint operator+=(FixedPoint const &ru) {
+    i_ += ru.i_;
+    return *this;
+  }
+
+  FixedPoint operator-(FixedPoint const &ru) {
+    FixedPoint res;
+    res.i_ = i_ - ru.i_;
+    return res;
+  }
+
+  FixedPoint operator-=(FixedPoint const &ru) {
+    i_ -= ru.i_;
+    return *this;
+  }
+
+  FixedPoint operator-() const {
+    FixedPoint res;
+    res.i_ = -i_;
+    return res;
+  }
+
+  FixedPoint operator+(double const d) {
+    FixedPoint res;
+    res.i_ = i_ + (int64_t)(d * RESOURCE_UNIT_SCALING);
+    return res;
+  }
+
+  FixedPoint operator-(double const d) {
+    FixedPoint res;
+    res.i_ = i_ - (int64_t)(d * RESOURCE_UNIT_SCALING);
+    return res;
+  }
+
+  FixedPoint operator=(double const d) {
+    i_ = (int64_t)(d * RESOURCE_UNIT_SCALING);
+    ;
+    return *this;
+  }
+
+  friend bool operator<(FixedPoint const &ru1, FixedPoint const &ru2);
+  friend bool operator>(FixedPoint const &ru1, FixedPoint const &ru2);
+  friend bool operator<=(FixedPoint const &ru1, FixedPoint const &ru2);
+  friend bool operator>=(FixedPoint const &ru1, FixedPoint const &ru2);
+  friend bool operator==(FixedPoint const &ru1, FixedPoint const &ru2);
+  friend bool operator!=(FixedPoint const &ru1, FixedPoint const &ru2);
+
+  double Double() { return (double)i_ / RESOURCE_UNIT_SCALING; };
+
+  friend std::ostream &operator<<(std::ostream &out, const FixedPoint &ru);
+};
+
+/// Helper function to compare two vectors with FixedPoint values.
+bool EqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2);
+
+/// Convert a vector of doubles to a vector of resource units.
+std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(const std::vector<double> &vector);
+
+/// Convert a vector of resource units to a vector of doubles.
+std::vector<double> VectorFixedPointToVectorDouble(
+    const std::vector<FixedPoint> &vector_fp);
 
 struct ResourceCapacity {
-  double total;
-  double available;
+  FixedPoint total;
+  FixedPoint available;
 };
 
 /// Capacities of each instance of a resource.
 struct ResourceInstanceCapacities {
-  std::vector<double> total;
-  std::vector<double> available;
+  std::vector<FixedPoint> total;
+  std::vector<FixedPoint> available;
 };
 
 struct ResourceRequest {
   /// Amount of resource being requested.
-  double demand;
+  FixedPoint demand;
   /// Specify whether the request is soft or hard.
   /// If hard, the entire request is denied if the demand exceeds the resource
   /// availability. Otherwise, the request can be still be granted.
@@ -46,6 +134,7 @@ struct ResourceRequestWithId : ResourceRequest {
   int64_t id;
 };
 
+// Data structure specifying the capacity of each resource requested by a task.
 class TaskRequest {
  public:
   /// List of predefined resources required by the task.
@@ -58,21 +147,39 @@ class TaskRequest {
   /// nodes in this list can schedule this task.
   absl::flat_hash_set<int64_t> placement_hints;
   /// Returns human-readable string for this task request.
-  std::string DebugString();
+  std::string DebugString() const;
 };
 
-// Task request specifying instances for each resource.
+// Data structure specifying the capacity of each instance of each resource
+// allocated to a task.
 class TaskResourceInstances {
  public:
   /// The list of instances of each predifined resource allocated to a task.
-  std::vector<std::vector<double>> predefined_resources;
+  std::vector<std::vector<FixedPoint>> predefined_resources;
   /// The list of instances of each custom resource allocated to a task.
-  absl::flat_hash_map<int64_t, std::vector<double>> custom_resources;
+  absl::flat_hash_map<int64_t, std::vector<FixedPoint>> custom_resources;
   bool operator==(const TaskResourceInstances &other);
+  /// For each resource of this request aggregate its instances.
+  TaskRequest ToTaskRequest() const;
   /// Get CPU instances only.
-  std::vector<double> GetCPUInstances() { return this->predefined_resources[CPU]; };
+  std::vector<FixedPoint> GetCPUInstances() const {
+    if (!this->predefined_resources.empty()) {
+      return this->predefined_resources[CPU];
+    } else {
+      return {};
+    }
+  };
+  std::vector<double> GetCPUInstancesDouble() const {
+    if (!this->predefined_resources.empty()) {
+      return VectorFixedPointToVectorDouble(this->predefined_resources[CPU]);
+    } else {
+      return {};
+    }
+  };
+  /// Check whether there are no resource instances.
+  bool IsEmpty() const;
   /// Returns human-readable string for these resources.
-  std::string DebugString();
+  std::string DebugString() const;
 };
 
 /// Total and available capacities of each resource of a node.
@@ -86,7 +193,7 @@ class NodeResources {
   /// Returns if this equals another node resources.
   bool operator==(const NodeResources &other);
   /// Returns human-readable string for these resources.
-  std::string DebugString();
+  std::string DebugString(StringIdMap string_to_int_map) const;
 };
 
 /// Total and available capacities of each resource instance.
@@ -103,7 +210,7 @@ class NodeResourceInstances {
   /// Returns if this equals another node resources.
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.
-  std::string DebugString();
+  std::string DebugString(StringIdMap string_to_int_map) const;
 };
 
 /// Class encapsulating the cluster resources and the logic to assign
@@ -135,6 +242,19 @@ class ClusterResourceScheduler {
       const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources,
       absl::flat_hash_map<int64_t, ResourceCapacity> *old_custom_resources);
 
+  /// Subtract the resources required by a given task request (task_req) from
+  /// a given node (node_id).
+  ///
+  /// \param node_id Node whose resources we allocate. Can be the local or a remote node.
+  /// \param task_req Task for which we allocate resources.
+  /// \param task_allocation Resources allocated to the task at instance granularity.
+  /// This is a return parameter.
+  ///
+  /// \return True if the node has enough resources to satisfy the task request.
+  /// False otherwise.
+  bool AllocateTaskResources(int64_t node_id, const TaskRequest &task_req,
+                             std::shared_ptr<TaskResourceInstances> task_allocation);
+
  public:
   ClusterResourceScheduler(void){};
 
@@ -148,6 +268,9 @@ class ClusterResourceScheduler {
   ClusterResourceScheduler(
       const std::string &local_node_id,
       const std::unordered_map<std::string, double> &local_node_resources);
+
+  // Mapping from predefined resource indexes to resource strings
+  std::string GetResourceNameFromIndex(int64_t res_idx);
 
   /// Add a new node or overwrite the resources of an existing node.
   ///
@@ -250,24 +373,19 @@ class ClusterResourceScheduler {
   /// Get number of nodes in the cluster.
   int64_t NumNodes();
 
-  /// Convert a map of resources to a TaskRequest data structure.
-  void ResourceMapToTaskRequest(
-      const std::unordered_map<std::string, double> &resource_map,
-      TaskRequest *task_request);
+  /// Update total capacity of a given resource of a given node.
+  ///
+  /// \param node_name: Node whose resource we want to update.
+  /// \param resource_name: Resource which we want to update.
+  /// \param resource_total: New capacity of the resource.
+  void UpdateResourceCapacity(const std::string &node_name,
+                              const std::string &resource_name, double resource_total);
 
-  /// Convert a map of resources to a TaskRequest data structure.
-  void ResourceMapToNodeResources(
-      const std::unordered_map<std::string, double> &resource_map_total,
-      const std::unordered_map<std::string, double> &resource_map_available,
-      NodeResources *node_resources);
-
-  /// Update total capacity of resource resource_name at node client_id.
-  void UpdateResourceCapacity(const std::string &client_id,
-                              const std::string &resource_name, int64_t resource_total);
-
-  /// Delete resource resource_name from node cleint_id_string.
-  void DeleteResource(const std::string &client_id_string,
-                      const std::string &resource_name);
+  /// Delete a given resource from a given node.
+  ///
+  /// \param node_name: Node whose resource we want to delete.
+  /// \param resource_name: Resource we want to delete
+  void DeleteResource(const std::string &node_name, const std::string &resource_name);
 
   /// Return local resources.
   NodeResourceInstances GetLocalResources() { return local_resources_; };
@@ -287,29 +405,31 @@ class ClusterResourceScheduler {
   /// \param unit_instances: If true, we split the resource in unit-size instances.
   /// If false, we create a single instance of capacity "total".
   /// \param instance_list: The list of capacities this resource instances.
-  void InitResourceInstances(double total, bool unit_instances,
+  void InitResourceInstances(FixedPoint total, bool unit_instances,
                              ResourceInstanceCapacities *instance_list);
 
   /// Allocate enough capacity across the instances of a resource to satisfy "demand".
-  /// If resource has multiple unit-capacity instance, we consider two cases.
+  /// If resource has multiple unit-capacity instances, we consider two cases.
   ///
   /// 1) If the constraint is hard, allocate full unit-capacity instances until
-  /// demand becomes fractional, and then satisfy the fractional deman using the
+  /// demand becomes fractional, and then satisfy the fractional demand using the
   /// instance with the smallest available capacity that can satisfy the fractional
   /// demand. For example, assume a resource conisting of 4 instances, with available
   /// capacities: (1., 1., .7, 0.5) and deman of 1.2. Then we allocate one full
   /// instance and then allocate 0.2 of the 0.5 instance (as this is the instance
   /// with the smalest available capacity that can satisfy the remaining demand of 0.2).
-  /// As a result remaining available capacities will be (0., 1., .7, .2).
-  /// Thus, if the constraint is hard, we will allocate at most a fractional resource.
+  /// As a result remaining available capacities will be (0., 1., .7, .3).
+  /// Thus, if the constraint is hard, we will allocate a bunch of full instances and
+  /// at most a fractional instance.
   ///
   /// 2) If the constraint is soft, we can allocate multiple fractional resources,
   /// and even overallocate the resource. For example, in the previous case, if we
   /// have a demand of 1.8, we can allocate one full instance, the 0.5 instance, and
-  /// 0.1 from the 0.7 instance. Furthermore, if the demand is 3.5, then we allocate
+  /// 0.3 from the 0.7 instance. Furthermore, if the demand is 3.5, then we allocate
   /// all instances, and return success (true), despite the fact that the total
   /// available capacity of the rwsource is 3.2 (= 1. + 1. + .7 + .5), which is less
-  /// than the demand, 3.5.
+  /// than the demand, 3.5. In this case, the remaining available resource is
+  /// (0., 0., 0., 0.)
   ///
   /// \param demand: The resource amount to be allocated.
   /// \param soft: Specifies whether this demand has soft or hard constraints.
@@ -319,52 +439,102 @@ class ClusterResourceScheduler {
   ///
   /// \return true, if allocation successful. In this case, the sum of the elements in
   /// "allocation" is equal to "demand".
-  bool AllocateResourceInstances(double demand, bool soft, std::vector<double> &available,
-                                 std::vector<double> *allocation);
+  bool AllocateResourceInstances(FixedPoint demand, bool soft,
+                                 std::vector<FixedPoint> &available,
+                                 std::vector<FixedPoint> *allocation);
 
   /// Allocate local resources to satisfy a given request (task_req).
   ///
   /// \param task_req: Resources requested by a task.
   /// \param task_allocation: Local resources allocated to satsify task_req demand.
-  /// This is an output argument.
   ///
   /// \return true, if allocation successful. If false, the caller needs to free the
   /// allocated resources, i.e., task_allocation.
-  bool AllocateTaskResourceInstances(const TaskRequest &task_req,
-                                     TaskResourceInstances *task_allocation);
+  bool AllocateTaskResourceInstances(
+      const TaskRequest &task_req,
+      std::shared_ptr<TaskResourceInstances> task_allocation);
 
   /// Free resources which were allocated with a task. The freed resources are
   /// added back to the node's local available resources.
   ///
   /// \param task_allocation: Task's resources to be freed.
-  void FreeTaskResourceInstances(TaskResourceInstances &task_allocation);
+  void FreeTaskResourceInstances(std::shared_ptr<TaskResourceInstances> task_allocation);
 
   /// Increase the available capacities of the instances of a given resource.
   ///
   /// \param available A list of available capacities for resource's instances.
   /// \param resource_instances List of the resource instances being updated.
-  void AddAvailableResourceInstances(std::vector<double> available,
-                                     ResourceInstanceCapacities *resource_instances);
+  ///
+  /// \return Overflow capacities of "resource_instances" after adding instance
+  /// capacities in "available", i.e.,
+  /// min(available + resource_instances.available, resource_instances.total)
+  std::vector<FixedPoint> AddAvailableResourceInstances(
+      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances);
 
   /// Decrease the available capacities of the instances of a given resource.
   ///
   /// \param free A list of capacities for resource's instances to be freed.
   /// \param resource_instances List of the resource instances being updated.
-  void SubtractAvailableResourceInstances(std::vector<double> free,
-                                          ResourceInstanceCapacities *resource_instances);
+  /// \return Underflow of "resource_instances" after subtracting instance
+  /// capacities in "available", i.e.,.
+  /// max(available - reasource_instances.available, 0)
+  std::vector<FixedPoint> SubtractAvailableResourceInstances(
+      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances);
 
   /// Increase the available CPU instances of this node.
   ///
   /// \param cpu_instances CPU instances to be added to available cpus.
-  void AddCPUResourceInstances(std::vector<double> &cpu_instances);
-
-  /// Decrease the available cpu instances of this node.
   ///
-  /// \param cpu_instances Cpu instances to be removed from available cpus.
-  void SubtractCPUResourceInstances(std::vector<double> &cpu_instances);
+  /// \return Overflow capacities of CPU instances after adding CPU
+  /// capacities in cpu_instances.
+  std::vector<double> AddCPUResourceInstances(std::vector<double> &cpu_instances);
+
+  /// Decrease the available CPU instances of this node.
+  ///
+  /// \param cpu_instances CPU instances to be removed from available cpus.
+  ///
+  /// \return Underflow capacities of CPU instances after subtracting CPU
+  /// capacities in cpu_instances.
+  std::vector<double> SubtractCPUResourceInstances(std::vector<double> &cpu_instances);
+
+  /// Subtract the resources required by a given task request (task_req) from the
+  /// local node. This function also updates the local node resources
+  /// at the instance granularity.
+  ///
+  /// \param task_req Task for which we allocate resources.
+  /// \param task_allocation Resources allocated to the task at instance granularity.
+  /// This is a return parameter.
+  ///
+  /// \return True if local node has enough resources to satisfy the task request.
+  /// False otherwise.
+  bool AllocateLocalTaskResources(
+      const std::unordered_map<std::string, double> &task_resources,
+      std::shared_ptr<TaskResourceInstances> task_allocation);
+
+  /// Subtract the resources required by a given task request (task_req) from a given
+  /// remote node.
+  ///
+  /// \param node_id Remote node whose resources we allocate.
+  /// \param task_req Task for which we allocate resources.
+  void AllocateRemoteTaskResources(
+      std::string &node_id,
+      const std::unordered_map<std::string, double> &task_resources);
+
+  void FreeLocalTaskResources(std::shared_ptr<TaskResourceInstances> task_allocation);
+
+  /// Update the available resources of the local node given
+  /// the available instances of each resource of the local node.
+  /// Basically, this means computing the available resources
+  /// by adding up the available quantities of each instance of that
+  /// resources.
+  ///
+  /// Example: Assume the local node has four GPU instances with the
+  /// following availabilities: 0.2, 0.3, 0.1, 1. Then the total GPU
+  // resources availabile at that node is 0.2 + 0.3 + 0.1 + 1. = 1.6
+  void UpdateLocalAvailableResourcesFromResourceInstances();
 
   /// Return human-readable string for this scheduler state.
-  std::string DebugString();
+  std::string DebugString() const;
 };
 
 #endif  // RAY_COMMON_SCHEDULING_SCHEDULING_H

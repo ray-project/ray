@@ -1,9 +1,11 @@
 import logging
+import os
 
 import numpy as np
-from packaging import version
 
 import ray.ray_constants as ray_constants
+
+logger = logging.getLogger(__name__)
 
 
 class RayParams:
@@ -32,12 +34,16 @@ class RayParams:
         object_manager_port int: The port to use for the object manager.
         node_manager_port: The port to use for the node manager.
         node_ip_address (str): The IP address of the node that we are on.
+        raylet_ip_address (str): The IP address of the raylet that this node
+            connects to.
+        min_worker_port (int): The lowest port number that workers will bind
+            on. If not set or set to 0, random ports will be chosen.
+        max_worker_port (int): The highest port number that workers will bind
+            on. If set, min_worker_port must also be set.
         object_id_seed (int): Used to seed the deterministic generation of
             object IDs. The same value can be used across multiple runs of the
             same job in order to generate the object IDs in a consistent
             manner. However, the same ID should not be used for different jobs.
-        local_mode (bool): True if the code should be executed serially
-            without Ray. This is useful for debugging.
         redirect_worker_output: True if the stdout and stderr of worker
             processes should be redirected to files.
         redirect_output (bool): True if stdout and stderr for non-worker
@@ -77,9 +83,8 @@ class RayParams:
         autoscaling_config: path to autoscaling config file.
         include_java (bool): If True, the raylet backend can also support
             Java worker.
-        java_worker_options (str): The command options for Java worker.
+        java_worker_options (list): The command options for Java worker.
         load_code_from_local: Whether load code from local file or from GCS.
-        use_pickle: Whether data objects should be serialized with cloudpickle.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
     """
@@ -97,8 +102,10 @@ class RayParams:
                  object_manager_port=None,
                  node_manager_port=None,
                  node_ip_address=None,
+                 raylet_ip_address=None,
+                 min_worker_port=None,
+                 max_worker_port=None,
                  object_id_seed=None,
-                 local_mode=False,
                  driver_mode=None,
                  redirect_worker_output=None,
                  redirect_output=None,
@@ -120,7 +127,6 @@ class RayParams:
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
-                 use_pickle=False,
                  _internal_config=None):
         self.object_id_seed = object_id_seed
         self.redis_address = redis_address
@@ -135,7 +141,9 @@ class RayParams:
         self.object_manager_port = object_manager_port
         self.node_manager_port = node_manager_port
         self.node_ip_address = node_ip_address
-        self.local_mode = local_mode
+        self.raylet_ip_address = raylet_ip_address
+        self.min_worker_port = min_worker_port
+        self.max_worker_port = max_worker_port
         self.driver_mode = driver_mode
         self.redirect_worker_output = redirect_worker_output
         self.redirect_output = redirect_output
@@ -155,7 +163,6 @@ class RayParams:
         self.include_java = include_java
         self.java_worker_options = java_worker_options
         self.load_code_from_local = load_code_from_local
-        self.use_pickle = use_pickle
         self._internal_config = _internal_config
         self._check_usage()
 
@@ -191,6 +198,31 @@ class RayParams:
         self._check_usage()
 
     def _check_usage(self):
+        # Used primarily for testing.
+        if os.environ.get("RAY_USE_RANDOM_PORTS", False):
+            if self.min_worker_port is None and self.min_worker_port is None:
+                self.min_worker_port = 0
+                self.max_worker_port = 0
+
+        if self.min_worker_port is not None:
+            if self.min_worker_port != 0 and (self.min_worker_port < 1024
+                                              or self.min_worker_port > 65535):
+                raise ValueError("min_worker_port must be 0 or an integer "
+                                 "between 1024 and 65535.")
+
+        if self.max_worker_port is not None:
+            if self.min_worker_port is None:
+                raise ValueError("If max_worker_port is set, min_worker_port "
+                                 "must also be set.")
+            elif self.max_worker_port != 0:
+                if self.max_worker_port < 1024 or self.max_worker_port > 65535:
+                    raise ValueError(
+                        "max_worker_port must be 0 or an integer between "
+                        "1024 and 65535.")
+                elif self.max_worker_port <= self.min_worker_port:
+                    raise ValueError("max_worker_port must be higher than "
+                                     "min_worker_port.")
+
         if self.resources is not None:
             assert "CPU" not in self.resources, (
                 "'CPU' should not be included in the resource dictionary. Use "
@@ -209,9 +241,9 @@ class RayParams:
             raise DeprecationWarning(
                 "The redirect_output argument is deprecated.")
 
-        if self.use_pickle:
-            assert (version.parse(
-                np.__version__) >= version.parse("1.16.0")), (
-                    "numpy >= 1.16.0 required for use_pickle=True support. "
-                    "You can use ray.init(use_pickle=False) for older numpy "
-                    "versions, but this may be removed in future versions.")
+        # Parse the numpy version.
+        numpy_version = np.__version__.split(".")
+        numpy_major, numpy_minor = int(numpy_version[0]), int(numpy_version[1])
+        if numpy_major <= 1 and numpy_minor < 16:
+            logger.warning("Using ray with numpy < 1.16.0 will result in slow "
+                           "serialization. Upgrade numpy if using with ray.")

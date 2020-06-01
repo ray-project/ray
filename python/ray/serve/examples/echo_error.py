@@ -26,11 +26,11 @@ def echo(_):
     raise Exception("Something went wrong...")
 
 
-serve.init(blocking=True)
+serve.init()
 
-serve.create_endpoint("my_endpoint", "/echo", blocking=True)
-serve.create_backend(echo, "echo:v1")
-serve.link("my_endpoint", "echo:v1")
+serve.create_endpoint("my_endpoint", "/echo")
+serve.create_backend("echo:v1", echo)
+serve.set_traffic("my_endpoint", {"echo:v1": 1.0})
 
 for _ in range(2):
     resp = requests.get("http://127.0.0.1:8000/echo").json()

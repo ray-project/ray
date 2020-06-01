@@ -5,7 +5,7 @@ Manual Cluster Setup
 
 .. note::
 
-    If you're using AWS or GCP you should use the automated `setup commands <autoscaling.html>`_.
+    If you're using AWS, Azure or GCP you should use the automated `setup commands <autoscaling.html>`_.
 
 The instructions in this document work well for small clusters. For larger
 clusters, consider using the pssh package: ``sudo apt-get install pssh`` or
@@ -19,17 +19,18 @@ This section assumes that you have a cluster running and that the nodes in the
 cluster can communicate with each other. It also assumes that Ray is installed
 on each machine. To install Ray, follow the `installation instructions`_.
 
-.. _`installation instructions`: http://ray.readthedocs.io/en/latest/installation.html
+.. _`installation instructions`: http://docs.ray.io/en/latest/installation.html
 
 Starting Ray on each machine
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 On the head node (just choose some node to be the head node), run the following.
-If the ``--redis-port`` argument is omitted, Ray will choose a port at random.
+If the ``--port`` argument is omitted, Ray will choose port 6379, falling back to a
+random port.
 
 .. code-block:: bash
 
-  ray start --head --redis-port=6379
+  ray start --head --port=6379
 
 The command will print out the address of the Redis server that was started
 (and some other address information).

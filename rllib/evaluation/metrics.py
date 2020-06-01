@@ -8,7 +8,6 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimate
 from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.memory import ray_get_and_free
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +17,8 @@ def get_learner_stats(grad_info):
     """Return optimization stats reported from the policy.
 
     Example:
-        >>> grad_info = evaluator.learn_on_batch(samples)
+        >>> grad_info = worker.learn_on_batch(samples)
+        {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}
         >>> print(get_stats(grad_info))
         {"vf_loss": ..., "policy_loss": ...}
     """
@@ -68,7 +68,7 @@ def collect_episodes(local_worker=None,
             logger.warning(
                 "WARNING: collected no metrics in {} seconds".format(
                     timeout_seconds))
-        metric_lists = ray_get_and_free(collected)
+        metric_lists = ray.get(collected)
     else:
         metric_lists = []
 
@@ -117,11 +117,15 @@ def summarize_episodes(episodes, new_episodes=None):
     if episode_rewards:
         min_reward = min(episode_rewards)
         max_reward = max(episode_rewards)
+        avg_reward = np.mean(episode_rewards)
     else:
         min_reward = float("nan")
         max_reward = float("nan")
-    avg_reward = np.mean(episode_rewards)
-    avg_length = np.mean(episode_lengths)
+        avg_reward = float("nan")
+    if episode_lengths:
+        avg_length = np.mean(episode_lengths)
+    else:
+        avg_length = float("nan")
 
     # Show as histogram distributions.
     hist_stats["episode_reward"] = episode_rewards

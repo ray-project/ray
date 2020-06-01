@@ -1,8 +1,10 @@
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
-import Typography from "@material-ui/core/Typography";
-import WarningRoundedIcon from "@material-ui/icons/WarningRounded";
+import {
+  createStyles,
+  Theme,
+  Typography,
+  WithStyles,
+  withStyles,
+} from "@material-ui/core";
 import React from "react";
 import { connect } from "react-redux";
 import { StoreState } from "../../../store";
@@ -12,29 +14,25 @@ const styles = (theme: Theme) =>
   createStyles({
     warning: {
       fontSize: "0.8125rem",
-      marginBottom: theme.spacing(2)
+      marginBottom: theme.spacing(2),
     },
     warningIcon: {
       fontSize: "1.25em",
-      verticalAlign: "text-bottom"
-    }
+      verticalAlign: "text-bottom",
+    },
   });
 
 const mapStateToProps = (state: StoreState) => ({
-  rayletInfo: state.dashboard.rayletInfo
+  rayletInfo: state.dashboard.rayletInfo,
 });
 
 class LogicalView extends React.Component<
   WithStyles<typeof styles> & ReturnType<typeof mapStateToProps>
 > {
   render() {
-    const { classes, rayletInfo } = this.props;
+    const { rayletInfo } = this.props;
     return (
       <div>
-        <Typography className={classes.warning} color="textSecondary">
-          <WarningRoundedIcon className={classes.warningIcon} /> Note: This tab
-          is experimental.
-        </Typography>
         {rayletInfo === null ? (
           <Typography color="textSecondary">Loading...</Typography>
         ) : Object.entries(rayletInfo.actors).length === 0 ? (

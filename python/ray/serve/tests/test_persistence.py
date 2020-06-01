@@ -9,15 +9,18 @@ from ray import serve
 def test_new_driver(serve_instance):
     script = """
 import ray
-ray.init(address="auto")
+ray.init(address="{}")
 
 from ray import serve
 serve.init()
 
-@serve.route("/driver")
 def driver(flask_request):
     return "OK!"
-"""
+
+serve.create_endpoint("driver", "/driver")
+serve.create_backend("driver", driver)
+serve.set_traffic("driver", {{"driver": 1.0}})
+""".format(ray.worker._global_node._redis_address)
 
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
         path = f.name

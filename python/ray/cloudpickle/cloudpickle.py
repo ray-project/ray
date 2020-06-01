@@ -45,7 +45,6 @@ from __future__ import print_function
 import abc
 import builtins
 import dis
-from functools import partial
 import io
 import itertools
 import logging
@@ -55,17 +54,29 @@ import pickle
 import platform
 import struct
 import sys
-import traceback
 import types
 import weakref
 import uuid
 import threading
+import typing
 from enum import Enum
 
+from typing import Generic, Union, Tuple, Callable
 from pickle import _Pickler as Pickler
 from pickle import _getattribute
 from io import BytesIO
 from importlib._bootstrap import _find_spec
+
+try:  # pragma: no branch
+    import typing_extensions as _typing_extensions
+    from typing_extensions import Literal, Final
+except ImportError:
+    _typing_extensions = Literal = Final = None
+
+if sys.version_info >= (3, 5, 3):
+    from typing import ClassVar
+else:  # pragma: no cover
+    ClassVar = None
 
 
 # cloudpickle is meant for inter process communication: we expect all
@@ -90,7 +101,7 @@ if PYPY:
 _extract_code_globals_cache = weakref.WeakKeyDictionary()
 
 
-def _ensure_tracking(class_def):
+def _get_or_create_tracker_id(class_def):
     with _DYNAMIC_CLASS_TRACKER_LOCK:
         class_tracker_id = _DYNAMIC_CLASS_TRACKER_BY_CLASS.get(class_def)
         if class_tracker_id is None:
@@ -118,7 +129,18 @@ def _whichmodule(obj, name):
     - Errors arising during module introspection are ignored, as those errors
       are considered unwanted side effects.
     """
-    module_name = getattr(obj, '__module__', None)
+    if sys.version_info[:2] < (3, 7) and isinstance(obj, typing.TypeVar):  # pragma: no branch  # noqa
+        # Workaround bug in old Python versions: prior to Python 3.7,
+        # T.__module__ would always be set to "typing" even when the TypeVar T
+        # would be defined in a different module.
+        #
+        # For such older Python versions, we ignore the __module__ attribute of
+        # TypeVar instances and instead exhaustively lookup those instances in
+        # all currently imported modules.
+        module_name = None
+    else:
+        module_name = getattr(obj, '__module__', None)
+
     if module_name is not None:
         return module_name
     # Protect the iteration by using a copy of sys.modules against dynamic
@@ -141,11 +163,18 @@ def _whichmodule(obj, name):
     return None
 
 
-def _is_global(obj, name=None):
+def _is_importable_by_name(obj, name=None):
     """Determine if obj can be pickled as attribute of a file-backed module"""
+    return _lookup_module_and_qualname(obj, name=name) is not None
+
+
+def _lookup_module_and_qualname(obj, name=None):
     if name is None:
         name = getattr(obj, '__qualname__', None)
-    if name is None:
+    if name is None:  # pragma: no cover
+        # This used to be needed for Python 2.7 support but is probably not
+        # needed anymore. However we keep the __name__ introspection in case
+        # users of cloudpickle rely on this old behavior for unknown reasons.
         name = getattr(obj, '__name__', None)
 
     module_name = _whichmodule(obj, name)
@@ -153,10 +182,10 @@ def _is_global(obj, name=None):
     if module_name is None:
         # In this case, obj.__module__ is None AND obj was not found in any
         # imported module. obj is thus treated as dynamic.
-        return False
+        return None
 
     if module_name == "__main__":
-        return False
+        return None
 
     module = sys.modules.get(module_name, None)
     if module is None:
@@ -165,18 +194,20 @@ def _is_global(obj, name=None):
         # types.ModuleType. The other possibility is that module was removed
         # from sys.modules after obj was created/imported. But this case is not
         # supported, as the standard pickle does not support it either.
-        return False
+        return None
 
     # module has been added to sys.modules, but it can still be dynamic.
     if _is_dynamic(module):
-        return False
+        return None
 
     try:
         obj2, parent = _getattribute(module, name)
     except AttributeError:
         # obj was not found inside the module it points to
-        return False
-    return obj2 is obj
+        return None
+    if obj2 is not obj:
+        return None
+    return module, name
 
 
 def _extract_code_globals(co):
@@ -362,6 +393,11 @@ for k, v in types.__dict__.items():
 
 
 def _builtin_type(name):
+    if name == "ClassType":  # pragma: no cover
+        # Backward compat to load pickle files generated with cloudpickle
+        # < 1.3 even if loading pickle files from older versions is not
+        # officially supported.
+        return type
     return getattr(types, name)
 
 
@@ -398,6 +434,32 @@ def _extract_class_dict(cls):
     return clsdict
 
 
+if sys.version_info[:2] < (3, 7):  # pragma: no branch
+    def _is_parametrized_type_hint(obj):
+        # This is very cheap but might generate false positives.
+        # general typing Constructs
+        is_typing = getattr(obj, '__origin__', None) is not None
+
+        # typing_extensions.Literal
+        is_litteral = getattr(obj, '__values__', None) is not None
+
+        # typing_extensions.Final
+        is_final = getattr(obj, '__type__', None) is not None
+
+        # typing.Union/Tuple for old Python 3.5
+        is_union = getattr(obj, '__union_params__', None) is not None
+        is_tuple = getattr(obj, '__tuple_params__', None) is not None
+        is_callable = (
+            getattr(obj, '__result__', None) is not None and
+            getattr(obj, '__args__', None) is not None
+        )
+        return any((is_typing, is_litteral, is_final, is_union, is_tuple,
+                    is_callable))
+
+    def _create_parametrized_type_hint(origin, args):
+        return origin[args]
+
+
 class CloudPickler(Pickler):
 
     dispatch = Pickler.dispatch.copy()
@@ -419,6 +481,11 @@ class CloudPickler(Pickler):
                 raise pickle.PicklingError(msg)
             else:
                 raise
+
+    def save_typevar(self, obj):
+        self.save_reduce(*_typevar_reduce(obj), obj=obj)
+
+    dispatch[typing.TypeVar] = save_typevar
 
     def save_memoryview(self, obj):
         self.save(obj.tobytes())
@@ -469,7 +536,7 @@ class CloudPickler(Pickler):
         Determines what kind of function obj is (e.g. lambda, defined at
         interactive prompt, etc) and handles the pickling appropriately.
         """
-        if _is_global(obj, name=name):
+        if _is_importable_by_name(obj, name=name):
             return Pickler.save_global(self, obj, name=name)
         elif PYPY and isinstance(obj.__code__, builtin_code_type):
             return self.save_pypy_builtin_func(obj)
@@ -514,7 +581,7 @@ class CloudPickler(Pickler):
         self.save_reduce(
                 _make_skeleton_enum,
                 (obj.__bases__, obj.__name__, obj.__qualname__,
-                 members, obj.__module__, _ensure_tracking(obj), None),
+                 members, obj.__module__, _get_or_create_tracker_id(obj), None),
                 obj=obj
          )
 
@@ -581,11 +648,6 @@ class CloudPickler(Pickler):
         if isinstance(__dict__, property):
             type_kwargs['__dict__'] = __dict__
 
-        if sys.version_info < (3, 7):
-            # Although annotations were added in Python 3.4, It is not possible
-            # to properly pickle them until Python 3.7. (See #193)
-            clsdict.pop('__annotations__', None)
-
         save = self.save
         write = self.write
 
@@ -615,8 +677,8 @@ class CloudPickler(Pickler):
             # "Regular" class definition:
             tp = type(obj)
             self.save_reduce(_make_skeleton_class,
-                             (tp, obj.__name__, obj.__bases__, type_kwargs,
-                              _ensure_tracking(obj), None),
+                             (tp, obj.__name__, _get_bases(obj), type_kwargs,
+                              _get_or_create_tracker_id(obj), None),
                              obj=obj)
 
         # Now save the rest of obj's __dict__. Any references to obj
@@ -685,9 +747,7 @@ class CloudPickler(Pickler):
             'doc': func.__doc__,
             '_cloudpickle_submodules': submodules
         }
-        if hasattr(func, '__annotations__') and sys.version_info >= (3, 7):
-            # Although annotations were added in Python3.4, It is not possible
-            # to properly pickle them until Python3.7. (See #193)
+        if hasattr(func, '__annotations__'):
             state['annotations'] = func.__annotations__
         if hasattr(func, '__qualname__'):
             state['qualname'] = func.__qualname__
@@ -770,9 +830,17 @@ class CloudPickler(Pickler):
         elif obj in _BUILTIN_TYPE_NAMES:
             return self.save_reduce(
                 _builtin_type, (_BUILTIN_TYPE_NAMES[obj],), obj=obj)
+
+        if sys.version_info[:2] < (3, 7) and _is_parametrized_type_hint(obj):  # noqa  # pragma: no branch
+            # Parametrized typing constructs in Python < 3.7 are not compatible
+            # with type checks and ``isinstance`` semantics. For this reason,
+            # it is easier to detect them using a duck-typing-based check
+            # (``_is_parametrized_type_hint``) than to populate the Pickler's
+            # dispatch with type-specific savers.
+            self._save_parametrized_type_hint(obj)
         elif name is not None:
             Pickler.save_global(self, obj, name=name)
-        elif not _is_global(obj, name=name):
+        elif not _is_importable_by_name(obj, name=name):
             self.save_dynamic_class(obj)
         else:
             Pickler.save_global(self, obj, name=name)
@@ -910,6 +978,57 @@ class CloudPickler(Pickler):
     def inject_addons(self):
         """Plug in system. Register additional pickling functions if modules already loaded"""
         pass
+
+    if sys.version_info < (3, 7):  # pragma: no branch
+        def _save_parametrized_type_hint(self, obj):
+            # The distorted type check sematic for typing construct becomes:
+            # ``type(obj) is type(TypeHint)``, which means "obj is a
+            # parametrized TypeHint"
+            if type(obj) is type(Literal):  # pragma: no branch
+                initargs = (Literal, obj.__values__)
+            elif type(obj) is type(Final):  # pragma: no branch
+                initargs = (Final, obj.__type__)
+            elif type(obj) is type(ClassVar):
+                initargs = (ClassVar, obj.__type__)
+            elif type(obj) is type(Generic):
+                parameters = obj.__parameters__
+                if len(obj.__parameters__) > 0:
+                    # in early Python 3.5, __parameters__ was sometimes
+                    # preferred to __args__
+                    initargs = (obj.__origin__, parameters)
+                else:
+                    initargs = (obj.__origin__, obj.__args__)
+            elif type(obj) is type(Union):
+                if sys.version_info < (3, 5, 3):  # pragma: no cover
+                    initargs = (Union, obj.__union_params__)
+                else:
+                    initargs = (Union, obj.__args__)
+            elif type(obj) is type(Tuple):
+                if sys.version_info < (3, 5, 3):  # pragma: no cover
+                    initargs = (Tuple, obj.__tuple_params__)
+                else:
+                    initargs = (Tuple, obj.__args__)
+            elif type(obj) is type(Callable):
+                if sys.version_info < (3, 5, 3):  # pragma: no cover
+                    args = obj.__args__
+                    result = obj.__result__
+                    if args != Ellipsis:
+                        if isinstance(args, tuple):
+                            args = list(args)
+                        else:
+                            args = [args]
+                else:
+                    (*args, result) = obj.__args__
+                    if len(args) == 1 and args[0] is Ellipsis:
+                        args = Ellipsis
+                    else:
+                        args = list(args)
+                initargs = (Callable, (args, result))
+            else:  # pragma: no cover
+                raise pickle.PicklingError(
+                    "Cloudpickle Error: Unknown type {}".format(type(obj))
+                )
+            self.save_reduce(_create_parametrized_type_hint, initargs, obj=obj)
 
 
 # Tornado support
@@ -1133,7 +1252,10 @@ def _make_skeleton_class(type_constructor, name, bases, type_kwargs,
     The "extra" variable is meant to be a dict (or None) that can be used for
     forward compatibility shall the need arise.
     """
-    skeleton_class = type_constructor(name, bases, type_kwargs)
+    skeleton_class = types.new_class(
+        name, bases, {'metaclass': type_constructor},
+        lambda ns: ns.update(type_kwargs)
+    )
     return _lookup_class_or_track(class_tracker_id, skeleton_class)
 
 
@@ -1216,3 +1338,47 @@ def _is_dynamic(module):
     else:
         pkgpath = None
     return _find_spec(module.__name__, pkgpath, module) is None
+
+
+def _make_typevar(name, bound, constraints, covariant, contravariant,
+                  class_tracker_id):
+    tv = typing.TypeVar(
+        name, *constraints, bound=bound,
+        covariant=covariant, contravariant=contravariant
+    )
+    if class_tracker_id is not None:
+        return _lookup_class_or_track(class_tracker_id, tv)
+    else:  # pragma: nocover
+        # Only for Python 3.5.3 compat.
+        return tv
+
+
+def _decompose_typevar(obj):
+    try:
+        class_tracker_id = _get_or_create_tracker_id(obj)
+    except TypeError:  # pragma: nocover
+        # TypeVar instances are not weakref-able in Python 3.5.3
+        class_tracker_id = None
+    return (
+        obj.__name__, obj.__bound__, obj.__constraints__,
+        obj.__covariant__, obj.__contravariant__,
+        class_tracker_id,
+    )
+
+
+def _typevar_reduce(obj):
+    # TypeVar instances have no __qualname__ hence we pass the name explicitly.
+    module_and_name = _lookup_module_and_qualname(obj, name=obj.__name__)
+    if module_and_name is None:
+        return (_make_typevar, _decompose_typevar(obj))
+    return (getattr, module_and_name)
+
+
+def _get_bases(typ):
+    if hasattr(typ, '__orig_bases__'):
+        # For generic types (see PEP 560)
+        bases_attr = '__orig_bases__'
+    else:
+        # For regular class objects
+        bases_attr = '__bases__'
+    return getattr(typ, bases_attr)

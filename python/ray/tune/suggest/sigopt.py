@@ -7,16 +7,26 @@ try:
 except ImportError:
     sgo = None
 
-from ray.tune.suggest.suggestion import SuggestionAlgorithm
+from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 
 
-class SigOptSearch(SuggestionAlgorithm):
+class SigOptSearch(Searcher):
     """A wrapper around SigOpt to provide trial suggestions.
 
-    Requires SigOpt to be installed. Requires user to store their SigOpt
-    API key locally as an environment variable at `SIGOPT_KEY`.
+    You must install SigOpt and have a SigOpt API key to use this module.
+    Store the API token as an environment variable ``SIGOPT_KEY`` as follows:
+
+    .. code-block:: bash
+
+        pip install -U sigopt
+        export SIGOPT_KEY= ...
+
+    You will need to use the `SigOpt experiment and space specification
+    <https://app.sigopt.com/docs/overview/create>`_.
+
+    This module manages its own concurrency.
 
     Parameters:
         space (list of dict): SigOpt configuration. Parameters will be sampled
@@ -30,27 +40,30 @@ class SigOptSearch(SuggestionAlgorithm):
             minimizing or maximizing the metric attribute.
 
     Example:
-        >>> space = [
-        >>>     {
-        >>>         'name': 'width',
-        >>>         'type': 'int',
-        >>>         'bounds': {
-        >>>             'min': 0,
-        >>>             'max': 20
-        >>>         },
-        >>>     },
-        >>>     {
-        >>>         'name': 'height',
-        >>>         'type': 'int',
-        >>>         'bounds': {
-        >>>             'min': -100,
-        >>>             'max': 100
-        >>>         },
-        >>>     },
-        >>> ]
-        >>> algo = SigOptSearch(
-        >>>     space, name="SigOpt Example Experiment",
-        >>>     max_concurrent=1, metric="mean_loss", mode="min")
+
+    .. code-block:: python
+
+        space = [
+            {
+                'name': 'width',
+                'type': 'int',
+                'bounds': {
+                    'min': 0,
+                    'max': 20
+                },
+            },
+            {
+                'name': 'height',
+                'type': 'int',
+                'bounds': {
+                    'min': -100,
+                    'max': 100
+                },
+            },
+        ]
+        algo = SigOptSearch(
+            space, name="SigOpt Example Experiment",
+            max_concurrent=1, metric="mean_loss", mode="min")
     """
 
     def __init__(self,
@@ -66,17 +79,6 @@ class SigOptSearch(SuggestionAlgorithm):
         assert "SIGOPT_KEY" in os.environ, \
             "SigOpt API key must be stored as environ variable at SIGOPT_KEY"
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
-
-        if reward_attr is not None:
-            mode = "max"
-            metric = reward_attr
-            logger.warning(
-                "`reward_attr` is deprecated and will be removed in a future "
-                "version of Tune. "
-                "Setting `metric={}` and `mode=max`.".format(reward_attr))
-        if "use_early_stopped_trials" in kwargs:
-            logger.warning(
-                "`use_early_stopped_trials` is not used in SigOptSearch.")
 
         self._max_concurrent = max_concurrent
         self._metric = metric
@@ -95,12 +97,9 @@ class SigOptSearch(SuggestionAlgorithm):
             parallel_bandwidth=self._max_concurrent,
         )
 
-        super(SigOptSearch, self).__init__(**kwargs)
+        super(SigOptSearch, self).__init__(metric=metric, mode=mode, **kwargs)
 
-    def _suggest(self, trial_id):
-        if self._num_live_trials() >= self._max_concurrent:
-            return None
-
+    def suggest(self, trial_id):
         # Get new suggestion from SigOpt
         suggestion = self.conn.experiments(
             self.experiment.id).suggestions().create()
@@ -109,14 +108,7 @@ class SigOptSearch(SuggestionAlgorithm):
 
         return copy.deepcopy(suggestion.assignments)
 
-    def on_trial_result(self, trial_id, result):
-        pass
-
-    def on_trial_complete(self,
-                          trial_id,
-                          result=None,
-                          error=False,
-                          early_terminated=False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial.
 
         If a trial fails, it will be reported as a failed Observation, telling
@@ -132,14 +124,11 @@ class SigOptSearch(SuggestionAlgorithm):
             )
             # Update the experiment object
             self.experiment = self.conn.experiments(self.experiment.id).fetch()
-        elif error or early_terminated:
+        elif error:
             # Reports a failed Observation
             self.conn.experiments(self.experiment.id).observations().create(
                 failed=True, suggestion=self._live_trial_mapping[trial_id].id)
         del self._live_trial_mapping[trial_id]
-
-    def _num_live_trials(self):
-        return len(self._live_trial_mapping)
 
     def save(self, checkpoint_dir):
         trials_object = (self.conn, self.experiment)

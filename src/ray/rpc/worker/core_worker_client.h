@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_RPC_CORE_WORKER_CLIENT_H
 #define RAY_RPC_CORE_WORKER_CLIENT_H
 
@@ -98,9 +112,12 @@ class CoreWorkerClientInterface {
   /// Push an actor task directly from worker to worker.
   ///
   /// \param[in] request The request message.
+  /// \param[in] skip_queue Whether to skip the task queue. This will send the
+  /// task for execution immediately.
   /// \param[in] callback The callback function that handles reply.
   /// \return if the rpc call succeeds
   virtual ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request,
+                                    bool skip_queue,
                                     const ClientCallback<PushTaskReply> &callback) {
     return Status::NotImplemented("");
   }
@@ -130,6 +147,13 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
+  /// Ask the actor's owner to reply when the actor has gone out of scope.
+  virtual ray::Status WaitForActorOutOfScope(
+      const WaitForActorOutOfScopeRequest &request,
+      const ClientCallback<WaitForActorOutOfScopeReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
   /// Notify the owner of an object that the object has been pinned.
   virtual ray::Status WaitForObjectEviction(
       const WaitForObjectEvictionRequest &request,
@@ -140,6 +164,17 @@ class CoreWorkerClientInterface {
   /// Tell this actor to exit immediately.
   virtual ray::Status KillActor(const KillActorRequest &request,
                                 const ClientCallback<KillActorReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
+  virtual ray::Status CancelTask(const CancelTaskRequest &request,
+                                 const ClientCallback<CancelTaskReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
+  virtual ray::Status RemoteCancelTask(
+      const RemoteCancelTaskRequest &request,
+      const ClientCallback<RemoteCancelTaskReply> &callback) {
     return Status::NotImplemented("");
   }
 
@@ -196,6 +231,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   RPC_CLIENT_METHOD(CoreWorkerService, KillActor, grpc_client_, override)
 
+  RPC_CLIENT_METHOD(CoreWorkerService, CancelTask, grpc_client_, override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, RemoteCancelTask, grpc_client_, override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, WaitForActorOutOfScope, grpc_client_, override)
+
   RPC_CLIENT_METHOD(CoreWorkerService, WaitForObjectEviction, grpc_client_, override)
 
   RPC_CLIENT_METHOD(CoreWorkerService, GetCoreWorkerStats, grpc_client_, override)
@@ -206,16 +247,19 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   RPC_CLIENT_METHOD(CoreWorkerService, PlasmaObjectReady, grpc_client_, override)
 
-  ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request,
+  ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request, bool skip_queue,
                             const ClientCallback<PushTaskReply> &callback) override {
-    request->set_sequence_number(request->task_spec().actor_task_spec().actor_counter());
+    if (skip_queue) {
+      // Set this value so that the actor does not skip any tasks when
+      // processing this request. We could also set it to max_finished_seq_no_,
+      // but we just set it to the default of -1 to avoid taking the lock.
+      request->set_client_processed_up_to(-1);
+      return INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, callback,
+                             grpc_client_);
+    }
+
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      if (request->task_spec().caller_id() != cur_caller_id_) {
-        // We are running a new task, reset the seq no counter.
-        max_finished_seq_no_ = -1;
-        cur_caller_id_ = request->task_spec().caller_id();
-      }
       send_queue_.push_back(std::make_pair(std::move(request), callback));
     }
     SendRequests();
@@ -293,10 +337,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   /// The max sequence number we have processed responses for.
   int64_t max_finished_seq_no_ GUARDED_BY(mutex_) = -1;
-
-  /// The task id we are currently sending requests for. When this changes,
-  /// the max finished seq no counter is reset.
-  std::string cur_caller_id_;
 };
 
 }  // namespace rpc
