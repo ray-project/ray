@@ -454,7 +454,15 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool GetWorkerFailiure() {}
+  bool GetWorkerFailiure(const WorkerID &worker_id) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Workers().AsyncGetWorkerFailure(
+        worker_id,
+        [&promise](Status status, const boost::optional<gcs::WorkerFailureData> &result) {
+          promise.set_value(status.ok()); 
+        }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
 
   bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms) {
     auto status = future.wait_for(timeout_ms);
@@ -813,6 +821,8 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerInfo) {
 
   // Get worker failure data.
   // SANG-TODO Implement this.
+  ASSERT_TRUE(GetWorkerFailiure(
+    WorkerID::FromBinary(worker_failure_data->worker_address().raylet_id())));
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestErrorInfo) {
