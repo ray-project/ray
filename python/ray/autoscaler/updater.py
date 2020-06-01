@@ -47,7 +47,7 @@ class KubernetesCommandRunner:
     def run(self,
             cmd=None,
             timeout=120,
-            allocate_tty=False,
+            allocate_tty=True,
             exit_on_fail=False,
             port_forward=None,
             with_output=False):
@@ -230,7 +230,7 @@ class SSHCommandRunner:
     def run(self,
             cmd,
             timeout=120,
-            allocate_tty=False,
+            allocate_tty=True,
             exit_on_fail=False,
             port_forward=None,
             with_output=False):
