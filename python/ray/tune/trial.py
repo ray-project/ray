@@ -1,5 +1,3 @@
-from collections import deque
-
 import ray.cloudpickle as cloudpickle
 import copy
 from datetime import datetime
