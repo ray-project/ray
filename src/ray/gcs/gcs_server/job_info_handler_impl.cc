@@ -55,6 +55,12 @@ void DefaultJobInfoHandler::HandleMarkJobFinished(
     } else {
       RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Binary(),
                                          job_table_data->SerializeAsString(), nullptr));
+      gcs_table_storage_->ActorTable().DeleteByJobId(job_id, nullptr);                                        
+      gcs_table_storage_->ActorCheckpointIdTable().DeleteByJobId(job_id, nullptr);                                        
+      gcs_table_storage_->TaskTable().DeleteByJobId(job_id, nullptr);                                        
+      gcs_table_storage_->TaskLeaseTable().DeleteByJobId(job_id, nullptr);                                        
+      gcs_table_storage_->TaskReconstructionTable().DeleteByJobId(job_id, nullptr);                                        
+      gcs_table_storage_->ObjectTable().DeleteByJobId(job_id, nullptr);                                        
       RAY_LOG(INFO) << "Finished marking job state, job id = " << job_id;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
