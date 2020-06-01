@@ -75,6 +75,8 @@ export type NodeInfoResponseWorker = {
 };
 
 export type GPUProcessStats = {
+  // Sub stat of GPU stats, this type represents the GPU
+  // utilization of a single process of a single GPU.
   username: string;
   command: string;
   gpu_memory_usage: number;
@@ -82,6 +84,7 @@ export type GPUProcessStats = {
 };
 
 export type GPUStats = {
+  // This represents stats fetched from a node about a single GPU
   uuid: string;
   name: string;
   temperature_gpu: number;
@@ -102,7 +105,7 @@ export type NodeInfoResponse = {
     boot_time: number; // System boot time expressed in seconds since epoch
     cpu: number; // System-wide CPU utilization expressed as a percentage
     cpus: [number, number]; // Number of logical CPUs and physical CPUs
-    gpus: Array<GPUStats>;
+    gpus: Array<GPUStats>; // GPU stats fetched from node, 1 entry per GPU
     mem: [number, number, number]; // Total, available, and used percentage of memory
     disk: {
       [path: string]: {
