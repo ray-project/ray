@@ -721,7 +721,7 @@ void GcsActorManager::SchedulePendingActors() {
   }
 }
 
-void GcsActorManager::LoadInitialData(const StatusCallback &done) {
+void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
   RAY_LOG(INFO) << "Loading initial data.";
   auto callback = [this,
                    done](const std::unordered_map<ActorID, ActorTableData> &result) {
@@ -747,7 +747,7 @@ void GcsActorManager::LoadInitialData(const StatusCallback &done) {
       }
     }
     RAY_LOG(INFO) << "Finished loading initial data.";
-    done(Status::OK());
+    done();
   };
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().GetAll(callback));
 }

@@ -266,7 +266,7 @@ std::shared_ptr<ObjectTableDataList> GcsObjectManager::GenObjectTableDataList(
   return object_table_data_list;
 }
 
-void GcsObjectManager::LoadInitialData(const StatusCallback &done) {
+void GcsObjectManager::LoadInitialData(const EmptyCallback &done) {
   RAY_LOG(INFO) << "Loading initial data.";
   auto callback = [this, done](
                       const std::unordered_map<ObjectID, ObjectTableDataList> &result) {
@@ -283,7 +283,7 @@ void GcsObjectManager::LoadInitialData(const StatusCallback &done) {
       AddObjectsLocation(item.first, item.second);
     }
     RAY_LOG(INFO) << "Finished loading initial data.";
-    done(Status::OK());
+    done();
   };
   RAY_CHECK_OK(gcs_table_storage_->ObjectTable().GetAll(callback));
 }

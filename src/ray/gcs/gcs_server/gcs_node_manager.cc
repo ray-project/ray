@@ -315,7 +315,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     // Remove from alive nodes.
     alive_nodes_.erase(iter);
     // Remove from cluster resources.
-    RAY_CHECK(cluster_resources_.erase(node_id) != 0);
+    cluster_resources_.erase(node_id);
     if (!is_intended) {
       // Broadcast a warning to all of the drivers indicating that the node
       // has been marked as dead.
@@ -338,7 +338,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
   return removed_node;
 }
 
-void GcsNodeManager::LoadInitialData(const StatusCallback &done) {
+void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
   RAY_LOG(INFO) << "Loading initial data.";
   auto callback = [this, done](const std::unordered_map<ClientID, GcsNodeInfo> &result) {
     for (auto &item : result) {
@@ -349,7 +349,7 @@ void GcsNodeManager::LoadInitialData(const StatusCallback &done) {
       }
     }
     RAY_LOG(INFO) << "Finished loading initial data.";
-    done(Status::OK());
+    done();
   };
   RAY_CHECK_OK(gcs_table_storage_->NodeTable().GetAll(callback));
 }

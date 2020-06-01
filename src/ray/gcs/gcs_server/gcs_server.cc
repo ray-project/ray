@@ -97,11 +97,11 @@ void GcsServer::Start() {
 
   auto load_completed_count = std::make_shared<int>(0);
   int load_count = 3;
-  auto on_done = [this, load_count, load_completed_count](const Status &status) {
+  auto on_done = [this, load_count, load_completed_count]() {
     ++(*load_completed_count);
 
     if (*load_completed_count == load_count) {
-      // Run rpc server.
+      // Start RPC server when all tables have finished loading initial data.
       rpc_server_.Run();
 
       // Store gcs rpc server address in redis.
