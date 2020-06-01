@@ -170,13 +170,12 @@ def monitor_cluster(cluster_config_file, num_lines, override_cluster_name):
 
 
 def warn_about_bad_start_command(start_commands):
-    ray_start_cmd = list(
-        filter(lambda x: "ray start" in x, ray_start_commands))
+    ray_start_cmd = list(filter(lambda x: "ray start" in x, start_commands))
     if len(ray_start_cmd) == 0:
         logger.warning(
             "Ray start is not included in the head_start_ray_commands section."
         )
-    if not any(["autoscaling-config" in x for x in ray_start_cmd]):
+    if not any("autoscaling-config" in x for x in ray_start_cmd):
         logger.warning(
             "Ray start on the head node does not have the flag"
             "--autoscaling-config set. The head node will not launch"
