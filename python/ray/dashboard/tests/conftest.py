@@ -1,1 +1,1 @@
-from ray.tests.conftest import *
+from ray.tests.conftest import *  # noqa

@@ -12,19 +12,12 @@ import errno
 import json
 import logging
 import os
-import re
 import socket
 import threading
 import time
 import traceback
 import yaml
 import uuid
-
-from base64 import b64decode
-from collections import defaultdict
-from operator import itemgetter
-from typing import Dict
-
 import grpc
 from google.protobuf.json_format import MessageToDict
 import ray
@@ -42,7 +35,7 @@ from ray.dashboard.memory import construct_memory_table, MemoryTable
 from ray.dashboard.metrics_exporter.client import Exporter
 from ray.dashboard.metrics_exporter.client import MetricsExportClient
 from ray.dashboard.node_stats import NodeStats
-from ray.dashboard.util import round_resource_value, to_unix_time, measures_to_dict, format_resource
+from ray.dashboard.util import to_unix_time, measures_to_dict, format_resource
 
 try:
     from ray.tune import Analysis
@@ -640,7 +633,7 @@ class RayletStats(threading.Thread):
                 self.reporter_stubs), (self.stubs.keys(),
                                        self.reporter_stubs.keys())
 
-    def get_raylet_stats(self) -> Dict:
+    def get_raylet_stats(self):
         with self._raylet_stats_lock:
             return copy.deepcopy(self._raylet_stats)
 

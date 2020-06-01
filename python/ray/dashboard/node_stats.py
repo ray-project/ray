@@ -5,7 +5,8 @@ import ray
 import threading
 import json
 import traceback
-import logging 
+import copy
+import logging
 import datetime
 import time
 import re
@@ -247,7 +248,6 @@ class NodeStats(threading.Thread):
                             "timestamp": actor_data.timestamp
                         }
                     else:
-                        print('Received data about a client')
                         data = json.loads(ray.utils.decode(data))
                         self._node_stats[data["hostname"]] = data
 

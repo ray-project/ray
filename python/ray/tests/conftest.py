@@ -52,7 +52,7 @@ def _ray_start(**kwargs):
 @pytest.fixture
 def ray_start_with_dashboard(request):
     param = getattr(request, "param", {})
-    with _ray_start(num_cpus=1, include_webui=True) as address_info:
+    with _ray_start(num_cpus=1, include_webui=True, **param) as address_info:
         yield address_info
 
 
