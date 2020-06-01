@@ -27,6 +27,7 @@ namespace {
 
 // Duration between internal book-keeping heartbeats.
 const int kInternalHeartbeatMillis = 1000;
+const int kLocationResolveHeartbeatMillis = 3000;
 
 void BuildCommonTaskSpec(
     ray::TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
@@ -355,6 +356,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
   internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));
 
+  internal_timer_.expires_from_now(
+      boost::asio::chrono::milliseconds(kLocationResolveHeartbeatMillis));
+  internal_timer_.async_wait(boost::bind(&CoreWorker::LocationResolveHeartBeat, this, _1));
+
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket, local_raylet_client_, options_.check_signals,
       /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
@@ -672,10 +677,48 @@ void CoreWorker::InternalHeartbeat(const boost::system::error_code &error) {
     }
     to_resubmit_.pop_front();
   }
-  // SANG-TODO Add Location resolving logic.
   internal_timer_.expires_at(internal_timer_.expiry() +
                              boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
   internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));
+}
+
+void CoreWorker::LocationResolveHeartBeat(const boost::system::error_code &error) {
+  if (error == boost::asio::error::operation_aborted) {
+    return;
+  }
+  absl::MutexLock lock(&actor_location_resolve_waiters_mutex_);
+  for (auto &actor_id : actor_location_resolve_waiters_) {
+    ActorHandle *actor_handle = nullptr;
+    RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
+
+    if (actor_handle->IsPersistedToGCS()) {
+      // if an actor is already persisted to GCS, this doesn't need to be in waiter anymore.
+      actor_location_resolve_waiters_.erase(actor_id);
+    } else {
+      // If it is still not persisted to GCS, check worker/node is still alive. Otherwise, there's no way to know
+      // if they are alive as actor information is not in GCS yet.
+      // Question? Is worker failure reported only once? If it stores historical data, it can cause some problems.
+      const WorkerID &worker_id = WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
+      RAY_CHECK_OK(gcs_client_->Workers().AsyncGetWorkerFailure(
+        worker_id,
+        [this, actor_id](Status status, const boost::optional<gcs::WorkerFailureData> &result) {
+          if (status.ok() && result) {
+            direct_actor_submitter_->DisconnectActor(actor_id, true);
+          }
+      }));
+
+      const ClientID &node_id = ClientID::FromBinary(actor_handle->GetOwnerAddress().raylet_id());
+      const auto &optional_node_info = gcs_client_->Nodes().Get(node_id);
+      RAY_CHECK(optional_node_info) << "Node information for an actor_id is not found.";
+      if (optional_node_info->state() == rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD) {
+        direct_actor_submitter_->DisconnectActor(actor_id, true);
+      }
+    }
+  }
+
+  internal_timer_.expires_at(internal_timer_.expiry() +
+                             boost::asio::chrono::milliseconds(kLocationResolveHeartbeatMillis));
+  internal_timer_.async_wait(boost::bind(&CoreWorker::LocationResolveHeartBeat, this, _1));
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
@@ -1274,43 +1317,11 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   reference_counter_->AddLocalReference(actor_creation_return_id, CurrentCallSite());
   direct_actor_submitter_->AddActorQueueIfNotExists(actor_id);
 
-  // If actor handle is not persisted to GCS yet, we should subscribe
-  // worker failure events to figure out if actor is dead or not.
-  // SANG-TODO Add a link to the issue.
   if (!actor_handle->IsPersistedToGCS()) {
-    // Call a function instead and test it.
-    rpc::Address owner_address = actor_handle->GetOwnerAddress();
-    WorkerID worker_id =
-        WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
-    ActorID actor_id = actor_handle->GetActorID();
-    // SANG-TODO delete this.
-    RAY_LOG(ERROR) << "Location is not resolved Yet! actor id: " << actor_id
-                   << " owner worker id: " << worker_id;
-    auto on_worker_failure = [this, actor_id, worker_id](
-                                 const WorkerID &id,
-                                 const gcs::WorkerFailureData &worker_failure_data) {
-      if (id == worker_id) {
-        RAY_LOG(ERROR) << "Failed worker reported!";
-        ActorHandle *actor_handle = nullptr;
-        RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
-        // RAY_LOG(ERROR) << "Make sure actor handle location is not resolved: " << actor_handle->IsPersistedToGCS();
-        if (!actor_handle->IsPersistedToGCS()) {
-          RAY_LOG(ERROR) << "Will disconnect an actor, worker id: " << WorkerID::FromBinary(worker_failure_data.worker_address().worker_id());
-          RAY_CHECK_OK(gcs_client_->Workers().AsyncGetWorkerFailure(
-            id,
-            [](Status status, const boost::optional<gcs::WorkerFailureData> &result) {
-            if (result) {
-              RAY_LOG(ERROR) << "Got worker id result worker id: " << WorkerID::FromBinary(result->worker_address().worker_id());
-            } else {
-              RAY_LOG(ERROR) << "No worker failure data comes in";
-            }
-          }));
-          // direct_actor_submitter_->DisconnectActor(actor_id, true);
-        }
-      }
-    };
-    RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
-        on_worker_failure, /*done_callback=*/nullptr));
+    // When an actor information is not persisted to GCS yet, worker failure & node failure
+    // should be tracked so that it can know if actors have been failed or not.
+    absl::MutexLock lock(&actor_location_resolve_waiters_mutex_);
+    actor_location_resolve_waiters_.insert(actor_id);
   }
 
   bool inserted;
