@@ -11,8 +11,8 @@ import RemoveIcon from "@material-ui/icons/Remove";
 import classNames from "classnames";
 import React from "react";
 import {
-  MemoryTableResponse,
   MemoryTableEntry,
+  MemoryTableResponse,
   MemoryTableSummary,
 } from "../../../api";
 import MemorySummary from "./MemorySummary";
@@ -94,10 +94,8 @@ class MemoryRowGroup extends React.Component<
           </TableCell>
           {features.map((feature, index) => (
             <TableCell className={classes.cell} key={index}>
-              {
-                // TODO(sang): For now, it is always grouped by node_ip_address.
-                feature === "node_ip_address" ? groupKey : ""
-              }
+              {// TODO(sang): For now, it is always grouped by node_ip_address.
+              feature === "node_ip_address" ? groupKey : ""}
             </TableCell>
           ))}
         </TableRow>
