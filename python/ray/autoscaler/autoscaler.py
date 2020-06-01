@@ -28,8 +28,6 @@ from six.moves import queue
 
 logger = logging.getLogger(__name__)
 
-NODE_TYPE_CONFIG_KEYS = {"workers": "worker_nodes", "head": "head_node"}
-
 
 class StandardAutoscaler:
     """The autoscaling control loop for a Ray cluster.
