@@ -1289,11 +1289,25 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     auto on_worker_failure = [this, actor_id, worker_id](
                                  const WorkerID &id,
                                  const gcs::WorkerFailureData &worker_failure_data) {
-      RAY_LOG(ERROR) << "Worker failure!!";
       if (id == worker_id) {
-        direct_actor_submitter_->DisconnectActor(actor_id, true);
+        RAY_LOG(ERROR) << "Failed worker reported!";
+        ActorHandle *actor_handle = nullptr;
+        RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
+        // RAY_LOG(ERROR) << "Make sure actor handle location is not resolved: " << actor_handle->IsPersistedToGCS();
+        if (!actor_handle->IsPersistedToGCS()) {
+          RAY_LOG(ERROR) << "Will disconnect an actor, worker id: " << WorkerID::FromBinary(worker_failure_data.worker_address().worker_id());
+          RAY_CHECK_OK(gcs_client_->Workers().AsyncGetWorkerFailure(
+            id,
+            [](Status status, const boost::optional<gcs::WorkerFailureData> &result) {
+            if (result) {
+              RAY_LOG(ERROR) << "Got worker id result worker id: " << WorkerID::FromBinary(result->worker_address().worker_id());
+            } else {
+              RAY_LOG(ERROR) << "No worker failure data comes in";
+            }
+          }));
+          // direct_actor_submitter_->DisconnectActor(actor_id, true);
+        }
       }
-      // SANG-TODO: Should unsubscribe.
     };
     RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
         on_worker_failure, /*done_callback=*/nullptr));

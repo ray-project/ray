@@ -214,6 +214,10 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, RegisterWorker,
                              worker_info_grpc_client_, )
 
+  /// Get a worker failure event from GCS service.
+  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, GetWorkerFailure,
+                             worker_info_grpc_client_, )
+
  private:
   void Init(const std::string &address, const int port,
             ClientCallManager &client_call_manager) {

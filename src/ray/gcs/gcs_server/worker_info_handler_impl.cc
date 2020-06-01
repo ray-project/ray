@@ -68,5 +68,30 @@ void DefaultWorkerInfoHandler::HandleRegisterWorker(
   }
 }
 
+void DefaultWorkerInfoHandler::HandleGetWorkerFailure(
+    const GetWorkerFailureRequest &request,
+    GetWorkerFailureReply *reply,
+    SendReplyCallback send_reply_callback) {
+  RAY_LOG(ERROR) << "Sangbinsangbin";
+  WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
+  RAY_LOG(ERROR) << "Getting worker failure info, worker id = " << worker_id;
+  auto on_done = [worker_id, reply, send_reply_callback](
+                     const Status &status,
+                     const boost::optional<WorkerFailureData> &result) {
+    if (result) {
+      reply->mutable_worker_failure_data()->CopyFrom(*result);
+    }
+    RAY_LOG(ERROR) << "Finished getting worker failure info, worker id = " << worker_id
+                   << ", status = " << status;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  };
+
+  // Look up the worker_id in the GCS.
+  Status status = gcs_table_storage_->WorkerFailureTable().Get(worker_id, on_done);
+  if (!status.ok()) {
+    on_done(status, boost::none);
+  }
+}
+
 }  // namespace rpc
 }  // namespace ray

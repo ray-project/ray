@@ -838,6 +838,12 @@ Status RedisWorkerInfoAccessor::AsyncRegisterWorker(
   return status;
 }
 
+Status RedisWorkerInfoAccessor::AsyncGetWorkerFailure(
+    const WorkerID &worker_id,
+    const OptionalItemCallback<rpc::WorkerFailureData> &callback) {
+  return Status::NotImplemented("gcs_storage_table is used instead.");
+}
+
 }  // namespace gcs
 
 }  // namespace ray

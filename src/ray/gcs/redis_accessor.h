@@ -454,6 +454,9 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
 
   Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
 
+  Status AsyncGetWorkerFailure(const WorkerID &worker_id,
+                               const OptionalItemCallback<rpc::WorkerFailureData> &callback);
+
  private:
   RedisGcsClient *client_impl_{nullptr};
 

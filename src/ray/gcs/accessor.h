@@ -656,6 +656,14 @@ class WorkerInfoAccessor {
   /// \return Status
   virtual Status AsyncReSubscribe() = 0;
 
+  /// Get worker failure specification from GCS asynchronously.
+  ///
+  /// \param actor_id The ID of worker to look up in the GCS.
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetWorkerFailure(const WorkerID &worker_id,
+                                       const OptionalItemCallback<rpc::WorkerFailureData> &callback) = 0;
+
  protected:
   WorkerInfoAccessor() = default;
 };
