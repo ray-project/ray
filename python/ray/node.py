@@ -170,7 +170,7 @@ class Node:
                 # the port is bound by another process between now and when the
                 # raylet starts.
                 self._ray_params.node_manager_port, self.socket = \
-                    self._get_unused_port()
+                    self._get_unused_port(close_on_exit=False)
 
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
