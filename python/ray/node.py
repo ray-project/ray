@@ -170,6 +170,8 @@ class Node:
                 # the port is bound by another process between now and when the
                 # raylet starts.
                 self._ray_params.node_manager_port = self._get_unused_port()
+                self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.socket.bind(("", self.node_manager_port))
 
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
@@ -612,7 +614,8 @@ class Node:
             include_java=self._ray_params.include_java,
             java_worker_options=self._ray_params.java_worker_options,
             load_code_from_local=self._ray_params.load_code_from_local,
-            fate_share=self.kernel_fate_share)
+            fate_share=self.kernel_fate_share,
+            socket_to_use=self.socket)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
