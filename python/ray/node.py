@@ -413,7 +413,7 @@ class Node:
             s.close()
             if error_val != 0:
                 return new_port
-
+        logger.error("Unable to succeed in selecting a random port.")
         return port
 
     def _prepare_socket_file(self, socket_path, default_prefix):
