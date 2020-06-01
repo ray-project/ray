@@ -457,7 +457,7 @@ def _exec(updater, cmd, screen, tmux, port_forward=None, with_output=False):
         exit_on_fail=True,
         port_forward=port_forward,
         with_output=with_output)
-  
+
 
 def rsync(config_file,
           source,
