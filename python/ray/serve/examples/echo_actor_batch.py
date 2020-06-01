@@ -35,7 +35,7 @@ class MagicCounter:
             return result
 
 
-serve.init(blocking=True)
+serve.init()
 serve.create_endpoint("magic_counter", "/counter")
 serve.create_backend(
     "counter:v1", MagicCounter, 42,

@@ -79,6 +79,7 @@ from ray.includes.libcoreworker cimport (
     CActorHandle,
 )
 from ray.includes.ray_config cimport RayConfig
+from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
 import ray
 from ray.async_compat import (sync_to_async,
@@ -107,6 +108,7 @@ include "includes/buffer.pxi"
 include "includes/common.pxi"
 include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
+include "includes/global_state_accessor.pxi"
 
 
 logger = logging.getLogger(__name__)
@@ -665,6 +667,7 @@ cdef class CoreWorker:
         options.raylet_socket = raylet_socket.encode("ascii")
         options.job_id = job_id.native()
         options.gcs_options = gcs_options.native()[0]
+        options.enable_logging = True
         options.log_dir = log_dir.encode("utf-8")
         options.install_failure_signal_handler = True
         options.node_ip_address = node_ip_address.encode("utf-8")
@@ -902,7 +905,8 @@ cdef class CoreWorker:
                      Language language,
                      FunctionDescriptor function_descriptor,
                      args,
-                     uint64_t max_reconstructions,
+                     int64_t max_restarts,
+                     int64_t max_task_retries,
                      resources,
                      placement_resources,
                      int32_t max_concurrency,
@@ -929,7 +933,7 @@ cdef class CoreWorker:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
-                        max_reconstructions, max_concurrency,
+                        max_restarts, max_task_retries, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, name, is_asyncio),
                     extension_data,
@@ -970,13 +974,13 @@ cdef class CoreWorker:
 
             return VectorToObjectIDs(return_ids)
 
-    def kill_actor(self, ActorID actor_id, c_bool no_reconstruction):
+    def kill_actor(self, ActorID actor_id, c_bool no_restart):
         cdef:
             CActorID c_actor_id = actor_id.native()
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().KillActor(
-                  c_actor_id, True, no_reconstruction))
+                  c_actor_id, True, no_restart))
 
     def cancel_task(self, ObjectID object_id, c_bool force_kill):
         cdef:

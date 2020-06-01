@@ -28,18 +28,22 @@ class TestIMPALA(unittest.TestCase):
                 print("Env={}".format(env))
                 print("w/ LSTM")
                 # Test w/o LSTM.
+                local_cfg["num_aggregation_workers"] = 0
                 trainer = impala.ImpalaTrainer(config=local_cfg, env=env)
                 for i in range(num_iterations):
                     print(trainer.train())
                 check_compute_action(trainer)
+                trainer.stop()
 
                 # Test w/ LSTM.
                 print("w/o LSTM")
                 local_cfg["model"]["use_lstm"] = True
+                local_cfg["num_aggregation_workers"] = 2
                 trainer = impala.ImpalaTrainer(config=local_cfg, env=env)
                 for i in range(num_iterations):
                     print(trainer.train())
                 check_compute_action(trainer)
+                trainer.stop()
 
 
 if __name__ == "__main__":

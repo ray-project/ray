@@ -640,37 +640,22 @@ def gen_step_with_fail(num_fails):
                        info=None,
                        dataset=None):
         params = dict(num_steps=num_steps, profile=profile, info=info)
-        remote_worker_stats = []
-        if dataset:
-            dataset.set_num_shards(self.max_replicas)
-        for i, w in enumerate(self.remote_workers):
-            params = dict(num_steps=num_steps, profile=profile, info=info)
-            if dataset:
-                params["iterator"] = dataset.get_shard(i)
-            stats = w.train_epoch.remote(**params)
-            remote_worker_stats.append(stats)
+        remote_worker_stats = [
+            w.train_epoch.remote(**params) for w in self.remote_workers
+        ]
 
         if self._num_failures < num_fails:
             time.sleep(1)  # Make the batch will fail correctly.
-            self.remote_workers[0].__ray_kill__()
+            ray.kill(self.remote_workers[0])
 
         try:
-            if dataset:
-                params["iterator"] = dataset.get_shard(
-                    len(self.remote_workers))
             local_worker_stats = self.local_worker.train_epoch(**params)
-        except RuntimeError as err:
-            if "gloo" in err.args[0] and "Timed out" in err.args[0]:
-                return False, None
-            if "NCCL" in err.args[0]:  # there is no specific error message
-                return False, None
-
-            raise err
+        except RuntimeError:
+            return False, None
 
         success = check_for_failure(remote_worker_stats)
         if success:
-            a, b = success, [local_worker_stats] + ray.get(remote_worker_stats)
-            return a, b
+            return success, [local_worker_stats] + ray.get(remote_worker_stats)
 
         return success, None
 

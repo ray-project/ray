@@ -21,14 +21,13 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/status.h"
+#include "ray/common/test_util.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/util/filesystem.h"
 
 namespace ray {
 
 using rpc::GcsNodeInfo;
-
-std::string store_executable;
 
 static inline void flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
@@ -87,34 +86,12 @@ class TestObjectManagerBase : public ::testing::Test {
 #endif
   }
 
-  std::string StartStore(const std::string &id) {
-    std::string store_id = ray::JoinPaths(ray::GetUserTempDir(), "store");
-    store_id = store_id + id;
-    std::string store_pid = store_id + ".pid";
-    std::string plasma_command = store_executable + " -m 1000000000 -s " + store_id +
-                                 " 1> /dev/null 2> /dev/null &" + " echo $! > " +
-                                 store_pid;
-
-    RAY_LOG(DEBUG) << plasma_command;
-    int ec = system(plasma_command.c_str());
-    RAY_CHECK(ec == 0);
-    sleep(1);
-    return store_id;
-  }
-
-  void StopStore(const std::string &store_id) {
-    std::string store_pid = store_id + ".pid";
-    std::string kill_1 = "kill -9 `cat " + store_pid + "`";
-    int s = system(kill_1.c_str());
-    ASSERT_TRUE(!s);
-  }
-
   void SetUp() {
     flushall_redis();
 
     // start store
-    store_id_1 = StartStore(UniqueID::FromRandom().Hex());
-    store_id_2 = StartStore(UniqueID::FromRandom().Hex());
+    socket_name_1 = TestSetupUtil::StartObjectStore();
+    socket_name_2 = TestSetupUtil::StartObjectStore();
 
     unsigned int pull_timeout_ms = 1000;
     uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
@@ -126,7 +103,7 @@ class TestObjectManagerBase : public ::testing::Test {
     gcs_client_1 = std::make_shared<gcs::RedisGcsClient>(client_options);
     RAY_CHECK_OK(gcs_client_1->Connect(main_service));
     ObjectManagerConfig om_config_1;
-    om_config_1.store_socket_name = store_id_1;
+    om_config_1.store_socket_name = socket_name_1;
     om_config_1.pull_timeout_ms = pull_timeout_ms;
     om_config_1.object_chunk_size = object_chunk_size;
     om_config_1.push_timeout_ms = push_timeout_ms;
@@ -138,7 +115,7 @@ class TestObjectManagerBase : public ::testing::Test {
     gcs_client_2 = std::make_shared<gcs::RedisGcsClient>(client_options);
     RAY_CHECK_OK(gcs_client_2->Connect(main_service));
     ObjectManagerConfig om_config_2;
-    om_config_2.store_socket_name = store_id_2;
+    om_config_2.store_socket_name = socket_name_2;
     om_config_2.pull_timeout_ms = pull_timeout_ms;
     om_config_2.object_chunk_size = object_chunk_size;
     om_config_2.push_timeout_ms = push_timeout_ms;
@@ -147,8 +124,8 @@ class TestObjectManagerBase : public ::testing::Test {
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
-    RAY_ARROW_CHECK_OK(client1.Connect(store_id_1));
-    RAY_ARROW_CHECK_OK(client2.Connect(store_id_2));
+    RAY_ARROW_CHECK_OK(client1.Connect(socket_name_1));
+    RAY_ARROW_CHECK_OK(client2.Connect(socket_name_2));
   }
 
   void TearDown() {
@@ -162,8 +139,8 @@ class TestObjectManagerBase : public ::testing::Test {
     this->server1.reset();
     this->server2.reset();
 
-    StopStore(store_id_1);
-    StopStore(store_id_2);
+    TestSetupUtil::StopObjectStore(socket_name_1);
+    TestSetupUtil::StopObjectStore(socket_name_2);
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
@@ -171,7 +148,7 @@ class TestObjectManagerBase : public ::testing::Test {
     RAY_LOG(DEBUG) << "ObjectID Created: " << object_id;
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
-    std::shared_ptr<Buffer> data;
+    std::shared_ptr<arrow::Buffer> data;
     RAY_ARROW_CHECK_OK(
         client.Create(object_id.ToPlasmaId(), data_size, metadata, metadata_size, &data));
     RAY_ARROW_CHECK_OK(client.Seal(object_id.ToPlasmaId()));
@@ -195,8 +172,8 @@ class TestObjectManagerBase : public ::testing::Test {
   std::vector<ObjectID> v1;
   std::vector<ObjectID> v2;
 
-  std::string store_id_1;
-  std::string store_id_2;
+  std::string socket_name_1;
+  std::string socket_name_2;
 };
 
 class StressTestObjectManager : public TestObjectManagerBase {
@@ -461,6 +438,6 @@ TEST_F(StressTestObjectManager, StartStressTestObjectManager) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  ray::store_executable = std::string(argv[1]);
+  ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);
   return RUN_ALL_TESTS();
 }

@@ -11,6 +11,7 @@ import time
 import ray.cloudpickle as pickle
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env import ExternalEnv, MultiAgentEnv, ExternalMultiAgentEnv
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -49,10 +50,12 @@ class PolicyClient:
             address (str): Server to connect to (e.g., "localhost:9090").
             inference_mode (str): Whether to use 'local' or 'remote' policy
                 inference for computing actions.
-            update_interval (float): If using 'local' inference mode, the
-                policy is refreshed after this many seconds have passed.
+            update_interval (float or None): If using 'local' inference mode,
+                the policy is refreshed after this many seconds have passed,
+                or None for manual control via client.
         """
         self.address = address
+        self.env = None
         if inference_mode == "local":
             self.local = True
             self._setup_local_rollout_worker(update_interval)
@@ -64,11 +67,11 @@ class PolicyClient:
 
     @PublicAPI
     def start_episode(self, episode_id=None, training_enabled=True):
-        """Record the start of an episode.
+        """Record the start of one or more episode(s).
 
-        Arguments:
-            episode_id (str): Unique string id for the episode or None for
-                it to be auto-assigned.
+        Args:
+            episode_id (Optional[str]): Unique string id for the episode or
+                None for it to be auto-assigned.
             training_enabled (bool): Whether to use experiences for this
                 episode to improve the policy.
 
@@ -100,13 +103,20 @@ class PolicyClient:
 
         if self.local:
             self._update_local_policy()
-            return self.env.get_action(episode_id, observation)
-
-        return self._send({
-            "command": PolicyClient.GET_ACTION,
-            "observation": observation,
-            "episode_id": episode_id,
-        })["action"]
+            if isinstance(episode_id, (list, tuple)):
+                actions = {
+                    eid: self.env.get_action(eid, observation[eid])
+                    for eid in episode_id
+                }
+                return actions
+            else:
+                return self.env.get_action(episode_id, observation)
+        else:
+            return self._send({
+                "command": PolicyClient.GET_ACTION,
+                "observation": observation,
+                "episode_id": episode_id,
+            })["action"]
 
     @PublicAPI
     def log_action(self, episode_id, observation, action):
@@ -130,7 +140,11 @@ class PolicyClient:
         })
 
     @PublicAPI
-    def log_returns(self, episode_id, reward, info=None):
+    def log_returns(self,
+                    episode_id,
+                    reward,
+                    info=None,
+                    multiagent_done_dict=None):
         """Record returns from the environment.
 
         The reward will be attributed to the previous action taken by the
@@ -140,10 +154,16 @@ class PolicyClient:
         Arguments:
             episode_id (str): Episode id returned from start_episode().
             reward (float): Reward from the environment.
+            info (dict): Extra info dict.
+            multiagent_done_dict (dict): Multi-agent done information.
         """
 
         if self.local:
             self._update_local_policy()
+            if multiagent_done_dict is not None:
+                assert isinstance(reward, dict)
+                return self.env.log_returns(episode_id, reward, info,
+                                            multiagent_done_dict)
             return self.env.log_returns(episode_id, reward, info)
 
         self._send({
@@ -151,6 +171,7 @@ class PolicyClient:
             "reward": reward,
             "info": info,
             "episode_id": episode_id,
+            "done": multiagent_done_dict,
         })
 
     @PublicAPI
@@ -172,6 +193,12 @@ class PolicyClient:
             "episode_id": episode_id,
         })
 
+    @PublicAPI
+    def update_policy_weights(self):
+        """Query the server for new policy weights, if local inference is enabled.
+        """
+        self._update_local_policy(force=True)
+
     def _send(self, data):
         payload = pickle.dumps(data)
         response = requests.post(self.address, data=payload)
@@ -189,15 +216,15 @@ class PolicyClient:
         kwargs = self._send({
             "command": PolicyClient.GET_WORKER_ARGS,
         })["worker_args"]
-
         (self.rollout_worker,
          self.inference_thread) = create_embedded_rollout_worker(
              kwargs, self._send)
         self.env = self.rollout_worker.env
 
-    def _update_local_policy(self):
+    def _update_local_policy(self, force=False):
         assert self.inference_thread.is_alive()
-        if time.time() - self.last_updated > self.update_interval:
+        if (self.update_interval and time.time() - self.last_updated >
+                self.update_interval) or force:
             logger.info("Querying server for new policy weights.")
             resp = self._send({
                 "command": PolicyClient.GET_WEIGHTS,
@@ -226,8 +253,14 @@ class _LocalInferenceThread(threading.Thread):
                 logger.info("Generating new batch of experiences.")
                 samples = self.rollout_worker.sample()
                 metrics = self.rollout_worker.get_metrics()
-                logger.info("Sending batch of {} steps back to server.".format(
-                    samples.count))
+                if isinstance(samples, MultiAgentBatch):
+                    logger.info(
+                        "Sending batch of {} env steps ({} agent steps) to "
+                        "server.".format(samples.count, samples.total()))
+                else:
+                    logger.info(
+                        "Sending batch of {} steps back to server.".format(
+                            samples.count))
                 self.send_fn({
                     "command": PolicyClient.REPORT_SAMPLES,
                     "samples": samples,
@@ -246,21 +279,22 @@ def auto_wrap_external(real_env_creator):
 
     def wrapped_creator(env_config):
         real_env = real_env_creator(env_config)
-        if not (isinstance(real_env, ExternalEnv)
-                or isinstance(real_env, ExternalMultiAgentEnv)):
+        if not isinstance(real_env, (ExternalEnv, ExternalMultiAgentEnv)):
             logger.info(
-                "The env you specified is not a type of ExternalEnv. "
-                "Attempting to convert it automatically to ExternalEnv.")
+                "The env you specified is not a supported (sub-)type of "
+                "ExternalEnv. Attempting to convert it automatically to "
+                "ExternalEnv.")
 
             if isinstance(real_env, MultiAgentEnv):
-                external_cls = MultiAgentEnv
+                external_cls = ExternalMultiAgentEnv
             else:
                 external_cls = ExternalEnv
 
             class ExternalEnvWrapper(external_cls):
                 def __init__(self, real_env):
-                    super().__init__(real_env.action_space,
-                                     real_env.observation_space)
+                    super().__init__(
+                        observation_space=real_env.observation_space,
+                        action_space=real_env.action_space)
 
                 def run(self):
                     # Since we are calling methods on this class in the
@@ -268,6 +302,7 @@ def auto_wrap_external(real_env_creator):
                     time.sleep(999999)
 
             return ExternalEnvWrapper(real_env)
+        return real_env
 
     return wrapped_creator
 

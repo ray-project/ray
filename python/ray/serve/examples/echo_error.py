@@ -26,7 +26,7 @@ def echo(_):
     raise Exception("Something went wrong...")
 
 
-serve.init(blocking=True)
+serve.init()
 
 serve.create_endpoint("my_endpoint", "/echo")
 serve.create_backend("echo:v1", echo)

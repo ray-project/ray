@@ -35,6 +35,8 @@ REQUIRED, OPTIONAL = True, False
 RAY_SCHEMA_PATH = os.path.join(
     os.path.dirname(ray.autoscaler.__file__), "ray-schema.json")
 
+NODE_TYPE_CONFIG_KEYS = {"workers": "worker_nodes", "head": "head_node"}
+
 
 class LoadMetrics:
     """Container for cluster load metrics.

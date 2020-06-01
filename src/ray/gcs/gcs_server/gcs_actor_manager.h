@@ -24,7 +24,10 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "gcs_actor_scheduler.h"
+#include "gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/gcs/redis_gcs_client.h"
+#include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
 namespace ray {
 namespace gcs {
@@ -48,10 +51,8 @@ class GcsActor {
     const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
     actor_table_data_.set_job_id(request.task_spec().job_id());
-    actor_table_data_.set_max_reconstructions(
-        actor_creation_task_spec.max_actor_reconstructions());
-    actor_table_data_.set_remaining_reconstructions(
-        actor_creation_task_spec.max_actor_reconstructions());
+    actor_table_data_.set_max_restarts(actor_creation_task_spec.max_actor_restarts());
+    actor_table_data_.set_num_restarts(0);
 
     auto dummy_object =
         TaskSpecification(request.task_spec()).ActorDummyObject().Binary();
@@ -113,19 +114,55 @@ class GcsActor {
 using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
 /// GcsActorManager is responsible for managing the lifecycle of all actors.
 /// This class is not thread-safe.
-class GcsActorManager {
+class GcsActorManager : public rpc::ActorInfoHandler {
  public:
   /// Create a GcsActorManager
   ///
   /// \param scheduler Used to schedule actor creation tasks.
-  /// \param actor_info_accessor Used to flush actor data to storage.
+  /// \param gcs_table_storage Used to flush actor data to storage.
   /// \param gcs_pub_sub Used to publish gcs message.
   GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> scheduler,
-                  gcs::ActorInfoAccessor &actor_info_accessor,
+                  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
                   const rpc::ClientFactoryFn &worker_client_factory = nullptr);
 
   ~GcsActorManager() = default;
+
+  void HandleCreateActor(const rpc::CreateActorRequest &request,
+                         rpc::CreateActorReply *reply,
+                         rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleGetActorInfo(const rpc::GetActorInfoRequest &request,
+                          rpc::GetActorInfoReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleGetNamedActorInfo(const rpc::GetNamedActorInfoRequest &request,
+                               rpc::GetNamedActorInfoReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &request,
+                             rpc::GetAllActorInfoReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleRegisterActorInfo(const rpc::RegisterActorInfoRequest &request,
+                               rpc::RegisterActorInfoReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleUpdateActorInfo(const rpc::UpdateActorInfoRequest &request,
+                             rpc::UpdateActorInfoReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleAddActorCheckpoint(const rpc::AddActorCheckpointRequest &request,
+                                rpc::AddActorCheckpointReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleGetActorCheckpoint(const rpc::GetActorCheckpointRequest &request,
+                                rpc::GetActorCheckpointReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleGetActorCheckpointID(const rpc::GetActorCheckpointIDRequest &request,
+                                  rpc::GetActorCheckpointIDReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Register actor asynchronously.
   ///
@@ -235,8 +272,8 @@ class GcsActorManager {
 
   /// The scheduler to schedule all registered actors.
   std::shared_ptr<gcs::GcsActorSchedulerInterface> gcs_actor_scheduler_;
-  /// Actor table. Used to update actor information upon creation, deletion, etc.
-  gcs::ActorInfoAccessor &actor_info_accessor_;
+  /// Used to update actor information upon creation, deletion, etc.
+  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Factory to produce clients to workers. This is used to communicate with

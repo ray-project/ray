@@ -11,7 +11,7 @@ import time
 import ray
 import ray.test_utils
 import ray.cluster_utils
-from ray.test_utils import run_string_as_driver
+from ray.test_utils import run_string_as_driver, get_non_head_nodes
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 
@@ -119,7 +119,7 @@ def test_actor_lifetime_load_balancing(ray_start_cluster):
     }],
     indirect=True)
 def test_deleted_actor_no_restart(ray_start_regular):
-    @ray.remote(resources={"actor": 1}, max_reconstructions=3)
+    @ray.remote(resources={"actor": 1}, max_restarts=3)
     class Actor:
         def method(self):
             return 1
@@ -155,7 +155,7 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
 
-    @ray.remote(max_reconstructions=0)
+    @ray.remote(max_restarts=0)
     class Counter:
         def __init__(self):
             self.x = 0
@@ -195,7 +195,7 @@ def test_actor_init_fails(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
 
-    @ray.remote(max_reconstructions=1)
+    @ray.remote(max_restarts=1)
     class Counter:
         def __init__(self):
             self.x = 0
@@ -221,7 +221,7 @@ def test_reconstruction_suppression(ray_start_cluster_head):
     num_nodes = 5
     worker_nodes = [cluster.add_node() for _ in range(num_nodes)]
 
-    @ray.remote(max_reconstructions=1)
+    @ray.remote(max_restarts=1)
     class Counter:
         def __init__(self):
             self.x = 0
@@ -247,7 +247,7 @@ def test_reconstruction_suppression(ray_start_cluster_head):
     results = []
     for _ in range(10):
         results += [inc.remote(actor) for actor in actors]
-    # Make sure that we can get the results from the reconstructed actor.
+    # Make sure that we can get the results from the restarted actor.
     results = ray.get(results)
 
 
@@ -335,7 +335,7 @@ def test_distributed_handle(ray_start_cluster_2_nodes):
 
     # Kill the second plasma store to get rid of the cached objects and
     # trigger the corresponding raylet to exit.
-    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
+    get_non_head_nodes(cluster)[0].kill_plasma_store(wait=True)
 
     # Check that the actor did not restore from a checkpoint.
     assert not ray.get(counter.test_restore.remote())
@@ -374,7 +374,7 @@ def test_remote_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
 
     # Kill the second plasma store to get rid of the cached objects and
     # trigger the corresponding raylet to exit.
-    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
+    get_non_head_nodes(cluster)[0].kill_plasma_store(wait=True)
 
     # Check that the actor restored from a checkpoint.
     assert ray.get(counter.test_restore.remote())
@@ -414,7 +414,7 @@ def test_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
 
     # Kill the second plasma store to get rid of the cached objects and
     # trigger the corresponding raylet to exit.
-    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
+    get_non_head_nodes(cluster)[0].kill_plasma_store(wait=True)
 
     # Check that the actor restored from a checkpoint.
     assert ray.get(counter.test_restore.remote())
@@ -655,63 +655,22 @@ def test_pickled_actor_handle_call_in_method_twice(ray_start_regular):
     ray.get(b.step.remote())
 
 
-def test_register_and_get_named_actors(ray_start_regular):
-    # TODO(heyucongtom): We should test this from another driver.
-
-    @ray.remote
-    class Foo:
-        def __init__(self):
-            self.x = 0
-
-        def method(self):
-            self.x += 1
-            return self.x
-
-    f1 = Foo.remote()
-    # Test saving f.
-    ray.util.register_actor("f1", f1)
-    # Test getting f.
-    f2 = ray.util.get_actor("f1")
-    assert f1._actor_id == f2._actor_id
-
-    # Test same name register shall raise error.
-    with pytest.raises(ValueError):
-        ray.util.register_actor("f1", f2)
-
-    # Test register with wrong object type.
-    with pytest.raises(TypeError):
-        ray.util.register_actor("f3", 1)
-
-    # Test getting a nonexistent actor.
-    with pytest.raises(ValueError):
-        ray.util.get_actor("nonexistent")
-
-    # Test method
-    assert ray.get(f1.method.remote()) == 1
-    assert ray.get(f2.method.remote()) == 2
-    assert ray.get(f1.method.remote()) == 3
-    assert ray.get(f2.method.remote()) == 4
-
-
 def test_detached_actor(ray_start_regular):
     @ray.remote
     class DetachedActor:
         def ping(self):
             return "pong"
 
+    with pytest.raises(TypeError):
+        DetachedActor._remote(name=1)
+
     with pytest.raises(
             ValueError, match="Actor name cannot be an empty string"):
-        DetachedActor._remote(detached=True, name="")
+        DetachedActor._remote(name="")
 
-    with pytest.raises(ValueError, match="Detached actors must be named"):
-        DetachedActor._remote(detached=True)
-
-    with pytest.raises(ValueError, match="Only detached actors can be named"):
-        DetachedActor._remote(name="d_actor")
-
-    DetachedActor._remote(detached=True, name="d_actor")
+    DetachedActor._remote(name="d_actor")
     with pytest.raises(ValueError, match="Please use a different name"):
-        DetachedActor._remote(detached=True, name="d_actor")
+        DetachedActor._remote(name="d_actor")
 
     redis_address = ray_start_regular["redis_address"]
 
@@ -721,7 +680,7 @@ def test_detached_actor(ray_start_regular):
 import ray
 ray.init(address="{}")
 
-existing_actor = ray.util.get_actor("{}")
+existing_actor = ray.get_actor("{}")
 assert ray.get(existing_actor.ping.remote()) == "pong"
 
 @ray.remote
@@ -729,17 +688,16 @@ class DetachedActor:
     def ping(self):
         return "pong"
 
-actor = DetachedActor._remote(name="{}", detached=True)
+actor = DetachedActor._remote(name="{}")
 ray.get(actor.ping.remote())
 """.format(redis_address, get_actor_name, create_actor_name)
 
     run_string_as_driver(driver_script)
-    detached_actor = ray.util.get_actor(create_actor_name)
+    detached_actor = ray.get_actor(create_actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
 
 
-@pytest.mark.parametrize("deprecated_codepath", [False, True])
-def test_kill(ray_start_regular, deprecated_codepath):
+def test_kill(ray_start_regular):
     @ray.remote
     class Actor:
         def hang(self):
@@ -750,24 +708,20 @@ def test_kill(ray_start_regular, deprecated_codepath):
     result = actor.hang.remote()
     ready, _ = ray.wait([result], timeout=0.5)
     assert len(ready) == 0
-    if deprecated_codepath:
-        actor.__ray_kill__()
-    else:
-        ray.kill(actor)
+    ray.kill(actor, no_restart=False)
 
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(result)
 
-    if not deprecated_codepath:
-        with pytest.raises(ValueError):
-            ray.kill("not_an_actor_handle")
+    with pytest.raises(ValueError):
+        ray.kill("not_an_actor_handle")
 
 
 # This test verifies actor creation task failure will not
 # hang the caller.
 def test_actor_creation_task_crash(ray_start_regular):
     # Test actor death in constructor.
-    @ray.remote(max_reconstructions=0)
+    @ray.remote(max_restarts=0)
     class Actor:
         def __init__(self):
             print("crash")
@@ -781,10 +735,10 @@ def test_actor_creation_task_crash(ray_start_regular):
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.f.remote())
 
-    # Test an actor can be reconstructed successfully
+    # Test an actor can be restarted successfully
     # afte it dies in its constructor.
-    @ray.remote(max_reconstructions=3)
-    class ReconstructableActor:
+    @ray.remote(max_restarts=3)
+    class RestartableActor:
         def __init__(self):
             count = self.get_count()
             count += 1
@@ -811,7 +765,7 @@ def test_actor_creation_task_crash(ray_start_regular):
             _internal_kv_put("count", count, True)
 
     # Verify we can get the object successfully.
-    ra = ReconstructableActor.remote()
+    ra = RestartableActor.remote()
     ray.get(ra.f.remote())
 
 

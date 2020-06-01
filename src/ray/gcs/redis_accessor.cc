@@ -99,12 +99,11 @@ Status RedisLogBasedActorInfoAccessor::AsyncUpdate(
     const ActorID &actor_id, const std::shared_ptr<ActorTableData> &data_ptr,
     const StatusCallback &callback) {
   // The actor log starts with an ALIVE entry. This is followed by 0 to N pairs
-  // of (RECONSTRUCTING, ALIVE) entries, where N is the maximum number of
+  // of (RESTARTING, ALIVE) entries, where N is the maximum number of
   // reconstructions. This is followed optionally by a DEAD entry.
-  int log_length =
-      2 * (data_ptr->max_reconstructions() - data_ptr->remaining_reconstructions());
+  int log_length = 2 * (data_ptr->num_restarts());
   if (data_ptr->state() != ActorTableData::ALIVE) {
-    // RECONSTRUCTING or DEAD entries have an odd index.
+    // RESTARTING or DEAD entries have an odd index.
     log_length += 1;
   }
   RAY_LOG(DEBUG) << "AsyncUpdate actor state to " << data_ptr->state()
@@ -444,7 +443,7 @@ Status RedisTaskInfoAccessor::AsyncGetTaskLease(
 
   auto on_failure = [callback](RedisGcsClient *client, const TaskID &task_id) {
     boost::optional<TaskLeaseData> result;
-    callback(Status::Invalid("Task not exist."), result);
+    callback(Status::Invalid("Task lease not exist."), result);
   };
 
   TaskLeaseTable &task_lease_table = client_impl_->task_lease_table();

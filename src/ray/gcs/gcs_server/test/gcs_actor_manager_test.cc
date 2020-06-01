@@ -16,6 +16,7 @@
 #include <ray/gcs/test/gcs_test_util.h>
 
 #include <memory>
+
 #include "gtest/gtest.h"
 
 namespace ray {
@@ -72,12 +73,16 @@ class GcsActorManagerTest : public ::testing::Test {
       : mock_actor_scheduler_(new MockActorScheduler()),
         worker_client_(new MockWorkerClient()) {
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
+    store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
+    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_actor_manager_.reset(new gcs::GcsActorManager(
-        mock_actor_scheduler_, actor_info_accessor_, gcs_pub_sub_,
+        mock_actor_scheduler_, gcs_table_storage_, gcs_pub_sub_,
         [&](const rpc::Address &addr) { return worker_client_; }));
   }
 
-  GcsServerMocker::MockedActorInfoAccessor actor_info_accessor_;
+  boost::asio::io_service io_service_;
+  std::shared_ptr<gcs::StoreClient> store_client_;
+  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<MockActorScheduler> mock_actor_scheduler_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
@@ -227,8 +232,8 @@ TEST_F(GcsActorManagerTest, TestNodeFailure) {
 
 TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   auto job_id = JobID::FromInt(1);
-  auto create_actor_request = Mocker::GenCreateActorRequest(
-      job_id, /*max_reconstructions=*/1, /*detached=*/false);
+  auto create_actor_request =
+      Mocker::GenCreateActorRequest(job_id, /*max_restarts=*/1, /*detached=*/false);
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   Status status = gcs_actor_manager_->RegisterActor(
       create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
@@ -254,7 +259,7 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   // Remove worker and then check that the actor is being restarted.
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id));
   gcs_actor_manager_->OnNodeDead(node_id);
-  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RECONSTRUCTING);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
 
   // Add node and check that the actor is restarted.
   gcs_actor_manager_->SchedulePendingActors();
@@ -287,8 +292,8 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
 
 TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
   auto job_id = JobID::FromInt(1);
-  auto create_actor_request = Mocker::GenCreateActorRequest(
-      job_id, /*max_reconstructions=*/1, /*detached=*/false);
+  auto create_actor_request =
+      Mocker::GenCreateActorRequest(job_id, /*max_restarts=*/1, /*detached=*/false);
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   RAY_CHECK_OK(gcs_actor_manager_->RegisterActor(
       create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
@@ -331,7 +336,7 @@ TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
 TEST_F(GcsActorManagerTest, TestDetachedActorRestartWhenCreatorDead) {
   auto job_id = JobID::FromInt(1);
   auto create_actor_request =
-      Mocker::GenCreateActorRequest(job_id, /*max_reconstructions=*/1, /*detached=*/true);
+      Mocker::GenCreateActorRequest(job_id, /*max_restarts=*/1, /*detached=*/true);
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   RAY_CHECK_OK(gcs_actor_manager_->RegisterActor(
       create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {

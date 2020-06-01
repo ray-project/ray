@@ -7,6 +7,8 @@ import os
 import subprocess
 import sys
 import time
+import urllib
+import urllib.parse
 
 import ray.services as services
 from ray.autoscaler.commands import (
@@ -125,7 +127,15 @@ def dashboard(cluster_config_file, cluster_name, port):
     "--redis-port",
     required=False,
     type=str,
-    help="the port to use for starting Redis")
+    help="(DEPRECATED) the port to use for starting redis. "
+    "Please use --port instead now.")
+@click.option(
+    "--port",
+    required=False,
+    type=str,
+    help="the port of the head ray process. If not provided, tries to use "
+    "{0}, falling back to a random port if {0} is "
+    "not available".format(ray_constants.DEFAULT_PORT))
 @click.option(
     "--num-redis-shards",
     required=False,
@@ -160,6 +170,20 @@ def dashboard(cluster_config_file, cluster_name, port):
     required=False,
     type=int,
     help="the port to use for starting the node manager")
+@click.option(
+    "--min-worker-port",
+    required=False,
+    type=int,
+    default=10000,
+    help="the lowest port number that workers will bind on. If not set, "
+    "random ports will be chosen.")
+@click.option(
+    "--max-worker-port",
+    required=False,
+    type=int,
+    default=10999,
+    help="the highest port number that workers will bind on. If set, "
+    "'--min-worker-port' must also be set.")
 @click.option(
     "--memory",
     required=False,
@@ -277,18 +301,25 @@ def dashboard(cluster_config_file, cluster_name, port):
     is_flag=True,
     default=False,
     help="Specify whether load code from local file or GCS serialization.")
-def start(node_ip_address, redis_address, address, redis_port,
+def start(node_ip_address, redis_address, address, redis_port, port,
           num_redis_shards, redis_max_clients, redis_password,
-          redis_shard_ports, object_manager_port, node_manager_port, memory,
-          object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
-          head, include_webui, webui_host, block, plasma_directory, huge_pages,
-          autoscaling_config, no_redirect_worker_output, no_redirect_output,
+          redis_shard_ports, object_manager_port, node_manager_port,
+          min_worker_port, max_worker_port, memory, object_store_memory,
+          redis_max_memory, num_cpus, num_gpus, resources, head, include_webui,
+          webui_host, block, plasma_directory, huge_pages, autoscaling_config,
+          no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, load_code_from_local, internal_config):
     """Start Ray processes manually on the local machine."""
     if redis_address is not None:
         raise DeprecationWarning("The --redis-address argument is "
                                  "deprecated. Please use --address instead.")
+    if redis_port is not None:
+        logger.warn("The --redis-port argument will be deprecated soon. "
+                    "Please use --port instead.")
+        if port is not None and port != redis_port:
+            raise ValueError("Cannot specify both --port and --redis-port "
+                             "as port is a rename of deprecated redis-port")
 
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
@@ -311,6 +342,8 @@ def start(node_ip_address, redis_address, address, redis_port,
     redirect_output = None if not no_redirect_output else True
     ray_params = ray.parameter.RayParams(
         node_ip_address=node_ip_address,
+        min_worker_port=min_worker_port,
+        max_worker_port=max_worker_port,
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
         memory=memory,
@@ -359,7 +392,7 @@ def start(node_ip_address, redis_address, address, redis_port,
         logger.info("Using IP address {} for this node.".format(
             ray_params.node_ip_address))
         ray_params.update_if_absent(
-            redis_port=redis_port,
+            redis_port=port or redis_port,
             redis_shard_ports=redis_shard_ports,
             redis_max_memory=redis_max_memory,
             num_redis_shards=num_redis_shards,
@@ -390,9 +423,10 @@ def start(node_ip_address, redis_address, address, redis_port,
                 if redis_password else ""))
     else:
         # Start Ray on a non-head node.
-        if redis_port is not None:
-            raise Exception("If --head is not passed in, --redis-port is not "
-                            "allowed.")
+        if not (redis_port is None and port is None):
+            raise Exception(
+                "If --head is not passed in, --port and --redis-port are not "
+                "allowed.")
         if redis_shard_ports is not None:
             raise Exception("If --head is not passed in, --redis-shard-ports "
                             "is not allowed.")
@@ -566,6 +600,16 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
     if restart_only or no_restart:
         assert restart_only != no_restart, "Cannot set both 'restart_only' " \
             "and 'no_restart' at the same time!"
+    if urllib.parse.urlparse(cluster_config_file).scheme in ("http", "https"):
+        try:
+            response = urllib.request.urlopen(cluster_config_file, timeout=5)
+            content = response.read()
+            file_name = cluster_config_file.split("/")[-1]
+            with open(file_name, "wb") as f:
+                f.write(content)
+            cluster_config_file = file_name
+        except urllib.error.HTTPError as e:
+            logger.info("Error downloading file: ", e)
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
                              no_restart, restart_only, yes, cluster_name)
 

@@ -13,7 +13,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.compression import pack_if_needed
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.schedules import PiecewiseSchedule
-from ray.rllib.utils.memory import ray_get_and_free
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +118,7 @@ class SyncReplayOptimizer(PolicyOptimizer):
         with self.sample_timer:
             if self.workers.remote_workers():
                 batch = SampleBatch.concat_samples(
-                    ray_get_and_free([
+                    ray.get([
                         e.sample.remote()
                         for e in self.workers.remote_workers()
                     ]))

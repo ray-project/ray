@@ -223,4 +223,7 @@ PPOTorchPolicy = build_torch_policy(
     extra_grad_process_fn=apply_grad_clipping,
     before_init=setup_config,
     after_init=setup_mixins,
-    mixins=[KLCoeffMixin, ValueNetworkMixin])
+    mixins=[
+        LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
+        ValueNetworkMixin
+    ])

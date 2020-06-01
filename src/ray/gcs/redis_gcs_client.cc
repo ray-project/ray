@@ -94,7 +94,7 @@ void RedisGcsClient::Disconnect() {
   RAY_CHECK(is_connected_);
   is_connected_ = false;
   redis_client_->Disconnect();
-  RAY_LOG(INFO) << "RedisGcsClient Disconnected.";
+  RAY_LOG(DEBUG) << "RedisGcsClient Disconnected.";
 }
 
 std::string RedisGcsClient::DebugString() const {

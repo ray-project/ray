@@ -2,7 +2,7 @@ from gym.spaces import Box
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
+from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
@@ -111,8 +111,10 @@ class TorchCentralizedCriticModel(TorchModelV2, nn.Module):
 
         # Central VF maps (obs, opp_obs, opp_act) -> vf_pred
         input_size = 6 + 6 + 2  # obs + opp_obs + opp_act
-        self.central_vf_dense = SlimFC(input_size, 16, activation_fn=nn.Tanh)
-        self.central_vf_out = SlimFC(16, 1)
+        self.central_vf = nn.Sequential(
+            SlimFC(input_size, 16, activation_fn=nn.Tanh),
+            SlimFC(16, 1),
+        )
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
@@ -122,10 +124,9 @@ class TorchCentralizedCriticModel(TorchModelV2, nn.Module):
     def central_value_function(self, obs, opponent_obs, opponent_actions):
         input_ = torch.cat([
             obs, opponent_obs,
-            torch.nn.functional.one_hot(opponent_actions, 2)
+            torch.nn.functional.one_hot(opponent_actions, 2).float()
         ], 1)
-        return torch.reshape(
-            self.central_vf_out(self.central_vf_dense(input_)), [-1])
+        return torch.reshape(self.central_vf(input_), [-1])
 
     @override(ModelV2)
     def value_function(self):
@@ -160,14 +161,17 @@ class YetAnotherTorchCentralizedCriticModel(TorchModelV2, nn.Module):
 
         self.value_model = TorchFC(obs_space, action_space, 1, model_config,
                                    name + "_vf")
+        self._model_in = None
 
     def forward(self, input_dict, state, seq_lens):
-        self._value_out, _ = self.value_model({
-            "obs": input_dict["obs_flat"]
-        }, state, seq_lens)
+        # Store model-input for possible `value_function()` call.
+        self._model_in = [input_dict["obs_flat"], state, seq_lens]
         return self.action_model({
             "obs": input_dict["obs"]["own_obs"]
         }, state, seq_lens)
 
     def value_function(self):
-        return torch.reshape(self._value_out, [-1])
+        value_out, _ = self.value_model({
+            "obs": self._model_in[0]
+        }, self._model_in[1], self._model_in[2])
+        return torch.reshape(value_out, [-1])

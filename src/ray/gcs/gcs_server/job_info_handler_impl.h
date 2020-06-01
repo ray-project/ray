@@ -15,6 +15,7 @@
 #ifndef RAY_GCS_JOB_INFO_HANDLER_IMPL_H
 #define RAY_GCS_JOB_INFO_HANDLER_IMPL_H
 
+#include "gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
@@ -25,9 +26,10 @@ namespace rpc {
 /// This implementation class of `JobInfoHandler`.
 class DefaultJobInfoHandler : public rpc::JobInfoHandler {
  public:
-  explicit DefaultJobInfoHandler(gcs::RedisGcsClient &gcs_client,
-                                 std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub)
-      : gcs_client_(gcs_client), gcs_pub_sub_(gcs_pub_sub) {}
+  explicit DefaultJobInfoHandler(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                                 std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub)
+      : gcs_table_storage_(std::move(gcs_table_storage)),
+        gcs_pub_sub_(std::move(gcs_pub_sub)) {}
 
   void HandleAddJob(const AddJobRequest &request, AddJobReply *reply,
                     SendReplyCallback send_reply_callback) override;
@@ -36,8 +38,11 @@ class DefaultJobInfoHandler : public rpc::JobInfoHandler {
                              MarkJobFinishedReply *reply,
                              SendReplyCallback send_reply_callback) override;
 
+  void HandleGetAllJobInfo(const GetAllJobInfoRequest &request, GetAllJobInfoReply *reply,
+                           SendReplyCallback send_reply_callback) override;
+
  private:
-  gcs::RedisGcsClient &gcs_client_;
+  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
 };
 
