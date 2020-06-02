@@ -25,7 +25,8 @@ tf = try_import_tf()
 torch, nn = try_import_torch()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--framework", choices=["tf", "tfe", "torch"], default="tf")
+parser.add_argument(
+    "--framework", choices=["tf", "tfe", "torch"], default="tf")
 parser.add_argument("--eager", action="store_true")
 
 # Constraints on the Repeated space.
