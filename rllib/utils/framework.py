@@ -74,6 +74,13 @@ def check_framework(framework, allow_none=True):
         if torch is None:
             raise ImportError("Could not import `torch`. "
                               "Try `pip install torch torchvision`")
+    # Check whether JAX is installed
+    elif framework == "jax":
+        try:
+            import jax  # pylint: disable=unused-argument
+        except ImportError:
+            raise ImportError("Could not import `jax`. "
+                              "Try `pip install jax jaxlib`")
     # Framework is None (use numpy version of the component).
     elif framework is None:
         if not allow_none:
@@ -81,7 +88,7 @@ def check_framework(framework, allow_none=True):
     # Invalid value.
     else:
         raise ValueError("Invalid framework='{}'. Use one of "
-                         "[tf|tfe|torch|auto].".format(framework))
+                         "[tf|tfe|torch|jax|auto].".format(framework))
     return framework
 
 
