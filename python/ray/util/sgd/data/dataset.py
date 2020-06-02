@@ -46,8 +46,8 @@ class Dataset():
             input and the label (default is the identity function).
         max_concurrency (int): The maximum number of concurrent calls to the
             download function. See ParallelIterator::for_each for details.
-        transform (S -> X): A final transformation to be applied to the _input
-            only_. This is guaranteed to run on the same worker that training
+        transform (S -> X): A final transformation to be applied to the *input
+            only*. This is guaranteed to run on the same worker that training
             will occur on.
     """
 
