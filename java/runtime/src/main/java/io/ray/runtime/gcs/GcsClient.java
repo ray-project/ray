@@ -10,7 +10,6 @@ import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.runtimecontext.NodeInfo;
 import io.ray.runtime.config.RayConfig;
-import io.ray.runtime.gcs.GlobalStateAccessor;
 import io.ray.runtime.generated.Gcs;
 import io.ray.runtime.generated.Gcs.ActorCheckpointIdData;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
@@ -96,19 +95,16 @@ public class GcsClient {
   }
 
   private Map<String, Double> getResourcesForClient(UniqueId clientId) {
-    final String prefix = TablePrefix.NODE_RESOURCE.toString();
-    final byte[] key = ArrayUtils.addAll(prefix.getBytes(), clientId.getBytes());
-    Map<byte[], byte[]> results = primary.hgetAll(key);
-    Map<String, Double> resources = new HashMap<>();
-    for (Map.Entry<byte[], byte[]> entry : results.entrySet()) {
-      String resourceName = new String(entry.getKey());
-      Gcs.ResourceTableData resourceTableData;
-      try {
-        resourceTableData = Gcs.ResourceTableData.parseFrom(entry.getValue());
-      } catch (InvalidProtocolBufferException e) {
-        throw new RuntimeException("Received invalid protobuf data from GCS.");
-      }
-      resources.put(resourceName, resourceTableData.getResourceCapacity());
+    byte[] resourceMapBytes = globalStateAccessor.getNodeResourceInfo(clientId);
+    Gcs.ResourceMap resourceMap;
+    try {
+      resourceMap = Gcs.ResourceMap.parseFrom(resourceMapBytes);
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException("Received invalid protobuf data from GCS.");
+    }
+    HashMap<String, Double> resources = new HashMap<>();
+    for (Map.Entry<String, Gcs.ResourceTableData> entry : resourceMap.getItemsMap().entrySet()) {
+      resources.put(entry.getKey(), entry.getValue().getResourceCapacity());
     }
     return resources;
   }
