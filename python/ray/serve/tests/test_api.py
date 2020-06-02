@@ -346,15 +346,15 @@ def test_shard_key(serve_instance, route):
         assert do_request(shard_key) == results[shard_key]
 
 
-def test_cluster_name():
+def test_name():
     with pytest.raises(TypeError):
-        serve.init(cluster_name=1)
+        serve.init(name=1)
 
     route = "/api"
     backend = "backend"
     endpoint = "endpoint"
 
-    serve.init(cluster_name="cluster1", http_port=8001)
+    serve.init(name="cluster1", http_port=8001)
     serve.create_endpoint(endpoint, route=route)
 
     def function():
@@ -367,7 +367,7 @@ def test_cluster_name():
 
     # Create a second cluster on port 8002. Create an endpoint and backend with
     # the same names and check that they don't collide.
-    serve.init(cluster_name="cluster2", http_port=8002)
+    serve.init(name="cluster2", http_port=8002)
     serve.create_endpoint(endpoint, route=route)
 
     def function():
@@ -385,7 +385,7 @@ def test_cluster_name():
     assert requests.get("http://127.0.0.1:8001" + route).text == "hello1"
 
     # Check that we can re-connect to the first cluster.
-    serve.init(cluster_name="cluster1")
+    serve.init(name="cluster1")
     serve.delete_endpoint(endpoint)
     serve.delete_backend(backend)
 
