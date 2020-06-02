@@ -128,10 +128,11 @@ Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
 Status RedisStoreClient::AsyncGetByIndex(
     const std::string &table_name, const std::string &index_key,
     const MapCallback<std::string, std::string> &callback) {
+  RAY_CHECK(callback);
   std::string match_pattern = GenRedisMatchPattern(table_name, index_key);
   auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name, match_pattern);
-  auto on_done = [callback,
-                  scanner](const std::unordered_map<std::string, std::string> &result) {
+  auto on_done = [callback, table_name,
+                  index_key](const std::unordered_map<std::string, std::string> &result) {
     callback(result);
   };
   return scanner->ScanKeysAndValues(on_done);
