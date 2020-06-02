@@ -4,44 +4,11 @@ import sys
 import time
 
 import numpy as np
-from numpy.testing import assert_equal
 import pytest
 
 import ray
 from ray.test_utils import get_other_nodes
 import ray.ray_constants as ray_constants
-
-
-def test_gcs_server_restart():
-    ray.init()
-
-    @ray.remote
-    class Increase:
-        def method(self, x):
-            return x + 2
-
-    @ray.remote
-    def increase(x):
-        return x + 1
-
-    actor1 = Increase.remote()
-    result = ray.get(actor1.method.remote(1))
-    assert_equal(result, 3)
-
-    ray.worker._global_node.kill_gcs_server()
-    ray.worker._global_node.start_gcs_server()
-    time.sleep(1)
-
-    result = ray.get(actor1.method.remote(7))
-    assert_equal(result, 9)
-
-    actor2 = Increase.remote()
-    result = ray.get(actor2.method.remote(2))
-    assert_equal(result, 4)
-
-    result = ray.get(increase.remote(1))
-    assert_equal(result, 2)
-    ray.shutdown()
 
 
 @pytest.mark.skip(reason="No reconstruction for objects placed in plasma yet")
