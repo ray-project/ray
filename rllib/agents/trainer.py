@@ -144,7 +144,6 @@ COMMON_CONFIG = {
     # tf: TensorFlow
     # tfe: TensorFlow eager
     # torch: PyTorch
-    # auto: "torch" if only PyTorch installed, "tf" if only TensorFlow installed, error otherwise.
     "framework": "tf",
     # Enable tracing in eager mode. This greatly improves performance, but
     # makes it slightly harder to debug since Python code won't be evaluated
