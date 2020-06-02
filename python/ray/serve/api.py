@@ -136,8 +136,6 @@ def create_endpoint(endpoint_name, route=None, methods=["GET"]):
             used as key to set traffic policy.
         route (str): A string begin with "/". HTTP server will use
             the string to match the path.
-        blocking (bool): If true, the function will wait for service to be
-            registered before returning
     """
     retry_actor_failures(master_actor.create_endpoint, route, endpoint_name,
                          [m.upper() for m in methods])

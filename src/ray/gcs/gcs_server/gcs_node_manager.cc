@@ -202,8 +202,8 @@ void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,
   RAY_LOG(DEBUG) << "Getting node resources, node id = " << node_id;
   auto iter = cluster_resources_.find(node_id);
   if (iter != cluster_resources_.end()) {
-    for (auto &resource : iter->second) {
-      (*reply->mutable_resources())[resource.first] = *resource.second;
+    for (auto &resource : iter->second.items()) {
+      (*reply->mutable_resources())[resource.first] = resource.second;
     }
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -216,23 +216,19 @@ void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &re
   ClientID node_id = ClientID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
   auto iter = cluster_resources_.find(node_id);
+  auto to_be_updated_resources = request.resources();
   if (iter != cluster_resources_.end()) {
-    auto to_be_updated_resources = std::make_shared<gcs::NodeInfoAccessor::ResourceMap>();
-    for (auto resource : request.resources()) {
-      (*to_be_updated_resources)[resource.first] =
-          std::make_shared<rpc::ResourceTableData>(resource.second);
-    }
-    for (auto &entry : *to_be_updated_resources) {
-      iter->second[entry.first] = entry.second;
+    for (auto &entry : to_be_updated_resources) {
+      (*iter->second.mutable_items())[entry.first] = entry.second;
     }
     auto on_done = [this, node_id, to_be_updated_resources, reply,
                     send_reply_callback](const Status &status) {
       RAY_CHECK_OK(status);
       rpc::NodeResourceChange node_resource_change;
       node_resource_change.set_node_id(node_id.Binary());
-      for (auto &it : *to_be_updated_resources) {
+      for (auto &it : to_be_updated_resources) {
         (*node_resource_change.mutable_updated_resources())[it.first] =
-            it.second->resource_capacity();
+            it.second.resource_capacity();
       }
       RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
                                          node_resource_change.SerializeAsString(),
@@ -242,8 +238,8 @@ void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &re
       RAY_LOG(DEBUG) << "Finished updating resources, node id = " << node_id;
     };
 
-    RAY_CHECK_OK(node_info_accessor_.AsyncUpdateResources(
-        node_id, *to_be_updated_resources, on_done));
+    RAY_CHECK_OK(
+        gcs_table_storage_->NodeResourceTable().Put(node_id, iter->second, on_done));
   } else {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::Invalid("Node is not exist."));
     RAY_LOG(ERROR) << "Failed to update resources as node " << node_id
@@ -260,7 +256,7 @@ void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &re
   auto iter = cluster_resources_.find(node_id);
   if (iter != cluster_resources_.end()) {
     for (auto &resource_name : resource_names) {
-      iter->second.erase(resource_name);
+      RAY_IGNORE_EXPR(iter->second.mutable_items()->erase(resource_name));
     }
     auto on_done = [this, node_id, resource_names, reply,
                     send_reply_callback](const Status &status) {
@@ -277,7 +273,7 @@ void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &re
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     };
     RAY_CHECK_OK(
-        node_info_accessor_.AsyncDeleteResources(node_id, resource_names, on_done));
+        gcs_table_storage_->NodeResourceTable().Put(node_id, iter->second, on_done));
   } else {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
     RAY_LOG(DEBUG) << "Finished deleting node resources, node id = " << node_id;
@@ -300,8 +296,7 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   if (iter == alive_nodes_.end()) {
     alive_nodes_.emplace(node_id, node);
     // Add an empty resources for this node.
-    RAY_CHECK(
-        cluster_resources_.emplace(node_id, gcs::NodeInfoAccessor::ResourceMap()).second);
+    RAY_CHECK(cluster_resources_.emplace(node_id, rpc::ResourceMap()).second);
     // Register this node to the `node_failure_detector_` which will start monitoring it.
     node_failure_detector_->AddNode(node_id);
     // Notify all listeners.
