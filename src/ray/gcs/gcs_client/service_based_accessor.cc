@@ -1277,7 +1277,7 @@ Status ServiceBasedWorkerInfoAccessor::AsyncRegisterWorker(
 Status ServiceBasedWorkerInfoAccessor::AsyncGetWorkerFailure(
     const WorkerID &worker_id,
     const OptionalItemCallback<rpc::WorkerFailureData> &callback) {
-  RAY_LOG(ERROR) << "Getting worker failure, worker id = " << worker_id;
+  RAY_LOG(DEBUG) << "Getting worker failure, worker id = " << worker_id;
   rpc::GetWorkerFailureRequest request;
   request.set_worker_id(worker_id.Binary());
   client_impl_->GetGcsRpcClient().GetWorkerFailure(
@@ -1288,7 +1288,7 @@ Status ServiceBasedWorkerInfoAccessor::AsyncGetWorkerFailure(
         } else {
           callback(status, boost::none);
         }
-        RAY_LOG(ERROR) << "Finished getting worker failure event, status = " << status
+        RAY_LOG(DEBUG) << "Finished getting worker failure event, status = " << status
                        << ", worker id = " << worker_id;
       });
   return Status::OK();

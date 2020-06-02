@@ -841,7 +841,8 @@ Status RedisWorkerInfoAccessor::AsyncRegisterWorker(
 Status RedisWorkerInfoAccessor::AsyncGetWorkerFailure(
     const WorkerID &worker_id,
     const OptionalItemCallback<rpc::WorkerFailureData> &callback) {
-  return Status::NotImplemented("gcs_storage_table is used instead.");
+  return Status::NotImplemented(
+      "This method is only available when GCS actor management is enabled.");
 }
 
 }  // namespace gcs

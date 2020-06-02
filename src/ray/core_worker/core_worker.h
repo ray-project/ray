@@ -954,6 +954,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Timer for internal book-keeping.
   boost::asio::steady_timer internal_timer_;
 
+  /// Timer for location resolution waiters.
+  boost::asio::steady_timer actor_location_resolution_timer_;
+
   /// RPC server used to receive tasks to execute.
   std::unique_ptr<rpc::GrpcServer> core_worker_server_;
 

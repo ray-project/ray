@@ -820,7 +820,6 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerInfo) {
   WaitPendingDone(worker_failure_count, 1);
 
   // Get worker failure data.
-  // SANG-TODO Implement this.
   ASSERT_TRUE(GetWorkerFailiure(
       WorkerID::FromBinary(worker_failure_data->worker_address().raylet_id())));
 }

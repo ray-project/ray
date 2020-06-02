@@ -890,6 +890,17 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     assert wait_for_condition(lambda: ray.get(parent_actor.wait.remote()))
 
 
+# SANG-TODO Implement this.
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 1,
+        "num_nodes": 3,
+    }], indirect=True)
+def test_location_resolution(ray_start_cluster):
+    """Tests that methods completed by dead actors are returned as ready"""
+    pass
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

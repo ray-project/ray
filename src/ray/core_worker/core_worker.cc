@@ -250,6 +250,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       death_check_timer_(io_service_),
       internal_timer_(io_service_),
+      actor_location_resolution_timer_(io_service_),
       task_queue_length_(0),
       num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
@@ -358,9 +359,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
   internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));
 
-  internal_timer_.expires_from_now(
+  actor_location_resolution_timer_.expires_from_now(
       boost::asio::chrono::milliseconds(kLocationResolveHeartbeatMillis));
-  internal_timer_.async_wait(
+  actor_location_resolution_timer_.async_wait(
       boost::bind(&CoreWorker::LocationResolveHeartBeat, this, _1));
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
@@ -690,57 +691,72 @@ void CoreWorker::LocationResolveHeartBeat(const boost::system::error_code &error
     return;
   }
   ResolveActorsLocationNotPersistedToGCS();
-  internal_timer_.expires_at(
-      internal_timer_.expiry() +
+  actor_location_resolution_timer_.expires_at(
+      actor_location_resolution_timer_.expiry() +
       boost::asio::chrono::milliseconds(kLocationResolveHeartbeatMillis));
-  internal_timer_.async_wait(
+  actor_location_resolution_timer_.async_wait(
       boost::bind(&CoreWorker::LocationResolveHeartBeat, this, _1));
 }
 
 void CoreWorker::ResolveActorsLocationNotPersistedToGCS() {
-  absl::MutexLock lock(&actor_location_resolve_waiters_mutex_);
-  for (auto it = actor_location_resolve_waiters_.begin();
-       it != actor_location_resolve_waiters_.end();) {
+  absl::MutexLock lock(&actors_pending_location_resolution_);
+  for (auto it = actors_pending_location_resolution_.begin();
+       it != actors_pending_location_resolution_.end();) {
     auto current = it++;
     const auto &actor_id = *current;
     ActorHandle *actor_handle = nullptr;
     RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
+    const ClientID &node_id =
+        ClientID::FromBinary(actor_handle->GetOwnerAddress().raylet_id());
 
     if (actor_handle->IsPersistedToGCS()) {
-      // if an actor is already persisted to GCS, GCS will be responsible for reporting
-      // state of actors, so just remove it from the waiter.
-      actor_location_resolve_waiters_.erase(current);
+      // if an actor is already persisted to GCS, GCS will be responsible for lifecycle of
+      // actors.
+      actors_pending_location_resolution_.erase(current);
     } else {
       // https://github.com/ray-project/ray/pull/8679/files
-      // Protocol to resolve actors location that haven't been registered to GCS.     
-      const WorkerID &worker_id =
-          WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
+      // Run a protocol to resolve actors location that haven't been registered to GCS.
       RAY_CHECK_OK(gcs_client_->Workers().AsyncGetWorkerFailure(
-          worker_id,
-          [this, actor_id](Status status,
-                           const boost::optional<gcs::WorkerFailureData> &result) {
-            // Question: Can this cause a deadlock?
-            ActorHandle *actor_handle = nullptr;
-            RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
-            absl::MutexLock lock(&actor_location_resolve_waiters_mutex_);
+          WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id()),
+          [this, actor_id, node_id](
+              Status status, const boost::optional<gcs::WorkerFailureData> &result) {
+            bool worker_or_node_failed = false;
+
+            // If a worker failure events is found.
             if (status.ok() && result) {
-              // if worker failure event has been reported, disconnect this actor.
-              if (!actor_handle->IsPersistedToGCS()) {
-                direct_actor_submitter_->DisconnectActor(actor_id, true);
-                actor_location_resolve_waiters_.erase(actor_id);
-              }
+              worker_or_node_failed = true;
             } else {
-              // Check node failure. We should do this because
-              // worker failure event is not reported when nodes fail.
-              const ClientID &node_id =
-                  ClientID::FromBinary(actor_handle->GetOwnerAddress().raylet_id());
+              // Check node failure. We should do this because worker failure event is not
+              // reported when nodes fail.
               const auto &optional_node_info = gcs_client_->Nodes().Get(node_id);
-              RAY_CHECK(optional_node_info) << "Node information for an actor_id is not found.";
-              if (optional_node_info->state() == rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD
-                  && !actor_handle->IsPersistedToGCS()) {
-                direct_actor_submitter_->DisconnectActor(actor_id, true);
-                actor_location_resolve_waiters_.erase(actor_id);
+              RAY_CHECK(optional_node_info)
+                  << "Node information for an actor_id, " << actor_id << " is not found.";
+              if (optional_node_info->state() ==
+                  rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD) {
+                worker_or_node_failed = true;
               }
+            }
+
+            if (worker_or_node_failed) {
+              // Detached actors are not fate sharing with an owner.
+              // We should make sure one more time that an actor is not registered to GCS
+              // before resolving actor's location.
+              RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(
+                  actor_id,
+                  [this, actor_id](Status status,
+                                   const boost::optional<gcs::ActorTableData> &result) {
+                    // If actor information is not found, this means an actor is safe to
+                    // disconnect.
+                    if (status.ok() && !result) {
+                      ActorHandle *actor_handle = nullptr;
+                      RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
+                      if (!actor_handle->IsPersistedToGCS()) {
+                        direct_actor_submitter_->DisconnectActor(actor_id, true);
+                        absl::MutexLock lock(&actors_pending_location_resolution_);
+                        actors_pending_location_resolution_.erase(actor_id);
+                      }
+                    }
+                  }));
             }
           }));
     }
@@ -1352,18 +1368,16 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   if (inserted) {
     {
       // Location will be resolved after GCS reports actor states.
-      absl::MutexLock lock(&actor_location_resolve_waiters_mutex_);
-      actor_location_resolve_waiters_.insert(actor_id);
+      absl::MutexLock lock(&actors_pending_location_resolution_);
+      actors_pending_location_resolution_.insert(actor_id);
     }
     // Register a callback to handle actor notifications.
     auto actor_notification_callback = [this](const ActorID &actor_id,
                                               const gcs::ActorTableData &actor_data) {
       ActorHandle *actor_handle = nullptr;
       RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
-      // If the notification comes in, that means this actor is persisted to GCS.
+      // If any notification comes in, that means this actor is persisted to GCS.
       actor_handle->SetIsPersistedToGCSFlag();
-      RAY_LOG(ERROR) << "Location is resolved! actor id: " << actor_id
-                     << "is persisted to GCS: " << actor_handle->IsPersistedToGCS();
 
       if (actor_data.state() == gcs::ActorTableData::PENDING) {
         // The actor is being created and not yet ready, just ignore!
