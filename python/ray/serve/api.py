@@ -60,7 +60,7 @@ def accept_batch(f):
     return f
 
 
-def init(cluster_name=None,
+def init(name=None,
          http_host=DEFAULT_HTTP_HOST,
          http_port=DEFAULT_HTTP_PORT,
          ray_init_kwargs={
@@ -77,8 +77,8 @@ def init(cluster_name=None,
     requirement.
 
     Args:
-        cluster_name (str): A unique name for this serve cluster. This allows
-            multiple serve clusters to run on the same ray cluster. Must be
+        name (str): A unique name for this serve instance. This allows
+            multiple serve instances to run on the same ray cluster. Must be
             specified in all subsequent serve.init() calls.
         http_host (str): Host for HTTP server. Default to "0.0.0.0".
         http_port (int): Port for HTTP server. Default to 8000.
@@ -90,8 +90,8 @@ def init(cluster_name=None,
             services. RayServe has two options built in: InMemoryExporter and
             PrometheusExporter
     """
-    if cluster_name is not None and not isinstance(cluster_name, str):
-        raise TypeError("cluster_name must be a string.")
+    if name is not None and not isinstance(name, str):
+        raise TypeError("name must be a string.")
 
     # Initialize ray if needed.
     if not ray.is_initialized():
@@ -99,7 +99,7 @@ def init(cluster_name=None,
 
     # Try to get serve master actor if it exists
     global master_actor
-    master_actor_name = format_actor_name(SERVE_MASTER_NAME, cluster_name)
+    master_actor_name = format_actor_name(SERVE_MASTER_NAME, name)
     try:
         master_actor = ray.get_actor(master_actor_name)
         return
@@ -120,7 +120,7 @@ def init(cluster_name=None,
     master_actor = ServeMaster.options(
         name=master_actor_name,
         max_restarts=-1,
-    ).remote(cluster_name, http_node_id, http_host, http_port, metric_exporter)
+    ).remote(name, http_node_id, http_host, http_port, metric_exporter)
 
     block_until_http_ready(
         "http://{}:{}/-/routes".format(http_host, http_port),
