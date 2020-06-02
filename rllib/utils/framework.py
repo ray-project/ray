@@ -3,8 +3,6 @@ import os
 import sys
 from typing import Any
 
-from ray.util import log_once
-
 logger = logging.getLogger(__name__)
 
 # Represents a generic tensor type.
