@@ -739,7 +739,7 @@ cc_test(
         "//:raylet_monitor",
         "//:redis-cli",
         "//:redis-server",
-        "@plasma//:plasma_store_server",
+        "//:plasma_store_server",
     ],
     deps = [
         ":core_worker_lib",
