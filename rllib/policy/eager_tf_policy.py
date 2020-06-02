@@ -469,16 +469,16 @@ def build_eager_tf_policy(name,
             state["_optimizer_variables"] = self._optimizer.variables()
             return state
 
-        @override(Policy)
-        def set_state(self, state):
-            state = state.copy()  # shallow copy
-            # Set optimizer vars first.
-            optimizer_vars = state.pop("_optimizer_variables", None)
-            if optimizer_vars:
-                for opt_var, value in zip(self._optimizer.variables(), )
-                    TODO:
-            # Then the Policy's (NN) weights.
-            super().set_state(state)
+        #@override(Policy)
+        #def set_state(self, state):
+        #    state = state.copy()  # shallow copy
+        #    # Set optimizer vars first.
+        #    optimizer_vars = state.pop("_optimizer_variables", None)
+        #    if optimizer_vars:
+        #        for opt_var, value in zip(self._optimizer.variables(), )
+        #            TODO:
+        #    # Then the Policy's (NN) weights.
+        #    super().set_state(state)
 
         def variables(self):
             """Return the list of all savable variables for this policy."""

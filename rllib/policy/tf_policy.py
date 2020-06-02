@@ -263,9 +263,11 @@ class TFPolicy(Policy):
                     summarize(self._loss_input_dict)))
 
         self._sess.run(tf.global_variables_initializer())
-        self._optimizer_variables = \
-            ray.experimental.tf_utils.TensorFlowVariables(
-                self._optimizer.variables(), self._sess)
+        self._optimizer_variables = None
+        if self._optimizer:
+            self._optimizer_variables = \
+                ray.experimental.tf_utils.TensorFlowVariables(
+                    self._optimizer.variables(), self._sess)
 
     @override(Policy)
     def compute_actions(self,
@@ -375,7 +377,8 @@ class TFPolicy(Policy):
     def get_state(self):
         # For tf Policies, return Policy weights and optimizer var values.
         state = super().get_state()
-        if len(self._optimizer_variables.variables) > 0:
+        if self._optimizer_variables and \
+                len(self._optimizer_variables.variables) > 0:
             state["_optimizer_variables"] = \
                 self._sess.run(self._optimizer_variables.variables)
         return state

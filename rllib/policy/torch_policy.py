@@ -328,7 +328,7 @@ class TorchPolicy(Policy):
         state = super().get_state()
         state["_optimizer_variables"] = []
         for i, o in enumerate(self._optimizers):
-            state["_optimizer_variables"].append(o.state_dict["state"])
+            state["_optimizer_variables"].append(o.state_dict())
         return state
 
     @override(Policy)
@@ -339,7 +339,7 @@ class TorchPolicy(Policy):
         if optimizer_vars:
             assert len(optimizer_vars) == len(self._optimizers)
             for o, s in zip(self._optimizers, optimizer_vars):
-                o.state_dict["state"] = s
+                o.load_state_dict(s)
         # Then the Policy's (NN) weights.
         super().set_state(state)
 
