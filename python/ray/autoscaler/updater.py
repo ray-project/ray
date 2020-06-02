@@ -317,7 +317,7 @@ class NodeUpdater:
         use_internal_ip = (use_internal_ip
                            or provider_config.get("use_internal_ips", False))
         self.cmd_runner = provider.get_command_runner(
-            self.log_prefix, node_id, provider, auth_config, cluster_name,
+            self.log_prefix, node_id, auth_config, cluster_name,
             process_runner, use_internal_ip)
 
         self.daemon = True
