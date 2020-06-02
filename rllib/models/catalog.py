@@ -384,7 +384,7 @@ class ModelCatalog:
                 v2_class = default_model or ModelCatalog._get_v2_model_class(
                     obs_space, model_config, framework=framework)
 
-            if model_config["use_lstm"]:
+            if model_config.get("use_lstm"):
                 wrapped_cls = v2_class
                 forward = wrapped_cls.forward
                 v2_class = ModelCatalog._wrap_if_needed(
@@ -408,7 +408,7 @@ class ModelCatalog:
             v2_class = \
                 default_model or ModelCatalog._get_v2_model_class(
                     obs_space, model_config, framework=framework)
-            if model_config["use_lstm"]:
+            if model_config.get("use_lstm"):
                 wrapped_cls = v2_class
                 forward = wrapped_cls.forward
                 v2_class = ModelCatalog._wrap_if_needed(
