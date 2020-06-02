@@ -25,7 +25,7 @@ tf = try_import_tf()
 torch, nn = try_import_torch()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--torch", action="store_true")
+parser.add_argument("--framework", choices=["tf", "tfe", "torch"], default="tf")
 parser.add_argument("--eager", action="store_true")
 
 # Constraints on the Repeated space.
@@ -137,7 +137,7 @@ class CustomTFRPGModel(TFModelV2):
 if __name__ == "__main__":
     ray.init()
     args = parser.parse_args()
-    if args.torch:
+    if args.framework == "torch":
         ModelCatalog.register_custom_model("my_model", CustomTorchRPGModel)
     else:
         ModelCatalog.register_custom_model("my_model", CustomTFRPGModel)
@@ -147,7 +147,7 @@ if __name__ == "__main__":
             "timesteps_total": 1,
         },
         config={
-            "use_pytorch": args.torch,
+            "framework": args.framework,
             "eager": args.eager,
             "env": SimpleRPG,
             "rollout_fragment_length": 1,

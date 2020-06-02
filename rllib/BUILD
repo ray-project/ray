@@ -1553,7 +1553,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/complex_struct_space.py"],
-    args = [],
+    args = ["--framework=tf"],
 )
 
 py_test(
@@ -1561,7 +1561,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/complex_struct_space.py"],
-    args = ["--eager"],
+    args = ["--framework=tfe"],
 )
 
 py_test(
@@ -1569,7 +1569,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/complex_struct_space.py"],
-    args = ["--torch"],
+    args = ["--framework=torch"],
 )
 
 py_test(
