@@ -8,8 +8,7 @@ import pytest
 def test_basic(ray_start_with_dashboard):
     """Dashboard test that starts a Ray cluster with a dashboard server running,
     then hits the dashboard API and asserts that it receives sensible data."""
-    addr_info = ray_start_with_dashboard
-    redis_address = addr_info["redis_address"]
+    redis_address = ray_start_with_dashboard["redis_address"]
     redis_password = REDIS_DEFAULT_PASSWORD
     node_stats = NodeStats(redis_address, redis_password)
     node_stats.start()
