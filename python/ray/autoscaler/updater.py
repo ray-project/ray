@@ -255,7 +255,7 @@ class SSHCommandRunner:
         if cmd:
             logger.info(self.log_prefix +
                         "Running {} on {}...".format(cmd, self.ssh_ip))
-            logger.info("Begin Remote Output from {}".format(self.ssh_ip))
+            logger.info("Begin remote output from {}".format(self.ssh_ip))
             final_cmd += with_interactive(cmd)
         else:
             # We do this because `-o ControlMaster` causes the `-N` flag to
@@ -273,7 +273,7 @@ class SSHCommandRunner:
                     "Command failed: \n\n  {}\n".format(quoted_cmd)) from None
             else:
                 raise Exception(
-                    "SSH Command Failed. Look above to see the output from the"
+                    "SSH command Failed. Look above to see the output from the"
                     " failure.") from None
 
     def run_rsync_up(self, source, target):
