@@ -129,6 +129,27 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
   return object_info;
 }
 
+std::string GlobalStateAccessor::GetNodeResourceInfo(const ClientID &node_id) {
+  rpc::ResourceMap node_resource_map;
+  std::promise<void> promise;
+  auto on_done =
+      [&node_resource_map, &promise](
+          const Status &status,
+          const boost::optional<ray::gcs::NodeInfoAccessor::ResourceMap> &result) {
+        RAY_CHECK_OK(status);
+        if (result) {
+          auto result_value = result.get();
+          for (auto &data : result_value) {
+            (*node_resource_map.mutable_items())[data.first] = *data.second;
+          }
+        }
+        promise.set_value();
+      };
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetResources(node_id, on_done));
+  promise.get_future().get();
+  return node_resource_map.SerializeAsString();
+}
+
 std::vector<std::string> GlobalStateAccessor::GetAllActorInfo() {
   std::vector<std::string> actor_table_data;
   std::promise<bool> promise;

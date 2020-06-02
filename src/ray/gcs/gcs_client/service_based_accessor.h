@@ -296,7 +296,13 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
 
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
 
+  Status AsyncReSubscribe() override;
+
  private:
+  /// Save the subscribe operation in this function, so we can call it again when GCS
+  /// restarts from a failure.
+  std::unordered_map<ObjectID, SubscribeOperation> subscribe_object_operations_;
+
   ServiceBasedGcsClient *client_impl_;
 
   Sequencer<ObjectID> sequencer_;
