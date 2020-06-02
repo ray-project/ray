@@ -105,12 +105,12 @@ class FullyConnectedNetwork(TFModelV2):
             1,
             name="value_out",
             activation=None,
-            kernel_initializer=normc_initializer(0.01))\
-            (last_vf_layer if last_vf_layer is not None else last_layer)
+            kernel_initializer=normc_initializer(0.01))(
+                last_vf_layer if last_vf_layer is not None else last_layer)
 
         self.base_model = tf.keras.Model(
-            inputs,
-            [(logits_out if logits_out is not None else last_layer), value_out])
+            inputs, [(logits_out
+                      if logits_out is not None else last_layer), value_out])
         self.register_variables(self.base_model.variables)
 
     def forward(self, input_dict, state, seq_lens):

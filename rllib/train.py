@@ -53,7 +53,7 @@ def create_parser(parser_creator=None):
         "--local-mode",
         action="store_true",
         help="Whether to run ray with `local_mode=True`. "
-             "Only if --ray-num-nodes is not used.")
+        "Only if --ray-num-nodes is not used.")
     parser.add_argument(
         "--ray-num-cpus",
         default=None,

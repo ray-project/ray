@@ -102,15 +102,11 @@ class LSTMWrapper(RecurrentNetwork):
     """An LSTM wrapper serving as an interface for ModelV2s that set use_lstm.
     """
 
-    def __init__(self,
-                 obs_space,
-                 action_space,
-                 num_outputs,
-                 model_config,
+    def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
 
-        super(LSTMWrapper, self).__init__(
-            obs_space, action_space, None, model_config, name)
+        super(LSTMWrapper, self).__init__(obs_space, action_space, None,
+                                          model_config, name)
 
         self.cell_size = model_config["lstm_cell_size"]
 
@@ -126,7 +122,10 @@ class LSTMWrapper(RecurrentNetwork):
 
         # Preprocess observation with a hidden layer and send to LSTM cell
         lstm_out, state_h, state_c = tf.keras.layers.LSTM(
-            self.cell_size, return_sequences=True, return_state=True, name="lstm")(
+            self.cell_size,
+            return_sequences=True,
+            return_state=True,
+            name="lstm")(
                 inputs=input_layer,
                 mask=tf.sequence_mask(seq_in),
                 initial_state=[state_in_h, state_in_c])
@@ -155,15 +154,11 @@ class LSTMWrapper(RecurrentNetwork):
         # Then through our LSTM.
         input_dict["obs_flat"] = wrapped_out
         return super().forward(input_dict, state, seq_lens)
-        #output, new_state = self.forward_rnn(
-        #    add_time_dimension(wrapped_out, seq_lens, framework="tf"),
-        #    state, seq_lens)
-        #return tf.reshape(output, [-1, self.num_outputs]), new_state
 
     @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):
         model_out, self._value_out, h, c = self._rnn_model([inputs, seq_lens] +
-                                                            state)
+                                                           state)
         return model_out, [h, c]
 
     @override(ModelV2)

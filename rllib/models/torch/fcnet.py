@@ -13,14 +13,13 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-class FullyConnectedNetwork(TorchModelV2):  #, nn.Module):
+class FullyConnectedNetwork(TorchModelV2):
     """Generic fully connected network."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
-        #nn.Module.__init__(self)
 
         activation = get_activation_fn(
             model_config.get("fcnet_activation"), framework="torch")
@@ -93,11 +92,12 @@ class FullyConnectedNetwork(TorchModelV2):  #, nn.Module):
             prev_vf_layer_size = int(np.product(obs_space.shape))
             self._value_branch_separate = []
             for size in hiddens:
-                self._value_branch_separate.append(SlimFC(
-                    in_size=prev_vf_layer_size,
-                    out_size=size,
-                    activation_fn=activation,
-                    initializer=normc_initializer(1.0)))
+                self._value_branch_separate.append(
+                    SlimFC(
+                        in_size=prev_vf_layer_size,
+                        out_size=size,
+                        activation_fn=activation,
+                        initializer=normc_initializer(1.0)))
                 prev_vf_layer_size = size
 
         self._value_branch = SlimFC(

@@ -309,8 +309,8 @@ class ModelCatalog:
             if isinstance(model_config["custom_model"], type):
                 model_cls = model_config["custom_model"]
             else:
-                model_cls = _global_registry.get(
-                    RLLIB_MODEL, model_config["custom_model"])
+                model_cls = _global_registry.get(RLLIB_MODEL,
+                                                 model_config["custom_model"])
 
             # TODO(sven): Hard-deprecate Model(V1).
             if issubclass(model_cls, ModelV2):

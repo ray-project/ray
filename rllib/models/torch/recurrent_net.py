@@ -11,7 +11,7 @@ torch, nn = try_import_torch()
 
 
 @DeveloperAPI
-class RecurrentNetwork(TorchModelV2):  #, nn.Module):
+class RecurrentNetwork(TorchModelV2):
     """Helper class to simplify implementing RNN models with TorchModelV2.
 
     Instead of implementing forward(), you can implement forward_rnn() which
@@ -52,12 +52,6 @@ class RecurrentNetwork(TorchModelV2):  #, nn.Module):
             return q, [h]
     """
 
-    #def __init__(self, obs_space, action_space, num_outputs, model_config,
-    #             name):
-    #    TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
-    #                          model_config, name)
-    #    nn.Module.__init__(self)
-
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         """Adds time dimension to batch before sending inputs to forward_rnn().
@@ -97,19 +91,14 @@ class LSTMWrapper(RecurrentNetwork):
     """An LSTM wrapper serving as an interface for ModelV2s that set use_lstm.
     """
 
-    def __init__(self,
-                 obs_space,
-                 action_space,
-                 num_outputs,
-                 model_config,
+    def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
 
-        super(LSTMWrapper, self).__init__(
-            obs_space, action_space, None, model_config, name)
+        super(LSTMWrapper, self).__init__(obs_space, action_space, None,
+                                          model_config, name)
 
         self.cell_size = model_config["lstm_cell_size"]
-        self.lstm = nn.LSTM(
-            self.num_outputs, self.cell_size, batch_first=True)
+        self.lstm = nn.LSTM(self.num_outputs, self.cell_size, batch_first=True)
 
         self.num_outputs = num_outputs
 
@@ -120,7 +109,8 @@ class LSTMWrapper(RecurrentNetwork):
             activation_fn=None,
             initializer=torch.nn.init.xavier_uniform_)
         self._value_branch = SlimFC(
-            in_size=self.cell_size, out_size=1,
+            in_size=self.cell_size,
+            out_size=1,
             activation_fn=None,
             initializer=torch.nn.init.xavier_uniform_)
 
@@ -137,8 +127,9 @@ class LSTMWrapper(RecurrentNetwork):
     @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):
         self._features, [h, c] = self.lstm(
-            inputs, [torch.unsqueeze(state[0], 0),
-                     torch.unsqueeze(state[1], 0)])
+            inputs,
+            [torch.unsqueeze(state[0], 0),
+             torch.unsqueeze(state[1], 0)])
         model_out = self._logits_branch(self._features)
         return model_out, [torch.squeeze(h, 0), torch.squeeze(c, 0)]
 
@@ -146,8 +137,10 @@ class LSTMWrapper(RecurrentNetwork):
     def get_initial_state(self):
         # Place hidden states on same device as model.
         h = [
-            self._logits_branch.linear.weight.new(1, self.cell_size).zero_().squeeze(0),
-            self._logits_branch.linear.weight.new(1, self.cell_size).zero_().squeeze(0)
+            self._logits_branch.linear.weight.new(
+                1, self.cell_size).zero_().squeeze(0),
+            self._logits_branch.linear.weight.new(
+                1, self.cell_size).zero_().squeeze(0)
         ]
         return h
 

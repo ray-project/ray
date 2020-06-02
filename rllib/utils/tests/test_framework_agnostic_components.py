@@ -171,7 +171,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
         env_cls = "ray.rllib.examples.env.stateless_cartpole.StatelessCartPole"
         env = from_config(env_cls, {"config": 42.0})
         state = env.reset()
-        self.assertTrue(state.shape == (2,))
+        self.assertTrue(state.shape == (2, ))
 
 
 if __name__ == "__main__":
