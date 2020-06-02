@@ -70,9 +70,10 @@ It's important to note that Ray Serve places these backends in individual worker
   serve.create_backend("simple_backend", handle_request)
   serve.create_backend("simple_backend_class", RequestHandler)
 
-Similar to endpoints, we can also list all available backends and delete them to reclaim resources.
+We can also list all available backends and delete them to reclaim resources.
 
 .. code-block:: python
+
   >> serve.list_backends()
   {
       'simple_backend': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
