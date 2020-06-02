@@ -99,6 +99,8 @@ class FullyConnectedNetwork(TorchModelV2):
                         activation_fn=activation,
                         initializer=normc_initializer(1.0)))
                 prev_vf_layer_size = size
+            self._value_branch_separate = nn.Sequential(
+                *self._value_branch_separate)
 
         self._value_branch = SlimFC(
             in_size=prev_layer_size,
