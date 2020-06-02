@@ -269,9 +269,11 @@ class SSHCommandRunner:
             if exit_on_fail:
                 quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
                 raise click.ClickException(
-                    "Command failed: \n\n  {}\n".format(quoted_cmd))
+                    "Command failed: \n\n  {}\n".format(quoted_cmd)) from None
             else:
-                raise
+                raise Exception(
+                    "SSH Command Failed. Look above to see the output from the failure."
+                ) from None
 
     def run_rsync_up(self, source, target):
         self.set_ssh_ip_if_required()
