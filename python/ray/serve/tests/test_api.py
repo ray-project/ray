@@ -426,3 +426,65 @@ def test_parallel_start(serve_instance):
     handle = serve.get_handle("test-parallel")
 
     ray.get(handle.remote(), timeout=10)
+
+
+def test_list_endpoints(serve_instance):
+    serve.init()
+
+    def f():
+        pass
+
+    serve.create_endpoint("endpoint", "/api", methods=["GET", "POST"])
+    serve.create_endpoint("endpoint2", methods=["POST"])
+    serve.create_backend("backend", f)
+    serve.set_traffic("endpoint2", {"backend": 1.0})
+
+    endpoints = serve.list_endpoints()
+    assert "endpoint" in endpoints
+    assert endpoints["endpoint"] == {
+        "route": "/api",
+        "methods": ["GET", "POST"],
+        "traffic": {}
+    }
+
+    assert "endpoint2" in endpoints
+    assert endpoints["endpoint2"] == {
+        "route": None,
+        "methods": ["POST"],
+        "traffic": {
+            "backend": 1.0
+        }
+    }
+
+    serve.delete_endpoint("endpoint")
+    assert "endpoint2" in serve.list_endpoints()
+
+    serve.delete_endpoint("endpoint2")
+    assert len(serve.list_endpoints()) == 0
+
+
+def test_list_backends(serve_instance):
+    serve.init()
+
+    @serve.accept_batch
+    def f():
+        pass
+
+    serve.create_backend("backend", f, config={"max_batch_size": 10})
+    backends = serve.list_backends()
+    assert len(backends) == 1
+    assert "backend" in backends
+    assert backends["backend"]["max_batch_size"] == 10
+
+    serve.create_backend("backend2", f, config={"num_replicas": 10})
+    backends = serve.list_backends()
+    assert len(backends) == 2
+    assert backends["backend2"]["num_replicas"] == 10
+
+    serve.delete_backend("backend")
+    backends = serve.list_backends()
+    assert len(backends) == 1
+    assert "backend2" in backends
+
+    serve.delete_backend("backend2")
+    assert len(serve.list_backends()) == 0
