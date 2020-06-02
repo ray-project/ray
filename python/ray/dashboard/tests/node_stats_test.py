@@ -14,7 +14,7 @@ def test_basic(ray_start_with_dashboard):
     node_stats = NodeStats(redis_address, redis_password)
     node_stats.start()
     # Wait for node stats to fire up.
-    MAX_START_TIME_S = 15
+    MAX_START_TIME_S = 30
     t_start = datetime.now()
     while True:
         try:
