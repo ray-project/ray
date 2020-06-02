@@ -57,12 +57,12 @@ export const makeWorkerErrors = (
   },
   setErrorDialog: (hostname: string, pid: number | null) => void,
 ): WorkerFeatureComponent => ({ node, worker }) =>
-  errorCounts.perWorker[worker.pid] === 0 ? (
-    <Typography color="textSecondary" component="span" variant="inherit">
-      No errors
-    </Typography>
-  ) : (
+  errorCounts.perWorker[worker.pid] ? (
     <SpanButton onClick={() => setErrorDialog(node.hostname, worker.pid)}>
       View errors ({errorCounts.perWorker[worker.pid].toLocaleString()})
     </SpanButton>
+  ) : (
+    <Typography color="textSecondary" component="span" variant="inherit">
+      No errors
+    </Typography>
   );

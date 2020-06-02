@@ -1,7 +1,6 @@
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
-from ray.rllib.evaluation.interface import EvaluatorInterface
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.evaluation.torch_policy_graph import TorchPolicyGraph
@@ -14,7 +13,6 @@ from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.policy.sample_batch import SampleBatch
 
 __all__ = [
-    "EvaluatorInterface",
     "RolloutWorker",
     "PolicyGraph",
     "TFPolicyGraph",

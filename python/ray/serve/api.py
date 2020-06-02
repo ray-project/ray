@@ -4,10 +4,11 @@ from multiprocessing import cpu_count
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 SERVE_MASTER_NAME)
+                                 SERVE_MASTER_NAME, HTTP_PROXY_TIMEOUT)
 from ray.serve.master import ServeMaster
 from ray.serve.handle import RayServeHandle
-from ray.serve.utils import block_until_http_ready, retry_actor_failures
+from ray.serve.utils import (block_until_http_ready, format_actor_name,
+                             retry_actor_failures)
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig, ReplicaConfig
 from ray.serve.router import Query
@@ -23,16 +24,15 @@ def _get_master_actor():
     """
     global master_actor
     if master_actor is None:
-        master_actor = ray.util.get_actor(SERVE_MASTER_NAME)
+        raise RayServeException("Please run serve.init to initialize or "
+                                "connect to existing ray serve cluster.")
     return master_actor
 
 
 def _ensure_connected(f):
     @wraps(f)
     def check(*args, **kwargs):
-        if _get_master_actor() is None:
-            raise RayServeException("Please run serve.init to initialize or "
-                                    "connect to existing ray serve cluster.")
+        _get_master_actor()
         return f(*args, **kwargs)
 
     return check
@@ -60,8 +60,7 @@ def accept_batch(f):
     return f
 
 
-def init(blocking=False,
-         start_server=True,
+def init(cluster_name=None,
          http_host=DEFAULT_HTTP_HOST,
          http_port=DEFAULT_HTTP_PORT,
          ray_init_kwargs={
@@ -78,10 +77,9 @@ def init(blocking=False,
     requirement.
 
     Args:
-        blocking (bool): If true, the function will wait for the HTTP server to
-            be healthy, and other components to be ready before returns.
-        start_server (bool): If true, `serve.init` starts http server.
-            (Default: True)
+        cluster_name (str): A unique name for this serve cluster. This allows
+            multiple serve clusters to run on the same ray cluster. Must be
+            specified in all subsequent serve.init() calls.
         http_host (str): Host for HTTP server. Default to "0.0.0.0".
         http_port (int): Port for HTTP server. Default to 8000.
         ray_init_kwargs (dict): Argument passed to ray.init, if there is no ray
@@ -92,21 +90,18 @@ def init(blocking=False,
             services. RayServe has two options built in: InMemoryExporter and
             PrometheusExporter
     """
-    global master_actor
-    if master_actor is not None:
-        return
+    if cluster_name is not None and not isinstance(cluster_name, str):
+        raise TypeError("cluster_name must be a string.")
 
     # Initialize ray if needed.
     if not ray.is_initialized():
         ray.init(**ray_init_kwargs)
 
-    # Register serialization context once
-    ray.register_custom_serializer(Query, Query.ray_serialize,
-                                   Query.ray_deserialize)
-
     # Try to get serve master actor if it exists
+    global master_actor
+    master_actor_name = format_actor_name(SERVE_MASTER_NAME, cluster_name)
     try:
-        master_actor = ray.util.get_actor(SERVE_MASTER_NAME)
+        master_actor = ray.get_actor(master_actor_name)
         return
     except ValueError:
         pass
@@ -123,14 +118,13 @@ def init(blocking=False,
     # in the future.
     http_node_id = ray.state.current_node_id()
     master_actor = ServeMaster.options(
-        detached=True,
-        name=SERVE_MASTER_NAME,
+        name=master_actor_name,
         max_restarts=-1,
-    ).remote(start_server, http_node_id, http_host, http_port, metric_exporter)
+    ).remote(cluster_name, http_node_id, http_host, http_port, metric_exporter)
 
-    if start_server and blocking:
-        block_until_http_ready("http://{}:{}/-/routes".format(
-            http_host, http_port))
+    block_until_http_ready(
+        "http://{}:{}/-/routes".format(http_host, http_port),
+        timeout=HTTP_PROXY_TIMEOUT)
 
 
 @_ensure_connected

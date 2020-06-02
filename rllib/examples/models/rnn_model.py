@@ -2,8 +2,8 @@ import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor
-from ray.rllib.models.tf.recurrent_tf_modelv2 import RecurrentTFModelV2
-from ray.rllib.models.torch.recurrent_torch_model import RecurrentTorchModel
+from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
+from ray.rllib.models.torch.recurrent_net import RecurrentNetwork as TorchRNN
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
@@ -11,7 +11,7 @@ tf = try_import_tf()
 torch, nn = try_import_torch()
 
 
-class RNNModel(RecurrentTFModelV2):
+class RNNModel(RecurrentNetwork):
     """Example of using the Keras functional API to define a RNN model."""
 
     def __init__(self,
@@ -57,7 +57,7 @@ class RNNModel(RecurrentTFModelV2):
         self.register_variables(self.rnn_model.variables)
         self.rnn_model.summary()
 
-    @override(RecurrentTFModelV2)
+    @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):
         model_out, self._value_out, h, c = self.rnn_model([inputs, seq_lens] +
                                                           state)
@@ -75,7 +75,7 @@ class RNNModel(RecurrentTFModelV2):
         return tf.reshape(self._value_out, [-1])
 
 
-class TorchRNNModel(RecurrentTorchModel):
+class TorchRNNModel(TorchRNN):
     def __init__(self,
                  obs_space,
                  action_space,
@@ -114,7 +114,7 @@ class TorchRNNModel(RecurrentTorchModel):
         assert self._features is not None, "must call forward() first"
         return torch.reshape(self.value_branch(self._features), [-1])
 
-    @override(RecurrentTorchModel)
+    @override(TorchRNN)
     def forward_rnn(self, inputs, state, seq_lens):
         """Feeds `inputs` (B x T x ..) through the Gru Unit.
 

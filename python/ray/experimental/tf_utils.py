@@ -161,10 +161,7 @@ class TensorFlowVariables:
             Dictionary mapping variable names to their weights.
         """
         self._check_sess()
-        return {
-            k: v.eval(session=self.sess)
-            for k, v in self.variables.items()
-        }
+        return self.sess.run(self.variables)
 
     def set_weights(self, new_weights):
         """Sets the weights to new_weights.

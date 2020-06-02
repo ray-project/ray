@@ -43,7 +43,7 @@ class PiecewiseSchedule(Schedule):
         assert idxes == sorted(idxes)
         self.interpolation = interpolation
         self.outside_value = outside_value
-        self.endpoints = endpoints
+        self.endpoints = [(int(e[0]), float(e[1])) for e in endpoints]
 
     @override(Schedule)
     def _value(self, t):

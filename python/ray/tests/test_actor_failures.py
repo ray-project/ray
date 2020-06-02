@@ -11,9 +11,17 @@ import ray
 import ray.ray_constants as ray_constants
 import ray.test_utils
 import ray.cluster_utils
-from ray.test_utils import (relevant_errors, wait_for_condition,
-                            wait_for_errors, wait_for_pid_to_exit,
-                            generate_internal_config_map)
+from ray.test_utils import (
+    relevant_errors,
+    wait_for_condition,
+    wait_for_errors,
+    wait_for_pid_to_exit,
+    generate_internal_config_map,
+    get_non_head_nodes,
+    get_other_nodes,
+)
+
+SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 
 @pytest.fixture
@@ -153,7 +161,7 @@ def test_actor_restart():
     pid = ray.get(actor.get_pid.remote())
     results = [actor.increase.remote() for _ in range(100)]
     # Kill actor process, while the above task is still being executed.
-    os.kill(pid, signal.SIGKILL)
+    os.kill(pid, SIGKILL)
     # Make sure that all tasks were executed in order before the actor's death.
     res = results.pop(0)
     i = 1
@@ -194,7 +202,7 @@ def test_actor_restart():
     # kill actor process one more time.
     results = [actor.increase.remote() for _ in range(100)]
     pid = ray.get(actor.get_pid.remote())
-    os.kill(pid, signal.SIGKILL)
+    os.kill(pid, SIGKILL)
     # The actor has exceeded max restarts, and this task should fail.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
@@ -235,7 +243,7 @@ def test_actor_restart_with_retry():
     pid = ray.get(actor.get_pid.remote())
     results = [actor.increase.remote() for _ in range(100)]
     # Kill actor process, while the above task is still being executed.
-    os.kill(pid, signal.SIGKILL)
+    os.kill(pid, SIGKILL)
     # Check that none of the tasks failed and the actor is restarted.
     seq = list(range(1, 101))
     results = ray.get(results)
@@ -255,7 +263,7 @@ def test_actor_restart_with_retry():
     # kill actor process one more time.
     results = [actor.increase.remote() for _ in range(100)]
     pid = ray.get(actor.get_pid.remote())
-    os.kill(pid, signal.SIGKILL)
+    os.kill(pid, SIGKILL)
     # The actor has exceeded max restarts, and this task should fail.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
@@ -303,7 +311,7 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
     ray.get(actor.ready.remote())
     results = [actor.increase.remote() for _ in range(100)]
     # Kill actor node, while the above task is still being executed.
-    cluster.remove_node(cluster.list_all_nodes()[-1])
+    cluster.remove_node(get_non_head_nodes(cluster)[-1])
     cluster.add_node(num_cpus=1, _internal_config=config)
     cluster.wait_for_nodes()
     # Check that none of the tasks failed and the actor is restarted.
@@ -351,7 +359,7 @@ def test_actor_restart_without_task(ray_start_regular):
     pid = ray.get(actor.get_pid.remote())
 
     p = probe.remote()
-    os.kill(pid, signal.SIGKILL)
+    os.kill(pid, SIGKILL)
     ray.get(p)
     assert wait_for_condition(lambda: not actor_resource_available())
 
@@ -507,7 +515,7 @@ def test_multiple_actor_restart(ray_start_cluster_head):
 def kill_actor(actor):
     """A helper function that kills an actor process."""
     pid = ray.get(actor.get_pid.remote())
-    os.kill(pid, signal.SIGKILL)
+    os.kill(pid, SIGKILL)
     wait_for_pid_to_exit(pid)
 
 
@@ -819,7 +827,7 @@ def test_decorated_method(ray_start_regular):
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 1,
-        "num_nodes": 2,
+        "num_nodes": 3,
     }], indirect=True)
 def test_ray_wait_dead_actor(ray_start_cluster):
     """Tests that methods completed by dead actors are returned as ready"""
@@ -855,8 +863,8 @@ def test_ray_wait_dead_actor(ray_start_cluster):
         except ray.exceptions.RayActorError:
             return True
 
-    # Kill a node.
-    cluster.remove_node(cluster.list_all_nodes()[-1])
+    # Kill a node that must not be driver node or head node.
+    cluster.remove_node(get_other_nodes(cluster, exclude_head=True)[-1])
     # Repeatedly submit tasks and call ray.wait until the exception for the
     # dead actor is received.
     assert wait_for_condition(actor_dead)

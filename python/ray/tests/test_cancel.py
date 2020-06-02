@@ -53,7 +53,7 @@ def test_cancel_chain(ray_start_regular, use_force):
         ray.get(obj2, timeout=.1)
 
     signaler2.send.remote()
-    ray.get(obj1, timeout=10)
+    ray.get(obj1)
 
 
 @pytest.mark.parametrize("use_force", [True, False])
@@ -89,7 +89,7 @@ def test_cancel_multiple_dependents(ray_start_regular, use_force):
             ray.get(d)
 
     signaler.send.remote()
-    ray.get(head2, timeout=1)
+    ray.get(head2)
 
 
 @pytest.mark.parametrize("use_force", [True, False])
@@ -109,7 +109,7 @@ def test_single_cpu_cancel(shutdown_only, use_force):
     assert len(ray.wait([obj3], timeout=.1)[0]) == 0
     ray.cancel(obj3, use_force)
     with pytest.raises(valid_exceptions(use_force)):
-        ray.get(obj3, 10)
+        ray.get(obj3)
 
     ray.cancel(obj1, use_force)
 
@@ -151,7 +151,7 @@ def test_comprehensive(ray_start_regular, use_force):
     signaler.send.remote()
 
     with pytest.raises(valid_exceptions(use_force)):
-        ray.get(combo, 10)
+        ray.get(combo)
 
 
 @pytest.mark.parametrize("use_force", [True, False])
@@ -179,7 +179,7 @@ def test_stress(shutdown_only, use_force):
 
     for done in cancelled:
         with pytest.raises(valid_exceptions(use_force)):
-            ray.get(done, 10)
+            ray.get(done)
 
     for indx in range(len(tasks)):
         t = tasks[indx]
@@ -188,7 +188,7 @@ def test_stress(shutdown_only, use_force):
             cancelled.add(t)
         if t in cancelled:
             with pytest.raises(valid_exceptions(use_force)):
-                ray.get(t, 10)
+                ray.get(t)
         else:
             ray.get(t)
 
@@ -205,7 +205,7 @@ def test_fast(shutdown_only, use_force):
     ids = list()
     for _ in range(100):
         x = fast.remote("a")
-        ray.cancel(x)
+        ray.cancel(x, use_force)
         ids.append(x)
 
     @ray.remote
@@ -219,11 +219,11 @@ def test_fast(shutdown_only, use_force):
 
     for idx in range(100, 5100):
         if random.random() > 0.95:
-            ray.cancel(ids[idx])
+            ray.cancel(ids[idx], use_force)
     signaler.send.remote()
     for obj_id in ids:
         try:
-            ray.get(obj_id, 10)
+            ray.get(obj_id)
         except Exception as e:
             assert isinstance(e, valid_exceptions(use_force))
 
@@ -248,7 +248,7 @@ def test_remote_cancel(ray_start_regular, use_force):
     with pytest.raises(RayTimeoutError):
         ray.get(inner, 1)
 
-    ray.cancel(inner)
+    ray.cancel(inner, use_force)
 
     with pytest.raises(valid_exceptions(use_force)):
         ray.get(inner, 10)

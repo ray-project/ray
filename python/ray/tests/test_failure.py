@@ -113,7 +113,7 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
     ray.get(signal1.send.remote())
 
     signal2 = SignalActor.remote()
-    actor = Actor.options(is_direct_call=True, max_concurrency=2).remote()
+    actor = Actor.options(max_concurrency=2).remote()
     expect_exception(
         [actor.bad_func2.remote(),
          actor.slow_func.remote(signal2)], ray.exceptions.RayActorError)
@@ -527,29 +527,6 @@ def test_version_mismatch(shutdown_only):
 
     # Reset the version.
     ray.__version__ = ray_version
-
-
-def test_warning_monitor_died(ray_start_2_cpus):
-    @ray.remote
-    def f():
-        pass
-
-    # Wait for the monitor process to start.
-    ray.get(f.remote())
-    time.sleep(1)
-
-    # Cause the monitor to raise an exception by pushing a malformed message to
-    # Redis. This will probably kill the raylet and the raylet_monitor in
-    # addition to the monitor.
-    fake_id = 20 * b"\x00"
-    malformed_message = "asdf"
-    redis_client = ray.worker.global_worker.redis_client
-    redis_client.execute_command(
-        "RAY.TABLE_ADD", ray.gcs_utils.TablePrefix.Value("HEARTBEAT_BATCH"),
-        ray.gcs_utils.TablePubsub.Value("HEARTBEAT_BATCH_PUBSUB"), fake_id,
-        malformed_message)
-
-    wait_for_errors(ray_constants.MONITOR_DIED_ERROR, 1)
 
 
 def test_export_large_objects(ray_start_regular):
@@ -1062,12 +1039,12 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
     cluster = Cluster()
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _internal_config=config)
+    ray.init(address=cluster.address)
     # Node to place the parent actor.
     node_to_kill = cluster.add_node(num_cpus=1, resources={"parent": 1})
     # Node to place the child actor.
     cluster.add_node(num_cpus=1, resources={"child": 1})
     cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
 
     @ray.remote
     def sleep():
