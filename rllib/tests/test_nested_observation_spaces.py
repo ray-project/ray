@@ -1,6 +1,7 @@
 from gym import spaces
 from gym.envs.registration import EnvSpec
 import gym
+import numpy as np
 import pickle
 import unittest
 
@@ -56,14 +57,15 @@ TUPLE_SAMPLES = [TUPLE_SPACE.sample() for _ in range(10)]
 MAX_PLAYERS = 4
 MAX_ITEMS = 7
 MAX_EFFECTS = 2
-ITEM_SPACE = Discrete(5)
-EFFECT_SPACE = Box(9000, 9999, shape=(4, ))
-REPEATED_SPACE = Dict({
-    "location": Box(-100, 100, shape=(2, )),
-    "status": Box(-1, 1, shape=(10, )),
+ITEM_SPACE = spaces.Box(-5, 5, shape=(1, ))
+EFFECT_SPACE = spaces.Box(9000, 9999, shape=(4, ))
+PLAYER_SPACE = spaces.Dict({
+    "location": spaces.Box(-100, 100, shape=(2, )),
     "items": Repeated(ITEM_SPACE, max_len=MAX_ITEMS),
     "effects": Repeated(EFFECT_SPACE, max_len=MAX_EFFECTS),
+    "status": spaces.Box(-1, 1, shape=(10, )),
 })
+REPEATED_SPACE = Repeated(PLAYER_SPACE, max_len=MAX_PLAYERS)
 REPEATED_SAMPLES = [REPEATED_SPACE.sample() for _ in range(10)]
 
 
@@ -186,6 +188,45 @@ class TorchSpyModel(TorchModelV2, nn.Module):
 
     def value_function(self):
         return self.fc.value_function()
+
+
+class TorchRepeatedSpyModel(TorchModelV2, nn.Module):
+    capture_index = 0
+
+    def __init__(self, obs_space, action_space, num_outputs, model_config,
+                 name):
+        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
+                              model_config, name)
+        nn.Module.__init__(self)
+        self.fc = FullyConnectedNetwork(
+            obs_space.original_space.child_space["location"], action_space,
+            num_outputs, model_config, name)
+
+    def forward(self, input_dict, state, seq_lens):
+        ray.experimental.internal_kv._internal_kv_put(
+            "torch_rspy_in_{}".format(TorchRepeatedSpyModel.capture_index),
+            pickle.dumps(input_dict["obs"].unbatch_all()),
+            overwrite=True)
+        TorchRepeatedSpyModel.capture_index += 1
+        return self.fc({
+            "obs": input_dict["obs"].values["location"][:, 0]
+        }, state, seq_lens)
+
+    def value_function(self):
+        return self.fc.value_function()
+
+
+def to_list(value):
+    if isinstance(value, list):
+        return [to_list(x) for x in value]
+    elif isinstance(value, dict):
+        return {k: to_list(v) for k, v in value.items()}
+    elif isinstance(value, np.ndarray):
+        return value.tolist()
+    elif isinstance(value, int):
+        return value
+    else:
+        return value.numpy().tolist()
 
 
 class DictSpyModel(TFModelV2):
@@ -464,6 +505,31 @@ class NestedSpacesTest(unittest.TestCase):
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
             self.assertEqual(seen[2][0].tolist(), task_i)
+
+    # TODO(ekl) should probably also add a test for TF/eager
+    def test_torch_repeated(self):
+        ModelCatalog.register_custom_model("r1", TorchRepeatedSpyModel)
+        register_env("repeat", lambda _: RepeatedSpaceEnv())
+        a2c = A2CTrainer(
+            env="repeat",
+            config={
+                "num_workers": 0,
+                "rollout_fragment_length": 5,
+                "train_batch_size": 5,
+                "model": {
+                    "custom_model": "r1",
+                },
+                "framework": "torch",
+            })
+
+        a2c.train()
+
+        # Check that the model sees the correct reconstructed observations
+        for i in range(4):
+            seen = pickle.loads(
+                ray.experimental.internal_kv._internal_kv_get(
+                    "torch_rspy_in_{}".format(i)))
+            self.assertEqual(to_list(seen), [to_list(REPEATED_SAMPLES[i])])
 
 
 if __name__ == "__main__":
