@@ -55,6 +55,7 @@ It's important to note that Ray Serve places these backends in individual worker
     return "hello world"
 
   class RequestHandler:
+    # Take the message to return as an argument to the constructor.
     def __init__(self, msg):
         self.msg = msg
 
@@ -62,7 +63,8 @@ It's important to note that Ray Serve places these backends in individual worker
         return self.msg
 
   serve.create_backend("simple_backend", handle_request)
-  # We pass in the message that the backend will return as an argument.
+  # Pass in the message that the backend will return as an argument.
+  # If we call this backend, it will respond with "hello, world!".
   serve.create_backend("simple_backend_class", RequestHandler, "hello, world!")
 
 Setting Traffic
