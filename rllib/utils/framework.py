@@ -119,7 +119,7 @@ def try_import_tf(error=False):
         ## No compat.v1 -> return tf as is.
         #except AttributeError:
         #    pass
-        return tf_module, 2 if "2." in tf_module.__version__ else 1
+        return tf_module, 2 if "2." in tf_module.__version__[:2] else 1
 
     # Just in case. We should not go through the below twice.
     assert "tensorflow" not in sys.modules

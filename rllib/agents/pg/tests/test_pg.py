@@ -75,7 +75,7 @@ class TestPG(unittest.TestCase):
                     feed_dict=policy._get_loss_inputs_dict(
                         train_batch, shuffle=False))
             else:
-                results = (pg.pg_tf_loss if fw == "tfe" else pg.pg_torch_loss)(
+                results = (pg.pg_tf_loss if fw in ["tf", "tfe"] else pg.pg_torch_loss)(
                     policy,
                     policy.model,
                     dist_class=dist_cls,
