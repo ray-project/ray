@@ -273,8 +273,8 @@ class SSHCommandRunner:
                     "Command failed: \n\n  {}\n".format(quoted_cmd)) from None
             else:
                 raise Exception(
-                    "SSH Command Failed. Look above to see the output from the failure."
-                ) from None
+                    "SSH Command Failed. Look above to see the output from the"
+                    " failure.") from None
 
     def run_rsync_up(self, source, target):
         self.set_ssh_ip_if_required()
