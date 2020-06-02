@@ -132,6 +132,30 @@ class StoreClientTestBase : public ::testing::Test {
     WaitPendingDone();
   }
 
+  void GetByIndex() {
+    auto get_calllback =
+        [this](const std::unordered_map<std::string, std::string> &result) {
+          RAY_LOG(INFO) << "wangtao result size " << result.size();
+          if (!result.empty()) {
+            auto key = ActorID::FromBinary(result.begin()->first);
+            RAY_LOG(INFO) << "wangtao key " << key;
+            auto it = key_to_index_.find(key);
+            RAY_CHECK(it != key_to_index_.end());
+            RAY_LOG(INFO) << "wangtao index " << it->second;
+            RAY_CHECK(index_to_keys_[it->second].size() == result.size());
+          }
+          pending_count_ -= result.size();
+        };
+    for (const auto &elem : index_to_keys_) {
+      pending_count_ += elem.second.size();
+      RAY_LOG(INFO) << "wangtao beigin to check index " << elem.first << " and hex "
+                    << elem.first.Hex() << " in table " << table_name_;
+      RAY_CHECK_OK(
+          store_client_->AsyncGetByIndex(table_name_, elem.first.Hex(), get_calllback));
+      WaitPendingDone();
+    }
+  }
+
   void DeleteByIndex() {
     auto delete_calllback = [this](const Status &status) {
       RAY_CHECK_OK(status);
@@ -197,6 +221,9 @@ class StoreClientTestBase : public ::testing::Test {
   void TestAsyncPutAndDeleteWithIndex() {
     // AsyncPut with index
     PutWithIndex();
+
+    // AsyncGet with index
+    GetByIndex();
 
     // AsyncDelete by index
     DeleteByIndex();
