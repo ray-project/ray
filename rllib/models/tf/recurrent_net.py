@@ -99,7 +99,8 @@ class RecurrentNetwork(TFModelV2):
 
 
 class LSTMWrapper(RecurrentNetwork):
-    """A simpel LSTM wrapper serving as an interface for ModelV2s."""
+    """An LSTM wrapper serving as an interface for ModelV2s that set use_lstm.
+    """
 
     def __init__(self,
                  obs_space,
@@ -116,6 +117,9 @@ class LSTMWrapper(RecurrentNetwork):
         # Define input layers.
         input_layer = tf.keras.layers.Input(
             shape=(None, self.num_outputs), name="inputs")
+
+        self.num_outputs = num_outputs
+
         state_in_h = tf.keras.layers.Input(shape=(self.cell_size, ), name="h")
         state_in_c = tf.keras.layers.Input(shape=(self.cell_size, ), name="c")
         seq_in = tf.keras.layers.Input(shape=(), name="seq_in", dtype=tf.int32)
@@ -123,7 +127,7 @@ class LSTMWrapper(RecurrentNetwork):
         # Preprocess observation with a hidden layer and send to LSTM cell
         lstm_out, state_h, state_c = tf.keras.layers.LSTM(
             self.cell_size, return_sequences=True, return_state=True, name="lstm")(
-                inputs=self.,
+                inputs=input_layer,
                 mask=tf.sequence_mask(seq_in),
                 initial_state=[state_in_h, state_in_c])
 
@@ -136,16 +140,30 @@ class LSTMWrapper(RecurrentNetwork):
             1, activation=None, name="values")(lstm_out)
 
         # Create the RNN model
-        self.rnn_model = tf.keras.Model(
+        self._rnn_model = tf.keras.Model(
             inputs=[input_layer, seq_in, state_in_h, state_in_c],
             outputs=[logits, values, state_h, state_c])
-        self.register_variables(self.rnn_model.variables)
-        self.rnn_model.summary()
+        self.register_variables(self._rnn_model.variables)
+        self._rnn_model.summary()
+
+    @override(RecurrentNetwork)
+    def forward(self, input_dict, state, seq_lens):
+        assert seq_lens is not None
+        # Push obs through "unwrapped" net's `forward()` first.
+        wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
+
+        # Then through our LSTM.
+        input_dict["obs_flat"] = wrapped_out
+        return super().forward(input_dict, state, seq_lens)
+        #output, new_state = self.forward_rnn(
+        #    add_time_dimension(wrapped_out, seq_lens, framework="tf"),
+        #    state, seq_lens)
+        #return tf.reshape(output, [-1, self.num_outputs]), new_state
 
     @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):
-        model_out, self._value_out, h, c = self.rnn_model([inputs, seq_lens] +
-                                                          state)
+        model_out, self._value_out, h, c = self._rnn_model([inputs, seq_lens] +
+                                                            state)
         return model_out, [h, c]
 
     @override(ModelV2)

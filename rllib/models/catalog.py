@@ -17,6 +17,8 @@ from ray.rllib.models.tf.tf_action_dist import Categorical, \
     MultiActionDistribution, MultiCategorical
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.visionnet_v1 import VisionNetwork
+from ray.rllib.models.torch.recurrent_net import LSTMWrapper as \
+    TorchLSTMWrapper
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
@@ -383,14 +385,11 @@ class ModelCatalog:
                     obs_space, model_config, framework=framework)
 
             if model_config["use_lstm"]:
+                wrapped_cls = v2_class
+                forward = wrapped_cls.forward
                 v2_class = ModelCatalog._wrap_if_needed(
-                    v2_class, LSTMWrapper)
-                #copy = dict(input_dict)
-                #copy["obs"] = model.last_layer
-                #feature_space = gym.spaces.Box(
-                #    -1, 1, shape=(model.last_layer.shape[1],))
-                #v2_class = LSTM(copy, feature_space, action_space, num_outputs,
-                #             options, state_in, seq_lens)
+                    wrapped_cls, LSTMWrapper)
+                v2_class._wrapped_forward = forward
 
             # fallback to a default v1 model
             if v2_class is None:
@@ -409,6 +408,12 @@ class ModelCatalog:
             v2_class = \
                 default_model or ModelCatalog._get_v2_model_class(
                     obs_space, model_config, framework=framework)
+            if model_config["use_lstm"]:
+                wrapped_cls = v2_class
+                forward = wrapped_cls.forward
+                v2_class = ModelCatalog._wrap_if_needed(
+                    wrapped_cls, TorchLSTMWrapper)
+                v2_class._wrapped_forward = forward
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
