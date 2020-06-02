@@ -897,17 +897,18 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     }], indirect=True)
 def test_location_resolution_worker_failure(ray_start_cluster):
     """Test location resolution protocol when actor is not persisted to GCS
-    
+
+    This test verifies the scneario where owner worker
+    has failed before actor is persisted to GCS.
     Reference: https://github.com/ray-project/ray/pull/8679
     """
-    cluster = ray_start_cluster
 
     @ray.remote
     class Actor:
         def __init__(self, dependency):
             print("actor: {}".format(os.getpid()))
             self.dependency = dependency
-        
+
         def f(self):
             return self.dependency
 
@@ -928,21 +929,22 @@ def test_location_resolution_worker_failure(ray_start_cluster):
     @ray.remote
     class Caller:
         def call(self, actor_handle):
-            # Wait enough just in case owner is not killed before remote call happens
+            # Wait enough just in case owner is not killed
+            # before remote call happens
             time.sleep(3.0)
             oid = actor_handle.f.remote()
-            # It should hang here.
-            result = ray.get(oid)
+            # It will hang without location resolution protocol.
+            ray.get(oid)
 
         def hang(self):
-            return 3
+            return True
 
     owner = Owner.remote()
     caller = Caller.remote()
     owner.create_actor.remote(caller)
-    time.sleep(10.0)
+    time.sleep(3.0)
     # It will hang here if location is not properly resolved.
-    ray.get(caller.hang.remote())
+    assert (wait_for_condition(lambda: ray.get(caller.hang.remote())))
 
 
 @pytest.mark.parametrize(
@@ -952,18 +954,20 @@ def test_location_resolution_worker_failure(ray_start_cluster):
     }], indirect=True)
 def test_location_resolution_node_failure(ray_start_cluster):
     """Test location resolution protocol when actor is not persisted to GCS
-    
+
+    This test verifies the scneario where owner node
+    has failed before actor is persisted to GCS.
     Reference: https://github.com/ray-project/ray/pull/8679
     """
     cluster = ray_start_cluster
-    node_to_be_broken = cluster.add_node(num_cpus=1, resources={'node': 1})
+    node_to_be_broken = cluster.add_node(num_cpus=1, resources={"node": 1})
 
     @ray.remote
     class Actor:
         def __init__(self, dependency):
             print("actor: {}".format(os.getpid()))
             self.dependency = dependency
-        
+
         def f(self):
             return self.dependency
 
@@ -973,7 +977,7 @@ def test_location_resolution_node_failure(ray_start_cluster):
         return 3
 
     # Make sure it is scheduled in the second node.
-    @ray.remote(resources={'node':1}, num_cpus=1)
+    @ray.remote(resources={"node": 1}, num_cpus=1)
     class Owner:
         def create_actor(self, caller_handle):
             actor_handle = Actor.remote(slow_dependency.remote())
@@ -984,14 +988,15 @@ def test_location_resolution_node_failure(ray_start_cluster):
     @ray.remote
     class Caller:
         def call(self, actor_handle):
-            # Wait enough just in case owner is not killed before remote call happens
+            # Wait enough just in case owner is not killed
+            # before remote call happens
             time.sleep(3.0)
             oid = actor_handle.f.remote()
-            # It should hang here.
-            result = ray.get(oid)
+            # It will hang without location resolution protocol.
+            ray.get(oid)
 
         def hang(self):
-            return 3
+            return True
 
     owner = Owner.remote()
     caller = Caller.remote()
@@ -999,7 +1004,7 @@ def test_location_resolution_node_failure(ray_start_cluster):
     time.sleep(3.0)
     cluster.remove_node(node_to_be_broken)
     # It will hang here if location is not properly resolved.
-    ray.get(caller.hang.remote())
+    assert (wait_for_condition(lambda: ray.get(caller.hang.remote())))
 
 
 if __name__ == "__main__":
