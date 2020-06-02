@@ -7,7 +7,8 @@ from ray import serve
 from ray.serve import context as serve_context
 from ray.serve.context import FakeFlaskRequest
 from collections import defaultdict
-from ray.serve.utils import parse_request_item, _get_logger
+from ray.serve.utils import (parse_request_item, _get_logger,
+                             retry_actor_failures)
 from ray.serve.exceptions import RayServeException
 from ray.serve.metric import MetricClient
 from ray.async_compat import sync_to_async
@@ -26,15 +27,24 @@ def create_backend_worker(func_or_class):
         assert False, "func_or_class must be function or class."
 
     class RayServeWrappedWorker(object):
-        def __init__(self, backend_tag, replica_tag, init_args):
-            serve.init()
+        def __init__(self,
+                     backend_tag,
+                     replica_tag,
+                     init_args,
+                     cluster_name=None):
+            serve.init(cluster_name=cluster_name)
             if is_function:
                 _callable = func_or_class
             else:
                 _callable = func_or_class(*init_args)
 
+            master = serve.api._get_master_actor()
+            [metric_exporter] = retry_actor_failures(
+                master.get_metric_exporter)
+            metric_client = MetricClient(
+                metric_exporter, default_labels={"backend": backend_tag})
             self.backend = RayServeWorker(backend_tag, replica_tag, _callable,
-                                          is_function)
+                                          is_function, metric_client)
 
         async def handle_request(self, request):
             return await self.backend.handle_request(request)
@@ -67,14 +77,14 @@ def ensure_async(func):
 class RayServeWorker:
     """Handles requests with the provided callable."""
 
-    def __init__(self, name, replica_tag, _callable, is_function):
+    def __init__(self, name, replica_tag, _callable, is_function,
+                 metric_client):
         self.name = name
         self.replica_tag = replica_tag
         self.callable = _callable
         self.is_function = is_function
 
-        self.metric_client = MetricClient.connect_from_serve(
-            default_labels={"backend": self.name})
+        self.metric_client = metric_client
         self.request_counter = self.metric_client.new_counter(
             "backend_request_counter",
             description=("Number of queries that have been "

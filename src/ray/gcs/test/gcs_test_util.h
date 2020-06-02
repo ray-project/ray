@@ -37,8 +37,10 @@ struct Mocker {
         ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
     auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
     auto task_id = TaskID::ForActorCreationTask(actor_id);
+    auto resource = std::unordered_map<std::string, double>();
     builder.SetCommonTaskSpec(task_id, Language::PYTHON, empty_descriptor, job_id,
-                              TaskID::Nil(), 0, TaskID::Nil(), owner_address, 1, {}, {});
+                              TaskID::Nil(), 0, TaskID::Nil(), owner_address, 1, resource,
+                              resource);
     builder.SetActorCreationTaskSpec(actor_id, max_restarts, {}, 1, detached, name);
     return builder.Build();
   }
@@ -61,11 +63,12 @@ struct Mocker {
     return request;
   }
 
-  static std::shared_ptr<rpc::GcsNodeInfo> GenNodeInfo(uint16_t port = 0) {
+  static std::shared_ptr<rpc::GcsNodeInfo> GenNodeInfo(
+      uint16_t port = 0, const std::string address = "127.0.0.1") {
     auto node = std::make_shared<rpc::GcsNodeInfo>();
     node->set_node_id(ClientID::FromRandom().Binary());
     node->set_node_manager_port(port);
-    node->set_node_manager_address("127.0.0.1");
+    node->set_node_manager_address(address);
     return node;
   }
 
@@ -108,6 +111,7 @@ struct Mocker {
     auto task_lease_data = std::make_shared<rpc::TaskLeaseData>();
     task_lease_data->set_task_id(task_id);
     task_lease_data->set_node_manager_id(node_id);
+    task_lease_data->set_timeout(9999);
     return task_lease_data;
   }
 

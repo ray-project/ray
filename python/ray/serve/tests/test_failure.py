@@ -35,7 +35,7 @@ def test_master_failure(serve_instance):
         response = request_with_retries("/master_failure", timeout=30)
         assert response.text == "hello1"
 
-    ray.kill(serve.api._get_master_actor())
+    ray.kill(serve.api._get_master_actor(), no_restart=False)
 
     for _ in range(10):
         response = request_with_retries("/master_failure", timeout=30)
@@ -44,7 +44,7 @@ def test_master_failure(serve_instance):
     def function():
         return "hello2"
 
-    ray.kill(serve.api._get_master_actor())
+    ray.kill(serve.api._get_master_actor(), no_restart=False)
 
     serve.create_backend("master_failure:v2", function)
     serve.set_traffic("master_failure", {"master_failure:v2": 1.0})
@@ -56,11 +56,11 @@ def test_master_failure(serve_instance):
     def function():
         return "hello3"
 
-    ray.kill(serve.api._get_master_actor())
+    ray.kill(serve.api._get_master_actor(), no_restart=False)
     serve.create_endpoint("master_failure_2", "/master_failure_2")
-    ray.kill(serve.api._get_master_actor())
+    ray.kill(serve.api._get_master_actor(), no_restart=False)
     serve.create_backend("master_failure_2", function)
-    ray.kill(serve.api._get_master_actor())
+    ray.kill(serve.api._get_master_actor(), no_restart=False)
     serve.set_traffic("master_failure_2", {"master_failure_2": 1.0})
 
     for _ in range(10):
@@ -73,7 +73,7 @@ def test_master_failure(serve_instance):
 def _kill_http_proxy():
     [http_proxy] = ray.get(
         serve.api._get_master_actor().get_http_proxy.remote())
-    ray.kill(http_proxy)
+    ray.kill(http_proxy, no_restart=False)
 
 
 def test_http_proxy_failure(serve_instance):
@@ -107,7 +107,7 @@ def test_http_proxy_failure(serve_instance):
 
 def _kill_router():
     [router] = ray.get(serve.api._get_master_actor().get_router.remote())
-    ray.kill(router)
+    ray.kill(router, no_restart=False)
 
 
 def test_router_failure(serve_instance):
@@ -169,7 +169,7 @@ def test_worker_restart(serve_instance):
     # Kill the worker.
     handles = _get_worker_handles("worker_failure:v1")
     assert len(handles) == 1
-    ray.kill(handles[0])
+    ray.kill(handles[0], no_restart=False)
 
     # Wait until the worker is killed and a one is started.
     start = time.time()
@@ -227,7 +227,7 @@ def test_worker_replica_failure(serve_instance):
     # Kill one of the replicas.
     handles = _get_worker_handles("replica_failure")
     assert len(handles) == 2
-    ray.kill(handles[0])
+    ray.kill(handles[0], no_restart=False)
 
     # Check that the other replica still serves requests.
     for _ in range(10):

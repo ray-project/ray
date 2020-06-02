@@ -38,7 +38,8 @@ class CustomLossModel(TFModelV2):
     @override(ModelV2)
     def custom_loss(self, policy_loss, loss_inputs):
         # Create a new input reader per worker.
-        reader = JsonReader(self.model_config["custom_options"]["input_files"])
+        reader = JsonReader(
+            self.model_config["custom_model_config"]["input_files"])
         input_ops = reader.tf_input_ops()
 
         # Define a secondary loss by building a graph copy with weight sharing.
@@ -80,7 +81,7 @@ class DeprecatedCustomLossModelV1(Model):
 
     def custom_loss(self, policy_loss, loss_inputs):
         # create a new input reader per worker
-        reader = JsonReader(self.options["custom_options"]["input_files"])
+        reader = JsonReader(self.options["custom_model_config"]["input_files"])
         input_ops = reader.tf_input_ops()
 
         # define a secondary loss by building a graph copy with weight sharing

@@ -231,6 +231,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         CActorCreationOptions()
         CActorCreationOptions(
             int64_t max_restarts,
+            int64_t max_task_retries,
             int32_t max_concurrency,
             const unordered_map[c_string, double] &resources,
             const unordered_map[c_string, double] &placement_resources,

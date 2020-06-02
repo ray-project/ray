@@ -70,7 +70,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
         abs_path = script_dir.absolute()
 
         for fw, sess in framework_iterator(session=True):
-            fw_ = fw if fw != "eager" else "tf"
+            fw_ = fw if fw != "tfe" else "tf"
             # Try to create from an abstract class w/o default constructor.
             # Expect None.
             test = from_config({

@@ -9,7 +9,6 @@ import json
 import logging
 import os
 import redis
-import signal
 from six.moves import queue
 import sys
 import threading
@@ -900,7 +899,7 @@ atexit.register(shutdown, True)
 
 # TODO(edoakes): this should only be set in the driver.
 def sigterm_handler(signum, frame):
-    sys.exit(signal.SIGTERM)
+    sys.exit(signum)
 
 
 try:
@@ -1195,10 +1194,6 @@ def connect(node,
 
     worker.lock = threading.RLock()
 
-    # Create an object for interfacing with the global state.
-    ray.state.state._initialize_global_state(
-        node.redis_address, redis_password=node.redis_password)
-
     driver_name = ""
     log_stdout_file_name = ""
     log_stderr_file_name = ""
@@ -1268,6 +1263,12 @@ def connect(node,
         log_stdout_file_name,
         log_stderr_file_name,
     )
+
+    # Create an object for interfacing with the global state.
+    # Note, global state should be intialized after `CoreWorker`, because it
+    # will use glog, which is intialized in `CoreWorker`.
+    ray.state.state._initialize_global_state(
+        node.redis_address, redis_password=node.redis_password)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
@@ -1366,7 +1367,12 @@ def disconnect(exiting_interpreter=False):
     worker.node = None  # Disconnect the worker from the node.
     worker.cached_functions_to_run = []
     worker.serialization_context_map.clear()
-    ray.actor.ActorClassMethodMetadata.reset_cache()
+    try:
+        ray_actor = ray.actor
+    except AttributeError:
+        ray_actor = None  # This can occur during program termination
+    if ray_actor is not None:
+        ray_actor.ActorClassMethodMetadata.reset_cache()
 
 
 @contextmanager
@@ -1651,7 +1657,22 @@ def wait(object_ids, num_returns=1, timeout=None):
         return ready_ids, remaining_ids
 
 
-def kill(actor):
+def get_actor(name):
+    """Get a handle to a detached actor.
+
+    Gets a handle to a detached actor with the given name. The actor must
+    have been created with Actor.options(name="name").remote().
+
+    Returns:
+        ActorHandle to the actor.
+
+    Raises:
+        ValueError if the named actor does not exist.
+    """
+    return ray.util.named_actors._get_actor(name)
+
+
+def kill(actor, no_restart=True):
     """Kill an actor forcefully.
 
     This will interrupt any running tasks on the actor, causing them to fail
@@ -1661,21 +1682,20 @@ def kill(actor):
     you can call ``actor.__ray_terminate__.remote()`` instead to queue a
     termination task.
 
-    In both cases, the worker is actually killed, but it will be restarted by
-    Ray.
-
-    If this actor is reconstructable, an attempt will be made to reconstruct
-    it.
+    If the actor is a detached actor, subsequent calls to get its handle via
+    ray.get_actor will fail.
 
     Args:
         actor (ActorHandle): Handle to the actor to kill.
+        no_restart (bool): Whether or not this actor should be restarted if
+            it's a restartable actor.
     """
     if not isinstance(actor, ray.actor.ActorHandle):
         raise ValueError("ray.kill() only supported for actors. "
                          "Got: {}.".format(type(actor)))
     worker = ray.worker.global_worker
     worker.check_connected()
-    worker.core_worker.kill_actor(actor._ray_actor_id, False)
+    worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
 
 def cancel(object_id, force=False):
@@ -1730,6 +1750,7 @@ def make_decorator(num_return_vals=None,
                    max_calls=None,
                    max_retries=None,
                    max_restarts=None,
+                   max_task_retries=None,
                    worker=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
@@ -1737,6 +1758,9 @@ def make_decorator(num_return_vals=None,
             # Set the remote function default resources.
             if max_restarts is not None:
                 raise ValueError("The keyword 'max_restarts' is not "
+                                 "allowed for remote functions.")
+            if max_task_retries is not None:
+                raise ValueError("The keyword 'max_task_retries' is not "
                                  "allowed for remote functions.")
 
             return ray.remote_function.RemoteFunction(
@@ -1754,7 +1778,7 @@ def make_decorator(num_return_vals=None,
 
             return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
                                         memory, object_store_memory, resources,
-                                        max_restarts)
+                                        max_restarts, max_task_retries)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -1801,6 +1825,14 @@ def remote(*args, **kwargs):
       unexpectedly. The minimum valid value is 0 (default), which indicates
       that the actor doesn't need to be restarted. A value of -1
       indicates that an actor should be restarted indefinitely.
+    * **max_task_retries**: Only for *actors*. How many times to retry an actor
+      task if the task fails due to a system error, e.g., the actor has died.
+      If set to -1, the system will retry the failed task until the task
+      succeeds, or the actor has reached its max_restarts limit. If set to n >
+      0, the system will retry the failed task up to n times, after which the
+      task will throw a `RayActorError` exception upon `ray.get`. Note that
+      Python exceptions are not considered system errors and will not trigger
+      retries.
     * **max_retries**: Only for *remote functions*. This specifies the maximum
       number of times that the remote function should be rerun when the worker
       process executing it crashes unexpectedly. The minimum valid value is 0,
@@ -1867,6 +1899,7 @@ def remote(*args, **kwargs):
             "resources",
             "max_calls",
             "max_restarts",
+            "max_task_retries",
             "max_retries",
         ], error_string
 
@@ -1885,6 +1918,7 @@ def remote(*args, **kwargs):
     num_return_vals = kwargs.get("num_return_vals")
     max_calls = kwargs.get("max_calls")
     max_restarts = kwargs.get("max_restarts")
+    max_task_retries = kwargs.get("max_task_retries")
     memory = kwargs.get("memory")
     object_store_memory = kwargs.get("object_store_memory")
     max_retries = kwargs.get("max_retries")
@@ -1898,5 +1932,6 @@ def remote(*args, **kwargs):
         resources=resources,
         max_calls=max_calls,
         max_restarts=max_restarts,
+        max_task_retries=max_task_retries,
         max_retries=max_retries,
         worker=worker)

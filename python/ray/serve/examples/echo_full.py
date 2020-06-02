@@ -11,8 +11,7 @@ import ray.serve as serve
 from ray.serve.utils import pformat_color_json
 
 # initialize ray serve system.
-# blocking=True will wait for HTTP server to be ready to serve request.
-serve.init(blocking=True)
+serve.init()
 
 # an endpoint is associated with an http URL.
 serve.create_endpoint("my_endpoint", "/echo")

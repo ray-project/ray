@@ -17,7 +17,6 @@ from ray.rllib.agents.es.es_tf_policy import rollout
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.memory import ray_get_and_free
 from ray.rllib.utils import FilterManager
 
 logger = logging.getLogger(__name__)
@@ -164,7 +163,7 @@ class Worker:
 
 
 def get_policy_class(config):
-    if config["use_pytorch"]:
+    if config["framework"] == "torch":
         from ray.rllib.agents.ars.ars_torch_policy import ARSTorchPolicy
         policy_cls = ARSTorchPolicy
     else:
@@ -207,6 +206,13 @@ class ARSTrainer(Trainer):
         self.episodes_so_far = 0
         self.reward_list = []
         self.tstart = time.time()
+
+    @override(Trainer)
+    def get_policy(self, policy=DEFAULT_POLICY_ID):
+        if policy != DEFAULT_POLICY_ID:
+            raise ValueError("ARS has no policy '{}'! Use {} "
+                             "instead.".format(policy, DEFAULT_POLICY_ID))
+        return self.policy
 
     @override(Trainer)
     def _train(self):
@@ -329,7 +335,7 @@ class ARSTrainer(Trainer):
                 worker.do_rollouts.remote(theta_id) for worker in self.workers
             ]
             # Get the results of the rollouts.
-            for result in ray_get_and_free(rollout_ids):
+            for result in ray.get(rollout_ids):
                 results.append(result)
                 # Update the number of episodes and the number of timesteps
                 # keeping in mind that result.noisy_lengths is a list of lists,

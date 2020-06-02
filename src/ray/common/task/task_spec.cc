@@ -105,10 +105,8 @@ size_t TaskSpecification::NumArgs() const { return message_->args_size(); }
 
 size_t TaskSpecification::NumReturns() const { return message_->num_returns(); }
 
-ObjectID TaskSpecification::ReturnId(size_t return_index,
-                                     TaskTransportType transport_type) const {
-  return ObjectID::ForTaskReturn(TaskId(), return_index + 1,
-                                 static_cast<uint8_t>(transport_type));
+ObjectID TaskSpecification::ReturnId(size_t return_index) const {
+  return ObjectID::ForTaskReturn(TaskId(), return_index + 1);
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
@@ -209,6 +207,10 @@ const rpc::Address &TaskSpecification::CallerAddress() const {
   return message_->caller_address();
 }
 
+WorkerID TaskSpecification::CallerWorkerId() const {
+  return WorkerID::FromBinary(message_->caller_address().worker_id());
+}
+
 // === Below are getter methods specific to actor tasks.
 
 ActorID TaskSpecification::ActorId() const {
@@ -235,7 +237,7 @@ ObjectID TaskSpecification::PreviousActorTaskDummyObjectId() const {
 
 ObjectID TaskSpecification::ActorDummyObject() const {
   RAY_CHECK(IsActorTask() || IsActorCreationTask());
-  return ReturnId(NumReturns() - 1, TaskTransportType::RAYLET);
+  return ReturnId(NumReturns() - 1);
 }
 
 int TaskSpecification::MaxActorConcurrency() const {

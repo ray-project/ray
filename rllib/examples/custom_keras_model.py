@@ -10,7 +10,7 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.agents.dqn.distributional_q_tf_model import \
     DistributionalQTFModel
 from ray.rllib.utils import try_import_tf
-from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as MyVisionNetwork
+from ray.rllib.models.tf.visionnet import VisionNetwork as MyVisionNetwork
 
 tf, tfv = try_import_tf()
 
@@ -131,4 +131,5 @@ if __name__ == "__main__":
                     "custom_model": "keras_q_model"
                     if args.run == "DQN" else "keras_model"
                 },
+                "framework": "tf",
             }))

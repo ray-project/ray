@@ -38,7 +38,7 @@ def do_test_log_likelihood(run,
 
     # Test against all frameworks.
     for fw in framework_iterator(config):
-        if run in [sac.SACTrainer] and fw == "eager":
+        if run in [sac.SACTrainer] and fw == "tfe":
             continue
 
         trainer = run(config=config, env=env)
@@ -62,7 +62,7 @@ def do_test_log_likelihood(run,
         if continuous:
             for idx in range(num_actions):
                 a = actions[idx]
-                if fw == "tf" or fw == "eager":
+                if fw != "torch":
                     if isinstance(vars, list):
                         expected_mean_logstd = fc(
                             fc(obs_batch, vars[layer_key[1][0]]),

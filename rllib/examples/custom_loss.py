@@ -53,11 +53,11 @@ if __name__ == "__main__":
         "num_workers": 0,
         "model": {
             "custom_model": "custom_loss",
-            "custom_options": {
+            "custom_model_config": {
                 "input_files": args.input_files,
             },
         },
-        "use_pytorch": args.torch,
+        "framework": "torch" if args.torch else "tf",
     }
 
     stop = {

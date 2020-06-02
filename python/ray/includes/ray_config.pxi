@@ -51,12 +51,12 @@ cdef class Config:
         return RayConfig.instance().actor_max_dummy_objects()
 
     @staticmethod
-    def num_connect_attempts():
-        return RayConfig.instance().num_connect_attempts()
+    def raylet_client_num_connect_attempts():
+        return RayConfig.instance().raylet_client_num_connect_attempts()
 
     @staticmethod
-    def connect_timeout_milliseconds():
-        return RayConfig.instance().connect_timeout_milliseconds()
+    def raylet_client_connect_timeout_milliseconds():
+        return RayConfig.instance().raylet_client_connect_timeout_milliseconds()
 
     @staticmethod
     def raylet_fetch_timeout_milliseconds():

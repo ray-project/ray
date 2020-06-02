@@ -55,7 +55,7 @@ def build_q_models(policy, obs_space, action_space, config):
         action_space=action_space,
         num_outputs=action_space.n,
         model_config=config["model"],
-        framework="torch" if config["use_pytorch"] else "tf",
+        framework=config["framework"],
         name=Q_SCOPE)
 
     policy.target_q_model = ModelCatalog.get_model_v2(
@@ -63,7 +63,7 @@ def build_q_models(policy, obs_space, action_space, config):
         action_space=action_space,
         num_outputs=action_space.n,
         model_config=config["model"],
-        framework="torch" if config["use_pytorch"] else "tf",
+        framework=config["framework"],
         name=Q_TARGET_SCOPE)
 
     policy.q_func_vars = policy.q_model.variables()
@@ -83,9 +83,9 @@ def get_distribution_inputs_and_class(policy,
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
-    return policy.q_values,\
-        TorchCategorical if policy.config["use_pytorch"] else Categorical,\
-        []  # state-outs
+    return policy.q_values, (TorchCategorical
+                             if policy.config["framework"] == "torch" else
+                             Categorical), []  # state-outs
 
 
 def build_q_losses(policy, model, dist_class, train_batch):

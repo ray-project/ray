@@ -21,9 +21,9 @@ class MultiAgentEnv:
             "traffic_light_1": [0, 3, 5, 1],
         }
         >>> obs, rewards, dones, infos = env.step(
-            action_dict={
-                "car_0": 1, "car_1": 0, "traffic_light_1": 2,
-            })
+        ...    action_dict={
+        ...        "car_0": 1, "car_1": 0, "traffic_light_1": 2,
+        ...    })
         >>> print(rewards)
         {
             "car_0": 3,

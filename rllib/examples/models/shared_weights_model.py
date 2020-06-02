@@ -85,7 +85,12 @@ class SharedWeightsModel2(TFModelV2):
 
 TORCH_GLOBAL_SHARED_LAYER = None
 if torch:
-    TORCH_GLOBAL_SHARED_LAYER = SlimFC(32, 32)
+    TORCH_GLOBAL_SHARED_LAYER = SlimFC(
+        64,
+        64,
+        activation_fn=nn.ReLU,
+        initializer=torch.nn.init.xavier_uniform_,
+    )
 
 
 class TorchSharedWeightsModel(TorchModelV2, nn.Module):
@@ -104,12 +109,22 @@ class TorchSharedWeightsModel(TorchModelV2, nn.Module):
         # Non-shared initial layer.
         self.first_layer = SlimFC(
             int(np.product(observation_space.shape)),
-            32,
-            activation_fn=nn.ReLU)
+            64,
+            activation_fn=nn.ReLU,
+            initializer=torch.nn.init.xavier_uniform_)
 
         # Non-shared final layer.
-        self.last_layer = SlimFC(32, self.num_outputs, activation_fn=nn.ReLU)
-        self.vf = SlimFC(32, 1, activation_fn=None)
+        self.last_layer = SlimFC(
+            64,
+            self.num_outputs,
+            activation_fn=None,
+            initializer=torch.nn.init.xavier_uniform_)
+        self.vf = SlimFC(
+            64,
+            1,
+            activation_fn=None,
+            initializer=torch.nn.init.xavier_uniform_,
+        )
         self._output = None
 
     @override(ModelV2)

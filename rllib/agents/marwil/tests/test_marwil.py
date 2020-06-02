@@ -29,6 +29,7 @@ class TestMARWIL(unittest.TestCase):
             for i in range(num_iterations):
                 trainer.train()
             check_compute_action(trainer, include_prev_action_reward=True)
+            trainer.stop()
 
 
 if __name__ == "__main__":
