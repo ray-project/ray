@@ -35,15 +35,13 @@ DEFAULT_CONFIG = with_common_config({
     "learning_starts": 0,
     # === Parallelism ===
     "num_workers": 0,
-    # Use PyTorch as framework?
-    "use_pytorch": False
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
 def get_policy_class(config):
-    if config.get("use_pytorch") is True:
+    if config["framework"] == "torch":
         from ray.rllib.agents.marwil.marwil_torch_policy import \
             MARWILTorchPolicy
         return MARWILTorchPolicy

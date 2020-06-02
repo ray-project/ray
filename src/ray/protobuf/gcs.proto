@@ -314,6 +314,11 @@ message ObjectTableDataList {
   repeated ObjectTableData items = 1;
 }
 
+message ObjectLocationInfo {
+  bytes object_id = 1;
+  repeated ObjectTableData locations = 2;
+}
+
 // A notification message about one object's locations being changed.
 message ObjectLocationChange {
   bool is_add = 1;

@@ -38,8 +38,8 @@ void DefaultWorkerInfoHandler::HandleReportWorkerFailure(
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status =
-      gcs_client_.Workers().AsyncReportWorkerFailure(worker_failure_data, on_done);
+  Status status = gcs_table_storage_->WorkerFailureTable().Put(
+      worker_id, *worker_failure_data, on_done);
   if (!status.ok()) {
     on_done(status);
   }

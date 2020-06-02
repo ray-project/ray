@@ -1,6 +1,10 @@
+import logging
+
 import ray
 import ray.cloudpickle as pickle
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
+
+logger = logging.getLogger(__name__)
 
 
 def _calculate_key(name):
@@ -15,17 +19,7 @@ def _calculate_key(name):
     return b"Actor:" + name.encode("ascii")
 
 
-def get_actor(name):
-    """Get a named actor which was previously created.
-
-    If the actor doesn't exist, an exception will be raised.
-
-    Args:
-        name: The name of the named actor.
-
-    Returns:
-        The ActorHandle object corresponding to the name.
-    """
+def _get_actor(name):
     if ray._raylet.gcs_actor_service_enabled():
         worker = ray.worker.global_worker
         handle = worker.core_worker.get_named_actor_handle(name)
@@ -40,13 +34,23 @@ def get_actor(name):
     return handle
 
 
-def register_actor(name, actor_handle):
-    """Register a named actor under a string key.
+def get_actor(name):
+    """Get a named actor which was previously created.
 
-   Args:
-       name: The name of the named actor.
-       actor_handle: The actor object to be associated with this name
-   """
+    If the actor doesn't exist, an exception will be raised.
+
+    Args:
+        name: The name of the named actor.
+
+    Returns:
+        The ActorHandle object corresponding to the name.
+    """
+    logger.warning("ray.util.get_actor has been moved to ray.get_actor and "
+                   "will be removed in the future.")
+    return _get_actor(name)
+
+
+def _register_actor(name, actor_handle):
     if not isinstance(name, str):
         raise TypeError("The name argument must be a string.")
     if not isinstance(actor_handle, ray.actor.ActorHandle):
@@ -56,7 +60,7 @@ def register_actor(name, actor_handle):
 
     # First check if the actor already exists.
     try:
-        get_actor(name)
+        _get_actor(name)
         exists = True
     except ValueError:
         exists = False
@@ -66,3 +70,15 @@ def register_actor(name, actor_handle):
 
     # Add the actor to Redis if it does not already exist.
     _internal_kv_put(actor_name, pickle.dumps(actor_handle))
+
+
+def register_actor(name, actor_handle):
+    """Register a named actor under a string key.
+
+    Args:
+        name: The name of the named actor.
+        actor_handle: The actor object to be associated with this name
+    """
+    logger.warning("ray.util.register_actor is deprecated. To create a "
+                   "named, detached actor, use Actor.options(name=\"name\").")
+    return _register_actor(name, actor_handle)

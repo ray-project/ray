@@ -69,7 +69,7 @@ if __name__ == "__main__":
             # disable filters, otherwise we would need to synchronize those
             # as well to the DQN agent
             "observation_filter": "NoFilter",
-            "use_pytorch": args.torch,
+            "framework": "torch" if args.torch else "tf",
         })
 
     dqn_trainer = DQNTrainer(
@@ -82,7 +82,7 @@ if __name__ == "__main__":
             },
             "gamma": 0.95,
             "n_step": 3,
-            "use_pytorch": args.torch or args.mixed_torch_tf,
+            "framework": "torch" if args.torch or args.mixed_torch_tf else "tf"
         })
 
     # You should see both the printed X and Y approach 200 as this trains:
