@@ -15,7 +15,7 @@ class LogTimer:
     def __exit__(self, *error_vals):
         td = datetime.datetime.utcnow() - self._start_time
         if any(error_vals):
-            self._status_string = "FAILED"
+            self._status_string = "failed"
         logger.info(" ".join([
             self._message, self._status_string,
             "[LogTimer={:.0f}ms]".format(td.total_seconds() * 1000)
