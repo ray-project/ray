@@ -79,6 +79,14 @@ class GlobalStateAccessor {
   /// protobuf function.
   std::unique_ptr<std::string> GetObjectInfo(const ObjectID &object_id);
 
+  /// Get information of a node resource from GCS Service.
+  ///
+  /// \param node_id The ID of node to look up in the GCS Service.
+  /// \return node resource map info. To support multi-language, we serialize each
+  /// ResourceTableData and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::string GetNodeResourceInfo(const ClientID &node_id);
+
   /// Get information of all actors from GCS Service.
   ///
   /// \return All actor info. To support multi-language, we serialize each ActorTableData

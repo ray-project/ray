@@ -1,11 +1,11 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import {
+  MemoryTableResponse,
   NodeInfoResponse,
   RayConfigResponse,
   RayletInfoResponse,
   TuneAvailabilityResponse,
   TuneJobResponse,
-  MemoryTableResponse,
 } from "../../api";
 
 const name = "dashboard";
