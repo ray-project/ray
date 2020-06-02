@@ -121,7 +121,9 @@ class Monitor:
             unused_channel: The message channel.
             data: The message data.
         """
-        message = ray.gcs_utils.JobTableData.FromString(data)
+        pub_message = ray.gcs_utils.PubSubMessage.FromString(data)
+        job_data = pub_message.data
+        message = ray.gcs_utils.JobTableData.FromString(job_data)
         job_id = message.job_id
         if message.is_dead:
             logger.info("Monitor: "
