@@ -1,7 +1,5 @@
 from functools import wraps
 
-from multiprocessing import cpu_count
-
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_MASTER_NAME, HTTP_PROXY_TIMEOUT)
@@ -63,18 +61,14 @@ def accept_batch(f):
 def init(cluster_name=None,
          http_host=DEFAULT_HTTP_HOST,
          http_port=DEFAULT_HTTP_PORT,
-         ray_init_kwargs={
-             "object_store_memory": int(1e8),
-             "num_cpus": max(cpu_count(), 8)
-         },
          metric_exporter=InMemoryExporter):
-    """Initialize a serve cluster.
+    """Initialize or connect to a serve cluster.
 
-    If serve cluster has already initialized, this function will just return.
+    If serve cluster is already initialized, this function will just return.
 
-    Calling `ray.init` before `serve.init` is optional. When there is not a ray
-    cluster initialized, serve will call `ray.init` with `object_store_memory`
-    requirement.
+    If `ray.init` has not been called in this process, it will be called with
+    no arguments. To specify kwargs to `ray.init`, it should be called
+    separately before calling `serve.init`.
 
     Args:
         cluster_name (str): A unique name for this serve cluster. This allows
@@ -82,9 +76,6 @@ def init(cluster_name=None,
             specified in all subsequent serve.init() calls.
         http_host (str): Host for HTTP server. Default to "0.0.0.0".
         http_port (int): Port for HTTP server. Default to 8000.
-        ray_init_kwargs (dict): Argument passed to ray.init, if there is no ray
-            connection. Default to {"object_store_memory": int(1e8)} for
-            performance stability reason
         metric_exporter(ExporterInterface): The class aggregates metrics from
             all RayServe actors and optionally export them to external
             services. RayServe has two options built in: InMemoryExporter and
@@ -95,7 +86,7 @@ def init(cluster_name=None,
 
     # Initialize ray if needed.
     if not ray.is_initialized():
-        ray.init(**ray_init_kwargs)
+        ray.init()
 
     # Try to get serve master actor if it exists
     global master_actor
