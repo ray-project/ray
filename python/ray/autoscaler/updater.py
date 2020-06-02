@@ -272,7 +272,7 @@ class SSHCommandRunner:
                 raise click.ClickException(
                     "Command failed: \n\n  {}\n".format(quoted_cmd)) from None
             else:
-                raise Exception(
+                raise click.ClickException(
                     "SSH command Failed. Look above to see the output from the"
                     " failure.") from None
 
