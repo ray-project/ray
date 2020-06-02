@@ -11,15 +11,16 @@ from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.tf.fcnet_v1 import FullyConnectedNetwork
 from ray.rllib.models.tf.lstm_v1 import LSTM
 from ray.rllib.models.tf.modelv1_compat import make_v1_wrapper
+from ray.rllib.models.tf.recurrent_net import LSTMWrapper
 from ray.rllib.models.tf.tf_action_dist import Categorical, \
     Deterministic, DiagGaussian, Dirichlet, \
     MultiActionDistribution, MultiCategorical
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.visionnet_v1 import VisionNetwork
-from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
@@ -380,6 +381,17 @@ class ModelCatalog:
             if not model_config.get("custom_model"):
                 v2_class = default_model or ModelCatalog._get_v2_model_class(
                     obs_space, model_config, framework=framework)
+
+            if model_config["use_lstm"]:
+                v2_class = ModelCatalog._wrap_if_needed(
+                    v2_class, LSTMWrapper)
+                #copy = dict(input_dict)
+                #copy["obs"] = model.last_layer
+                #feature_space = gym.spaces.Box(
+                #    -1, 1, shape=(model.last_layer.shape[1],))
+                #v2_class = LSTM(copy, feature_space, action_space, num_outputs,
+                #             options, state_in, seq_lens)
+
             # fallback to a default v1 model
             if v2_class is None:
                 if tf.executing_eagerly():
