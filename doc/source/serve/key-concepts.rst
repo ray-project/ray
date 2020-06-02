@@ -23,7 +23,14 @@ model that you'll be serving. To create one, we'll simply specify the name, rout
 
 .. code-block:: python
 
-  serve.create_endpoint("simple_endpoint", "/simple")
+  serve.create_endpoint("simple_endpoint", "/simple", methods=["GET"])
+
+To view all of the existing endpoints that have created, use `serve.list_endpoints`.
+
+.. code-block:: python
+
+  >>> serve.list_endpoints()
+  {'simple_endpoint': {'route': '/simple', 'methods': ['GET'], 'traffic': {}}}
 
 You can also delete an endpoint using `serve.delete_endpoint`.
 Note that this will not delete any associated backends, which can be reused for other endpoints.
@@ -62,6 +69,20 @@ It's important to note that Ray Serve places these backends in individual worker
 
   serve.create_backend("simple_backend", handle_request)
   serve.create_backend("simple_backend_class", RequestHandler)
+
+Similar to endpoints, we can also list all available backends and delete them to reclaim resources.
+
+.. code-block:: python
+  >> serve.list_backends()
+  {
+      'simple_backend': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
+      'simple_backend_class': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
+  }
+  >> serve.delete_backend("simple_backend")
+  >> serve.list_backends()
+  {
+      'simple_backend_class': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
+  }
 
 Setting Traffic
 ===============
