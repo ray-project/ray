@@ -28,14 +28,14 @@ SETUP_TIME_THRESHOLD = 10
 
 class TrainableUtil:
     @staticmethod
-    def process_checkpoint(checkpoint, trainable):
+    def process_checkpoint(checkpoint, parent_dir, trainable):
         saved_as_dict = False
         if isinstance(checkpoint, string_types):
-            if not checkpoint.startswith(checkpoint_dir):
+            if not checkpoint.startswith(parent_dir):
                 raise ValueError(
                     "The returned checkpoint path must be within the "
                     "given checkpoint dir {}: {}".format(
-                        checkpoint_dir, checkpoint))
+                        parent_dir, checkpoint))
             checkpoint_path = checkpoint
             if os.path.isdir(checkpoint_path):
                 # Add trailing slash to prevent tune metadata from
@@ -43,7 +43,7 @@ class TrainableUtil:
                 checkpoint_path = os.path.join(checkpoint_path, "")
         elif isinstance(checkpoint, dict):
             saved_as_dict = True
-            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
+            checkpoint_path = os.path.join(parent_dir, "checkpoint")
             with open(checkpoint_path, "wb") as f:
                 pickle.dump(checkpoint, f)
         else:
@@ -108,8 +108,8 @@ class TrainableUtil:
         """Creates a checkpoint directory at the provided path."""
 
         if step:
-            checkpoint_dir = os.path.join(
-                checkpoint_dir, "checkpoint_{}".format(step))
+            checkpoint_dir = os.path.join(checkpoint_dir,
+                                          "checkpoint_{}".format(step))
         os.makedirs(checkpoint_dir, exist_ok=True)
         # Drop marker in directory to identify it as a checkpoint dir.
         open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
@@ -378,7 +378,8 @@ class Trainable:
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
             checkpoint_dir or self.logdir, iteration=self.iteration)
         checkpoint = self._save(checkpoint_dir)
-        checkpoint_path = TrainableUtil.process_checkpoint(checkpoint, self)
+        checkpoint_path = TrainableUtil.process_checkpoint(
+            checkpoint, parent=checkpoint_dir, trainable=self)
         return checkpoint_path
 
     def save_to_object(self):

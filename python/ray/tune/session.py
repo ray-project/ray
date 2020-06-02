@@ -5,32 +5,6 @@ logger = logging.getLogger(__name__)
 _session = None
 
 
-class _ReporterSession:
-    def __init__(self, tune_reporter):
-        self.tune_reporter = tune_reporter
-
-    def report(self, **metrics):
-        return self.tune_reporter(**metrics)
-
-    def get_checkpoint_dir(self):
-        return self.tune_reporter.get_checkpoint_dir()
-
-    @property
-    def logdir(self):
-        """Trial logdir (subdir of given experiment directory)"""
-        return self.tune_reporter.logdir
-
-    @property
-    def trial_name(self):
-        """Trial name for the corresponding trial of this Trainable"""
-        return self.tune_reporter.trial_name
-
-    @property
-    def trial_id(self):
-        """Trial id for the corresponding trial of this Trainable"""
-        return self.tune_reporter.trial_id
-
-
 def get_session():
     global _session
     if _session is None:
@@ -59,7 +33,7 @@ def init(reporter, ignore_reinit_error=True):
         else:
             raise ValueError(reinit_msg)
 
-    _session = _ReporterSession(reporter)
+    _session = reporter
 
 
 def shutdown():
@@ -89,10 +63,10 @@ def report(**kwargs):
             metrics can be used for early stopping or optimization.
     """
     _session = get_session()
-    return _session.report(**kwargs)
+    return _session(**kwargs)
 
 
-def get_checkpoint_dir():
+def make_checkpoint_dir(step=None):
     """Gets the next checkpoint dir.
 
     .. code-block:: python
@@ -104,7 +78,7 @@ def get_checkpoint_dir():
             for iter in range(checkpoint, 100):
                 time.sleep(1)
 
-                checkpoint_dir = tune.get_checkpoint_dir()
+                checkpoint_dir = tune.make_checkpoint_dir()
                 with open(checkpoint_dir + "/checkpoint", "wb") as f:
                     f.write(iter)
                 tune.save_checkpoint(checkpoint_dir)
@@ -112,8 +86,7 @@ def get_checkpoint_dir():
                 tune.report(hello="world", ray="tune")
     """
     _session = get_session()
-    return _session.get_checkpoint_dir()
-
+    return _session.make_checkpoint_dir(step=step)
 
 
 def save_checkpoint(checkpoint):
@@ -141,7 +114,7 @@ def save_checkpoint(checkpoint):
             for iter in range(checkpoint, 100):
                 time.sleep(1)
 
-                checkpoint_dir = tune.get_checkpoint_dir()
+                checkpoint_dir = tune.make_checkpoint_dir()
                 with open(checkpoint_dir + "/checkpoint", "wb") as f:
                     f.write(iter)
                 tune.save_checkpoint(checkpoint_dir)
@@ -155,7 +128,8 @@ def save_checkpoint(checkpoint):
             metrics can be used for early stopping or optimization.
     """
     _session = get_session()
-    return _session.report(**kwargs)
+    return _session.save_checkpoint(checkpoint)
+
 
 def get_trial_dir():
     """Returns the directory where trial results are saved.

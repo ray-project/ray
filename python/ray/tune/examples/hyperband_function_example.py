@@ -22,16 +22,18 @@ def train(config, checkpoint=None):
         v = np.tanh(float(timestep) / config.get("width", 1))
         v *= config.get("height", 1)
 
+        if timestep % 3 == 0:
+            checkpoint_dir = tune.make_checkpoint_dir(step=timestep)
+            path = os.path.join(checkpoint_dir, "checkpoint")
+            print("Checkpointing to", path)
+            with open(path, "w") as f:
+                f.write(json.dumps({"timestep": timestep}))
+            tune.save_checkpoint(path)
+
         # Here we use `episode_reward_mean`, but you can also report other
         # objectives such as loss or accuracy.
         tune.report(episode_reward_mean=v)
 
-        if timestep % 3 == 0:
-            checkpoint_dir = tune.get_checkpoint_dir(step=timestep)
-            path = os.path.join(checkpoint_dir, "checkpoint")
-            with open(path, "w") as f:
-                f.write(json.dumps({"timestep": self.timestep}))
-            tune.save_checkpoint(path)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -49,7 +51,8 @@ if __name__ == "__main__":
         mode="max",
         max_t=200)
 
-    tune.run(train,
+    tune.run(
+        train,
         name="hyperband_test",
         num_samples=5,
         stop={"training_iteration": 10 if args.smoke_test else 99999},

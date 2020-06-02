@@ -3,11 +3,12 @@ import time
 import inspect
 import threading
 import traceback
+import io
 from six.moves import queue
 
 from ray.tune import TuneError, session
 from ray.tune.trainable import Trainable, TrainableUtil
-from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
+from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE, SHOULD_CHECKPOINT
 
 logger = logging.getLogger(__name__)
 
@@ -78,12 +79,26 @@ class StatusReporter:
         # result has been returned to Tune and that the function is safe to
         # resume training.
         self._continue_semaphore.acquire()
+        self._current_checkpoint_dir = None
+        self._last_checkpoint_dir = None
 
-    def get_checkpoint_dir(self, step=None):
-        return TrainableUtil.make_checkpoint_dir(self.logdir, step=step)
+    def make_checkpoint_dir(self, step=None):
+        checkpoint_dir = TrainableUtil.make_checkpoint_dir(
+            self.logdir, step=step)
+        self._current_checkpoint_dir = checkpoint_dir
+        return checkpoint_dir
 
     def save_checkpoint(self, checkpoint_path):
+        if not self._current_checkpoint_dir:
+            raise RuntimeError("Need to call make_checkpoint_dir.")
+        elif not checkpoint_path.startswith(self._current_checkpoint_dir):
+            raise RuntimeError(
+                "Checkpoint must be created with path given from "
+                "make_checkpoint_dir.")
+        logger.debug("Checkpoint created at {}".format(checkpoint_path))
         self._checkpoint_queue.put(checkpoint_path)
+        self._last_checkpoint_dir = self._current_checkpoint_dir
+        self._current_checkpoint_dir = None
 
     def _start(self):
         self._last_report_time = time.time()
@@ -101,6 +116,10 @@ class StatusReporter:
     def trial_id(self):
         """Trial id for the corresponding trial of this Trainable."""
         return self._trial_id
+
+    @property
+    def last_checkpoint_dir(self):
+        return self._last_checkpoint_dir
 
 
 class _RunnerThread(threading.Thread):
@@ -151,6 +170,9 @@ class FunctionRunner(Trainable):
         # Queue for passing results between threads
         self._results_queue = queue.Queue(1)
 
+        # Queue for passing checkpoints between threads
+        self._checkpoint_queue = queue.Queue(1)
+
         # Queue for passing errors back from the thread runner. The error queue
         # has a max size of one to prevent stacking error and force error
         # reporting to block until finished.
@@ -158,6 +180,7 @@ class FunctionRunner(Trainable):
 
         self._status_reporter = StatusReporter(
             self._results_queue,
+            self._checkpoint_queue,
             self._continue_semaphore,
             trial_name=self.trial_name,
             trial_id=self.trial_id,
@@ -248,6 +271,8 @@ class FunctionRunner(Trainable):
             result = new_result
 
         self._last_result = result
+        if not self._checkpoint_queue.empty():
+            result[SHOULD_CHECKPOINT] = True
         return result
 
     def save(self, checkpoint_path=None):
@@ -255,11 +280,12 @@ class FunctionRunner(Trainable):
             raise ValueError(
                 "Checkpoint path should not be used with function API.")
         if not self._checkpoint_queue.empty():
-            checkpoint =  self._checkpoint_queue.pop()
+            checkpoint = self._checkpoint_queue.get(block=False)
             self._last_checkpoint = checkpoint
         else:
             checkpoint = self._last_checkpoint
-        checkpoint_path = TrainableUtil.process_checkpoint(checkpoint, self)
+        checkpoint_path = TrainableUtil.process_checkpoint(
+            checkpoint, self._status_reporter.last_checkpoint_dir, self)
         return checkpoint_path
 
     def save_to_object(self):
