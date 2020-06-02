@@ -562,8 +562,7 @@ class Trainer(Trainable):
                 self.config["framework"] = "tfe"
             self.config.pop("eager")
 
-        # Check all dependencies and resolve "auto" framework.
-        # Notify about eager/tracing support.
+        # Enable eager/tracing support.
         if tf and self.config["framework"] == "tfe":
             if not tf.executing_eagerly():
                 tf.enable_eager_execution()
