@@ -121,13 +121,7 @@ class Monitor:
             unused_channel: The message channel.
             data: The message data.
         """
-        gcs_entries = ray.gcs_utils.GcsEntry.FromString(data)
-        print('gcs entries: {}'.format(gcs_entries))
-        # print(gcs_entries.entries)
-        job_data = gcs_entries
-        print('job data: {}'.format(job_data))
-        message = ray.gcs_utils.JobTableData.FromString(job_data)
-        print(message)
+        message = ray.gcs_utils.JobTableData.FromString(data)
         job_id = message.job_id
         if message.is_dead:
             logger.info("Monitor: "
