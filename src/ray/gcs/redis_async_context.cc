@@ -41,6 +41,7 @@ redisAsyncContext *RedisAsyncContext::GetRawRedisAsyncContext() {
 
 void RedisAsyncContext::ResetRawRedisAsyncContext() {
   // Reset redis_async_context_ to nullptr because hiredis has released this context.
+  std::lock_guard<std::mutex> lock(mutex_);
   redis_async_context_ = nullptr;
 }
 
@@ -50,15 +51,18 @@ void RedisAsyncContext::RedisAsyncHandleRead() {
   // This function will execute the callbacks which are registered by
   // `redisvAsyncCommand`, `redisAsyncCommandArgv` and so on.
   std::lock_guard<std::mutex> lock(mutex_);
-
-  redisAsyncHandleRead(redis_async_context_);
+  if (redis_async_context_ != nullptr) {
+    redisAsyncHandleRead(redis_async_context_);
+  }
 }
 
 void RedisAsyncContext::RedisAsyncHandleWrite() {
   // `redisAsyncHandleWrite` will mutate `redis_async_context_`, use a lock to protect
   // it.
   std::lock_guard<std::mutex> lock(mutex_);
-  redisAsyncHandleWrite(redis_async_context_);
+  if (redis_async_context_ != nullptr) {
+    redisAsyncHandleWrite(redis_async_context_);
+  }
 }
 
 Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn, void *privdata,
@@ -93,6 +97,9 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(redisCallbackFn *fn, void *privd
     // `redisAsyncCommandArgv` will mutate `redis_async_context_`, use a lock to protect
     // it.
     std::lock_guard<std::mutex> lock(mutex_);
+    if (!redis_async_context_) {
+      return Status::NotImplemented("...");
+    }
     ret_code =
         redisAsyncCommandArgv(redis_async_context_, fn, privdata, argc, argv, argvlen);
   }
