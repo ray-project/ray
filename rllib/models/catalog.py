@@ -57,13 +57,13 @@ MODEL_DEFAULTS = {
     "vf_share_layers": True,
 
     # == LSTM ==
-    # Whether to wrap the model with a LSTM
+    # Whether to wrap the model with an LSTM.
     "use_lstm": False,
-    # Max seq len for training the LSTM, defaults to 20
+    # Max seq len for training the LSTM, defaults to 20.
     "max_seq_len": 20,
-    # Size of the LSTM cell
+    # Size of the LSTM cell.
     "lstm_cell_size": 256,
-    # Whether to feed a_{t-1}, r_{t-1} to LSTM
+    # Whether to feed a_{t-1}, r_{t-1} to LSTM.
     "lstm_use_prev_action_reward": False,
     # When using modelv1 models with a modelv2 algorithm, you may have to
     # define the state shape here (e.g., [256, 256]).
@@ -107,8 +107,9 @@ class ModelCatalog:
         >>> observation = prep.transform(raw_observation)
 
         >>> dist_class, dist_dim = ModelCatalog.get_action_dist(
-                env.action_space, {})
-        >>> model = ModelCatalog.get_model(inputs, dist_dim, options)
+        ...     env.action_space, {})
+        >>> model = ModelCatalog.get_model_v2(
+        ...     obs_space, action_space, num_outputs, options)
         >>> dist = dist_class(model.outputs, model)
         >>> action = dist.sample()
     """
@@ -305,8 +306,9 @@ class ModelCatalog:
             if isinstance(model_config["custom_model"], type):
                 model_cls = model_config["custom_model"]
             else:
-                model_cls = _global_registry.get(RLLIB_MODEL,
-                                                 model_config["custom_model"])
+                model_cls = _global_registry.get(
+                    RLLIB_MODEL, model_config["custom_model"])
+
             # TODO(sven): Hard-deprecate Model(V1).
             if issubclass(model_cls, ModelV2):
                 logger.info("Wrapping {} as {}".format(model_cls,
@@ -374,7 +376,7 @@ class ModelCatalog:
 
         if framework in ["tf", "tfe"]:
             v2_class = None
-            # try to get a default v2 model
+            # Try to get a default v2 model.
             if not model_config.get("custom_model"):
                 v2_class = default_model or ModelCatalog._get_v2_model_class(
                     obs_space, model_config, framework=framework)
@@ -387,7 +389,7 @@ class ModelCatalog:
                         "observation space: {}, use_lstm={}".format(
                             obs_space, model_config.get("use_lstm")))
                 v2_class = make_v1_wrapper(ModelCatalog.get_model)
-            # wrap in the requested interface
+            # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
                            name, **model_kwargs)
