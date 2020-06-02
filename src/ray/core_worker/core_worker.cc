@@ -699,7 +699,7 @@ void CoreWorker::LocationResolveHeartBeat(const boost::system::error_code &error
 }
 
 void CoreWorker::ResolveActorsLocationNotPersistedToGCS() {
-  absl::MutexLock lock(&actors_pending_location_resolution_);
+  absl::MutexLock lock(&actors_pending_location_resolution_mutex_);
   for (auto it = actors_pending_location_resolution_.begin();
        it != actors_pending_location_resolution_.end();) {
     auto current = it++;
@@ -752,7 +752,7 @@ void CoreWorker::ResolveActorsLocationNotPersistedToGCS() {
                       RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
                       if (!actor_handle->IsPersistedToGCS()) {
                         direct_actor_submitter_->DisconnectActor(actor_id, true);
-                        absl::MutexLock lock(&actors_pending_location_resolution_);
+                        absl::MutexLock lock(&actors_pending_location_resolution_mutex_);
                         actors_pending_location_resolution_.erase(actor_id);
                       }
                     }
@@ -1368,7 +1368,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   if (inserted) {
     {
       // Location will be resolved after GCS reports actor states.
-      absl::MutexLock lock(&actors_pending_location_resolution_);
+      absl::MutexLock lock(&actors_pending_location_resolution_mutex_);
       actors_pending_location_resolution_.insert(actor_id);
     }
     // Register a callback to handle actor notifications.
