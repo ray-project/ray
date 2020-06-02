@@ -11,62 +11,6 @@ logger = logging.getLogger(__name__)
 TensorType = Any
 
 
-def get_auto_framework():
-    """Returns the framework (str) when framework="auto" in the config.
-
-    If only PyTorch is installed, returns "torch", if only tf is installed,
-    returns "tf", if both are installed, raises an error.
-    """
-
-    # PyTorch is installed.
-    if torch is not None:
-        # TF is not installed -> return torch.
-        if tf is None:
-            if log_once("get_auto_framework"):
-                logger.info(
-                    "`framework=auto` found in config -> Detected PyTorch.")
-            return "torch"
-        # TF is also installed -> raise error.
-        else:
-            raise ValueError(
-                "framework='auto' (default value) is not allowed if both "
-                "TensorFlow AND PyTorch are installed! "
-                "Instead, use framework='tf|tfe|torch' explicitly.")
-    # PyTorch nor TF installed -> raise error.
-    if not tf:
-        raise ValueError(
-            "Neither TensorFlow nor PyTorch are installed! You must install "
-            "one of them by running either `pip install tensorflow` OR "
-            "`pip install torch torchvision`")
-    # Only TensorFlow installed -> return tf.
-    if log_once("get_auto_framework"):
-        logger.info("`framework=auto` found in config -> Detected TensorFlow.")
-    return "tf"
-
-
-def check_framework(framework, allow_none=True):
-    """Checks, whether the given framework is "valid".
-
-    Meaning, whether all necessary dependencies are installed.
-
-    Args:
-        framework (str): Once of "tf", "torch", or None.
-        allow_none (bool): Whether framework=None (e.g. numpy implementatiopn)
-            is allowed or not.
-
-    Returns:
-        str: The input framework string.
-
-    Raises:
-        ImportError: If given framework is not installed.
-    """
-    # Resolve auto framework first.
-    if framework == "auto":
-        framework = get_auto_framework()
-
-    return framework
-
-
 def try_import_tf(error=False):
     """Tries importing tf and returns the module (or None).
 
