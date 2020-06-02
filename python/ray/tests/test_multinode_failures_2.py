@@ -11,6 +11,7 @@ import ray
 from ray.test_utils import get_other_nodes
 import ray.ray_constants as ray_constants
 
+
 def test_gcs_server_restart():
     ray.init()
 
@@ -41,6 +42,7 @@ def test_gcs_server_restart():
     result = ray.get(increase.remote(1))
     assert_equal(result, 2)
     ray.shutdown()
+
 
 @pytest.mark.skip(reason="No reconstruction for objects placed in plasma yet")
 @pytest.mark.parametrize(
