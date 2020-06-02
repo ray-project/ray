@@ -142,6 +142,16 @@ def delete_endpoint(endpoint):
 
 
 @_ensure_connected
+def list_endpoints():
+    """Returns a dictionary of all registered endpoints.
+
+    The dictionary keys are endpoint names and values are dictionaries
+    of the form: {"methods": List[str], "traffic": Dict[str, float]}.
+    """
+    return retry_actor_failures(master_actor.get_all_endpoints)
+
+
+@_ensure_connected
 def update_backend_config(backend_tag, config_options):
     """Update a backend configuration for a backend tag.
 
@@ -198,6 +208,15 @@ def create_backend(backend_tag,
 
     retry_actor_failures(master_actor.create_backend, backend_tag,
                          backend_config, replica_config)
+
+
+@_ensure_connected
+def list_backends():
+    """Returns a dictionary of all registered backends.
+
+    Dictionary maps backend tags to backend configs.
+    """
+    return retry_actor_failures(master_actor.get_all_backends)
 
 
 @_ensure_connected

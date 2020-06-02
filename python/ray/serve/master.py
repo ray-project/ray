@@ -446,12 +446,22 @@ class ServeMaster:
         return self.workers
 
     def get_all_backends(self):
-        """Used for validation by the API client."""
-        return list(self.backends.keys())
+        """Returns a dictionary of backend tag to backend config dict."""
+        backends = {}
+        for backend_tag, (_, config, _) in self.backends.items():
+            backends[backend_tag] = config.__dict__
+        return backends
 
     def get_all_endpoints(self):
-        """Used for validation by the API client."""
-        return [endpoint for endpoint, methods in self.routes.values()]
+        """Returns a dictionary of endpoint to endpoint config."""
+        endpoints = {}
+        for route, (endpoint, methods) in self.routes.items():
+            endpoints[endpoint] = {
+                "route": route if route.startswith("/") else None,
+                "methods": methods,
+                "traffic": self.traffic_policies.get(endpoint, {})
+            }
+        return endpoints
 
     async def set_traffic(self, endpoint_name, traffic_policy_dictionary):
         """Sets the traffic policy for the specified endpoint."""
