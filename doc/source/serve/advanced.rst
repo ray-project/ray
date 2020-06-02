@@ -44,6 +44,9 @@ following:
   config = {"num_gpus": 1}
   serve.create_backend("my_gpu_backend", handle_request, ray_actor_options=config)
 
+Configuring Parallelism with OMP_NUM_THREADS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Deep learning models like PyTorch and Tensorflow often use multithreading when performing inference.
 The number of CPUs they use is controlled by the OMP_NUM_THREADS environment variable.
 To :ref:`avoid contention<omp-num-thread-note>`, Ray sets ``OMP_NUM_THREADS=1`` by default because Ray workers and actors use a single CPU by default.
