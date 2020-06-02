@@ -39,7 +39,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   gcs_pub_sub_.reset(new GcsPubSub(redis_gcs_client_->GetRedisClient()));
 
   // Get gcs service address.
-  auto get_server_address = [this]() {
+  get_server_address_func_ = [this]() {
     std::pair<std::string, int> address;
     GetGcsServerAddressFromRedis(redis_gcs_client_->primary_context()->sync_context(),
                                  &address);
@@ -58,9 +58,9 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
 
   // Connect to gcs service.
   client_call_manager_.reset(new rpc::ClientCallManager(io_service));
-  gcs_rpc_client_.reset(new rpc::GcsRpcClient(address.first, address.second,
-                                              *client_call_manager_, get_server_address,
-                                              re_subscribe));
+  gcs_rpc_client_.reset(
+      new rpc::GcsRpcClient(address.first, address.second, *client_call_manager_,
+                            get_server_address_func_, re_subscribe_func_));
   job_accessor_.reset(new ServiceBasedJobInfoAccessor(this));
   actor_accessor_.reset(new ServiceBasedActorInfoAccessor(this));
   node_accessor_.reset(new ServiceBasedNodeInfoAccessor(this));
@@ -69,6 +69,10 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   stats_accessor_.reset(new ServiceBasedStatsInfoAccessor(this));
   error_accessor_.reset(new ServiceBasedErrorInfoAccessor(this));
   worker_accessor_.reset(new ServiceBasedWorkerInfoAccessor(this));
+
+  // Init gcs service address check timer.
+  detect_timer_.reset(new boost::asio::deadline_timer(io_service));
+  Tick();
 
   is_connected_ = true;
 
@@ -79,6 +83,11 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
 void ServiceBasedGcsClient::Disconnect() {
   RAY_CHECK(is_connected_);
   is_connected_ = false;
+  boost::system::error_code ec;
+  detect_timer_->cancel(ec);
+  if (ec) {
+    RAY_LOG(WARNING) << "An exception occurs when Shutdown, error " << ec.message();
+  }
   gcs_pub_sub_.reset();
   redis_gcs_client_->Disconnect();
   redis_gcs_client_.reset();
@@ -115,6 +124,27 @@ void ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
       << "Gcs service address format is erroneous: " << result;
   address->first = result.substr(0, pos);
   address->second = std::stoi(result.substr(pos + 1));
+}
+
+void ServiceBasedGcsClient::Tick() {
+  auto address = get_server_address_func_();
+  re_subscribe_func_(address);
+  ScheduleTick();
+}
+
+void ServiceBasedGcsClient::ScheduleTick() {
+  auto check_period = boost::posix_time::milliseconds(
+      RayConfig::instance().gcs_service_address_check_interval_milliseconds());
+  detect_timer_->expires_from_now(check_period);
+  detect_timer_->async_wait([this](const boost::system::error_code &error) {
+    if (error == boost::system::errc::operation_canceled) {
+      // `operation_canceled` is set when `detect_timer_` is canceled or destroyed.
+      return;
+    }
+    RAY_CHECK(!error) << "Checking gcs server address failed with error: "
+                      << error.message();
+    Tick();
+  });
 }
 
 }  // namespace gcs
