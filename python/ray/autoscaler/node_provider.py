@@ -3,6 +3,8 @@ import logging
 import os
 import yaml
 
+from ray.autoscaler.updater import SSHCommandRunner
+
 logger = logging.getLogger(__name__)
 
 
@@ -208,3 +210,9 @@ class NodeProvider:
     def cleanup(self):
         """Clean-up when a Provider is no longer required."""
         pass
+
+    def get_command_runner(self, log_prefix, node_id, provider, auth_config,
+                           cluster_name, process_runner, use_internal_ip):
+        """ Returns the CommandRunner class used to perform SSH commands. """
+        return SSHCommandRunner(log_prefix, node_id, provider, auth_config,
+                                cluster_name, process_runner, use_internal_ip)
