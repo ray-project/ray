@@ -64,24 +64,6 @@ def check_framework(framework, allow_none=True):
     if framework == "auto":
         framework = get_auto_framework()
 
-    # Check, whether tf is installed.
-    if framework in ["tf", "tfe"]:
-        if tf is None:
-            raise ImportError(
-                "Could not import `tensorflow`. Try `pip install tensorflow`")
-    # Check, whether torch is installed.
-    elif framework == "torch":
-        if torch is None:
-            raise ImportError("Could not import `torch`. "
-                              "Try `pip install torch torchvision`")
-    # Framework is None (use numpy version of the component).
-    elif framework is None:
-        if not allow_none:
-            raise ValueError("framework=None not allowed!")
-    # Invalid value.
-    else:
-        raise ValueError("Invalid framework='{}'. Use one of "
-                         "[tf|tfe|torch|auto].".format(framework))
     return framework
 
 
