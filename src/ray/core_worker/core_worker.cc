@@ -689,9 +689,6 @@ void CoreWorker::LocationResolveHeartBeat(const boost::system::error_code &error
   if (error == boost::asio::error::operation_aborted) {
     return;
   }
-  // Note: This will poll the GCS service every certain period.
-  // This exists to resolve scenarios such as
-  // https://github.com/ray-project/ray/pull/8679/files
   ResolveActorsLocationNotPersistedToGCS();
   internal_timer_.expires_at(
       internal_timer_.expiry() +
@@ -712,32 +709,40 @@ void CoreWorker::ResolveActorsLocationNotPersistedToGCS() {
     if (actor_handle->IsPersistedToGCS()) {
       // if an actor is already persisted to GCS, GCS will be responsible for reporting
       // state of actors, so just remove it from the waiter.
-      actor_location_resolve_waiters_.erase(actor_id);
+      actor_location_resolve_waiters_.erase(current);
     } else {
-      // If it is still not persisted to GCS, check worker/node is still alive.
-      // Disconnect actors if the worker or node is dead.
-      // This is needed because until the owner's local depedencies are resolved,
-      // actors won't be persisted to GCS, and there's no way we can know the states of
-      // them. Question? Is is possible worker is restarted after reporting failures?
+      // https://github.com/ray-project/ray/pull/8679/files
+      // Protocol to resolve actors location that haven't been registered to GCS.     
       const WorkerID &worker_id =
           WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
       RAY_CHECK_OK(gcs_client_->Workers().AsyncGetWorkerFailure(
           worker_id,
           [this, actor_id](Status status,
                            const boost::optional<gcs::WorkerFailureData> &result) {
+            // Question: Can this cause a deadlock?
+            ActorHandle *actor_handle = nullptr;
+            RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
+            absl::MutexLock lock(&actor_location_resolve_waiters_mutex_);
             if (status.ok() && result) {
-              direct_actor_submitter_->DisconnectActor(actor_id, true);
+              // if worker failure event has been reported, disconnect this actor.
+              if (!actor_handle->IsPersistedToGCS()) {
+                direct_actor_submitter_->DisconnectActor(actor_id, true);
+                actor_location_resolve_waiters_.erase(actor_id);
+              }
+            } else {
+              // Check node failure. We should do this because
+              // worker failure event is not reported when nodes fail.
+              const ClientID &node_id =
+                  ClientID::FromBinary(actor_handle->GetOwnerAddress().raylet_id());
+              const auto &optional_node_info = gcs_client_->Nodes().Get(node_id);
+              RAY_CHECK(optional_node_info) << "Node information for an actor_id is not found.";
+              if (optional_node_info->state() == rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD
+                  && !actor_handle->IsPersistedToGCS()) {
+                direct_actor_submitter_->DisconnectActor(actor_id, true);
+                actor_location_resolve_waiters_.erase(actor_id);
+              }
             }
           }));
-
-      const ClientID &node_id =
-          ClientID::FromBinary(actor_handle->GetOwnerAddress().raylet_id());
-      const auto &optional_node_info = gcs_client_->Nodes().Get(node_id);
-      RAY_CHECK(optional_node_info) << "Node information for an actor_id is not found.";
-      if (optional_node_info->state() ==
-          rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD) {
-        direct_actor_submitter_->DisconnectActor(actor_id, true);
-      }
     }
   }
 }
@@ -1338,13 +1343,6 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   reference_counter_->AddLocalReference(actor_creation_return_id, CurrentCallSite());
   direct_actor_submitter_->AddActorQueueIfNotExists(actor_id);
 
-  if (!actor_handle->IsPersistedToGCS()) {
-    // When an actor information is not persisted to GCS yet, worker failure & node
-    // failure should be tracked so that it can know if actors have been failed or not.
-    absl::MutexLock lock(&actor_location_resolve_waiters_mutex_);
-    actor_location_resolve_waiters_.insert(actor_id);
-  }
-
   bool inserted;
   {
     absl::MutexLock lock(&actor_handles_mutex_);
@@ -1352,6 +1350,11 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   }
 
   if (inserted) {
+    {
+      // Location will be resolved after GCS reports actor states.
+      absl::MutexLock lock(&actor_location_resolve_waiters_mutex_);
+      actor_location_resolve_waiters_.insert(actor_id);
+    }
     // Register a callback to handle actor notifications.
     auto actor_notification_callback = [this](const ActorID &actor_id,
                                               const gcs::ActorTableData &actor_data) {

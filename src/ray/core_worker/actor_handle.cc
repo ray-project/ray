@@ -95,6 +95,11 @@ void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_
 
 void ActorHandle::Serialize(std::string *output) { inner_.SerializeToString(output); }
 
+bool ActorHandle::IsPersistedToGCS() const {
+  absl::MutexLock guard(&mutex_);
+  return is_persisted_to_gcs_;
+}
+
 void ActorHandle::SetIsPersistedToGCSFlag() {
   absl::MutexLock guard(&mutex_);
   is_persisted_to_gcs_ = true;

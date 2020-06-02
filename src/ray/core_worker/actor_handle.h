@@ -70,7 +70,7 @@ class ActorHandle {
 
   int64_t MaxTaskRetries() const { return inner_.max_task_retries(); }
 
-  bool IsPersistedToGCS() const { return is_persisted_to_gcs_; }
+  bool IsPersistedToGCS() const;
 
   void SetIsPersistedToGCSFlag();
 
