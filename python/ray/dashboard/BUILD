@@ -2,12 +2,12 @@
 # re-run if any of these files changes.
 py_library(
     name = "dashboard_lib",
-    srcs = glob(["**/*.py"], exclude=["tests/*"]),
+    srcs = glob(["**/*.py"],exclude=["tests/*"]),
 )
 
 py_test(
-    name = "test_dashboard",
+    name = "test_node_stats",
     size = "small",
-    srcs = glob("tests/*.py")
+    srcs = glob(["tests/*.py"]),
     deps = [":dashboard_lib"]
 )
