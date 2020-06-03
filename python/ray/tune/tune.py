@@ -356,6 +356,7 @@ def run(run_or_experiment,
 
 
 def run_experiments(experiments,
+                    global_checkpoint_period=10,
                     search_alg=None,
                     scheduler=None,
                     with_server=False,
@@ -398,6 +399,7 @@ def run_experiments(experiments,
     if concurrent:
         return run(
             experiments,
+            global_checkpoint_period=global_checkpoint_period,
             search_alg=search_alg,
             scheduler=scheduler,
             with_server=with_server,
@@ -415,6 +417,7 @@ def run_experiments(experiments,
         for exp in experiments:
             trials += run(
                 exp,
+                global_checkpoint_period=global_checkpoint_period,
                 search_alg=search_alg,
                 scheduler=scheduler,
                 with_server=with_server,
