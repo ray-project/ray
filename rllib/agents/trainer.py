@@ -20,6 +20,7 @@ from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.rllib.utils.framework import check_framework, try_import_tf
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.from_config import from_config
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
@@ -535,8 +536,14 @@ class Trainer(Trainable):
         env = self._env_id
         if env:
             config["env"] = env
+            # An already registered env.
             if _global_registry.contains(ENV_CREATOR, env):
                 self.env_creator = _global_registry.get(ENV_CREATOR, env)
+            # A class specifier.
+            elif "." in env:
+                self.env_creator = \
+                    lambda env_config: from_config(env, env_config)
+            # Try gym.
             else:
                 import gym  # soft dependency
                 self.env_creator = lambda env_config: gym.make(env)
