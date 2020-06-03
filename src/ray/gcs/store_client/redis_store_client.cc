@@ -131,11 +131,25 @@ Status RedisStoreClient::AsyncGetByIndex(
   RAY_CHECK(callback);
   std::string match_pattern = GenRedisMatchPattern(table_name, index_key);
   auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name, match_pattern);
-  auto on_done = [callback, table_name,
-                  index_key](const std::unordered_map<std::string, std::string> &result) {
-    callback(result);
+  auto on_done = [this, callback, table_name, index_key](
+                     const Status &status, const std::vector<std::string> &result) {
+    if (!result.empty()) {
+      std::vector<std::string> keys;
+      keys.reserve(result.size());
+      for (auto &item : result) {
+        keys.push_back(
+            GenRedisKey(table_name, GetKeyFromRedisKey(item, table_name, index_key)));
+      }
+
+      std::string match_pattern = GenRedisMatchPattern(table_name);
+      auto scanner =
+          std::make_shared<RedisScanner>(redis_client_, table_name, match_pattern);
+      scanner->MGetValues(keys, callback);
+    } else {
+      callback(std::unordered_map<std::string, std::string>());
+    }
   };
-  return scanner->ScanKeysAndValues(on_done);
+  return scanner->ScanKeys(on_done);
 }
 
 Status RedisStoreClient::AsyncDeleteByIndex(const std::string &table_name,
