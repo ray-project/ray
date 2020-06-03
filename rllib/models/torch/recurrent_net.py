@@ -136,11 +136,10 @@ class LSTMWrapper(RecurrentNetwork):
     @override(ModelV2)
     def get_initial_state(self):
         # Place hidden states on same device as model.
+        linear = next(self._logits_branch._model.children())
         h = [
-            self._logits_branch.linear.weight.new(
-                1, self.cell_size).zero_().squeeze(0),
-            self._logits_branch.linear.weight.new(
-                1, self.cell_size).zero_().squeeze(0)
+            linear.weight.new(1, self.cell_size).zero_().squeeze(0),
+            linear.weight.new(1, self.cell_size).zero_().squeeze(0)
         ]
         return h
 
