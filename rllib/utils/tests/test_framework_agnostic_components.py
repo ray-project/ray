@@ -165,6 +165,14 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
                 value = sess.run(value)
             check(value, np.array([-6.6]))  # prop_b == -1.5
 
+    def test_unregistered_envs(self):
+        """Tests, whether an Env can be specified simply by its absolute class.
+        """
+        env_cls = "ray.rllib.examples.env.stateless_cartpole.StatelessCartPole"
+        env = from_config(env_cls, {"config": 42.0})
+        state = env.reset()
+        self.assertTrue(state.shape == (2, ))
+
 
 if __name__ == "__main__":
     import pytest
