@@ -92,13 +92,15 @@ class SlimFC(nn.Module):
                  out_size,
                  initializer=None,
                  activation_fn=None,
+                 use_bias=True,
                  bias_init=0.0):
         super(SlimFC, self).__init__()
         layers = []
-        linear = nn.Linear(in_size, out_size)
+        linear = nn.Linear(in_size, out_size, bias=use_bias)
         if initializer:
             initializer(linear.weight)
-        nn.init.constant_(linear.bias, bias_init)
+        if use_bias is True:
+            nn.init.constant_(linear.bias, bias_init)
         layers.append(linear)
         if activation_fn:
             layers.append(activation_fn())

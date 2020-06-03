@@ -1016,7 +1016,7 @@ sh_test(
 py_test(
     name = "test_distributions",
     tags = ["models"],
-    size = "small",
+    size = "medium",
     srcs = ["models/tests/test_distributions.py"]
 )
 
