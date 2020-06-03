@@ -145,7 +145,7 @@ def run(run_or_experiment,
             includes `{source}` and `{target}` for the syncer to run. If not
             provided, the sync command defaults to standard S3 or gsutil sync
             commands. By default local_dir is synced to remote_dir every 300
-            seconds. To change this, set the TUNE_CLOUD_SYNC_PERIOD_SEC
+            seconds. To change this, set the TUNE_CLOUD_SYNC_S
             environment variable in the driver machine.
         sync_to_driver (func|str|bool): Function for syncing trial logdir from
             remote node to local. If string, then it must be a string template

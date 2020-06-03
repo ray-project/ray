@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # Syncing period for syncing local checkpoints to cloud.
 # In env variable is not set, sync happens every 300 seconds.
 CLOUD_SYNC_PERIOD = ray_constants.env_integer(
-    key="TUNE_CLOUD_SYNC_PERIOD_SEC", default=300)
+    key="TUNE_CLOUD_SYNC_S", default=300)
 
 # Syncing period for syncing worker logs to driver.
 NODE_SYNC_PERIOD = 300
