@@ -83,6 +83,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
 void ServiceBasedGcsClient::Disconnect() {
   RAY_CHECK(is_connected_);
   is_connected_ = false;
+  is_ready_to_exit_ = true;
   boost::system::error_code ec;
   detect_timer_->cancel(ec);
   if (ec) {
@@ -109,7 +110,13 @@ void ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
     freeReplyObject(reply);
     usleep(RayConfig::instance().internal_gcs_service_connect_wait_milliseconds() * 1000);
     num_attempts++;
+
+    // GCS Client is ready to exit.
+    if (!is_ready_to_exit_) {
+      return;
+    }
   }
+
   RAY_CHECK(num_attempts < RayConfig::instance().gcs_service_connect_retries())
       << "No entry found for GcsServerAddress";
   RAY_CHECK(reply) << "Redis did not reply to GcsServerAddress. Is redis running?";
