@@ -351,11 +351,11 @@ class NodeUpdater:
             if hasattr(e, "cmd"):
                 error_str = "(Exit Status {}) {}".format(
                     e.returncode, " ".join(e.cmd))
-            logger.error(self.log_prefix +
-                         "Error updating {}".format(error_str))
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
-            raise e
+            logger.error(self.log_prefix +
+                         "Error executing: {}".format(error_str) + "\n")
+            return
 
         self.provider.set_node_tags(
             self.node_id, {
