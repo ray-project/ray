@@ -844,7 +844,8 @@ class NodeStats(threading.Thread):
                                 "type": error_data.type
                             })
                     elif channel == str(actor_channel):
-                        gcs_entry = ray.gcs_utils.GcsEntry.FromString(data)
+                        gcs_entry = ray.gcs_utils.PubSubMessage.FromString(
+                            data)
                         actor_data = ray.gcs_utils.ActorTableData.FromString(
                             gcs_entry.entries[0])
                         addr = (actor_data.address.ip_address,
