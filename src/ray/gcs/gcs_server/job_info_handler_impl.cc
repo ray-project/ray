@@ -55,15 +55,7 @@ void DefaultJobInfoHandler::HandleMarkJobFinished(
     } else {
       RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Binary(),
                                          job_table_data->SerializeAsString(), nullptr));
-      /// Deleted table contents related to this job
-      RAY_CHECK_OK(gcs_table_storage_->ActorTable().DeleteByJobId(job_id, nullptr));
-      RAY_CHECK_OK(
-          gcs_table_storage_->ActorCheckpointIdTable().DeleteByJobId(job_id, nullptr));
-      RAY_CHECK_OK(gcs_table_storage_->TaskTable().DeleteByJobId(job_id, nullptr));
-      RAY_CHECK_OK(gcs_table_storage_->TaskLeaseTable().DeleteByJobId(job_id, nullptr));
-      RAY_CHECK_OK(
-          gcs_table_storage_->TaskReconstructionTable().DeleteByJobId(job_id, nullptr));
-      RAY_CHECK_OK(gcs_table_storage_->ObjectTable().DeleteByJobId(job_id, nullptr));
+      ClearJobInfos(job_id);
       RAY_LOG(INFO) << "Finished marking job state, job id = " << job_id;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -73,6 +65,37 @@ void DefaultJobInfoHandler::HandleMarkJobFinished(
   if (!status.ok()) {
     on_done(status);
   }
+}
+
+void DefaultJobInfoHandler::ClearJobInfos(const JobID &job_id) {
+  // Actor related
+  RAY_CHECK_OK(gcs_table_storage_->ActorTable().DeleteByJobId(job_id, nullptr));
+  auto on_done = [this](
+                     const std::unordered_map<ActorID, ActorCheckpointIdData> &result) {
+    if (!result.empty()) {
+      std::vector<ActorCheckpointID> ids;
+      for (auto &item : result) {
+        for (auto &id : item.second.checkpoint_ids()) {
+          ids.push_back(ActorCheckpointID::FromBinary(id));
+        }
+      }
+      RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointTable().BatchDelete(ids, nullptr));
+    }
+  };
+  // Get checkpoint id first from checkpoint id table and delete all checkpoints related
+  // to this job
+  RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointIdTable().GetByJobId(job_id, on_done));
+  RAY_CHECK_OK(
+      gcs_table_storage_->ActorCheckpointIdTable().DeleteByJobId(job_id, nullptr));
+
+  // Task related
+  RAY_CHECK_OK(gcs_table_storage_->TaskTable().DeleteByJobId(job_id, nullptr));
+  RAY_CHECK_OK(gcs_table_storage_->TaskLeaseTable().DeleteByJobId(job_id, nullptr));
+  RAY_CHECK_OK(
+      gcs_table_storage_->TaskReconstructionTable().DeleteByJobId(job_id, nullptr));
+
+  // Object related
+  RAY_CHECK_OK(gcs_table_storage_->ObjectTable().DeleteByJobId(job_id, nullptr));
 }
 
 void DefaultJobInfoHandler::HandleGetAllJobInfo(

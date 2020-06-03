@@ -44,6 +44,8 @@ class DefaultJobInfoHandler : public rpc::JobInfoHandler {
  private:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+
+  void ClearJobInfos(const JobID &job_id);
 };
 
 }  // namespace rpc
