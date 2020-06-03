@@ -188,7 +188,6 @@ class FunctionRunner(Trainable):
         session.init(self._status_reporter)
         self._runner = None
         self._restore_tmpdir = None
-        self._restore_from = None
 
     def _trainable_func(self):
         """Subclasses can override this to set the trainable func."""
@@ -197,8 +196,9 @@ class FunctionRunner(Trainable):
 
     def _start(self):
         def entrypoint():
-            return self._trainable_func(self.config, self._status_reporter,
-                                        self._restore_from)
+            return self._trainable_func(
+                self.config, self._status_reporter,
+                self._status_reporter.get_checkpoint())
 
         # the runner thread is not started until the first call to _train
         self._runner = _RunnerThread(entrypoint, self._error_queue)
@@ -345,14 +345,14 @@ class FunctionRunner(Trainable):
 
 def wrap_function(train_func):
     class ImplicitFunc(FunctionRunner):
-        def _trainable_func(self, config, reporter, restore_path):
+        def _trainable_func(self, config, reporter, checkpoint):
             func_args = inspect.getfullargspec(train_func).args
             use_reporter = ("reporter" in func_args)
             use_checkpoint = "checkpoint" in func_args
             if not use_checkpoint and not use_reporter:
                 output = train_func(config)
             elif use_checkpoint:
-                output = train_func(config, checkpoint=restore_path)
+                output = train_func(config, checkpoint=checkpoint)
             else:
                 output = train_func(config, reporter)
 
