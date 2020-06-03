@@ -87,27 +87,17 @@ class StatusReporter:
     def make_checkpoint_dir(self, step=None):
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
             self.logdir, suffix=step)
-        self._current_checkpoint_dir = checkpoint_dir
         return checkpoint_dir
 
     def save_checkpoint(self, checkpoint_path):
-        if not self._current_checkpoint_dir:
-            raise RuntimeError("Need to call make_checkpoint_dir.")
-        elif not checkpoint_path.startswith(self._current_checkpoint_dir):
-            raise RuntimeError(
-                "Checkpoint must be created with path given from "
-                "make_checkpoint_dir.")
+        try:
+            TrainableUtil.find_checkpoint_dir(checkpoint_path)
+        except FileNotFoundError:
+            logger.error("Checkpoint must be created with path given from "
+                         "make_checkpoint_dir.")
+            raise
         logger.debug("Checkpoint created at {}".format(checkpoint_path))
         self._last_checkpoint = checkpoint_path
-        self._last_checkpoint_dir = self._current_checkpoint_dir
-        self._current_checkpoint_dir = None
-
-    def get_last_checkpoint_dir(self):
-        if self._last_checkpoint_dir:
-            return self._last_checkpoint_dir
-        else:
-            return TrainableUtil.make_checkpoint_dir(
-                self.logdir, suffix="default")
 
     def has_checkpoint(self):
         return bool(self._last_checkpoint)
@@ -204,7 +194,7 @@ class FunctionRunner(Trainable):
 
         session.init(self._status_reporter)
         self._runner = None
-        self._last_checkpoint = None
+        self._last_checkpoint = {}
         self._restore_tmpdir = None
         self._restore_from = None
 
@@ -300,13 +290,22 @@ class FunctionRunner(Trainable):
         if checkpoint_path:
             raise ValueError(
                 "Checkpoint path should not be used with function API.")
-        if not self._status_reporter.has_checkpoint():
-            checkpoint = self._last_checkpoint
-        else:
+        if self._status_reporter.has_checkpoint():
             checkpoint = self._status_reporter.pop_checkpoint()
             self._last_checkpoint = checkpoint
+        else:
+            checkpoint = self._last_checkpoint
+
+        state = self.get_state()
+
+        if not checkpoint:
+            state.update(iteration=0, timesteps_total=0, episodes_total=0)
+            parent_dir = TrainableUtil.make_checkpoint_dir(
+                self.logdir, suffix="default")
+        else:
+            parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint)
         checkpoint_path = TrainableUtil.process_checkpoint(
-            checkpoint, self._status_reporter.get_last_checkpoint_dir(), self)
+            checkpoint, parent_dir, state)
         return checkpoint_path
 
     def save_to_object(self):
@@ -320,7 +319,7 @@ class FunctionRunner(Trainable):
 
     def _restore(self, checkpoint_path):
         # This should be removed once Trainables are refactored.
-        self._restore_from = checkpoint_path
+        self._last_checkpoint = checkpoint_path
 
     def restore_from_object(self, obj):
         tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)

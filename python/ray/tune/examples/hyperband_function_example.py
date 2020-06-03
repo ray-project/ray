@@ -24,7 +24,6 @@ def train(config, checkpoint=None):
         if timestep % 3 == 0:
             checkpoint_dir = tune.make_checkpoint_dir(step=timestep)
             path = os.path.join(checkpoint_dir, "checkpoint")
-            print("Checkpointing to", path)
             with open(path, "w") as f:
                 f.write(json.dumps({"timestep": timestep}))
             tune.save_checkpoint(path)

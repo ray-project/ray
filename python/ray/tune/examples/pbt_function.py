@@ -40,6 +40,7 @@ def pbt_function(config, checkpoint_path=None):
             state = json.loads(f.read())
             accuracy = state["acc"]
             start = state["step"]
+
     midpoint = 100  # lr starts decreasing after acc > midpoint
     q_tolerance = 3  # penalize exceeding lr by more than this multiple
     noise_level = 2  # add gaussian noise to the acc increase

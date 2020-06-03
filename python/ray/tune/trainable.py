@@ -28,7 +28,7 @@ SETUP_TIME_THRESHOLD = 10
 
 class TrainableUtil:
     @staticmethod
-    def process_checkpoint(checkpoint, parent_dir, trainable):
+    def process_checkpoint(checkpoint, parent_dir, trainable_state):
         saved_as_dict = False
         if isinstance(checkpoint, string_types):
             if not checkpoint.startswith(parent_dir):
@@ -51,15 +51,8 @@ class TrainableUtil:
                              "Expected str or dict.".format(type(checkpoint)))
 
         with open(checkpoint_path + ".tune_metadata", "wb") as f:
-            pickle.dump({
-                "experiment_id": trainable._experiment_id,
-                "iteration": trainable._iteration,
-                "timesteps_total": trainable._timesteps_total,
-                "time_total": trainable._time_total,
-                "episodes_total": trainable._episodes_total,
-                "saved_as_dict": saved_as_dict,
-                "ray_version": ray.__version__,
-            }, f)
+            trainable_state["saved_as_dict"] = saved_as_dict
+            pickle.dump(trainable_state, f)
         return checkpoint_path
 
     @staticmethod
@@ -380,6 +373,16 @@ class Trainable:
 
         return result
 
+    def get_state(self):
+        return {
+            "experiment_id": self._experiment_id,
+            "iteration": self._iteration,
+            "timesteps_total": self._timesteps_total,
+            "time_total": self._time_total,
+            "episodes_total": self._episodes_total,
+            "ray_version": ray.__version__,
+        }
+
     def save(self, checkpoint_dir=None):
         """Saves the current model state to a checkpoint.
 
@@ -395,8 +398,9 @@ class Trainable:
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
             checkpoint_dir or self.logdir, iteration=self.iteration)
         checkpoint = self._save(checkpoint_dir)
+        trainable_state = self.get_state()
         checkpoint_path = TrainableUtil.process_checkpoint(
-            checkpoint, parent=checkpoint_dir, trainable=self)
+            checkpoint, parent=checkpoint_dir, trainable_state=trainable_state)
         return checkpoint_path
 
     def save_to_object(self):
