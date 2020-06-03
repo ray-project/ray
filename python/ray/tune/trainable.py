@@ -550,7 +550,10 @@ class Trainable:
 
             name = self.trial_name
         """
-        return self._trial_info.trial_name
+        if self._trial_info:
+            return self._trial_info.trial_name
+        else:
+            return "default"
 
     @property
     def trial_id(self):
@@ -562,7 +565,10 @@ class Trainable:
 
             trial_id = self.trial_id
         """
-        return self._trial_info.trial_id
+        if self._trial_info:
+            return self._trial_info.trial_id
+        else:
+            return "default"
 
     @property
     def iteration(self):

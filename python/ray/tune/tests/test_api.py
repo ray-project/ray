@@ -464,22 +464,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         [trial] = tune.run(train, stop=Stopclass().stop).trials
         self.assertEqual(trial.last_result["training_iteration"], 8)
 
-
-    def testCheckpointFunction(self):
-        def train(config, checkpoint=False):
-            for i in range(10):
-                tune.report(test=i)
-
-        [trial] = tune.run(train, checkpoint_freq=3).trials
-        self.assertEqual(trial.last_result["training_iteration"], 8)
-
-        def train(config, checkpoint=False):
-            for i in range(10):
-                tune.report(test=i)
-
-        [trial] = tune.run(train, keep_checkpoints_num=1).trials
-        self.assertEqual(trial.last_result["training_iteration"], 8)
-
     def testStopper(self):
         def train(config, reporter):
             for i in range(10):

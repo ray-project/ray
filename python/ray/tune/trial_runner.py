@@ -467,6 +467,7 @@ class TrialRunner:
             result = self.trial_executor.fetch_result(trial)
 
             is_duplicate = RESULT_DUPLICATE in result
+            force_checkpoint = result.get(SHOULD_CHECKPOINT, False)
             # TrialScheduler and SearchAlgorithm still receive a
             # notification because there may be special handling for
             # the `on_trial_complete` hook.
@@ -505,8 +506,7 @@ class TrialRunner:
             # the scheduler decision is STOP or PAUSE. Note that
             # PAUSE only checkpoints to memory and does not update
             # the global checkpoint state.
-            self._checkpoint_trial_if_needed(
-                trial, force=result.get(SHOULD_CHECKPOINT, False))
+            self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
 
             if trial.is_saving:
                 # Cache decision to execute on after the save is processed.
