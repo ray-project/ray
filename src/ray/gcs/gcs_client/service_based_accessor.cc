@@ -146,7 +146,6 @@ Status ServiceBasedActorInfoAccessor::AsyncGetAll(
 Status ServiceBasedActorInfoAccessor::AsyncGetByName(
     const std::string &name, const OptionalItemCallback<rpc::ActorTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting actor info, name = " << name;
-  RAY_LOG(ERROR) << "Sangbin calling a gcs service to get by name";
   rpc::GetNamedActorInfoRequest request;
   request.set_name(name);
   client_impl_->GetGcsRpcClient().GetNamedActorInfo(
