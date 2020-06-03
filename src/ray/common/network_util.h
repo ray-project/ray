@@ -65,7 +65,7 @@ class AsyncClient {
 
       do {
         io_service_.run_one();
-      } while (!(*is_timeout) && !is_connected);
+      } while (!(*is_timeout) && !is_connected && !error_code_.failed());
 
       timer_.cancel();
 
