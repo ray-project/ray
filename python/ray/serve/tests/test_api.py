@@ -430,17 +430,20 @@ def test_list_endpoints(serve_instance):
     def f():
         pass
 
-    serve.create_endpoint("endpoint", "/api", methods=["GET", "POST"])
-    serve.create_endpoint("endpoint2", methods=["POST"])
     serve.create_backend("backend", f)
-    serve.set_traffic("endpoint2", {"backend": 1.0})
+    serve.create_backend("backend2", f)
+    serve.create_endpoint(
+        "endpoint", "backend", "/api", methods=["GET", "POST"])
+    serve.create_endpoint("endpoint2", "backend2", methods=["POST"])
 
     endpoints = serve.list_endpoints()
     assert "endpoint" in endpoints
     assert endpoints["endpoint"] == {
         "route": "/api",
         "methods": ["GET", "POST"],
-        "traffic": {}
+        "traffic": {
+            "backend": 1.0
+        }
     }
 
     assert "endpoint2" in endpoints
@@ -448,7 +451,7 @@ def test_list_endpoints(serve_instance):
         "route": None,
         "methods": ["POST"],
         "traffic": {
-            "backend": 1.0
+            "backend2": 1.0
         }
     }
 
