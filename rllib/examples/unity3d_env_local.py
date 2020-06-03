@@ -34,6 +34,12 @@ parser.add_argument(
     choices=["3DBall", "SoccerStrikersVsGoalie"],
     help="The name of the Env to run in the Unity3D editor. Either `3DBall` "
     "or `SoccerStrikersVsGoalie` (feel free to add more to this script!)")
+parser.add_argument(
+    "--file-name", type=str, default=None,
+    help="The Unity3d binary (compiled) game, e.g. "
+    "'/home/ubuntu/soccer_strikers_vs_goalie_linux.x86_64'. Use `None` for "
+    "a currently running Unity3D editor.")
+parser.add_argument("--num-workers", type=int, default=0)
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=150)
 parser.add_argument("--stop-reward", type=float, default=9999.0)
@@ -65,15 +71,15 @@ if __name__ == "__main__":
     config = {
         "env": "unity3d",
         "env_config": {
-            "file_name": "/Users/sven/Dropbox/Projects/StrikersVsGoalie_RLlib.app",
+            "file_name": args.file_name,
             "episode_horizon": args.horizon,
         },
         # IMPORTANT: Just use one Worker (we only have one Unity running)!
-        "num_workers": 0,
+        "num_workers": args.num_workers,
         # Other settings.
-        "sample_batch_size": 64,
-        "train_batch_size": 256,
-        "rollout_fragment_length": 20,
+        "sample_batch_size": 128,
+        "train_batch_size": 512,
+        "rollout_fragment_length": 100,
         # Multi-agent setup for the particular env.
         "multiagent": {
             "policies": policies,
