@@ -392,7 +392,8 @@ Status GcsActorManager::RegisterActor(
 
   auto actor = std::make_shared<GcsActor>(request);
   if (actor->IsDetached()) {
-    RAY_LOG(ERROR) << "Sangbin register actor request comes in! actor id: " << actor->GetActorID();
+    RAY_LOG(ERROR) << "Sangbin register actor request comes in! actor id: "
+                   << actor->GetActorID();
     auto it = named_actors_.find(actor->GetName());
     if (it == named_actors_.end()) {
       named_actors_.emplace(actor->GetName(), actor->GetActorID());
@@ -680,7 +681,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
           RAY_CHECK_OK(gcs_pub_sub_->Publish(
               ACTOR_CHANNEL, actor_id.Hex(),
               mutable_actor_table_data->SerializeAsString(), nullptr));
-          }));
+        }));
     // The actor is dead, but we should not remove the entry from the
     // registered actors yet. If the actor is owned, we will destroy the actor
     // once the owner fails or notifies us that the actor's handle has gone out

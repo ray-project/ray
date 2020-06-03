@@ -11,7 +11,7 @@ import time
 import ray
 import ray.test_utils
 import ray.cluster_utils
-from ray.test_utils import run_string_as_driver, get_non_head_nodes, wait_for_condition
+from ray.test_utils import run_string_as_driver, get_non_head_nodes
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 
@@ -707,13 +707,11 @@ def test_detached_actor_cleanup(ray_start_regular):
 
     def create_and_kill_actor(actor_name):
         # Make sure same name is creatable after killing it.
-        DetachedActor.options(name=actor_name).remote()
-        print('get')
-        detached_actor = ray.get_actor(actor_name)
+        detached_actor = DetachedActor.options(name=actor_name).remote()
         # Wait for detached actor creation.
         assert ray.get(detached_actor.ping.remote()) == "pong"
         ray.kill(detached_actor)
-        print('killed')
+        # Wait until actor dies.
         actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
         max_wait_time = 10
         wait_time = 0
@@ -740,9 +738,9 @@ class DetachedActor:
 
 # Make sure same name is creatable after killing it.
 detached_actor = DetachedActor.options(name="{}").remote()
-# Wait for detached actor creation.
 assert ray.get(detached_actor.ping.remote()) == "pong"
 ray.kill(detached_actor)
+# Wait until actor dies.
 actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
 max_wait_time = 10
 wait_time = 0

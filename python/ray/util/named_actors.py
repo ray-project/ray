@@ -3,6 +3,7 @@ import logging
 import ray
 import ray.cloudpickle as pickle
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
+from ray.gcs_utils import ActorTableData
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,15 @@ def _get_actor(name):
             raise ValueError(
                 "The actor with name={} doesn't exist".format(name))
         handle = pickle.loads(pickled_state)
-
+        # If the actor state is dead, that means that this name is reusable.
+        # We don't delete the name entry from key value store when
+        # the actor is killed because ray.kill is asynchronous,
+        # and it can cause worker leaks.
+        actor_info = ray.actors(actor_id=handle._actor_id.hex())
+        actor_state = actor_info["State"]
+        if actor_state == ActorTableData.DEAD:
+            raise ValueError(
+                "The actor with name={} is dead.".format(name))
     return handle
 
 
