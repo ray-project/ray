@@ -2,10 +2,10 @@ import collections
 import logging
 import numpy as np
 
-from ray.util.debug import log_once
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.debug import summarize
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -124,8 +124,9 @@ class MultiAgentSampleBatchBuilder:
         This pushes the postprocessed per-agent batches onto the per-policy
         builders, clearing per-agent state.
 
-        Arguments:
-            episode: current MultiAgentEpisode object or None
+        Args:
+            episode (Optional[MultiAgentEpisode]): Current MultiAgentEpisode
+                object.
         """
 
         # Materialize the batches so far
@@ -152,8 +153,10 @@ class MultiAgentSampleBatchBuilder:
             post_batches[agent_id] = policy.postprocess_trajectory(
                 pre_batch, other_batches, episode)
             # Call the Policy's Exploration's postprocess method.
-            policy.exploration.postprocess_trajectory(
-                policy, post_batches[agent_id], getattr(policy, "_sess", None))
+            if getattr(policy, "exploration", None) is not None:
+                policy.exploration.postprocess_trajectory(
+                    policy, post_batches[agent_id],
+                    getattr(policy, "_sess", None))
 
         if log_once("after_post"):
             logger.info(
@@ -196,8 +199,9 @@ class MultiAgentSampleBatchBuilder:
         Any unprocessed rows will be first postprocessed with a policy
         postprocessor. The internal state of this builder will be reset.
 
-        Arguments:
-            episode: current MultiAgentEpisode object or None
+        Args:
+            episode (Optional[MultiAgentEpisode]): Current MultiAgentEpisode
+                object.
         """
 
         self.postprocess_batch_so_far(episode)

@@ -110,7 +110,7 @@ def make_v1_wrapper(legacy_model_cls):
 
         @override(ModelV2)
         def value_function(self):
-            assert self.cur_instance, "must call forward first"
+            assert self.cur_instance is not None, "must call forward first"
 
             with tf.variable_scope(self.variable_scope):
                 with tf.variable_scope("value_function", reuse=tf.AUTO_REUSE):

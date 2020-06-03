@@ -1,6 +1,7 @@
 import asyncio
 import copy
 from collections import defaultdict
+import time
 from typing import DefaultDict, List
 
 # Note on choosing blist instead of stdlib heapq
@@ -13,7 +14,12 @@ import blist
 
 import ray
 import ray.cloudpickle as pickle
-from ray.serve.utils import logger
+from ray.exceptions import RayTaskError
+
+from ray import serve
+from ray.serve.metric import MetricClient
+from ray.serve.policy import RandomEndpointPolicy
+from ray.serve.utils import logger, retry_actor_failures
 
 
 class Query:
@@ -23,6 +29,7 @@ class Query:
                  request_context,
                  request_slo_ms,
                  call_method="__call__",
+                 shard_key=None,
                  async_future=None):
         self.request_args = request_args
         self.request_kwargs = request_kwargs
@@ -35,6 +42,7 @@ class Query:
         self.request_slo_ms = request_slo_ms
 
         self.call_method = call_method
+        self.shard_key = shard_key
 
     def ray_serialize(self):
         # NOTE: this method is needed because Query need to be serialized and
@@ -87,16 +95,6 @@ class Router:
 
     The traffic policy is used to assign requests to workers.
 
-    Behavior:
-        >>> # psuedo-code
-        >>> router = Router()
-        >>> router.enqueue_request(
-            "service-name", request_args, request_kwargs, request_context)
-        # nothing happens, request is queued.
-        >>> router.add_new_worker("backend-1", worker_handle)
-        >>> router.link("service-name", "backend-1")
-        # the request is assigned to the worker
-
     Traffic policy splits the traffic among different replicas
     probabilistically:
 
@@ -110,34 +108,36 @@ class Router:
     3. When there is only 1 backend ready, we will only use that backend.
     """
 
-    async def __init__(self):
+    async def __init__(self, cluster_name=None):
         # Note: Several queues are used in the router
         # - When a request come in, it's placed inside its corresponding
-        #   service_queue.
-        # - The service_queue is dequed during flush operation, which moves
+        #   endpoint_queue.
+        # - The endpoint_queue is dequeued during flush operation, which moves
         #   the queries to backend buffer_queue. Here we match a request
-        #   for a service to a backend given some policy.
+        #   for an endpoint to a backend given some policy.
         # - The worker_queue is used to collect idle actor handle. These
         #   handles are dequed during the second stage of flush operation,
         #   which assign queries in buffer_queue to actor handle.
 
         # -- Queues -- #
 
-        # service_name -> request queue
-        self.service_queues: DefaultDict[asyncio.Queue[Query]] = defaultdict(
+        # endpoint_name -> request queue
+        self.endpoint_queues: DefaultDict[asyncio.Queue[Query]] = defaultdict(
             asyncio.Queue)
         # backend_name -> worker request queue
         self.worker_queues: DefaultDict[asyncio.Queue[
             ray.actor.ActorHandle]] = defaultdict(asyncio.Queue)
         # backend_name -> worker payload queue
-        self.buffer_queues = defaultdict(blist.sortedlist)
+        self.backend_queues = defaultdict(blist.sortedlist)
 
         # -- Metadata -- #
 
-        # service_name -> traffic_policy
-        self.traffic = defaultdict(dict)
+        # endpoint_name -> traffic_policy
+        self.traffic = dict()
         # backend_name -> backend_config
         self.backend_info = dict()
+        # replica tag -> worker_handle
+        self.replicas = dict()
 
         # -- Synchronization -- #
 
@@ -150,32 +150,55 @@ class Router:
         # batching polcies.
         self.flush_lock = asyncio.Lock()
 
-        # Fetch the worker handles from the master actor. We use a "pull-based"
-        # approach instead of pushing them from the master so that the router
-        # can transparently recover from failure.
-        ray.serve.init()
-        master_actor = ray.serve.api._get_master_actor()
-        backend_dict = ray.get(master_actor.get_all_worker_handles.remote())
-        for backend, replica_dict in backend_dict.items():
-            for worker in replica_dict.values():
-                await self.add_new_worker(backend, worker)
+        # Fetch the worker handles, traffic policies, and backend configs from
+        # the master actor. We use a "pull-based" approach instead of pushing
+        # them from the master so that the router can transparently recover
+        # from failure.
+        serve.init(cluster_name=cluster_name)
+        master_actor = serve.api._get_master_actor()
+
+        traffic_policies = retry_actor_failures(
+            master_actor.get_traffic_policies)
+        for endpoint, traffic_policy in traffic_policies.items():
+            await self.set_traffic(endpoint, traffic_policy)
+
+        backend_dict = retry_actor_failures(
+            master_actor.get_all_worker_handles)
+        for backend_tag, replica_dict in backend_dict.items():
+            for replica_tag, worker in replica_dict.items():
+                await self.add_new_worker(backend_tag, replica_tag, worker)
+
+        backend_configs = retry_actor_failures(
+            master_actor.get_backend_configs)
+        for backend, backend_config in backend_configs.items():
+            await self.set_backend_config(backend, backend_config)
+
+        [metric_exporter] = retry_actor_failures(
+            master_actor.get_metric_exporter)
+        self.metric_client = MetricClient(metric_exporter)
+        self.num_router_requests = self.metric_client.new_counter(
+            "num_router_requests",
+            description="Number of requests processed by the router.",
+            label_names=("endpoint", ))
+        self.num_error_endpoint_request = self.metric_client.new_counter(
+            "num_error_endpoint_requests",
+            description=("Number of requests errored when getting result "
+                         "for endpoint."),
+            label_names=("endpoint", ))
+        self.num_error_backend_request = self.metric_client.new_counter(
+            "num_error_backend_requests",
+            description=("Number of requests errored when getting result "
+                         "from backend."),
+            label_names=("backend", ))
 
     def is_ready(self):
         return True
 
-    def get_metrics(self):
-        return {
-            "backend_{}_queue_size".format(backend_name): {
-                "value": len(queue),
-                "type": "counter",
-            }
-            for backend_name, queue in self.buffer_queues.items()
-        }
-
     async def enqueue_request(self, request_meta, *request_args,
                               **request_kwargs):
-        service = request_meta.service
-        logger.debug("Received a request for service {}".format(service))
+        endpoint = request_meta.endpoint
+        logger.debug("Received a request for endpoint {}".format(endpoint))
+        self.num_router_requests.labels(endpoint=endpoint).add()
 
         # check if the slo specified is directly the
         # wall clock time
@@ -190,66 +213,99 @@ class Router:
             request_context,
             request_slo_ms,
             call_method=request_meta.call_method,
+            shard_key=request_meta.shard_key,
             async_future=asyncio.get_event_loop().create_future())
-        await self.service_queues[service].put(query)
-        await self.flush()
+        await self.endpoint_queues[endpoint].put(query)
+        async with self.flush_lock:
+            await self.flush_endpoint_queue(endpoint)
 
         # Note: a future change can be to directly return the ObjectID from
         # replica task submission
-        result = await query.async_future
+        try:
+            result = await query.async_future
+        except RayTaskError as e:
+            self.num_error_endpoint_request.labels(endpoint=endpoint).add()
+            result = e
         return result
 
-    async def add_new_worker(self, backend, worker_handle):
-        logger.debug("New worker added for backend '{}'".format(backend))
-        await self.mark_worker_idle(backend, worker_handle)
+    async def add_new_worker(self, backend_tag, replica_tag, worker_handle):
+        backend_replica_tag = backend_tag + ":" + replica_tag
+        if backend_replica_tag in self.replicas:
+            return
+        self.replicas[backend_replica_tag] = worker_handle
 
-    async def mark_worker_idle(self, backend, worker_handle):
-        await self.worker_queues[backend].put(worker_handle)
-        await self.flush()
+        logger.debug("New worker added for backend '{}'".format(backend_tag))
+        await self.mark_worker_idle(backend_tag, backend_replica_tag)
 
-    async def remove_worker(self, backend, worker_handle):
+    async def mark_worker_idle(self, backend_tag, backend_replica_tag):
+        if backend_replica_tag not in self.replicas:
+            return
+
+        await self.worker_queues[backend_tag].put(backend_replica_tag)
+        async with self.flush_lock:
+            await self.flush_backend_queues([backend_tag])
+
+    async def remove_worker(self, backend_tag, replica_tag):
+        backend_replica_tag = backend_tag + ":" + replica_tag
+        if backend_replica_tag not in self.replicas:
+            return
+        del self.replicas[backend_replica_tag]
+
         # We need this lock because we modify worker_queue here.
         async with self.flush_lock:
-            old_queue = self.worker_queues[backend]
+            old_queue = self.worker_queues[backend_tag]
             new_queue = asyncio.Queue()
-            target_id = worker_handle._actor_id
 
             while not old_queue.empty():
-                worker_handle = await old_queue.get()
-                if worker_handle._actor_id != target_id:
-                    await new_queue.put(worker_handle)
+                curr_tag = await old_queue.get()
+                if curr_tag != backend_replica_tag:
+                    await new_queue.put(curr_tag)
 
-            self.worker_queues[backend] = new_queue
-            # TODO: consider awaiting this on a timeout or using ray.kill().
-            worker_handle.__ray_terminate__.remote()
+            self.worker_queues[backend_tag] = new_queue
 
-    async def link(self, service, backend):
-        logger.debug("Link %s with %s", service, backend)
-        await self.set_traffic(service, {backend: 1.0})
-
-    async def set_traffic(self, service, traffic_dict):
-        logger.debug("Setting traffic for service %s to %s", service,
+    async def set_traffic(self, endpoint, traffic_dict):
+        logger.debug("Setting traffic for endpoint %s to %s", endpoint,
                      traffic_dict)
-        self.traffic[service] = traffic_dict
-        await self.flush()
-
-    async def set_backend_config(self, backend, config_dict):
-        logger.debug("Setting backend config for "
-                     "backend {} to {}".format(backend, config_dict))
-        self.backend_info[backend] = config_dict
-
-    async def flush(self):
-        """In the default case, flush calls ._flush.
-
-        When this class is a Ray actor, .flush can be scheduled as a remote
-        method invocation.
-        """
         async with self.flush_lock:
-            await self._flush_service_queues()
-            await self._flush_buffer_queues()
+            self.traffic[endpoint] = RandomEndpointPolicy(traffic_dict)
+            await self.flush_endpoint_queue(endpoint)
 
-    def _get_available_backends(self, service):
-        backends_in_policy = set(self.traffic[service].keys())
+    async def remove_endpoint(self, endpoint):
+        logger.debug("Removing endpoint {}".format(endpoint))
+        async with self.flush_lock:
+            await self.flush_endpoint_queue(endpoint)
+            if endpoint in self.endpoint_queues:
+                del self.endpoint_queues[endpoint]
+            if endpoint in self.traffic:
+                del self.traffic[endpoint]
+
+    async def set_backend_config(self, backend, config):
+        logger.debug("Setting backend config for "
+                     "backend {} to {}.".format(backend, config))
+        self.backend_info[backend] = config
+
+    async def remove_backend(self, backend):
+        logger.debug("Removing backend {}".format(backend))
+        async with self.flush_lock:
+            await self.flush_backend_queues([backend])
+            if backend in self.backend_info:
+                del self.backend_info[backend]
+            if backend in self.worker_queues:
+                del self.worker_queues[backend]
+            if backend in self.backend_queues:
+                del self.backend_queues[backend]
+
+    async def flush_endpoint_queue(self, endpoint):
+        """Attempt to schedule any pending requests to available backends."""
+        assert self.flush_lock.locked()
+        if endpoint not in self.traffic:
+            return
+        backends_to_flush = await self.traffic[endpoint].flush(
+            self.endpoint_queues[endpoint], self.backend_queues)
+        await self.flush_backend_queues(backends_to_flush)
+
+    def _get_available_backends(self, endpoint):
+        backends_in_policy = set(self.traffic[endpoint].keys())
         available_workers = {
             backend
             for backend, queues in self.worker_queues.items()
@@ -257,51 +313,44 @@ class Router:
         }
         return list(backends_in_policy.intersection(available_workers))
 
-    async def _flush_service_queues(self):
-        """Selects the backend and puts the service queue query to the buffer
-        Expected Implementation:
-            The implementer is expected to access and manipulate
-            self.service_queues        : dict[str,Deque]
-            self.buffer_queues : dict[str,sortedlist]
-        For registering the implemented policies register at policy.py
-        Expected Behavior:
-            the Deque of all services in self.service_queues linked with
-            atleast one backend must be empty irrespective of whatever
-            backend policy is implemented.
-        """
-        raise NotImplementedError(
-            "This method should be implemented by child class.")
+    # Flushes the specified backend queues and assigns work to workers.
+    async def flush_backend_queues(self, backends_to_flush):
+        assert self.flush_lock.locked()
+        for backend in backends_to_flush:
+            # No workers available.
+            if self.worker_queues[backend].qsize() == 0:
+                continue
+            # No work to do.
+            if len(self.backend_queues[backend]) == 0:
+                continue
 
-    # flushes the buffer queue and assigns work to workers
-    async def _flush_buffer_queues(self):
-        for service in self.traffic.keys():
-            ready_backends = self._get_available_backends(service)
-            for backend in ready_backends:
-                # no work available
-                if len(self.buffer_queues[backend]) == 0:
-                    continue
+            buffer_queue = self.backend_queues[backend]
+            worker_queue = self.worker_queues[backend]
 
-                buffer_queue = self.buffer_queues[backend]
-                worker_queue = self.worker_queues[backend]
+            logger.debug("Assigning queries for backend {} with buffer "
+                         "queue size {} and worker queue size {}".format(
+                             backend, len(buffer_queue), worker_queue.qsize()))
 
-                logger.debug("Assigning queries for backend {} with buffer "
-                             "queue size {} and worker queue size {}".format(
-                                 backend, len(buffer_queue),
-                                 worker_queue.qsize()))
+            max_batch_size = None
+            if backend in self.backend_info:
+                max_batch_size = self.backend_info[backend].max_batch_size
 
-                max_batch_size = None
-                if backend in self.backend_info:
-                    max_batch_size = self.backend_info[backend][
-                        "max_batch_size"]
+            await self._assign_query_to_worker(backend, buffer_queue,
+                                               worker_queue, max_batch_size)
 
-                await self._assign_query_to_worker(
-                    backend, buffer_queue, worker_queue, max_batch_size)
-
-    async def _do_query(self, backend, worker, req):
+    async def _do_query(self, backend, backend_replica_tag, req):
         # If the worker died, this will be a RayActorError. Just return it and
         # let the HTTP proxy handle the retry logic.
-        result = await worker.handle_request.remote(req)
-        await self.mark_worker_idle(backend, worker)
+        logger.debug("Sending query to replica:" + backend_replica_tag)
+        start = time.time()
+        worker = self.replicas[backend_replica_tag]
+        try:
+            result = await worker.handle_request.remote(req)
+        except RayTaskError as error:
+            self.num_error_backend_request.labels(backend=backend).add()
+            result = error
+        await self.mark_worker_idle(backend, backend_replica_tag)
+        logger.debug("Got result in {:.2f}s".format(time.time() - start))
         return result
 
     async def _assign_query_to_worker(self,
@@ -311,11 +360,11 @@ class Router:
                                       max_batch_size=None):
 
         while len(buffer_queue) and worker_queue.qsize():
-            worker = await worker_queue.get()
+            backend_replica_tag = await worker_queue.get()
             if max_batch_size is None:  # No batching
                 request = buffer_queue.pop(0)
                 future = asyncio.get_event_loop().create_task(
-                    self._do_query(backend, worker, request))
+                    self._do_query(backend, backend_replica_tag, request))
                 # chaining satisfies request.async_future with future result.
                 asyncio.futures._chain_future(future, request.async_future)
             else:
@@ -331,7 +380,7 @@ class Router:
 
                 for group in requests_group.values():
                     future = asyncio.get_event_loop().create_task(
-                        self._do_query(backend, worker, group))
+                        self._do_query(backend, backend_replica_tag, group))
                     future.add_done_callback(
                         _make_future_unwrapper(
                             client_futures=[req.async_future for req in group],

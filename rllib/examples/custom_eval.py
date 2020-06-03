@@ -67,18 +67,16 @@ Result for PG_SimpleCorridor_0de4e686:
 """
 
 import argparse
-import numpy as np
-import gym
-from gym.spaces import Discrete, Box
 
 import ray
 from ray import tune
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
+from ray.rllib.examples.env.simple_corridor import SimpleCorridor
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--custom-eval", action="store_true")
 parser.add_argument("--num-cpus", type=int, default=0)
-args = parser.parse_args()
+parser.add_argument("--torch", action="store_true")
+parser.add_argument("--no-custom-eval", action="store_true")
 
 
 def custom_eval_function(trainer, eval_workers):
@@ -123,77 +121,54 @@ def custom_eval_function(trainer, eval_workers):
     return metrics
 
 
-class SimpleCorridor(gym.Env):
-    """Custom env we use for this example."""
-
-    def __init__(self, env_config):
-        self.end_pos = env_config["corridor_length"]
-        self.cur_pos = 0
-        self.action_space = Discrete(2)
-        self.observation_space = Box(0.0, 9999, shape=(1, ), dtype=np.float32)
-        print("Created env for worker index", env_config.worker_index,
-              "with corridor length", self.end_pos)
-
-    def set_corridor_length(self, length):
-        print("Update corridor length to", length)
-        self.end_pos = length
-
-    def reset(self):
-        self.cur_pos = 0
-        return [self.cur_pos]
-
-    def step(self, action):
-        assert action in [0, 1], action
-        if action == 0 and self.cur_pos > 0:
-            self.cur_pos -= 1
-        elif action == 1:
-            self.cur_pos += 1
-        done = self.cur_pos >= self.end_pos
-        return [self.cur_pos], 1 if done else 0, done, {}
-
-
 if __name__ == "__main__":
-    if args.custom_eval:
-        eval_fn = custom_eval_function
-    else:
+    args = parser.parse_args()
+
+    if args.no_custom_eval:
         eval_fn = None
+    else:
+        eval_fn = custom_eval_function
 
     ray.init(num_cpus=args.num_cpus or None)
 
-    tune.run(
-        "PG",
-        stop={
-            "training_iteration": 10,
+    config = {
+        "env": SimpleCorridor,
+        "env_config": {
+            "corridor_length": 10,
         },
-        config={
-            "env": SimpleCorridor,
+        "horizon": 20,
+        "log_level": "INFO",
+
+        # Training rollouts will be collected using just the learner
+        # process, but evaluation will be done in parallel with two
+        # workers. Hence, this run will use 3 CPUs total (1 for the
+        # learner + 2 more for evaluation workers).
+        "num_workers": 0,
+        "evaluation_num_workers": 2,
+
+        # Optional custom eval function.
+        "custom_eval_function": eval_fn,
+
+        # Enable evaluation, once per training iteration.
+        "evaluation_interval": 1,
+
+        # Run 10 episodes each time evaluation runs.
+        "evaluation_num_episodes": 10,
+
+        # Override the env config for evaluation.
+        "evaluation_config": {
             "env_config": {
-                "corridor_length": 10,
+                # Evaluate using LONGER corridor than trained on.
+                "corridor_length": 5,
             },
-            "horizon": 20,
-            "log_level": "INFO",
+        },
+        "framework": "torch" if args.torch else "tf",
+    }
 
-            # Training rollouts will be collected using just the learner
-            # process, but evaluation will be done in parallel with two
-            # workers. Hence, this run will use 3 CPUs total (1 for the
-            # learner + 2 more for evaluation workers).
-            "num_workers": 0,
-            "evaluation_num_workers": 2,
+    stop = {
+        "training_iteration": 10,
+    }
 
-            # Optional custom eval function.
-            "custom_eval_function": eval_fn,
+    tune.run("PG", config=config, stop=stop)
 
-            # Enable evaluation, once per training iteration.
-            "evaluation_interval": 1,
-
-            # Run 10 episodes each time evaluation runs.
-            "evaluation_num_episodes": 10,
-
-            # Override the env config for evaluation.
-            "evaluation_config": {
-                "env_config": {
-                    # Evaluate using LONGER corridor than trained on.
-                    "corridor_length": 5,
-                },
-            },
-        })
+    ray.shutdown()

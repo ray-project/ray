@@ -2,6 +2,8 @@ import jsonschema
 import os
 import unittest
 import yaml
+import urllib
+import tempfile
 
 from ray.autoscaler.autoscaler import fillout_defaults, validate_config
 from ray.test_utils import recursive_fnmatch
@@ -24,6 +26,21 @@ class AutoscalingConfigTest(unittest.TestCase):
                 validate_config(config)
             except Exception:
                 self.fail("Config did not pass validation test!")
+
+    def testValidateNetworkConfig(self):
+        web_yaml = "https://raw.githubusercontent.com/ray-project/ray/" \
+            "master/python/ray/autoscaler/aws/example-full.yaml"
+        response = urllib.request.urlopen(web_yaml, timeout=5)
+        content = response.read()
+        with tempfile.TemporaryFile() as f:
+            f.write(content)
+            f.seek(0)
+            config = yaml.safe_load(f)
+        config = fillout_defaults(config)
+        try:
+            validate_config(config)
+        except Exception:
+            self.fail("Config did not pass validation test!")
 
     def _test_invalid_config(self, config_path):
         with open(os.path.join(RAY_PATH, config_path)) as f:

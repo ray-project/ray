@@ -45,21 +45,32 @@ Status GcsPubSub::SubscribeAll(const std::string &channel, const Callback &subsc
 }
 
 Status GcsPubSub::Unsubscribe(const std::string &channel, const std::string &id) {
-  return redis_client_->GetPrimaryContext()->PUnsubscribeAsync(
-      GenChannelPattern(channel, boost::optional<std::string>(id)));
+  std::string pattern = GenChannelPattern(channel, id);
+  {
+    absl::MutexLock lock(&mutex_);
+    auto it = subscribe_callback_index_.find(pattern);
+    RAY_CHECK(it != subscribe_callback_index_.end());
+    unsubscribe_callback_index_[pattern] = it->second;
+    subscribe_callback_index_.erase(it);
+  }
+  return redis_client_->GetPrimaryContext()->PUnsubscribeAsync(pattern);
 }
 
 Status GcsPubSub::SubscribeInternal(const std::string &channel, const Callback &subscribe,
                                     const StatusCallback &done,
                                     const boost::optional<std::string> &id) {
   std::string pattern = GenChannelPattern(channel, id);
-  auto callback = [this, pattern, subscribe](std::shared_ptr<CallbackReply> reply) {
+  auto callback = [this, pattern, done, subscribe](std::shared_ptr<CallbackReply> reply) {
     if (!reply->IsNil()) {
       if (reply->IsUnsubscribeCallback()) {
         absl::MutexLock lock(&mutex_);
         ray::gcs::RedisCallbackManager::instance().remove(
-            subscribe_callback_index_[pattern]);
-        subscribe_callback_index_.erase(pattern);
+            unsubscribe_callback_index_[pattern]);
+        unsubscribe_callback_index_.erase(pattern);
+      } else if (reply->IsSubscribeCallback()) {
+        if (done) {
+          done(Status::OK());
+        }
       } else {
         const auto reply_data = reply->ReadAsPubsubData();
         if (!reply_data.empty()) {
@@ -76,10 +87,9 @@ Status GcsPubSub::SubscribeInternal(const std::string &channel, const Callback &
                                                                     &out_callback_index);
   if (id) {
     absl::MutexLock lock(&mutex_);
+    // If the same pattern has been subscribed more than once, the last subscription takes
+    // effect.
     subscribe_callback_index_[pattern] = out_callback_index;
-  }
-  if (done) {
-    done(status);
   }
   return status;
 }

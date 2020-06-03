@@ -45,10 +45,13 @@ esac
 if [ "${OSTYPE}" = "msys" ]; then
   target="${MINGW_DIR-/usr}/bin/bazel.exe"
   mkdir -p "${target%/*}"
-  curl -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-${achitecture}.exe"
+  curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-${achitecture}.exe"
+  tee /etc/profile.d/bazel.sh > /dev/null <<EOF; . /etc/profile.d/bazel.sh
+export USE_CLANG_CL=1  # Clang front-end for Visual C++
+EOF
 else
   target="./install.sh"
-  curl -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
+  curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
   chmod +x "${target}"
   if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
     sudo "${target}" > /dev/null  # system-wide install for CI
@@ -82,7 +85,6 @@ if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
 build --color=yes
 build --curses=no
 build --disk_cache="$(test "${OSTYPE}" = msys || echo ~/ray-bazel-cache)"
-build --progress_report_interval=60
 # Use ray google cloud cache
 build --remote_cache="https://storage.googleapis.com/ray-bazel-cache"
 build --show_progress_rate_limit=15

@@ -46,6 +46,10 @@ def create_parser(parser_creator=None):
         help="Connect to an existing Ray cluster at this address instead "
         "of starting a new one.")
     parser.add_argument(
+        "--no-ray-ui",
+        action="store_true",
+        help="Whether to disable the Ray web ui.")
+    parser.add_argument(
         "--ray-num-cpus",
         default=None,
         type=int,
@@ -131,6 +135,7 @@ def create_parser(parser_creator=None):
 
 
 def run(args, parser):
+    pass  # XXX: force CI
     if args.config_file:
         with open(args.config_file) as f:
             experiments = yaml.safe_load(f)
@@ -171,9 +176,9 @@ def run(args, parser):
         if not exp.get("env") and not exp.get("config", {}).get("env"):
             parser.error("the following arguments are required: --env")
         if args.eager:
-            exp["config"]["eager"] = True
-        if args.torch:
-            exp["config"]["use_pytorch"] = True
+            exp["config"]["framework"] = "tfe"
+        elif args.torch:
+            exp["config"]["framework"] = "torch"
         if args.v:
             exp["config"]["log_level"] = "INFO"
             verbose = 2
@@ -181,7 +186,7 @@ def run(args, parser):
             exp["config"]["log_level"] = "DEBUG"
             verbose = 3
         if args.trace:
-            if not exp["config"].get("eager"):
+            if exp["config"]["framework"] != "tfe":
                 raise ValueError("Must enable --eager to enable tracing.")
             exp["config"]["eager_tracing"] = True
 
@@ -197,6 +202,7 @@ def run(args, parser):
         ray.init(address=cluster.address)
     else:
         ray.init(
+            include_webui=not args.no_ray_ui,
             address=args.ray_address,
             object_store_memory=args.ray_object_store_memory,
             memory=args.ray_memory,

@@ -2,6 +2,8 @@ package io.ray.streaming.runtime.schedule;
 
 import io.ray.api.BaseActor;
 import io.ray.api.Ray;
+import io.ray.api.RayActor;
+import io.ray.api.RayPyActor;
 import io.ray.api.function.PyActorClass;
 import io.ray.streaming.jobgraph.JobEdge;
 import io.ray.streaming.jobgraph.JobGraph;
@@ -15,8 +17,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class TaskAssignerImpl implements TaskAssigner {
+  private static final Logger LOG = LoggerFactory.getLogger(TaskAssignerImpl.class);
 
   /**
    * Assign an optimized logical plan to execution graph.
@@ -33,7 +38,7 @@ public class TaskAssignerImpl implements TaskAssigner {
     Map<Integer, ExecutionNode> idToExecutionNode = new HashMap<>();
     for (JobVertex jobVertex : jobVertices) {
       ExecutionNode executionNode = new ExecutionNode(jobVertex.getVertexId(),
-          jobVertex.getParallelism());
+          jobVertex.getParallelism(), jobVertex.getConfig());
       executionNode.setNodeType(jobVertex.getVertexType());
       List<ExecutionTask> vertexTasks = new ArrayList<>();
       for (int taskIndex = 0; taskIndex < jobVertex.getParallelism(); taskIndex++) {
@@ -61,11 +66,17 @@ public class TaskAssignerImpl implements TaskAssigner {
 
   private BaseActor createWorker(JobVertex jobVertex) {
     switch (jobVertex.getLanguage()) {
-      case PYTHON:
-        return Ray.createActor(
+      case PYTHON: {
+        RayPyActor worker = Ray.createActor(
             new PyActorClass("ray.streaming.runtime.worker", "JobWorker"));
-      case JAVA:
-        return Ray.createActor(JobWorker::new);
+        LOG.info("Created python worker {}", worker);
+        return worker;
+      }
+      case JAVA: {
+        RayActor<JobWorker> worker = Ray.createActor(JobWorker::new);
+        LOG.info("Created java worker {}", worker);
+        return worker;
+      }
       default:
         throw new UnsupportedOperationException(
             "Unsupported language " + jobVertex.getLanguage());

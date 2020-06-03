@@ -88,6 +88,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         @staticmethod
         CRayStatus UnexpectedSystemExit()
 
+        @staticmethod
+        CRayStatus NotFound()
+
         c_bool ok()
         c_bool IsOutOfMemory()
         c_bool IsKeyError()
@@ -101,6 +104,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsTimedOut()
         c_bool IsInterrupted()
         c_bool IsSystemExit()
+        c_bool IsNotFound()
 
         c_string ToString()
         c_string CodeAsString()
@@ -226,12 +230,13 @@ cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CActorCreationOptions "ray::ActorCreationOptions":
         CActorCreationOptions()
         CActorCreationOptions(
-            uint64_t max_reconstructions,
+            int64_t max_restarts,
+            int64_t max_task_retries,
             int32_t max_concurrency,
             const unordered_map[c_string, double] &resources,
             const unordered_map[c_string, double] &placement_resources,
             const c_vector[c_string] &dynamic_worker_options,
-            c_bool is_detached, c_bool is_asyncio)
+            c_bool is_detached, c_string &name, c_bool is_asyncio)
 
 cdef extern from "ray/gcs/gcs_client.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":

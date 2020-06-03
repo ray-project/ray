@@ -13,6 +13,7 @@ import ray
 from ray import tune
 from ray.test_utils import recursive_fnmatch
 from ray.rllib import _register_all
+from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.bayesopt import BayesOptSearch
 from ray.tune.suggest.skopt import SkOptSearch
@@ -35,6 +36,7 @@ class TuneRestoreTest(unittest.TestCase):
             local_dir=tmpdir,
             config={
                 "env": "CartPole-v0",
+                "framework": "tf",
             },
         )
 
@@ -57,6 +59,7 @@ class TuneRestoreTest(unittest.TestCase):
             restore=self.checkpoint_path,  # Restore the checkpoint
             config={
                 "env": "CartPole-v0",
+                "framework": "tf",
             },
         )
 
@@ -72,6 +75,7 @@ class TuneRestoreTest(unittest.TestCase):
             restore=self.checkpoint_path,
             config={
                 "env": "CartPole-v0",
+                "framework": "tf",
             },
         )
         self.assertTrue(os.path.isfile(self.checkpoint_path))
@@ -132,7 +136,7 @@ class AutoInitTest(unittest.TestCase):
 
 class AbstractWarmStartTest:
     def setUp(self):
-        ray.init(local_mode=True)
+        ray.init(num_cpus=1, local_mode=True)
         self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):
@@ -146,20 +150,26 @@ class AbstractWarmStartTest:
     def run_exp_1(self):
         np.random.seed(162)
         search_alg, cost = self.set_basic_conf()
-        results_exp_1 = tune.run(cost, num_samples=5, search_alg=search_alg)
+        search_alg = ConcurrencyLimiter(search_alg, 1)
+        results_exp_1 = tune.run(
+            cost, num_samples=5, search_alg=search_alg, verbose=0)
         self.log_dir = os.path.join(self.tmpdir, "warmStartTest.pkl")
         search_alg.save(self.log_dir)
         return results_exp_1
 
     def run_exp_2(self):
         search_alg2, cost = self.set_basic_conf()
+        search_alg2 = ConcurrencyLimiter(search_alg2, 1)
         search_alg2.restore(self.log_dir)
-        return tune.run(cost, num_samples=5, search_alg=search_alg2)
+        return tune.run(cost, num_samples=5, search_alg=search_alg2, verbose=0)
 
     def run_exp_3(self):
+        print("FULL RUN")
         np.random.seed(162)
         search_alg3, cost = self.set_basic_conf()
-        return tune.run(cost, num_samples=10, search_alg=search_alg3)
+        search_alg3 = ConcurrencyLimiter(search_alg3, 1)
+        return tune.run(
+            cost, num_samples=10, search_alg=search_alg3, verbose=0)
 
     def testWarmStart(self):
         results_exp_1 = self.run_exp_1()
@@ -185,31 +195,31 @@ class HyperoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
         search_alg = HyperOptSearch(
             space,
-            max_concurrent=1,
             metric="loss",
             mode="min",
-            random_state_seed=5)
+            random_state_seed=5,
+            n_initial_points=1,
+            max_concurrent=1000  # Here to avoid breaking back-compat.
+        )
         return search_alg, cost
 
 
 class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
+    def set_basic_conf(self, analysis=None):
         space = {"width": (0, 20), "height": (-100, 100)}
 
         def cost(space, reporter):
             reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
 
         search_alg = BayesOptSearch(
-            space,
-            max_concurrent=1,
-            metric="loss",
-            mode="min",
-            utility_kwargs={
-                "kind": "ucb",
-                "kappa": 2.5,
-                "xi": 0.0
-            })
+            space, metric="loss", mode="min", analysis=analysis)
         return search_alg, cost
+
+    def testBootStrapAnalysis(self):
+        analysis = self.run_exp_3()
+        search_alg3, cost = self.set_basic_conf(analysis)
+        search_alg3 = ConcurrencyLimiter(search_alg3, 1)
+        tune.run(cost, num_samples=10, search_alg=search_alg3, verbose=0)
 
 
 class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
@@ -222,10 +232,11 @@ class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             reporter(loss=(space["height"]**2 + space["width"]**2))
 
         search_alg = SkOptSearch(
-            optimizer, ["width", "height"],
-            max_concurrent=1,
+            optimizer,
+            ["width", "height"],
             metric="loss",
             mode="min",
+            max_concurrent=1000,  # Here to avoid breaking back-compat.
             points_to_evaluate=previously_run_params,
             evaluated_rewards=known_rewards)
         return search_alg, cost
@@ -238,15 +249,15 @@ class NevergradWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         optimizer = optimizerlib.OnePlusOne(instrumentation)
 
         def cost(space, reporter):
-            reporter(
-                mean_loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
+            reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
 
         search_alg = NevergradSearch(
             optimizer,
             parameter_names,
-            max_concurrent=1,
-            metric="mean_loss",
-            mode="min")
+            metric="loss",
+            mode="min",
+            max_concurrent=1000,  # Here to avoid breaking back-compat.
+        )
         return search_alg, cost
 
 
@@ -272,14 +283,13 @@ class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         ]
 
         def cost(space, reporter):
-            reporter(
-                mean_loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
+            reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
 
         search_alg = SigOptSearch(
             space,
             name="SigOpt Example Experiment",
             max_concurrent=1,
-            metric="mean_loss",
+            metric="loss",
             mode="min")
         return search_alg, cost
 
@@ -297,15 +307,13 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             "width": (ValueType.DISCRETE, [0, 20], False)
         }
 
-        def cost(dim_dict, reporter):
-            reporter(
-                loss=(dim_dict["height"] - 14)**2 - abs(dim_dict["width"] - 3))
+        def cost(param, reporter):
+            reporter(loss=(param["height"] - 14)**2 - abs(param["width"] - 3))
 
         search_alg = ZOOptSearch(
             algo="Asracos",  # only support ASRacos currently
             budget=200,
             dim_dict=dim_dict,
-            max_concurrent=1,
             metric="loss",
             mode="min")
 

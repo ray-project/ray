@@ -10,23 +10,22 @@ import tempfile
 import ray
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.env.normalize_actions import NormalizeActionWrapper
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.utils import FilterManager, deep_update, merge_dicts, \
-    try_import_tf
+from ray.rllib.utils import FilterManager, deep_update, merge_dicts
+from ray.rllib.utils.framework import check_framework, try_import_tf
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
-from ray.rllib.utils.memory import ray_get_and_free
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
 from ray.tune.resources import Resources
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.rllib.env.normalize_actions import NormalizeActionWrapper
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 
 tf = try_import_tf()
 
@@ -138,19 +137,18 @@ COMMON_CONFIG = {
     # Log system resource metrics to results. This requires `psutil` to be
     # installed for sys stats, and `gputil` for GPU metrics.
     "log_sys_usage": True,
+    # Use fake (infinite speed) sampler. For testing only.
+    "fake_sampler": False,
 
-    # === Framework Settings ===
-    # Use PyTorch (instead of tf). If using `rllib train`, this can also be
-    # enabled with the `--torch` flag.
-    # NOTE: Some agents may not support `torch` yet and throw an error.
-    "use_pytorch": False,
-
-    # Enable TF eager execution (TF policies only). If using `rllib train`,
-    # this can also be enabled with the `--eager` flag.
-    "eager": False,
+    # === Deep Learning Framework Settings ===
+    # tf: TensorFlow
+    # tfe: TensorFlow eager
+    # torch: PyTorch
+    # auto: "torch" if only PyTorch installed, "tf" otherwise.
+    "framework": "auto",
     # Enable tracing in eager mode. This greatly improves performance, but
     # makes it slightly harder to debug since Python code won't be evaluated
-    # after the initial eager pass.
+    # after the initial eager pass. Only possible if framework=tfe.
     "eager_tracing": False,
     # Disable eager execution on workers (but allow it on the driver). This
     # only has an effect if eager is enabled.
@@ -204,9 +202,6 @@ COMMON_CONFIG = {
     # trainer guarantees all eval workers have the latest policy state before
     # this function is called.
     "custom_eval_function": None,
-    # EXPERIMENTAL: use the execution plan based API impl of the algo. Can also
-    # be enabled by setting RLLIB_EXEC_API=1.
-    "use_exec_api": False,
 
     # === Advanced Rollout Settings ===
     # Use a background thread for sampling (slightly off-policy, usually not
@@ -258,7 +253,7 @@ COMMON_CONFIG = {
     "min_iter_time_s": 0,
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of train iterations.
-    "timesteps_per_iteration": 0,  # TODO(ekl) deprecate this
+    "timesteps_per_iteration": 0,
     # This argument, in conjunction with worker_index, sets the random seed of
     # each worker, so that identically configured trials will have identical
     # results. This makes experiments reproducible.
@@ -345,7 +340,15 @@ COMMON_CONFIG = {
         "policy_mapping_fn": None,
         # Optional whitelist of policies to train, or None for all policies.
         "policies_to_train": None,
+        # Optional function that can be used to enhance the local agent
+        # observations to include more state.
+        # See rllib/evaluation/observation_function.py for more info.
+        "observation_fn": None,
     },
+
+    # Deprecated keys:
+    "use_pytorch": DEPRECATED_VALUE,  # Replaced by `framework=torch`.
+    "eager": DEPRECATED_VALUE,  # Replaced by `framework=tfe`.
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -409,17 +412,10 @@ class Trainer(Trainable):
                 object. If unspecified, a default logger is created.
         """
 
+        # User provided config (this is w/o the default Trainer's
+        # `COMMON_CONFIG` (see above)). Will get merged with COMMON_CONFIG
+        # in self._setup().
         config = config or {}
-
-        if tf and config.get("eager"):
-            if not tf.executing_eagerly():
-                tf.enable_eager_execution()
-            logger.info("Executing eagerly, with eager_tracing={}".format(
-                "True" if config.get("eager_tracing") else "False"))
-
-        if tf and not tf.executing_eagerly():
-            logger.info("Tip: set 'eager': true or the --eager flag to enable "
-                        "TensorFlow eager execution")
 
         # Vars to synchronize to workers on each train call
         self.global_vars = {"timestep": 0}
@@ -553,6 +549,32 @@ class Trainer(Trainable):
         self.config = Trainer.merge_trainer_configs(self._default_config,
                                                     config)
 
+        # Check and resolve DL framework settings.
+        if "use_pytorch" in self.config and \
+                self.config["use_pytorch"] != DEPRECATED_VALUE:
+            deprecation_warning("use_pytorch", "framework=torch", error=False)
+            if self.config["use_pytorch"]:
+                self.config["framework"] = "torch"
+            self.config.pop("use_pytorch")
+        if "eager" in self.config and self.config["eager"] != DEPRECATED_VALUE:
+            deprecation_warning("eager", "framework=tfe", error=False)
+            if self.config["eager"]:
+                self.config["framework"] = "tfe"
+            self.config.pop("eager")
+
+        # Check all dependencies and resolve "auto" framework.
+        self.config["framework"] = check_framework(self.config["framework"])
+        # Notify about eager/tracing support.
+        if tf and self.config["framework"] == "tfe":
+            if not tf.executing_eagerly():
+                tf.enable_eager_execution()
+            logger.info("Executing eagerly, with eager_tracing={}".format(
+                self.config["eager_tracing"]))
+        if tf and not tf.executing_eagerly() and \
+                self.config["framework"] != "torch":
+            logger.info("Tip: set framework=tfe or the --eager flag to enable "
+                        "TensorFlow eager execution")
+
         if self.config["normalize_actions"]:
             inner = self.env_creator
 
@@ -585,7 +607,7 @@ class Trainer(Trainable):
             if tf and not tf.executing_eagerly():
                 return tf.Graph().as_default()
             else:
-                return open("/dev/null")  # fake a no-op scope
+                return open(os.devnull)  # fake a no-op scope
 
         with get_scope():
             self._init(self.config, self.env_creator)
@@ -975,7 +997,7 @@ class Trainer(Trainable):
         for i, obj_id in enumerate(checks):
             w = workers.remote_workers()[i]
             try:
-                ray_get_and_free(obj_id)
+                ray.get(obj_id)
                 healthy_workers.append(w)
                 logger.info("Worker {} looks healthy".format(i + 1))
             except RayError:

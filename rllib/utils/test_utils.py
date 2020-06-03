@@ -1,7 +1,8 @@
 import logging
 import numpy as np
 
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
+    get_auto_framework
 
 tf = try_import_tf()
 if tf:
@@ -17,24 +18,24 @@ logger = logging.getLogger(__name__)
 
 
 def framework_iterator(config=None,
-                       frameworks=("tf", "eager", "torch"),
+                       frameworks=("tf", "tfe", "torch"),
                        session=False):
     """An generator that allows for looping through n frameworks for testing.
 
-    Provides the correct config entries ("use_pytorch" and "eager") as well
-    as the correct eager/non-eager contexts for tf.
+    Provides the correct config entries ("framework") as well
+    as the correct eager/non-eager contexts for tfe/tf.
 
     Args:
         config (Optional[dict]): An optional config dict to alter in place
             depending on the iteration.
         frameworks (Tuple[str]): A list/tuple of the frameworks to be tested.
-            Allowed are: "tf", "eager", and "torch".
+            Allowed are: "tf", "tfe", "torch", and "auto".
         session (bool): If True, enter a tf.Session() and yield that as
             well in the tf-case (otherwise, yield (fw, None)).
 
     Yields:
         str: If enter_session is False:
-            The current framework ("tf", "eager", "torch") used.
+            The current framework ("tf", "tfe", "torch") used.
         Tuple(str, Union[None,tf.Session]: If enter_session is True:
             A tuple of the current fw and the tf.Session if fw="tf".
     """
@@ -42,20 +43,23 @@ def framework_iterator(config=None,
     frameworks = [frameworks] if isinstance(frameworks, str) else frameworks
 
     for fw in frameworks:
+        if fw == "auto":
+            fw = get_auto_framework()
+
         # Skip non-installed frameworks.
         if fw == "torch" and not torch:
             logger.warning(
                 "framework_iterator skipping torch (not installed)!")
             continue
-        elif not tf:
+        if fw != "torch" and not tf:
             logger.warning("framework_iterator skipping {} (tf not "
                            "installed)!".format(fw))
             continue
-        elif fw == "eager" and not eager_mode:
+        elif fw == "tfe" and not eager_mode:
             logger.warning("framework_iterator skipping eager (could not "
                            "import `eager_mode` from tensorflow.python)!")
             continue
-        assert fw in ["tf", "eager", "torch", None]
+        assert fw in ["tf", "tfe", "torch", None]
 
         # Do we need a test session?
         sess = None
@@ -65,11 +69,10 @@ def framework_iterator(config=None,
 
         print("framework={}".format(fw))
 
-        config["eager"] = fw == "eager"
-        config["use_pytorch"] = fw == "torch"
+        config["framework"] = fw
 
         eager_ctx = None
-        if fw == "eager":
+        if fw == "tfe":
             eager_ctx = eager_mode()
             eager_ctx.__enter__()
             assert tf.executing_eagerly()
@@ -225,3 +228,59 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                 if false is True:
                     assert False, \
                         "ERROR: x ({}) is the same as y ({})!".format(x, y)
+
+
+def check_learning_achieved(tune_results, min_reward):
+    """Throws an error if `min_reward` is not reached within tune_results.
+
+    Checks the last iteration found in tune_results for its
+    "episode_reward_mean" value and compares it to `min_reward`.
+
+    Args:
+        tune_results: The tune.run returned results object.
+        min_reward (float): The min reward that must be reached.
+
+    Throws:
+        ValueError: If `min_reward` not reached.
+    """
+    if tune_results.trials[0].last_result["episode_reward_mean"] < min_reward:
+        raise ValueError("`stop-reward` of {} not reached!".format(min_reward))
+    print("ok")
+
+
+def check_compute_action(trainer, include_prev_action_reward=False):
+    """Tests different combinations of arguments for trainer.compute_action.
+
+    Args:
+        trainer (Trainer): The trainer object to test.
+        include_prev_action_reward (bool): Whether to include the prev-action
+            and -reward in the `compute_action` call.
+
+    Throws:
+        ValueError: If anything unexpected happens.
+    """
+    try:
+        pol = trainer.get_policy()
+    except AttributeError:
+        pol = trainer.policy
+
+    obs_space = pol.observation_space
+    action_space = pol.action_space
+    for explore in [True, False]:
+        for full_fetch in [True, False]:
+            obs = np.clip(obs_space.sample(), -1.0, 1.0)
+            action_in = action_space.sample() \
+                if include_prev_action_reward else None
+            reward_in = 1.0 if include_prev_action_reward else None
+            action = trainer.compute_action(
+                obs,
+                prev_action=action_in,
+                prev_reward=reward_in,
+                explore=explore,
+                full_fetch=full_fetch)
+            if full_fetch:
+                action, _, _ = action
+            if not action_space.contains(action):
+                raise ValueError(
+                    "Returned action ({}) of trainer {} not in Env's "
+                    "action_space ({})!".format(action, trainer, action_space))

@@ -20,8 +20,12 @@
 
 namespace ray {
 
-class GcsServerTest : public RedisServiceManagerForTest {
+class GcsServerTest : public ::testing::Test {
  public:
+  GcsServerTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
+
+  virtual ~GcsServerTest() { TestSetupUtil::ShutDownRedisServers(); }
+
   void SetUp() override {
     gcs::GcsServerConfig config;
     config.grpc_server_port = 0;
@@ -29,7 +33,7 @@ class GcsServerTest : public RedisServiceManagerForTest {
     config.grpc_server_thread_num = 1;
     config.redis_address = "127.0.0.1";
     config.is_test = true;
-    config.redis_port = REDIS_SERVER_PORT;
+    config.redis_port = TEST_REDIS_SERVER_PORTS.front();
     gcs_server_.reset(new gcs::GcsServer(config));
 
     thread_io_service_.reset(new std::thread([this] {
@@ -476,15 +480,6 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   report_heartbeat_request.mutable_heartbeat()->set_client_id(gcs_node_info->node_id());
   ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
 
-  // Unregister node info
-  rpc::UnregisterNodeRequest unregister_node_info_request;
-  unregister_node_info_request.set_node_id(gcs_node_info->node_id());
-  ASSERT_TRUE(UnregisterNode(unregister_node_info_request));
-  node_info_list = GetAllNodeInfo();
-  ASSERT_TRUE(node_info_list.size() == 1);
-  ASSERT_TRUE(node_info_list[0].state() ==
-              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
-
   // Update node resources
   rpc::UpdateResourcesRequest update_resources_request;
   update_resources_request.set_node_id(gcs_node_info->node_id());
@@ -503,6 +498,15 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   ASSERT_TRUE(DeleteResources(delete_resources_request));
   resources = GetResources(gcs_node_info->node_id());
   ASSERT_TRUE(resources.empty());
+
+  // Unregister node info
+  rpc::UnregisterNodeRequest unregister_node_info_request;
+  unregister_node_info_request.set_node_id(gcs_node_info->node_id());
+  ASSERT_TRUE(UnregisterNode(unregister_node_info_request));
+  node_info_list = GetAllNodeInfo();
+  ASSERT_TRUE(node_info_list.size() == 1);
+  ASSERT_TRUE(node_info_list[0].state() ==
+              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
 }
 
 TEST_F(GcsServerTest, TestObjectInfo) {
@@ -606,8 +610,8 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

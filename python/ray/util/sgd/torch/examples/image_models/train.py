@@ -46,6 +46,7 @@ from ray.util.sgd.utils import NUM_SAMPLES
 
 import ray.util.sgd.torch.examples.image_models.util as util
 from ray.util.sgd.torch.examples.image_models.args import parse_args
+import ray.util.sgd.torch.examples.image_models.util as util
 
 def accuracy(output, target, topk=(1,)):
     """

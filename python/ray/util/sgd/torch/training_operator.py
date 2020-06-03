@@ -213,8 +213,9 @@ class TrainingOperator:
         updating the model.
 
         By default, this method implementation assumes that batches
-        are in (features, labels) format. If using amp/fp16
-        training, it will also scale the loss automatically.
+        are in (\*features, labels) format. So we also support multiple inputs
+        model. If using amp/fp16 training, it will also scale the loss
+        automatically.
 
         You can provide custom loss metrics and training operations if you
         override this method. If overriding this method, you can access model,
@@ -238,10 +239,13 @@ class TrainingOperator:
                 calculate averages.
 
         """
-        features, target = batch
+        # unpack features into list to support multiple inputs model
+        *features, target = batch
         # Create non_blocking tensors for distributed training
         if self.use_gpu:
-            features = features.cuda(non_blocking=True)
+            features = [
+                feature.cuda(non_blocking=True) for feature in features
+            ]
             target = target.cuda(non_blocking=True)
 
         # Compute output.
@@ -262,7 +266,7 @@ class TrainingOperator:
         with self.timers.record("apply"):
             self.optimizer.step()
 
-        return {"train_loss": loss.item(), NUM_SAMPLES: features.size(0)}
+        return {"train_loss": loss.item(), NUM_SAMPLES: features[0].size(0)}
 
     def validate(self, val_iterator, info):
         """Runs one standard validation pass over the val_iterator.
@@ -305,6 +309,10 @@ class TrainingOperator:
 
         You can override this method to provide arbitrary metrics.
 
+        Same as ``train_batch``, this method implementation assumes that
+        batches are in (\*features, labels) format by default. So we also
+        support multiple inputs model.
+
         Args:
             batch: One item of the validation iterator.
             batch_info (dict): Contains information per batch from
@@ -318,9 +326,12 @@ class TrainingOperator:
                 by default, ``validate`` uses "num_samples" to
                 calculate averages.
         """
-        features, target = batch
+        # unpack features into list to support multiple inputs model
+        *features, target = batch
         if self.use_gpu:
-            features = features.cuda(non_blocking=True)
+            features = [
+                feature.cuda(non_blocking=True) for feature in features
+            ]
             target = target.cuda(non_blocking=True)
 
         # compute output
