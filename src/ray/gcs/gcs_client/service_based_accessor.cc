@@ -155,7 +155,7 @@ Status ServiceBasedActorInfoAccessor::AsyncGetByName(
           rpc::ActorTableData actor_table_data(reply.actor_table_data());
           callback(status, actor_table_data);
         } else {
-          callback(status, boost::none);
+          callback(Status::NotFound(), boost::none);
         }
         RAY_LOG(DEBUG) << "Finished getting actor info, status = " << status
                        << ", name = " << name;

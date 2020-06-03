@@ -1380,8 +1380,6 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
           // Use a NIL actor ID to signal that the actor wasn't found.
           actor_id = ActorID::Nil();
         } else {
-          // TODO(SANG): This check will cause segfault if detached actor is created
-          // and someone tries to get an handle before it is stored in GCS.
           RAY_CHECK(result);
           auto actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(*result));
           actor_id = actor_handle->GetActorID();
