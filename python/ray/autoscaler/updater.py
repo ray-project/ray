@@ -273,7 +273,7 @@ class SSHCommandRunner:
                     "Command failed: \n\n  {}\n".format(quoted_cmd)) from None
             else:
                 raise click.ClickException(
-                    "SSH command Failed. Look above to see the output from the"
+                    "SSH command Failed. See above for the output from the"
                     " failure.") from None
 
     def run_rsync_up(self, source, target):
