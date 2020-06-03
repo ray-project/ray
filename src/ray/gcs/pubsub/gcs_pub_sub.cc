@@ -64,9 +64,12 @@ Status GcsPubSub::SubscribeInternal(const std::string &channel, const Callback &
     if (!reply->IsNil()) {
       if (reply->IsUnsubscribeCallback()) {
         absl::MutexLock lock(&mutex_);
-        ray::gcs::RedisCallbackManager::instance().remove(
-            unsubscribe_callback_index_[pattern]);
-        unsubscribe_callback_index_.erase(pattern);
+        auto callback_index = unsubscribe_callback_index_.find(pattern);
+        if (callback_index != unsubscribe_callback_index_.end()) {
+          ray::gcs::RedisCallbackManager::instance().remove(
+              callback_index->second);
+          unsubscribe_callback_index_.erase(callback_index);
+        }
       } else if (reply->IsSubscribeCallback()) {
         if (done) {
           done(Status::OK());
