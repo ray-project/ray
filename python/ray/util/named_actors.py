@@ -38,8 +38,7 @@ def _get_actor(name):
         actor_info = ray.actors(actor_id=handle._actor_id.hex())
         actor_state = actor_info["State"]
         if actor_state == ActorTableData.DEAD:
-            raise ValueError(
-                "The actor with name={} is dead.".format(name))
+            raise ValueError("The actor with name={} is dead.".format(name))
     return handle
 
 
