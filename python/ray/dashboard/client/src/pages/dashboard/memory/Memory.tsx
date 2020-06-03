@@ -12,12 +12,13 @@ import {
 } from "@material-ui/core";
 import PauseIcon from "@material-ui/icons/Pause";
 import PlayArrowIcon from "@material-ui/icons/PlayArrow";
-import React from "react";
+import React, { ReactNode, useState } from "react";
 import { connect } from "react-redux";
 import { stopMemoryTableCollection } from "../../../api";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
 import MemoryRowGroup from "./MemoryRowGroup";
+import { MemoryTableRow } from "./MemoryTableRow";
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -43,79 +44,88 @@ type State = {
   pauseMemoryTable: boolean;
 };
 
-class MemoryInfo extends React.Component<
-  WithStyles<typeof styles> &
-    ReturnType<typeof mapStateToProps> &
-    typeof mapDispatchToProps,
-  State
-> {
-  handlePauseMemoryTable = async () => {
-    const { shouldObtainMemoryTable } = this.props;
-    this.props.setShouldObtainMemoryTable(!shouldObtainMemoryTable);
-    if (shouldObtainMemoryTable) {
+type Props = ReturnType<typeof mapStateToProps> &
+  typeof mapDispatchToProps &
+  WithStyles<typeof styles>;
+
+const MemoryInfo = (props: Props) => {
+  const handlePauseMemoryTable = async () => {
+    props.setShouldObtainMemoryTable(!props.shouldObtainMemoryTable);
+    if (props.shouldObtainMemoryTable) {
       await stopMemoryTableCollection();
     }
   };
 
-  renderIcon = () => {
-    if (this.props.shouldObtainMemoryTable) {
-      return <PauseIcon />;
-    } else {
-      return <PlayArrowIcon />;
-    }
-  };
-
-  render() {
-    const { classes, memoryTable } = this.props;
-    const memoryTableHeaders = [
-      "", // Padding
-      "IP Address",
-      "Pid",
-      "Type",
-      "Object ID",
-      "Object Size",
-      "Reference Type",
-      "Call Site",
-    ];
-    return (
-      <React.Fragment>
-        {memoryTable !== null ? (
-          <React.Fragment>
-            <Button color="primary" onClick={this.handlePauseMemoryTable}>
-              {this.renderIcon()}
-              {this.props.shouldObtainMemoryTable
-                ? "Pause Collection"
-                : "Resume Collection"}
-            </Button>
-            <Table className={classes.table}>
-              <TableHead>
-                <TableRow>
-                  {memoryTableHeaders.map((header, index) => (
-                    <TableCell key={index} className={classes.cell}>
-                      {header}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {Object.keys(memoryTable.group).map((group_key, index) => (
-                  <MemoryRowGroup
-                    key={index}
-                    groupKey={group_key}
-                    memoryTableGroups={memoryTable.group}
-                    initialExpanded={true}
-                  />
+  const pauseButtonIcon = props.shouldObtainMemoryTable ? (
+    <PauseIcon />
+  ) : (
+    <PlayArrowIcon />
+  );
+  const [isGrouped, setIsGrouped] = useState(true);
+  const { classes, memoryTable } = props;
+  const memoryTableHeaders = [
+    "", // Padding
+    "IP Address",
+    "Pid",
+    "Type",
+    "Object ID",
+    "Object Size",
+    "Reference Type",
+    "Call Site",
+  ];
+  return (
+    <React.Fragment>
+      {memoryTable !== null ? (
+        <React.Fragment>
+          <Button color="primary" onClick={handlePauseMemoryTable}>
+            {pauseButtonIcon}
+            {props.shouldObtainMemoryTable
+              ? "Pause Collection"
+              : "Resume Collection"}
+          </Button>
+          <Table className={classes.table}>
+            <TableHead>
+              <TableRow>
+                {memoryTableHeaders.map((header, index) => (
+                  <TableCell key={index} className={classes.cell}>
+                    {header}
+                  </TableCell>
                 ))}
-              </TableBody>
-            </Table>
-          </React.Fragment>
-        ) : (
-          <div>No Memory Table Information Provided</div>
-        )}
-      </React.Fragment>
-    );
-  }
-}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {isGrouped
+                ? Object.keys(memoryTable.group).map((group_key, index) => (
+                    <MemoryRowGroup
+                      key={index}
+                      groupKey={group_key}
+                      memoryTableGroups={memoryTable.group}
+                      initialExpanded={true}
+                    />
+                  ))
+                : Object.values(memoryTable.group).reduce(
+                    (children: Array<ReactNode>, memoryTableGroup) => {
+                      const groupChildren = memoryTableGroup.entries.map(
+                        (memoryTableEntry, index) => (
+                          <MemoryTableRow
+                            memoryTableEntry={memoryTableEntry}
+                            key={`mem-row-${index}`}
+                          />
+                        ),
+                      );
+                      return children.concat(groupChildren);
+                    },
+                    [],
+                  )}
+            </TableBody>
+          </Table>
+        </React.Fragment>
+      ) : (
+        <div>No Memory Table Information Provided</div>
+      )}
+    </React.Fragment>
+  );
+};
 
 export default connect(
   mapStateToProps,

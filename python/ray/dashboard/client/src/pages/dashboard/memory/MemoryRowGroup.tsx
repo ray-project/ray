@@ -1,6 +1,5 @@
 import {
   createStyles,
-  TableCell,
   TableRow,
   Theme,
   withStyles,
@@ -15,15 +14,15 @@ import {
   MemoryTableResponse,
   MemoryTableSummary,
 } from "../../../api";
+import {
+  ExpandableStyledTableCell,
+  StyledTableCell,
+} from "../../../common/TableCell";
 import MemorySummary from "./MemorySummary";
 import { MemoryTableRow } from "./MemoryTableRow";
 
 const styles = (theme: Theme) =>
   createStyles({
-    cell: {
-      padding: theme.spacing(1),
-      textAlign: "center",
-    },
     expandCollapseCell: {
       cursor: "pointer",
     },
@@ -66,36 +65,31 @@ const MemoryRowGroup = (props: Props & WithStyles<typeof styles>) => {
   return (
     <React.Fragment>
       <TableRow hover>
-        <TableCell
-          className={classNames(classes.cell, classes.expandCollapseCell)}
-          onClick={toggleExpanded}
-        >
+        <ExpandableStyledTableCell onClick={toggleExpanded}>
           {!expanded ? (
             <AddIcon className={classes.expandCollapseIcon} />
           ) : (
             <RemoveIcon className={classes.expandCollapseIcon} />
           )}
-        </TableCell>
+        </ExpandableStyledTableCell>
         {features.map((feature, index) => (
-          <TableCell className={classes.cell} key={index}>
+          <StyledTableCell key={index}>
             {// TODO(sang): For now, it is always grouped by node_ip_address.
             feature === "node_ip_address" ? groupKey : ""}
-          </TableCell>
+          </StyledTableCell>
         ))}
       </TableRow>
       {expanded && (
         <React.Fragment>
-          <MemorySummary
-            initialExpanded={false}
-            memoryTableSummary={summary}
-          />
+          <MemorySummary initialExpanded={false} memoryTableSummary={summary} />
           {entries.map((memoryTableEntry, index) => {
-              return <MemoryTableRow 
+            return (
+              <MemoryTableRow
                 memoryTableEntry={memoryTableEntry}
                 key={`${index}`}
-                cellClassName={classes.cell}
               />
-            })}
+            );
+          })}
         </React.Fragment>
       )}
     </React.Fragment>
