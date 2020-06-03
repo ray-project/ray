@@ -119,6 +119,14 @@ def init(name=None,
 
 
 @_ensure_connected
+def shutdown():
+    global master_actor
+    retry_actor_failures(master_actor.shutdown)
+    ray.kill(master_actor, no_restart=True)
+    master_actor = None
+
+
+@_ensure_connected
 def create_endpoint(endpoint_name, route=None, methods=["GET"]):
     """Create a service endpoint given route_expression.
 

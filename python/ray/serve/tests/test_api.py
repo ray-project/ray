@@ -6,7 +6,9 @@ import requests
 
 import ray
 from ray import serve
-from ray.serve.utils import get_random_letters
+from ray.serve import constants
+from ray.serve.exceptions import RayServeException
+from ray.serve.utils import format_actor_name, get_random_letters
 
 
 def test_e2e(serve_instance):
@@ -488,3 +490,28 @@ def test_list_backends(serve_instance):
 
     serve.delete_backend("backend2")
     assert len(serve.list_backends()) == 0
+
+
+def test_shutdown(serve_instance):
+    def f():
+        pass
+
+    name = "shutdown"
+    serve.init(name=name, http_port=8002)
+    serve.create_backend("backend", f)
+    serve.create_endpoint("endpoint", f)
+
+    serve.shutdown()
+    with pytest.raises(RayServeException, match="Please run serve.init"):
+        serve.list_backends()
+
+    # Check that the actors are gone.
+    with pytest.raises(ValueError):
+        ray.get_actor(format_actor_name(constants.SERVE_MASTER_NAME, name))
+    with pytest.raises(ValueError):
+        ray.get_actor(format_actor_name(constants.SERVE_HTTP_PROXY_NAME, name))
+    with pytest.raises(ValueError):
+        ray.get_actor(format_actor_name(constants.SERVE_ROUTER_NAME, name))
+    with pytest.raises(ValueError):
+        ray.get_actor(
+            format_actor_name(constants.SERVE_METRIC_SINK_NAME, name))
