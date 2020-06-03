@@ -35,15 +35,13 @@ def with_interactive(cmd):
 
 
 class KubernetesCommandRunner:
-    def __init__(self, log_prefix, node_id, provider, auth_config,
-                 cluster_name, process_runner, use_internal_ip):
+    def __init__(self, log_prefix, namespace, node_id, auth_config,
+                 process_runner):
 
-        self.cluster_name = cluster_name
         self.log_prefix = log_prefix
         self.process_runner = process_runner
         self.node_id = node_id
-        self.use_internal_ip = use_internal_ip
-        self.namespace = provider.namespace
+        self.namespace = namespace
         self.kubectl = ["kubectl", "-n", self.namespace]
 
     def run(self,
