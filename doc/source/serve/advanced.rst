@@ -132,6 +132,7 @@ Incremental Rollout
 
 ``set_traffic`` can also be used to implement incremental rollout.
 Here, we want to replace an existing backend with a new implementation by gradually increasing the proportion of traffic that it serves.
+In the example below, we do this repeatedly in one script, but in practice this would likely happen over time across multiple scripts.
 
 .. code-block:: python
 
