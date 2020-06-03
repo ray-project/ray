@@ -78,7 +78,7 @@ class FullyConnectedNetwork(TFModelV2):
                     [np.product(obs_space.shape)] + hiddens[-1:])[-1]
 
         # Concat the log std vars to the end of the state-dependent means.
-        if free_log_std and logits_out:
+        if free_log_std and logits_out is not None:
 
             def tiled_log_std(x):
                 return tf.tile(
