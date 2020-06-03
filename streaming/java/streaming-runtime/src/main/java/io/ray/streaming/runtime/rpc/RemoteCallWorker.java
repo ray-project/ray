@@ -7,7 +7,6 @@ import io.ray.api.RayPyActor;
 import io.ray.api.function.PyActorMethod;
 import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.worker.JobWorker;
-import io.ray.streaming.runtime.worker.context.JavaJobWorkerContext;
 import io.ray.streaming.runtime.worker.context.JobWorkerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,10 +33,10 @@ public class RemoteCallWorker {
     // python
     if (actor instanceof RayPyActor) {
       result = ((RayPyActor) actor).call(
-          new PyActorMethod("init", Object.class), context.getContextBytes());
+          new PyActorMethod("init", Object.class), context.getPythonWorkerContextBytes());
     } else {
       // java
-      result = ((RayActor<JobWorker>) actor).call(JobWorker::init, (JavaJobWorkerContext) context);
+      result = ((RayActor<JobWorker>) actor).call(JobWorker::init, context);
     }
     result.get();
 

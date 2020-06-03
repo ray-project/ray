@@ -10,7 +10,7 @@ import io.ray.streaming.runtime.core.processor.StreamProcessor;
 import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.transfer.TransferHandler;
 import io.ray.streaming.runtime.util.EnvUtil;
-import io.ray.streaming.runtime.worker.context.JavaJobWorkerContext;
+import io.ray.streaming.runtime.worker.context.JobWorkerContext;
 import io.ray.streaming.runtime.worker.tasks.OneInputStreamTask;
 import io.ray.streaming.runtime.worker.tasks.SourceStreamTask;
 import io.ray.streaming.runtime.worker.tasks.StreamTask;
@@ -37,7 +37,7 @@ public class JobWorker implements Serializable {
     EnvUtil.loadNativeLibraries();
   }
 
-  private JavaJobWorkerContext workerContext;
+  private JobWorkerContext workerContext;
   private ExecutionVertex executionVertex;
   private StreamingWorkerConfig workerConfig;
 
@@ -51,7 +51,7 @@ public class JobWorker implements Serializable {
   /**
    * Initialize JobWorker and data communication pipeline.
    */
-  public Boolean init(JavaJobWorkerContext workerContext) {
+  public Boolean init(JobWorkerContext workerContext) {
     LOG.info("Initiating job worker: {}. Worker context is: {}.",
         workerContext.getWorkerName(), workerContext);
 
@@ -115,7 +115,7 @@ public class JobWorker implements Serializable {
     return workerConfig;
   }
 
-  public JavaJobWorkerContext getWorkerContext() {
+  public JobWorkerContext getWorkerContext() {
     return workerContext;
   }
 

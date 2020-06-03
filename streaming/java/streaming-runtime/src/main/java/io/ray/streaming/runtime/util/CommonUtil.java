@@ -1,6 +1,5 @@
 package io.ray.streaming.runtime.util;
 
-
 import java.util.Map;
 
 /**
@@ -8,7 +7,7 @@ import java.util.Map;
  */
 public class CommonUtil {
 
-  public static Map<String,Object> strMapToObjectMap(Map<String, String> srcMap) {
+  public static Map<String, Object> strMapToObjectMap(Map<String, String> srcMap) {
     Map<String,Object> destMap = (Map) srcMap;
     return destMap;
   }

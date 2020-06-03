@@ -15,9 +15,7 @@ import io.ray.streaming.runtime.master.resourcemanager.ResourceManager;
 import io.ray.streaming.runtime.master.resourcemanager.ViewBuilder;
 import io.ray.streaming.runtime.master.scheduler.controller.WorkerLifecycleController;
 import io.ray.streaming.runtime.python.GraphPbBuilder;
-import io.ray.streaming.runtime.worker.context.JavaJobWorkerContext;
 import io.ray.streaming.runtime.worker.context.JobWorkerContext;
-import io.ray.streaming.runtime.worker.context.PythonJobWorkerContext;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -165,51 +163,23 @@ public class JobSchedulerImpl implements JobScheduler {
     // build workers' context
     Map<ExecutionVertex, JobWorkerContext> needRegistryVertexToContextMap = new HashMap<>();
     executionGraph.getAllExecutionVertices().forEach(vertex -> {
-      JobWorkerContext context;
-      if (vertex.getLanguage() == Language.JAVA) {
-        context = buildJobWorkerContext(vertex, masterActor);
-      } else {
-        context = buildPythonJobWorkerContext(vertex, masterActor);
-      }
-
+      JobWorkerContext context = buildJobWorkerContext(vertex, masterActor);
       needRegistryVertexToContextMap.put(vertex, context);
     });
     return needRegistryVertexToContextMap;
   }
 
-  private JavaJobWorkerContext buildJobWorkerContext(
+  private JobWorkerContext buildJobWorkerContext(
       ExecutionVertex executionVertex,
       RayActor<JobMaster> masterActor) {
 
     // create java worker context
-    JavaJobWorkerContext context = new JavaJobWorkerContext(
-        executionVertex.getWorkerActorId(),
+    JobWorkerContext context = new JobWorkerContext(
         masterActor,
         executionVertex
     );
 
     return context;
-  }
-
-  private PythonJobWorkerContext buildPythonJobWorkerContext(
-      ExecutionVertex executionVertex,
-      RayActor<JobMaster> masterActor) {
-
-    // create python worker context
-    RemoteCall.SubExecutionGraph subGraphPb =
-        new GraphPbBuilder().buildSubExecutionGraph(executionVertex);
-
-    byte[] contextBytes = RemoteCall.WorkerContext.newBuilder()
-        .setActorId(executionVertex.getWorkerActor().getId().toString())
-        .setMasterActor(ByteString.copyFrom((((NativeRayActor) (masterActor)).toBytes())))
-        .setSubGraph(subGraphPb)
-        .build()
-        .toByteArray();
-
-    PythonJobWorkerContext pythonJobWorkerContext = new PythonJobWorkerContext();
-    pythonJobWorkerContext.setContextBytes(contextBytes);
-
-    return pythonJobWorkerContext;
   }
 
   /**
