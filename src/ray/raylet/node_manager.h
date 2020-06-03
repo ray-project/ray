@@ -23,6 +23,7 @@
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/common/task/task.h"
 #include "ray/common/ray_object.h"
+#include "ray/common/bundle_spec.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/scheduling_resources.h"
@@ -251,6 +252,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                   bool forwarded = false);
+  /// Handle spcecified bundle lease to the local node manager.
+  /// 
+  /// \param bunndle_spec The bundle being lease.
+  void LeaseBundle(const BundleSpecification &bundle_spce);
   /// Assign a task to a worker. The task is assumed to not be queued in local_queues_.
   ///
   /// \param[in] worker The worker to assign the task to.
@@ -301,6 +306,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// resource_map argument.
   /// \return Void.
   void ScheduleTasks(std::unordered_map<ClientID, SchedulingResources> &resource_map);
+
+  /// Make a placement decision for the resource_map.
+  ///
+  /// \param resource_map A mapping from node manager ID to an estimate of the
+  /// resources available to that node manager. Scheduling decisions will only
+  /// consider the local node manager and the node managers in the keys of the
+  /// resource_map argument.
+  /// \return Void.
+  void ScheduleBundle(std::unordered_map<ClientID, SchedulingResources> &resource_map,
+                       const BundleSpecification &bundle_spec);
   /// Handle a task whose return value(s) must be reconstructed.
   ///
   /// \param task_id The relevant task ID.
@@ -643,21 +658,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Dispatch tasks to available workers.
   void DispatchScheduledTasksToWorkers();
 
-  /// Dispatch bundles.
-  void DispatchScheduledBundles();
-
   /// For the pending task at the head of tasks_to_schedule_, return a node
   /// in the system (local or remote) that has enough resources available to
   /// run the task, if any such node exist.
   /// Repeat the process as long as we can schedule a task.
   void NewSchedulerSchedulePendingTasks();
 
-  /// For the pending bundle at the head of bundles_to_schedule_, check if the node 
-  /// we assign have enough resource.
-  void NewSchedulerSchedulePendingBundles();
-
   /// Whether a task is an actor creation task.
   bool IsActorCreationTask(const TaskID &task_id);
+
+  /// Return ResourceIdSet for an actor in placement group from BundleID.
+  ResourceIdSet GetResource(BundleID bundle_id);
 
   /// ID of this node.
   ClientID self_node_id_;
@@ -705,6 +716,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The resources (and specific resource IDs) that are currently available.
   ResourceIdSet local_available_resources_;
   std::unordered_map<ClientID, SchedulingResources> cluster_resource_map_;
+
+  // The resource which be excavated.
+  ResourceIdSet excavated_resources_;
+  // A map connect Bundle with the resource belong to it.
+  std::unordered_map<BundleID,ResourceIdSet>BundleResourceIdSet;
   /// A pool of workers.
   WorkerPool worker_pool_;
   /// A set of queues to maintain tasks.
@@ -764,8 +780,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                              std::string address, int port)>
       ScheduleFn;
 
-  typedef std::function<void(std::shared_ptr<Bundle>, ClientID spillback_to,
-                            std::string address, int port)>
+  typedef std::function<void(std::shared_ptr<Bundle>)>
       ScheduleBundleFn;
 
   /// Queue of lease requests that are waiting for resources to become available.

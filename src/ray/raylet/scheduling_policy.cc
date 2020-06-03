@@ -24,6 +24,8 @@ namespace ray {
 
 namespace raylet {
 
+// TODO(AlisaWu): change this api.
+
 SchedulingPolicy::SchedulingPolicy(const SchedulingQueue &scheduling_queue)
     : scheduling_queue_(scheduling_queue),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
@@ -131,6 +133,46 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
   }
 
   return decision;
+}
+
+bool SchedulingPolicy::ScheduleBundle(
+    std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
+    const ClientID &local_client_id,
+    const ray::BundleSpecification &bundle_spec){
+    // The policy decision to be returned.
+    std::unordered_map<BundleID, ClientID> decision;
+    #ifndef NDEBUG
+      RAY_LOG(DEBUG) << "Cluster resource map: ";
+      for (const auto &client_resource_pair : cluster_resources) {
+        // pair = ClientID, SchedulingResources
+        const ClientID &client_id = client_resource_pair.first;
+        const SchedulingResources &resources = client_resource_pair.second;
+        RAY_LOG(DEBUG) << "client_id: " << client_id << " "
+                      << resources.GetAvailableResources().ToString();
+      }
+    #endif
+  const auto &client_resource_pair = cluster_resources.find(local_client_id);
+  if(client_resource_pair == cluster_resources.end()) {
+    return false;
+  }
+  const auto &resource_demand = bundle_spec.GetRequiredResources();
+  ClientID node_client_id = client_resource_pair->first;
+  const auto &node_resources = client_resource_pair->second;
+  ResourceSet available_node_resources =
+  ResourceSet(node_resources.GetAvailableResources());
+  available_node_resources.SubtractResources(node_resources.GetLoadResources());
+  RAY_LOG(DEBUG) << "client_id " << node_client_id
+                    << " avail: " << node_resources.GetAvailableResources().ToString()
+                    << " load: " << node_resources.GetLoadResources().ToString();
+  if (resource_demand.IsSubset(available_node_resources)) {
+    // TODO(AlisaWu): update resource.
+    // ResourceSet new_load(cluster_resources[dst_client_id].GetLoadResources());
+    //     new_load.AddResources(resource_demand);
+    //     cluster_resources[dst_client_id].SetLoadResources(std::move(new_load));
+    return true;
+  } else {
+    return false;
+  }
 }
 
 std::vector<TaskID> SchedulingPolicy::SpillOver(

@@ -1635,28 +1635,6 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
   }
 }
 
-void NodeManager::DispatchScheduledBundles(){
-  for (size_t queue_size = bundles_to_dispatch_.size(); queue_size > 0; queue_size--) {
-    auto bundle_item =bundles_to_dispatch_.front();
-    auto reply = bundle_item.first;
-    auto bundle = bundle_item.second;
-    // auto spec = bundle_item.second.GetTaskSpecification();
-    bundles_to_dispatch_.pop_front();
-
-    std::shared_ptr<TaskResourceInstances> allocated_instances(
-        new TaskResourceInstances());
-    // bool schedulable = new_resource_scheduler_->AllocateLocalTaskResources(
-    //    bundle.GetResourceMap(), allocated_instances);
-    // if (!schedulable) {
-    //   // Not enough resources to schedule this bundle.
-    //   // call back and return false.
-    //   // reply(worker, ClientID::Nil(), "", -1);
-    // }
-    // TODO(AlisaWu) fill this function.
-    // reply(worker, ClientID::Nil(), "", -1);
-  }
-}
-
 void NodeManager::NewSchedulerSchedulePendingTasks() {
   RAY_CHECK(new_scheduler_enabled_);
   size_t queue_size = tasks_to_schedule_.size();
@@ -1703,26 +1681,6 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
     }
   }
   DispatchScheduledTasksToWorkers();
-}
-
-void NodeManager::NewSchedulerSchedulePendingBundles(){
-  // TODO(AlisaWu): fill this function
-  size_t queue_size = bundles_to_schedule_.size();
-
-  while (queue_size > 0){
-    if (queue_size == 0) {
-      return;
-    } else {
-      queue_size--;
-    }
-    auto bundle_item = bundles_to_schedule_.front();
-    auto bundle = bundle_item.second;
-    // auto request_resource = bundle.resource();
-    // int64_t violations = 0;
-    // TODO(AlisaWu): check if the node have enough resource. 
-
-  }
-  DispatchScheduledBundles();
 }
 
 void NodeManager::WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work) {
@@ -1890,25 +1848,35 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 void NodeManager::HandleRequestResourceLease(const rpc::RequestResourceLeaseRequest &request,
                                             rpc::RequestResourceLeaseReply *reply,
                                             rpc::SendReplyCallback send_reply_callback){
-  rpc::Bundle bundle_spec;
-  auto bundle_message = request.bundle_spec();
-  auto bundle_item = std::make_pair(
-    // TODO(AlisaWu): [this, bundle_spec, reply, send_reply_callback](std::shared_ptr<Bundle> bundle,
-    [bundle_spec,  send_reply_callback](std::shared_ptr<Bundle> bundle,
-                                                    ClientID spillback_to,
-                                                    std::string address, int port){
-        if (bundle != nullptr) {
-
-        } else {
-
+  // rpc::Bundle bundle_spec;
+  auto bundle_spec = BundleSpecification(request.bundle_spec());
+  RAY_LOG(DEBUG) << "bundle lease request " << bundle_spec.BundleID();
+  bundle_spec.OnScheduleInstead([reply, send_reply_callback]
+                                      (const ResourceIdSet &resource_ids){
+        for (const auto &mapping : resource_ids.AvailableResources()) {
+        auto resource = reply->add_resource_mapping();
+        resource->set_name(mapping.first);
+        for (const auto &id : mapping.second.WholeIds()) {
+          auto rid = resource->add_resource_ids();
+          rid->set_index(id);
+          rid->set_quantity(1.0);
         }
+        for (const auto &id : mapping.second.FractionalIds()) {
+          auto rid = resource->add_resource_ids();
+          rid->set_index(id.first);
+          rid->set_quantity(id.second.ToDouble());
+        }
+      }
+      send_reply_callback(Status::OK(), nullptr, nullptr);
+  });
 
-        send_reply_callback(Status::OK(), nullptr, nullptr);                                           
-      },bundle_spec);
-     bundles_to_schedule_.push_back(bundle_item);
-     NewSchedulerSchedulePendingBundles();
-     return;
-  
+  bundle_spec.OnSpillbackInstead([send_reply_callback](){
+      send_reply_callback(Status::OK(), nullptr, nullptr);
+    }
+  );
+
+  LeaseBundle(bundle_spec);
+  return;
 }
 
 void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
@@ -2038,6 +2006,29 @@ void NodeManager::ProcessSetResourceRequest(
     data_map.emplace(resource_name, resource_table_data);
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncUpdateResources(node_id, data_map, nullptr));
   }
+}
+
+void NodeManager::ScheduleBundle( 
+    std::unordered_map<ClientID, SchedulingResources> &resource_map,
+    const BundleSpecification &bundle_spec) {
+    // If the resource map contains the local raylet, update load before calling policy.
+  if (resource_map.count(self_node_id_) > 0) {
+    resource_map[self_node_id_].SetLoadResources(local_queues_.GetResourceLoad());
+  }      
+  // Invoke the scheduling policy.
+  auto schedule_success = scheduling_policy_.ScheduleBundle(resource_map, self_node_id_,bundle_spec);
+  auto bundle_id = bundle_spec.BundleID();
+  if(schedule_success){
+      auto acquired_resources =
+          local_available_resources_.Acquire(bundle_spec.GetRequiredResources());
+      excavated_resources_.Plus(acquired_resources);
+      cluster_resource_map_[self_node_id_].Acquire(bundle_spec.GetRequiredResources());
+      BundleResourceIdSet.insert({bundle_id, acquired_resources});
+      bundle_spec.OnSchedule()(acquired_resources);
+  } else {
+    bundle_spec.OnSpillback()();
+  }
+
 }
 
 void NodeManager::ScheduleTasks(
@@ -2231,6 +2222,19 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
           }
         }));
   }
+}
+
+void NodeManager::LeaseBundle(const BundleSpecification &bundle_spec){
+  BundleID bundle_id = bundle_spec.BundleID();
+  if(BundleResourceIdSet.find(bundle_id) != BundleResourceIdSet.end()){
+    RAY_LOG(WARNING) << "leased bundle " << bundle_id
+                     << " is already mapped and will not be released ";
+    return;
+  }
+  ScheduleBundle(cluster_resource_map_, bundle_spec);
+  // TODO(atumanov): assert that !placeable.isempty() => insufficient available
+  // resources locally.
+
 }
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,

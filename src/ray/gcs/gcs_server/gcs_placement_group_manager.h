@@ -16,6 +16,7 @@
 #define RAY_GCS_PLACEMENT_GROUP_MANAGER_H
 
 #include <ray/common/id.h>
+#include <ray/common/bundle_spec.h>
 #include <ray/gcs/accessor.h>
 #include <ray/protobuf/gcs.pb.h>
 #include <ray/rpc/client_call.h>
@@ -75,7 +76,7 @@ class GcsPlacementGroup {
   std::string GetName() const;
 
   /// Get the bundles of this placement_group
-  std::vector<rpc::Bundle> GetBundles() const;
+  std::vector<BundleSpecification> GetBundles() const;
   
  /// Get the Strategy
   rpc::PlacementStrategy GetStrategy() const;

@@ -394,10 +394,10 @@ ray::Status raylet::RayletClient::CancelWorkerLease(
 }
 
 Status raylet::RayletClient::RequestResourceLease(
-      const ray::rpc::Bundle &bundle_spec,
+      const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestResourceLeaseReply> &callback) {
   rpc::RequestResourceLeaseRequest request;
-  request.CopyFrom(bundle_spec);
+  request.CopyFrom(bundle_spec.GetMessage());
   return grpc_client_->RequestResourceLease(request, callback);
 }
 

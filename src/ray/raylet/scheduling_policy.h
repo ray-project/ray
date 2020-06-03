@@ -19,6 +19,7 @@
 #include <unordered_map>
 
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/common/bundle_spec.h"
 #include "ray/raylet/scheduling_queue.h"
 
 namespace ray {
@@ -49,6 +50,21 @@ class SchedulingPolicy {
   std::unordered_map<TaskID, ClientID> Schedule(
       std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
       const ClientID &local_client_id);
+
+  /// \brief Perform a scheduling operation, given a set of cluster resources and
+  /// producing a mapping of bundles to raylets.
+  ///
+  /// \param cluster_resources: a set of cluster resources containing resource and load
+  /// information for some subset of the cluster. For all client IDs in the returned
+  /// placement map, the corresponding SchedulingResources::resources_load_ is
+  /// incremented by the aggregate resource demand of the bundles assigned to it.
+  /// \param local_client_id The ID of the node manager that owns this
+  /// SchedulingPolicy object.
+  /// \return Scheduling decision, mapping bundles to raylets for placement.
+  bool ScheduleBundle(
+      std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
+      const ClientID &local_client_id,
+      const ray::BundleSpecification &bundle_spec);
 
   /// \brief Given a set of cluster resources perform a spill-over scheduling operation.
   ///

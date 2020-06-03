@@ -25,6 +25,7 @@
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
+#include "ray/common/bundle_spec.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/process.h"
 
@@ -46,10 +47,43 @@ namespace raylet {
   /// Return the resource's ID.
   BundleID BundleId() const;
 
-  std::unordered_map<std::string,double> resource();
+  // Setter, geter, and clear methods  for allocated_instances_.
+  void SetAllocatedInstances(
+      std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+    allocated_instances_ = allocated_instances;
+  };
+
+  std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() {
+    return allocated_instances_;
+  };
+
+  void ClearAllocatedInstances() { allocated_instances_ = nullptr; }
 
  private:
-  std::unordered_map<std::string,double> resource_;
+
+   /// The Bundle's ID.
+  BundleID bundle_id_;
+  /// IP address of this worker.
+  std::string ip_address_;
+  /// Port assigned to this worker by the raylet. If this is 0, the actual
+  /// port the worker listens (port_) on will be a random one. This is required
+  /// because a worker could crash before announcing its port, in which case
+  /// we still need to be able to mark that port as free.
+  int assigned_port_;
+  /// Port that this worker listens on.
+  int port_;
+  /// Connection state of a worker.
+  std::shared_ptr<ClientConnection> connection_;
+  /// The capacity of each resource instance allocated to this bundle in order
+  /// to satisfy the resource requests.
+  std::shared_ptr<TaskResourceInstances> allocated_instances_;
+
+  /// The address of this bundle's owner. The owner is the bundle that
+  /// currently holds the lease on this bundle, if any.
+  rpc::Address owner_address_;
+
+  /// Task being assigned to this worker.
+  BundleSpecification assigned_bundle_;
   
 
   // TODO(AlisaWu): add other method.

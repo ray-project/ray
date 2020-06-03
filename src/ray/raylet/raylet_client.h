@@ -25,6 +25,7 @@
 
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/common/bundle_spec.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 
 using ray::ActorCheckpointID;
@@ -91,7 +92,7 @@ class ResourceLeaseInterface {
   /// \param resource_spec Resources that should be allocated for the worker.
   /// \return ray::Status
   virtual ray::Status RequestResourceLease(
-      const ray::rpc::Bundle &bundle_spec,
+      const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestResourceLeaseReply> &callback) = 0;
 
   virtual ~ResourceLeaseInterface(){};
@@ -325,7 +326,7 @@ class RayletClient : public PinObjectsInterface,
 
   /// Implements ResourceLeaseInterface.
   ray::Status RequestResourceLease(
-      const ray::rpc::Bundle &bundle_spec,
+      const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestResourceLeaseReply> &callback)
       override;
 

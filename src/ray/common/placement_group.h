@@ -21,22 +21,20 @@
 
 namespace ray{
 
+
 class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpec> {
 public:
     /// Construct from a protobuf message object.
     /// The input message will be **copied** into this object.
     ///
     /// \param message The protobuf message.
-    explicit PlacementGroupSpecification(rpc::PlacementGroupSpec message) : MessageWrapper(message) {
-        // ComputeResources();
-    }
+    explicit PlacementGroupSpecification(rpc::PlacementGroupSpec message) : MessageWrapper(message) {}
     /// Construct from a protobuf message shared_ptr.
     ///
     /// \param message The protobuf message.
-    explicit PlacementGroupSpecification(std::shared_ptr<rpc::PlacementGroupSpec> message): MessageWrapper(message) {
-    //          ComputeResources();
-    }
+    explicit PlacementGroupSpecification(std::shared_ptr<rpc::PlacementGroupSpec> message): MessageWrapper(message) {}
     // TODO(AlisaWu): add more function to construct.
+
 };
 
 class PlacementGroupSpecBuilder {

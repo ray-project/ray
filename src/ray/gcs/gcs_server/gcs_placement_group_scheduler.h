@@ -22,6 +22,7 @@
 #include <ray/rpc/node_manager/node_manager_client.h>
 #include <ray/rpc/worker/core_worker_client.h>
 #include <queue>
+#include <tuple>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -32,6 +33,8 @@ namespace gcs {
 
 using LeaseClientFactoryFn =
     std::function<std::shared_ptr<ResourceLeaseInterface>(const rpc::Address &address)>;
+  
+typedef std::function<void(const Status &)> LeaseResourceCallback;
 
 class GcsPlacementGroup;
 
@@ -73,6 +76,10 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param placement_group to be scheduled.
   void Schedule(std::shared_ptr<GcsPlacementGroup> placement_group) override;
 
+  std::deque<std::tuple<BundleSpecification,std::shared_ptr<rpc::GcsNodeInfo>,LeaseResourceCallback>>GetLeaseResourceQueue(){
+    return lease_resource_queue_;
+  }
+
 
  protected:
   /// The GcsLeasedWorker is kind of abstraction of remote leased worker inside raylet. It
@@ -111,13 +118,16 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       return resources_;
     }
 
-   protected:
+
+
+   private:
     /// The address of the remote leased worker.
     rpc::Address address_;
     /// The resources leased from remote node.
     std::vector<rpc::ResourceMapEntry> resources_;
     /// Id of the placement_group assigned to this worker.
     PlacementGroupID assigned_placement_group_id_;
+
   };
 
   /// Lease a worker from the specified node for the specified bundle.
@@ -125,7 +135,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param bundle A description of the placement_group to create. This object has the resource
   /// specification needed to lease workers from the specified node.
   /// \param node The node that the worker will be leased from.
-    Status LeaseResourceFromNode(const rpc::Bundle &bundle, std::shared_ptr<rpc::GcsNodeInfo> node);
+    void LeaseResourceFromNode();
 
   /// Handler to process a granted lease.
   ///
@@ -167,6 +177,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// receive a reply or the node is removed.
   absl::flat_hash_map<ClientID, absl::flat_hash_set<BundleID>>
       node_to_bundles_when_leasing_;
+  
+  /// The queue which is used to store the whole LeaseResourceFromNode
+  std::deque<std::tuple<BundleSpecification,std::shared_ptr<rpc::GcsNodeInfo>,LeaseResourceCallback>>lease_resource_queue_;
 };
 
 }

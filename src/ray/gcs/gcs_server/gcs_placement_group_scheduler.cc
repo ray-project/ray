@@ -66,88 +66,96 @@ void GcsPlacementGroupScheduler::Schedule(std::shared_ptr<GcsPlacementGroup> pla
             schedule_bundles[i] = ClientID::FromBinary(alive_nodes.begin()->second->node_id());
         }
     }
-
+    // TODO(AlisaWu): add a callback function.
     bool lease_success = true;
     Status status;
     for(int i = 0;i < bundles.size();i ++) {
       RAY_CHECK(node_to_bundles_when_leasing_[schedule_bundles[i]]
-                    .emplace(BundleID::FromBinary(bundles[i].bundle_id()))
+                    .emplace(bundles[i].BundleID())
                     .second);
-      status = LeaseResourceFromNode(bundles[i], gcs_node_manager_.GetNode(schedule_bundles[i]));
-      if (status.ok()) {
-          continue;
-      } else {
-        lease_success = false;
-        break;
-      }
+            
+      GetLeaseResourceQueue().push_back(std::make_tuple(bundles[i], gcs_node_manager_.GetNode(schedule_bundles[i]),
+      [](const Status &status){
+        if(!status.ok()){
+          
+        }
+      }));
     }
+    LeaseResourceFromNode();
 
     // TODO(AlisaWu): add the logic.
-    if(lease_success){
+    // if(lease_success){
       
 
-        // store
-    }else{
+    //     // store
+    // }else{
       
-        // back to step 2
-    }
+    //     // back to step 2
+    // }
 
 
 }
 
-Status GcsPlacementGroupScheduler::LeaseResourceFromNode(const rpc::Bundle &bundle,
-                                            std::shared_ptr<rpc::GcsNodeInfo> node) {
-  RAY_CHECK(node);
+void GcsPlacementGroupScheduler::LeaseResourceFromNode() {
+  // const BundleSpecification &bundle,
+  // std::shared_ptr<rpc::GcsNodeInfo> node
+  auto lease_resourece_queue = GetLeaseResourceQueue();
+  for(auto iter = lease_resourece_queue.begin(); iter != lease_resourece_queue.end(); iter++){
+    auto bundle = std::get<0>(*iter);
+    auto node = std::get<1>(*iter);
+    auto callback = std::get<2>(*iter);
+    RAY_CHECK(node);
 
-  auto node_id = ClientID::FromBinary(node->node_id());
-  RAY_LOG(INFO) << "Start leasing resource from node " << node_id << " for bundle "
-                << bundle.bundle_id();
+    auto node_id = ClientID::FromBinary(node->node_id());
+    RAY_LOG(INFO) << "Start leasing resource from node " << node_id << " for bundle "
+                  << bundle.BundleID();
 
-  rpc::Address remote_address;
-  remote_address.set_raylet_id(node->node_id());
-  remote_address.set_ip_address(node->node_manager_address());
-  remote_address.set_port(node->node_manager_port());
-  auto lease_client = GetOrConnectLeaseClient(remote_address);
-  
-  auto status = lease_client->RequestResourceLease(
-      bundle,
-      [this,node_id, bundle, node](const Status &status,
-                                   const rpc::RequestResourceLeaseReply &reply) {
-          // If the bundle is still in the leasing map and the status is ok, remove the bundle
-          // from the leasing map and handle the reply. Otherwise, lease again, because it
-          // may be a network exception.
-          // If the bundle is not in the leasing map, it means that the placement_group has been
-          // cancelled as the node is dead, just do nothing in this case because the
-          // gcs_placement_group_manager will reconstruct it again.
-          // TODO(AlisaWu): Add placement group cancel
-          auto iter = node_to_bundles_when_leasing_.find(node_id);
-          if(iter != node_to_bundles_when_leasing_.end()){
-            // If the node is still available, the actor must be still in the leasing map as
-            // it is erased from leasing map only when `CancelOnNode` or the
-            // `RequestWorkerLeaseReply` is received from the node, so try lease again.
-            auto bundle_iter = iter->second.find(BundleID::FromBinary(bundle.bundle_id()));
-            RAY_CHECK(bundle_iter != iter->second.end());
-            if (status.ok()) {
-              // Remove the actor from the leasing map as the reply is returned from the
-              // remote node.
-              iter->second.erase(bundle_iter);
-              if (iter->second.empty()) {
-                node_to_bundles_when_leasing_.erase(iter);
+    rpc::Address remote_address;
+    remote_address.set_raylet_id(node->node_id());
+    remote_address.set_ip_address(node->node_manager_address());
+    remote_address.set_port(node->node_manager_port());
+    auto lease_client = GetOrConnectLeaseClient(remote_address);
+    
+    auto status = lease_client->RequestResourceLease(
+        bundle,
+        [this,node_id, bundle, node](const Status &status,
+                                    const rpc::RequestResourceLeaseReply &reply) {
+            // If the bundle is still in the leasing map and the status is ok, remove the bundle
+            // from the leasing map and handle the reply. Otherwise, lease again, because it
+            // may be a network exception.
+            // If the bundle is not in the leasing map, it means that the placement_group has been
+            // cancelled as the node is dead, just do nothing in this case because the
+            // gcs_placement_group_manager will reconstruct it again.
+            // TODO(AlisaWu): Add placement group cancel
+            auto iter = node_to_bundles_when_leasing_.find(node_id);
+            if(iter != node_to_bundles_when_leasing_.end()){
+              // If the node is still available, the actor must be still in the leasing map as
+              // it is erased from leasing map only when `CancelOnNode` or the
+              // `RequestWorkerLeaseReply` is received from the node, so try lease again.
+              auto bundle_iter = iter->second.find(bundle.BundleID());
+              RAY_CHECK(bundle_iter != iter->second.end());
+              if (status.ok()) {
+                // Remove the actor from the leasing map as the reply is returned from the
+                // remote node.
+                iter->second.erase(bundle_iter);
+                if (iter->second.empty()) {
+                  node_to_bundles_when_leasing_.erase(iter);
+                }
+                RAY_LOG(INFO) << "Finished leasing resource from " <<  node_id << " for bundle "
+                            << bundle.BundleID();
+                // HandleResourceLeasedReply(bundle, reply);
+              } else {
+                // TODO(AlisaWu): try to return a fail to the manager
+                // Status::OutOfMemory("Lease resource for placement group");
               }
-              RAY_LOG(INFO) << "Finished leasing resource from " <<  node_id << " for bundle "
-                          << bundle.bundle_id();
-              //  HandleResourceLeasedReply(bundle, reply);
-            } else {
-              // TODO(AlisaWu): try to return a fail to the manager
-               // Status::OutOfMemory("Lease resource for placement group");
             }
           }
-        }
-      );
-  if (!status.ok()) {
-    return Status::OutOfMemory("Lease resource for placement group");
+        );
+    if(!status.ok()){
+      // TODO(AlisaWu): try to return a fail to the manager
+    }
   }
-  return Status::OK();
+  
 }
 
 Status GcsPlacementGroupScheduler::HandleResourceLeasedReply(
