@@ -167,6 +167,7 @@ void GcsActorManager::HandleGetNamedActorInfo(
   const std::string &name = request.name();
   RAY_LOG(DEBUG) << "Getting actor info"
                  << ", name = " << name;
+  RAY_LOG(ERROR) << "Actor info get happened!";
 
   auto on_done = [name, reply, send_reply_callback](
                      const Status &status,
@@ -391,6 +392,7 @@ Status GcsActorManager::RegisterActor(
 
   auto actor = std::make_shared<GcsActor>(request);
   if (actor->IsDetached()) {
+    RAY_LOG(ERROR) << "Sangbin register actor request comes in! actor id: " << actor->GetActorID();
     auto it = named_actors_.find(actor->GetName());
     if (it == named_actors_.end()) {
       named_actors_.emplace(actor->GetName(), actor->GetActorID());
@@ -449,6 +451,7 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
         if (!status.ok()) {
           RAY_LOG(INFO) << "Worker " << owner_id << " failed, destroying actor child";
         }
+        RAY_LOG(ERROR) << "Sangbin poll owner stuff happend";
 
         auto node_it = owners_.find(owner_node_id);
         if (node_it != owners_.end() && node_it->second.count(owner_id)) {
@@ -460,7 +463,7 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
 }
 
 void GcsActorManager::DestroyActor(const ActorID &actor_id) {
-  RAY_LOG(DEBUG) << "Destroying actor " << actor_id;
+  RAY_LOG(ERROR) << "Destroying actor " << actor_id;
   actor_to_register_callbacks_.erase(actor_id);
   auto it = registered_actors_.find(actor_id);
   RAY_CHECK(it != registered_actors_.end())
@@ -553,13 +556,16 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
                                    const ray::WorkerID &worker_id,
                                    bool intentional_exit) {
   // Destroy all actors that are owned by this worker.
+  RAY_LOG(ERROR) << "Sangbin worker dead detected, worker id: " << worker_id;
   const auto it = owners_.find(node_id);
   if (it != owners_.end() && it->second.count(worker_id)) {
+    RAY_LOG(ERROR) << "Sangbin owner's found";
     auto owner = it->second.find(worker_id);
     // Make a copy of the children actor IDs since we will delete from the
     // list.
     const auto children_ids = owner->second.children_actor_ids;
     for (const auto &child_id : children_ids) {
+      RAY_LOG(ERROR) << "sangbin destroying an actor, actor id: " << child_id;
       DestroyActor(child_id);
     }
   }
@@ -580,6 +586,7 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
   if (!actor_id.IsNil()) {
     RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
                   << " failed, restarting actor " << actor_id;
+    RAY_LOG(ERROR) << "Sangbin reconstruct happens";
     // Reconstruct the actor.
     ReconstructActor(actor_id, /*need_reschedule=*/!intentional_exit);
   }
@@ -657,6 +664,14 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
         }));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
+    // For detaached actors, make sure to clean up their names.
+    RAY_LOG(ERROR) << "Sangbin detached data will be deleted";
+    if (actor->IsDetached()) {
+      auto it = named_actors_.find(actor->GetName());
+      if (it != named_actors_.end() && it->second == actor->GetActorID()) {
+        named_actors_.erase(actor->GetName());
+      }
+    }
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
@@ -665,7 +680,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
           RAY_CHECK_OK(gcs_pub_sub_->Publish(
               ACTOR_CHANNEL, actor_id.Hex(),
               mutable_actor_table_data->SerializeAsString(), nullptr));
-        }));
+          }));
     // The actor is dead, but we should not remove the entry from the
     // registered actors yet. If the actor is owned, we will destroy the actor
     // once the owner fails or notifies us that the actor's handle has gone out

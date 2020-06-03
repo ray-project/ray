@@ -1360,6 +1360,7 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
   RAY_CHECK(RayConfig::instance().gcs_service_enabled());
   RAY_CHECK(RayConfig::instance().gcs_actor_service_enabled());
   RAY_CHECK(!name.empty());
+  RAY_LOG(ERROR) << "sangbin lookup actor handle from core worker";
 
   // This call needs to be blocking because we can't return until the actor
   // handle is created, which requires the response from the RPC. This is

@@ -11,7 +11,7 @@ import time
 import ray
 import ray.test_utils
 import ray.cluster_utils
-from ray.test_utils import run_string_as_driver, get_non_head_nodes
+from ray.test_utils import run_string_as_driver, get_non_head_nodes, wait_for_condition
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 
@@ -695,6 +695,67 @@ ray.get(actor.ping.remote())
     run_string_as_driver(driver_script)
     detached_actor = ray.get_actor(create_actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
+
+
+def test_detached_actor_cleanup(ray_start_regular):
+    @ray.remote
+    class DetachedActor:
+        def ping(self):
+            return "pong"
+
+    dup_actor_name = "actor"
+
+    def create_and_kill_actor(actor_name):
+        # Make sure same name is creatable after killing it.
+        DetachedActor.options(name=actor_name).remote()
+        print('get')
+        detached_actor = ray.get_actor(actor_name)
+        # Wait for detached actor creation.
+        assert ray.get(detached_actor.ping.remote()) == "pong"
+        ray.kill(detached_actor)
+        print('killed')
+        actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
+        max_wait_time = 10
+        wait_time = 0
+        while actor_status["State"] != 3 and wait_time < max_wait_time:
+            actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
+            time.sleep(1.0)
+            wait_time += 1
+
+    create_and_kill_actor(dup_actor_name)
+    # This shouldn't be broken because actor
+    # name should have been cleaned up from GCS.
+    create_and_kill_actor(dup_actor_name)
+
+    redis_address = ray_start_regular["redis_address"]
+    driver_script = """
+import ray
+import time
+ray.init(address="{}")
+
+@ray.remote
+class DetachedActor:
+    def ping(self):
+        return "pong"
+
+# Make sure same name is creatable after killing it.
+detached_actor = DetachedActor.options(name="{}").remote()
+# Wait for detached actor creation.
+assert ray.get(detached_actor.ping.remote()) == "pong"
+ray.kill(detached_actor)
+actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
+max_wait_time = 10
+wait_time = 0
+while actor_status["State"] != 3 and wait_time < max_wait_time:
+    actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
+    time.sleep(1.0)
+    wait_time += 1
+""".format(redis_address, dup_actor_name)
+
+    run_string_as_driver(driver_script)
+    # Make sure we can create a detached actor created/killed
+    # at other scripts.
+    create_and_kill_actor(dup_actor_name)
 
 
 def test_kill(ray_start_regular):
