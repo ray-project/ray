@@ -1120,7 +1120,7 @@ py_test(
 py_test(
     name = "tests/test_avail_actions_qmix",
     tags = ["tests_dir", "tests_dir_A"],
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_avail_actions_qmix.py"]
 )
 
