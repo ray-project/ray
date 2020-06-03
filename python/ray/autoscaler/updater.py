@@ -423,16 +423,15 @@ class NodeUpdater:
             # Run init commands
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})
-            with LogTimer(self.log_prefix + "Initialization commands",
-                          "completed"):
+            with LogTimer(self.log_prefix + "Initialization commands"):
                 for cmd in self.initialization_commands:
                     self.cmd_runner.run(cmd)
 
-            with LogTimer(self.log_prefix + "Setup commands", "completed"):
+            with LogTimer(self.log_prefix + "Setup commands"):
                 for cmd in self.setup_commands:
                     self.cmd_runner.run(cmd)
 
-        with LogTimer(self.log_prefix + "Ray start commands", "completed"):
+        with LogTimer(self.log_prefix + "Ray start commands"):
             for cmd in self.ray_start_commands:
                 self.cmd_runner.run(cmd)
 
