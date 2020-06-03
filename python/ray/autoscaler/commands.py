@@ -169,6 +169,20 @@ def monitor_cluster(cluster_config_file, num_lines, override_cluster_name):
                  override_cluster_name, None)
 
 
+def warn_about_bad_start_command(start_commands):
+    ray_start_cmd = list(filter(lambda x: "ray start" in x, start_commands))
+    if len(ray_start_cmd) == 0:
+        logger.warning(
+            "Ray start is not included in the head_start_ray_commands section."
+        )
+    if not any("autoscaling-config" in x for x in ray_start_cmd):
+        logger.warning(
+            "Ray start on the head node does not have the flag"
+            "--autoscaling-config set. The head node will not launch"
+            "workers. Add --autoscaling-config=~/ray_bootstrap_config.yaml"
+            "to ray start in the head_start_ray_commands section.")
+
+
 def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                             override_cluster_name):
     """Create the cluster head node, which in turn creates the workers."""
@@ -256,6 +270,9 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         else:
             init_commands = config["head_setup_commands"]
             ray_start_commands = config["head_start_ray_commands"]
+
+        if not no_restart:
+            warn_about_bad_start_command(ray_start_commands)
 
         updater = NodeUpdaterThread(
             node_id=head_node,

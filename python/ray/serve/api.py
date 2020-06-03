@@ -1,7 +1,5 @@
 from functools import wraps
 
-from multiprocessing import cpu_count
-
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_MASTER_NAME, HTTP_PROXY_TIMEOUT)
@@ -60,46 +58,39 @@ def accept_batch(f):
     return f
 
 
-def init(cluster_name=None,
+def init(name=None,
          http_host=DEFAULT_HTTP_HOST,
          http_port=DEFAULT_HTTP_PORT,
-         ray_init_kwargs={
-             "object_store_memory": int(1e8),
-             "num_cpus": max(cpu_count(), 8)
-         },
          metric_exporter=InMemoryExporter):
-    """Initialize a serve cluster.
+    """Initialize or connect to a serve cluster.
 
-    If serve cluster has already initialized, this function will just return.
+    If serve cluster is already initialized, this function will just return.
 
-    Calling `ray.init` before `serve.init` is optional. When there is not a ray
-    cluster initialized, serve will call `ray.init` with `object_store_memory`
-    requirement.
+    If `ray.init` has not been called in this process, it will be called with
+    no arguments. To specify kwargs to `ray.init`, it should be called
+    separately before calling `serve.init`.
 
     Args:
-        cluster_name (str): A unique name for this serve cluster. This allows
-            multiple serve clusters to run on the same ray cluster. Must be
+        name (str): A unique name for this serve instance. This allows
+            multiple serve instances to run on the same ray cluster. Must be
             specified in all subsequent serve.init() calls.
         http_host (str): Host for HTTP server. Default to "0.0.0.0".
         http_port (int): Port for HTTP server. Default to 8000.
-        ray_init_kwargs (dict): Argument passed to ray.init, if there is no ray
-            connection. Default to {"object_store_memory": int(1e8)} for
-            performance stability reason
         metric_exporter(ExporterInterface): The class aggregates metrics from
             all RayServe actors and optionally export them to external
             services. RayServe has two options built in: InMemoryExporter and
             PrometheusExporter
     """
-    if cluster_name is not None and not isinstance(cluster_name, str):
-        raise TypeError("cluster_name must be a string.")
+    if name is not None and not isinstance(name, str):
+        raise TypeError("name must be a string.")
 
     # Initialize ray if needed.
     if not ray.is_initialized():
-        ray.init(**ray_init_kwargs)
+        ray.init()
 
     # Try to get serve master actor if it exists
     global master_actor
-    master_actor_name = format_actor_name(SERVE_MASTER_NAME, cluster_name)
+    master_actor_name = format_actor_name(SERVE_MASTER_NAME, name)
     try:
         master_actor = ray.get_actor(master_actor_name)
         return
@@ -120,7 +111,7 @@ def init(cluster_name=None,
     master_actor = ServeMaster.options(
         name=master_actor_name,
         max_restarts=-1,
-    ).remote(cluster_name, http_node_id, http_host, http_port, metric_exporter)
+    ).remote(name, http_node_id, http_host, http_port, metric_exporter)
 
     block_until_http_ready(
         "http://{}:{}/-/routes".format(http_host, http_port),
@@ -136,8 +127,6 @@ def create_endpoint(endpoint_name, route=None, methods=["GET"]):
             used as key to set traffic policy.
         route (str): A string begin with "/". HTTP server will use
             the string to match the path.
-        blocking (bool): If true, the function will wait for service to be
-            registered before returning
     """
     retry_actor_failures(master_actor.create_endpoint, route, endpoint_name,
                          [m.upper() for m in methods])
@@ -150,6 +139,16 @@ def delete_endpoint(endpoint):
     Does not delete any associated backends.
     """
     retry_actor_failures(master_actor.delete_endpoint, endpoint)
+
+
+@_ensure_connected
+def list_endpoints():
+    """Returns a dictionary of all registered endpoints.
+
+    The dictionary keys are endpoint names and values are dictionaries
+    of the form: {"methods": List[str], "traffic": Dict[str, float]}.
+    """
+    return retry_actor_failures(master_actor.get_all_endpoints)
 
 
 @_ensure_connected
@@ -209,6 +208,15 @@ def create_backend(backend_tag,
 
     retry_actor_failures(master_actor.create_backend, backend_tag,
                          backend_config, replica_config)
+
+
+@_ensure_connected
+def list_backends():
+    """Returns a dictionary of all registered backends.
+
+    Dictionary maps backend tags to backend configs.
+    """
+    return retry_actor_failures(master_actor.get_all_backends)
 
 
 @_ensure_connected

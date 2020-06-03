@@ -1,7 +1,7 @@
 import logging
 import os
 import sys
-from typing import Any
+from typing import Any, Union
 
 from ray.util import log_once
 
@@ -9,6 +9,9 @@ logger = logging.getLogger(__name__)
 
 # Represents a generic tensor type.
 TensorType = Any
+
+# Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
+TensorStructType = Union[TensorType, dict, tuple]
 
 
 def get_auto_framework():

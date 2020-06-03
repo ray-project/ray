@@ -76,6 +76,16 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllNodeInfo(JNIEnv *env, jo
       });
 }
 
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetNodeResourceInfo(
+    JNIEnv *env, jobject o, jlong gcs_accessor_ptr, jbyteArray node_id_bytes) {
+  auto *gcs_accessor =
+      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
+  auto node_id = JavaByteArrayToId<ray::ClientID>(env, node_id_bytes);
+  auto node_resource_info = gcs_accessor->GetNodeResourceInfo(node_id);
+  return static_cast<jbyteArray>(NativeStringToJavaByteArray(env, node_resource_info));
+}
+
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllActorInfo(
     JNIEnv *env, jobject o, jlong gcs_accessor_ptr) {

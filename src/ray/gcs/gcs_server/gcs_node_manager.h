@@ -198,7 +198,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Dead nodes.
   absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> dead_nodes_;
   /// Cluster resources.
-  absl::flat_hash_map<ClientID, gcs::NodeInfoAccessor::ResourceMap> cluster_resources_;
+  absl::flat_hash_map<ClientID, rpc::ResourceMap> cluster_resources_;
   /// Listeners which monitors the addition of nodes.
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_added_listeners_;
