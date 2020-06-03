@@ -53,7 +53,9 @@ if __name__ == "__main__":
 
     tune.register_env(
         "unity3d",
-        lambda c: Unity3DEnv(episode_horizon=c.get("episode_horizon", 1000)))
+        lambda c: Unity3DEnv(
+            file_name=c.get("file_name"),
+            episode_horizon=c.get("episode_horizon", 1000)))
 
     # Get policies (different agent types; "behaviors" in MLAgents) and
     # the mappings from individual agents to Policies.
@@ -63,6 +65,7 @@ if __name__ == "__main__":
     config = {
         "env": "unity3d",
         "env_config": {
+            "file_name": "/Users/sven/Dropbox/Projects/StrikersVsGoalie_RLlib.app",
             "episode_horizon": args.horizon,
         },
         # IMPORTANT: Just use one Worker (we only have one Unity running)!
