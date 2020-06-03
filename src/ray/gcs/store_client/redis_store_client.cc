@@ -131,7 +131,7 @@ Status RedisStoreClient::AsyncGetByIndex(
   RAY_CHECK(callback);
   std::string match_pattern = GenRedisMatchPattern(table_name, index_key);
   auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name, match_pattern);
-  auto on_done = [this, callback, table_name, index_key](
+  auto on_done = [callback, scanner, table_name, index_key](
                      const Status &status, const std::vector<std::string> &result) {
     if (!result.empty()) {
       std::vector<std::string> keys;
@@ -141,9 +141,6 @@ Status RedisStoreClient::AsyncGetByIndex(
             GenRedisKey(table_name, GetKeyFromRedisKey(item, table_name, index_key)));
       }
 
-      std::string match_pattern = GenRedisMatchPattern(table_name);
-      auto scanner =
-          std::make_shared<RedisScanner>(redis_client_, table_name, match_pattern);
       scanner->MGetValues(keys, callback);
     } else {
       callback(std::unordered_map<std::string, std::string>());
@@ -327,14 +324,12 @@ void RedisStoreClient::RedisScanner::Scan(const StatusCallback &callback) {
                           callback](const std::shared_ptr<CallbackReply> &reply) {
       OnScanCallback(shard_index, reply, callback);
     };
-
     // Scan by prefix from Redis.
     std::vector<std::string> args = {"SCAN",  std::to_string(cursor),
                                      "MATCH", match_pattern_,
                                      "COUNT", std::to_string(batch_count)};
     auto shard_context = redis_client_->GetShardContexts()[shard_index];
     Status status = shard_context->RunArgvAsync(args, scan_callback);
-
     if (!status.ok()) {
       RAY_LOG(FATAL) << "Scan failed, status " << status.ToString();
     }
@@ -347,7 +342,6 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
   RAY_CHECK(reply);
   std::vector<std::string> scan_result;
   size_t cursor = reply->ReadAsScanArray(&scan_result);
-
   // Update shard cursors and keys_.
   {
     absl::MutexLock lock(&mutex_);
