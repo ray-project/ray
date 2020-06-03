@@ -735,11 +735,11 @@ cc_test(
         "//:gcs_server",
         "//:libray_redis_module.so",
         "//:mock_worker",
+        "//:plasma_store_server",
         "//:raylet",
         "//:raylet_monitor",
         "//:redis-cli",
         "//:redis-server",
-        "//:plasma_store_server",
     ],
     deps = [
         ":core_worker_lib",
