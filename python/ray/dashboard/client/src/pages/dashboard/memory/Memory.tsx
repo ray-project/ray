@@ -9,6 +9,8 @@ import {
   Theme,
   WithStyles,
   withStyles,
+  FormControlLabel,
+  Checkbox
 } from "@material-ui/core";
 import PauseIcon from "@material-ui/icons/Pause";
 import PlayArrowIcon from "@material-ui/icons/PlayArrow";
@@ -83,6 +85,16 @@ const MemoryInfo = (props: Props) => {
               ? "Pause Collection"
               : "Resume Collection"}
           </Button>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={isGrouped}
+                onChange={() => setIsGrouped(!isGrouped)}
+                color="primary"
+              />
+            }
+            label="Group by host"
+          />
           <Table className={classes.table}>
             <TableHead>
               <TableRow>

@@ -1,5 +1,3 @@
-import { createStyles, Theme } from "@material-ui/core";
-
 export function descendingComparator<T>(a: T, b: T, orderBy: keyof T) {
   if (b[orderBy] < a[orderBy]) {
     return -1;
