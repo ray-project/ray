@@ -1117,6 +1117,34 @@ TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
   RAY_CHECK(gcs_server_->IsStopped());
 }
 
+TEST_F(ServiceBasedGcsClientTest, TestServiceDiscovery) {
+  // Test that subscription of the job table can still work when GCS server restarts.
+  JobID job_id = JobID::FromInt(1);
+  auto job_table_data = Mocker::GenJobTableData(job_id);
+
+  // Subscribe to finished jobs.
+  std::atomic<int> job_update_count(0);
+  auto subscribe = [&job_update_count](const JobID &id, const rpc::JobTableData &result) {
+    ++job_update_count;
+  };
+  ASSERT_TRUE(SubscribeToFinishedJobs(subscribe));
+
+  RestartGcsServer();
+
+  // Create GCS client.
+  gcs::GcsClientOptions options(config.redis_address, config.redis_port,
+                                config.redis_password, config.is_test);
+  std::unique_ptr<gcs::GcsClient> gcs_client(new gcs::ServiceBasedGcsClient(options));
+  RAY_CHECK_OK(gcs_client->Connect(*io_service_));
+
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client->Jobs().AsyncMarkFinished(
+      job_id, [&promise](Status status) { promise.set_value(status.ok()); }));
+  ASSERT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+
+  WaitPendingDone(job_update_count, 1);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
