@@ -73,7 +73,8 @@ class TrainableUtil:
                 with open(path, "rb") as f:
                     data[os.path.relpath(path, checkpoint_dir)] = f.read()
         # Use normpath so that a directory path isn't mapped to empty string.
-        name = os.path.basename(os.path.normpath(checkpoint_path))
+        name = os.path.relpath(
+            os.path.normpath(checkpoint_path), checkpoint_dir)
         name += os.path.sep if os.path.isdir(checkpoint_path) else ""
         data_dict = pickle.dumps({
             "checkpoint_name": name,
@@ -104,16 +105,32 @@ class TrainableUtil:
         return checkpoint_dir
 
     @staticmethod
-    def make_checkpoint_dir(checkpoint_dir, step):
+    def make_checkpoint_dir(checkpoint_dir, suffix):
         """Creates a checkpoint directory at the provided path."""
 
-        if step:
+        if suffix is not None:
             checkpoint_dir = os.path.join(checkpoint_dir,
-                                          "checkpoint_{}".format(step))
+                                          "checkpoint_{}".format(suffix))
+
         os.makedirs(checkpoint_dir, exist_ok=True)
         # Drop marker in directory to identify it as a checkpoint dir.
         open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
         return checkpoint_dir
+
+    @staticmethod
+    def create_from_pickle(obj, tmpdir):
+        info = pickle.loads(obj)
+        data = info["data"]
+        checkpoint_path = os.path.join(tmpdir, info["checkpoint_name"])
+
+        for relpath_name, file_contents in data.items():
+            path = os.path.join(tmpdir, relpath_name)
+
+            # This may be a subdirectory, hence not just using tmpdir
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as f:
+                f.write(file_contents)
+        return checkpoint_path
 
     @staticmethod
     def get_checkpoints_paths(logdir):
@@ -443,19 +460,8 @@ class Trainable:
 
         These checkpoints are returned from calls to save_to_object().
         """
-        info = pickle.loads(obj)
-        data = info["data"]
         tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
-        checkpoint_path = os.path.join(tmpdir, info["checkpoint_name"])
-
-        for relpath_name, file_contents in data.items():
-            path = os.path.join(tmpdir, relpath_name)
-
-            # This may be a subdirectory, hence not just using tmpdir
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "wb") as f:
-                f.write(file_contents)
-
+        checkpoint_path = TrainableUtil.create_from_pickle(obj, tmpdir)
         self.restore(checkpoint_path)
         shutil.rmtree(tmpdir)
 

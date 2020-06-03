@@ -3,7 +3,6 @@
 import argparse
 import json
 import os
-import random
 
 import numpy as np
 
@@ -54,7 +53,7 @@ if __name__ == "__main__":
     tune.run(
         train,
         name="hyperband_test",
-        num_samples=5,
+        num_samples=20,
         stop={"training_iteration": 10 if args.smoke_test else 99999},
         config={"height": tune.uniform(0, 100)},
         scheduler=hyperband,
