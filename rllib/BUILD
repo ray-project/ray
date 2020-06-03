@@ -1175,6 +1175,20 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_exec_api",
+    tags = ["tests_dir", "tests_dir_E"],
+    size = "medium",
+    srcs = ["tests/test_exec_api.py"]
+)
+
+py_test(
+    name = "tests/test_execution",
+    tags = ["tests_dir", "tests_dir_E"],
+    size = "medium",
+    srcs = ["tests/test_execution.py"]
+)
+
+py_test(
     name = "tests/test_export",
     tags = ["tests_dir", "tests_dir_E"],
     size = "medium",
@@ -1214,13 +1228,6 @@ py_test(
     tags = ["tests_dir", "tests_dir_I"],
     size = "medium",
     srcs = ["tests/test_io.py"]
-)
-
-py_test(
-    name = "tests/test_execution",
-    tags = ["tests_dir", "tests_dir_E"],
-    size = "medium",
-    srcs = ["tests/test_execution.py"]
 )
 
 py_test(
@@ -1265,13 +1272,6 @@ py_test(
     tags = ["tests_dir", "tests_dir_N"],
     size = "small",
     srcs = ["tests/test_nested_observation_spaces.py"]
-)
-
-py_test(
-    name = "tests/test_exec_api",
-    tags = ["tests_dir", "tests_dir_E"],
-    size = "medium",
-    srcs = ["tests/test_exec_api.py"]
 )
 
 py_test(
