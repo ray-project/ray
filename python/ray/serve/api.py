@@ -128,19 +128,33 @@ def init(cluster_name=None,
 
 
 @_ensure_connected
-def create_endpoint(endpoint_name, route=None, methods=["GET"]):
+def create_endpoint(endpoint_name, backend_tag, route=None, methods=["GET"]):
     """Create a service endpoint given route_expression.
 
     Args:
-        endpoint_name (str): A name to associate to the endpoint. It will be
-            used as key to set traffic policy.
+        endpoint_name (str): A name to associate to with the endpoint.
+        backend_tag (str): The backend that will serve requests to this
+            endpoint. To change this or split traffic among backends, use
+            `serve.set_traffic`.
         route (str): A string begin with "/". HTTP server will use
             the string to match the path.
         blocking (bool): If true, the function will wait for service to be
             registered before returning
     """
-    retry_actor_failures(master_actor.create_endpoint, route, endpoint_name,
-                         [m.upper() for m in methods])
+    if not isinstance(methods, list):
+        raise TypeError(
+            "methods must be a list of strings, but got type {}".format(
+                type(methods)))
+
+    upper_methods = []
+    for method in methods:
+        if not isinstance(method, str):
+            raise TypeError("methods must be a list of strings, but contained "
+                            "an element of type {}".format(type(method)))
+        upper_methods.append(method.upper())
+
+    retry_actor_failures(master_actor.create_endpoint, endpoint_name,
+                         {backend_tag: 1.0}, route, upper_methods)
 
 
 @_ensure_connected
