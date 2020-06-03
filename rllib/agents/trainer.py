@@ -207,6 +207,17 @@ COMMON_CONFIG = {
     # Use a background thread for sampling (slightly off-policy, usually not
     # advisable to turn on unless your env specifically requires it).
     "sample_async": False,
+
+    # Experimental flag to speed up sampling. If set, uses a new
+    # SampleBatchBuilder class that lazily gathers data (e.g. torch GPU
+    # Tensors for actions, numpy arrays for env-produced obs and rewards)
+    # instead of always moving everything into numpy (from the GPU, back to the
+    # CPU, then back again to the GPU for the next forward pass).
+    # When post-processing, hands the respective method a “lazy_numpy_dict”,
+    # such that accessed items will automatically be detached (and put on CPU)
+    # for numpy-postprocessing.
+    "_fast_sampling": False,
+
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter".
     "observation_filter": "NoFilter",
     # Whether to synchronize the statistics of remote filters.

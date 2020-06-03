@@ -455,15 +455,15 @@ class RolloutWorker(ParallelIteratorWorker):
 
         if sample_async:
             self.sampler = AsyncSampler(
-                self,
-                self.async_env,
-                self.policy_map,
-                policy_mapping_fn,
-                self.preprocessors,
-                self.filters,
-                clip_rewards,
-                rollout_fragment_length,
-                self.callbacks,
+                worker=self,
+                env=self.async_env,
+                policies=self.policy_map,
+                policy_mapping_fn=policy_mapping_fn,
+                preprocessors=self.preprocessors,
+                obs_filters=self.filters,
+                clip_rewards=clip_rewards,
+                rollout_fragment_length=rollout_fragment_length,
+                callbacks=self.callbacks,
                 horizon=episode_horizon,
                 pack_multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
@@ -472,18 +472,19 @@ class RolloutWorker(ParallelIteratorWorker):
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn)
+            # Start the Sampler thread.
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
-                self,
-                self.async_env,
-                self.policy_map,
-                policy_mapping_fn,
-                self.preprocessors,
-                self.filters,
-                clip_rewards,
-                rollout_fragment_length,
-                self.callbacks,
+                worker=self,
+                env=self.async_env,
+                policies=self.policy_map,
+                policy_mapping_fn=policy_mapping_fn,
+                preprocessors=self.preprocessors,
+                obs_filters=self.filters,
+                clip_rewards=clip_rewards,
+                rollout_fragment_length=rollout_fragment_length,
+                callbacks=self.callbacks,
                 horizon=episode_horizon,
                 pack_multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
@@ -508,7 +509,7 @@ class RolloutWorker(ParallelIteratorWorker):
         This method must be implemented by subclasses.
 
         Returns:
-            SampleBatch|MultiAgentBatch: A columnar batch of experiences
+            Union[SampleBatch,MultiAgentBatch]: A columnar batch of experiences
             (e.g., tensors), or a multi-agent batch.
 
         Examples:
