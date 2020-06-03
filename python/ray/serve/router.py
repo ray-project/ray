@@ -86,7 +86,7 @@ def _make_future_unwrapper(client_futures: List[asyncio.Future],
 class Router:
     """A router that routes request to available workers."""
 
-    async def __init__(self, cluster_name=None):
+    async def __init__(self, instance_name=None):
         # Note: Several queues are used in the router
         # - When a request come in, it's placed inside its corresponding
         #   endpoint_queue.
@@ -133,7 +133,7 @@ class Router:
         # the master actor. We use a "pull-based" approach instead of pushing
         # them from the master so that the router can transparently recover
         # from failure.
-        serve.init(cluster_name=cluster_name)
+        serve.init(name=instance_name)
         master_actor = serve.api._get_master_actor()
 
         traffic_policies = retry_actor_failures(
