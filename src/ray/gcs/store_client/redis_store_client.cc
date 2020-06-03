@@ -131,7 +131,7 @@ Status RedisStoreClient::AsyncGetByIndex(
   RAY_CHECK(callback);
   std::string match_pattern = GenRedisMatchPattern(table_name, index_key);
   auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name);
-  auto on_done = [callback, scanner, table_name, index_key](
+  auto on_done = [this, callback, scanner, table_name, index_key](
                      const Status &status, const std::vector<std::string> &result) {
     if (!result.empty()) {
       std::vector<std::string> keys;
@@ -141,7 +141,7 @@ Status RedisStoreClient::AsyncGetByIndex(
             GenRedisKey(table_name, GetKeyFromRedisKey(item, table_name, index_key)));
       }
 
-      RAY_CHECK_OK(scanner->MGetValues(keys, callback));
+      RAY_CHECK_OK(MGetValues(redis_client_, table_name, keys, callback));
     } else {
       callback(std::unordered_map<std::string, std::string>());
     }
@@ -272,6 +272,39 @@ std::string RedisStoreClient::GetKeyFromRedisKey(const std::string &redis_key,
   return redis_key.substr(pos, redis_key.size() - pos);
 }
 
+Status RedisStoreClient::MGetValues(
+    std::shared_ptr<RedisClient> redis_client, std::string table_name,
+    const std::vector<std::string> &keys,
+    const ItemCallback<std::unordered_map<std::string, std::string>> &callback) {
+  // The `MGET` command for each shard.
+  auto mget_commands_by_shards = GenCommandsByShards(redis_client, "MGET", keys);
+
+  auto finished_count = std::make_shared<int>(0);
+  int size = mget_commands_by_shards.size();
+  for (auto &item : mget_commands_by_shards) {
+    auto mget_keys = std::move(item.second);
+    auto mget_callback = [table_name, finished_count, size, mget_keys,
+                          callback](const std::shared_ptr<CallbackReply> &reply) {
+      std::unordered_map<std::string, std::string> key_value_map;
+      if (!reply->IsNil()) {
+        auto value = reply->ReadAsStringArray();
+        // The 0 th element of mget_keys is "MGET", so we start from the 1 th element.
+        for (int index = 0; index < (int)value.size(); ++index) {
+          key_value_map[GetKeyFromRedisKey(mget_keys[index + 1], table_name)] =
+              value[index];
+        }
+      }
+
+      ++(*finished_count);
+      if (*finished_count == size) {
+        callback(key_value_map);
+      }
+    };
+    RAY_CHECK_OK(item.first->RunArgvAsync(mget_keys, mget_callback));
+  }
+  return Status::OK();
+}
+
 RedisStoreClient::RedisScanner::RedisScanner(std::shared_ptr<RedisClient> redis_client,
                                              std::string table_name)
     : table_name_(std::move(table_name)), redis_client_(std::move(redis_client)) {
@@ -288,7 +321,7 @@ Status RedisStoreClient::RedisScanner::ScanKeysAndValues(
     if (result.empty()) {
       callback(std::unordered_map<std::string, std::string>());
     } else {
-      RAY_CHECK_OK(MGetValues(result, callback));
+      RAY_CHECK_OK(MGetValues(redis_client_, table_name_, result, callback));
     }
   };
   return ScanKeys(match_pattern, on_done);
@@ -302,40 +335,6 @@ Status RedisStoreClient::RedisScanner::ScanKeys(
     callback(status, result);
   };
   Scan(match_pattern, on_done);
-  return Status::OK();
-}
-
-Status RedisStoreClient::RedisScanner::MGetValues(
-    const std::vector<std::string> &keys,
-    const ItemCallback<std::unordered_map<std::string, std::string>> &callback) {
-  // The `MGET` command for each shard.
-  auto mget_commands_by_shards = GenCommandsByShards(redis_client_, "MGET", keys);
-
-  auto finished_count = std::make_shared<int>(0);
-  int size = mget_commands_by_shards.size();
-  for (auto &item : mget_commands_by_shards) {
-    auto mget_keys = std::move(item.second);
-    auto mget_callback = [this, finished_count, size, mget_keys,
-                          callback](const std::shared_ptr<CallbackReply> &reply) {
-      if (!reply->IsNil()) {
-        auto value = reply->ReadAsStringArray();
-        {
-          absl::MutexLock lock(&mutex_);
-          // The 0 th element of mget_keys is "MGET", so we start from the 1 th element.
-          for (int index = 0; index < (int)value.size(); ++index) {
-            key_value_map_[GetKeyFromRedisKey(mget_keys[index + 1], table_name_)] =
-                value[index];
-          }
-        }
-      }
-
-      ++(*finished_count);
-      if (*finished_count == size) {
-        callback(key_value_map_);
-      }
-    };
-    RAY_CHECK_OK(item.first->RunArgvAsync(mget_keys, mget_callback));
-  }
   return Status::OK();
 }
 
