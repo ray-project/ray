@@ -307,9 +307,7 @@ Status WorkerPool::GetNextFreePort(int *port) {
   for (int i = 0; i < current_size; i++) {
     *port = free_ports_->front();
     free_ports_->pop();
-    RAY_LOG(ERROR) << "BEFORE";
     if (!Ping("127.0.0.1", *port, 20)) {
-      RAY_LOG(ERROR) << "After";
       return Status::OK();
     }
     // Return to pool to check later.
