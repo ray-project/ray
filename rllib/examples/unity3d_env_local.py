@@ -41,9 +41,9 @@ parser.add_argument(
     "a currently running Unity3D editor.")
 parser.add_argument("--num-workers", type=int, default=0)
 parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=150)
+parser.add_argument("--stop-iters", type=int, default=9999)
 parser.add_argument("--stop-reward", type=float, default=9999.0)
-parser.add_argument("--stop-timesteps", type=int, default=100000)
+parser.add_argument("--stop-timesteps", type=int, default=10000000)
 parser.add_argument(
     "--horizon",
     type=int,
@@ -98,7 +98,7 @@ if __name__ == "__main__":
 
     # Run the experiment.
     results = tune.run(
-        "PPO", config=config, stop=stop, verbose=1, checkpoint_freq=20)
+        "PPO", config=config, stop=stop, verbose=1, checkpoint_freq=10)
 
     # And check the results.
     if args.as_test:
