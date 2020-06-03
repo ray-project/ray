@@ -355,7 +355,9 @@ class NodeUpdater:
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
             logger.error(self.log_prefix +
                          "Error executing: {}".format(error_str) + "\n")
-            return
+            if isinstance(e, click.ClickException):
+                return
+            raise
 
         self.provider.set_node_tags(
             self.node_id, {
