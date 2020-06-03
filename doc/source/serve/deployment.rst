@@ -6,10 +6,10 @@ In the :doc:`key-concepts`, you saw some of the basics of how to write serve app
 This section will dive a bit deeper into how Ray Serve runs on a Ray cluster and how you're able 
 to deploy and update your serve application over time.
 
-To deploy a Ray Serve application (and cluster) you're going to need several things.
+To deploy a Ray Serve instance you're going to need several things.
 
-1. A running Ray cluster (you can deploy one on your local machine for testing).
-2. A Ray Serve cluster To learn more about Ray clusters see :doc:`../cluster-index`.
+1. A running Ray cluster (you can deploy one on your local machine for testing). To learn more about Ray clusters see :doc:`../cluster-index`.
+2. A Ray Serve instance.
 3. Your Ray Serve endpoint(s) and backend(s).
 
 .. contents:: Deploying Ray Serve
@@ -57,8 +57,7 @@ Creating a Model and Serving it
 
 In the following snippet we will complete two things:
 1. Define a servable model by instantiating a class and defining the ``__call__`` method.
-2. Connect to our running Ray cluster(``ray.init(...)``) and then start or connect to the Ray Serve service
-on that cluster(``serve.init(...)``).
+2. Connect to our running Ray cluster(``ray.init(...)``) and then start or connect to the Ray Serve instance on that cluster(``serve.init(...)``).
 
 
 You can see that defining the model is straightforward and simple, we're simply instantiating
@@ -277,26 +276,26 @@ opt for launching a Ray Cluster locally. Specify a Ray cluster like we did in :r
 To learn more, in general, about Ray Clusters see :doc:`../cluster-index`.
 
 
-Deploying Multiple Serve Clusters on a Single Ray Cluster
+Deploying Multiple Serve Instaces on a Single Ray Cluster
 ---------------------------------------------------------
 
-You can run multiple serve clusters on the same Ray cluster by providing a ``cluster_name`` to ``serve.init()``.
+You can run multiple serve instances on the same Ray cluster by providing a ``name`` in ``serve.init()``.
 
 .. code-block:: python
 
-  # Create a first cluster whose HTTP server listens on 8000.
-  serve.init(cluster_name="cluster1", http_port=8000)
+  # Create a first instance whose HTTP server listens on 8000.
+  serve.init(name="instance1", http_port=8000)
   serve.create_endpoint("counter1", "/increment")
 
-  # Create a second cluster whose HTTP server listens on 8001.
-  serve.init(cluster_name="cluster2", http_port=8001)
+  # Create a second instance whose HTTP server listens on 8001.
+  serve.init(name="instance2", http_port=8001)
   serve.create_endpoint("counter1", "/increment")
 
-  # Create a backend that will be served on the second cluster.
+  # Create a backend that will be served on the second instance.
   serve.create_backend("counter1", function)
   serve.set_traffic("counter1", {"counter1": 1.0})
 
-  # Switch back the the first cluster and create the same backend on it.
-  serve.init(cluster_name="cluster1")
+  # Switch back the the first instance and create the same backend on it.
+  serve.init(name="instance1")
   serve.create_backend("counter1", function)
   serve.set_traffic("counter1", {"counter1": 1.0})
