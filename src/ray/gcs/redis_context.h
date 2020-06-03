@@ -146,13 +146,38 @@ class RedisCallbackManager {
     boost::asio::io_service *io_service_;
   };
 
-  int64_t add(const RedisCallback &function, bool is_subscription,
+  /// Add a callback function to callback items map and use current callback index as key.
+  /// When add is complete, current callback index will increase by 1.
+  ///
+  /// \param function The redis callback function.
+  /// \param is_subscription Whether this is a subscription operation.
+  /// \param io_service The event loop for callback function.
+  int64_t Add(const RedisCallback &function, bool is_subscription,
               boost::asio::io_service &io_service);
 
-  std::shared_ptr<CallbackItem> get(int64_t callback_index);
+  /// Add a callback function for the specified callback index.
+  ///
+  /// \param function The redis callback function.
+  /// \param is_subscription Whether this is a subscription operation.
+  /// \param io_service The event loop for callback function.
+  /// \param callback_index The key of callback function in callback items map.
+  void Add(const RedisCallback &function, bool is_subscription,
+           boost::asio::io_service &io_service, int64_t callback_index);
 
-  /// Remove a callback.
-  void remove(int64_t callback_index);
+  /// Current callback index increment 1 and then returns the value of it.
+  ///
+  /// \return The current callback index.
+  int64_t IncreaseAndGetCallbackIndex();
+
+  /// Get the callback function of the specified callback index.
+  ///
+  /// \param callback_index The key of callback function in callback items map.
+  std::shared_ptr<CallbackItem> Get(int64_t callback_index);
+
+  /// Remove the callback function of the specified callback index.
+  ///
+  /// \param callback_index The key of callback function in callback items map.
+  void Remove(int64_t callback_index);
 
  private:
   RedisCallbackManager() : num_callbacks_(0){};
@@ -245,10 +270,10 @@ class RedisContext {
   ///
   /// \param pattern The pattern of subscription channel.
   /// \param redisCallback The callback function that the notification calls.
-  /// \param out_callback_index The output pointer to callback index.
+  /// \param callback_index The callback index.
   /// \return Status.
   Status PSubscribeAsync(const std::string &pattern, const RedisCallback &redisCallback,
-                         int64_t *out_callback_index);
+                         int64_t callback_index);
 
   /// Unsubscribes the client from the given pattern.
   ///
@@ -296,7 +321,7 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id, const vo
                               RedisCallback redisCallback, int log_length) {
   RAY_CHECK(redis_async_context_);
   int64_t callback_index =
-      RedisCallbackManager::instance().add(redisCallback, false, io_service_);
+      RedisCallbackManager::instance().Add(redisCallback, false, io_service_);
   Status status = Status::OK();
   if (length > 0) {
     if (log_length >= 0) {

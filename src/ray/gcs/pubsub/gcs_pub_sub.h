@@ -97,12 +97,6 @@ class GcsPubSub {
                                 const boost::optional<std::string> &id);
 
   std::shared_ptr<RedisClient> redis_client_;
-
-  /// Mutex to protect the subscribe_callback_index_ field.
-  absl::Mutex mutex_;
-
-  std::unordered_map<std::string, int64_t> subscribe_callback_index_ GUARDED_BY(mutex_);
-  std::unordered_map<std::string, int64_t> unsubscribe_callback_index_ GUARDED_BY(mutex_);
 };
 
 }  // namespace gcs
