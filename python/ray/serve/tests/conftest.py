@@ -2,6 +2,7 @@ import os
 
 import pytest
 
+import ray
 from ray import serve
 from ray.serve.utils import retry_actor_failures
 
@@ -11,7 +12,8 @@ if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False):
 
 @pytest.fixture(scope="session")
 def _shared_serve_instance():
-    serve.init(ray_init_kwargs={"num_cpus": 36})
+    ray.init(num_cpus=36)
+    serve.init()
     yield
 
 
