@@ -60,8 +60,8 @@ if __name__ == "__main__":
     tune.register_env(
         "unity3d",
         lambda c: Unity3DEnv(
-            file_name=c.get("file_name"),
-            episode_horizon=c.get("episode_horizon", 1000)))
+            file_name=c["file_name"],
+            episode_horizon=c["episode_horizon"]))
 
     # Get policies (different agent types; "behaviors" in MLAgents) and
     # the mappings from individual agents to Policies.
@@ -79,13 +79,15 @@ if __name__ == "__main__":
         # Other settings.
         "sample_batch_size": 128,
         "train_batch_size": 512,
-        "rollout_fragment_length": 100,
+        "rollout_fragment_length": 20,
         # Multi-agent setup for the particular env.
         "multiagent": {
             "policies": policies,
             "policy_mapping_fn": policy_mapping_fn,
         },
         "framework": "tf",
+        "evaluation_interval": 10,
+        "evaluation_num_episodes": 1,
     }
 
     stop = {
