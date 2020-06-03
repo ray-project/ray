@@ -15,7 +15,11 @@ import {
   MemoryTableResponse,
   MemoryTableSummary,
 } from "../../../api";
+import {
+  descendingComparator
+} from "../../../common/tableUtils";
 import MemorySummary from "./MemorySummary";
+import { MemoryTableRow } from "./MemoryTableRow";
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -106,29 +110,11 @@ class MemoryRowGroup extends React.Component<
               memoryTableSummary={summary}
             />
             {entries.map((memoryTableEntry, index) => {
-              const object_size =
-                memoryTableEntry.object_size === -1
-                  ? "?"
-                  : `${memoryTableEntry.object_size}  B`;
-              const memoryTableEntryValues = [
-                "", // Padding
-                memoryTableEntry.node_ip_address,
-                memoryTableEntry.pid,
-                memoryTableEntry.type,
-                memoryTableEntry.object_id,
-                object_size,
-                memoryTableEntry.reference_type,
-                memoryTableEntry.call_site,
-              ];
-              return (
-                <TableRow hover key={index}>
-                  {memoryTableEntryValues.map((value, index) => (
-                    <TableCell key={index} className={classes.cell}>
-                      {value}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              );
+              return <MemoryTableRow 
+                memoryTableEntry={memoryTableEntry}
+                key={`${index}`}
+                cellClassName={classes.cell}
+              />
             })}
           </React.Fragment>
         )}
