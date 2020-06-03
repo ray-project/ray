@@ -98,9 +98,9 @@ Status InMemoryStoreClient::AsyncGetByIndex(
   std::unordered_map<std::string, std::string> result;
   if (iter != table->index_keys_.end()) {
     for (auto &key : iter->second) {
-      auto key_iter = table->records_.find(key);
-      if (key_iter != table->records_.end()) {
-        result[key_iter->first] = key_iter->second;
+      auto kv_iter = table->records_.find(key);
+      if (kv_iter != table->records_.end()) {
+        result[kv_iter->first] = kv_iter->second;
       }
     }
     main_io_service_.post([result, callback]() { callback(result); });

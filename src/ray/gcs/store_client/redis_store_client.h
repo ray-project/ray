@@ -71,14 +71,14 @@ class RedisStoreClient : public StoreClient {
 
     Status ScanKeys(const MultiItemCallback<std::string> &callback);
 
+    void MGetValues(const std::vector<std::string> &keys,
+                    const MapCallback<std::string, std::string> &callback);
+
    private:
     void Scan(const StatusCallback &callback);
 
     void OnScanCallback(size_t shard_index, const std::shared_ptr<CallbackReply> &reply,
                         const StatusCallback &callback);
-
-    void MGetValues(const std::vector<std::string> &keys,
-                    const MapCallback<std::string, std::string> &callback);
 
     std::string table_name_;
 
