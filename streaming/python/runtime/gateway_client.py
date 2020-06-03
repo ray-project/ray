@@ -69,4 +69,4 @@ def serialize(obj) -> bytes:
 
 def deserialize(data: bytes):
     """Deserialize the binary data serialized by `PythonGateway`"""
-    return msgpack.unpackb(data, raw=False)
+    return msgpack.unpackb(data, raw=False, strict_map_key=False)

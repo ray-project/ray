@@ -10,20 +10,20 @@ import {
 import React from "react";
 import { connect } from "react-redux";
 import {
+  getMemoryTable,
   getNodeInfo,
   getRayletInfo,
   getTuneAvailability,
-  getMemoryTable,
   stopMemoryTableCollection,
 } from "../../api";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";
 import LogicalView from "./logical-view/LogicalView";
+import MemoryInfo from "./memory/Memory";
 import NodeInfo from "./node-info/NodeInfo";
 import RayConfig from "./ray-config/RayConfig";
 import { dashboardActions } from "./state";
 import Tune from "./tune/Tune";
-import MemoryInfo from "./memory/Memory";
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -64,7 +64,7 @@ class Dashboard extends React.Component<
   ];
 
   refreshInfo = async () => {
-    let { shouldObtainMemoryTable } = this.props;
+    const { shouldObtainMemoryTable } = this.props;
     try {
       const [
         nodeInfo,
@@ -110,7 +110,7 @@ class Dashboard extends React.Component<
 
   render() {
     const { classes, tab, tuneAvailability } = this.props;
-    let tabs = this.tabs.slice();
+    const tabs = this.tabs.slice();
 
     // if Tune information is not available, remove Tune tab from the dashboard
     if (tuneAvailability === null || !tuneAvailability.available) {
