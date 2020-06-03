@@ -15,7 +15,8 @@ logger = logging.getLogger(__name__)
 
 # Syncing period for syncing local checkpoints to cloud.
 # In env variable is not set, sync happens every 300 seconds.
-CLOUD_SYNC_PERIOD = ray_constants.env_integer(key="TUNE_CLOUD_SYNC_PERIOD_SEC", default=300)
+CLOUD_SYNC_PERIOD = ray_constants.env_integer(
+    key="TUNE_CLOUD_SYNC_PERIOD_SEC", default=300)
 
 # Syncing period for syncing worker logs to driver.
 NODE_SYNC_PERIOD = 300
@@ -136,8 +137,10 @@ class Syncer:
     def _remote_path(self):
         return self._remote_dir
 
+
 class CloudSyncer(Syncer):
     """Syncer for syncing files to/from the cloud."""
+
     def __init__(self, local_dir, remote_dir, sync_client):
         super(CloudSyncer, self).__init__(local_dir, remote_dir, sync_client)
 

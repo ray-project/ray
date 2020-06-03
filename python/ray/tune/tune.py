@@ -144,7 +144,9 @@ def run(run_or_experiment,
             from upload_dir. If string, then it must be a string template that
             includes `{source}` and `{target}` for the syncer to run. If not
             provided, the sync command defaults to standard S3 or gsutil sync
-            commands.
+            commands. By default local_dir is synced to remote_dir every 300
+            seconds. To change this, set the TUNE_CLOUD_SYNC_PERIOD_SEC
+            environment variable in the driver machine.
         sync_to_driver (func|str|bool): Function for syncing trial logdir from
             remote node to local. If string, then it must be a string template
             that includes `{source}` and `{target}` for the syncer to run.
@@ -233,7 +235,6 @@ def run(run_or_experiment,
         space = {"lr": tune.uniform(0, 1), "momentum": tune.uniform(0, 1)}
         tune.run(my_trainable, config=space, stop={"training_iteration": 10})
     """
-    pass  # XXX: force CI
     trial_executor = trial_executor or RayTrialExecutor(
         queue_trials=queue_trials,
         reuse_actors=reuse_actors,
@@ -356,7 +357,6 @@ def run(run_or_experiment,
 
 
 def run_experiments(experiments,
-                    global_checkpoint_period=10,
                     search_alg=None,
                     scheduler=None,
                     with_server=False,
@@ -399,7 +399,6 @@ def run_experiments(experiments,
     if concurrent:
         return run(
             experiments,
-            global_checkpoint_period=global_checkpoint_period,
             search_alg=search_alg,
             scheduler=scheduler,
             with_server=with_server,
@@ -417,7 +416,6 @@ def run_experiments(experiments,
         for exp in experiments:
             trials += run(
                 exp,
-                global_checkpoint_period=global_checkpoint_period,
                 search_alg=search_alg,
                 scheduler=scheduler,
                 with_server=with_server,

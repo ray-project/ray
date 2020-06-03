@@ -163,20 +163,23 @@ class TestSyncFunctionality(unittest.TestCase):
                 tune.report(score=i)
 
         mock = unittest.mock.Mock()
+
         def counter(local, remote):
             mock()
 
         tune.syncer.CLOUD_SYNC_PERIOD = 1
         [trial] = tune.run(
-            MyTrainable,
+            trainable,
             name="foo",
             max_failures=0,
             local_dir=tmpdir,
             upload_dir="test",
             sync_to_cloud=counter,
-            stop={'training_iteration': 10},
+            stop={
+                "training_iteration": 10
+            },
             global_checkpoint_period=0.5,
-            ).trials
+        ).trials
 
         self.assertEqual(mock.call_count, 12)
         shutil.rmtree(tmpdir)
