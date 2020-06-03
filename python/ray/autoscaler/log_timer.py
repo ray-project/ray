@@ -5,7 +5,7 @@ logger = logging.getLogger(__name__)
 
 
 class LogTimer:
-    def __init__(self, message, show_status=True):
+    def __init__(self, message, show_status=False):
         self._message = message
         self._show_status = show_status
 
