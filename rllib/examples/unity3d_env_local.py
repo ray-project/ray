@@ -89,7 +89,8 @@ if __name__ == "__main__":
     }
 
     # Run the experiment.
-    results = tune.run("PPO", config=config, stop=stop, verbose=1)
+    results = tune.run(
+        "PPO", config=config, stop=stop, verbose=1, checkpoint_freq=20)
 
     # And check the results.
     if args.as_test:
