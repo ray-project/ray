@@ -50,7 +50,10 @@ class TestPPO(unittest.TestCase):
         """Test whether a PPOTrainer can be built with both frameworks."""
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
         config["num_workers"] = 0
-        num_iterations = 2
+        config["model"]["use_lstm"] = True
+        config["model"]["lstm_cell_size"] = 10
+        config["model"]["max_seq_len"] = 20
+        num_iterations = 200
 
         for _ in framework_iterator(config, frameworks=("torch", "tf", "tfe")):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")

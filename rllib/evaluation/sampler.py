@@ -694,7 +694,8 @@ def _process_observations(
                 episode.batch_builder.check_missing_dones()
 
             # Reached end of episode and we are not allowed to pack the
-            # next episode into the same SampleBatch -> Build the SampleBatch
+            # next episode into the same SampleBatch OR rollout_fragment_length
+            # reached -> Build SampleBatch.
             # and add it to "outputs".
             if (all_agents_done and not pack_multiple_episodes_in_batch) or \
                     episode.batch_builder.count >= rollout_fragment_length:
