@@ -46,8 +46,8 @@ option java_package = "io.ray.streaming.runtime.generated";
 //  repeated ExecutionNode execution_nodes = 2;
 //}
 
-// Sub graph of a execution vertex, including it's upstream and downstream
-message SubExecutionGraph {
+// Execution vertex info, including it's upstream and downstream
+message ExecutionVertexContext {
 
   // An edge between 2 execution vertices
   message ExecutionEdge {
@@ -87,15 +87,12 @@ message SubExecutionGraph {
   repeated ExecutionEdge output_edges = 5;
 }
 
-// Streaming worker context
-message WorkerContext {
-
-  // actor id
-  string actor_id = 1;
+// Streaming python worker context
+message PythonJobWorkerContext {
 
   // serialized master actor handle
-  bytes master_actor = 2;
+  bytes master_actor = 1;
 
   // vertex including it's upstream and downstream
-  SubExecutionGraph sub_graph = 3;
+  ExecutionVertexContext vertex_context = 2;
 }

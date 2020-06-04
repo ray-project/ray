@@ -35,15 +35,15 @@ class StreamTask(ABC):
         channel_conf[Config.CHANNEL_TYPE] = self.worker.config \
             .get(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL)
 
-        sub_graph = self.worker.sub_graph
-        build_time = sub_graph.get_build_time()
+        vertex_context = self.worker.vertex_context
+        build_time = vertex_context.build_time
 
         # writers
         collectors = []
         output_actors_map = {}
-        for edge in sub_graph.output_edges:
+        for edge in vertex_context.output_edges:
             target_task_id = edge.target_vertex_id
-            target_actor = sub_graph.get_target_actor_by_vertex_id(
+            target_actor = vertex_context.get_target_actor_by_vertex_id(
                 target_task_id)
             channel_name = ChannelID.gen_id(
                 self.task_id, target_task_id, build_time)
@@ -54,7 +54,7 @@ class StreamTask(ABC):
                 target_actors = list(output_actors_map.values())
                 logger.info(
                     "Create DataWriter channel_ids {}, target_actors {}."
-                    .format(channel_ids, target_actors))
+                        .format(channel_ids, target_actors))
                 writer = DataWriter(channel_ids, target_actors, channel_conf)
                 self.writers[edge] = writer
                 collectors.append(
@@ -63,9 +63,9 @@ class StreamTask(ABC):
 
         # readers
         input_actor_map = {}
-        for edge in sub_graph.input_edges:
+        for edge in vertex_context.input_edges:
             source_task_id = edge.source_vertex_id
-            source_actor = sub_graph.get_source_actor_by_vertex_id(
+            source_actor = vertex_context.get_source_actor_by_vertex_id(
                 edge.source_vertex_id)
             channel_name = ChannelID.gen_id(
                 source_task_id, self.task_id, build_time)
@@ -88,7 +88,8 @@ class StreamTask(ABC):
 
         runtime_context = RuntimeContextImpl(
             self.worker.execution_task.task_id,
-            self.worker.execution_task.task_index, sub_graph.get_parallelism())
+            self.worker.execution_task.task_index,
+            vertex_context.get_parallelism())
         logger.info("open Processor {}".format(self.processor))
         self.processor.open(collectors, runtime_context)
 

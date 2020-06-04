@@ -21,7 +21,7 @@ class JobWorker(object):
 
     def __init__(self):
         self.worker_context = None
-        self.sub_graph = None
+        self.vertex_context = None
         self.config = None
         self.task_id = None
         self.task = None
@@ -35,8 +35,8 @@ class JobWorker(object):
         worker_context.ParseFromString(worker_context_bytes)
         self.worker_context = worker_context
 
-        # build sub graph from pb
-        self.sub_graph = SubExecutionGraph(worker_context.sub_graph)
+        # build vertex context from pb
+        self.vertex_context = SubExecutionGraph(worker_context.sub_graph)
 
         # use vertex id as task id
         self.task_id = self.sub_graph.get_task_id()

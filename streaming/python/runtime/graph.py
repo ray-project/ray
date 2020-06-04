@@ -56,24 +56,25 @@ class ExecutionVertex:
         self.resource = vertex_pb.resource
 
 
-class SubExecutionGraph:
-    def __init__(self, sub_graph_pb: remote_call_pb.SubExecutionGraph):
-        self.vertex = ExecutionVertex(sub_graph_pb.current_vertex)
+class ExecutionVertexContext:
+    def __init__(self,
+        vertex_context_pb: remote_call_pb.ExecutionVertexContext):
+        self.vertex = ExecutionVertex(vertex_context_pb.current_vertex)
         self.upstream_vertices = [
             ExecutionVertex(vertex)
-            for vertex in sub_graph_pb.upstream_vertices
+            for vertex in vertex_context_pb.upstream_vertices
         ]
         self.downstream_vertices = [
             ExecutionVertex(vertex)
-            for vertex in sub_graph_pb.downstream_vertices
+            for vertex in vertex_context_pb.downstream_vertices
         ]
         self.input_edges = [
             ExecutionEdge(edge, self.vertex.language)
-            for edge in sub_graph_pb.input_edges
+            for edge in vertex_context_pb.input_edges
         ]
         self.output_edges = [
             ExecutionEdge(edge, self.vertex.language)
-            for edge in sub_graph_pb.output_edges
+            for edge in vertex_context_pb.output_edges
         ]
 
     def get_parallelism(self):
@@ -89,13 +90,16 @@ class SubExecutionGraph:
             return self.downstream_vertices[0].parallelism
         return 0
 
-    def get_build_time(self):
+    @property
+    def build_time(self):
         return self.vertex.build_time
 
-    def get_stream_operator(self):
+    @property
+    def stream_operator(self):
         return self.vertex.stream_operator
 
-    def get_config(self):
+    @property
+    def config(self):
         return self.vertex.config
 
     def get_task_id(self):
