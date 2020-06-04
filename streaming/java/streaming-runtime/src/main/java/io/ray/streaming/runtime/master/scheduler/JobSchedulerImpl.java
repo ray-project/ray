@@ -1,20 +1,15 @@
 package io.ray.streaming.runtime.master.scheduler;
 
-import com.google.protobuf.ByteString;
 import io.ray.api.RayActor;
-import io.ray.runtime.actor.NativeRayActor;
-import io.ray.streaming.api.Language;
 import io.ray.streaming.runtime.config.StreamingConfig;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import io.ray.streaming.runtime.core.resource.Container;
-import io.ray.streaming.runtime.generated.RemoteCall;
 import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.master.graphmanager.GraphManager;
 import io.ray.streaming.runtime.master.resourcemanager.ResourceManager;
 import io.ray.streaming.runtime.master.resourcemanager.ViewBuilder;
 import io.ray.streaming.runtime.master.scheduler.controller.WorkerLifecycleController;
-import io.ray.streaming.runtime.python.GraphPbBuilder;
 import io.ray.streaming.runtime.worker.context.JobWorkerContext;
 import java.util.HashMap;
 import java.util.List;

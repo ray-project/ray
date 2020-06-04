@@ -64,7 +64,7 @@ public class JobWorkerContext implements Serializable {
   public byte[] getPythonWorkerContextBytes() {
     // create python worker context
     RemoteCall.ExecutionVertexContext executionVertexContext =
-      new GraphPbBuilder().buildExecutionVertexContext(executionVertex);
+        new GraphPbBuilder().buildExecutionVertexContext(executionVertex);
 
     byte[] contextBytes = RemoteCall.PythonJobWorkerContext.newBuilder()
       .setMasterActor(ByteString.copyFrom((((NativeRayActor) (master)).toBytes())))
