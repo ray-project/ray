@@ -656,16 +656,8 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
               mutable_actor_table_data->SerializeAsString(), nullptr));
         }));
     gcs_actor_scheduler_->Schedule(actor);
+  }
   } else {
-    // For detached actors, make sure to clean up their names.
-    // This doesn't have to be called after storing actor state dead because
-    // GCS is reliable and we can guarantee dead states will be persisted.
-    if (actor->IsDetached()) {
-      auto it = named_actors_.find(actor->GetName());
-      if (it != named_actors_.end() && it->second == actor->GetActorID()) {
-        named_actors_.erase(actor->GetName());
-      }
-    }
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
@@ -675,6 +667,15 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
               ACTOR_CHANNEL, actor_id.Hex(),
               mutable_actor_table_data->SerializeAsString(), nullptr));
         }));
+    // For detached actors, we should make sure to destroy
+    // itself as it doesn't have its owner.
+    if (actor->IsDetached()) {
+      auto it = named_actors_.find(actor->GetName());
+      if (it != named_actors_.end() && it->second == actor->GetActorID()) {
+        named_actors_.erase(it);
+        DestroyActor(actor->GetActorID());
+      }
+    }
     // The actor is dead, but we should not remove the entry from the
     // registered actors yet. If the actor is owned, we will destroy the actor
     // once the owner fails or notifies us that the actor's handle has gone out

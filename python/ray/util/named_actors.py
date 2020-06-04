@@ -36,8 +36,8 @@ def _get_actor(name):
         # the actor is killed because ray.kill is asynchronous,
         # and it can cause worker leaks.
         actor_info = ray.actors(actor_id=handle._actor_id.hex())
-        actor_state = actor_info["State"]
-        if actor_state == ActorTableData.DEAD:
+        actor_state = actor_info.get("State", None)
+        if actor_state and actor_state == ActorTableData.DEAD:
             raise ValueError("The actor with name={} is dead.".format(name))
     return handle
 

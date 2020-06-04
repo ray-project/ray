@@ -669,6 +669,10 @@ def test_detached_actor(ray_start_regular):
         DetachedActor._remote(name="")
 
     DetachedActor._remote(name="d_actor")
+    with pytest.raises(ValueError):
+        # If get_actor is called before actor is created, it should fail.
+        d = ray.get_actor("d_actor")
+
     with pytest.raises(ValueError, match="Please use a different name"):
         DetachedActor._remote(name="d_actor")
 
@@ -772,7 +776,7 @@ while actor_status["State"] != 3:
         }
     }],
     indirect=True)
-def test_detached_actor_cleanup_due_to_failiure(ray_start_cluster):
+def test_detached_actor_cleanup_due_to_failure(ray_start_cluster):
     cluster = ray_start_cluster
     node = cluster.add_node(resources={"second_node": 1})
     cluster.wait_for_nodes()
