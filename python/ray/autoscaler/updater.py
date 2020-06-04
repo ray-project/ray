@@ -315,16 +315,11 @@ class NodeUpdater:
                  use_internal_ip=False):
 
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
-        if provider_config["type"] == "kubernetes":
-            self.cmd_runner = KubernetesCommandRunner(
-                self.log_prefix, provider.namespace, node_id, auth_config,
-                process_runner)
-        else:
-            use_internal_ip = (use_internal_ip or provider_config.get(
-                "use_internal_ips", False))
-            self.cmd_runner = SSHCommandRunner(
-                self.log_prefix, node_id, provider, auth_config, cluster_name,
-                process_runner, use_internal_ip)
+        use_internal_ip = (use_internal_ip
+                           or provider_config.get("use_internal_ips", False))
+        self.cmd_runner = provider.get_command_runner(
+            self.log_prefix, node_id, auth_config, cluster_name,
+            process_runner, use_internal_ip)
 
         self.daemon = True
         self.process_runner = process_runner
