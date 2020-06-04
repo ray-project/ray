@@ -667,7 +667,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
           if (actor->IsDetached()) {
             auto it = named_actors_.find(actor->GetName());
             if (it != named_actors_.end()) {
-              RAY_CHECK(it->second == actor->GetActorID())
+              RAY_CHECK(it->second == actor->GetActorID());
               named_actors_.erase(it);
               DestroyActor(actor->GetActorID());
             }
