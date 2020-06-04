@@ -216,7 +216,7 @@ class GlobalState:
 
         if actor_id is not None:
             actor_id = ray.ActorID(hex_to_binary(actor_id))
-            actor_info = self._aglobal_state_accessor.get_actor_info(actor_id)
+            actor_info = self.global_state_accessor.get_actor_info(actor_id)
             if actor_info is None:
                 return {}
             else:
