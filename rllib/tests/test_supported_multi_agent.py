@@ -29,7 +29,7 @@ def check_support_multiagent(alg, config):
 class TestSupportedMultiAgent(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=4)  #, ignore_reinit_error=True)
+        ray.init(num_cpus=4)
 
     @classmethod
     def tearDownClass(cls) -> None:
