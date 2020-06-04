@@ -76,9 +76,12 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
 
         queries, keys, values = tf.split(qkv, 3, -1)
         # Cut out Tau memory timesteps from query.
+        print("QUERIES 1: ", queries.shape)
         queries = queries[:, -T:]
+        print("QUERIES 2: ", queries.shape)
 
         queries = tf.reshape(queries, [-1, T, H, d])
+        print("QUERIES 3: ", queries.shape)
         keys = tf.reshape(keys, [-1, T + Tau, H, d])
         values = tf.reshape(values, [-1, T + Tau, H, d])
 

@@ -24,7 +24,7 @@ class MultiHeadAttention(nn.Module):
         self._qkv_layer = SlimFC(
             in_size=in_dim,
             out_size=3 * num_heads * head_dim,
-            bias=False)
+            use_bias=False)
 
         #TODO port the keras.layers.TimeDistributed wrapper
         self._linear_layer = SlimFC(
@@ -54,7 +54,7 @@ class MultiHeadAttention(nn.Module):
         mask = mask[None, :, :, None]
 
         masked_score = score * mask + 1e30 * (mask - 1.)
-        wmat = nn.functional.softmax(masked_score, dim=2)
+        wmat = nn.Softmax(masked_score, dim=2)
 
         out = torch.einsum("bijh,bjhd->bihd", wmat, values)
         out = torch.reshape(out,

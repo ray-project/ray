@@ -14,94 +14,96 @@ from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.recurrent_net import RecurrentNetwork
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.models.torch.modules.multi_head_attention import MultiHeadAttention
 
 torch, nn = try_import_torch()
 
 
-class PositionwiseFeedforward(tf.keras.layers.Layer):
+class PositionwiseFeedforward(nn.Module):
     """A 2x linear layer with ReLU activation in between described in [1].
 
     Each timestep coming from the attention head will be passed through this
     layer separately.
     """
 
-    def __init__(self, out_dim, hidden_dim, output_activation=None, **kwargs):
+    def __init__(self, input_dim, hidden_dim, output_dim, output_activation=None, **kwargs):
         super().__init__(**kwargs)
 
-        self._hidden_layer = tf.keras.layers.Dense(
-            hidden_dim,
-            activation=tf.nn.relu,
+        self._hidden_layer = SlimFC(
+            in_size=input_dim,
+            out_size=hidden_dim,
+            use_bias=False,
+            activation_fn=nn.ReLU
         )
 
-        self._output_layer = tf.keras.layers.Dense(
-            out_dim, activation=output_activation)
+        self._output_layer = SlimFC(
+            in_size=hidden_dim,
+            out_size=output_dim,
+            use_bias=False,
+            activation_fn=output_activation
+        )
 
-    def call(self, inputs, **kwargs):
+
+    def forward(self, inputs, **kwargs):
         del kwargs
         output = self._hidden_layer(inputs)
         return self._output_layer(output)
 
-class GTrXLNet(RecurrentNetwork):
-    """A GTrXL net Model described in [2]."""
-
-    #methods copied over from torch recurrentnet, all still need to be implemented
-    def __init__(self,
-                 obs_space,
-                 action_space,
-                 num_outputs,
-                 model_config,
-                 name,
-                 fc_size=64,
-                 lstm_state_size=256):
-        super().__init__(obs_space, action_space, num_outputs, model_config,
-                         name)
-
-        self.obs_size = get_preprocessor(obs_space)(obs_space).size
-        self.fc_size = fc_size
-        self.lstm_state_size = lstm_state_size
-
-        # Build the Module from fc + LSTM + 2xfc (action + value outs).
-        self.fc1 = nn.Linear(self.obs_size, self.fc_size)
-        self.lstm = nn.LSTM(
-            self.fc_size, self.lstm_state_size, batch_first=True)
-        self.action_branch = nn.Linear(self.lstm_state_size, num_outputs)
-        self.value_branch = nn.Linear(self.lstm_state_size, 1)
-        # Holds the current "base" output (before logits layer).
-        self._features = None
 
 
-    @override(ModelV2)
-    def get_initial_state(self):
-        # Place hidden states on same device as model.
-        h = [
-            self.fc1.weight.new(1, self.lstm_state_size).zero_().squeeze(0),
-            self.fc1.weight.new(1, self.lstm_state_size).zero_().squeeze(0)
-        ]
-        return h
+if __name__ == '__main__':
+    # BELOW THIS TESTS THE SLIMFC
+    """
+    # N is batch size; D_in is input dimension;
+    # H is hidden dimension; D_out is output dimension.
+    N, D_in, H, D_out = 64, 1000, 100, 10
 
-    @override(ModelV2)
-    def value_function(self):
-        assert self._features is not None, "must call forward() first"
-        return torch.reshape(self.value_branch(self._features), [-1])
+    # Create random Tensors to hold inputs and outputs
+    x = torch.randn(N, D_in)
+    y = torch.randn(N, D_out)
 
-    @override(TorchRNN)
-    def forward_rnn(self, inputs, state, seq_lens):
-        """Feeds `inputs` (B x T x ..) through the Gru Unit.
+    # Construct our model by instantiating the class defined above
+    model = PositionwiseFeedforward(D_in, H, D_out)
 
-        Returns the resulting outputs as a sequence (B x T x ...).
-        Values are stored in self._cur_value in simple (B) shape (where B
-        contains both the B and T dims!).
+    # Construct our loss function and an Optimizer. The call to model.parameters()
+    # in the SGD constructor will contain the learnable parameters of the two
+    # nn.Linear modules which are members of the model.
+    criterion = torch.nn.MSELoss(reduction='sum')
+    optimizer = torch.optim.SGD(model.parameters(), lr=1e-4)
+    for t in range(500):
+        # Forward pass: Compute predicted y by passing x to the model
+        y_pred = model(x)
 
-        Returns:
-            NN Outputs (B x T x ...) as sequence.
-            The state batches as a List of two items (c- and h-states).
+        # Compute and print loss
+        loss = criterion(y_pred, y)
+        if t % 100 == 99:
+            print(t, loss.item())
+
+        # Zero gradients, perform a backward pass, and update the weights.
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
         """
-        x = nn.functional.relu(self.fc1(inputs))
-        self._features, [h, c] = self.lstm(
-            x, [torch.unsqueeze(state[0], 0),
-                torch.unsqueeze(state[1], 0)])
-        action_out = self.action_branch(self._features)
-        return action_out, [torch.squeeze(h, 0), torch.squeeze(c, 0)]
+    # TEST MULTIHEAD ATTENTION
 
+    N, D_in, D_out = 64, 32, 10
 
+    # Create random Tensors to hold inputs and outputs
+    x = torch.randn(N, D_in)
+    y = torch.randn(N, D_out)
 
+    model = MultiHeadAttention(in_dim=D_in, out_dim=D_out, num_heads=2, head_dim=32)
+
+    criterion = torch.nn.MSELoss(reduction='sum')
+    optimizer = torch.optim.SGD(model.parameters(), lr=1e-4)
+    for t in range(500):
+        y_pred = model(x)
+
+        loss = criterion(y_pred, y)
+        if t % 100 == 99:
+            print(t, loss.item())
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
