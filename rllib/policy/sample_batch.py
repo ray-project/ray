@@ -96,7 +96,7 @@ class SampleBatch:
         if self.keys() != other.keys():
             raise ValueError(
                 "SampleBatches to concat must have same columns! {} vs {}".
-                    format(list(self.keys()), list(other.keys())))
+                format(list(self.keys()), list(other.keys())))
         out = {}
         for k in self.keys():
             out[k] = concat_aligned([self[k], other[k]])
@@ -135,7 +135,8 @@ class SampleBatch:
             keys (List[str]): List of column names fo which to return the data.
 
         Returns:
-        
+            List[any]: The list of data items ordered by the order of column
+                names in `keys`.
 
         Examples:
             >>> batch = SampleBatch({"a": [1], "b": [2], "c": [3]})
@@ -272,14 +273,16 @@ class MultiAgentBatch:
     @staticmethod
     @PublicAPI
     def wrap_as_needed(batches, count):
-        """Wraps data in batches into a MultiAgentBatch object, if not
-        
+        """Returns SampleBatch or MultiAgentBatch, depending on given policies.
+
         Args:
-            batches (:
-            count:
+            batches (Dict[str,SampleBatch]): Mapping from policy ID to
+                SampleBatch.
+            count (int): A count to use, when returning a MultiAgentBatch.
 
         Returns:
-
+            Union[SampleBatch,MultiAgentBatch]: The single default policy's
+                SampleBatch or a MultiAgentBatch (more than one policy).
         """
         if len(batches) == 1 and DEFAULT_POLICY_ID in batches:
             return batches[DEFAULT_POLICY_ID]

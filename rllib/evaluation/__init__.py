@@ -1,7 +1,5 @@
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-#from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
-#from ray.rllib.evaluation.sample_batch import MultiAgentBatch
 from ray.rllib.evaluation.sample_batch_builder import (
     SampleBatchBuilder, MultiAgentSampleBatchBuilder)
 from ray.rllib.evaluation.sampler import SyncSampler, AsyncSampler
@@ -20,5 +18,4 @@ __all__ = [
     "compute_advantages",
     "collect_metrics",
     "MultiAgentEpisode",
-    #"PolicyEvaluator",
 ]
