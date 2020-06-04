@@ -78,10 +78,21 @@ class Syncer:
         self.sync_client = sync_client
 
     def sync_up_if_needed(self, sync_period):
+        """Syncs up if time since last sync up is greather than sync_period.
+
+        Arguments:
+            sync_period (int): Time period between subsequent syncs.
+        """
+
         if time.time() - self.last_sync_up_time > sync_period:
             self.sync_up()
 
     def sync_down_if_needed(self, sync_period):
+        """Syncs down if time since last sync down is greather than sync_period.
+
+        Arguments:
+            sync_period (int): Time period between subsequent syncs.
+        """
         if time.time() - self.last_sync_down_time > sync_period:
             self.sync_down()
 
