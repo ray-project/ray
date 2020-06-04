@@ -1437,7 +1437,7 @@ py_test(
     name = "examples/cartpole_lstm_impala_tf",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--run=IMPALA", "--stop-reward=40", "--num-cpus=4"]
 )
@@ -1446,7 +1446,7 @@ py_test(
     name = "examples/cartpole_lstm_impala_torch",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--torch", "--run=IMPALA", "--stop-reward=40", "--num-cpus=4"]
 )
@@ -1455,7 +1455,7 @@ py_test(
     name = "examples/cartpole_lstm_ppo_tf",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
 )
@@ -1464,7 +1464,7 @@ py_test(
     name = "examples/cartpole_lstm_ppo_torch",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--torch", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
 )
@@ -1473,7 +1473,7 @@ py_test(
     name = "examples/cartpole_lstm_ppo_tf_with_prev_a_and_r",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--run=PPO", "--stop-reward=40", "--use-prev-action-reward", "--num-cpus=4"]
 )
@@ -1482,7 +1482,7 @@ py_test(
     name = "examples/centralized_critic_tf",
     main = "examples/centralized_critic.py",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/centralized_critic.py"],
     args = ["--as-test", "--stop-reward=7.2"]
 )
@@ -1491,7 +1491,7 @@ py_test(
     name = "examples/centralized_critic_torch",
     main = "examples/centralized_critic.py",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/centralized_critic.py"],
     args = ["--as-test", "--torch", "--stop-reward=7.2"]
 )
