@@ -6,7 +6,7 @@ import unittest
 from ray.rllib.utils.test_utils import framework_iterator
 
 
-def rollout_test(algo, env="CartPole-v0"):
+def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
 
     for fw in framework_iterator(frameworks=("torch", "tf")):
         fw_ = ", \"framework\": \"{}\"".format(fw)
@@ -44,24 +44,19 @@ def rollout_test(algo, env="CartPole-v0"):
         print("rollout output (10 steps) exists!".format(checkpoint_path))
 
         # Test rolling out 1 episode.
-        os.popen("python {}/rollout.py --run={} \"{}\" --episodes=1 "
-                 "--out=\"{}/rollouts_1episode.pkl\" --no-render".format(
-                     rllib_dir, algo, checkpoint_path, tmp_dir)).read()
-        if not os.path.exists(tmp_dir + "/rollouts_1episode.pkl"):
-            sys.exit(1)
-        print("rollout output (1 ep) exists!".format(checkpoint_path))
+        if test_episode_rollout:
+            os.popen("python {}/rollout.py --run={} \"{}\" --episodes=1 "
+                     "--out=\"{}/rollouts_1episode.pkl\" --no-render".format(
+                         rllib_dir, algo, checkpoint_path, tmp_dir)).read()
+            if not os.path.exists(tmp_dir + "/rollouts_1episode.pkl"):
+                sys.exit(1)
+            print("rollout output (1 ep) exists!".format(checkpoint_path))
 
         # Cleanup.
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
 
 
 class TestRollout(unittest.TestCase):
-    def test_a3c(self):
-        rollout_test("A3C")
-
-    def test_ars(self):
-        rollout_test("ARS")
-
     def test_ddpg(self):
         rollout_test("DDPG", env="Pendulum-v0")
 
@@ -74,11 +69,8 @@ class TestRollout(unittest.TestCase):
     def test_impala(self):
         rollout_test("IMPALA", env="Pong-ram-v4")
 
-    def test_pg(self):
-        rollout_test("PG")
-
     def test_ppo(self):
-        rollout_test("PPO", env="Pendulum-v0")
+        rollout_test("PPO", env="Pendulum-v0", test_episode_rollout=True)
 
     def test_sac(self):
         rollout_test("SAC", env="Pendulum-v0")
