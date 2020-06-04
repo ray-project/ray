@@ -47,10 +47,11 @@ class TestSupportedMultiAgent(unittest.TestCase):
         check_support_multiagent(
             "APEX", {
                 "num_workers": 2,
-                "timesteps_per_iteration": 1000,
+                "timesteps_per_iteration": 100,
                 "num_gpus": 0,
+                "buffer_size": 10000,
                 "min_iter_time_s": 1,
-                "learning_starts": 1000,
+                "learning_starts": 10,
                 "target_network_update_freq": 100,
             })
 
@@ -58,10 +59,11 @@ class TestSupportedMultiAgent(unittest.TestCase):
         check_support_multiagent(
             "APEX_DDPG", {
                 "num_workers": 2,
-                "timesteps_per_iteration": 1000,
+                "timesteps_per_iteration": 100,
+                "buffer_size": 10000,
                 "num_gpus": 0,
                 "min_iter_time_s": 1,
-                "learning_starts": 1000,
+                "learning_starts": 10,
                 "target_network_update_freq": 100,
                 "use_state_preprocessor": True,
             })
