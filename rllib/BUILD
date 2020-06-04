@@ -1285,7 +1285,7 @@ py_test(
     name = "test_rollout",
     main = "tests/test_rollout.py",
     tags = ["tests_dir", "tests_dir_R"],
-    size = "enormous",
+    size = "large",
     data = ["train.py", "rollout.py"],
     srcs = ["tests/test_rollout.py"]
 )
@@ -1307,7 +1307,7 @@ py_test(
 py_test(
     name = "tests/test_supported_spaces",
     tags = ["tests_dir", "tests_dir_S"],
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_supported_spaces.py"]
 )
 
