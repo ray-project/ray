@@ -31,7 +31,6 @@
 #include "ray/common/scheduling/cluster_resource_scheduler.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
-#include "ray/raylet/bundle.h"
 #include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
@@ -780,20 +779,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                              std::string address, int port)>
       ScheduleFn;
 
-  typedef std::function<void(std::shared_ptr<Bundle>)>
-      ScheduleBundleFn;
-
   /// Queue of lease requests that are waiting for resources to become available.
   /// TODO this should be a queue for each SchedulingClass
   std::deque<std::pair<ScheduleFn, Task>> tasks_to_schedule_;
-
-  /// Queue of lease requests that are waiting for resources to become available.
-  /// TODO this should be a queue for each SchedulingClass
-  std::deque<std::pair<ScheduleBundleFn, rpc::Bundle>> bundles_to_schedule_;
-
-  /// Queue of lease requests that should be scheduled.
-  std::deque<std::pair<ScheduleBundleFn,rpc::Bundle>>bundles_to_dispatch_;
-
   /// Queue of lease requests that should be scheduled onto workers.
   std::deque<std::pair<ScheduleFn, Task>> tasks_to_dispatch_;
   /// Queue tasks waiting for arguments to be transferred locally.

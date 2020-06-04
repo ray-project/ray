@@ -62,22 +62,48 @@ void GcsPlacementGroupScheduler::Schedule(std::shared_ptr<GcsPlacementGroup> pla
         }
     } else if(strategy == rpc::PACK) {
         // This is another algorithm to select node.
-        for(int i = 0; i < bundles.size(); i ++) {
-            schedule_bundles[i] = ClientID::FromBinary(alive_nodes.begin()->second->node_id());
+        for(int pos = 0; pos < bundles.size(); pos ++) {
+            schedule_bundles[pos] = ClientID::FromBinary(alive_nodes.begin()->second->node_id());
         }
     }
+    auto decision = GetDecision();
+    decision.resize(bundles.size());
     // TODO(AlisaWu): add a callback function.
-    bool lease_success = true;
-    Status status;
-    for(int i = 0;i < bundles.size();i ++) {
-      RAY_CHECK(node_to_bundles_when_leasing_[schedule_bundles[i]]
-                    .emplace(bundles[i].BundleID())
+    for(int pos = 0;pos < bundles.size();pos ++) {
+      RAY_CHECK(node_to_bundles_when_leasing_[schedule_bundles[pos]]
+                    .emplace(bundles[pos].BundleID())
                     .second);
             
-      GetLeaseResourceQueue().push_back(std::make_tuple(bundles[i], gcs_node_manager_.GetNode(schedule_bundles[i]),
-      [](const Status &status){
-        if(!status.ok()){
-          
+      GetLeaseResourceQueue().push_back(std::make_tuple(bundles[pos], gcs_node_manager_.GetNode(schedule_bundles[pos]),
+        [this, pos, schedule_bundles](const Status &status, const rpc::RequestResourceLeaseReply &reply){
+        finish_count++;
+        auto decision = GetDecision();
+        if(status.ok()){
+          decision[pos] = schedule_bundles[pos];
+
+          // TODO(AlisaWu): store the plan.
+        } else {
+          decision[pos] = ClientID::Nil();
+        } 
+        if(finish_count == schedule_bundles.size()){
+          bool lease_success = true;
+          for(int i = 0;i < finish_count;i ++){
+            if(decision[i] == ClientID::Nil()){
+              lease_success = false;
+              break;
+            }
+          }
+          if(lease_success){
+            // schedule_success_handler(placement_group);
+            
+            // store  
+          } else {
+            
+            for(int i = 0; i < finish_count;i ++){
+              // TODO(AlisaWu): reutrn resource
+            }
+            // schedule_failure_handler(placement_group);
+          }
         }
       }));
     }
@@ -118,7 +144,7 @@ void GcsPlacementGroupScheduler::LeaseResourceFromNode() {
     
     auto status = lease_client->RequestResourceLease(
         bundle,
-        [this,node_id, bundle, node](const Status &status,
+        [this,node_id, bundle, node, callback](const Status &status,
                                     const rpc::RequestResourceLeaseReply &reply) {
             // If the bundle is still in the leasing map and the status is ok, remove the bundle
             // from the leasing map and handle the reply. Otherwise, lease again, because it
@@ -143,8 +169,11 @@ void GcsPlacementGroupScheduler::LeaseResourceFromNode() {
                 }
                 RAY_LOG(INFO) << "Finished leasing resource from " <<  node_id << " for bundle "
                             << bundle.BundleID();
+                callback(status,reply);
                 // HandleResourceLeasedReply(bundle, reply);
+
               } else {
+                callback(Status::OutOfMemory("bundle lease resource failed"),reply);
                 // TODO(AlisaWu): try to return a fail to the manager
                 // Status::OutOfMemory("Lease resource for placement group");
               }
@@ -152,6 +181,8 @@ void GcsPlacementGroupScheduler::LeaseResourceFromNode() {
           }
         );
     if(!status.ok()){
+      rpc::RequestResourceLeaseReply reply;
+      callback(Status::OutOfMemory("bundle lease resource failed"),reply);
       // TODO(AlisaWu): try to return a fail to the manager
     }
   }

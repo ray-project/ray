@@ -34,7 +34,7 @@ namespace gcs {
 using LeaseClientFactoryFn =
     std::function<std::shared_ptr<ResourceLeaseInterface>(const rpc::Address &address)>;
   
-typedef std::function<void(const Status &)> LeaseResourceCallback;
+typedef std::function<void(const Status &,const rpc::RequestResourceLeaseReply &)> LeaseResourceCallback;
 
 class GcsPlacementGroup;
 
@@ -80,6 +80,13 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
     return lease_resource_queue_;
   }
 
+  const std::vector<ClientID>& GetDecision() const{
+    return decision_;
+  }
+
+  void SetDecision(std::vector<ClientID>decision){
+    decision_ = decision;
+  }
 
  protected:
   /// The GcsLeasedWorker is kind of abstraction of remote leased worker inside raylet. It
@@ -180,6 +187,15 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   
   /// The queue which is used to store the whole LeaseResourceFromNode
   std::deque<std::tuple<BundleSpecification,std::shared_ptr<rpc::GcsNodeInfo>,LeaseResourceCallback>>lease_resource_queue_;
+
+  /// To store the decison which the bundle belong to.
+  /// if lease resource failed, decision[i] = ClientID::Nil() 
+  std::vector<ClientID>decision_;
+
+  /// The count stores how many lease resource from node success; 
+  int64_t finish_count = 0;
+
+  /// Store the 
 };
 
 }

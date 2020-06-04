@@ -56,12 +56,14 @@ const rpc::PlacementGroupTableData &GcsPlacementGroup::GetPlacementGroupTableDat
 
 /////////////////////////////////////////////////////////////////////////////////////////
 
-GcsPlacementGroupManager::GcsPlacementGroupManager(std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
+GcsPlacementGroupManager::GcsPlacementGroupManager(boost::asio::io_context &io_context, 
+                                 std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
                                  gcs::PlacementGroupInfoAccessor &placement_group_info_accessor,
                                  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub)
     : gcs_placement_group_scheduler_(std::move(scheduler)),
       placement_group_info_accessor_(placement_group_info_accessor),
-      gcs_pub_sub_(std::move(gcs_pub_sub)) {}
+      gcs_pub_sub_(std::move(gcs_pub_sub)),
+      reschedule_timer_(io_context) {}
 
 Status GcsPlacementGroupManager::RegisterPlacementGroup(
     const ray::rpc::CreatePlacementGroupRequest &request,
@@ -95,7 +97,8 @@ Status GcsPlacementGroupManager::RegisterPlacementGroup(
   // created.
   placement_group_to_register_callbacks_[placement_group_id].emplace_back(std::move(callback));
   RAY_CHECK(registered_placement_groups_.emplace(placement_group->GetPlacementGroupID(), placement_group).second);
-  gcs_placement_group_scheduler_->Schedule(placement_group);
+  pending_placement_groups_.emplace_back(std::move(placement_group));
+  SchedulePendingPlacementGroups();
   return Status::OK();
 }
 
@@ -112,6 +115,8 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(std::shared_ptr<Gc
   // We will attempt to schedule this placement_group once an eligible node is
   // registered.
   pending_placement_groups_.emplace_back(std::move(placement_group));
+  is_creating_ = false;
+  ScheduleTick();
 }
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(std::shared_ptr<GcsPlacementGroup> placement_group) {
@@ -138,18 +143,49 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(std::shared_ptr<G
     }
     placement_group_to_register_callbacks_.erase(iter);
   }
+  is_creating_ = false;
+  SchedulePendingPlacementGroups();
 }
 
 void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
-  if (pending_placement_groups_.empty()) {
+  if (pending_placement_groups_.empty() || is_creating_) {
     return;
   }
-
   RAY_LOG(DEBUG) << "Scheduling placement_group, size = " << pending_placement_groups_.size();
   auto placement_groups = std::move(pending_placement_groups_);
-  for (auto &placement_group : placement_groups) {
-    gcs_placement_group_scheduler_->Schedule(std::move(placement_group));
+  is_creating_ = true;
+  gcs_placement_group_scheduler_->Schedule(*placement_groups.begin());
+  
+}
+
+void GcsPlacementGroupManager::HandleCreatePlacementGroup(
+    const ray::rpc::CreatePlacementGroupRequest &request, ray::rpc::CreatePlacementGroupReply *reply,
+    ray::rpc::SendReplyCallback send_reply_callback) {
+  auto placement_group_id =
+      PlacementGroupID::FromBinary(request.placement_group_spec().placement_group_id());
+
+  RAY_LOG(INFO) << "Registering placement group, placement group id = " << placement_group_id;
+  Status status = RegisterPlacementGroup(
+      request,
+      [reply, send_reply_callback, placement_group_id](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+        RAY_LOG(INFO) << "Registered placement group, placement group id = " << placement_group_id;
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+      });
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to create placement group: " << status.ToString();
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   }
+}
+
+void GcsPlacementGroupManager::ScheduleTick() {
+  reschedule_timer_.expires_from_now(boost::posix_time::milliseconds(5));
+  reschedule_timer_.async_wait([this](const boost::system::error_code &error) {
+    if (error == boost::system::errc::operation_canceled) {
+      return;
+    } else {
+      SchedulePendingPlacementGroups();
+    }
+  });
 }
 
 } //namespace

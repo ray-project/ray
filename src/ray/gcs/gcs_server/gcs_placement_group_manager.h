@@ -21,6 +21,8 @@
 #include <ray/protobuf/gcs.pb.h>
 #include <ray/rpc/client_call.h>
 #include <ray/rpc/gcs_server/gcs_rpc_server.h>
+#include "ray/common/network_util.h"
+
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -98,7 +100,8 @@ class GcsPlacementGroupManager {
   /// \param scheduler Used to schedule placement group creation tasks.
   /// \param placement_group_info_accessor Used to flush placement group data to storage.
   /// \param gcs_pub_sub Used to publish gcs message.
-  explicit GcsPlacementGroupManager(std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
+  explicit GcsPlacementGroupManager(boost::asio::io_context &io_context, 
+                  std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
                   gcs::PlacementGroupInfoAccessor &placement_group_info_accessor,
                   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub);
   ~GcsPlacementGroupManager() = default;
@@ -140,13 +143,8 @@ class GcsPlacementGroupManager {
   void HandleCreatePlacementGroup(const rpc::CreatePlacementGroupRequest &request, rpc::CreatePlacementGroupReply *reply,
                                   rpc::SendReplyCallback send_reply_callback);
 
-  /// Add a placement group node.
-  ///
-  /// \param placement_group The info of the placement group to be added.
-  void AddPlacementGroup(std::shared_ptr<rpc::PlacementGroupTableData> placement_group); 
+  void ScheduleTick();
 
-
-  Status ScheduleBundles(const rpc::CreatePlacementGroupRequest &request);
 
  private:
 
@@ -170,6 +168,11 @@ class GcsPlacementGroupManager {
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
 
+  /// If a placement group is creating
+  bool is_creating_ = false;
+
+  /// A timer that ticks every schedule failure milliseconds.
+  boost::asio::deadline_timer reschedule_timer_;
 };
 
 } // namespace gcs
