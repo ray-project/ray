@@ -9,7 +9,7 @@ class RepeatAfterMeEnv(gym.Env):
     def __init__(self, config):
         self.observation_space = Discrete(2)
         self.action_space = Discrete(2)
-        self.delay = config["repeat_delay"]
+        self.delay = config.get("repeat_delay", 1)
         assert self.delay >= 1, "`repeat_delay` must be at least 1!"
         self.history = []
 
