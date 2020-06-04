@@ -671,7 +671,7 @@ def test_detached_actor(ray_start_regular):
     DetachedActor._remote(name="d_actor")
     with pytest.raises(ValueError):
         # If get_actor is called before actor is created, it should fail.
-        d = ray.get_actor("d_actor")
+        ray.get_actor("d_actor")
 
     with pytest.raises(ValueError, match="Please use a different name"):
         DetachedActor._remote(name="d_actor")
@@ -729,6 +729,8 @@ def test_detached_actor_cleanup(ray_start_regular):
                         detached_actor._actor_id))
 
     create_and_kill_actor(dup_actor_name)
+
+
 #     # This shouldn't be broken because actor
 #     # name should have been cleaned up from GCS.
 #     create_and_kill_actor(dup_actor_name)
