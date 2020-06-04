@@ -19,7 +19,6 @@ from ray.rllib.offline import InputReader
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.framework import TensorType
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray, \
     unbatch
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
@@ -197,6 +196,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
     Once started, experiences are continuously collected and put into a Queue,
     from where they can be unqueued by the caller of `get_data()`.
     """
+
     def __init__(self,
                  *,
                  worker,
@@ -353,9 +353,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
 def _env_runner(worker, base_env, extra_batch_callback, policies,
                 policy_mapping_fn, rollout_fragment_length, horizon,
                 preprocessors, obs_filters, clip_rewards, clip_actions,
-                pack_multiple_episodes_in_batch,
-                callbacks, tf_sess, perf_stats, soft_horizon, no_done_at_end,
-                observation_fn):
+                pack_multiple_episodes_in_batch, callbacks, tf_sess,
+                perf_stats, soft_horizon, no_done_at_end, observation_fn):
     """This implements the common experience collection logic.
 
     Args:
@@ -470,16 +469,23 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
         # Process observations and prepare for policy evaluation.
         t1 = time.time()
         active_envs, to_eval, outputs = _process_observations(
-            worker=worker, base_env=base_env, policies=policies,
+            worker=worker,
+            base_env=base_env,
+            policies=policies,
             batch_builder_pool=batch_builder_pool,
             active_episodes=active_episodes,
-            unfiltered_obs=unfiltered_obs, rewards=rewards, dones=dones,
-            infos=infos, horizon=horizon, preprocessors=preprocessors,
+            unfiltered_obs=unfiltered_obs,
+            rewards=rewards,
+            dones=dones,
+            infos=infos,
+            horizon=horizon,
+            preprocessors=preprocessors,
             obs_filters=obs_filters,
             rollout_fragment_length=rollout_fragment_length,
             pack_multiple_episodes_in_batch=pack_multiple_episodes_in_batch,
             callbacks=callbacks,
-            soft_horizon=soft_horizon, no_done_at_end=no_done_at_end,
+            soft_horizon=soft_horizon,
+            no_done_at_end=no_done_at_end,
             observation_fn=observation_fn)
         perf_stats.processing_time += time.time() - t1
         for o in outputs:
@@ -515,10 +521,9 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
 
 def _process_observations(
         worker, base_env, policies, batch_builder_pool, active_episodes,
-        unfiltered_obs, rewards, dones, infos, horizon,
-        preprocessors, obs_filters, rollout_fragment_length,
-        pack_multiple_episodes_in_batch, callbacks,
-        soft_horizon, no_done_at_end, observation_fn):
+        unfiltered_obs, rewards, dones, infos, horizon, preprocessors,
+        obs_filters, rollout_fragment_length, pack_multiple_episodes_in_batch,
+        callbacks, soft_horizon, no_done_at_end, observation_fn):
     """Record new data from the environment and prepare for policy evaluation.
 
     Args:
@@ -831,13 +836,8 @@ def _do_policy_eval(*, to_eval, policies, active_episodes, tf_sess=None):
     return eval_results
 
 
-def _process_policy_eval_results(*,
-                                 to_eval,
-                                 eval_results,
-                                 active_episodes,
-                                 active_envs,
-                                 off_policy_actions,
-                                 policies,
+def _process_policy_eval_results(*, to_eval, eval_results, active_episodes,
+                                 active_envs, off_policy_actions, policies,
                                  clip_actions):
     """Process the output of policy neural network evaluation.
 
