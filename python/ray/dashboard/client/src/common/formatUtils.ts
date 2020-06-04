@@ -31,7 +31,7 @@ export const formatDuration = (durationInSeconds: number) => {
   ].join(" ");
 };
 
-export const formatParameter = (rawFloat: number) => {
+export const formatValue = (rawFloat: number) => {
   try {
     const decimals = rawFloat.toString().split(".")[1].length || 0;
     if (decimals <= 3) return rawFloat.toString(); // Few decimals
