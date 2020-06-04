@@ -96,12 +96,13 @@ def check_support(alg, config, check_bounds=False):
         print(stat)
 
     for _ in framework_iterator(config, frameworks=("tf", "torch")):
-        # Check all action spaces.
+        # Check all action spaces (using a discrete obs-space).
         for a_name, action_space in ACTION_SPACES_TO_TEST.items():
             _do_check(alg, config, a_name, "discrete")
-        # Check all obs spaces.
+        # Check all obs spaces (using a supported action-space).
         for o_name, obs_space in OBSERVATION_SPACES_TO_TEST.items():
-            _do_check(alg, config, "discrete", o_name)
+            a_name = "discrete" if alg not in ["DDPG", "SAC"] else "vector"
+            _do_check(alg, config, a_name, o_name)
 
 
 class TestSupportedSpaces(unittest.TestCase):
