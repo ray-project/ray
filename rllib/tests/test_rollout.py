@@ -3,49 +3,56 @@ import os
 import sys
 import unittest
 
+from ray.rllib.utils.test_utils import framework_iterator
+
 
 def rollout_test(algo, env="CartPole-v0"):
-    tmp_dir = os.popen("mktemp -d").read()[:-1]
-    if not os.path.exists(tmp_dir):
-        sys.exit(1)
 
-    print("Saving results to {}".format(tmp_dir))
+    for fw in framework_iterator(frameworks=("torch", "tf")):
+        fw_ = ", \"framework\": \"{}\"".format(fw)
 
-    rllib_dir = str(Path(__file__).parent.parent.absolute())
-    print("RLlib dir = {}\nexists={}".format(rllib_dir,
-                                             os.path.exists(rllib_dir)))
-    os.system("python {}/train.py --local-dir={} --run={} "
-              "--checkpoint-freq=1 ".format(rllib_dir, tmp_dir, algo) +
-              "--config='{\"num_workers\": 1, \"num_gpus\": 0}' "
-              "--stop='{\"training_iteration\": 1, "
-              "\"timesteps_per_iter\": 10, "
-              "\"min_iter_time_s\": 1}'" + " --env={}".format(env))
+        tmp_dir = os.popen("mktemp -d").read()[:-1]
+        if not os.path.exists(tmp_dir):
+            sys.exit(1)
 
-    checkpoint_path = os.popen(
-        "ls {}/default/*/checkpoint_1/checkpoint-1".format(tmp_dir)).read()[:
-                                                                            -1]
-    if not os.path.exists(checkpoint_path):
-        sys.exit(1)
-    print("Checkpoint path {} (exists)".format(checkpoint_path))
+        print("Saving results to {}".format(tmp_dir))
 
-    # Test rolling out n steps.
-    os.popen("python {}/rollout.py --run={} \"{}\" --steps=25 "
-             "--out=\"{}/rollouts_25steps.pkl\" --no-render".format(
-                 rllib_dir, algo, checkpoint_path, tmp_dir)).read()
-    if not os.path.exists(tmp_dir + "/rollouts_25steps.pkl"):
-        sys.exit(1)
-    print("rollout output (25 steps) exists!".format(checkpoint_path))
+        rllib_dir = str(Path(__file__).parent.parent.absolute())
+        print("RLlib dir = {}\nexists={}".format(rllib_dir,
+                                                 os.path.exists(rllib_dir)))
+        os.system("python {}/train.py --local-dir={} --run={} "
+                  "--checkpoint-freq=1 ".format(rllib_dir, tmp_dir, algo) +
+                  "--config='{" +
+                  "\"num_workers\": 0, \"num_gpus\": 0{}".format(fw_) +
+                  ", \"model\": {\"fcnet_hiddens\": [10]}"
+                  "}' --stop='{\"training_iteration\": 1, "
+                  "\"timesteps_per_iter\": 5, "
+                  "\"min_iter_time_s\": 0.1}'" + " --env={}".format(env))
 
-    # Test rolling out 1 episode.
-    os.popen("python {}/rollout.py --run={} \"{}\" --episodes=1 "
-             "--out=\"{}/rollouts_1episode.pkl\" --no-render".format(
-                 rllib_dir, algo, checkpoint_path, tmp_dir)).read()
-    if not os.path.exists(tmp_dir + "/rollouts_1episode.pkl"):
-        sys.exit(1)
-    print("rollout output (1 ep) exists!".format(checkpoint_path))
+        checkpoint_path = os.popen("ls {}/default/*/checkpoint_1/"
+                                   "checkpoint-1".format(tmp_dir)).read()[:-1]
+        if not os.path.exists(checkpoint_path):
+            sys.exit(1)
+        print("Checkpoint path {} (exists)".format(checkpoint_path))
 
-    # Cleanup.
-    os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
+        # Test rolling out n steps.
+        os.popen("python {}/rollout.py --run={} \"{}\" --steps=10 "
+                 "--out=\"{}/rollouts_10steps.pkl\" --no-render".format(
+                     rllib_dir, algo, checkpoint_path, tmp_dir)).read()
+        if not os.path.exists(tmp_dir + "/rollouts_10steps.pkl"):
+            sys.exit(1)
+        print("rollout output (10 steps) exists!".format(checkpoint_path))
+
+        # Test rolling out 1 episode.
+        os.popen("python {}/rollout.py --run={} \"{}\" --episodes=1 "
+                 "--out=\"{}/rollouts_1episode.pkl\" --no-render".format(
+                     rllib_dir, algo, checkpoint_path, tmp_dir)).read()
+        if not os.path.exists(tmp_dir + "/rollouts_1episode.pkl"):
+            sys.exit(1)
+        print("rollout output (1 ep) exists!".format(checkpoint_path))
+
+        # Cleanup.
+        os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
 
 
 class TestRollout(unittest.TestCase):

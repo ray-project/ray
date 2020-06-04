@@ -18,7 +18,7 @@ def echo_v2(_):
     return "v2"
 
 
-serve.init(blocking=True)
+serve.init()
 
 serve.create_endpoint("my_endpoint", "/echo")
 serve.create_backend("echo:v1", echo_v1)

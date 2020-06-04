@@ -12,6 +12,7 @@ import os
 import ray
 import requests
 from pygments import formatters, highlight, lexers
+from ray.serve.constants import HTTP_PROXY_TIMEOUT
 from ray.serve.context import FakeFlaskRequest, TaskContext
 from ray.serve.http_util import build_flask_request
 import numpy as np
@@ -69,6 +70,10 @@ class ServeEncoder(json.JSONEncoder):
         if isinstance(o, Exception):
             return str(o)
         if isinstance(o, np.ndarray):
+            if o.dtype.kind == "f":  # floats
+                o = o.astype(float)
+            if o.dtype.kind in {"i", "u"}:  # signed and unsigned integers.
+                o = o.astype(int)
             return o.tolist()
         return super().default(o)
 
@@ -83,9 +88,11 @@ def pformat_color_json(d):
     return colorful_json
 
 
-def block_until_http_ready(http_endpoint, num_retries=6, backoff_time_s=1):
+def block_until_http_ready(http_endpoint,
+                           backoff_time_s=1,
+                           timeout=HTTP_PROXY_TIMEOUT):
     http_is_ready = False
-    retries = num_retries
+    start_time = time.time()
 
     while not http_is_ready:
         try:
@@ -95,14 +102,11 @@ def block_until_http_ready(http_endpoint, num_retries=6, backoff_time_s=1):
         except Exception:
             pass
 
-        # Exponential backoff
-        time.sleep(backoff_time_s)
-        backoff_time_s *= 2
+        if 0 < timeout < time.time() - start_time:
+            raise TimeoutError(
+                "HTTP proxy not ready after {} seconds.".format(timeout))
 
-        retries -= 1
-        if retries == 0:
-            raise Exception(
-                "HTTP proxy not ready after {} retries.".format(num_retries))
+        time.sleep(backoff_time_s)
 
 
 def get_random_letters(length=6):
@@ -116,7 +120,7 @@ def async_retryable(cls):
     be invoked in an async context.
 
     Usage:
-        @ray.remote(max_reconstructions=10000)
+        @ray.remote(max_restarts=10000)
         @async_retryable
         class A:
             pass
@@ -173,3 +177,10 @@ async def retry_actor_failures_async(f, *args, **kwargs):
     raise RuntimeError("Timed out after {}s waiting for actor "
                        "method '{}' to succeed.".format(
                            ACTOR_FAILURE_RETRY_TIMEOUT_S, f._method_name))
+
+
+def format_actor_name(actor_name, instance_name=None):
+    if instance_name is None:
+        return actor_name
+    else:
+        return "{}:{}".format(instance_name, actor_name)

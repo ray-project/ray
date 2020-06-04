@@ -179,8 +179,13 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
                     args["episode_id"], args["observation"], args["action"])
             elif command == PolicyClient.LOG_RETURNS:
                 assert inference_thread.is_alive()
-                child_rollout_worker.env.log_returns(
-                    args["episode_id"], args["reward"], args["info"])
+                if args["done"]:
+                    child_rollout_worker.env.log_returns(
+                        args["episode_id"], args["reward"], args["info"],
+                        args["done"])
+                else:
+                    child_rollout_worker.env.log_returns(
+                        args["episode_id"], args["reward"], args["info"])
             elif command == PolicyClient.END_EPISODE:
                 assert inference_thread.is_alive()
                 child_rollout_worker.env.end_episode(args["episode_id"],

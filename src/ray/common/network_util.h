@@ -33,6 +33,11 @@ class AsyncClient {
  public:
   AsyncClient() : socket_(io_service_), timer_(io_service_) {}
 
+  ~AsyncClient() {
+    io_service_.stop();
+    socket_.close();
+  }
+
   /// This function is used to asynchronously connect a socket to the specified address
   /// with timeout.
   ///
@@ -108,55 +113,14 @@ class AsyncClient {
 /// \param port The port that the local ip is listening on.
 /// \param timeout_ms The maximum wait time in milliseconds.
 /// \return A valid local ip.
-std::string GetValidLocalIp(int port, int64_t timeout_ms) {
-  AsyncClient async_client;
-  boost::system::error_code error_code;
-  std::string address;
-  bool is_timeout;
-  if (async_client.Connect(kPublicDNSServerIp, kPublicDNSServerPort, timeout_ms,
-                           &is_timeout, &error_code)) {
-    address = async_client.GetLocalIPAddress();
-  } else {
-    address = "127.0.0.1";
+std::string GetValidLocalIp(int port, int64_t timeout_ms);
 
-    if (is_timeout || error_code == boost::system::errc::host_unreachable) {
-      boost::asio::ip::detail::endpoint primary_endpoint;
-      boost::asio::io_context io_context;
-      boost::asio::ip::tcp::resolver resolver(io_context);
-      boost::asio::ip::tcp::resolver::query query(
-          boost::asio::ip::host_name(), "",
-          boost::asio::ip::resolver_query_base::flags::v4_mapped);
-      boost::asio::ip::tcp::resolver::iterator iter = resolver.resolve(query, error_code);
-      boost::asio::ip::tcp::resolver::iterator end;  // End marker.
-      if (!error_code) {
-        while (iter != end) {
-          boost::asio::ip::tcp::endpoint ep = *iter;
-          if (ep.address().is_v4() && !ep.address().is_loopback() &&
-              !ep.address().is_multicast()) {
-            primary_endpoint.address(ep.address());
-            primary_endpoint.port(ep.port());
-
-            AsyncClient client;
-            if (client.Connect(primary_endpoint.address().to_string(), port, timeout_ms,
-                               &is_timeout)) {
-              break;
-            }
-          }
-          iter++;
-        }
-      } else {
-        RAY_LOG(WARNING) << "Failed to resolve ip address, error = "
-                         << strerror(error_code.value());
-        iter = end;
-      }
-
-      if (iter != end) {
-        address = primary_endpoint.address().to_string();
-      }
-    }
-  }
-
-  return address;
-}
+/// A helper function to test whether target rpc server is valid.
+///
+/// \param ip The ip that the target rpc server is listening on.
+/// \param port The port that the target rpc server is listening on.
+/// \param timeout_ms The maximum wait time in milliseconds.
+/// \return Whether target rpc server is valid.
+bool Ping(const std::string &ip, int port, int64_t timeout_ms);
 
 #endif  // RAY_COMMON_NETWORK_UTIL_H

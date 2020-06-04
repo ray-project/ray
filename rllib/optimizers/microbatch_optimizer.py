@@ -7,7 +7,6 @@ from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.utils.memory import ray_get_and_free
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +64,7 @@ class MicrobatchOptimizer(PolicyOptimizer):
                 while sum(s.count for s in samples) < self.microbatch_size:
                     if self.workers.remote_workers():
                         samples.extend(
-                            ray_get_and_free([
+                            ray.get([
                                 e.sample.remote()
                                 for e in self.workers.remote_workers()
                             ]))

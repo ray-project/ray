@@ -44,7 +44,6 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
 
     StreamingContext streamingContext = StreamingContext.buildContext();
     Map<String, String> config = new HashMap<>();
-    config.put(Config.STREAMING_BATCH_MAX_COUNT, "1");
     config.put(Config.CHANNEL_TYPE, "MEMORY_CHANNEL");
     streamingContext.withConfig(config);
     List<String> text = new ArrayList<>();

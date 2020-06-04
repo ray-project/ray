@@ -83,7 +83,7 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
 extras = {
     "debug": [],
     "dashboard": ["requests"],
-    "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
+    "serve": ["uvicorn", "flask", "blist"],
     "tune": ["tabulate", "tensorboardX", "pandas"]
 }
 
@@ -188,13 +188,13 @@ def find_version(*filepath):
 
 requires = [
     "aiohttp",
-    "click",
+    "click >= 7.0",
     "colorama",
     "filelock",
     "google",
     "grpcio",
     "jsonschema",
-    "msgpack >= 0.6.0, < 1.0.0",
+    "msgpack >= 0.6.0, < 2.0.0",
     "numpy >= 1.16",
     "protobuf >= 3.8.0",
     "py-spy >= 0.2.0",

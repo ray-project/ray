@@ -45,9 +45,9 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         only defines the layers for the output heads. Those layers for
         forward() should be defined in subclasses of DDPGTorchModel.
         """
-        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
-                              model_config, name)
         nn.Module.__init__(self)
+        super(DDPGTorchModel, self).__init__(obs_space, action_space,
+                                             num_outputs, model_config, name)
 
         self.bounded = np.logical_and(action_space.bounded_above,
                                       action_space.bounded_below).any()
@@ -58,7 +58,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
 
         # Build the policy network.
         self.policy_model = nn.Sequential()
-        ins = obs_space.shape[-1]
+        ins = num_outputs
         self.obs_ins = ins
         activation = get_activation_fn(
             actor_hidden_activation, framework="torch")

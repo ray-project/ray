@@ -7,7 +7,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--iters", type=int, default=200)
+parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--num-cpus", type=int, default=0)
 
 
@@ -33,9 +33,9 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
     tune.run(
         MyTrainer,
-        stop={"training_iteration": args.iters},
+        stop={"training_iteration": args.stop_iters},
         config={
             "env": "CartPole-v0",
             "num_workers": 2,
-            "use_pytorch": True
+            "framework": "torch",
         })

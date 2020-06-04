@@ -64,6 +64,7 @@ Any method of the actor can return multiple object IDs with the ``ray.method`` d
     assert ray.get(obj_id1) == 1
     assert ray.get(obj_id2) == 2
 
+.. _actor-resource-guide:
 
 Resources with Actors
 ---------------------
@@ -89,7 +90,7 @@ If you want to use custom resources, make sure your cluster is configured to
 have these resources (see `configuration instructions
 <configure.html#cluster-resources>`__):
 
-.. important::
+.. note::
 
   * If you specify resource requirements in an actor class's remote decorator,
     then the actor will acquire those resources for its entire lifetime (if you

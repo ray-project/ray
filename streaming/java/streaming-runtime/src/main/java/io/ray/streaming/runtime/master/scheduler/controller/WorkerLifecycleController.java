@@ -48,7 +48,7 @@ public class WorkerLifecycleController {
 
     ActorCreationOptions options = new ActorCreationOptions.Builder()
         .setResources(executionVertex.getResource())
-        .setMaxReconstructions(ActorCreationOptions.INFINITE_RECONSTRUCTION)
+        .setMaxRestarts(-1)
         .createActorCreationOptions();
 
     BaseActor actor;

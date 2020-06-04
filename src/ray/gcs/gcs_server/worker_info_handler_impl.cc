@@ -34,14 +34,12 @@ void DefaultWorkerInfoHandler::HandleReportWorkerFailure(
       RAY_CHECK_OK(gcs_pub_sub_->Publish(WORKER_FAILURE_CHANNEL, worker_id.Binary(),
                                          worker_failure_data->SerializeAsString(),
                                          nullptr));
-      RAY_LOG(DEBUG) << "Finished reporting worker failure, "
-                     << worker_address.DebugString();
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status =
-      gcs_client_.Workers().AsyncReportWorkerFailure(worker_failure_data, on_done);
+  Status status = gcs_table_storage_->WorkerFailureTable().Put(
+      worker_id, *worker_failure_data, on_done);
   if (!status.ok()) {
     on_done(status);
   }

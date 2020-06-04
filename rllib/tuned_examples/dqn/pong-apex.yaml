@@ -1,0 +1,16 @@
+# This reaches ~20 reward in 50 minutes (6M train steps, 2M env steps) on a
+# p3.2xlarge AWS instance.
+# See https://app.wandb.ai/zplizzi/test/runs/ayuuhixr?workspace=user-zplizzi
+# for training curves.
+pong-apex:
+    env: PongNoFrameskip-v4
+    run: APEX
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        target_network_update_freq: 20000
+        num_workers: 4
+        num_envs_per_worker: 8
+        lr: .00005
+        train_batch_size: 64
+        gamma: 0.99

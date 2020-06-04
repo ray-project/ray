@@ -37,6 +37,23 @@ fi
 
 # exit_code == 2 means there are skipped tests.
 if [ $exit_code -ne 2 ] && [ $exit_code -ne 0 ] ; then
+    if [ -d "/tmp/ray_streaming_java_test_output/" ] ; then
+      echo "all test output"
+      for f in /tmp/ray_streaming_java_test_output/*; do
+        if [ -f "$f" ]; then
+          echo "Cat file $f"
+          cat "$f"
+        elif [[ -d $f ]]; then
+          echo "$f is a directory"
+        fi
+      done
+    fi
+    for f in /home/travis/build/ray-project/ray/hs_err*log; do
+      if [ -f "$f" ]; then
+        echo "Cat file $f"
+        cat "$f"
+      fi
+    done
     exit $exit_code
 fi
 

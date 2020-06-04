@@ -2,6 +2,7 @@ import pytest
 import collections
 import subprocess
 import tempfile
+import os
 import unittest
 from unittest.mock import MagicMock, Mock
 
@@ -62,67 +63,67 @@ tune.run_experiments({
 }, reuse_actors=True, verbose=1)"""
 
 EXPECTED_END_TO_END_START = """Number of trials: 30 (29 PENDING, 1 RUNNING)
-+--------------+----------+-------+-----+-----+
-| Trial name   | status   | loc   |   a |   b |
-|--------------+----------+-------+-----+-----|
-| f_00001      | PENDING  |       |   1 |     |
-| f_00002      | PENDING  |       |   2 |     |
-| f_00003      | PENDING  |       |   3 |     |
-| f_00004      | PENDING  |       |   4 |     |
-| f_00005      | PENDING  |       |   5 |     |
-| f_00006      | PENDING  |       |   6 |     |
-| f_00007      | PENDING  |       |   7 |     |
-| f_00008      | PENDING  |       |   8 |     |
-| f_00009      | PENDING  |       |   9 |     |
-| f_00010      | PENDING  |       |     |   0 |
-| f_00011      | PENDING  |       |     |   1 |
-| f_00012      | PENDING  |       |     |   2 |
-| f_00013      | PENDING  |       |     |   3 |
-| f_00014      | PENDING  |       |     |   4 |
-| f_00015      | PENDING  |       |     |   5 |
-| f_00016      | PENDING  |       |     |   6 |
-| f_00017      | PENDING  |       |     |   7 |
-| f_00018      | PENDING  |       |     |   8 |
-| f_00019      | PENDING  |       |     |   9 |
-| f_00000      | RUNNING  |       |   0 |     |
-+--------------+----------+-------+-----+-----+
++---------------+----------+-------+-----+-----+
+| Trial name    | status   | loc   |   a |   b |
+|---------------+----------+-------+-----+-----|
+| f_xxxxx_00001 | PENDING  |       |   1 |     |
+| f_xxxxx_00002 | PENDING  |       |   2 |     |
+| f_xxxxx_00003 | PENDING  |       |   3 |     |
+| f_xxxxx_00004 | PENDING  |       |   4 |     |
+| f_xxxxx_00005 | PENDING  |       |   5 |     |
+| f_xxxxx_00006 | PENDING  |       |   6 |     |
+| f_xxxxx_00007 | PENDING  |       |   7 |     |
+| f_xxxxx_00008 | PENDING  |       |   8 |     |
+| f_xxxxx_00009 | PENDING  |       |   9 |     |
+| f_xxxxx_00010 | PENDING  |       |     |   0 |
+| f_xxxxx_00011 | PENDING  |       |     |   1 |
+| f_xxxxx_00012 | PENDING  |       |     |   2 |
+| f_xxxxx_00013 | PENDING  |       |     |   3 |
+| f_xxxxx_00014 | PENDING  |       |     |   4 |
+| f_xxxxx_00015 | PENDING  |       |     |   5 |
+| f_xxxxx_00016 | PENDING  |       |     |   6 |
+| f_xxxxx_00017 | PENDING  |       |     |   7 |
+| f_xxxxx_00018 | PENDING  |       |     |   8 |
+| f_xxxxx_00019 | PENDING  |       |     |   9 |
+| f_xxxxx_00000 | RUNNING  |       |   0 |     |
++---------------+----------+-------+-----+-----+
 ... 10 more trials not shown (10 PENDING)"""
 
 EXPECTED_END_TO_END_END = """Number of trials: 30 (30 TERMINATED)
-+--------------+------------+-------+-----+-----+-----+
-| Trial name   | status     | loc   |   a |   b |   c |
-|--------------+------------+-------+-----+-----+-----|
-| f_00000      | TERMINATED |       |   0 |     |     |
-| f_00001      | TERMINATED |       |   1 |     |     |
-| f_00002      | TERMINATED |       |   2 |     |     |
-| f_00003      | TERMINATED |       |   3 |     |     |
-| f_00004      | TERMINATED |       |   4 |     |     |
-| f_00005      | TERMINATED |       |   5 |     |     |
-| f_00006      | TERMINATED |       |   6 |     |     |
-| f_00007      | TERMINATED |       |   7 |     |     |
-| f_00008      | TERMINATED |       |   8 |     |     |
-| f_00009      | TERMINATED |       |   9 |     |     |
-| f_00010      | TERMINATED |       |     |   0 |     |
-| f_00011      | TERMINATED |       |     |   1 |     |
-| f_00012      | TERMINATED |       |     |   2 |     |
-| f_00013      | TERMINATED |       |     |   3 |     |
-| f_00014      | TERMINATED |       |     |   4 |     |
-| f_00015      | TERMINATED |       |     |   5 |     |
-| f_00016      | TERMINATED |       |     |   6 |     |
-| f_00017      | TERMINATED |       |     |   7 |     |
-| f_00018      | TERMINATED |       |     |   8 |     |
-| f_00019      | TERMINATED |       |     |   9 |     |
-| f_00020      | TERMINATED |       |     |     |   0 |
-| f_00021      | TERMINATED |       |     |     |   1 |
-| f_00022      | TERMINATED |       |     |     |   2 |
-| f_00023      | TERMINATED |       |     |     |   3 |
-| f_00024      | TERMINATED |       |     |     |   4 |
-| f_00025      | TERMINATED |       |     |     |   5 |
-| f_00026      | TERMINATED |       |     |     |   6 |
-| f_00027      | TERMINATED |       |     |     |   7 |
-| f_00028      | TERMINATED |       |     |     |   8 |
-| f_00029      | TERMINATED |       |     |     |   9 |
-+--------------+------------+-------+-----+-----+-----+"""
++---------------+------------+-------+-----+-----+-----+
+| Trial name    | status     | loc   |   a |   b |   c |
+|---------------+------------+-------+-----+-----+-----|
+| f_xxxxx_00000 | TERMINATED |       |   0 |     |     |
+| f_xxxxx_00001 | TERMINATED |       |   1 |     |     |
+| f_xxxxx_00002 | TERMINATED |       |   2 |     |     |
+| f_xxxxx_00003 | TERMINATED |       |   3 |     |     |
+| f_xxxxx_00004 | TERMINATED |       |   4 |     |     |
+| f_xxxxx_00005 | TERMINATED |       |   5 |     |     |
+| f_xxxxx_00006 | TERMINATED |       |   6 |     |     |
+| f_xxxxx_00007 | TERMINATED |       |   7 |     |     |
+| f_xxxxx_00008 | TERMINATED |       |   8 |     |     |
+| f_xxxxx_00009 | TERMINATED |       |   9 |     |     |
+| f_xxxxx_00010 | TERMINATED |       |     |   0 |     |
+| f_xxxxx_00011 | TERMINATED |       |     |   1 |     |
+| f_xxxxx_00012 | TERMINATED |       |     |   2 |     |
+| f_xxxxx_00013 | TERMINATED |       |     |   3 |     |
+| f_xxxxx_00014 | TERMINATED |       |     |   4 |     |
+| f_xxxxx_00015 | TERMINATED |       |     |   5 |     |
+| f_xxxxx_00016 | TERMINATED |       |     |   6 |     |
+| f_xxxxx_00017 | TERMINATED |       |     |   7 |     |
+| f_xxxxx_00018 | TERMINATED |       |     |   8 |     |
+| f_xxxxx_00019 | TERMINATED |       |     |   9 |     |
+| f_xxxxx_00020 | TERMINATED |       |     |     |   0 |
+| f_xxxxx_00021 | TERMINATED |       |     |     |   1 |
+| f_xxxxx_00022 | TERMINATED |       |     |     |   2 |
+| f_xxxxx_00023 | TERMINATED |       |     |     |   3 |
+| f_xxxxx_00024 | TERMINATED |       |     |     |   4 |
+| f_xxxxx_00025 | TERMINATED |       |     |     |   5 |
+| f_xxxxx_00026 | TERMINATED |       |     |     |   6 |
+| f_xxxxx_00027 | TERMINATED |       |     |     |   7 |
+| f_xxxxx_00028 | TERMINATED |       |     |     |   8 |
+| f_xxxxx_00029 | TERMINATED |       |     |     |   9 |
++---------------+------------+-------+-----+-----+-----+"""
 
 
 class ProgressReporterTest(unittest.TestCase):
@@ -213,19 +214,23 @@ class ProgressReporterTest(unittest.TestCase):
         assert prog2 == EXPECTED_RESULT_2
 
     def testEndToEndReporting(self):
-        with tempfile.NamedTemporaryFile(suffix=".py") as f:
-            f.write(END_TO_END_COMMAND.encode("utf-8"))
-            f.flush()
-            output = subprocess.check_output(["python3", f.name])
-            output = output.decode("utf-8")
-            try:
-                assert EXPECTED_END_TO_END_START in output
-                assert EXPECTED_END_TO_END_END in output
-            except Exception:
-                print("*** BEGIN OUTPUT ***")
-                print(output)
-                print("*** END OUTPUT ***")
-                raise
+        try:
+            os.environ["_TEST_TUNE_TRIAL_UUID"] = "xxxxx"
+            with tempfile.NamedTemporaryFile(suffix=".py") as f:
+                f.write(END_TO_END_COMMAND.encode("utf-8"))
+                f.flush()
+                output = subprocess.check_output(["python3", f.name])
+                output = output.decode("utf-8")
+                try:
+                    assert EXPECTED_END_TO_END_START in output
+                    assert EXPECTED_END_TO_END_END in output
+                except Exception:
+                    print("*** BEGIN OUTPUT ***")
+                    print(output)
+                    print("*** END OUTPUT ***")
+                    raise
+        finally:
+            del os.environ["_TEST_TUNE_TRIAL_UUID"]
 
 
 if __name__ == "__main__":

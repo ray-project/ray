@@ -117,7 +117,7 @@ RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 RAY_CONFIG(int64_t, max_grpc_message_size, 100 * 1024 * 1024)
 
 // The min number of retries for direct actor creation tasks. The actual number
-// of creation retries will be MAX(actor_creation_min_retries, max_reconstructions).
+// of creation retries will be MAX(actor_creation_min_retries, max_restarts).
 RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
 
 /// The initial period for a task execution lease. The lease will expire this
@@ -149,9 +149,9 @@ RAY_CONFIG(uint64_t, max_lineage_size, 100)
 /// objects to store.
 RAY_CONFIG(int64_t, actor_max_dummy_objects, 1000)
 
-/// Number of times we try connecting to a socket.
-RAY_CONFIG(int64_t, num_connect_attempts, 5)
-RAY_CONFIG(int64_t, connect_timeout_milliseconds, 500)
+/// Number of times raylet client tries connecting to a raylet.
+RAY_CONFIG(int64_t, raylet_client_num_connect_attempts, 10)
+RAY_CONFIG(int64_t, raylet_client_connect_timeout_milliseconds, 1000)
 
 /// The duration that the raylet will wait before reinitiating a
 /// fetch request for a missing task dependency. This time may adapt based on
@@ -248,6 +248,9 @@ RAY_CONFIG(int32_t, num_actor_checkpoints_to_keep, 20)
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
 
+/// Maximum number of items in one batch to scan from GCS storage.
+RAY_CONFIG(uint32_t, maximum_gcs_scan_batch_size, 1000)
+
 /// When getting objects from object store, print a warning every this number of attempts.
 RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
 
@@ -280,6 +283,12 @@ RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
 
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
+
+/// The interval at which the gcs rpc client will check if gcs rpc server is ready.
+RAY_CONFIG(int64_t, ping_gcs_rpc_server_interval_milliseconds, 1000)
+
+/// Maximum number of times to retry ping gcs rpc server when gcs server restarts.
+RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 600)
 
 /// Whether to enable gcs service.
 /// RAY_GCS_SERVICE_ENABLED is an env variable which only set in ci job.

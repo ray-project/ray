@@ -109,6 +109,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
       JavaStringToNativeString(env, rayletSocket),  // raylet_socket
       JavaByteArrayToId<ray::JobID>(env, jobId),    // job_id
       ToGcsClientOptions(env, gcsClientOptions),    // gcs_options
+      true,                                         // enable_logging
       JavaStringToNativeString(env, logDir),        // log_dir
       // TODO (kfstorm): JVM would crash if install_failure_signal_handler was set to true
       false,                                         // install_failure_signal_handler
@@ -155,10 +156,10 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetResource(
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(
-    JNIEnv *env, jclass, jbyteArray actorId, jboolean noReconstruction) {
+    JNIEnv *env, jclass, jbyteArray actorId, jboolean noRestart) {
   auto status = ray::CoreWorkerProcess::GetCoreWorker().KillActor(
       JavaByteArrayToId<ActorID>(env, actorId),
-      /*force_kill=*/true, noReconstruction);
+      /*force_kill=*/true, noRestart);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
