@@ -409,6 +409,21 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
             request2.task_spec().actor_creation_task_spec().actor_id());
 }
 
+TEST_F(GcsActorManagerTest, TestNamedActorDeletion) {
+  auto job_id_1 = JobID::FromInt(1);
+  auto job_id_2 = JobID::FromInt(2);
+
+  // Test Named actor is dead by worker failures.
+  // Test Named actor is dead by node failures.
+  auto request1 =
+      Mocker::GenCreateActorRequest(job_id_1, 0, /*is_detached=*/true, /*name=*/"actor1");
+  Status status = gcs_actor_manager_->RegisterActor(
+      request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor1").Binary(),
+            request1.task_spec().actor_creation_task_spec().actor_id());
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
