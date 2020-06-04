@@ -1,11 +1,12 @@
 import {
   Button,
   createStyles,
+  makeStyles,
   Table,
   TableBody,
-  TableCell,
   TableHead,
   TableRow,
+  TableSortLabel,
   Theme,
   WithStyles,
   withStyles,
@@ -16,10 +17,12 @@ import PauseIcon from "@material-ui/icons/Pause";
 import PlayArrowIcon from "@material-ui/icons/PlayArrow";
 import React, { ReactNode, useState } from "react";
 import { connect } from "react-redux";
-import { stopMemoryTableCollection } from "../../../api";
+import { stopMemoryTableCollection, MemoryTableEntry } from "../../../api";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
 import MemoryRowGroup from "./MemoryRowGroup";
+import { Order } from "../../../common/tableUtils";
+import { StyledTableCell } from "../../../common/TableCell";
 import { MemoryTableRow } from "./MemoryTableRow";
 
 const styles = (theme: Theme) =>
@@ -41,14 +44,10 @@ const mapStateToProps = (state: StoreState) => ({
 
 const mapDispatchToProps = dashboardActions;
 
-type State = {
-  // If memory table is captured, it should stop renewing memory table.
-  pauseMemoryTable: boolean;
-};
-
 type Props = ReturnType<typeof mapStateToProps> &
   typeof mapDispatchToProps &
   WithStyles<typeof styles>;
+
 
 const MemoryInfo = (props: Props) => {
   const handlePauseMemoryTable = async () => {
@@ -61,9 +60,11 @@ const MemoryInfo = (props: Props) => {
   const pauseButtonIcon = props.shouldObtainMemoryTable ? (
     <PauseIcon />
   ) : (
-    <PlayArrowIcon />
-  );
+      <PlayArrowIcon />
+    );
   const [isGrouped, setIsGrouped] = useState(true);
+  const [order, setOrder] = React.useState<Order>('asc');
+  const [orderBy, setOrderBy] = React.useState<keyof MemoryTableEntry | null>(null);
   const { classes, memoryTable } = props;
   const memoryTableHeaders = [
     "", // Padding
@@ -96,47 +97,116 @@ const MemoryInfo = (props: Props) => {
             label="Group by host"
           />
           <Table className={classes.table}>
-            <TableHead>
-              <TableRow>
-                {memoryTableHeaders.map((header, index) => (
-                  <TableCell key={index} className={classes.cell}>
-                    {header}
-                  </TableCell>
-                ))}
-              </TableRow>
-            </TableHead>
+            <SortableTableHead
+              orderBy={orderBy || ""}
+              order={order}
+              onRequestSort={(event, property) => setOrderBy(property)}
+              headerInfo={memoryHeaderInfo}
+            />
+
             <TableBody>
               {isGrouped
                 ? Object.keys(memoryTable.group).map((group_key, index) => (
-                    <MemoryRowGroup
-                      key={index}
-                      groupKey={group_key}
-                      memoryTableGroups={memoryTable.group}
-                      initialExpanded={true}
-                    />
-                  ))
+                  <MemoryRowGroup
+                    key={index}
+                    groupKey={group_key}
+                    memoryTableGroups={memoryTable.group}
+                    initialExpanded={true}
+                  />
+                ))
                 : Object.values(memoryTable.group).reduce(
-                    (children: Array<ReactNode>, memoryTableGroup) => {
-                      const groupChildren = memoryTableGroup.entries.map(
-                        (memoryTableEntry, index) => (
-                          <MemoryTableRow
-                            memoryTableEntry={memoryTableEntry}
-                            key={`mem-row-${index}`}
-                          />
-                        ),
-                      );
-                      return children.concat(groupChildren);
-                    },
-                    [],
-                  )}
+                  (children: Array<ReactNode>, memoryTableGroup) => {
+                    const groupChildren = memoryTableGroup.entries.map(
+                      (memoryTableEntry, index) => (
+                        <MemoryTableRow
+                          memoryTableEntry={memoryTableEntry}
+                          key={`mem-row-${index}`}
+                        />
+                      ),
+                    );
+                    return children.concat(groupChildren);
+                  },
+                  [])}
             </TableBody>
           </Table>
         </React.Fragment>
       ) : (
-        <div>No Memory Table Information Provided</div>
-      )}
+          <div>No Memory Table Information Provided</div>
+        )}
     </React.Fragment>
   );
+};
+
+interface HeaderInfo {
+  id: keyof MemoryTableEntry;
+  label: string;
+  numeric: boolean;
+}
+
+const memoryHeaderInfo: HeaderInfo[] =
+  [{ id: 'node_ip_address', label: "IP Address", numeric: true },
+  { id: 'pid', label: "pid", numeric: true },
+  { id: "type", label: "Type", numeric: false },
+  { id: "object_id", label: "Object ID", numeric: false },
+  { id: "object_size", label: "Object Size (B)", numeric: true },
+  { id: "reference_type", label: "Reference Type", numeric: false },
+  { id: "call_site", label: "Call Site", numeric: false }]
+
+const useSortableTableHeadStyles = makeStyles((theme: Theme) =>
+  createStyles({
+    visuallyHidden: {
+      border: 0,
+      clip: 'rect(0 0 0 0)',
+      height: 1,
+      margin: -1,
+      overflow: 'hidden',
+      padding: 0,
+      position: 'absolute',
+      top: 20,
+      width: 1,
+    },
+  }),
+);
+type SortableTableHeadProps<T extends HeaderInfo> = {
+  // TODO (mfitton) parameterize this type to work with other types besides MemoryTableEntry
+  onRequestSort: (event: React.MouseEvent<unknown>, property: keyof MemoryTableEntry) => void;
+  order: Order;
+  orderBy: string | null;
+  headerInfo: T[];
+}
+function SortableTableHead<T extends HeaderInfo>(props: SortableTableHeadProps<T>) {
+  const { order, orderBy, onRequestSort, headerInfo } = props;
+  const classes = useSortableTableHeadStyles();
+  const createSortHandler = (property: keyof MemoryTableEntry) => (event: React.MouseEvent<unknown>) => {
+    onRequestSort(event, property);
+  }
+  return (
+  <TableHead>
+    <TableRow>
+      {
+        headerInfo.map(headerInfo => (
+          <StyledTableCell
+            key={headerInfo.id}
+            align={headerInfo.numeric ? 'right' : 'left'}
+            sortDirection={orderBy === headerInfo.id ? order : false}
+          >
+            <TableSortLabel
+              active={orderBy === headerInfo.id}
+              direction={orderBy === headerInfo.id ? order : 'asc'}
+              onClick={createSortHandler(headerInfo.id)}
+            >
+              {headerInfo.label}
+              {orderBy === headerInfo.id ? (
+                <span className={classes.visuallyHidden}>
+                  {order === 'desc' ? 'sorted descending' : 'sorted ascending'}
+                </span>
+              ) : null}
+            </TableSortLabel>
+          </StyledTableCell>))
+      }
+    </TableRow>
+  </TableHead>
+  )
 };
 
 export default connect(

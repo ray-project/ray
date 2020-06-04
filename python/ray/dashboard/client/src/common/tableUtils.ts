@@ -8,7 +8,7 @@ export function descendingComparator<T>(a: T, b: T, orderBy: keyof T) {
   return 0;
 }
 
-type Order = "asc" | "desc";
+export type Order = "asc" | "desc";
 
 function getComparator<Key extends keyof any>(
   order: Order,
