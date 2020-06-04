@@ -255,6 +255,7 @@ class SSHCommandRunner:
         if cmd:
             logger.info(self.log_prefix +
                         "Running {} on {}...".format(cmd, self.ssh_ip))
+            logger.info("Begin remote output from {}".format(self.ssh_ip))
             final_cmd += with_interactive(cmd)
         else:
             # We do this because `-o ControlMaster` causes the `-N` flag to
@@ -269,9 +270,11 @@ class SSHCommandRunner:
             if exit_on_fail:
                 quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
                 raise click.ClickException(
-                    "Command failed: \n\n  {}\n".format(quoted_cmd))
+                    "Command failed: \n\n  {}\n".format(quoted_cmd)) from None
             else:
-                raise
+                raise click.ClickException(
+                    "SSH command Failed. See above for the output from the"
+                    " failure.") from None
 
     def run_rsync_up(self, source, target):
         self.set_ssh_ip_if_required()
@@ -348,11 +351,13 @@ class NodeUpdater:
             if hasattr(e, "cmd"):
                 error_str = "(Exit Status {}) {}".format(
                     e.returncode, " ".join(e.cmd))
-            logger.error(self.log_prefix +
-                         "Error updating {}".format(error_str))
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
-            raise e
+            logger.error(self.log_prefix +
+                         "Error executing: {}".format(error_str) + "\n")
+            if isinstance(e, click.ClickException):
+                return
+            raise
 
         self.provider.set_node_tags(
             self.node_id, {
