@@ -92,7 +92,8 @@ class GcsPubSubTest : public ::testing::Test {
   template <typename Data>
   void WaitPendingDone(const std::vector<Data> &data, int expected_count) {
     auto condition = [&data, expected_count]() {
-      RAY_CHECK((int) data.size() <= expected_count) << "Expected " << expected_count << " data " << data.size();
+      RAY_CHECK((int)data.size() <= expected_count)
+          << "Expected " << expected_count << " data " << data.size();
       return (int)data.size() == expected_count;
     };
     EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));

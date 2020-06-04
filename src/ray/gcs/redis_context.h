@@ -151,8 +151,7 @@ class RedisCallbackManager {
 
   /// Add a callback at an optionally specified index.
   int64_t AddCallback(const RedisCallback &function, bool is_subscription,
-              boost::asio::io_service &io_service,
-              int64_t callback_index = -1);
+                      boost::asio::io_service &io_service, int64_t callback_index = -1);
 
   /// Remove a callback.
   void RemoveCallback(int64_t callback_index);
@@ -161,7 +160,6 @@ class RedisCallbackManager {
   std::shared_ptr<CallbackItem> GetCallback(int64_t callback_index) const;
 
  private:
-
   RedisCallbackManager() : num_callbacks_(0){};
 
   ~RedisCallbackManager() {}

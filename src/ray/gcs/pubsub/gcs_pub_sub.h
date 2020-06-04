@@ -15,8 +15,8 @@
 #ifndef RAY_GCS_GCS_PUB_SUB_H_
 #define RAY_GCS_GCS_PUB_SUB_H_
 
-#include "absl/synchronization/mutex.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 
 #include "ray/gcs/callback.h"
 #include "ray/gcs/redis_client.h"
@@ -92,7 +92,11 @@ class GcsPubSub {
  private:
   struct SubscribeCommand {
     // SUBSCRIBE constructor.
-    SubscribeCommand(const Callback &subscribe_callback, const StatusCallback &done_callback) : is_subscribe(true), subscribe_callback(subscribe_callback), done_callback(done_callback) {}
+    SubscribeCommand(const Callback &subscribe_callback,
+                     const StatusCallback &done_callback)
+        : is_subscribe(true),
+          subscribe_callback(subscribe_callback),
+          done_callback(done_callback) {}
     // UNSUBSCRIBE constructor.
     SubscribeCommand() : is_subscribe(false) {}
     const bool is_subscribe;
@@ -121,7 +125,8 @@ class GcsPubSub {
   /// subscribe command can execute if the channel's callback index is not set.
   /// An unsubscribe command can execute if the channel's callback index is
   /// set.
-  Status ExecuteCommandIfPossible(const std::string &channel_key, GcsPubSub::Channel &channel)
+  Status ExecuteCommandIfPossible(const std::string &channel_key,
+                                  GcsPubSub::Channel &channel)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   Status SubscribeInternal(const std::string &channel, const Callback &subscribe,

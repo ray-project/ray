@@ -57,8 +57,8 @@ Status GcsPubSub::Unsubscribe(const std::string &channel_name, const std::string
   return ExecuteCommandIfPossible(channel->first, channel->second);
 }
 
-Status GcsPubSub::SubscribeInternal(const std::string &channel_name, const Callback &subscribe,
-                                    const StatusCallback &done,
+Status GcsPubSub::SubscribeInternal(const std::string &channel_name,
+                                    const Callback &subscribe, const StatusCallback &done,
                                     const boost::optional<std::string> &id) {
   std::string pattern = GenChannelPattern(channel_name, id);
 
@@ -77,15 +77,18 @@ Status GcsPubSub::SubscribeInternal(const std::string &channel_name, const Callb
   return ExecuteCommandIfPossible(channel->first, channel->second);
 }
 
-Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key, GcsPubSub::Channel &channel) {
+Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
+                                           GcsPubSub::Channel &channel) {
   // Process the first command on the queue, if possible.
   Status status;
   auto &command = channel.command_queue.front();
   if (command.is_subscribe && channel.callback_index == -1) {
-    int64_t callback_index = ray::gcs::RedisCallbackManager::instance().AllocateCallbackIndex();
+    int64_t callback_index =
+        ray::gcs::RedisCallbackManager::instance().AllocateCallbackIndex();
     const auto &command_done = command.done_callback;
     const auto &command_subscribe = command.subscribe_callback;
-    auto callback = [this, channel_key, command_done, command_subscribe, callback_index](std::shared_ptr<CallbackReply> reply) {
+    auto callback = [this, channel_key, command_done, command_subscribe,
+                     callback_index](std::shared_ptr<CallbackReply> reply) {
       if (reply->IsNil()) {
         return;
       }
@@ -134,7 +137,7 @@ Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key, GcsPu
       }
     };
     status = redis_client_->GetPrimaryContext()->PSubscribeAsync(channel_key, callback,
-                                                                      callback_index);
+                                                                 callback_index);
     channel.command_queue.pop_front();
   } else if (!command.is_subscribe && channel.callback_index != -1) {
     status = redis_client_->GetPrimaryContext()->PUnsubscribeAsync(channel_key);

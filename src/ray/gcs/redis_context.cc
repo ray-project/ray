@@ -37,7 +37,8 @@ void ProcessCallback(int64_t callback_index,
                      std::shared_ptr<ray::gcs::CallbackReply> callback_reply) {
   RAY_CHECK(callback_index >= 0) << "The callback index must be greater than 0, "
                                  << "but it actually is " << callback_index;
-  auto callback_item = ray::gcs::RedisCallbackManager::instance().GetCallback(callback_index);
+  auto callback_item =
+      ray::gcs::RedisCallbackManager::instance().GetCallback(callback_index);
   if (!callback_item->is_subscription_) {
     // Record the redis latency for non-subscription redis operations.
     auto end_time = absl::GetCurrentTimeNanos() / 1000;
@@ -208,9 +209,10 @@ int64_t RedisCallbackManager::AllocateCallbackIndex() {
   return num_callbacks_++;
 }
 
-int64_t RedisCallbackManager::AddCallback(const RedisCallback &function, bool is_subscription,
-                                  boost::asio::io_service &io_service,
-                                  int64_t callback_index) {
+int64_t RedisCallbackManager::AddCallback(const RedisCallback &function,
+                                          bool is_subscription,
+                                          boost::asio::io_service &io_service,
+                                          int64_t callback_index) {
   auto start_time = absl::GetCurrentTimeNanos() / 1000;
 
   std::lock_guard<std::mutex> lock(mutex_);
@@ -417,7 +419,8 @@ Status RedisContext::PSubscribeAsync(const std::string &pattern,
                                      int64_t callback_index) {
   RAY_CHECK(async_redis_subscribe_context_);
 
-  RAY_UNUSED(RedisCallbackManager::instance().AddCallback(redisCallback, true, io_service_, callback_index));
+  RAY_UNUSED(RedisCallbackManager::instance().AddCallback(redisCallback, true,
+                                                          io_service_, callback_index));
   std::string redis_command = "PSUBSCRIBE %b";
   return async_redis_subscribe_context_->RedisAsyncCommand(
       reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
