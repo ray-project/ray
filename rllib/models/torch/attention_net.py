@@ -17,6 +17,30 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 torch, nn = try_import_torch()
 
+
+class PositionwiseFeedforward(tf.keras.layers.Layer):
+    """A 2x linear layer with ReLU activation in between described in [1].
+
+    Each timestep coming from the attention head will be passed through this
+    layer separately.
+    """
+
+    def __init__(self, out_dim, hidden_dim, output_activation=None, **kwargs):
+        super().__init__(**kwargs)
+
+        self._hidden_layer = tf.keras.layers.Dense(
+            hidden_dim,
+            activation=tf.nn.relu,
+        )
+
+        self._output_layer = tf.keras.layers.Dense(
+            out_dim, activation=output_activation)
+
+    def call(self, inputs, **kwargs):
+        del kwargs
+        output = self._hidden_layer(inputs)
+        return self._output_layer(output)
+
 class GTrXLNet(RecurrentNetwork):
     """A GTrXL net Model described in [2]."""
 
