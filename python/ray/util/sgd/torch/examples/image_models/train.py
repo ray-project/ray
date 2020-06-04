@@ -640,7 +640,7 @@ def data_creator(config):
         use_prefetcher=args.prefetcher,
         mean=data_config["mean"],
         std=data_config["std"],
-        num_workers=8,
+        num_workers=args.dataworkers,
         # we add the samplers ourselves, since they need distributed to be
         # setup
         distributed=False,
@@ -728,6 +728,7 @@ def main():
         loss_creator=loss_creator,
         scheduler_creator=scheduler_creator,
         training_operator_cls=ImagenetOperator,
+        scheduler_step_freq='manual',
         use_tqdm=True,
         use_fp16=args.amp,
         wrap_ddp=False,

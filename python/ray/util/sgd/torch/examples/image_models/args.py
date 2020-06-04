@@ -367,6 +367,11 @@ parser.add_argument(
     metavar="S",
     help="random seed (default: 42)")
 parser.add_argument(
+    "--dataworkers",
+    type=int,
+    default=8,
+    help="dataloader workers (default: 8)")
+parser.add_argument(
     "--log-interval",
     type=int,
     default=50,
