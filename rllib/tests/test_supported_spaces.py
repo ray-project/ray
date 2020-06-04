@@ -48,7 +48,7 @@ OBSERVATION_SPACES_TO_TEST = {
 }
 
 
-def check_support(alg, config, check_bounds=False):
+def check_support(alg, config, train=True, check_bounds=False):
     config["log_level"] = "ERROR"
 
     def _do_check(alg, config, a_name, o_name):
@@ -83,7 +83,8 @@ def check_support(alg, config, check_bounds=False):
                         assert isinstance(a.get_policy().model, TorchFCNetV2)
                     else:
                         assert isinstance(a.get_policy().model, FCNetV2)
-            a.train()
+            if train:
+                a.train()
         except UnsupportedSpaceException:
             stat = "unsupported"
         finally:
@@ -108,7 +109,7 @@ def check_support(alg, config, check_bounds=False):
 class TestSupportedSpaces(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=4)  # , ignore_reinit_error=True, local_mode=True
+        ray.init(num_cpus=4)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -119,7 +120,7 @@ class TestSupportedSpaces(unittest.TestCase):
         check_support("A3C", config, check_bounds=True)
 
     def test_appo(self):
-        check_support("APPO", {"num_gpus": 0, "vtrace": False})
+        check_support("APPO", {"num_gpus": 0, "vtrace": False}, train=False)
         check_support("APPO", {"num_gpus": 0, "vtrace": True})
 
     def test_ars(self):

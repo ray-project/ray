@@ -57,12 +57,6 @@ def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
 
 
 class TestRollout(unittest.TestCase):
-    def test_a3c(self):
-        rollout_test("A3C")
-
-    def test_ars(self):
-        rollout_test("ARS")
-
     def test_ddpg(self):
         rollout_test("DDPG", env="Pendulum-v0")
 
@@ -74,9 +68,6 @@ class TestRollout(unittest.TestCase):
 
     def test_impala(self):
         rollout_test("IMPALA", env="Pong-ram-v4")
-
-    def test_pg(self):
-        rollout_test("PG")
 
     def test_ppo(self):
         rollout_test("PPO", env="Pendulum-v0", test_episode_rollout=True)
