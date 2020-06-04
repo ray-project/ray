@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from collections import defaultdict
 from itertools import groupby
 from operator import attrgetter
+import time
 
 import ray
 from ray.async_compat import sync_to_async
@@ -24,20 +25,30 @@ logger = _get_logger()
 
 class WaitableQueue(asyncio.Queue):
     async def wait_for_batch(self, num_items: int, timeout_s: float):
-        """Wait up to num_items in the queue given timeout_s."""
+        """Wait up to num_items in the queue given timeout_s.
+
+        This method will block indefinitely for the first item. Therefore, it
+        guarantees to return at least one item.
+        """
 
         assert num_items >= 1
         # Wait for the first value without timeout. We will return at least
         # one item. Additionally this help the caller context switch on empty
         # queue.
+        start_waiting = time.time()
         batch = [
             await self.get(),
         ]
 
+        # Adjust the timeout to account for the time waiting for first item.
+        time_remaining = timeout_s - (time.time() - start_waiting)
+        time_remaining = max(0, time_remaining)
+
         # Wait for the remaining batch with the timeout
         if num_items > 1:
             done_set, not_done_set = await asyncio.wait(
-                [self.get() for _ in range(num_items - 1)], timeout=timeout_s)
+                [self.get() for _ in range(num_items - 1)],
+                timeout=time_remaining)
             for task in done_set:
                 batch.append(task.result())
             for task in not_done_set:
