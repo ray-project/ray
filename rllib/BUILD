@@ -1195,6 +1195,20 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_exec_api",
+    tags = ["tests_dir", "tests_dir_E"],
+    size = "medium",
+    srcs = ["tests/test_exec_api.py"]
+)
+
+py_test(
+    name = "tests/test_execution",
+    tags = ["tests_dir", "tests_dir_E"],
+    size = "medium",
+    srcs = ["tests/test_execution.py"]
+)
+
+py_test(
     name = "tests/test_export",
     tags = ["tests_dir", "tests_dir_E"],
     size = "medium",
@@ -1234,13 +1248,6 @@ py_test(
     tags = ["tests_dir", "tests_dir_I"],
     size = "medium",
     srcs = ["tests/test_io.py"]
-)
-
-py_test(
-    name = "tests/test_execution",
-    tags = ["tests_dir", "tests_dir_E"],
-    size = "medium",
-    srcs = ["tests/test_execution.py"]
 )
 
 py_test(
@@ -1288,13 +1295,6 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_exec_api",
-    tags = ["tests_dir", "tests_dir_E"],
-    size = "medium",
-    srcs = ["tests/test_exec_api.py"]
-)
-
-py_test(
     name = "tests/test_reproducibility",
     tags = ["tests_dir", "tests_dir_R"],
     size = "large",
@@ -1305,7 +1305,7 @@ py_test(
     name = "test_rollout",
     main = "tests/test_rollout.py",
     tags = ["tests_dir", "tests_dir_R"],
-    size = "enormous",
+    size = "large",
     data = ["train.py", "rollout.py"],
     srcs = ["tests/test_rollout.py"]
 )
@@ -1327,7 +1327,7 @@ py_test(
 py_test(
     name = "tests/test_supported_spaces",
     tags = ["tests_dir", "tests_dir_S"],
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_supported_spaces.py"]
 )
 

@@ -171,7 +171,7 @@ class TestSupportedSpaces(unittest.TestCase):
 
     def test_pg(self):
         config = {"num_workers": 1, "optimizer": {}}
-        check_support("PG", config, check_bounds=True)
+        check_support("PG", config, check_bounds=True, train=False)
 
     def test_sac(self):
         check_support("SAC", {}, check_bounds=True)
