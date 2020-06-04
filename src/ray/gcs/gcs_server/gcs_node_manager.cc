@@ -21,10 +21,11 @@ namespace ray {
 namespace gcs {
 
 GcsNodeManager::NodeFailureDetector::NodeFailureDetector(
-    boost::asio::io_service &io_service, gcs::NodeInfoAccessor &node_info_accessor,
+    boost::asio::io_service &io_service,
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::function<void(const ClientID &)> on_node_death_callback)
-    : node_info_accessor_(node_info_accessor),
+    : gcs_table_storage_(std::move(gcs_table_storage)),
       on_node_death_callback_(std::move(on_node_death_callback)),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       detect_timer_(io_service),
@@ -103,31 +104,29 @@ void GcsNodeManager::NodeFailureDetector::ScheduleTick() {
 
 //////////////////////////////////////////////////////////////////////////////////////////
 GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
-                               gcs::NodeInfoAccessor &node_info_accessor,
                                gcs::ErrorInfoAccessor &error_info_accessor,
                                std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
                                std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
-    : node_info_accessor_(node_info_accessor),
-      error_info_accessor_(error_info_accessor),
+    : error_info_accessor_(error_info_accessor),
       node_failure_detector_(new NodeFailureDetector(
-          io_service, node_info_accessor, gcs_pub_sub,
+          io_service, gcs_table_storage, gcs_pub_sub,
           [this](const ClientID &node_id) {
             if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
               node->set_state(rpc::GcsNodeInfo::DEAD);
               RAY_CHECK(dead_nodes_.emplace(node_id, node).second);
               auto on_done = [this, node_id, node](const Status &status) {
-                RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
-                                                   node->SerializeAsString(), nullptr));
+                auto on_done = [this, node_id, node](const Status &status) {
+                  RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
+                                                     node->SerializeAsString(), nullptr));
+                };
+                RAY_CHECK_OK(
+                    gcs_table_storage_->NodeResourceTable().Delete(node_id, on_done));
               };
-              RAY_CHECK_OK(node_info_accessor_.AsyncUnregister(node_id, on_done));
-              // TODO(Shanly): Remove node resources from resource table.
+              RAY_CHECK_OK(gcs_table_storage_->NodeTable().Delete(node_id, on_done));
             }
           })),
       gcs_pub_sub_(gcs_pub_sub),
-      gcs_table_storage_(gcs_table_storage) {
-  // TODO(Shanly): Load node info list from storage synchronously.
-  // TODO(Shanly): Load cluster resources from storage synchronously.
-}
+      gcs_table_storage_(gcs_table_storage) {}
 
 void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
                                         rpc::RegisterNodeReply *reply,
@@ -156,16 +155,19 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
     node->set_state(rpc::GcsNodeInfo::DEAD);
     RAY_CHECK(dead_nodes_.emplace(node_id, node).second);
 
-    auto on_done = [this, node_id, node, reply, send_reply_callback](Status status) {
-      RAY_CHECK_OK(status);
-      RAY_LOG(INFO) << "Finished unregistering node info, node id = " << node_id;
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
-                                         node->SerializeAsString(), nullptr));
-      GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+    auto on_done = [this, node_id, node, reply,
+                    send_reply_callback](const Status &status) {
+      auto on_done = [this, node_id, node, reply,
+                      send_reply_callback](const Status &status) {
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
+                                           node->SerializeAsString(), nullptr));
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+        RAY_LOG(INFO) << "Finished unregistering node info, node id = " << node_id;
+      };
+      RAY_CHECK_OK(gcs_table_storage_->NodeResourceTable().Delete(node_id, on_done));
     };
     // Update node state to DEAD instead of deleting it.
     RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
-    // TODO(Shanly): Remove node resources from resource table.
   }
 }
 
@@ -315,7 +317,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     // Remove from alive nodes.
     alive_nodes_.erase(iter);
     // Remove from cluster resources.
-    RAY_CHECK(cluster_resources_.erase(node_id) != 0);
+    cluster_resources_.erase(node_id);
     if (!is_intended) {
       // Broadcast a warning to all of the drivers indicating that the node
       // has been marked as dead.
@@ -336,6 +338,33 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     }
   }
   return removed_node;
+}
+
+void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
+  RAY_LOG(INFO) << "Loading initial data.";
+
+  auto get_node_callback = [this, done](
+                               const std::unordered_map<ClientID, GcsNodeInfo> &result) {
+    for (auto &item : result) {
+      if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
+        alive_nodes_.emplace(item.first, std::make_shared<rpc::GcsNodeInfo>(item.second));
+      } else if (item.second.state() == rpc::GcsNodeInfo::DEAD) {
+        dead_nodes_.emplace(item.first, std::make_shared<rpc::GcsNodeInfo>(item.second));
+      }
+    }
+
+    auto get_node_resource_callback =
+        [this, done](const std::unordered_map<ClientID, ResourceMap> &result) {
+          for (auto &item : result) {
+            cluster_resources_.emplace(item.first, item.second);
+          }
+          RAY_LOG(INFO) << "Finished loading initial data.";
+          done();
+        };
+    RAY_CHECK_OK(
+        gcs_table_storage_->NodeResourceTable().GetAll(get_node_resource_callback));
+  };
+  RAY_CHECK_OK(gcs_table_storage_->NodeTable().GetAll(get_node_callback));
 }
 
 }  // namespace gcs

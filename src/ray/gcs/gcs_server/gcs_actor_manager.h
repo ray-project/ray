@@ -215,7 +215,13 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// creation task has been scheduled successfully.
   ///
   /// \param actor The actor that has been created.
-  void OnActorCreationSuccess(std::shared_ptr<GcsActor> actor);
+  void OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor);
+
+  /// Load initial data from gcs storage to memory cache asynchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param done Callback that will be called when load is complete.
+  void LoadInitialData(const EmptyCallback &done);
 
  private:
   /// A data structure representing an actor's owner.
