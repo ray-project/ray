@@ -56,13 +56,13 @@ public class StreamingRuntimeContext implements RuntimeContext {
   }
 
   @Override
-  public Long getMaxBatch() {
+  public Map<String, String> getConfig() {
     return null;
   }
 
   @Override
-  public Map<String, String> getConfig() {
-    return null;
+  public Map<String, String> getJobConfig() {
+    return config;
   }
 
   @Override

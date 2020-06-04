@@ -29,7 +29,7 @@ public class JobClientImpl implements JobClient {
     Map<String, Double> resources = new HashMap<>();
     ActorCreationOptions options = new ActorCreationOptions.Builder()
         .setResources(resources)
-        .setMaxReconstructions(ActorCreationOptions.INFINITE_RECONSTRUCTION)
+        .setMaxRestarts(-1)
         .createActorCreationOptions();
 
     // set job name and id at start

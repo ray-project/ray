@@ -4,14 +4,11 @@ import com.google.common.base.MoreObjects;
 import com.google.protobuf.ByteString;
 import io.ray.api.RayActor;
 import io.ray.api.id.ActorId;
-
 import io.ray.runtime.actor.NativeRayActor;
-
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import io.ray.streaming.runtime.generated.RemoteCall;
 import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.python.GraphPbBuilder;
-import io.ray.streaming.runtime.serialization.JavaSerializer;
 import java.io.Serializable;
 
 /**
@@ -66,13 +63,12 @@ public class JobWorkerContext implements Serializable {
 
   public byte[] getPythonWorkerContextBytes() {
     // create python worker context
-    RemoteCall.SubExecutionGraph subGraphPb =
-      new GraphPbBuilder().buildSubExecutionGraph(executionVertex);
+    RemoteCall.ExecutionVertexContext executionVertexContext =
+      new GraphPbBuilder().buildExecutionVertexContext(executionVertex);
 
-    byte[] contextBytes = RemoteCall.WorkerContext.newBuilder()
-      .setActorId(executionVertex.getWorkerActor().getId().toString())
+    byte[] contextBytes = RemoteCall.PythonJobWorkerContext.newBuilder()
       .setMasterActor(ByteString.copyFrom((((NativeRayActor) (master)).toBytes())))
-      .setSubGraph(subGraphPb)
+      .setVertexContext(executionVertexContext)
       .build()
       .toByteArray();
 

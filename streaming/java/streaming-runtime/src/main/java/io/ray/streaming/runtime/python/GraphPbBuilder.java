@@ -19,17 +19,17 @@ public class GraphPbBuilder {
 
   private MsgPackSerializer serializer = new MsgPackSerializer();
 
-  public RemoteCall.SubExecutionGraph buildSubExecutionGraph(
+  public RemoteCall.ExecutionVertexContext buildExecutionVertexContext(
       ExecutionVertex executionVertex) {
-    RemoteCall.SubExecutionGraph.Builder builder =
-        RemoteCall.SubExecutionGraph.newBuilder();
+    RemoteCall.ExecutionVertexContext.Builder builder =
+        RemoteCall.ExecutionVertexContext.newBuilder();
 
     // build vertex
     builder.setCurrentVertex(buildVertex(executionVertex));
 
     // build upstream vertices
     List<ExecutionVertex> upstreamVertices = executionVertex.getInputVertices();
-    List<RemoteCall.SubExecutionGraph.ExecutionVertex> upstreamVertexPbs =
+    List<RemoteCall.ExecutionVertexContext.ExecutionVertex> upstreamVertexPbs =
         upstreamVertices.stream()
         .map(this::buildVertex)
         .collect(Collectors.toList());
@@ -37,7 +37,7 @@ public class GraphPbBuilder {
 
     // build downstream vertices
     List<ExecutionVertex> downstreamVertices = executionVertex.getOutputVertices();
-    List<RemoteCall.SubExecutionGraph.ExecutionVertex> downstreamVertexPbs =
+    List<RemoteCall.ExecutionVertexContext.ExecutionVertex> downstreamVertexPbs =
         downstreamVertices.stream()
             .map(this::buildVertex)
             .collect(Collectors.toList());
@@ -45,7 +45,7 @@ public class GraphPbBuilder {
 
     // build input edges
     List<ExecutionEdge> inputEdges = executionVertex.getInputEdges();
-    List<RemoteCall.SubExecutionGraph.ExecutionEdge> inputEdgesPbs =
+    List<RemoteCall.ExecutionVertexContext.ExecutionEdge> inputEdgesPbs =
         inputEdges.stream()
             .map(this::buildEdge)
             .collect(Collectors.toList());
@@ -53,7 +53,7 @@ public class GraphPbBuilder {
 
     // build output edges
     List<ExecutionEdge> outputEdges = executionVertex.getOutputEdges();
-    List<RemoteCall.SubExecutionGraph.ExecutionEdge> outputEdgesPbs =
+    List<RemoteCall.ExecutionVertexContext.ExecutionEdge> outputEdgesPbs =
         outputEdges.stream()
             .map(this::buildEdge)
             .collect(Collectors.toList());
@@ -62,11 +62,11 @@ public class GraphPbBuilder {
     return builder.build();
   }
 
-  private RemoteCall.SubExecutionGraph.ExecutionVertex buildVertex(
+  private RemoteCall.ExecutionVertexContext.ExecutionVertex buildVertex(
       ExecutionVertex executionVertex) {
     // build vertex infos
-    RemoteCall.SubExecutionGraph.ExecutionVertex.Builder vertexBuilder =
-        RemoteCall.SubExecutionGraph.ExecutionVertex.newBuilder();
+    RemoteCall.ExecutionVertexContext.ExecutionVertex.Builder vertexBuilder =
+        RemoteCall.ExecutionVertexContext.ExecutionVertex.newBuilder();
     vertexBuilder.setVertexId(executionVertex.getId());
     vertexBuilder.setJobVertexId(executionVertex.getJobVertexId());
     vertexBuilder.setJobVertexName(executionVertex.getJobVertexName());
@@ -87,10 +87,10 @@ public class GraphPbBuilder {
     return vertexBuilder.build();
   }
 
-  private RemoteCall.SubExecutionGraph.ExecutionEdge buildEdge(ExecutionEdge executionEdge) {
+  private RemoteCall.ExecutionVertexContext.ExecutionEdge buildEdge(ExecutionEdge executionEdge) {
     // build edge infos
-    RemoteCall.SubExecutionGraph.ExecutionEdge.Builder edgeBuilder =
-        RemoteCall.SubExecutionGraph.ExecutionEdge.newBuilder();
+    RemoteCall.ExecutionVertexContext.ExecutionEdge.Builder edgeBuilder =
+        RemoteCall.ExecutionVertexContext.ExecutionEdge.newBuilder();
     edgeBuilder.setSourceVertexId(executionEdge.getSourceVertexId());
     edgeBuilder.setTargetVertexId(executionEdge.getTargetVertexId());
     edgeBuilder.setPartition(ByteString.copyFrom(serializePartition(executionEdge.getPartition())));
