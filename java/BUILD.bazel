@@ -146,11 +146,11 @@ filegroup(
 genrule(
     name = "cp_plasma_store_server",
     srcs = [
-        "@plasma//:plasma_store_server",
+        "//:plasma_store_server",
     ],
     outs = ["plasma_store_server"],
     cmd = """
-        cp -f $(location @plasma//:plasma_store_server) $@
+        cp -f $(location //:plasma_store_server) $@
     """,
 )
 
