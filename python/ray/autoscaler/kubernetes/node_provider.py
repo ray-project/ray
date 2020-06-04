@@ -3,6 +3,7 @@ import logging
 from ray.autoscaler.kubernetes import core_api, log_prefix
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
+from ray.autoscaler.updater import KubernetesCommandRunner
 
 logger = logging.getLogger(__name__)
 
@@ -85,3 +86,8 @@ class KubernetesNodeProvider(NodeProvider):
     def terminate_nodes(self, node_ids):
         for node_id in node_ids:
             self.terminate_node(node_id)
+
+    def get_command_runner(self, log_prefix, node_id, auth_config,
+                           cluster_name, process_runner, use_internal_ip):
+        return KubernetesCommandRunner(log_prefix, self.namespace, node_id,
+                                       auth_config, process_runner)
