@@ -57,10 +57,6 @@ class Query:
     def __lt__(self, other):
         return self.request_slo_ms < other.request_slo_ms
 
-    def __repr__(self):
-        return "<Query args={} kwargs={}>".format(self.request_args,
-                                                  self.request_kwargs)
-
 
 def _make_future_unwrapper(client_futures: List[asyncio.Future],
                            host_future: asyncio.Future):
@@ -337,7 +333,7 @@ class Router:
             if backend_replica_tag not in self.replicas:
                 continue
 
-            # This replica have too many in flight and processing queries.
+            # This replica has too many in flight and processing queries.
             max_queries = 1
             if backend in self.backend_info:
                 max_queries = self.backend_info[backend].max_concurrent_queries

@@ -660,14 +660,17 @@ class ServeMaster:
 
     async def broadcast_backend_config(self, backend_tag):
         _, backend_config, _ = self.backends[backend_tag]
+        broadcast_futures = []
         for replica_tag in self.replicas[backend_tag]:
             try:
-                replica = ray.util.get_actor(replica_tag)
+                replica = ray.get_actor(replica_tag)
             except ValueError:
                 continue
-            # We don't await here so it's just fire and forget.
-            asyncio.get_event_loop().create_task(
-                replica.update_config.remote(backend_config))
+
+            future = replica.update_config.remote(backend_config).as_future()
+            broadcast_futures.append(future)
+        if len(broadcast_futures) > 0:
+            await asyncio.gather(*broadcast_futures)
 
     def get_backend_config(self, backend_tag):
         """Get the current config for the specified backend."""
