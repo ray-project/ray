@@ -108,7 +108,7 @@ Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
         } else {
           // Process the next item in the queue.
           RAY_CHECK(channel->second.command_queue.front().is_subscribe);
-          ExecuteCommandIfPossible(channel_key, channel->second);
+          RAY_CHECK_OK(ExecuteCommandIfPossible(channel_key, channel->second));
         }
       } else if (reply->IsSubscribeCallback()) {
         {
@@ -120,7 +120,7 @@ Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
           // Process the next item in the queue, if any.
           if (!channel->second.command_queue.empty()) {
             RAY_CHECK(!channel->second.command_queue.front().is_subscribe);
-            ExecuteCommandIfPossible(channel_key, channel->second);
+            RAY_CHECK_OK(ExecuteCommandIfPossible(channel_key, channel->second));
           }
         }
 
