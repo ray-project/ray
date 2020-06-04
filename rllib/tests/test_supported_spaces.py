@@ -104,11 +104,13 @@ def check_support(alg, config, check_bounds=False):
             _do_check(alg, config, "discrete", o_name)
 
 
-class ModelSupportedSpaces(unittest.TestCase):
-    def setUp(self):
-        ray.init(num_cpus=4, ignore_reinit_error=True, local_mode=True)
+class TestSupportedSpaces(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init(num_cpus=4)  # , ignore_reinit_error=True, local_mode=True
 
-    def tearDown(self):
+    @classmethod
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_a3c(self):

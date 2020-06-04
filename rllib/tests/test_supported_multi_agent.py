@@ -26,11 +26,13 @@ def check_support_multiagent(alg, config):
             a.stop()
 
 
-class ModelSupportedSpaces(unittest.TestCase):
-    def setUp(self):
-        ray.init(num_cpus=4, ignore_reinit_error=True)
+class TestSupportedMultiAgent(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init(num_cpus=4)  #, ignore_reinit_error=True)
 
-    def tearDown(self):
+    @classmethod
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_a3c_multiagent(self):
