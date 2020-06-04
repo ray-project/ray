@@ -57,7 +57,7 @@ class TestPPO(unittest.TestCase):
         num_iterations = 1
 
         for _ in framework_iterator(config, frameworks=("torch", "tf", "tfe")):
-            for env in ["MsPacmanNoFrameskip-v4", "CartPole-v0"]:
+            for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
                 for lstm in [True, False]:
                     print("LSTM={}".format(lstm))
