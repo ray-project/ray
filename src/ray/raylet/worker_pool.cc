@@ -303,7 +303,7 @@ Status WorkerPool::GetNextFreePort(int *port) {
   }
 
   // Try up to the current number of ports.
-  auto current_size = free_ports_->size();
+  int current_size = free_ports_->size();
   for (int i = 0; i < current_size; i++) {
     *port = free_ports_->front();
     free_ports_->pop();
