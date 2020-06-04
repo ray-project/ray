@@ -11,6 +11,7 @@ from ray.includes.function_descriptor cimport (
 import hashlib
 import cython
 import inspect
+import uuid
 
 
 ctypedef object (*FunctionDescriptor_from_cpp)(const CFunctionDescriptor &)
@@ -206,8 +207,8 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
         """
         module_name = target_class.__module__
         class_name = target_class.__name__
-        # Use id(targe_class) as function hash to solve actor name conflict.
-        return cls(module_name, "__init__", class_name, str(id(target_class)))
+        # Use a random uuid as function hash to solve actor name conflict.
+        return cls(module_name, "__init__", class_name, str(uuid.uuid4()))
 
     @property
     def module_name(self):

@@ -194,7 +194,7 @@ requires = [
     "google",
     "grpcio",
     "jsonschema",
-    "msgpack >= 0.6.0, < 1.0.0",
+    "msgpack >= 0.6.0, < 2.0.0",
     "numpy >= 1.16",
     "protobuf >= 3.8.0",
     "py-spy >= 0.2.0",

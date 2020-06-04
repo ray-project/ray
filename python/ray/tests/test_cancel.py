@@ -205,7 +205,7 @@ def test_fast(shutdown_only, use_force):
     ids = list()
     for _ in range(100):
         x = fast.remote("a")
-        ray.cancel(x)
+        ray.cancel(x, use_force)
         ids.append(x)
 
     @ray.remote
@@ -219,7 +219,7 @@ def test_fast(shutdown_only, use_force):
 
     for idx in range(100, 5100):
         if random.random() > 0.95:
-            ray.cancel(ids[idx])
+            ray.cancel(ids[idx], use_force)
     signaler.send.remote()
     for obj_id in ids:
         try:
@@ -248,7 +248,7 @@ def test_remote_cancel(ray_start_regular, use_force):
     with pytest.raises(RayTimeoutError):
         ray.get(inner, 1)
 
-    ray.cancel(inner)
+    ray.cancel(inner, use_force)
 
     with pytest.raises(valid_exceptions(use_force)):
         ray.get(inner, 10)

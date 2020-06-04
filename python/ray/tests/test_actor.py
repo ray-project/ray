@@ -118,12 +118,6 @@ def test_actor_method_metadata_cache(ray_start_regular):
     assert len(ray.actor.ActorClassMethodMetadata._cache) == 1
     assert [id(x) for x in list(cache.items())[0]] == cached_data_id
 
-    # Check cache hit when @ray.remote
-    A2 = ray.remote(Actor)
-    assert id(A1.__ray_metadata__) != id(A2.__ray_metadata__)
-    assert id(A1.__ray_metadata__.method_meta) == id(
-        A2.__ray_metadata__.method_meta)
-
 
 def test_actor_name_conflict(ray_start_regular):
     @ray.remote

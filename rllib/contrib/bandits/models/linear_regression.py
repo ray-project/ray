@@ -68,7 +68,8 @@ class OnlineLinearRegression(nn.Module):
         return batch_dots.sqrt()
 
     def forward(self, x, sample_theta=False):
-        """ Predict the scores on input batch using the underlying linear model
+        """ Predict scores on input batch using the underlying linear model.
+
         Args:
             x (torch.Tensor): Input feature tensor of shape
                 (batch_size, feature_dim)

@@ -222,7 +222,7 @@ install_dependencies() {
       opencv-python-headless pyyaml pandas==0.24.2 requests feather-format lxml openpyxl xlrd \
       py-spy pytest pytest-timeout networkx tabulate aiohttp uvicorn dataclasses pygments werkzeug \
       kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio scikit-learn==0.22.2 numba \
-      Pillow prometheus_client)
+      Pillow prometheus_client boto3)
     if [ "${OSTYPE}" != msys ]; then
       # These packages aren't Windows-compatible
       pip_packages+=(blist)  # https://github.com/DanielStutzbach/blist/issues/81#issue-391460716
@@ -265,7 +265,7 @@ install_dependencies() {
 
   # Additional streaming dependencies.
   if [ "${RAY_CI_STREAMING_PYTHON_AFFECTED}" = 1 ]; then
-    pip install "msgpack>=0.6.2"
+    pip install "msgpack>=1.0.0"
   fi
 
   if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then

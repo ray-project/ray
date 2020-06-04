@@ -87,7 +87,7 @@ class LogProbsFromLogitsAndActionsTest(unittest.TestCase):
 
         for fw, sess in framework_iterator(
                 frameworks=("torch", "tf"), session=True):
-            vtrace = vtrace_tf if fw == "tf" else vtrace_torch
+            vtrace = vtrace_tf if fw != "torch" else vtrace_torch
             policy_logits = Box(-1.0, 1.0, (seq_len, batch_size, num_actions),
                                 np.float32).sample()
             actions = np.random.randint(
@@ -149,7 +149,7 @@ class VtraceTest(unittest.TestCase):
 
         for fw, sess in framework_iterator(
                 frameworks=("torch", "tf"), session=True):
-            vtrace = vtrace_tf if fw == "tf" else vtrace_torch
+            vtrace = vtrace_tf if fw != "torch" else vtrace_torch
             output = vtrace.from_importance_weights(**values)
             if sess:
                 output = sess.run(output)
@@ -178,7 +178,7 @@ class VtraceTest(unittest.TestCase):
 
         for fw, sess in framework_iterator(
                 frameworks=("torch", "tf"), session=True):
-            vtrace = vtrace_tf if fw == "tf" else vtrace_torch
+            vtrace = vtrace_tf if fw != "torch" else vtrace_torch
 
             if fw == "tf":
                 # Intentionally leaving shapes unspecified to test if V-trace
@@ -218,7 +218,7 @@ class VtraceTest(unittest.TestCase):
                 clip_pg_rho_threshold=clip_pg_rho_threshold,
                 **inputs_)
 
-            if fw == "tf":
+            if fw != "torch":
                 target_log_probs = vtrace.log_probs_from_logits_and_actions(
                     inputs_["target_policy_logits"], inputs_["actions"])
                 behaviour_log_probs = vtrace.log_probs_from_logits_and_actions(
@@ -279,7 +279,7 @@ class VtraceTest(unittest.TestCase):
     def test_higher_rank_inputs_for_importance_weights(self):
         """Checks support for additional dimensions in inputs."""
         for fw in framework_iterator(frameworks=("torch", "tf"), session=True):
-            vtrace = vtrace_tf if fw == "tf" else vtrace_torch
+            vtrace = vtrace_tf if fw != "torch" else vtrace_torch
             if fw == "tf":
                 inputs_ = {
                     "log_rhos": tf.placeholder(
@@ -307,7 +307,7 @@ class VtraceTest(unittest.TestCase):
     def test_inconsistent_rank_inputs_for_importance_weights(self):
         """Test one of many possible errors in shape of inputs."""
         for fw in framework_iterator(frameworks=("torch", "tf"), session=True):
-            vtrace = vtrace_tf if fw == "tf" else vtrace_torch
+            vtrace = vtrace_tf if fw != "torch" else vtrace_torch
             if fw == "tf":
                 inputs_ = {
                     "log_rhos": tf.placeholder(
