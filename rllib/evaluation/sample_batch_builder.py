@@ -224,6 +224,9 @@ class MultiAgentSampleBatchBuilder:
         Args:
             episode (Optional[MultiAgentEpisode]): The Episode object that
                 holds this MultiAgentBatchBuilder object or None.
+        
+        Returns:
+            MultiAgentBatch: Returns the accumulated sample batches for each policy.
         """
 
         self.postprocess_batch_so_far(episode)
