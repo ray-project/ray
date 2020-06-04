@@ -67,6 +67,9 @@ class GcsTableStorageTestBase : public ::testing::Test {
     std::vector<rpc::ActorTableData> values;
     ASSERT_EQ(Get(table, actor_id, values), 1);
 
+    // Get by job id.
+    ASSERT_EQ(GetByJobId(table, job_id, actor_id, values), 1);
+
     // Delete.
     Delete(table, actor_id);
     ASSERT_EQ(Get(table, actor_id, values), 0);
@@ -92,6 +95,24 @@ class GcsTableStorageTestBase : public ::testing::Test {
     };
     ++pending_count_;
     RAY_CHECK_OK(table.Get(key, on_done));
+    WaitPendingDone();
+    return values.size();
+  }
+
+  template <typename TABLE, typename KEY, typename VALUE>
+  int GetByJobId(TABLE &table, const JobID &job_id, const KEY &key,
+                 std::vector<VALUE> &values) {
+    auto on_done = [this, &values](const std::unordered_map<KEY, VALUE> &result) {
+      --pending_count_;
+      values.clear();
+      if (!result.empty()) {
+        for (auto &item : result) {
+          values.push_back(item.second);
+        }
+      }
+    };
+    ++pending_count_;
+    RAY_CHECK_OK(table.GetByJobId(job_id, on_done));
     WaitPendingDone();
     return values.size();
   }
