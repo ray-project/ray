@@ -6,10 +6,12 @@ from typing import Any
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
 
+torch, _ = try_import_torch()
 tree = try_import_tree()
 
 # By convention, metrics from optimizing the loss can be reported in the
@@ -157,7 +159,11 @@ class Policy(metaclass=ABCMeta):
         if episode is not None:
             episodes = [episode]
         if state is not None:
-            state_batch = [[s] for s in state]
+            state_batch = [
+                s.unsqueeze(0)
+                if torch and isinstance(s, torch.Tensor) else [s]
+                for s in state
+            ]
 
         batched_action, state_out, info = self.compute_actions(
             [obs],
