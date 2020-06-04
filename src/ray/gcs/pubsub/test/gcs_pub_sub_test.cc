@@ -136,16 +136,20 @@ TEST_F(GcsPubSubTest, TestManyPubsubApi) {
   std::string data("data");
   std::vector<std::pair<std::string, std::string>> all_result;
   SubscribeAll(channel, all_result);
-  for (int i = 0; i < 100; i++) {
+  // Test many concurrent subscribes and unsubscribes.
+  for (int i = 0; i < 1000; i++) {
     std::vector<std::string> result;
-    RAY_LOG(INFO) << "LOOP " << i;
+    Subscribe(channel, id, result);
+    Unsubscribe(channel, id);
+  }
+  for (int i = 0; i < 1000; i++) {
+    std::vector<std::string> result;
     Subscribe(channel, id, result);
     Publish(channel, id, data);
 
     WaitPendingDone(result, 1);
     WaitPendingDone(all_result, i + 1);
     Unsubscribe(channel, id);
-    usleep(100 * 1000);
   }
 }
 
