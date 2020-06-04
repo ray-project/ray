@@ -17,11 +17,11 @@ import PauseIcon from "@material-ui/icons/Pause";
 import PlayArrowIcon from "@material-ui/icons/PlayArrow";
 import React, { ReactNode, useState } from "react";
 import { connect } from "react-redux";
-import { stopMemoryTableCollection, MemoryTableEntry } from "../../../api";
+import { stopMemoryTableCollection, MemoryTableEntry, MemoryTableGroups } from "../../../api";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
 import MemoryRowGroup from "./MemoryRowGroup";
-import { Order } from "../../../common/tableUtils";
+import { Order, stableSort, getComparator } from "../../../common/tableUtils";
 import { StyledTableCell } from "../../../common/TableCell";
 import { MemoryTableRow } from "./MemoryTableRow";
 
@@ -64,18 +64,9 @@ const MemoryInfo = (props: Props) => {
     );
   const [isGrouped, setIsGrouped] = useState(true);
   const [order, setOrder] = React.useState<Order>('asc');
+  const toggleOrder = () => setOrder(order === 'asc' ? 'desc' : 'asc')
   const [orderBy, setOrderBy] = React.useState<keyof MemoryTableEntry | null>(null);
   const { classes, memoryTable } = props;
-  const memoryTableHeaders = [
-    "", // Padding
-    "IP Address",
-    "Pid",
-    "Type",
-    "Object ID",
-    "Object Size",
-    "Reference Type",
-    "Call Site",
-  ];
   return (
     <React.Fragment>
       {memoryTable !== null ? (
@@ -100,33 +91,21 @@ const MemoryInfo = (props: Props) => {
             <SortableTableHead
               orderBy={orderBy || ""}
               order={order}
-              onRequestSort={(event, property) => setOrderBy(property)}
+              onRequestSort={(event, property) => {
+                if (property === orderBy) {
+                  toggleOrder();
+                } else {
+                  setOrderBy(property);
+                  setOrder('asc');
+                }
+              }}
               headerInfo={memoryHeaderInfo}
             />
-
             <TableBody>
               {isGrouped
-                ? Object.keys(memoryTable.group).map((group_key, index) => (
-                  <MemoryRowGroup
-                    key={index}
-                    groupKey={group_key}
-                    memoryTableGroups={memoryTable.group}
-                    initialExpanded={true}
-                  />
-                ))
-                : Object.values(memoryTable.group).reduce(
-                  (children: Array<ReactNode>, memoryTableGroup) => {
-                    const groupChildren = memoryTableGroup.entries.map(
-                      (memoryTableEntry, index) => (
-                        <MemoryTableRow
-                          memoryTableEntry={memoryTableEntry}
-                          key={`mem-row-${index}`}
-                        />
-                      ),
-                    );
-                    return children.concat(groupChildren);
-                  },
-                  [])}
+                ? makeGroupedEntries(memoryTable.group)                 
+                : makeUngroupedEntries(memoryTable.group, order, orderBy) 
+              }
             </TableBody>
           </Table>
         </React.Fragment>
@@ -136,6 +115,34 @@ const MemoryInfo = (props: Props) => {
     </React.Fragment>
   );
 };
+
+function makeGroupedEntries(memoryTableGroups: MemoryTableGroups) {
+  return Object.keys(memoryTableGroups).map((group_key, index) => (
+    <MemoryRowGroup
+      key={index}
+      groupKey={group_key}
+      memoryTableGroups={memoryTableGroups}
+      initialExpanded={true}
+    />
+  ));
+}
+
+function makeUngroupedEntries(memoryTableGroups: MemoryTableGroups, order: Order, orderBy: keyof MemoryTableEntry | null) {
+  const allEntries = Object.values(memoryTableGroups).reduce(
+                  (allEntries: Array<MemoryTableEntry>, memoryTableGroup) => {
+                    const groupEntries = memoryTableGroup.entries;
+                    return allEntries.concat(groupEntries)
+                  }, []);
+  const sortedEntries = orderBy === null
+    ? allEntries
+    : stableSort(allEntries, getComparator(order, orderBy));
+  return sortedEntries.map((memoryTableEntry, index) => (
+                        <MemoryTableRow
+                          memoryTableEntry={memoryTableEntry}
+                          key={`mem-row-${index}`}
+                        />
+                      ));
+}
 
 interface HeaderInfo {
   id: keyof MemoryTableEntry;

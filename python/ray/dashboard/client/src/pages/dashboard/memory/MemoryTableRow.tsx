@@ -15,7 +15,6 @@ export const MemoryTableRow = (props: Props) => {
       ? "?"
       : `${memoryTableEntry.object_size}  B`;
   const memoryTableEntryValues = [
-    "", // Padding
     memoryTableEntry.node_ip_address,
     memoryTableEntry.pid,
     memoryTableEntry.type,

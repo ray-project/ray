@@ -304,13 +304,16 @@ export type MemoryTableEntry = {
   call_site: string;
 };
 
-export type MemoryTableResponse = {
-  group: {
+export type MemoryTableGroups = {
     [groupKey: string]: {
       entries: MemoryTableEntry[];
       summary: MemoryTableSummary;
     };
   };
+
+
+export type MemoryTableResponse = {
+  group:  MemoryTableGroups;
   summary: MemoryTableSummary;
 };
 
