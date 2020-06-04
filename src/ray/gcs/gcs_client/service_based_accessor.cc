@@ -1095,46 +1095,60 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
   RAY_LOG(DEBUG) << "Subscribing object location, object id = " << object_id;
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe object location, object id = " << object_id;
-  auto on_subscribe = [object_id, subscribe](const std::string &id,
-                                             const std::string &data) {
-    rpc::ObjectLocationChange object_location_change;
-    object_location_change.ParseFromString(data);
-    std::vector<rpc::ObjectTableData> object_data_vector;
-    object_data_vector.emplace_back(object_location_change.data());
-    auto change_mode = object_location_change.is_add() ? rpc::GcsChangeMode::APPEND_OR_ADD
-                                                       : rpc::GcsChangeMode::REMOVE;
-    gcs::ObjectChangeNotification notification(change_mode, object_data_vector);
-    subscribe(object_id, notification);
+  auto subscribe_operation = [this, object_id, subscribe](const StatusCallback &done) {
+    auto on_subscribe = [object_id, subscribe](const std::string &id,
+                                               const std::string &data) {
+      rpc::ObjectLocationChange object_location_change;
+      object_location_change.ParseFromString(data);
+      std::vector<rpc::ObjectTableData> object_data_vector;
+      object_data_vector.emplace_back(object_location_change.data());
+      auto change_mode = object_location_change.is_add()
+                             ? rpc::GcsChangeMode::APPEND_OR_ADD
+                             : rpc::GcsChangeMode::REMOVE;
+      gcs::ObjectChangeNotification notification(change_mode, object_data_vector);
+      subscribe(object_id, notification);
+    };
+    auto on_done = [this, object_id, subscribe, done](const Status &status) {
+      if (status.ok()) {
+        auto callback = [object_id, subscribe, done](
+                            const Status &status,
+                            const std::vector<rpc::ObjectTableData> &result) {
+          if (status.ok()) {
+            gcs::ObjectChangeNotification notification(rpc::GcsChangeMode::APPEND_OR_ADD,
+                                                       result);
+            subscribe(object_id, notification);
+          }
+          if (done) {
+            done(status);
+          }
+        };
+        RAY_CHECK_OK(AsyncGetLocations(object_id, callback));
+      } else if (done) {
+        done(status);
+      }
+    };
+    auto status = client_impl_->GetGcsPubSub().Subscribe(OBJECT_CHANNEL, object_id.Hex(),
+                                                         on_subscribe, on_done);
+    RAY_LOG(DEBUG) << "Finished subscribing object location, object id = " << object_id;
+    return status;
   };
-  auto on_done = [this, object_id, subscribe, done](const Status &status) {
-    if (status.ok()) {
-      auto callback = [object_id, subscribe, done](
-                          const Status &status,
-                          const std::vector<rpc::ObjectTableData> &result) {
-        if (status.ok()) {
-          gcs::ObjectChangeNotification notification(rpc::GcsChangeMode::APPEND_OR_ADD,
-                                                     result);
-          subscribe(object_id, notification);
-        }
-        if (done) {
-          done(status);
-        }
-      };
-      RAY_CHECK_OK(AsyncGetLocations(object_id, callback));
-    } else if (done) {
-      done(status);
-    }
-  };
-  auto status = client_impl_->GetGcsPubSub().Subscribe(OBJECT_CHANNEL, object_id.Hex(),
-                                                       on_subscribe, on_done);
-  RAY_LOG(DEBUG) << "Finished subscribing object location, object id = " << object_id;
-  return status;
+  subscribe_object_operations_[object_id] = subscribe_operation;
+  return subscribe_operation(done);
+}
+
+Status ServiceBasedObjectInfoAccessor::AsyncReSubscribe() {
+  RAY_LOG(INFO) << "Reestablishing subscription for object locations.";
+  for (auto &item : subscribe_object_operations_) {
+    RAY_CHECK_OK(item.second(nullptr));
+  }
+  return Status::OK();
 }
 
 Status ServiceBasedObjectInfoAccessor::AsyncUnsubscribeToLocations(
     const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Unsubscribing object location, object id = " << object_id;
   auto status = client_impl_->GetGcsPubSub().Unsubscribe(OBJECT_CHANNEL, object_id.Hex());
+  subscribe_object_operations_.erase(object_id);
   RAY_LOG(DEBUG) << "Finished unsubscribing object location, object id = " << object_id;
   return status;
 }

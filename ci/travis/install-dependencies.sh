@@ -265,7 +265,7 @@ install_dependencies() {
 
   # Additional streaming dependencies.
   if [ "${RAY_CI_STREAMING_PYTHON_AFFECTED}" = 1 ]; then
-    pip install "msgpack>=0.6.2"
+    pip install "msgpack>=1.0.0"
   fi
 
   if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then

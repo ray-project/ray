@@ -194,8 +194,8 @@ class HTTPProxy:
 
 @ray.remote
 class HTTPProxyActor:
-    async def __init__(self, host, port, cluster_name=None):
-        serve.init(cluster_name=cluster_name)
+    async def __init__(self, host, port, instance_name=None):
+        serve.init(name=instance_name)
         self.app = HTTPProxy()
         await self.app.fetch_config_from_master()
         self.host = host

@@ -3,15 +3,18 @@ This file should only be imported from Python 3.
 It will raise SyntaxError when importing from Python 2.
 """
 import asyncio
-from collections import namedtuple, Counter
+from collections import namedtuple
 import time
-import threading
+import inspect
 
 import ray
 
 
 def sync_to_async(func):
     """Convert a blocking function to async function"""
+
+    if inspect.iscoroutinefunction(func):
+        return func
 
     async def wrapper(*args, **kwargs):
         return func(*args, **kwargs)
@@ -95,44 +98,3 @@ def get_async(object_id):
     user_future.object_id = object_id
 
     return user_future
-
-
-class AsyncMonitorState:
-    def __init__(self, loop):
-        self.names = dict()
-        self.names_lock = threading.Lock()
-
-        self.sleep_time = 1.0
-        self.monitor_loop_future = asyncio.ensure_future(
-            self.monitor(), loop=loop)
-
-    async def monitor(self):
-        while True:
-            await asyncio.sleep(self.sleep_time)
-            all_tasks = self.get_all_task_names()
-            ray.show_in_webui(
-                str(len(all_tasks)), key="Number of concurrent task runing")
-            ray.show_in_webui(
-                str(dict(Counter(all_tasks))), key="Concurrent tasks")
-
-    def register_coroutine(self, coro, name):
-        with self.names_lock:
-            self.names[coro] = name
-
-    def unregister_coroutine(self, coro):
-        with self.names_lock:
-            self.names.pop(coro)
-
-    def get_all_task_names(self):
-        names = []
-        with self.names_lock:
-            names = list(self.names.values())
-        return names
-
-    def kill(self):
-        """Kill the monitor's loop
-
-        This should be called in order to clean an event loop
-        that this monitor is running.
-        """
-        self.monitor_loop_future.cancel()

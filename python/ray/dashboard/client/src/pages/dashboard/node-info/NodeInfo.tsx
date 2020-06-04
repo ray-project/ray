@@ -176,9 +176,19 @@ class NodeInfo extends React.Component<
               return (
                 <NodeRowGroup
                   key={client.ip}
-                  clusterWorkers={client.workers.filter((worker) =>
-                    clusterWorkerPids.has(worker.pid.toString()),
-                  )}
+                  clusterWorkers={client.workers
+                    .filter((worker) =>
+                      clusterWorkerPids.has(worker.pid.toString()),
+                    )
+                    .sort((w1, w2) => {
+                      if (w2.cmdline[0] === "ray::IDLE") {
+                        return -1;
+                      }
+                      if (w1.cmdline[0] === "ray::IDLE") {
+                        return 1;
+                      }
+                      return w1.pid < w2.pid ? -1 : 1;
+                    })}
                   node={client}
                   raylet={
                     client.ip in rayletInfo.nodes

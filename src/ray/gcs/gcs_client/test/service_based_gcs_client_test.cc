@@ -880,6 +880,48 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableReSubscribe) {
   WaitPendingDone(actor2_update_count, 1);
 }
 
+TEST_F(ServiceBasedGcsClientTest, TestObjectTableReSubscribe) {
+  ObjectID object1_id = ObjectID::FromRandom();
+  ObjectID object2_id = ObjectID::FromRandom();
+  ClientID node_id = ClientID::FromRandom();
+
+  // Subscribe to any update of an object's location.
+  std::atomic<int> object1_change_count(0);
+  std::atomic<int> object2_change_count(0);
+  ASSERT_TRUE(SubscribeToLocations(
+      object1_id, [&object1_change_count](const ObjectID &object_id,
+                                          const gcs::ObjectChangeNotification &result) {
+        if (!result.GetData().empty()) {
+          ++object1_change_count;
+        }
+      }));
+  ASSERT_TRUE(SubscribeToLocations(
+      object2_id, [&object2_change_count](const ObjectID &object_id,
+                                          const gcs::ObjectChangeNotification &result) {
+        if (!result.GetData().empty()) {
+          ++object2_change_count;
+        }
+      }));
+
+  ASSERT_TRUE(AddLocation(object1_id, node_id));
+  WaitPendingDone(object1_change_count, 1);
+  ASSERT_TRUE(AddLocation(object2_id, node_id));
+  WaitPendingDone(object2_change_count, 1);
+
+  // Cancel subscription to any update of an object's location.
+  UnsubscribeToLocations(object1_id);
+  usleep(100 * 1000);
+
+  // Restart GCS.
+  RestartGcsServer();
+
+  // Add location of object to GCS again and check if resubscribe works.
+  ASSERT_TRUE(AddLocation(object1_id, node_id));
+  WaitPendingDone(object1_change_count, 1);
+  ASSERT_TRUE(AddLocation(object2_id, node_id));
+  WaitPendingDone(object2_change_count, 2);
+}
+
 TEST_F(ServiceBasedGcsClientTest, TestNodeTableReSubscribe) {
   // Test that subscription of the node table can still work when GCS server restarts.
   // Subscribe to node addition and removal events from GCS and cache those information.
@@ -977,6 +1019,30 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerTableReSubscribe) {
   auto worker_failure_data = Mocker::GenWorkerFailureData();
   ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
   WaitPendingDone(worker_failure_count, 1);
+}
+
+TEST_F(ServiceBasedGcsClientTest, TestGcsTableReload) {
+  ObjectID object_id = ObjectID::FromRandom();
+  ClientID node_id = ClientID::FromRandom();
+
+  // Register node to GCS.
+  auto node_info = Mocker::GenNodeInfo();
+  ASSERT_TRUE(RegisterNode(*node_info));
+
+  // Add location of object to GCS.
+  ASSERT_TRUE(AddLocation(object_id, node_id));
+
+  // Restart GCS.
+  RestartGcsServer();
+
+  // Get information of nodes from GCS.
+  std::vector<rpc::GcsNodeInfo> node_list = GetNodeInfoList();
+  EXPECT_EQ(node_list.size(), 1);
+
+  // Get object's locations from GCS.
+  auto locations = GetLocations(object_id);
+  ASSERT_EQ(locations.size(), 1);
+  ASSERT_EQ(locations.back().manager(), node_id.Binary());
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
