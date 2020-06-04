@@ -307,7 +307,7 @@ Status WorkerPool::GetNextFreePort(int *port) {
   for (int i = 0; i < current_size; i++) {
     *port = free_ports_->front();
     free_ports_->pop();
-    if (!Ping("127.0.0.1", *port, 20)) {
+    if (CheckFree(*port)) {
       return Status::OK();
     }
     // Return to pool to check later.
