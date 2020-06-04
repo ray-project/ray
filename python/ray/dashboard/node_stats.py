@@ -186,8 +186,8 @@ class NodeStats(threading.Thread):
         p.subscribe(error_channel)
         logger.info("NodeStats: subscribed to {}".format(error_channel))
 
-        actor_channel = ray.gcs_utils.TablePubsub.Value("ACTOR_PUBSUB")
-        p.subscribe(actor_channel)
+        actor_channel = ray.gcs_utils.RAY_ACTOR_PUBSUB_PATTERN
+        p.psubscribe(actor_channel)
         logger.info("NodeStats: subscribed to {}".format(actor_channel))
 
         current_actor_table = ray.actors()
@@ -208,7 +208,9 @@ class NodeStats(threading.Thread):
         for x in p.listen():
             try:
                 with self._node_stats_lock:
-                    channel = ray.utils.decode(x["channel"])
+                    channel = ray.utils.decode(x["channel"])\
+                                if "pattern" not in x\
+                                else x["pattern"]
                     data = x["data"]
                     if channel == log_channel:
                         data = json.loads(ray.utils.decode(data))
@@ -230,11 +232,11 @@ class NodeStats(threading.Thread):
                                 "timestamp": error_data.timestamp,
                                 "type": error_data.type
                             })
-                    elif channel == str(actor_channel):
-                        gcs_entry = ray.gcs_utils.PubSubMessage.FromString(
+                    elif channel == actor_channel:
+                        pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(
                             data)
                         actor_data = ray.gcs_utils.ActorTableData.FromString(
-                            gcs_entry.entries[0])
+                            pubsub_msg.data)
                         addr = (actor_data.address.ip_address,
                                 str(actor_data.address.port))
                         owner_addr = (actor_data.owner_address.ip_address,
