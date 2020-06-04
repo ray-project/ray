@@ -109,7 +109,7 @@ void Sum::RegisterView() {
           .set_name(name_)
           .set_description(description_)
           .set_measure(name_)
-          .set_aggregation(opencensus::stats::Aggregation::Count());
+          .set_aggregation(opencensus::stats::Aggregation::Sum());
 
   RegisterAsView(view_descriptor, tag_keys_);
 }

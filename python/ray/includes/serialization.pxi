@@ -177,7 +177,7 @@ cdef class MessagePackSerializer(object):
                 raise Exception('Unrecognized ext type id: {}'.format(code))
         try:
             gc.disable()  # Performance optimization for msgpack.
-            return msgpack.loads(s, ext_hook=_ext_hook, raw=False)
+            return msgpack.loads(s, ext_hook=_ext_hook, raw=False, strict_map_key=False)
         finally:
             gc.enable()
 

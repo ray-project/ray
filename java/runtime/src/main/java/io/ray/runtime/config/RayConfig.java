@@ -6,6 +6,7 @@ import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.ConfigRenderOptions;
 import com.typesafe.config.ConfigValue;
 import io.ray.api.id.JobId;
 import io.ray.runtime.generated.Common.WorkerType;
@@ -18,16 +19,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Configurations of Ray runtime.
  * See `ray.default.conf` for the meaning of each field.
  */
 public class RayConfig {
-
-  private static final Logger LOGGER = LoggerFactory.getLogger(RayConfig.class);
 
   public static final String DEFAULT_CONFIG_FILE = "ray.default.conf";
   public static final String CUSTOM_CONFIG_FILE = "ray.conf";
@@ -48,7 +45,6 @@ public class RayConfig {
   private JobId jobId;
   public String sessionDir;
   public String logDir;
-  public final boolean redirectOutput;
   public final List<String> libraryPath;
   public final List<String> classpath;
   public final List<String> jvmParameters;
@@ -136,8 +132,6 @@ public class RayConfig {
     if (isDriver) {
       if (!resources.containsKey("CPU")) {
         int numCpu = Runtime.getRuntime().availableProcessors();
-        LOGGER.warn("No CPU resource is set in configuration, "
-            + "setting it to the number of CPU cores: {}", numCpu);
         resources.put("CPU", numCpu * 1.0);
       }
     }
@@ -153,8 +147,6 @@ public class RayConfig {
     // Object store configurations.
     objectStoreSize = config.getBytes("ray.object-store.size");
 
-    // Redirect output.
-    redirectOutput = config.getBoolean("ray.redirect-output");
     // Library path.
     libraryPath = config.getStringList("ray.library.path");
     // Custom classpath.
@@ -219,11 +211,10 @@ public class RayConfig {
     numWorkersPerProcess = config.getInt("ray.raylet.config.num_workers_per_process_java");
 
     gcsServiceEnabled = System.getenv("RAY_GCS_SERVICE_ENABLED") == null ||
-      System.getenv("RAY_GCS_SERVICE_ENABLED").toLowerCase().equals("true");
+        System.getenv("RAY_GCS_SERVICE_ENABLED").toLowerCase().equals("true");
 
     // Validate config.
     validate();
-    LOGGER.debug("Created config: {}", this);
   }
 
   public void setRedisAddress(String redisAddress) {
@@ -269,27 +260,45 @@ public class RayConfig {
     return sessionDir;
   }
 
+  public Config getInternalConfig() {
+    return config;
+  }
+
+  /**
+   * Renders the config value as a HOCON string.
+   */
+  public String render() {
+    // These items might be dynamically generated or mutated at runtime.
+    // Explicitly include them.
+    Map<String, Object> dynamic = new HashMap<>();
+    dynamic.put("ray.session-dir", sessionDir);
+    dynamic.put("ray.raylet.socket-name", rayletSocketName);
+    dynamic.put("ray.object-store.socket-name", objectStoreSocketName);
+    dynamic.put("ray.raylet.node-manager-port", nodeManagerPort);
+    dynamic.put("ray.redis.address", redisAddress);
+    dynamic.put("ray.job.resource-path", jobResourcePath);
+    Config toRender = ConfigFactory.parseMap(dynamic).withFallback(config);
+    return toRender.root().render(ConfigRenderOptions.concise());
+  }
+
   private void updateSessionDir() {
     // session dir
-    String localSessionDir = System.getProperty("ray.session-dir");
     if (workerMode == WorkerType.DRIVER) {
-      Preconditions.checkState(localSessionDir == null);
       final int minBound = 100000;
       final int maxBound = 999999;
       final String sessionName = String.format("session_%s_%d", DATE_TIME_FORMATTER.format(
           LocalDateTime.now()), RANDOM.nextInt(maxBound - minBound) + minBound);
       sessionDir = String.format("%s/%s", DEFAULT_TEMP_DIR, sessionName);
     } else if (workerMode == WorkerType.WORKER) {
-      Preconditions.checkState(localSessionDir != null);
-      sessionDir = removeTrailingSlash(localSessionDir);
+      sessionDir = removeTrailingSlash(config.getString("ray.session-dir"));
     } else {
       throw new RuntimeException("Unknown worker type.");
     }
 
     // Log dir.
     String localLogDir = null;
-    if (config.hasPath("ray.log-dir")) {
-      localLogDir = removeTrailingSlash(config.getString("ray.log-dir"));
+    if (config.hasPath("ray.logging.dir")) {
+      localLogDir = removeTrailingSlash(config.getString("ray.logging.dir"));
     }
     if (Strings.isNullOrEmpty(localLogDir)) {
       logDir = String.format("%s/logs", sessionDir);
@@ -323,29 +332,7 @@ public class RayConfig {
 
   @Override
   public String toString() {
-    return "RayConfig{"
-        + ", nodeIp='" + nodeIp + '\''
-        + ", workerMode=" + workerMode
-        + ", runMode=" + runMode
-        + ", resources=" + resources
-        + ", jobId=" + jobId
-        + ", logDir='" + logDir + '\''
-        + ", redirectOutput=" + redirectOutput
-        + ", libraryPath=" + libraryPath
-        + ", classpath=" + classpath
-        + ", jvmParameters=" + jvmParameters
-        + ", redisAddress='" + redisAddress + '\''
-        + ", redisIp='" + redisIp + '\''
-        + ", redisPort=" + redisPort
-        + ", headRedisPort=" + headRedisPort
-        + ", numberRedisShards=" + numberRedisShards
-        + ", objectStoreSocketName='" + objectStoreSocketName + '\''
-        + ", objectStoreSize=" + objectStoreSize
-        + ", rayletSocketName='" + rayletSocketName + '\''
-        + ", rayletConfigParameters=" + rayletConfigParameters
-        + ", jobResourcePath='" + jobResourcePath + '\''
-        + ", pythonWorkerCommand='" + pythonWorkerCommand + '\''
-        + '}';
+    return render();
   }
 
   /**
@@ -357,16 +344,14 @@ public class RayConfig {
   public static RayConfig create() {
     ConfigFactory.invalidateCaches();
     Config config = ConfigFactory.systemProperties();
-    String configPath = System.getProperty("ray.config");
+    String configPath = System.getProperty("ray.config-file");
     if (Strings.isNullOrEmpty(configPath)) {
-      LOGGER.info("Loading config from \"ray.conf\" file in classpath.");
       config = config.withFallback(ConfigFactory.load(CUSTOM_CONFIG_FILE));
     } else {
-      LOGGER.info("Loading config from " + configPath + ".");
       config = config.withFallback(ConfigFactory.parseFile(new File(configPath)));
     }
     config = config.withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE));
-    return new RayConfig(config);
+    return new RayConfig(config.withOnlyPath("ray"));
   }
 
 }

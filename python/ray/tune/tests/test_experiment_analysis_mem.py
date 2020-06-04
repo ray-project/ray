@@ -14,11 +14,11 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
     def setUp(self):
         class MockTrainable(Trainable):
             scores_dict = {
-                0: [5, 4, 0],
-                1: [4, 3, 1],
-                2: [2, 1, 8],
-                3: [9, 7, 6],
-                4: [7, 5, 3]
+                0: [5, 4, 4, 4, 4, 4, 4, 4, 0],
+                1: [4, 3, 3, 3, 3, 3, 3, 3, 1],
+                2: [2, 1, 1, 1, 1, 1, 1, 1, 8],
+                3: [9, 7, 7, 7, 7, 7, 7, 7, 6],
+                4: [7, 5, 5, 5, 5, 5, 5, 5, 3]
             }
 
             def _setup(self, config):
@@ -53,7 +53,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
             self.MockTrainable,
             name="analysis_exp",
             local_dir=self.test_dir,
-            stop={"training_iteration": 3},
+            stop={"training_iteration": len(scores[0])},
             num_samples=1,
             config={"id": grid_search(list(range(5)))})
 
@@ -67,12 +67,33 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
                                     "avg").metric_analysis["score"]["avg"]
         min_avg = ea.get_best_trial("score", "min",
                                     "avg").metric_analysis["score"]["avg"]
+        max_avg_5 = ea.get_best_trial(
+            "score", "max",
+            "last-5-avg").metric_analysis["score"]["last-5-avg"]
+        min_avg_5 = ea.get_best_trial(
+            "score", "min",
+            "last-5-avg").metric_analysis["score"]["last-5-avg"]
+        max_avg_10 = ea.get_best_trial(
+            "score", "max",
+            "last-10-avg").metric_analysis["score"]["last-10-avg"]
+        min_avg_10 = ea.get_best_trial(
+            "score", "min",
+            "last-10-avg").metric_analysis["score"]["last-10-avg"]
         self.assertEqual(max_all, max(scores_all))
         self.assertEqual(min_all, min(scores_all))
         self.assertEqual(max_last, max(scores_last))
+        self.assertNotEqual(max_last, max(scores_all))
+
         self.assertAlmostEqual(max_avg, max(np.mean(scores, axis=1)))
         self.assertAlmostEqual(min_avg, min(np.mean(scores, axis=1)))
-        self.assertNotEqual(max_last, max(scores_all))
+
+        self.assertAlmostEqual(max_avg_5, max(np.mean(scores[:, -5:], axis=1)))
+        self.assertAlmostEqual(min_avg_5, min(np.mean(scores[:, -5:], axis=1)))
+
+        self.assertAlmostEqual(max_avg_10, max(
+            np.mean(scores[:, -10:], axis=1)))
+        self.assertAlmostEqual(min_avg_10, min(
+            np.mean(scores[:, -10:], axis=1)))
 
 
 class AnalysisSuite(unittest.TestCase):

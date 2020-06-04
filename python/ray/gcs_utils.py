@@ -13,6 +13,7 @@ from ray.core.generated.gcs_pb2 import (
     TablePrefix,
     TablePubsub,
     TaskTableData,
+    ResourceMap,
     ResourceTableData,
     ObjectLocationInfo,
     PubSubMessage,
@@ -33,6 +34,7 @@ __all__ = [
     "TablePrefix",
     "TablePubsub",
     "TaskTableData",
+    "ResourceMap",
     "ResourceTableData",
     "construct_error_message",
     "ObjectLocationInfo",
@@ -49,6 +51,9 @@ XRAY_HEARTBEAT_BATCH_PATTERN = "HEARTBEAT_BATCH:".encode("ascii")
 
 # xray job updates
 XRAY_JOB_PATTERN = "JOB:*".encode("ascii")
+
+# Actor pub/sub updates
+RAY_ACTOR_PUBSUB_PATTERN = "ACTOR:*".encode("ascii")
 
 # These prefixes must be kept up-to-date with the TablePrefix enum in
 # gcs.proto.

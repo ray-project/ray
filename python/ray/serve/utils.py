@@ -180,11 +180,11 @@ async def retry_actor_failures_async(f, *args, **kwargs):
                            ACTOR_FAILURE_RETRY_TIMEOUT_S, f._method_name))
 
 
-def format_actor_name(actor_name, cluster_name=None):
-    if cluster_name is None:
+def format_actor_name(actor_name, instance_name=None):
+    if instance_name is None:
         return actor_name
     else:
-        return "{}:{}".format(cluster_name, actor_name)
+        return "{}:{}".format(instance_name, actor_name)
 
 
 @singledispatch
