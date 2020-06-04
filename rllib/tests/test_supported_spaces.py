@@ -48,7 +48,7 @@ OBSERVATION_SPACES_TO_TEST = {
 }
 
 
-def check_support(alg, config, check_bounds=False):
+def check_support(alg, config, check_bounds=False, tfe=False):
     config["log_level"] = "ERROR"
 
     def _do_check(alg, config, a_name, o_name):
@@ -95,7 +95,10 @@ def check_support(alg, config, check_bounds=False):
                     pass
         print(stat)
 
-    for _ in framework_iterator(config, frameworks=("tf", "torch")):
+    frameworks = ("tf", "torch")
+    if tfe:
+        frameworks += ("tfe", )
+    for _ in framework_iterator(config, frameworks=frameworks):
         # Check all action spaces.
         for a_name, action_space in ACTION_SPACES_TO_TEST.items():
             _do_check(alg, config, a_name, "discrete")
@@ -141,7 +144,7 @@ class ModelSupportedSpaces(unittest.TestCase):
 
     def test_dqn(self):
         config = {"timesteps_per_iteration": 1}
-        check_support("DQN", config)
+        check_support("DQN", config, tfe=True)
 
     def test_es(self):
         check_support(
@@ -163,11 +166,11 @@ class ModelSupportedSpaces(unittest.TestCase):
             "rollout_fragment_length": 10,
             "sgd_minibatch_size": 1,
         }
-        check_support("PPO", config, check_bounds=True)
+        check_support("PPO", config, check_bounds=True, tfe=True)
 
     def test_pg(self):
         config = {"num_workers": 1, "optimizer": {}}
-        check_support("PG", config, check_bounds=True)
+        check_support("PG", config, check_bounds=True, tfe=True)
 
     def test_sac(self):
         check_support("SAC", {}, check_bounds=True)
