@@ -139,23 +139,11 @@ class TFPolicy(Policy):
         self._action_input = action_input  # For logp calculations.
         self._dist_inputs = dist_inputs
         self.dist_class = dist_class
-        self._log_likelihood = log_likelihood
+
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
         self._seq_lens = seq_lens
         self._max_seq_len = max_seq_len
-        self._batch_divisibility_req = batch_divisibility_req
-        self._update_ops = update_ops
-        self._stats_fetches = {}
-        self._loss_input_dict = None
-        self._timestep = timestep if timestep is not None else \
-            tf.placeholder(tf.int32, (), name="timestep")
-
-        if loss is not None:
-            self._initialize_loss(loss, loss_inputs)
-        else:
-            self._loss = None
-
         if len(self._state_inputs) != len(self._state_outputs):
             raise ValueError(
                 "Number of state input and output tensors must match, got: "
@@ -169,9 +157,34 @@ class TFPolicy(Policy):
             raise ValueError(
                 "seq_lens tensor must be given if state inputs are defined")
 
+        self._batch_divisibility_req = batch_divisibility_req
+        self._update_ops = update_ops
+        self._apply_op = None
+        self._stats_fetches = {}
+        self._timestep = timestep if timestep is not None else \
+            tf.placeholder(tf.int32, (), name="timestep")
+
+        self._optimizer = None
+        self._grads_and_vars = None
+        self._grads = None
+        # Policy tf-variables (weights), whose values to get/set via
+        # get_weights/set_weights.
+        self._variables = None
+        # Local optimizer's tf-variables (e.g. state vars for Adam).
+        # Will be stored alongside `self._variables` when checkpointing.
+        self._optimizer_variables = None
+
+        # The loss tf-op.
+        self._loss = None
+        # A batch dict passed into loss function as input.
+        self._loss_input_dict = None
+        if loss is not None:
+            self._initialize_loss(loss, loss_inputs)
+
         # The log-likelihood calculator op.
-        self._log_likelihood = None
-        if self._dist_inputs is not None and self.dist_class is not None:
+        self._log_likelihood = log_likelihood
+        if self._log_likelihood is None and self._dist_inputs is not None and \
+                self.dist_class is not None:
             self._log_likelihood = self.dist_class(
                 self._dist_inputs, self.model).logp(self._action_input)
 
@@ -250,6 +263,11 @@ class TFPolicy(Policy):
                     summarize(self._loss_input_dict)))
 
         self._sess.run(tf.global_variables_initializer())
+        self._optimizer_variables = None
+        if self._optimizer:
+            self._optimizer_variables = \
+                ray.experimental.tf_utils.TensorFlowVariables(
+                    self._optimizer.variables(), self._sess)
 
     @override(Policy)
     def compute_actions(self,
@@ -356,6 +374,26 @@ class TFPolicy(Policy):
         return self._variables.set_weights(weights)
 
     @override(Policy)
+    def get_state(self):
+        # For tf Policies, return Policy weights and optimizer var values.
+        state = super().get_state()
+        if self._optimizer_variables and \
+                len(self._optimizer_variables.variables) > 0:
+            state["_optimizer_variables"] = \
+                self._sess.run(self._optimizer_variables.variables)
+        return state
+
+    @override(Policy)
+    def set_state(self, state):
+        state = state.copy()  # shallow copy
+        # Set optimizer vars first.
+        optimizer_vars = state.pop("_optimizer_variables", None)
+        if optimizer_vars:
+            self._optimizer_variables.set_weights(optimizer_vars)
+        # Then the Policy's (NN) weights.
+        super().set_state(state)
+
+    @override(Policy)
     def export_model(self, export_dir):
         """Export tensorflow graph to export_dir for serving."""
         with self._sess.graph.as_default():
@@ -441,7 +479,7 @@ class TFPolicy(Policy):
     def optimizer(self):
         """TF optimizer to use for policy optimization."""
         if hasattr(self, "config"):
-            return tf.train.AdamOptimizer(self.config["lr"])
+            return tf.train.AdamOptimizer(learning_rate=self.config["lr"])
         else:
             return tf.train.AdamOptimizer()
 
@@ -686,7 +724,7 @@ class LearningRateSchedule:
 
     @override(TFPolicy)
     def optimizer(self):
-        return tf.train.AdamOptimizer(self.cur_lr)
+        return tf.train.AdamOptimizer(learning_rate=self.cur_lr)
 
 
 @DeveloperAPI

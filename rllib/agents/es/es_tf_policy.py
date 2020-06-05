@@ -120,6 +120,12 @@ class ESTFPolicy:
                 self.action_noise_std
         return single_action
 
+    def get_state(self):
+        return {"state": self.get_flat_weights()}
+
+    def set_state(self, state):
+        return self.set_flat_weights(state["state"])
+
     def set_flat_weights(self, x):
         self.variables.set_flat(x)
 
