@@ -44,12 +44,27 @@ following:
   config = {"num_gpus": 1}
   serve.create_backend("my_gpu_backend", handle_request, ray_actor_options=config)
 
-.. note::
+Configuring Parallelism with OMP_NUM_THREADS
+--------------------------------------------
 
-  Deep learning models like PyTorch and Tensorflow often use all the CPUs when
-  performing inference. Ray sets the environment variable ``OMP_NUM_THREADS=1`` to
-  :ref:`avoid contention<omp-num-thread-note>`. This means each worker will only
-  use one CPU instead of all of them.
+Deep learning models like PyTorch and Tensorflow often use multithreading when performing inference.
+The number of CPUs they use is controlled by the OMP_NUM_THREADS environment variable.
+To :ref:`avoid contention<omp-num-thread-note>`, Ray sets ``OMP_NUM_THREADS=1`` by default because Ray workers and actors use a single CPU by default.
+If you *do* want to enable this parallelism in your Serve backend, just set OMP_NUM_THREADS to the desired value either when starting Ray or in your function/class definition:
+
+.. code-block:: bash
+
+  OMP_NUM_THREADS=12 ray start --head
+  OMP_NUM_THREADS=12 ray start --address=$HEAD_NODE_ADDRESS
+
+.. code-block:: python
+
+  class MyBackend:
+      def __init__(self, parallelism):
+          os.environ["OMP_NUM_THREADS"] = parallelism
+          # Download model weights, initialize model, etc.
+
+  serve.create_backend("parallel_backend", MyBackend, 12)
 
 .. _serve-batching:
 
