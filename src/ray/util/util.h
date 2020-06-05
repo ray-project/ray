@@ -167,4 +167,10 @@ void FillRandom(T *data) {
   }
 }
 
+/// A helper function to flush the low level print buffers for stdout
+void flush_out();
+
+/// A helper function to flush the low level print buffers for stdout
+void flush_err();
+
 #endif  // RAY_UTIL_UTIL_H
