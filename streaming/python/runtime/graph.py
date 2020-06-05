@@ -58,7 +58,7 @@ class ExecutionVertex:
 
 class ExecutionVertexContext:
     def __init__(self,
-        vertex_context_pb: remote_call_pb.ExecutionVertexContext):
+                 vertex_context_pb: remote_call_pb.ExecutionVertexContext):
         self.vertex = ExecutionVertex(vertex_context_pb.current_vertex)
         self.upstream_vertices = [
             ExecutionVertex(vertex)

@@ -159,8 +159,6 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     Map<String, String> config = new HashMap<>();
     config.put(Config.CHANNEL_TYPE, "NATIVE_CHANNEL");
     config.put(Config.CHANNEL_SIZE, "100000");
-    config.put("streaming.task.resource.cpu.limitation.enable", "false");
-    config.put("streaming.task.resource.mem.limitation.enable", "false");
     streamingContext.withConfig(config);
     List<String> text = new ArrayList<>();
     text.add("hello world eagle eagle eagle");

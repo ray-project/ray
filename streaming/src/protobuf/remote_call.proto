@@ -8,16 +8,12 @@ option java_package = "io.ray.streaming.runtime.generated";
 
 // Execution vertex info, including it's upstream and downstream
 message ExecutionVertexContext {
-
   // An edge between 2 execution vertices
   message ExecutionEdge {
-
     // upstream execution vertex id
     int32 source_vertex_id = 1;
-
     // downstream execution vertex id
     int32 target_vertex_id = 2;
-
     // serialized partition between source/target vertex
     bytes partition = 3;
   }
@@ -49,10 +45,8 @@ message ExecutionVertexContext {
 
 // Streaming python worker context
 message PythonJobWorkerContext {
-
   // serialized master actor handle
   bytes master_actor = 1;
-
   // vertex including it's upstream and downstream
   ExecutionVertexContext vertex_context = 2;
 }

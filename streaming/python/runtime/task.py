@@ -45,8 +45,8 @@ class StreamTask(ABC):
             target_task_id = edge.target_vertex_id
             target_actor = vertex_context.get_target_actor_by_vertex_id(
                 target_task_id)
-            channel_name = ChannelID.gen_id(
-                self.task_id, target_task_id, build_time)
+            channel_name = ChannelID.gen_id(self.task_id, target_task_id,
+                                            build_time)
             output_actors_map[channel_name] = target_actor
 
             if len(output_actors_map) > 0:
@@ -54,7 +54,7 @@ class StreamTask(ABC):
                 target_actors = list(output_actors_map.values())
                 logger.info(
                     "Create DataWriter channel_ids {}, target_actors {}."
-                        .format(channel_ids, target_actors))
+                    .format(channel_ids, target_actors))
                 writer = DataWriter(channel_ids, target_actors, channel_conf)
                 self.writers[edge] = writer
                 collectors.append(
@@ -67,8 +67,8 @@ class StreamTask(ABC):
             source_task_id = edge.source_vertex_id
             source_actor = vertex_context.get_source_actor_by_vertex_id(
                 edge.source_vertex_id)
-            channel_name = ChannelID.gen_id(
-                source_task_id, self.task_id, build_time)
+            channel_name = ChannelID.gen_id(source_task_id, self.task_id,
+                                            build_time)
             input_actor_map[channel_name] = source_actor
 
         if len(input_actor_map) > 0:
