@@ -154,6 +154,8 @@ Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
   } else if (!channel.pending_reply) {
     // There is no in-flight command, but the next command to execute is not
     // runnable. The caller must have sent a command out-of-order.
+    // TODO(swang): This can cause a fatal error if the GCS server restarts and
+    // the client attempts to subscribe again.
     RAY_LOG(FATAL) << "Caller attempted a duplicate subscribe or unsubscribe to channel "
                    << channel_key;
   }

@@ -1166,6 +1166,8 @@ cc_test(
         ":service_based_gcs_client_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    # TODO(swang): Enable again once pubsub client supports GCS server restart.
+    tags = ["manual"],
 )
 
 cc_test(
