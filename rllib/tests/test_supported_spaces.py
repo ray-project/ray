@@ -142,12 +142,13 @@ class TestSupportedSpaces(unittest.TestCase):
                     "ou_base_scale": 100.0
                 },
                 "timesteps_per_iteration": 1,
+                "buffer_size": 1000,
                 "use_state_preprocessor": True,
             },
             check_bounds=True)
 
     def test_dqn(self):
-        config = {"timesteps_per_iteration": 1}
+        config = {"timesteps_per_iteration": 1, "buffer_size": 1000}
         check_support("DQN", config, tfe=True)
 
     def test_es(self):
@@ -177,7 +178,7 @@ class TestSupportedSpaces(unittest.TestCase):
         check_support("PG", config, train=False, check_bounds=True, tfe=True)
 
     def test_sac(self):
-        check_support("SAC", {}, check_bounds=True)
+        check_support("SAC", {"buffer_size": 1000}, check_bounds=True)
 
 
 if __name__ == "__main__":
