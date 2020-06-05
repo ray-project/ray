@@ -1,9 +1,9 @@
 package io.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
-import io.ray.api.Ray;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
+import io.ray.api.Ray;
 import io.ray.api.TestUtils;
 import io.ray.api.options.ActorCreationOptions;
 import java.util.List;

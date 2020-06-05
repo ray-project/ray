@@ -2,10 +2,10 @@ package io.ray.api.test;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
-import io.ray.api.Ray;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
+import io.ray.api.Ray;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyRemoteFunction;
@@ -137,7 +137,8 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
 
   @Test
   public void testCallingPythonActor() {
-    PyActorHandle actor = Ray.createActor(new PyActorClass(PYTHON_MODULE, "Counter"), "1".getBytes());
+    PyActorHandle actor = Ray.createActor(
+        new PyActorClass(PYTHON_MODULE, "Counter"), "1".getBytes());
     ObjectRef<byte[]> res = actor.call(
         new PyActorMethod<>("increase", byte[].class),
         "1".getBytes());

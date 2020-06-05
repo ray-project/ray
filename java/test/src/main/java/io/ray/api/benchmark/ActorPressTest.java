@@ -1,8 +1,8 @@
 package io.ray.api.benchmark;
 
-import io.ray.api.Ray;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
+import io.ray.api.Ray;
 import org.testng.annotations.Test;
 
 public class ActorPressTest extends RayBenchmarkTest {

@@ -1,7 +1,7 @@
 package io.ray.api.test;
 
-import io.ray.api.Ray;
 import io.ray.api.ActorHandle;
+import io.ray.api.Ray;
 import io.ray.api.TestUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;

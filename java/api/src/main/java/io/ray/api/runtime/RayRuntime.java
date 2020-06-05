@@ -1,7 +1,7 @@
 package io.ray.api.runtime;
 
-import io.ray.api.BaseActorHandle;
 import io.ray.api.ActorHandle;
+import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;

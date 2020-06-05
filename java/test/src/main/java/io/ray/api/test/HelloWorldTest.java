@@ -1,7 +1,7 @@
 package io.ray.api.test;
 
-import io.ray.api.Ray;
 import io.ray.api.ObjectRef;
+import io.ray.api.Ray;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 

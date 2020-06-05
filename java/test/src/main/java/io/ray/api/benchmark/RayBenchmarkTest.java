@@ -1,9 +1,9 @@
 package io.ray.api.benchmark;
 
 import com.google.common.util.concurrent.RateLimiter;
-import io.ray.api.Ray;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
+import io.ray.api.Ray;
 import io.ray.api.function.RayFunc1;
 import io.ray.api.test.BaseTest;
 import java.io.Serializable;

@@ -1,7 +1,7 @@
 package io.ray.api.test;
 
-import io.ray.api.Ray;
 import io.ray.api.PyActorHandle;
+import io.ray.api.Ray;
 import io.ray.api.function.PyActorClass;
 import io.ray.runtime.object.NativeRayObject;
 import io.ray.runtime.object.ObjectSerializer;
@@ -12,7 +12,8 @@ public class RaySerializerTest extends BaseMultiLanguageTest {
 
   @Test
   public void testSerializePyActor() {
-    PyActorHandle pyActor = Ray.createActor(new PyActorClass("test", "RaySerializerTest"));
+    PyActorHandle pyActor = Ray.createActor(
+        new PyActorClass("test", "RaySerializerTest"));
     NativeRayObject nativeRayObject = ObjectSerializer.serialize(pyActor);
     PyActorHandle result = (PyActorHandle) ObjectSerializer
         .deserialize(nativeRayObject, null, Object.class);

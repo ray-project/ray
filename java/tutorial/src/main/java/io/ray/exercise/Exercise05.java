@@ -1,8 +1,8 @@
 package io.ray.exercise;
 
-import io.ray.api.Ray;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
+import io.ray.api.Ray;
 
 /**
  * Show usage of actors.

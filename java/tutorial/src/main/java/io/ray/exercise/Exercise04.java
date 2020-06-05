@@ -1,8 +1,8 @@
 package io.ray.exercise;
 
 import com.google.common.collect.ImmutableList;
-import io.ray.api.Ray;
 import io.ray.api.ObjectRef;
+import io.ray.api.Ray;
 import io.ray.api.WaitResult;
 import java.util.List;
 

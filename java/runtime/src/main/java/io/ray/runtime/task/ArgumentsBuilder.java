@@ -1,7 +1,7 @@
 package io.ray.runtime.task;
 
-import io.ray.api.Ray;
 import io.ray.api.ObjectRef;
+import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.generated.Common.Language;

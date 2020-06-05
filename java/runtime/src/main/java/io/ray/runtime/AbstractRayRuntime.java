@@ -3,8 +3,8 @@ package io.ray.runtime;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
-import io.ray.api.BaseActorHandle;
 import io.ray.api.ActorHandle;
+import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;
@@ -27,8 +27,8 @@ import io.ray.runtime.functionmanager.RayFunction;
 import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.generated.Common;
 import io.ray.runtime.generated.Common.Language;
-import io.ray.runtime.object.ObjectStore;
 import io.ray.runtime.object.ObjectRefImpl;
+import io.ray.runtime.object.ObjectStore;
 import io.ray.runtime.task.ArgumentsBuilder;
 import io.ray.runtime.task.FunctionArg;
 import io.ray.runtime.task.TaskExecutor;
@@ -207,8 +207,9 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     };
   }
 
-  private ObjectRef callNormalFunction(FunctionDescriptor functionDescriptor,
-                                       Object[] args, Optional<Class<?>> returnType, CallOptions options) {
+  private ObjectRef callNormalFunction(
+      FunctionDescriptor functionDescriptor,
+      Object[] args, Optional<Class<?>> returnType, CallOptions options) {
     int numReturns = returnType.isPresent() ? 1 : 0;
     List<FunctionArg> functionArgs = ArgumentsBuilder
         .wrap(args, functionDescriptor.getLanguage());
@@ -222,8 +223,11 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     }
   }
 
-  private ObjectRef callActorFunction(BaseActorHandle rayActor,
-                                      FunctionDescriptor functionDescriptor, Object[] args, Optional<Class<?>> returnType) {
+  private ObjectRef callActorFunction(
+      BaseActorHandle rayActor,
+      FunctionDescriptor functionDescriptor,
+      Object[] args,
+      Optional<Class<?>> returnType) {
     int numReturns = returnType.isPresent() ? 1 : 0;
     List<FunctionArg> functionArgs = ArgumentsBuilder
         .wrap(args, functionDescriptor.getLanguage());

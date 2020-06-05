@@ -88,10 +88,7 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
     return create(actorId, language);
   }
 
-  @Override
-  protected void finalize() {
-    // TODO(zhijunfu): do we need to free the ActorHandle in core worker?
-  }
+  // TODO(chaokunyang) do we need to free the ActorHandle in core worker by using phantom reference?
 
   private static native int nativeGetLanguage(byte[] actorId);
 
