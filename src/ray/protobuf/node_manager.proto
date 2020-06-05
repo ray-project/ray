@@ -49,6 +49,14 @@ message RequestResourceLeaseReply {
   repeated ResourceMapEntry resource_mapping = 1;
 }
 
+message RequestResourceReturnRequest {
+  // Bundle containing the requested resources.
+  Bundle bundle_spec = 1;
+}
+
+message RequestResourceReturnReply {
+}
+
 // Request a worker from the raylet with the specified resources.
 message CancelResourceLeaseRequest {
   // Bundle containing the requested resources.
@@ -153,6 +161,8 @@ service NodeManagerService {
   rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
   // Request resource from the raylet for a bundle.
   rpc RequestResourceLease(RequestResourceLeaseRequest) returns (RequestResourceLeaseReply);
+  // Return resource for the raylet.
+  rpc RequestResourceReturn(RequestResourceReturnRequest) returns (RequestResourceReturnReply);
   // Release a worker back to its raylet.
   rpc ReturnWorker(ReturnWorkerRequest) returns (ReturnWorkerReply);
   // Cancel a pending lease request. This only returns success if the

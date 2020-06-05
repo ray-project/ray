@@ -64,6 +64,10 @@ class NodeManagerServiceHandler {
   virtual void HandleRequestResourceLease(const rpc::RequestResourceLeaseRequest &request,
                                       rpc::RequestResourceLeaseReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRequestResourceReturn(const rpc::RequestResourceReturnRequest &request,
+                                    rpc::RequestResourceReturnReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) = 0;
                                       
   virtual void HandleCancelResourceLease(const rpc::CancelResourceLeaseRequest &request,
                                           rpc::CancelResourceLeaseReply *reply,

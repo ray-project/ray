@@ -95,6 +95,10 @@ class ResourceLeaseInterface {
       const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestResourceLeaseReply> &callback) = 0;
 
+  virtual ray::Status RequestResourceReturn(
+      BundleSpecification &bundle_spec,
+      const ray::rpc::ClientCallback<ray::rpc::RequestResourceReturnReply> &callback) = 0;
+
   virtual ~ResourceLeaseInterface(){};
 
 };
@@ -328,6 +332,12 @@ class RayletClient : public PinObjectsInterface,
   ray::Status RequestResourceLease(
       const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestResourceLeaseReply> &callback)
+      override;
+
+  /// Implements ResourceLeaseInterface.
+  ray::Status RequestResourceReturn(
+      BundleSpecification &bundle_spec,
+      const ray::rpc::ClientCallback<ray::rpc::RequestResourceReturnReply> &callback)
       override;
 
   ray::Status PinObjectIDs(

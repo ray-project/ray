@@ -1879,6 +1879,24 @@ void NodeManager::HandleRequestResourceLease(const rpc::RequestResourceLeaseRequ
   return;
 }
 
+void NodeManager::HandleRequestResourceReturn(const rpc::RequestResourceReturnRequest &request,
+                                            rpc::RequestResourceReturnReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback){
+    auto bundle_spec = BundleSpecification(request.bundle_spec());
+    RAY_LOG(DEBUG) << "bundle return resource request " << bundle_spec.BundleID();
+    auto release_resources_id = BundleResourceIdSet.find(bundle_spec.BundleID());
+    if(release_resources_id != BundleResourceIdSet.end()) {
+      excavated_resources_.Release(release_resources_id->second);
+      local_available_resources_.Plus(release_resources_id->second);
+      cluster_resource_map_[self_node_id_].Release(release_resources_id->second.ToResourceSet());
+      BundleResourceIdSet.erase(release_resources_id);
+      send_reply_callback(Status::OK(), nullptr, nullptr);
+    } else {
+      // The bundle resource has been release.
+       send_reply_callback(Status::OK(), nullptr, nullptr);
+    }     
+}
+
 void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                                      rpc::ReturnWorkerReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {

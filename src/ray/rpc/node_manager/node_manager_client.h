@@ -93,6 +93,9 @@ class NodeManagerWorkerClient
   /// Request resource lease.
   RPC_CLIENT_METHOD(NodeManagerService, RequestResourceLease, grpc_client_, )
 
+  /// Return resource lease.
+  RPC_CLIENT_METHOD(NodeManagerService, RequestResourceReturn, grpc_client_, )
+
   /// Notify the raylet to pin the provided object IDs.
   RPC_CLIENT_METHOD(NodeManagerService, PinObjectIDs, grpc_client_, )
 

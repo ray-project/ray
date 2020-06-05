@@ -68,6 +68,7 @@ void GcsPlacementGroupScheduler::Schedule(std::shared_ptr<GcsPlacementGroup> pla
     }
     auto decision = GetDecision();
     decision.resize(bundles.size());
+    resource_lease_.resize(bundles.size());
     // TODO(AlisaWu): add a callback function.
     for(int pos = 0;pos < bundles.size();pos ++) {
       RAY_CHECK(node_to_bundles_when_leasing_[schedule_bundles[pos]]
@@ -75,12 +76,21 @@ void GcsPlacementGroupScheduler::Schedule(std::shared_ptr<GcsPlacementGroup> pla
                     .second);
             
       GetLeaseResourceQueue().push_back(std::make_tuple(bundles[pos], gcs_node_manager_.GetNode(schedule_bundles[pos]),
-        [this, pos, schedule_bundles](const Status &status, const rpc::RequestResourceLeaseReply &reply){
+        [this, pos, bundles, schedule_bundles, placement_group]
+        (const Status &status, const rpc::RequestResourceLeaseReply &reply){
         finish_count++;
         auto decision = GetDecision();
         if(status.ok()){
           decision[pos] = schedule_bundles[pos];
-
+          for (int i = 0;i < reply.resource_mapping_size();i ++){
+            std::string name = std::string(reply.resource_mapping(i).name());
+            for(int j = 0;j < reply.resource_mapping(i).resource_ids_size();j ++){
+              int64_t index = int64_t(reply.resource_mapping(i).resource_ids(j).index());
+              double quantity = double(reply.resource_mapping(i).resource_ids(j).quantity());
+              resource_lease_[pos].push_back(std::make_tuple(name, index, quantity));
+            }
+          }
+          // resource_lease_[pos].
           // TODO(AlisaWu): store the plan.
         } else {
           decision[pos] = ClientID::Nil();
@@ -94,32 +104,23 @@ void GcsPlacementGroupScheduler::Schedule(std::shared_ptr<GcsPlacementGroup> pla
             }
           }
           if(lease_success){
-            // schedule_success_handler(placement_group);
-            
             // store  
+            schedule_success_handler_(placement_group);
           } else {
             
             for(int i = 0; i < finish_count;i ++){
+              if(decision[i] != ClientID::Nil()) {
+                RetureReourceForNode(bundles[i], gcs_node_manager_.GetNode(schedule_bundles[pos]));
+                resource_lease_[i].clear();
+              }
               // TODO(AlisaWu): reutrn resource
             }
-            // schedule_failure_handler(placement_group);
+            schedule_failure_handler_(placement_group);
           }
         }
       }));
     }
     LeaseResourceFromNode();
-
-    // TODO(AlisaWu): add the logic.
-    // if(lease_success){
-      
-
-    //     // store
-    // }else{
-      
-    //     // back to step 2
-    // }
-
-
 }
 
 void GcsPlacementGroupScheduler::LeaseResourceFromNode() {
@@ -187,6 +188,38 @@ void GcsPlacementGroupScheduler::LeaseResourceFromNode() {
     }
   }
   
+}
+
+void GcsPlacementGroupScheduler::RetureReourceForNode(BundleSpecification bundle_spec,
+                                                      std::shared_ptr<ray::rpc::GcsNodeInfo>node){
+    RAY_CHECK(node);
+
+    auto node_id = ClientID::FromBinary(node->node_id());
+    RAY_LOG(INFO) << "Start returning resource for node " << node_id << " for bundle "
+                  << bundle_spec.BundleID();
+
+    rpc::Address remote_address;
+    remote_address.set_raylet_id(node->node_id());
+    remote_address.set_ip_address(node->node_manager_address());
+    remote_address.set_port(node->node_manager_port());
+    auto return_client = GetOrConnectLeaseClient(remote_address);
+    auto status = return_client->RequestResourceReturn(
+      bundle_spec,
+      [this, bundle_spec, node](const Status &status,
+                                                 const rpc::RequestResourceReturnReply &reply){
+        if(!status.ok()){
+          // TODO(AlisaWu): add a wait time.
+          RetureReourceForNode(bundle_spec, node);
+        }
+      }
+
+    );
+    if(!status.ok()){
+      RetureReourceForNode(bundle_spec, node);
+    }
+
+    
+
 }
 
 Status GcsPlacementGroupScheduler::HandleResourceLeasedReply(

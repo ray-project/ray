@@ -401,6 +401,14 @@ Status raylet::RayletClient::RequestResourceLease(
   return grpc_client_->RequestResourceLease(request, callback);
 }
 
+Status raylet::RayletClient::RequestResourceReturn(
+      BundleSpecification &bundle_spec,
+      const ray::rpc::ClientCallback<ray::rpc::RequestResourceReturnReply> &callback) {
+  rpc::RequestResourceReturnRequest request;
+  request.CopyFrom(bundle_spec.GetMessage());
+  return grpc_client_->RequestResourceReturn(request, callback);
+}
+
 Status raylet::RayletClient::PinObjectIDs(
     const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
     const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) {

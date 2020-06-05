@@ -137,12 +137,14 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   };
 
-  /// Lease a worker from the specified node for the specified bundle.
-  ///
-  /// \param bundle A description of the placement_group to create. This object has the resource
-  /// specification needed to lease workers from the specified node.
-  /// \param node The node that the worker will be leased from.
+  /// Lease resource from the specified node for the specified bundle.
     void LeaseResourceFromNode();
+
+  /// return resource for the specified node for the specified bundle.
+  ///
+  /// \param bundle A description of the bundle to return.
+  /// \param node The node that the worker will be returned for.
+    void RetureReourceForNode(BundleSpecification bundle_spec,std::shared_ptr<ray::rpc::GcsNodeInfo>node);
 
   /// Handler to process a granted lease.
   ///
@@ -195,7 +197,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// The count stores how many lease resource from node success; 
   int64_t finish_count = 0;
 
-  /// Store the 
+  /// Store the resource lease position
+  // std::vector<std::vector<ResourceMapEntry>>resource_lease_;
+  std::vector<std::vector<std::tuple<std::string, int64_t, double>>>resource_lease_;
 };
 
 }

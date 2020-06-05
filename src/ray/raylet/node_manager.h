@@ -605,6 +605,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                             rpc::RequestResourceLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `ResourcesReturn` request.
+  void HandleRequestResourceReturn(const rpc::RequestResourceReturnRequest &request, 
+                        rpc::RequestResourceReturnReply *reply,
+                        rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `ReturnWorker` request.
   void HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                           rpc::ReturnWorkerReply *reply,
