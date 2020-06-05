@@ -235,11 +235,16 @@ class NodeProvider:
         docker_config(dict): If set, the docker information of the docker
             container that commands should be run on.
         """
+        common_args = {
+            "log_prefix": log_prefix,
+            "node_id": node_id,
+            "provider": self,
+            "auth_config": auth_config,
+            "cluster_name": cluster_name,
+            "process_runner": process_runner,
+            "use_internal_ip": use_internal_ip
+        }
         if docker_config and docker_config["container_name"] != "":
-            return DockerCommandRunner(docker_config, log_prefix, node_id,
-                                       self, auth_config, cluster_name,
-                                       process_runner, use_internal_ip)
+            return DockerCommandRunner(docker_config, **common_args)
         else:
-            return SSHCommandRunner(log_prefix, node_id, self, auth_config,
-                                    cluster_name, process_runner,
-                                    use_internal_ip)
+            return SSHCommandRunner(**common_args)
