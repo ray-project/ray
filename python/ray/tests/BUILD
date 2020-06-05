@@ -454,3 +454,11 @@ py_test(
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
+
+py_test(
+    name = "test_gcs_fault_tolerance",
+    size = "medium",
+    srcs = SRCS + ["test_gcs_fault_tolerance.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)

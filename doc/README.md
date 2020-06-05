@@ -12,5 +12,5 @@ open _build/html/index.html
 To test if there are any build errors with the documentation, do the following.
 
 ```
-sphinx-build -W -b html -d _build/doctrees source _build/html
+sphinx-build -b html -d _build/doctrees source _build/html
 ```
