@@ -19,13 +19,11 @@ from ray.rllib.utils.window_stat import WindowStat
 class ReplayBuffer:
     @DeveloperAPI
     def __init__(self, size):
-        """Create Prioritized Replay buffer.
+        """Initializes a ReplayBuffer object.
 
-        Parameters
-        ----------
-        size: int
-          Max number of transitions to store in the buffer. When the buffer
-          overflows the old memories are dropped.
+        Args:
+            size (int): Max number of records to store in the buffer.
+                When the buffer overflows the old memories are dropped.
         """
         self._storage = []
         self._maxsize = size

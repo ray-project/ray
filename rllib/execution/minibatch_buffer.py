@@ -5,15 +5,15 @@ class MinibatchBuffer:
     """
 
     def __init__(self, inqueue, size, timeout, num_passes, init_num_passes=1):
-        """Initialize a minibatch buffer.
+        """Initializes a MinibatchBuffer object.
 
-        Arguments:
-           inqueue: Queue to populate the internal ring buffer from.
-           size: Max number of data items to buffer.
-           timeout: Queue timeout
-           num_passes: Max num times each data item should be emitted.
-           init_num_passes: Initial max passes for each data item
-       """
+        Args:
+            inqueue: Queue to populate the internal ring buffer from.
+            size: Max number of data items to buffer.
+            timeout: Queue timeout
+            num_passes: Max num times each data item should be emitted.
+            init_num_passes: Initial max passes for each data item
+        """
         self.inqueue = inqueue
         self.size = size
         self.timeout = timeout
@@ -27,8 +27,10 @@ class MinibatchBuffer:
         """Get a new batch from the internal ring buffer.
 
         Returns:
-           buf: Data item saved from inqueue.
-           released: True if the item is now removed from the ring buffer.
+            Tuple:
+                - buf: Data item saved from inqueue.
+                - released: True if the item is now removed from the ring
+                    buffer.
         """
         if self.ttl[self.idx] <= 0:
             self.buffers[self.idx] = self.inqueue.get(timeout=self.timeout)

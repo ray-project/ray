@@ -12,7 +12,7 @@ def Concurrently(ops: List[LocalIterator],
                  round_robin_weights=None):
     """Operator that runs the given parent iterators concurrently.
 
-    Arguments:
+    Args:
         mode (str): One of {'round_robin', 'async'}.
             - In 'round_robin' mode, we alternate between pulling items from
               each parent iterator in order deterministically.
