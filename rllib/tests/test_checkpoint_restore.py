@@ -63,9 +63,10 @@ CONFIGS = {
 }
 
 
-def ckpt_restore_test(alg_name):
+def ckpt_restore_test(alg_name, tfe=False):
     config = CONFIGS[alg_name]
-    for fw in framework_iterator(config, frameworks=("torch", "tf")):
+    frameworks = (["tfe"] if tfe else []) + ["torch", "tf"]
+    for fw in framework_iterator(config, frameworks=frameworks):
         for use_object_store in [False, True]:
             print("use_object_store={}".format(use_object_store))
             cls = get_agent_class(alg_name)
@@ -95,7 +96,7 @@ def ckpt_restore_test(alg_name):
             if optim_state:
                 s2 = alg2.get_policy().get_state().get("_optimizer_variables")
                 # Tf -> Compare states 1:1.
-                if fw == "tf":
+                if fw in ["tf", "tfe"]:
                     check(s2, optim_state)
                 # For torch, optimizers have state_dicts with keys=params,
                 # which are different for the two models (ignore these

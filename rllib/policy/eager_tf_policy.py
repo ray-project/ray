@@ -332,10 +332,12 @@ def build_eager_tf_policy(name,
                 "is_training": tf.constant(False),
             }
             if obs_include_prev_action_reward:
-                input_dict[SampleBatch.PREV_ACTIONS] = \
-                    tf.convert_to_tensor(prev_action_batch)
-                input_dict[SampleBatch.PREV_REWARDS] = \
-                    tf.convert_to_tensor(prev_reward_batch)
+                if prev_action_batch:
+                    input_dict[SampleBatch.PREV_ACTIONS] = \
+                        tf.convert_to_tensor(prev_action_batch)
+                if prev_reward_batch:
+                    input_dict[SampleBatch.PREV_REWARDS] = \
+                        tf.convert_to_tensor(prev_reward_batch)
 
             # Use Exploration object.
             with tf.variable_creator_scope(_disallow_var_creation):
@@ -466,20 +468,26 @@ def build_eager_tf_policy(name,
 
         @override(Policy)
         def get_state(self):
-            state = super().get_state()
+            state = {"_state": super().get_state()}
             state["_optimizer_variables"] = self._optimizer.variables()
             return state
 
-        #@override(Policy)
-        #def set_state(self, state):
-        #    state = state.copy()  # shallow copy
-        #    # Set optimizer vars first.
-        #    optimizer_vars = state.pop("_optimizer_variables", None)
-        #    if optimizer_vars:
-        #        for opt_var, value in zip(self._optimizer.variables(), )
-        #            TODO:
-        #    # Then the Policy's (NN) weights.
-        #    super().set_state(state)
+        @override(Policy)
+        def set_state(self, state):
+            state = state.copy()  # shallow copy
+            # Set optimizer vars first.
+            optimizer_vars = state.pop("_optimizer_variables", None)
+            if optimizer_vars and self._optimizer.variables():
+                logger.warning(
+                    "Cannot restore an optimizer's state for tf eager! Keras "
+                    "is not able to save the v1.x optimizers (from "
+                    "tf.compat.v1.train) since they aren't compatible with "
+                    "checkpoints.")
+                for opt_var, value in zip(self._optimizer.variables(),
+                                          optimizer_vars):
+                    opt_var.assign(value)
+            # Then the Policy's (NN) weights.
+            super().set_state(state["_state"])
 
         def variables(self):
             """Return the list of all savable variables for this policy."""
