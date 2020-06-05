@@ -18,6 +18,7 @@
 #include "error_info_handler_impl.h"
 #include "gcs_actor_manager.h"
 #include "gcs_node_manager.h"
+#include "gcs_placement_group_manager.h"
 #include "job_info_handler_impl.h"
 #include "object_info_handler_impl.h"
 #include "ray/common/network_util.h"

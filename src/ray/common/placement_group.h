@@ -18,23 +18,54 @@
 #include "ray/common/id.h"
 #include "ray/common/grpc_util.h"
 #include "ray/protobuf/common.pb.h"
+#include "ray/common/bundle_spec.h"
 
 namespace ray{
 
+enum class Strategy {
+  PACK = 0x0,
+  SPREAD = 0x1,
+};
+
 
 class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpec> {
-public:
+ public:
     /// Construct from a protobuf message object.
     /// The input message will be **copied** into this object.
     ///
     /// \param message The protobuf message.
-    explicit PlacementGroupSpecification(rpc::PlacementGroupSpec message) : MessageWrapper(message) {}
+    explicit PlacementGroupSpecification(rpc::PlacementGroupSpec message) : MessageWrapper(message) {
+        ConstructBundles();
+    }
     /// Construct from a protobuf message shared_ptr.
     ///
     /// \param message The protobuf message.
-    explicit PlacementGroupSpecification(std::shared_ptr<rpc::PlacementGroupSpec> message): MessageWrapper(message) {}
+    explicit PlacementGroupSpecification(std::shared_ptr<rpc::PlacementGroupSpec> message): MessageWrapper(message) {
+        ConstructBundles();
+    }
     // TODO(AlisaWu): add more function to construct.
 
+
+    PlacementGroupID PlacementGroupId() const;
+
+    int64_t MaxActorRestarts() const;
+
+    std::vector<BundleSpecification> GetBundles() const;
+
+    Strategy GetStrategy() const;
+
+    BundleSpecification GetBundle(int position) const;
+
+    std::string GetName() const;
+
+    
+
+ private:
+    
+    void ConstructBundles();
+    
+    std::vector<BundleSpecification>bundles;
+    
 };
 
 class PlacementGroupSpecBuilder {

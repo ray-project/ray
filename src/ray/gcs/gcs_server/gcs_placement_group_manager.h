@@ -145,7 +145,6 @@ class GcsPlacementGroupManager {
 
   void ScheduleTick();
 
-
  private:
 
   /// Callbacks of placement_group registration requests that are not yet flushed.

@@ -31,7 +31,7 @@
 namespace ray {
 namespace gcs {
 
-using LeaseClientFactoryFn =
+using LeaseResourceClientFactoryFn =
     std::function<std::shared_ptr<ResourceLeaseInterface>(const rpc::Address &address)>;
   
 typedef std::function<void(const Status &,const rpc::RequestResourceLeaseReply &)> LeaseResourceCallback;
@@ -66,7 +66,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const GcsNodeManager &gcs_node_manager,std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_failure_handler,
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_success_handler,
-      LeaseClientFactoryFn lease_client_factory = nullptr);
+      LeaseResourceClientFactoryFn lease_client_factory = nullptr);
   virtual ~GcsPlacementGroupScheduler() = default;
 
   /// Schedule the specified placement_group.
@@ -172,14 +172,14 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// The handler to handle the successful scheduling.
   std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_success_handler_;
   /// Fplacement_groupy for producing new clients to request leases from remote nodes.
-  LeaseClientFactoryFn lease_client_fplacement_groupy_;
+  LeaseResourceClientFactoryFn lease_client_fplacement_groupy_;
   /// Fplacement_groupy for producing new core worker clients.
   rpc::ClientFactoryFn client_fplacement_groupy_;
     /// The cached node clients which are used to communicate with raylet to lease workers.
   absl::flat_hash_map<ClientID, std::shared_ptr<ResourceLeaseInterface>>
       remote_lease_clients_;
   /// Factory for producing new clients to request leases from remote nodes.
-  LeaseClientFactoryFn lease_client_factory_;
+  LeaseResourceClientFactoryFn lease_client_factory_;
 
   /// Map from node ID to the set of actors for whom we are trying to acquire a lease from
   /// that node. This is needed so that we can retry lease requests from the node until we

@@ -26,7 +26,7 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_failure_handler,
     std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_success_handler,
-    LeaseClientFactoryFn lease_client_factory)
+    LeaseResourceClientFactoryFn lease_client_factory)
     : io_context_(io_context),
       placement_group_info_accessor_(placement_group_info_accessor),
       gcs_node_manager_(gcs_node_manager),

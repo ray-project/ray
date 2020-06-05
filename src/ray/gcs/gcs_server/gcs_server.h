@@ -38,6 +38,7 @@ struct GcsServerConfig {
 
 class GcsNodeManager;
 class GcsActorManager;
+class GcsPlacementGroupManager;
 
 /// The GcsServer will take over all requests from ServiceBasedGcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.
@@ -78,6 +79,9 @@ class GcsServer {
 
   /// Initialize the gcs node manager.
   virtual void InitGcsActorManager();
+
+  /// Initialize the gcs placement group manager.
+  virtual void InitGcsPlacementGroupManager();
 
   /// The job info handler
   virtual std::unique_ptr<rpc::JobInfoHandler> InitJobInfoHandler();
@@ -121,6 +125,8 @@ class GcsServer {
   rpc::ClientCallManager client_call_manager_;
   /// The gcs node manager.
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
+  // /// The gcs placement group manager.
+  // std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
   /// The gcs redis failure detector.
   std::shared_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
   /// The gcs actor manager

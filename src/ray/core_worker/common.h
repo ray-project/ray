@@ -116,7 +116,8 @@ struct ActorCreationOptions {
                        const std::unordered_map<std::string, double> &resources,
                        const std::unordered_map<std::string, double> &placement_resources,
                        const std::vector<std::string> &dynamic_worker_options,
-                       bool is_detached, std::string &name, bool is_asyncio)
+                       bool is_detached, std::string &name, bool is_asyncio,
+                       BundleID bundle_id = BundleID::Nil())
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -125,7 +126,8 @@ struct ActorCreationOptions {
         dynamic_worker_options(dynamic_worker_options),
         is_detached(is_detached),
         name(name),
-        is_asyncio(is_asyncio){};
+        is_asyncio(is_asyncio),
+        bundle_id(bundle_id){};
 
   /// Maximum number of times that the actor should be restarted if it dies
   /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
@@ -153,6 +155,8 @@ struct ActorCreationOptions {
   const std::string name;
   /// Whether to use async mode of direct actor call.
   const bool is_asyncio = false;
+  /// If the actor is in the placement group, the bundle_id will be set.
+  BundleID bundle_id;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;
