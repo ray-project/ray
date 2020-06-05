@@ -332,10 +332,10 @@ def build_eager_tf_policy(name,
                 "is_training": tf.constant(False),
             }
             if obs_include_prev_action_reward:
-                if prev_action_batch:
+                if prev_action_batch is not None:
                     input_dict[SampleBatch.PREV_ACTIONS] = \
                         tf.convert_to_tensor(prev_action_batch)
-                if prev_reward_batch:
+                if prev_reward_batch is not None:
                     input_dict[SampleBatch.PREV_REWARDS] = \
                         tf.convert_to_tensor(prev_reward_batch)
 
