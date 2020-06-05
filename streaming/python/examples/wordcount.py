@@ -81,7 +81,7 @@ if __name__ == "__main__":
         .reduce(lambda old_value, new_value:
                 (old_value[0], old_value[1] + new_value[1])) \
         .sink(print)
-    start = time.time()
+    start = time.perf_counter()
     ctx.execute("wordcount")
-    end = time.time()
+    end = time.perf_counter()
     logger.info("Elapsed time: {} secs".format(end - start))
