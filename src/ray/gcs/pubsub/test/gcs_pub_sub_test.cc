@@ -131,7 +131,7 @@ TEST_F(GcsPubSubTest, TestPubSubApi) {
   WaitPendingDone(all_result, 3);
 }
 
-TEST_F(GcsPubSubTest, TestManyPubsubApi) {
+TEST_F(GcsPubSubTest, TestManyPubsub) {
   std::string channel("channel");
   std::string id("id");
   std::string data("data");

@@ -85,9 +85,9 @@ Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
   if (command.is_subscribe && channel.callback_index == -1) {
     int64_t callback_index =
         ray::gcs::RedisCallbackManager::instance().AllocateCallbackIndex();
-    const auto &command_done = command.done_callback;
-    const auto &command_subscribe = command.subscribe_callback;
-    auto callback = [this, channel_key, command_done, command_subscribe,
+    const auto &command_done_callback = command.done_callback;
+    const auto &command_subscribe_callback = command.subscribe_callback;
+    auto callback = [this, channel_key, command_done_callback, command_subscribe_callback,
                      callback_index](std::shared_ptr<CallbackReply> reply) {
       if (reply->IsNil()) {
         return;
@@ -100,6 +100,7 @@ Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
         ray::gcs::RedisCallbackManager::instance().RemoveCallback(
             channel->second.callback_index);
         channel->second.callback_index = -1;
+        channel->second.pending_reply = false;
 
         if (channel->second.command_queue.empty()) {
           // We are unsubscribed and there are no more commands to process.
@@ -117,6 +118,7 @@ Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
           auto channel = channels_.find(channel_key);
           RAY_CHECK(channel != channels_.end());
           channel->second.callback_index = callback_index;
+          channel->second.pending_reply = false;
           // Process the next item in the queue, if any.
           if (!channel->second.command_queue.empty()) {
             RAY_CHECK(!channel->second.command_queue.front().is_subscribe);
@@ -124,24 +126,31 @@ Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
           }
         }
 
-        if (command_done) {
-          command_done(Status::OK());
+        if (command_done_callback) {
+          command_done_callback(Status::OK());
         }
       } else {
         const auto reply_data = reply->ReadAsPubsubData();
         if (!reply_data.empty()) {
           rpc::PubSubMessage message;
           message.ParseFromString(reply_data);
-          command_subscribe(message.id(), message.data());
+          command_subscribe_callback(message.id(), message.data());
         }
       }
     };
     status = redis_client_->GetPrimaryContext()->PSubscribeAsync(channel_key, callback,
                                                                  callback_index);
+    channel.pending_reply = true;
     channel.command_queue.pop_front();
   } else if (!command.is_subscribe && channel.callback_index != -1) {
     status = redis_client_->GetPrimaryContext()->PUnsubscribeAsync(channel_key);
+    channel.pending_reply = true;
     channel.command_queue.pop_front();
+  } else if (!channel.pending_reply) {
+    // There is no in-flight command, but none of the queued commands are
+    // runnable. The caller must have sent a command out-of-order.
+    RAY_LOG(FATAL) << "Caller attempted a duplicate subscribe or unsubscribe to channel "
+                   << channel_key;
   }
   return status;
 }

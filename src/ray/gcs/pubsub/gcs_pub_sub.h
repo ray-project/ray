@@ -91,22 +91,26 @@ class GcsPubSub {
 
  private:
   struct SubscribeCommand {
-    // SUBSCRIBE constructor.
+    /// SUBSCRIBE constructor.
     SubscribeCommand(const Callback &subscribe_callback,
                      const StatusCallback &done_callback)
         : is_subscribe(true),
           subscribe_callback(subscribe_callback),
           done_callback(done_callback) {}
-    // UNSUBSCRIBE constructor.
+    /// UNSUBSCRIBE constructor.
     SubscribeCommand() : is_subscribe(false) {}
+    /// True if this is a SUBSCRIBE command and false if UNSUBSCRIBE.
     const bool is_subscribe;
+    /// Callback that is called whenever a new pubsub message is received from
+    /// Redis. This should only be set if is_subscribe is true.
     const Callback subscribe_callback;
+    /// Callback that is called once we have successfully subscribed to a
+    /// channel. This should only be set if is_subscribe is true.
     const StatusCallback done_callback;
   };
 
   struct Channel {
     Channel() {}
-
     /// Queue of subscribe/unsubscribe commands to this channel. Subscribe and
     /// unsubscribe commands must alternate. A subscribe command can execute if
     /// the callback index below is not set. An unsubscribe command can execute
@@ -119,6 +123,9 @@ class GcsPubSub {
     /// index is set back to -1 if we receive a reply from Redis that we have
     /// unsubscribed.
     int64_t callback_index = -1;
+    /// Whether we are pending a reply from Redis. We cannot send another
+    /// command from the queue until this has been reset to false.
+    bool pending_reply = false;
   };
 
   /// Execute the first queued command for the given channel, if possible.  A
