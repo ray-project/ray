@@ -76,7 +76,7 @@ You can also have Ray Serve batch requests for performance. In order to do use t
 
   config = {"max_batch_size": 5}
   serve.create_backend("counter1", BatchingExample, config=config)
-  serve.create_endpoint("counter1", "counter1", "/increment")
+  serve.create_endpoint("counter1", backend="counter1", route="/increment")
 
 Please take a look at :ref:`Batching Tutorial<serve-batch-tutorial>` for a deep
 dive.
@@ -90,7 +90,7 @@ It's trivial to also split traffic, simply specify the endpoint and the backends
 
 .. code-block:: python
   
-  serve.create_endpoint("endpoint_identifier_split", "my_endpoint_backend", route="/split", methods=["GET", "POST"])
+  serve.create_endpoint("endpoint_identifier_split", backend="my_endpoint_backend", route="/split", methods=["GET", "POST"])
 
   # splitting traffic 70/30
   serve.set_traffic("endpoint_identifier_split", {"my_endpoint_backend": 0.7, "my_endpoint_backend_class": 0.3})

@@ -9,7 +9,7 @@ def echo(flask_request):
 
 
 serve.create_backend("hello", echo)
-serve.create_endpoint("hello", "hello", "/hello")
+serve.create_endpoint("hello", backend="hello", route="/hello")
 
 requests.get("http://127.0.0.1:8000/hello").text
 # > "hello serve!"

@@ -11,7 +11,8 @@ def test_nonblocking():
         return {"method": flask_request.method}
 
     serve.create_backend("nonblocking:v1", function)
-    serve.create_endpoint("nonblocking", "nonblocking:v1", "/nonblocking")
+    serve.create_endpoint(
+        "nonblocking", backend="nonblocking:v1", route="/nonblocking")
 
     resp = requests.get("http://127.0.0.1:8000/nonblocking").json()["method"]
     assert resp == "GET"

@@ -71,7 +71,7 @@ ray.init(address="auto")
 # listen on 0.0.0.0 to make the HTTP server accessible from other machines.
 serve.init(http_host="0.0.0.0")
 serve.create_backend("lr:v1", BoostingModel)
-serve.create_endpoint("iris_classifier", "lr:v1", "/regressor")
+serve.create_endpoint("iris_classifier", backend="lr:v1", route="/regressor")
 # __doc_create_deploy_end__
 
 # __doc_query_begin__

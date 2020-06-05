@@ -26,7 +26,7 @@ serve.create_backend("echo:v1", echo_v1)
 
 # An endpoint is associated with an HTTP path and traffic to the endpoint
 # will be serviced by the echo:v1 backend.
-serve.create_endpoint("my_endpoint", "echo:v1", "/echo")
+serve.create_endpoint("my_endpoint", backend="echo:v1", route="/echo")
 
 print(requests.get("http://127.0.0.1:8000/echo", timeout=0.5).text)
 # The service will be reachable from http

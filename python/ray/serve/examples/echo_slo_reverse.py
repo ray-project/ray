@@ -23,7 +23,7 @@ def echo_v1(flask_request, response="hello from python!"):
 
 serve.create_backend("echo:v1", echo_v1)
 
-serve.create_endpoint("my_endpoint", "echo:v1", "/echo")
+serve.create_endpoint("my_endpoint", backend="echo:v1", route="/echo")
 
 # wait for routing table to get populated
 time.sleep(2)

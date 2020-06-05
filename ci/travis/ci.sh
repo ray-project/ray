@@ -168,7 +168,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      sphinx-build -q -W -E -T -b html source _build/html
+      sphinx-build -q -E -T -b html source _build/html
     fi
   )
 }

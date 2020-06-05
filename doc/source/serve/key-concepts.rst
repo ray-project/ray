@@ -11,7 +11,6 @@ To follow along, you'll need to make the necessary imports.
   from ray import serve
   serve.init() # Initializes Ray and Ray Serve.
 
-.. _serve-backend:
 
 Backends
 ========
@@ -44,6 +43,7 @@ A backend consists of a number of *replicas*, which are individual copies of the
   serve.create_backend("simple_backend_class", RequestHandler, "hello, world!")
 
 We can also list all available backends and delete them to reclaim resources.
+Note that a backend cannot be deleted while it is in use by an endpoint because then traffic to an endpoint may not be able to be handled.
 
 .. code-block:: python
 
@@ -71,7 +71,7 @@ For information on how to do this, please see :ref:`serve-split-traffic`.
 
 .. code-block:: python
 
-  serve.create_endpoint("simple_endpoint", "simple_backend", route="/simple", methods=["GET"])
+  serve.create_endpoint("simple_endpoint", backend="simple_backend", route="/simple", methods=["GET"])
 
 After creating the endpoint, it is now exposed by the HTTP server and handles requests using the specified backend.
 We can query the model to verify that it's working.
@@ -89,7 +89,8 @@ To view all of the existing endpoints that have created, use `serve.list_endpoin
   {'simple_endpoint': {'route': '/simple', 'methods': ['GET'], 'traffic': {}}}
 
 You can also delete an endpoint using ``serve.delete_endpoint``.
-Note that this will not delete any associated backends, which can be reused for other endpoints.
+Endpoints and backends are independent, so deleting an endpoint will not delete its backends.
+However, an endpoint must be deleted in order to delete the backends that serve its traffic.
 
 .. code-block:: python
 

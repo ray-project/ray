@@ -33,7 +33,7 @@ serve.create_backend(
     "counter:v1", MagicCounter, 42, config=backend_config)  # increment=42
 print("Backend Config for backend: 'counter:v1'")
 print(backend_config)
-serve.create_endpoint("magic_counter", "counter:v1", "/counter")
+serve.create_endpoint("magic_counter", backend="counter:v1", route="/counter")
 
 handle = serve.get_handle("magic_counter")
 future_list = []

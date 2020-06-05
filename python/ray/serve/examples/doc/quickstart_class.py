@@ -13,7 +13,7 @@ class Counter:
 
 
 serve.create_backend("counter", Counter)
-serve.create_endpoint("counter", "counter", "/counter")
+serve.create_endpoint("counter", backend="counter", route="/counter")
 
 requests.get("http://127.0.0.1:8000/counter").json()
 # > {"current_counter": self.count}

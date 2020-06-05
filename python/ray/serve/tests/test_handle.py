@@ -20,10 +20,16 @@ def test_handle_in_endpoint(serve_instance):
 
     serve.create_backend("endpoint1:v0", Endpoint1)
     serve.create_endpoint(
-        "endpoint1", "endpoint1:v0", "/endpoint1", methods=["GET", "POST"])
+        "endpoint1",
+        backend="endpoint1:v0",
+        route="/endpoint1",
+        methods=["GET", "POST"])
 
     serve.create_backend("endpoint2:v0", Endpoint2)
     serve.create_endpoint(
-        "endpoint2", "endpoint2:v0", "/endpoint2", methods=["GET", "POST"])
+        "endpoint2",
+        backend="endpoint2:v0",
+        route="/endpoint2",
+        methods=["GET", "POST"])
 
     assert requests.get("http://127.0.0.1:8000/endpoint2").text == "hello"

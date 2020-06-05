@@ -396,6 +396,8 @@ If a string is provided, then it must include replacement fields ``{source}`` an
         sync_process = subprocess.Popen(sync_cmd, shell=True)
         sync_process.wait()
 
+By default, syncing occurs every 300 seconds. To change the frequency of syncing, set the ``TUNE_CLOUD_SYNC_S`` environment variable in the driver to the desired syncing period. Note that uploading only happens when global experiment state is collected, and the frequency of this is determined by the ``global_checkpoint_period`` argument. So the true upload period is given by ``max(TUNE_CLOUD_SYNC_S, global_checkpoint_period)``.
+
 .. _tune-debugging:
 
 Debugging

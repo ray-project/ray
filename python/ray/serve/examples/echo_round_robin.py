@@ -25,7 +25,7 @@ serve.init(queueing_policy=serve.RoutePolicy.RoundRobin)
 serve.create_backend("echo:v1", echo_v1)
 
 # create a service backend by the first backend
-serve.create_endpoint("my_endpoint", "echo:v1", "/echo")
+serve.create_endpoint("my_endpoint", backend="echo:v1", route="/echo")
 
 # create second backend
 serve.create_backend("echo:v2", echo_v2)

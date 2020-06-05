@@ -13,8 +13,7 @@ from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.metric.exporter import MetricExporterActor
 from ray.serve.router import Router
-from ray.serve.utils import (async_retryable, format_actor_name,
-                             get_random_letters, logger)
+from ray.serve.utils import (format_actor_name, get_random_letters, logger)
 
 import numpy as np
 
@@ -128,10 +127,11 @@ class ServeMaster:
             self.router = ray.get_actor(router_name)
         except ValueError:
             logger.info("Starting router with name '{}'".format(router_name))
-            self.router = async_retryable(ray.remote(Router)).options(
+            self.router = ray.remote(Router).options(
                 name=router_name,
                 max_concurrency=ASYNC_CONCURRENCY,
                 max_restarts=-1,
+                max_task_retries=-1,
             ).remote(instance_name=self.instance_name)
 
     def get_router(self):
@@ -150,10 +150,11 @@ class ServeMaster:
             logger.info(
                 "Starting HTTP proxy with name '{}' on node '{}'".format(
                     proxy_name, node_id))
-            self.http_proxy = async_retryable(HTTPProxyActor).options(
+            self.http_proxy = HTTPProxyActor.options(
                 name=proxy_name,
                 max_concurrency=ASYNC_CONCURRENCY,
                 max_restarts=-1,
+                max_task_retries=-1,
                 resources={
                     node_id: 0.01
                 },
@@ -305,9 +306,10 @@ class ServeMaster:
          replica_config) = self.backends[backend_tag]
 
         replica_name = format_actor_name(replica_tag, self.instance_name)
-        worker_handle = async_retryable(ray.remote(backend_worker)).options(
+        worker_handle = ray.remote(backend_worker).options(
             name=replica_name,
             max_restarts=-1,
+            max_task_retries=-1,
             **replica_config.ray_actor_options).remote(
                 backend_tag,
                 replica_tag,

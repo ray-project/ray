@@ -13,7 +13,7 @@ def noop(_):
 
 
 serve.create_backend("noop", noop)
-serve.create_endpoint("noop", "noop", "/noop")
+serve.create_endpoint("noop", backend="noop", route="/noop")
 
 url = "{}/noop".format(DEFAULT_HTTP_ADDRESS)
 while requests.get(url).status_code == 404:

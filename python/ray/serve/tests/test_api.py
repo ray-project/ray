@@ -17,7 +17,7 @@ def test_e2e(serve_instance):
 
     serve.create_backend("echo:v1", function)
     serve.create_endpoint(
-        "endpoint", "echo:v1", "/api", methods=["GET", "POST"])
+        "endpoint", backend="echo:v1", route="/api", methods=["GET", "POST"])
 
     retry_count = 5
     timeout_sleep = 0.5
@@ -48,7 +48,7 @@ def test_call_method(serve_instance):
             return "hello"
 
     serve.create_backend("backend", CallMethod)
-    serve.create_endpoint("endpoint", "backend", "/api")
+    serve.create_endpoint("endpoint", backend="backend", route="/api")
 
     # Test HTTP path.
     resp = requests.get(
@@ -67,7 +67,7 @@ def test_no_route(serve_instance):
         return 1
 
     serve.create_backend("backend:1", func)
-    serve.create_endpoint("noroute-endpoint", "backend:1")
+    serve.create_endpoint("noroute-endpoint", backend="backend:1")
     service_handle = serve.get_handle("noroute-endpoint")
     result = ray.get(service_handle.remote(i=1))
     assert result == 1
@@ -80,9 +80,9 @@ def test_reject_duplicate_route(serve_instance):
     serve.create_backend("backend", f)
 
     route = "/foo"
-    serve.create_endpoint("bar", "backend", route=route)
+    serve.create_endpoint("bar", backend="backend", route=route)
     with pytest.raises(ValueError):
-        serve.create_endpoint("foo", "backend", route=route)
+        serve.create_endpoint("foo", backend="backend", route=route)
 
 
 def test_reject_duplicate_endpoint(serve_instance):
@@ -92,16 +92,17 @@ def test_reject_duplicate_endpoint(serve_instance):
     serve.create_backend("backend", f)
 
     endpoint_name = "foo"
-    serve.create_endpoint(endpoint_name, "backend", route="/ok")
+    serve.create_endpoint(endpoint_name, backend="backend", route="/ok")
     with pytest.raises(ValueError):
-        serve.create_endpoint(endpoint_name, "backend", route="/different")
+        serve.create_endpoint(
+            endpoint_name, backend="backend", route="/different")
 
 
 def test_set_traffic_missing_data(serve_instance):
     endpoint_name = "foobar"
     backend_name = "foo_backend"
     serve.create_backend(backend_name, lambda: 5)
-    serve.create_endpoint(endpoint_name, backend_name)
+    serve.create_endpoint(endpoint_name, backend=backend_name)
     with pytest.raises(ValueError):
         serve.set_traffic(endpoint_name, {"nonexistent_backend": 1.0})
     with pytest.raises(ValueError):
@@ -118,7 +119,7 @@ def test_scaling_replicas(serve_instance):
             return self.count
 
     serve.create_backend("counter:v1", Counter, config={"num_replicas": 2})
-    serve.create_endpoint("counter", "counter:v1", "/increment")
+    serve.create_endpoint("counter", backend="counter:v1", route="/increment")
 
     # Keep checking the routing table until /increment is populated
     while "/increment" not in requests.get(
@@ -158,7 +159,8 @@ def test_batching(serve_instance):
     # set the max batch size
     serve.create_backend(
         "counter:v11", BatchingExample, config={"max_batch_size": 5})
-    serve.create_endpoint("counter1", "counter:v11", route="/increment2")
+    serve.create_endpoint(
+        "counter1", backend="counter:v11", route="/increment2")
 
     # Keep checking the routing table until /increment is populated
     while "/increment2" not in requests.get(
@@ -191,7 +193,8 @@ def test_batching_exception(serve_instance):
     # set the max batch size
     serve.create_backend(
         "exception:v1", NoListReturned, config={"max_batch_size": 5})
-    serve.create_endpoint("exception-test", "exception:v1", "/noListReturned")
+    serve.create_endpoint(
+        "exception-test", backend="exception:v1", route="/noListReturned")
 
     handle = serve.get_handle("exception-test")
     with pytest.raises(ray.exceptions.RayTaskError):
@@ -215,7 +218,7 @@ def test_updating_config(serve_instance):
             "max_batch_size": 2,
             "num_replicas": 3
         })
-    serve.create_endpoint("bsimple", "bsimple:v1", "/bsimple")
+    serve.create_endpoint("bsimple", backend="bsimple:v1", route="/bsimple")
 
     master_actor = serve.api._get_master_actor()
     old_replica_tag_list = ray.get(
@@ -240,7 +243,8 @@ def test_delete_backend(serve_instance):
         return "hello"
 
     serve.create_backend("delete:v1", function)
-    serve.create_endpoint("delete_backend", "delete:v1", "/delete-backend")
+    serve.create_endpoint(
+        "delete_backend", backend="delete:v1", route="/delete-backend")
 
     assert requests.get("http://127.0.0.1:8000/delete-backend").text == "hello"
 
@@ -281,11 +285,11 @@ def test_delete_endpoint(serve_instance, route):
     serve.create_backend(backend_name, function)
 
     endpoint_name = "delete_endpoint" + str(route)
-    serve.create_endpoint(endpoint_name, backend_name, route=route)
+    serve.create_endpoint(endpoint_name, backend=backend_name, route=route)
     serve.delete_endpoint(endpoint_name)
 
     # Check that we can reuse a deleted endpoint name and route.
-    serve.create_endpoint(endpoint_name, backend_name, route=route)
+    serve.create_endpoint(endpoint_name, backend=backend_name, route=route)
 
     if route is not None:
         assert requests.get(
@@ -296,7 +300,7 @@ def test_delete_endpoint(serve_instance, route):
 
     # Check that deleting the endpoint doesn't delete the backend.
     serve.delete_endpoint(endpoint_name)
-    serve.create_endpoint(endpoint_name, backend_name, route=route)
+    serve.create_endpoint(endpoint_name, backend=backend_name, route=route)
 
     if route is not None:
         assert requests.get(
@@ -321,7 +325,7 @@ def test_shard_key(serve_instance, route):
         serve.create_backend(backend_name, function)
 
     serve.create_endpoint(
-        "endpoint", list(traffic_dict.keys())[0], route=route)
+        "endpoint", backend=list(traffic_dict.keys())[0], route=route)
     serve.set_traffic("endpoint", traffic_dict)
 
     def do_request(shard_key):
@@ -359,7 +363,7 @@ def test_name():
         return "hello1"
 
     serve.create_backend(backend, function)
-    serve.create_endpoint(endpoint, backend, route=route)
+    serve.create_endpoint(endpoint, backend=backend, route=route)
 
     assert requests.get("http://127.0.0.1:8001" + route).text == "hello1"
 
@@ -371,7 +375,7 @@ def test_name():
         return "hello2"
 
     serve.create_backend(backend, function)
-    serve.create_endpoint(endpoint, backend, route=route)
+    serve.create_endpoint(endpoint, backend=backend, route=route)
 
     assert requests.get("http://127.0.0.1:8001" + route).text == "hello1"
     assert requests.get("http://127.0.0.1:8002" + route).text == "hello2"
@@ -418,7 +422,7 @@ def test_parallel_start(serve_instance):
 
     serve.create_backend(
         "p:v0", LongStartingServable, config={"num_replicas": 2})
-    serve.create_endpoint("test-parallel", "p:v0")
+    serve.create_endpoint("test-parallel", backend="p:v0")
     handle = serve.get_handle("test-parallel")
 
     ray.get(handle.remote(), timeout=10)
@@ -433,8 +437,8 @@ def test_list_endpoints(serve_instance):
     serve.create_backend("backend", f)
     serve.create_backend("backend2", f)
     serve.create_endpoint(
-        "endpoint", "backend", "/api", methods=["GET", "POST"])
-    serve.create_endpoint("endpoint2", "backend2", methods=["POST"])
+        "endpoint", backend="backend", route="/api", methods=["GET", "POST"])
+    serve.create_endpoint("endpoint2", backend="backend2", methods=["POST"])
 
     endpoints = serve.list_endpoints()
     assert "endpoint" in endpoints
@@ -487,3 +491,19 @@ def test_list_backends(serve_instance):
 
     serve.delete_backend("backend2")
     assert len(serve.list_backends()) == 0
+
+
+def test_endpoint_input_validation(serve_instance):
+    serve.init()
+
+    def f():
+        pass
+
+    serve.create_backend("backend", f)
+    with pytest.raises(TypeError):
+        serve.create_endpoint("endpoint")
+    with pytest.raises(TypeError):
+        serve.create_endpoint("endpoint", route="/hello")
+    with pytest.raises(TypeError):
+        serve.create_endpoint("endpoint", backend=2)
+    serve.create_endpoint("endpoint", backend="backend")

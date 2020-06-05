@@ -363,52 +363,6 @@ class Worker:
             # operations into a transaction (or by implementing a custom
             # command that does all three things).
 
-    def _get_arguments_for_execution(self, function_name, serialized_args):
-        """Retrieve the arguments for the remote function.
-
-        This retrieves the values for the arguments to the remote function that
-        were passed in as object IDs. Arguments that were passed by value are
-        not changed. This is called by the worker that is executing the remote
-        function.
-
-        Args:
-            function_name (str): The name of the remote function whose
-                arguments are being retrieved.
-            serialized_args (List): The arguments to the function. These are
-                either strings representing serialized objects passed by value
-                or they are ray.ObjectIDs.
-
-        Returns:
-            The retrieved arguments in addition to the arguments that were
-                passed by value.
-
-        Raises:
-            RayError: This exception is raised if a task that
-                created one of the arguments failed.
-        """
-        arguments = [None] * len(serialized_args)
-        object_ids = []
-        object_indices = []
-
-        for (i, arg) in enumerate(serialized_args):
-            if isinstance(arg, ObjectID):
-                object_ids.append(arg)
-                object_indices.append(i)
-            else:
-                # pass the argument by value
-                arguments[i] = arg
-
-        # Get the objects from the local object store.
-        if len(object_ids) > 0:
-            values = self.get_objects(object_ids)
-            for i, value in enumerate(values):
-                if isinstance(value, RayError):
-                    raise value
-                else:
-                    arguments[object_indices[i]] = value
-
-        return ray.signature.recover_args(arguments)
-
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
 
@@ -1125,8 +1079,6 @@ def connect(node,
         driver_object_store_memory: Limit the amount of memory the driver can
             use in the object store when creating objects.
         job_id: The ID of job. If it's None, then we will generate one.
-        internal_config: Dictionary of (str,str) containing internal config
-            options to override the defaults.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"

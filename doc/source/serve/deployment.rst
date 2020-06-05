@@ -235,7 +235,7 @@ With the cluster now running, we can run a simple script to start Ray Serve and 
         return "hello world"
 
     serve.create_backend("hello_backend", hello)
-    serve.create_endpoint("hello_endpoint", "hello_backend", route="/hello")
+    serve.create_endpoint("hello_endpoint", backend="hello_backend", route="/hello")
 
 Save this script locally as ``deploy.py`` and run it on the head node using ``ray submit``:
 
@@ -290,9 +290,9 @@ You can run multiple serve instances on the same Ray cluster by providing a ``na
 
   # Create a backend that will be served on the second cluster.
   serve.create_backend("backend2", function)
-  serve.create_endpoint("endpoint2", "backend2", "/increment")
+  serve.create_endpoint("endpoint2", backend="backend2", route="/increment")
 
   # Switch back the the first cluster and create the same backend on it.
   serve.init(name="cluster1")
   serve.create_backend("backend1", function)
-  serve.create_endpoint("endpoint1", "backend1", "/increment")
+  serve.create_endpoint("endpoint1", backend="backend1", route="/increment")

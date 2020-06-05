@@ -145,7 +145,7 @@ async def test_system_metric_endpoints(serve_instance):
         1 / 0
 
     serve.create_backend("m:v1", test_error_counter)
-    serve.create_endpoint("test_metrics", "m:v1", "/measure")
+    serve.create_endpoint("test_metrics", backend="m:v1", route="/measure")
     serve.set_traffic("test_metrics", {"m:v1": 1})
 
     # Check metrics are exposed under http endpoint
