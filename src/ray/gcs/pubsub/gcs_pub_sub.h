@@ -112,10 +112,14 @@ class GcsPubSub {
 
   struct Channel {
     Channel() {}
-    /// Queue of subscribe/unsubscribe commands to this channel. Subscribe and
-    /// unsubscribe commands must alternate. A subscribe command can execute if
-    /// the callback index below is not set. An unsubscribe command can execute
-    /// if the callback index is set.
+    /// Queue of subscribe/unsubscribe commands to this channel. The queue
+    /// asserts that subscribe and unsubscribe commands alternate, i.e. there
+    /// cannot be more than one subscribe/unsubscribe command in a row. A
+    /// subscribe command can execute if the callback index below is not set,
+    /// i.e. this is the first subscribe command or the last unsubscribe
+    /// command's reply has been received. An unsubscribe command can execute
+    /// if the callback index is set, i.e. the last subscribe command's reply
+    /// has been received.
     std::deque<Command> command_queue;
     /// The current Redis callback index stored in the RedisContext for this
     /// channel. This callback index is used to identify any pubsub
