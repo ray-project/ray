@@ -219,7 +219,7 @@ public class MultiThreadingTest extends BaseTest {
       runnables[0].run();
     }
 
-    // Return true here to make the Ray.call returns an RayObject.
+    // Return true here to make the Ray.call returns an ObjectRef.
     return true;
   }
 

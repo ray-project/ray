@@ -31,7 +31,7 @@ public interface RayRuntime {
    * Store an object in the object store.
    *
    * @param obj The Java object to be stored.
-   * @return A RayObject instance that represents the in-store object.
+   * @return A ObjectRef instance that represents the in-store object.
    */
   <T> ObjectRef<T> put(T obj);
 
@@ -57,7 +57,7 @@ public interface RayRuntime {
    * Wait for a list of RayObjects to be locally available, until specified number of objects are
    * ready, or specified timeout has passed.
    *
-   * @param waitList A list of RayObject to wait for.
+   * @param waitList A list of ObjectRef to wait for.
    * @param numReturns The number of objects that should be returned.
    * @param timeoutMs The maximum time in milliseconds to wait before returning.
    * @return Two lists, one containing locally available objects, one containing the rest.

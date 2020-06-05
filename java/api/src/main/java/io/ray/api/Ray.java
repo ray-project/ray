@@ -56,7 +56,7 @@ public final class Ray extends RayCall {
    * Store an object in the object store.
    *
    * @param obj The Java object to be stored.
-   * @return A RayObject instance that represents the in-store object.
+   * @return A ObjectRef instance that represents the in-store object.
    */
   public static <T> ObjectRef<T> put(T obj) {
     return runtime.put(obj);
@@ -85,9 +85,9 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Get a list of objects by RayObjects from the object store.
+   * Get a list of objects by ObjectRefs from the object store.
    *
-   * @param objectList A list of RayObject to get.
+   * @param objectList A list of object refs .
    * @return A list of Java objects.
    */
   public static <T> List<T> get(List<ObjectRef<T>> objectList) {
@@ -104,7 +104,7 @@ public final class Ray extends RayCall {
    * Wait for a list of RayObjects to be locally available,
    * until specified number of objects are ready, or specified timeout has passed.
    *
-   * @param waitList A list of RayObject to wait for.
+   * @param waitList A list of object refs to wait for.
    * @param numReturns The number of objects that should be returned.
    * @param timeoutMs The maximum time in milliseconds to wait before returning.
    * @return Two lists, one containing locally available objects, one containing the rest.
@@ -118,7 +118,7 @@ public final class Ray extends RayCall {
    * A convenient helper method for Ray.wait. It will wait infinitely until
    * specified number of objects are locally available.
    *
-   * @param waitList A list of RayObject to wait for.
+   * @param waitList A list of object refs to wait for.
    * @param numReturns The number of objects that should be returned.
    * @return Two lists, one containing locally available objects, one containing the rest.
    */
@@ -130,7 +130,7 @@ public final class Ray extends RayCall {
    * A convenient helper method for Ray.wait. It will wait infinitely until
    * all objects are locally available.
    *
-   * @param waitList A list of RayObject to wait for.
+   * @param waitList A list of object refs to wait for.
    * @return Two lists, one containing locally available objects, one containing the rest.
    */
   public static <T> WaitResult<T> wait(List<ObjectRef<T>> waitList) {

@@ -172,7 +172,7 @@ public class RayCallGenerator extends BaseGenerator {
     if (forActorCreation) {
       returnType = "RayActor<A>";
     } else {
-      returnType = hasReturn ? "RayObject<R>" : "void";
+      returnType = hasReturn ? "ObjectRef<R>" : "void";
     }
 
     // 3) Construct the `argsDeclaration` part.
@@ -297,7 +297,7 @@ public class RayCallGenerator extends BaseGenerator {
     }
 
     String genericType = forActorCreation ? "" : " <R>";
-    String returnType = !forActorCreation ? "RayObject<R>" : "RayPyActor";
+    String returnType = !forActorCreation ? "ObjectRef<R>" : "RayPyActor";
     String funcName = forActorCreation ? "createActor" : "call";
     String internalCallFunc = forActorCreation ? "createActor" :
         forActor ? "callActor" : "call";
@@ -333,7 +333,7 @@ public class RayCallGenerator extends BaseGenerator {
     }
     String nextParameter = String.format("T%d t%d, ", pos, pos);
     dfs(pos + 1, numParams, cur + nextParameter, res);
-    nextParameter = String.format("RayObject<T%d> t%d, ", pos, pos);
+    nextParameter = String.format("ObjectRef<T%d> t%d, ", pos, pos);
     dfs(pos + 1, numParams, cur + nextParameter, res);
   }
 

@@ -24,7 +24,7 @@ package io.ray.api.function;
  *
  * {@code
  * // A.foo returns a string, so we have to set the returnType to String.class
- * RayObject<String> res = actor.call(new PyActorMethod<>("foo", String.class));
+ * ObjectRef<String> res = actor.call(new PyActorMethod<>("foo", String.class));
  * String x = res.get();
  * }
  * </pre>
