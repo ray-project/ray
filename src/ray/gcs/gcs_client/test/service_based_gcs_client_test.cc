@@ -835,6 +835,25 @@ TEST_F(ServiceBasedGcsClientTest, TestErrorInfo) {
   ASSERT_TRUE(ReportJobError(error_table_data));
 }
 
+TEST_F(ServiceBasedGcsClientTest, TestJobTableReSubscribe) {
+  // Test that subscription of the job table can still work when GCS server restarts.
+  JobID job_id = JobID::FromInt(1);
+  auto job_table_data = Mocker::GenJobTableData(job_id);
+
+  // Subscribe to finished jobs.
+  std::atomic<int> job_update_count(0);
+  auto subscribe = [&job_update_count](const JobID &id, const rpc::JobTableData &result) {
+    ++job_update_count;
+  };
+  ASSERT_TRUE(SubscribeToFinishedJobs(subscribe));
+
+  RestartGcsServer();
+
+  ASSERT_TRUE(AddJob(job_table_data));
+  ASSERT_TRUE(MarkJobFinished(job_id));
+  WaitPendingDone(job_update_count, 1);
+}
+
 TEST_F(ServiceBasedGcsClientTest, TestActorTableReSubscribe) {
   // Test that subscription of the actor table can still work when GCS server restarts.
   JobID job_id = JobID::FromInt(1);
@@ -879,25 +898,6 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableReSubscribe) {
   WaitPendingDone(actor1_update_count, 3);
   WaitPendingDone(actor2_update_count, 1);
   UnsubscribeActor(actor1_id);
-}
-
-TEST_F(ServiceBasedGcsClientTest, TestJobTableReSubscribe) {
-  // Test that subscription of the job table can still work when GCS server restarts.
-  JobID job_id = JobID::FromInt(1);
-  auto job_table_data = Mocker::GenJobTableData(job_id);
-
-  // Subscribe to finished jobs.
-  std::atomic<int> job_update_count(0);
-  auto subscribe = [&job_update_count](const JobID &id, const rpc::JobTableData &result) {
-    ++job_update_count;
-  };
-  ASSERT_TRUE(SubscribeToFinishedJobs(subscribe));
-
-  RestartGcsServer();
-
-  ASSERT_TRUE(AddJob(job_table_data));
-  ASSERT_TRUE(MarkJobFinished(job_id));
-  WaitPendingDone(job_update_count, 1);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestObjectTableReSubscribe) {

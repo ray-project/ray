@@ -911,7 +911,6 @@ class Node:
                 allow_graceful=allow_graceful)
 
         if ray_constants.PROCESS_TYPE_GCS_SERVER in self.all_processes:
-            # raise RuntimeError("kill process_infos is {}".format(self.all_processes))
             self._kill_process_type(
                 ray_constants.PROCESS_TYPE_GCS_SERVER,
                 check_alive=check_alive,

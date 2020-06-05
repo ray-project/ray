@@ -75,8 +75,8 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_antirez_redis",
         build_file = "//bazel:BUILD.redis",
-        url = "https://github.com/antirez/redis/archive/5.0.3.tar.gz",
-        sha256 = "7084e8bd9e5dedf2dbb2a1e1d862d0c46e66cc0872654bdc677f4470d28d84c5",
+        url = "https://github.com/antirez/redis/archive/5.0.9.tar.gz",
+        sha256 = "db9bf149e237126f9bb5f40fb72f33701819555d06f16e9a38b4949794214201",
         patches = [
             "//thirdparty/patches:hiredis-connect-rename.patch",
             "//thirdparty/patches:hiredis-windows-sigpipe.patch",

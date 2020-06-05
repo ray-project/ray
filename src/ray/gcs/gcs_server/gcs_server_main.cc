@@ -70,9 +70,11 @@ int main(int argc, char *argv[]) {
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
   // We should stop the service and remove the local socket file.
-  auto handler = [](
-      const boost::system::error_code &error, int signal_number) {
+  auto handler = [&main_service, &gcs_server](const boost::system::error_code &error,
+                                              int signal_number) {
     RAY_LOG(INFO) << "GCS server received SIGTERM, shutting down...";
+    gcs_server.Stop();
+    main_service.stop();
   };
   boost::asio::signal_set signals(main_service);
 #ifdef _WIN32

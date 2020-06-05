@@ -57,8 +57,8 @@ class GcsServerTest : public ::testing::Test {
   void TearDown() override {
     gcs_server_->Stop();
     io_service_.stop();
+    gcs_server_.reset();
     thread_io_service_->join();
-    thread_gcs_server_->join();
   }
 
   bool AddJob(const rpc::AddJobRequest &request) {
@@ -390,7 +390,6 @@ class GcsServerTest : public ::testing::Test {
   // Gcs server
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
-  std::unique_ptr<std::thread> thread_gcs_server_;
   boost::asio::io_service io_service_;
 
   // Gcs client

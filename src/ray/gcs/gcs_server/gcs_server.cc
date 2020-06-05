@@ -28,7 +28,8 @@
 namespace ray {
 namespace gcs {
 
-GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config, boost::asio::io_service &main_service)
+GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
+                     boost::asio::io_service &main_service)
     : config_(config),
       main_service_(main_service),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
