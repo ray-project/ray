@@ -297,6 +297,44 @@ class SSHCommandRunner:
             self.ssh_private_key, self.ssh_user, self.ssh_ip)
 
 
+class DockerCommandRunner(SSHCommandRunner):
+    def __init__(self, container_name, log_prefix, node_id, provider,
+                 auth_config, cluster_name, process_runner, use_internal_ip):
+        self.ssh_command_runner = SSHCommandRunner(
+            log_prefix, node_id, provider, auth_config, cluster_name,
+            process_runner, use_internal_ip)
+        self.docker_name = container_name
+
+    def run(self,
+            cmd,
+            timeout=120,
+            allocate_tty=False,
+            exit_on_fail=False,
+            port_forward=None,
+            with_output=False):
+        return self.ssh_command_runner.run(cmd, timeout, allocate_tty,
+                                           exit_on_fail, port_forward,
+                                           with_output)
+
+    def run_rsync_up(self, source, target):
+        self.ssh_command_runner.run_rsync_up(source, target)
+        self.ssh_command_runner.run("docker cp {} {}:{}".format(
+            target, self.docker_name, self.clean_squiggly(target)))
+
+    def run_rsync_down(self, source, target):
+        self.ssh_command_runner.run("docker cp {}:{} {}".format(
+            self.docker_name, self.clean_squiggly(source), source))
+        self.ssh_command_runner.run_rsync_down(source, target)
+
+    def remote_shell_command_str(self):
+        return "ssh -tt -o IdentitiesOnly=yes -i {} {}@{} docker exec -it {} /bin/bash\n".format(
+            self.ssh_private_key, self.ssh_user, self.ssh_ip, self.docker_name)
+
+    def clean_squiggly(self, string):
+        return string.replace(
+            "~", "`docker exec ray_docker env | grep HOME | cut -d'=' -f2`")
+
+
 class NodeUpdater:
     """A process for syncing files and running init commands on a node."""
 
