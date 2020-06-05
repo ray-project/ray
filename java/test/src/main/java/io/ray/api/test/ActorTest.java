@@ -4,7 +4,7 @@ import com.google.common.collect.ImmutableList;
 import io.ray.api.Ray;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
-import io.ray.api.RayPyActor;
+import io.ray.api.PyActorHandle;
 import io.ray.api.TestUtils;
 import io.ray.api.exception.UnreconstructableException;
 import io.ray.api.id.ActorId;
@@ -50,7 +50,7 @@ public class ActorTest extends BaseTest {
     ActorHandle<Counter> actor = Ray.createActor(Counter::new, 1);
     Assert.assertNotEquals(actor.getId(), ActorId.NIL);
     // A java actor is not a python actor
-    Assert.assertFalse(actor instanceof RayPyActor);
+    Assert.assertFalse(actor instanceof PyActorHandle);
     // Test calling an actor
     Assert.assertEquals(Integer.valueOf(1), actor.call(Counter::getValue).get());
     actor.call(Counter::increase, 1);

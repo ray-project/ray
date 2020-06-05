@@ -6,7 +6,7 @@ import com.google.common.collect.ImmutableList;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
-import io.ray.api.RayPyActor;
+import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;
 import io.ray.api.exception.RayException;
 import io.ray.api.function.PyActorClass;
@@ -127,7 +127,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public ObjectRef callActor(RayPyActor pyActor, PyActorMethod pyActorMethod, Object... args) {
+  public ObjectRef callActor(PyActorHandle pyActor, PyActorMethod pyActorMethod, Object... args) {
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActor.getModuleName(),
         pyActor.getClassName(), pyActorMethod.methodName);
     // Python functions always have a return value, even if it's `None`.
@@ -146,13 +146,13 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public RayPyActor createActor(PyActorClass pyActorClass, Object[] args,
-      ActorCreationOptions options) {
+  public PyActorHandle createActor(PyActorClass pyActorClass, Object[] args,
+                                   ActorCreationOptions options) {
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
         pyActorClass.moduleName,
         pyActorClass.className,
         PYTHON_INIT_METHOD_NAME);
-    return (RayPyActor) createActorImpl(functionDescriptor, args, options);
+    return (PyActorHandle) createActorImpl(functionDescriptor, args, options);
   }
 
 

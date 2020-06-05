@@ -3,7 +3,7 @@ package io.ray.api.runtime;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
-import io.ray.api.RayPyActor;
+import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
@@ -128,7 +128,7 @@ public interface RayRuntime {
    * @param args Arguments of the function.
    * @return The result object.
    */
-  ObjectRef callActor(RayPyActor pyActor, PyActorMethod pyActorMethod, Object[] args);
+  ObjectRef callActor(PyActorHandle pyActor, PyActorMethod pyActorMethod, Object[] args);
 
   /**
    * Create an actor on a remote node.
@@ -150,8 +150,8 @@ public interface RayRuntime {
    * @param options The options for creating actor.
    * @return A handle to the actor.
    */
-  RayPyActor createActor(PyActorClass pyActorClass, Object[] args,
-                         ActorCreationOptions options);
+  PyActorHandle createActor(PyActorClass pyActorClass, Object[] args,
+                            ActorCreationOptions options);
 
   RuntimeContext getRuntimeContext();
 

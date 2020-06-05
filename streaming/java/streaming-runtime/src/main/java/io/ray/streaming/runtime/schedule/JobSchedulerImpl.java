@@ -4,7 +4,7 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
-import io.ray.api.RayPyActor;
+import io.ray.api.PyActorHandle;
 import io.ray.api.function.PyActorMethod;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.jobgraph.JobGraph;
@@ -65,7 +65,7 @@ public class JobSchedulerImpl implements JobScheduler {
           case PYTHON:
             byte[] workerContextBytes = buildPythonWorkerContext(
                 taskId, executionGraphPb, jobConfig);
-            waits.add(((RayPyActor)worker).call(new PyActorMethod("init", Object.class),
+            waits.add(((PyActorHandle)worker).call(new PyActorMethod("init", Object.class),
                 workerContextBytes));
             break;
           default:

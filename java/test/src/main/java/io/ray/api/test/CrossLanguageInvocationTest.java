@@ -5,7 +5,7 @@ import com.google.common.collect.ImmutableMap;
 import io.ray.api.Ray;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
-import io.ray.api.RayPyActor;
+import io.ray.api.PyActorHandle;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyRemoteFunction;
@@ -137,7 +137,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
 
   @Test
   public void testCallingPythonActor() {
-    RayPyActor actor = Ray.createActor(new PyActorClass(PYTHON_MODULE, "Counter"), "1".getBytes());
+    PyActorHandle actor = Ray.createActor(new PyActorClass(PYTHON_MODULE, "Counter"), "1".getBytes());
     ObjectRef<byte[]> res = actor.call(
         new PyActorMethod<>("increase", byte[].class),
         "1".getBytes());
@@ -175,7 +175,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
         actorHandleBytes);
     Assert.assertEquals(res.get(), "12".getBytes());
     // Create a python actor, and pass actor handle to python.
-    RayPyActor pyActor = Ray.createActor(
+    PyActorHandle pyActor = Ray.createActor(
         new PyActorClass(PYTHON_MODULE, "Counter"), "1".getBytes());
     Preconditions.checkState(pyActor instanceof NativeActorHandle);
     actorHandleBytes = ((NativeActorHandle) pyActor).toBytes();
