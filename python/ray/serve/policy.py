@@ -17,7 +17,7 @@ class EndpointPolicy:
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    async def flush(self, endpoint_queue, backend_queues):
+    def flush(self, endpoint_queue, backend_queues):
         """Flush the endpoint queue into the given backend queues.
 
         This method should assign each query in the endpoint_queue to a
@@ -27,8 +27,8 @@ class EndpointPolicy:
         knows which backend_queues to flush.
 
         Arguments:
-            endpoint_queue: asyncio.Queue containing queries to assign.
-            backend_queues: Dict(str, asyncio.Queue) mapping backend tags to
+            endpoint_queue: deque containing queries to assign.
+            backend_queues: Dict(str, deque) mapping backend tags to
             their corresponding query queues.
 
         Returns:
@@ -51,19 +51,20 @@ class RandomEndpointPolicy(EndpointPolicy):
         self.backend_names, self.backend_weights = zip(
             *sorted(traffic_dict.items()))
 
-    async def flush(self, endpoint_queue, backend_queues):
+    def flush(self, endpoint_queue, backend_queues):
         if len(self.backend_names) == 0:
             logger.info("No backends to assign traffic to.")
             return set()
 
         assigned_backends = set()
-        while endpoint_queue.qsize():
-            query = await endpoint_queue.get()
+        while len(endpoint_queue) > 0:
+            query = endpoint_queue.pop()
             if query.shard_key is None:
                 rstate = np.random
             else:
                 sha256_seed = sha256(query.shard_key.encode("utf-8"))
                 seed = np.frombuffer(sha256_seed.digest(), dtype=np.uint32)
+                # Note(simon): This constructor takes 100+us, maybe cache this?
                 rstate = np.random.RandomState(seed)
 
             chosen_backend = rstate.choice(

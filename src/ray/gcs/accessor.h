@@ -378,6 +378,12 @@ class ObjectInfoAccessor {
   /// \return Status
   virtual Status AsyncUnsubscribeToLocations(const ObjectID &object_id) = 0;
 
+  /// Reestablish subscription.
+  /// This should be called when GCS server restarts from a failure.
+  ///
+  /// \return Status
+  virtual Status AsyncReSubscribe() = 0;
+
  protected:
   ObjectInfoAccessor() = default;
 };

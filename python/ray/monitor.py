@@ -6,7 +6,8 @@ import traceback
 import json
 
 import ray
-from ray.autoscaler.autoscaler import LoadMetrics, StandardAutoscaler
+from ray.autoscaler.autoscaler import StandardAutoscaler
+from ray.autoscaler.load_metrics import LoadMetrics
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
@@ -71,11 +72,22 @@ class Monitor:
         """
         self.primary_subscribe_client.subscribe(channel)
 
+    def psubscribe(self, pattern):
+        """Subscribe to the given pattern on the primary Redis shard.
+
+        Args:
+            pattern (str): The pattern to subscribe to.
+
+        Raises:
+            Exception: An exception is raised if the subscription fails.
+        """
+        self.primary_subscribe_client.psubscribe(pattern)
+
     def xray_heartbeat_batch_handler(self, unused_channel, data):
         """Handle an xray heartbeat batch message from Redis."""
 
-        gcs_entries = ray.gcs_utils.GcsEntry.FromString(data)
-        heartbeat_data = gcs_entries.entries[0]
+        pub_message = ray.gcs_utils.PubSubMessage.FromString(data)
+        heartbeat_data = pub_message.data
 
         message = ray.gcs_utils.HeartbeatBatchTableData.FromString(
             heartbeat_data)
@@ -110,8 +122,8 @@ class Monitor:
             unused_channel: The message channel.
             data: The message data.
         """
-        gcs_entries = ray.gcs_utils.GcsEntry.FromString(data)
-        job_data = gcs_entries.entries[0]
+        pub_message = ray.gcs_utils.PubSubMessage.FromString(data)
+        job_data = pub_message.data
         message = ray.gcs_utils.JobTableData.FromString(job_data)
         job_id = message.job_id
         if message.is_dead:
@@ -155,14 +167,15 @@ class Monitor:
                     break
 
                 # Parse the message.
+                pattern = message["pattern"]
                 channel = message["channel"]
                 data = message["data"]
 
                 # Determine the appropriate message handler.
-                if channel == ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL:
+                if pattern == ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN:
                     # Similar functionality as raylet info channel
                     message_handler = self.xray_heartbeat_batch_handler
-                elif channel == ray.gcs_utils.XRAY_JOB_CHANNEL:
+                elif pattern == ray.gcs_utils.XRAY_JOB_PATTERN:
                     # Handles driver death.
                     message_handler = self.xray_job_notification_handler
                 elif (channel ==
@@ -199,8 +212,8 @@ class Monitor:
         clients and cleaning up state accordingly.
         """
         # Initialize the subscription channel.
-        self.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
-        self.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
+        self.psubscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN)
+        self.psubscribe(ray.gcs_utils.XRAY_JOB_PATTERN)
 
         if self.autoscaler:
             self.subscribe(

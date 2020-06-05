@@ -214,6 +214,12 @@ void RayLog::ShutDownRayLog() {
 }
 
 void RayLog::InstallFailureSignalHandler() {
+#ifdef _WIN32
+  // If process fails to initialize, don't display an error window.
+  SetErrorMode(GetErrorMode() | SEM_FAILCRITICALERRORS);
+  // If process crashes, don't display an error window.
+  SetErrorMode(GetErrorMode() | SEM_NOGPFAULTERRORBOX);
+#endif
 #ifdef RAY_USE_GLOG
   if (is_failure_signal_handler_installed_) {
     return;

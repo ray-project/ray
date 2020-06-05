@@ -79,13 +79,44 @@ class GlobalStateAccessor {
   /// protobuf function.
   std::unique_ptr<std::string> GetObjectInfo(const ObjectID &object_id);
 
+  /// Get information of a node resource from GCS Service.
+  ///
+  /// \param node_id The ID of node to look up in the GCS Service.
+  /// \return node resource map info. To support multi-language, we serialize each
+  /// ResourceTableData and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::string GetNodeResourceInfo(const ClientID &node_id);
+
+  /// Get information of all actors from GCS Service.
+  ///
+  /// \return All actor info. To support multi-language, we serialize each ActorTableData
+  /// and return the serialized string. Where used, it needs to be deserialized with
+  /// protobuf function.
+  std::vector<std::string> GetAllActorInfo();
+
+  /// Get information of an actor from GCS Service.
+  ///
+  /// \param actor_id The ID of actor to look up in the GCS Service.
+  /// \return Actor info. To support multi-language, we serialize each ActorTableData and
+  /// return the serialized string. Where used, it needs to be deserialized with
+  /// protobuf function.
+  std::unique_ptr<std::string> GetActorInfo(const ActorID &actor_id);
+
+  /// Get checkpoint id of an actor from GCS Service.
+  ///
+  /// \param actor_id The ID of actor to look up in the GCS Service.
+  /// \return Actor checkpoint id. To support multi-language, we serialize each
+  /// ActorCheckpointIdData and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::unique_ptr<std::string> GetActorCheckpointId(const ActorID &actor_id);
+
  private:
-  /// MultiItem tranformation helper in template style.
+  /// MultiItem transformation helper in template style.
   ///
   /// \return MultiItemCallback within in rpc type DATA.
   template <class DATA>
-  MultiItemCallback<DATA> TransformForAccessorCallback(std::vector<std::string> &data_vec,
-                                                       std::promise<bool> &promise) {
+  MultiItemCallback<DATA> TransformForMultiItemCallback(
+      std::vector<std::string> &data_vec, std::promise<bool> &promise) {
     return [&data_vec, &promise](const Status &status, const std::vector<DATA> &result) {
       RAY_CHECK_OK(status);
       std::transform(result.begin(), result.end(), std::back_inserter(data_vec),
@@ -94,7 +125,21 @@ class GlobalStateAccessor {
     };
   }
 
- private:
+  /// OptionalItem transformation helper in template style.
+  ///
+  /// \return OptionalItemCallback within in rpc type DATA.
+  template <class DATA>
+  OptionalItemCallback<DATA> TransformForOptionalItemCallback(
+      std::unique_ptr<std::string> &data, std::promise<bool> &promise) {
+    return [&data, &promise](const Status &status, const boost::optional<DATA> &result) {
+      RAY_CHECK_OK(status);
+      if (result) {
+        data.reset(new std::string(result->SerializeAsString()));
+      }
+      promise.set_value(true);
+    };
+  }
+
   /// Whether this client is connected to gcs server.
   bool is_connected_{false};
 

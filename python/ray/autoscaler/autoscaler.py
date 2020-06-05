@@ -1,8 +1,6 @@
 from collections import defaultdict
 import copy
-import hashlib
 import json
-import jsonschema
 import logging
 import math
 import numpy as np
@@ -12,251 +10,23 @@ import threading
 import time
 import yaml
 
-import ray
-from ray.autoscaler.docker import dockerize_if_needed
-from ray.autoscaler.node_provider import get_node_provider, \
-    get_default_config
+from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
-                                 TAG_RAY_NODE_NAME, STATUS_UP_TO_DATE,
-                                 STATUS_UNINITIALIZED, NODE_TYPE_WORKER)
+                                 STATUS_UP_TO_DATE, NODE_TYPE_WORKER)
 from ray.autoscaler.updater import NodeUpdaterThread
+from ray.autoscaler.node_launcher import NodeLauncher
+from ray.autoscaler.util import ConcurrentCounter, validate_config, \
+    with_head_node_ip, hash_launch_conf, hash_runtime_conf
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
     AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S, \
-    AUTOSCALER_RESOURCE_REQUEST_CHANNEL, MEMORY_RESOURCE_UNIT_BYTES
+    AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 import ray.services as services
 from ray.worker import global_worker
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
-
-REQUIRED, OPTIONAL = True, False
-RAY_SCHEMA_PATH = os.path.join(
-    os.path.dirname(ray.autoscaler.__file__), "ray-schema.json")
-
-NODE_TYPE_CONFIG_KEYS = {"workers": "worker_nodes", "head": "head_node"}
-
-
-class LoadMetrics:
-    """Container for cluster load metrics.
-
-    Metrics here are updated from raylet heartbeats. The autoscaler
-    queries these metrics to determine when to scale up, and which nodes
-    can be removed.
-    """
-
-    def __init__(self):
-        self.last_used_time_by_ip = {}
-        self.last_heartbeat_time_by_ip = {}
-        self.static_resources_by_ip = {}
-        self.dynamic_resources_by_ip = {}
-        self.resource_load_by_ip = {}
-        self.local_ip = services.get_node_ip_address()
-
-    def update(self, ip, static_resources, dynamic_resources, resource_load):
-        self.resource_load_by_ip[ip] = resource_load
-        self.static_resources_by_ip[ip] = static_resources
-
-        # We are not guaranteed to have a corresponding dynamic resource for
-        # every static resource because dynamic resources are based on the
-        # available resources in the heartbeat, which does not exist if it is
-        # zero. Thus, we have to update dynamic resources here.
-        dynamic_resources_update = dynamic_resources.copy()
-        for resource_name, capacity in static_resources.items():
-            if resource_name not in dynamic_resources_update:
-                dynamic_resources_update[resource_name] = 0.0
-        self.dynamic_resources_by_ip[ip] = dynamic_resources_update
-
-        now = time.time()
-        if ip not in self.last_used_time_by_ip or \
-                static_resources != dynamic_resources:
-            self.last_used_time_by_ip[ip] = now
-        self.last_heartbeat_time_by_ip[ip] = now
-
-    def mark_active(self, ip):
-        assert ip is not None, "IP should be known at this time"
-        logger.info("Node {} is newly setup, treating as active".format(ip))
-        self.last_heartbeat_time_by_ip[ip] = time.time()
-
-    def prune_active_ips(self, active_ips):
-        active_ips = set(active_ips)
-        active_ips.add(self.local_ip)
-
-        def prune(mapping):
-            unwanted = set(mapping) - active_ips
-            for unwanted_key in unwanted:
-                logger.info("LoadMetrics: "
-                            "Removed mapping: {} - {}".format(
-                                unwanted_key, mapping[unwanted_key]))
-                del mapping[unwanted_key]
-            if unwanted:
-                logger.info(
-                    "LoadMetrics: "
-                    "Removed {} stale ip mappings: {} not in {}".format(
-                        len(unwanted), unwanted, active_ips))
-            assert not (unwanted & set(mapping))
-
-        prune(self.last_used_time_by_ip)
-        prune(self.static_resources_by_ip)
-        prune(self.dynamic_resources_by_ip)
-        prune(self.resource_load_by_ip)
-        prune(self.last_heartbeat_time_by_ip)
-
-    def approx_workers_used(self):
-        return self._info()["NumNodesUsed"]
-
-    def num_workers_connected(self):
-        return self._info()["NumNodesConnected"]
-
-    def get_resource_usage(self):
-        num_nodes = len(self.static_resources_by_ip)
-        nodes_used = 0.0
-        num_nonidle = 0
-        has_saturated_node = False
-        resources_used = {}
-        resources_total = {}
-        for ip, max_resources in self.static_resources_by_ip.items():
-            avail_resources = self.dynamic_resources_by_ip[ip]
-            resource_load = self.resource_load_by_ip[ip]
-            max_frac = 0.0
-            for resource_id, amount in resource_load.items():
-                if amount > 0:
-                    has_saturated_node = True
-                    max_frac = 1.0  # the resource is saturated
-            for resource_id, amount in max_resources.items():
-                used = amount - avail_resources[resource_id]
-                if resource_id not in resources_used:
-                    resources_used[resource_id] = 0.0
-                    resources_total[resource_id] = 0.0
-                resources_used[resource_id] += used
-                resources_total[resource_id] += amount
-                used = max(0, used)
-                if amount > 0:
-                    frac = used / float(amount)
-                    if frac > max_frac:
-                        max_frac = frac
-            nodes_used += max_frac
-            if max_frac > 0:
-                num_nonidle += 1
-
-        # If any nodes have a queue buildup, assume all non-idle nodes are 100%
-        # busy, plus the head node. This guards against the case of not scaling
-        # up due to poor task packing.
-        if has_saturated_node:
-            nodes_used = min(num_nonidle + 1.0, num_nodes)
-
-        return nodes_used, resources_used, resources_total
-
-    def info_string(self):
-        return ", ".join(
-            ["{}={}".format(k, v) for k, v in sorted(self._info().items())])
-
-    def _info(self):
-        nodes_used, resources_used, resources_total = self.get_resource_usage()
-
-        now = time.time()
-        idle_times = [now - t for t in self.last_used_time_by_ip.values()]
-        heartbeat_times = [
-            now - t for t in self.last_heartbeat_time_by_ip.values()
-        ]
-        most_delayed_heartbeats = sorted(
-            self.last_heartbeat_time_by_ip.items(),
-            key=lambda pair: pair[1])[:5]
-        most_delayed_heartbeats = {
-            ip: (now - t)
-            for ip, t in most_delayed_heartbeats
-        }
-
-        def format_resource(key, value):
-            if key in ["object_store_memory", "memory"]:
-                return "{} GiB".format(
-                    round(value * MEMORY_RESOURCE_UNIT_BYTES / 1e9, 2))
-            else:
-                return round(value, 2)
-
-        return {
-            "ResourceUsage": ", ".join([
-                "{}/{} {}".format(
-                    format_resource(rid, resources_used[rid]),
-                    format_resource(rid, resources_total[rid]), rid)
-                for rid in sorted(resources_used)
-            ]),
-            "NumNodesConnected": len(self.static_resources_by_ip),
-            "NumNodesUsed": round(nodes_used, 2),
-            "NodeIdleSeconds": "Min={} Mean={} Max={}".format(
-                int(np.min(idle_times)) if idle_times else -1,
-                int(np.mean(idle_times)) if idle_times else -1,
-                int(np.max(idle_times)) if idle_times else -1),
-            "TimeSinceLastHeartbeat": "Min={} Mean={} Max={}".format(
-                int(np.min(heartbeat_times)) if heartbeat_times else -1,
-                int(np.mean(heartbeat_times)) if heartbeat_times else -1,
-                int(np.max(heartbeat_times)) if heartbeat_times else -1),
-            "MostDelayedHeartbeats": most_delayed_heartbeats,
-        }
-
-
-class NodeLauncher(threading.Thread):
-    def __init__(self, provider, queue, pending, index=None, *args, **kwargs):
-        self.queue = queue
-        self.pending = pending
-        self.provider = provider
-        self.index = str(index) if index is not None else ""
-        super(NodeLauncher, self).__init__(*args, **kwargs)
-
-    def _launch_node(self, config, count):
-        worker_filter = {TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER}
-        before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
-        launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"])
-        self.log("Launching {} nodes.".format(count))
-        self.provider.create_node(
-            config["worker_nodes"], {
-                TAG_RAY_NODE_NAME: "ray-{}-worker".format(
-                    config["cluster_name"]),
-                TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER,
-                TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
-                TAG_RAY_LAUNCH_CONFIG: launch_hash,
-            }, count)
-        after = self.provider.non_terminated_nodes(tag_filters=worker_filter)
-        if set(after).issubset(before):
-            self.log("No new nodes reported after node creation.")
-
-    def run(self):
-        while True:
-            config, count = self.queue.get()
-            self.log("Got {} nodes to launch.".format(count))
-            try:
-                self._launch_node(config, count)
-            except Exception:
-                logger.exception("Launch failed")
-            finally:
-                self.pending.dec(count)
-
-    def log(self, statement):
-        prefix = "NodeLauncher{}:".format(self.index)
-        logger.info(prefix + " {}".format(statement))
-
-
-class ConcurrentCounter:
-    def __init__(self):
-        self._value = 0
-        self._lock = threading.Lock()
-
-    def inc(self, count):
-        with self._lock:
-            self._value += count
-            return self._value
-
-    def dec(self, count):
-        with self._lock:
-            assert self._value >= count, "counter cannot go negative"
-            self._value -= count
-            return self._value
-
-    @property
-    def value(self):
-        with self._lock:
-            return self._value
 
 
 class StandardAutoscaler:
@@ -307,7 +77,7 @@ class StandardAutoscaler:
 
         # Node launchers
         self.launch_queue = queue.Queue()
-        self.num_launches_pending = ConcurrentCounter()
+        self.pending_launches = ConcurrentCounter()
         max_batches = math.ceil(
             max_concurrent_launches / float(max_launch_batch))
         for i in range(int(max_batches)):
@@ -315,7 +85,7 @@ class StandardAutoscaler:
                 provider=self.provider,
                 queue=self.launch_queue,
                 index=i,
-                pending=self.num_launches_pending)
+                pending=self.pending_launches)
             node_launcher.daemon = True
             node_launcher.start()
 
@@ -356,7 +126,6 @@ class StandardAutoscaler:
             return
 
         self.last_update_time = now
-        num_pending = self.num_launches_pending.value
         nodes = self.workers()
         self.load_metrics.prune_active_ips(
             [self.provider.internal_ip(node_id) for node_id in nodes])
@@ -403,14 +172,15 @@ class StandardAutoscaler:
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
 
-        # Launch new nodes if needed
+        # Launch additional nodes of the default type, if still needed.
+        num_pending = self.pending_launches.value
         num_workers = len(nodes) + num_pending
         if num_workers < target_workers:
             max_allowed = min(self.max_launch_batch,
                               self.max_concurrent_launches - num_pending)
 
             num_launches = min(max_allowed, target_workers - num_workers)
-            self.launch_new_node(num_launches)
+            self.launch_new_node(num_launches, instance_type=None)
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
         elif self.load_metrics.num_workers_connected() >= target_workers:
@@ -603,12 +373,12 @@ class StandardAutoscaler:
             return False
         return True
 
-    def launch_new_node(self, count):
+    def launch_new_node(self, count, instance_type):
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
-        self.num_launches_pending.inc(count)
+        self.pending_launches.inc(instance_type, count)
         config = copy.deepcopy(self.config)
-        self.launch_queue.put((config, count))
+        self.launch_queue.put((config, count, instance_type))
 
     def workers(self):
         return self.provider.non_terminated_nodes(
@@ -621,8 +391,8 @@ class StandardAutoscaler:
 
     def info_string(self, nodes, target):
         suffix = ""
-        if self.num_launches_pending:
-            suffix += " ({} pending)".format(self.num_launches_pending.value)
+        if self.pending_launches:
+            suffix += " ({} pending)".format(self.pending_launches.value)
         if self.updaters:
             suffix += " ({} updating)".format(len(self.updaters))
         if self.num_failed_updates:
@@ -650,95 +420,8 @@ class StandardAutoscaler:
             len(nodes)))
 
 
-def validate_config(config):
-    """Required Dicts indicate that no extra fields can be introduced."""
-    if not isinstance(config, dict):
-        raise ValueError("Config {} is not a dictionary".format(config))
-
-    with open(RAY_SCHEMA_PATH) as f:
-        schema = json.load(f)
-    try:
-        jsonschema.validate(config, schema)
-    except jsonschema.ValidationError as e:
-        raise jsonschema.ValidationError(message=e.message) from None
-
-
-def fillout_defaults(config):
-    defaults = get_default_config(config["provider"])
-    defaults.update(config)
-    merge_setup_commands(defaults)
-    dockerize_if_needed(defaults)
-    defaults["auth"] = defaults.get("auth", {})
-    return defaults
-
-
-def merge_setup_commands(config):
-    config["head_setup_commands"] = (
-        config["setup_commands"] + config["head_setup_commands"])
-    config["worker_setup_commands"] = (
-        config["setup_commands"] + config["worker_setup_commands"])
-    return config
-
-
-def with_head_node_ip(cmds):
-    head_ip = services.get_node_ip_address()
-    out = []
-    for cmd in cmds:
-        out.append("export RAY_HEAD_IP={}; {}".format(head_ip, cmd))
-    return out
-
-
-def hash_launch_conf(node_conf, auth):
-    hasher = hashlib.sha1()
-    hasher.update(
-        json.dumps([node_conf, auth], sort_keys=True).encode("utf-8"))
-    return hasher.hexdigest()
-
-
-# Cache the file hashes to avoid rescanning it each time. Also, this avoids
-# inadvertently restarting workers if the file mount content is mutated on the
-# head node.
-_hash_cache = {}
-
-
-def hash_runtime_conf(file_mounts, extra_objs):
-    hasher = hashlib.sha1()
-
-    def add_content_hashes(path):
-        def add_hash_of_file(fpath):
-            with open(fpath, "rb") as f:
-                for chunk in iter(lambda: f.read(2**20), b""):
-                    hasher.update(chunk)
-
-        path = os.path.expanduser(path)
-        if os.path.isdir(path):
-            dirs = []
-            for dirpath, _, filenames in os.walk(path):
-                dirs.append((dirpath, sorted(filenames)))
-            for dirpath, filenames in sorted(dirs):
-                hasher.update(dirpath.encode("utf-8"))
-                for name in filenames:
-                    hasher.update(name.encode("utf-8"))
-                    fpath = os.path.join(dirpath, name)
-                    add_hash_of_file(fpath)
-        else:
-            add_hash_of_file(path)
-
-    conf_str = (json.dumps(file_mounts, sort_keys=True).encode("utf-8") +
-                json.dumps(extra_objs, sort_keys=True).encode("utf-8"))
-
-    # Important: only hash the files once. Otherwise, we can end up restarting
-    # workers if the files were changed and we re-hashed them.
-    if conf_str not in _hash_cache:
-        hasher.update(conf_str)
-        for local_path in sorted(file_mounts.values()):
-            add_content_hashes(local_path)
-        _hash_cache[conf_str] = hasher.hexdigest()
-
-    return _hash_cache[conf_str]
-
-
-def request_resources(num_cpus=None, num_gpus=None):
+# Note: this is an (experimental) user-facing API, do not move.
+def request_resources(num_cpus=None, num_gpus=None, bundles=None):
     """Remotely request some CPU or GPU resources from the autoscaler.
 
     This function is to be called e.g. on a node before submitting a bunch of
@@ -761,7 +444,6 @@ def request_resources(num_cpus=None, num_gpus=None):
     r = services.create_redis_client(
         global_worker.node.redis_address,
         password=global_worker.node.redis_password)
-    assert isinstance(num_cpus, int)
     if num_cpus > 0:
         r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
                   json.dumps({
