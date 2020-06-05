@@ -13,6 +13,22 @@ COPTS = ["-DRAY_USE_GLOG"] + select({
     ],
 })
 
+PYX_COPTS = [] + select({
+    "@bazel_tools//src/conditions:windows": [
+        "/FI" + "src/shims/windows/python-nondebug.h",
+    ],
+    "//conditions:default": [
+    ],
+})
+
+PYX_SRCS = [] + select({
+    "@bazel_tools//src/conditions:windows": [
+        "src/shims/windows/python-nondebug.h",
+    ],
+    "//conditions:default": [
+    ],
+})
+
 def flatbuffer_py_library(name, srcs, outs, out_prefix, includes = [], include_paths = []):
     flatbuffer_library_public(
         name = name,
