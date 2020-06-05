@@ -420,11 +420,16 @@ class RolloutWorker(ParallelIteratorWorker):
             remote_env_batch_wait_ms=remote_env_batch_wait_ms)
         self.num_envs = num_envs
 
+        # `truncate_episodes`: Allow a batch to contain more than one episode
+        # (fragments) and always make the batch `rollout_fragment_length`
+        # long.
         if self.batch_mode == "truncate_episodes":
-            pack_episodes = True
+            pack = True
+        # `complete_episodes`: Never cut episodes and sampler will return
+        # exactly one (complete) episode per poll.
         elif self.batch_mode == "complete_episodes":
-            rollout_fragment_length = float("inf")  # never cut episodes
-            pack_episodes = False  # sampler will return 1 episode per poll
+            rollout_fragment_length = float("inf")
+            pack = False
         else:
             raise ValueError("Unsupported batch mode: {}".format(
                 self.batch_mode))
@@ -450,37 +455,38 @@ class RolloutWorker(ParallelIteratorWorker):
 
         if sample_async:
             self.sampler = AsyncSampler(
-                self,
-                self.async_env,
-                self.policy_map,
-                policy_mapping_fn,
-                self.preprocessors,
-                self.filters,
-                clip_rewards,
-                rollout_fragment_length,
-                self.callbacks,
+                worker=self,
+                env=self.async_env,
+                policies=self.policy_map,
+                policy_mapping_fn=policy_mapping_fn,
+                preprocessors=self.preprocessors,
+                obs_filters=self.filters,
+                clip_rewards=clip_rewards,
+                rollout_fragment_length=rollout_fragment_length,
+                callbacks=self.callbacks,
                 horizon=episode_horizon,
-                pack=pack_episodes,
+                pack_multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
                 blackhole_outputs="simulation" in input_evaluation,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn)
+            # Start the Sampler thread.
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
-                self,
-                self.async_env,
-                self.policy_map,
-                policy_mapping_fn,
-                self.preprocessors,
-                self.filters,
-                clip_rewards,
-                rollout_fragment_length,
-                self.callbacks,
+                worker=self,
+                env=self.async_env,
+                policies=self.policy_map,
+                policy_mapping_fn=policy_mapping_fn,
+                preprocessors=self.preprocessors,
+                obs_filters=self.filters,
+                clip_rewards=clip_rewards,
+                rollout_fragment_length=rollout_fragment_length,
+                callbacks=self.callbacks,
                 horizon=episode_horizon,
-                pack=pack_episodes,
+                pack_multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
                 soft_horizon=soft_horizon,
@@ -503,7 +509,7 @@ class RolloutWorker(ParallelIteratorWorker):
         This method must be implemented by subclasses.
 
         Returns:
-            SampleBatch|MultiAgentBatch: A columnar batch of experiences
+            Union[SampleBatch,MultiAgentBatch]: A columnar batch of experiences
             (e.g., tensors), or a multi-agent batch.
 
         Examples:

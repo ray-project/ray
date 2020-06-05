@@ -33,7 +33,8 @@ To view all of the existing endpoints that have created, use `serve.list_endpoin
   {'simple_endpoint': {'route': '/simple', 'methods': ['GET'], 'traffic': {}}}
 
 You can also delete an endpoint using ``serve.delete_endpoint``.
-Note that this will not delete any associated backends, which can be reused for other endpoints.
+Endpoints and backends are independent, so deleting an endpoint will not delete its backends.
+However, an endpoint must be deleted in order to delete the backends that serve its traffic.
 
 .. code-block:: python
 
@@ -75,6 +76,7 @@ It's important to note that Ray Serve places these backends in individual worker
   serve.create_backend("simple_backend_class", RequestHandler, "hello, world!")
 
 We can also list all available backends and delete them to reclaim resources.
+Note that a backend cannot be deleted while it is in use by an endpoint because then traffic to an endpoint may not be able to be handled.
 
 .. code-block:: python
 

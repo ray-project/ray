@@ -103,10 +103,9 @@ Status InMemoryStoreClient::AsyncGetByIndex(
         result[kv_iter->first] = kv_iter->second;
       }
     }
-    main_io_service_.post([result, callback]() { callback(result); });
-  } else {
-    main_io_service_.post([result, callback]() { callback(result); });
   }
+  main_io_service_.post([result, callback]() { callback(result); });
+
   return Status::OK();
 }
 
