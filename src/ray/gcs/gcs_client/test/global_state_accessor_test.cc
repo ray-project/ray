@@ -35,7 +35,8 @@ class GlobalStateAccessorTest : public ::testing::Test {
     config.redis_address = "127.0.0.1";
     config.is_test = true;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
-    gcs_server_.reset(new gcs::GcsServer(config));
+    gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
+    gcs_server_->Start();
     io_service_.reset(new boost::asio::io_service());
 
     thread_io_service_.reset(new std::thread([this] {
@@ -43,8 +44,6 @@ class GlobalStateAccessorTest : public ::testing::Test {
           new boost::asio::io_service::work(*io_service_));
       io_service_->run();
     }));
-
-    thread_gcs_server_.reset(new std::thread([this] { gcs_server_->Start(); }));
 
     // Wait until server starts listening.
     while (!gcs_server_->IsStarted()) {
