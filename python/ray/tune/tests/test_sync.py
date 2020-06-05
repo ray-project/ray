@@ -3,6 +3,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -150,6 +151,38 @@ class TestSyncFunctionality(unittest.TestCase):
         self.assertTrue(test_file_path)
         shutil.rmtree(tmpdir)
         shutil.rmtree(tmpdir2)
+
+    @patch("ray.tune.sync_client.S3_PREFIX", "test")
+    def testCloudSyncPeriod(self):
+        """Tests that changing CLOUD_SYNC_PERIOD affects syncing frequency."""
+        tmpdir = tempfile.mkdtemp()
+
+        def trainable(config):
+            for i in range(10):
+                time.sleep(1)
+                tune.report(score=i)
+
+        mock = unittest.mock.Mock()
+
+        def counter(local, remote):
+            mock()
+
+        tune.syncer.CLOUD_SYNC_PERIOD = 1
+        [trial] = tune.run(
+            trainable,
+            name="foo",
+            max_failures=0,
+            local_dir=tmpdir,
+            upload_dir="test",
+            sync_to_cloud=counter,
+            stop={
+                "training_iteration": 10
+            },
+            global_checkpoint_period=0.5,
+        ).trials
+
+        self.assertEqual(mock.call_count, 12)
+        shutil.rmtree(tmpdir)
 
     def testClusterSyncFunction(self):
         def sync_func_driver(source, target):
