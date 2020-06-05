@@ -298,12 +298,13 @@ class SSHCommandRunner:
 
 
 class DockerCommandRunner(SSHCommandRunner):
-    def __init__(self, container_name, log_prefix, node_id, provider,
+    def __init__(self, doker_config, log_prefix, node_id, provider,
                  auth_config, cluster_name, process_runner, use_internal_ip):
         self.ssh_command_runner = SSHCommandRunner(
             log_prefix, node_id, provider, auth_config, cluster_name,
             process_runner, use_internal_ip)
-        self.docker_name = container_name
+        self.docker_name = doker_config["container_name"]
+        self.docker_config = doker_config
 
     def run(self,
             cmd,
@@ -327,8 +328,10 @@ class DockerCommandRunner(SSHCommandRunner):
         self.ssh_command_runner.run_rsync_down(source, target)
 
     def remote_shell_command_str(self):
-        return "ssh -tt -o IdentitiesOnly=yes -i {} {}@{} docker exec -it {} /bin/bash\n".format(
-            self.ssh_private_key, self.ssh_user, self.ssh_ip, self.docker_name)
+        return "ssh -tt -o IdentitiesOnly=yes -i {} {}@{} docker exec -it {} "
+        "/bin/bash\n".format(self.ssh_command_runner.ssh_private_key,
+                             self.ssh_command_runner.ssh_user,
+                             self.ssh_command_runner.ssh_ip, self.docker_name)
 
     def clean_squiggly(self, string):
         return string.replace(
@@ -350,14 +353,15 @@ class NodeUpdater:
                  ray_start_commands,
                  runtime_hash,
                  process_runner=subprocess,
-                 use_internal_ip=False):
+                 use_internal_ip=False,
+                 docker_config=None):
 
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
         use_internal_ip = (use_internal_ip
                            or provider_config.get("use_internal_ips", False))
         self.cmd_runner = provider.get_command_runner(
             self.log_prefix, node_id, auth_config, cluster_name,
-            process_runner, use_internal_ip)
+            process_runner, use_internal_ip, docker_config)
 
         self.daemon = True
         self.process_runner = process_runner

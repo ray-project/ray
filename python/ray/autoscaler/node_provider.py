@@ -3,7 +3,7 @@ import logging
 import os
 import yaml
 
-from ray.autoscaler.updater import SSHCommandRunner
+from ray.autoscaler.updater import SSHCommandRunner, DockerCommandRunner
 
 logger = logging.getLogger(__name__)
 
@@ -211,8 +211,14 @@ class NodeProvider:
         """Clean-up when a Provider is no longer required."""
         pass
 
-    def get_command_runner(self, log_prefix, node_id, auth_config,
-                           cluster_name, process_runner, use_internal_ip):
+    def get_command_runner(self,
+                           log_prefix,
+                           node_id,
+                           auth_config,
+                           cluster_name,
+                           process_runner,
+                           use_internal_ip,
+                           docker_config=None):
         """ Returns the CommandRunner class used to perform SSH commands.
 
         Args:
@@ -226,7 +232,14 @@ class NodeProvider:
             in the CommandRunner. E.g., subprocess.
         use_internal_ip(bool): whether the node_id belongs to an internal ip
             or external ip.
+        docker_config(dict): If set, the docker information of the docker
+            container that commands should be run on.
         """
-
-        return SSHCommandRunner(log_prefix, node_id, self, auth_config,
-                                cluster_name, process_runner, use_internal_ip)
+        if docker_config and docker_config["container_name"] != "":
+            return DockerCommandRunner(docker_config, log_prefix, node_id,
+                                       self, auth_config, cluster_name,
+                                       process_runner, use_internal_ip)
+        else:
+            return SSHCommandRunner(log_prefix, node_id, self, auth_config,
+                                    cluster_name, process_runner,
+                                    use_internal_ip)
