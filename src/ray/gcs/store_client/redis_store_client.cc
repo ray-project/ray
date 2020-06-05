@@ -157,6 +157,7 @@ Status RedisStoreClient::AsyncDeleteByIndex(const std::string &table_name,
   auto on_done = [this, table_name, index_key, callback, scanner](
                      const Status &status, const std::vector<std::string> &result) {
     if (!result.empty()) {
+      RAY_LOG(INFO) << "wangtao scan keys";
       std::vector<std::string> keys;
       keys.reserve(result.size());
       for (auto &item : result) {
@@ -165,11 +166,16 @@ Status RedisStoreClient::AsyncDeleteByIndex(const std::string &table_name,
       auto batch_delete_callback = [this, result, callback](const Status &status) {
         RAY_CHECK_OK(status);
         // Delete index keys.
+        RAY_LOG(INFO) << "wangtao delete index keys";
         RAY_CHECK_OK(DeleteByKeys(result, callback));
       };
+      RAY_LOG(INFO) << "wangtao delete keys";
       RAY_CHECK_OK(AsyncBatchDelete(table_name, keys, batch_delete_callback));
     } else {
-      callback(status);
+      RAY_LOG(INFO) << "wangtao scan no keys";
+      if (callback) {
+        callback(status);
+      }
     }
   };
 
@@ -193,6 +199,7 @@ Status RedisStoreClient::DoPut(const std::string &key, const std::string &data,
 
 Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
                                       const StatusCallback &callback) {
+  RAY_LOG(INFO) << "wangtao delete " << keys.size() << " keys";
   // The `DEL` command for each shard.
   auto del_commands_by_shards = GenCommandsByShards(redis_client_, "DEL", keys);
 
@@ -203,7 +210,9 @@ Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
                             callback](const std::shared_ptr<CallbackReply> &reply) {
       ++(*finished_count);
       if (*finished_count == size) {
-        callback(Status::OK());
+        if (callback) {
+          callback(Status::OK());
+        }
       }
     };
     RAY_CHECK_OK(item.first->RunArgvAsync(item.second, delete_callback));
