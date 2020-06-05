@@ -298,7 +298,7 @@ class SSHCommandRunner:
 
 
 class DockerCommandRunner(SSHCommandRunner):
-    def __init__(self, doker_config, log_prefix, node_id, provider,
+    def __init__(self, docker_config, log_prefix, node_id, provider,
                  auth_config, cluster_name, process_runner, use_internal_ip):
         self.ssh_command_runner = SSHCommandRunner(
             log_prefix, node_id, provider, auth_config, cluster_name,
