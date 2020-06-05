@@ -66,6 +66,9 @@ This document describes the process for creating new releases.
 
    The results should be checked in under ``doc/dev/release_logs/<version>``.
 
+   You can also get the performance change rate from the previous version using 
+   microbenchmark_analysis.py
+
 5. **Resolve release-blockers:** If a release blocking issue arises, there are
    two ways the issue can be resolved: 1) Fix the issue on the master branch and
    cherry-pick the relevant commit  (using ``git cherry-pick``) onto the release
@@ -117,6 +120,8 @@ This document describes the process for creating new releases.
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-macosx_10_13_intel.whl
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-macosx_10_13_intel.whl
 
+   This can be tested if you use the script source ./bin/download_wheels.sh
+
 8. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
    ``twine``.
 
@@ -146,6 +151,11 @@ This document describes the process for creating new releases.
    installed by checking ``ray.__version__`` and ``ray.__file__``.
 
    Do this at least for MacOS and Linux.
+
+   This process is automated. Run ./bin/pip_download_test.sh. 
+   This will download the ray from the test pypi repository and run the minimum 
+   sanity check from all the Python version supported. (3.5, 3.6, 3.7, 3.8)
+
 
 9. **Upload to PyPI:** Now that you've tested the wheels on the PyPI test
    repository, they can be uploaded to the main PyPI repository. Be careful,

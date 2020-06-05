@@ -25,10 +25,24 @@ matrix:
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
+        - RAY_USE_RANDOM_PORTS=1
       install:
         - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
+
+    - os: linux
+      env:
+        - PYTHON=3.6 ENABLE_ASAN="--config=asan -j 2"
+        - PYTHONWARNINGS=ignore
+        - RAY_DEFAULT_BUILD=1
+      install:
+        - . ./ci/travis/ci.sh init
+      before_script:
+        - . ./ci/travis/ci.sh build
+      script:
+        # Run all C++ unit tests with ASAN enabled. ASAN adds too much overhead to run Python tests.
+        - bazel test $ENABLE_ASAN --config=ci --build_tests_only -- //:all
 
     - os: osx
       osx_image: xcode7
@@ -37,6 +51,7 @@ matrix:
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
+        - RAY_USE_RANDOM_PORTS=1
       install:
         - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
       before_script:
@@ -62,6 +77,7 @@ matrix:
         - RAY_INSTALL_JAVA=1
         - RAY_GCS_ACTOR_SERVICE_ENABLED=true
         - PYTHON=3.6 PYTHONWARNINGS=ignore
+        - RAY_USE_RANDOM_PORTS=1
       install:
         - . ./ci/travis/ci.sh init RAY_CI_STREAMING_PYTHON_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
       before_script:
@@ -96,6 +112,7 @@ matrix:
         - RAY_INSTALL_JAVA=1
         - RAY_GCS_SERVICE_ENABLED=false
         - RAY_CYTHON_EXAMPLES=1
+        - RAY_USE_RANDOM_PORTS=1
       install:
         - . ./ci/travis/ci.sh init RAY_CI_ONLY_RLLIB_AFFECTED
       before_script:
@@ -145,7 +162,7 @@ matrix:
       script:
         - . ./ci/travis/ci.sh test_wheels
 
-    # RLlib: Learning tests (from rllib/tuned_examples/regression_tests/*.yaml).
+    # RLlib: Learning tests (from rllib/tuned_examples/*.yaml).
     - os: linux
       env:
         - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS=1
@@ -161,7 +178,7 @@ matrix:
       script:
         - ./ci/keep_alive bazel test --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
 
-    # RLlib: Learning tests with tf=1.x (from rllib/tuned_examples/regression_tests/*.yaml).
+    # RLlib: Learning tests with tf=1.x (from rllib/tuned_examples/*.yaml).
     # Requested by Edi (MS): Test all learning capabilities with tf1.x
     - os: linux
       env:
@@ -178,7 +195,7 @@ matrix:
       script:
         - ./ci/keep_alive bazel test --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
 
-    # RLlib: Learning tests with torch (from rllib/tuned_examples/regression_tests/*.yaml).
+    # RLlib: Learning tests with torch (from rllib/tuned_examples/*.yaml).
     - os: linux
       env:
         - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS_TORCH=1
@@ -212,8 +229,7 @@ matrix:
         - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=quick_train rllib/...
         # Test everything that does not have any of the "main" labels:
         # "learning_tests|quick_train|examples|tests_dir".
-        #- ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=-learning_tests_tf,-learning_tests_torch,-quick_train,-examples,-tests_dir rllib/...
-        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=agents_dir_X rllib/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=-learning_tests_tf,-learning_tests_torch,-quick_train,-examples,-tests_dir rllib/...
 
     # RLlib: Everything in rllib/examples/ directory.
     - os: linux
@@ -234,7 +250,7 @@ matrix:
         - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=examples_E,examples_F,examples_G,examples_H,examples_I,examples_J,examples_K,examples_L,examples_M,examples_N,examples_O,examples_P rllib/...
         - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=examples_Q,examples_R,examples_S,examples_T,examples_U,examples_V,examples_W,examples_X,examples_Y,examples_Z rllib/...
 
-    # RLlib: tests_dir: Everything in rllib/tests/ directory (A-I).
+    # RLlib: tests_dir: Everything in rllib/tests/ directory (A-L).
     - os: linux
       env:
         - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_A_TO_L=1
@@ -250,7 +266,7 @@ matrix:
       script:
         - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=tests_dir_A,tests_dir_B,tests_dir_C,tests_dir_D,tests_dir_E,tests_dir_F,tests_dir_G,tests_dir_H,tests_dir_I,tests_dir_J,tests_dir_K,tests_dir_L rllib/...
 
-    # RLlib: tests_dir: Everything in rllib/tests/ directory (J-Z).
+    # RLlib: tests_dir: Everything in rllib/tests/ directory (M-Z).
     - os: linux
       env:
         - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_M_TO_Z=1
@@ -283,10 +299,13 @@ script:
   - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
 
   # cc bazel tests (w/o RLlib)
-  - ./ci/suppress_output bazel test --config=ci --build_tests_only --show_progress_rate_limit=100 --test_output=errors -- //:all -rllib/...
+  - ./ci/suppress_output bazel test --config=ci --build_tests_only -- //:all -rllib/...
 
   # ray serve tests
   - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/serve/...; fi
+  
+  # ray dashboard tests
+  - if [ "$RAY_CI_DASHBOARD_AFFECTED" == "1" ]; then ./ci/keep_alive bazel test python/ray/dashboard/...; fi
 
   # ray operator tests
   - (cd deploy/ray-operator && export CC=gcc && suppress_output go build && suppress_output go test ./...)

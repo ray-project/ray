@@ -171,11 +171,10 @@ def get_address_info_from_redis_helper(redis_address,
                                        node_ip_address,
                                        redis_password=None):
     redis_ip_address, redis_port = redis_address.split(":")
-    # For this command to work, some other client (on the same machine as
-    # Redis) must have run "CONFIG SET protected-mode no".
-    redis_client = create_redis_client(redis_address, password=redis_password)
-
-    client_table = ray.state._parse_client_table(redis_client)
+    # Get node table from global state accessor.
+    global_state = ray.state.GlobalState()
+    global_state._initialize_global_state(redis_address, redis_password)
+    client_table = global_state.node_table()
     if len(client_table) == 0:
         raise RuntimeError(
             "Redis has started but no raylets have registered yet.")
@@ -1219,6 +1218,8 @@ def start_raylet(redis_address,
                  temp_dir,
                  session_dir,
                  resource_spec,
+                 min_worker_port=None,
+                 max_worker_port=None,
                  object_manager_port=None,
                  redis_password=None,
                  use_valgrind=False,
@@ -1229,7 +1230,8 @@ def start_raylet(redis_address,
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
-                 fate_share=None):
+                 fate_share=None,
+                 socket_to_use=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1247,6 +1249,10 @@ def start_raylet(redis_address,
         resource_spec (ResourceSpec): Resources for this raylet.
         object_manager_port: The port to use for the object manager. If this is
             None, then the object manager will choose its own port.
+        min_worker_port (int): The lowest port number that workers will bind
+            on. If not set, random ports will be chosen.
+        max_worker_port (int): The highest port number that workers will bind
+            on. If set, min_worker_port must also be set.
         redis_password: The password to use when connecting to Redis.
         use_valgrind (bool): True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
@@ -1324,6 +1330,12 @@ def start_raylet(redis_address,
     if object_manager_port is None:
         object_manager_port = 0
 
+    if min_worker_port is None:
+        min_worker_port = 0
+
+    if max_worker_port is None:
+        max_worker_port = 0
+
     if load_code_from_local:
         start_worker_command += ["--load-code-from-local"]
 
@@ -1332,6 +1344,8 @@ def start_raylet(redis_address,
         "--raylet_socket_name={}".format(raylet_name),
         "--store_socket_name={}".format(plasma_store_name),
         "--object_manager_port={}".format(object_manager_port),
+        "--min_worker_port={}".format(min_worker_port),
+        "--max_worker_port={}".format(max_worker_port),
         "--node_manager_port={}".format(node_manager_port),
         "--node_ip_address={}".format(node_ip_address),
         "--redis_address={}".format(gcs_ip_address),
@@ -1348,6 +1362,8 @@ def start_raylet(redis_address,
         "--temp_dir={}".format(temp_dir),
         "--session_dir={}".format(session_dir),
     ]
+    if socket_to_use:
+        socket_to_use.close()
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET,

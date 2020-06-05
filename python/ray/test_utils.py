@@ -1,4 +1,5 @@
 import asyncio
+import errno
 import json
 import fnmatch
 import os
@@ -11,6 +12,9 @@ import socket
 import ray
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
+
+if sys.platform == "win32":
+    import _winapi
 
 
 class RayTestTimeoutException(Exception):
@@ -27,11 +31,24 @@ def _pid_alive(pid):
     Returns:
         This returns false if the process is dead. Otherwise, it returns true.
     """
+    no_such_process = errno.EINVAL if sys.platform == "win32" else errno.ESRCH
+    alive = True
     try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
+        if sys.platform == "win32":
+            SYNCHRONIZE = 0x00100000  # access mask defined in <winnt.h>
+            handle = _winapi.OpenProcess(SYNCHRONIZE, False, pid)
+            try:
+                alive = (_winapi.WaitForSingleObject(handle, 0) !=
+                         _winapi.WAIT_OBJECT_0)
+            finally:
+                _winapi.CloseHandle(handle)
+        else:
+            os.kill(pid, 0)
+    except OSError as ex:
+        if ex.errno != no_such_process:
+            raise
+        alive = False
+    return alive
 
 
 def wait_for_pid_to_exit(pid, timeout=20):
@@ -271,3 +288,17 @@ def wait_until_server_available(address,
         s.close()
         return True
     return False
+
+
+def get_other_nodes(cluster, exclude_head=False):
+    """Get all nodes except the one that we're connected to."""
+    return [
+        node for node in cluster.list_all_nodes() if
+        node._raylet_socket_name != ray.worker._global_node._raylet_socket_name
+        and (exclude_head is False or node.head is False)
+    ]
+
+
+def get_non_head_nodes(cluster):
+    """Get all non-head nodes."""
+    return list(filter(lambda x: x.head is False, cluster.list_all_nodes()))

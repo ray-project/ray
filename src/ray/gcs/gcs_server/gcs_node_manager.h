@@ -22,6 +22,7 @@
 #include <ray/rpc/gcs_server/gcs_rpc_server.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 
 namespace ray {
@@ -35,13 +36,14 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Create a GcsNodeManager.
   ///
   /// \param io_service The event loop to run the monitor on.
-  /// \param node_info_accessor The node info accessor.
-  /// \param error_info_accessor The error info accessor, which is used to report error
+  /// \param error_info_accessor The error info accessor, which is used to report error.
+  /// \param gcs_pub_sub GCS message publisher.
+  /// \param gcs_table_storage GCS table external storage accessor.
   /// when detecting the death of nodes.
   explicit GcsNodeManager(boost::asio::io_service &io_service,
-                          gcs::NodeInfoAccessor &node_info_accessor,
                           gcs::ErrorInfoAccessor &error_info_accessor,
-                          std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub);
+                          std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+                          std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
 
   /// Handle register rpc request come from raylet.
   void HandleRegisterNode(const rpc::RegisterNodeRequest &request,
@@ -123,15 +125,25 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     node_added_listeners_.emplace_back(std::move(listener));
   }
 
+  /// Load initial data from gcs storage to memory cache asynchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param done Callback that will be called when load is complete.
+  void LoadInitialData(const EmptyCallback &done);
+
  protected:
   class NodeFailureDetector {
    public:
     /// Create a NodeFailureDetector.
     ///
     /// \param io_service The event loop to run the monitor on.
-    /// \param node_info_accessor The node info accessor.
+    /// \param gcs_table_storage GCS table external storage accessor.
+    /// \param gcs_pub_sub GCS message publisher.
+    /// \param on_node_death_callback Callback that will be called when node death is
+    /// detected.
     explicit NodeFailureDetector(
-        boost::asio::io_service &io_service, gcs::NodeInfoAccessor &node_info_accessor,
+        boost::asio::io_service &io_service,
+        std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
         std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
         std::function<void(const ClientID &)> on_node_death_callback);
 
@@ -165,8 +177,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     void ScheduleTick();
 
    protected:
-    /// Node info accessor.
-    gcs::NodeInfoAccessor &node_info_accessor_;
+    /// Storage for GCS tables.
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
     /// The callback of node death.
     std::function<void(const ClientID &)> on_node_death_callback_;
     /// The number of heartbeats that can be missed before a node is removed.
@@ -183,8 +195,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   };
 
  private:
-  /// Node info accessor.
-  gcs::NodeInfoAccessor &node_info_accessor_;
   /// Error info accessor.
   gcs::ErrorInfoAccessor &error_info_accessor_;
   /// Detector to detect the failure of node.
@@ -194,7 +204,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Dead nodes.
   absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> dead_nodes_;
   /// Cluster resources.
-  absl::flat_hash_map<ClientID, gcs::NodeInfoAccessor::ResourceMap> cluster_resources_;
+  absl::flat_hash_map<ClientID, rpc::ResourceMap> cluster_resources_;
   /// Listeners which monitors the addition of nodes.
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_added_listeners_;
@@ -203,6 +213,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
       node_removed_listeners_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+  /// Storage for GCS tables.
+  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 };
 
 }  // namespace gcs

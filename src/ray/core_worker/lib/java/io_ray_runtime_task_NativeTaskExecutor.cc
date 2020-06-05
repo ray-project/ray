@@ -27,8 +27,7 @@ extern "C" {
 using ray::ClientID;
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(JNIEnv *env,
-                                                                     jclass) {
+Java_io_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(JNIEnv *env, jclass) {
   auto &core_worker = ray::CoreWorkerProcess::GetCoreWorker();
   const auto &actor_id = core_worker.GetWorkerContext().GetCurrentActorID();
   const auto &task_spec = core_worker.GetWorkerContext().GetCurrentTask();

@@ -91,9 +91,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
           options.worker_type == WorkerType::DRIVER
               ? ComputeDriverIdFromJob(options_.job_id)
               : (options_.num_workers == 1 ? WorkerID::FromRandom() : WorkerID::Nil())) {
-  // Initialize logging if log_dir is passed. Otherwise, it must be initialized
-  // and cleaned up by the caller.
-  if (options_.log_dir != "") {
+  if (options_.enable_logging) {
     std::stringstream app_name;
     app_name << LanguageString(options_.language) << "-core-"
              << WorkerTypeString(options_.worker_type);
@@ -104,6 +102,11 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
     if (options_.install_failure_signal_handler) {
       RayLog::InstallFailureSignalHandler();
     }
+  } else {
+    RAY_CHECK(options_.log_dir.empty())
+        << "log_dir must be empty because ray log is disabled.";
+    RAY_CHECK(!options_.install_failure_signal_handler)
+        << "install_failure_signal_handler must be false because ray log is disabled.";
   }
 
   RAY_CHECK(options_.num_workers > 0);
@@ -136,7 +139,7 @@ CoreWorkerProcess::~CoreWorkerProcess() {
     absl::ReaderMutexLock lock(&worker_map_mutex_);
     RAY_CHECK(workers_.empty());
   }
-  if (options_.log_dir != "") {
+  if (options_.enable_logging) {
     RayLog::ShutDownRayLog();
   }
 }
@@ -244,8 +247,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       death_check_timer_(io_service_),
       internal_timer_(io_service_),
-      core_worker_server_(WorkerTypeString(options_.worker_type),
-                          0 /* let grpc choose a port */),
       task_queue_length_(0),
       num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
@@ -266,10 +267,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             [this] { return local_raylet_client_->TaskDone(); }));
   }
 
-  // Start RPC server after all the task receivers are properly initialized.
-  core_worker_server_.RegisterService(grpc_service_);
-  core_worker_server_.Run();
-
   // Initialize raylet client.
   // NOTE(edoakes): the core_worker_server_ must be running before registering with
   // the raylet, as the raylet will start sending some RPC messages immediately.
@@ -280,21 +277,37 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   auto grpc_client = rpc::NodeManagerWorkerClient::make(
       options_.raylet_ip_address, options_.node_manager_port, *client_call_manager_);
   ClientID local_raylet_id;
+  int assigned_port;
   std::unordered_map<std::string, std::string> internal_config;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       (options_.worker_type == ray::WorkerType::WORKER),
-      worker_context_.GetCurrentJobID(), options_.language, &local_raylet_id,
-      &internal_config, options_.node_ip_address, core_worker_server_.GetPort()));
+      worker_context_.GetCurrentJobID(), options_.language, options_.node_ip_address,
+      &local_raylet_id, &assigned_port, &internal_config));
   connected_ = true;
+
+  RAY_CHECK(assigned_port != -1)
+      << "Failed to allocate a port for the worker. Please specify a wider port range "
+         "using the '--min-worker-port' and '--max-worker-port' arguments to 'ray "
+         "start'.";
 
   // NOTE(edoakes): any initialization depending on RayConfig must happen after this line.
   RayConfig::instance().initialize(internal_config);
 
+  // Start RPC server after all the task receivers are properly initialized and we have
+  // our assigned port from the raylet.
+  core_worker_server_ = std::unique_ptr<rpc::GrpcServer>(
+      new rpc::GrpcServer(WorkerTypeString(options_.worker_type), assigned_port));
+  core_worker_server_->RegisterService(grpc_service_);
+  core_worker_server_->Run();
+
+  // Tell the raylet the port that we are listening on.
+  RAY_CHECK_OK(local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
+
   // Set our own address.
   RAY_CHECK(!local_raylet_id.IsNil());
   rpc_address_.set_ip_address(options_.node_ip_address);
-  rpc_address_.set_port(core_worker_server_.GetPort());
+  rpc_address_.set_port(core_worker_server_->GetPort());
   rpc_address_.set_raylet_id(local_raylet_id.Binary());
   rpc_address_.set_worker_id(worker_context_.GetWorkerID().Binary());
   RAY_LOG(INFO) << "Initializing worker at address: " << rpc_address_.ip_address() << ":"
@@ -1863,7 +1876,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   if (success && request.force_kill()) {
     RAY_LOG(INFO) << "Force killing a worker running " << main_thread_task_id_;
     RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
-    if (options_.log_dir != "") {
+    if (options_.enable_logging) {
       RayLog::ShutDownRayLog();
     }
     // NOTE(hchen): Use `_Exit()` to force-exit this process without doing cleanup.
@@ -1902,7 +1915,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
              "please create the Java actor with some dynamic options to make it being "
              "hosted in a dedicated worker process.";
     }
-    if (options_.log_dir != "") {
+    if (options_.enable_logging) {
       RayLog::ShutDownRayLog();
     }
     // NOTE(hchen): Use `_Exit()` to force-exit this process without doing cleanup.
