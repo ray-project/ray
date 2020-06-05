@@ -10,6 +10,7 @@ import io.ray.streaming.runtime.generated.RemoteCall;
 import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.python.GraphPbBuilder;
 import java.io.Serializable;
+import java.util.Map;
 
 /**
  * Job worker context of java type.
@@ -45,6 +46,10 @@ public class JobWorkerContext implements Serializable {
     return executionVertex.getVertexName();
   }
 
+  public Map<String, String> getConfig() {
+    return executionVertex.getWorkerConfig();
+  }
+
   public RayActor<JobMaster> getMaster() {
     return master;
   }
@@ -58,6 +63,7 @@ public class JobWorkerContext implements Serializable {
     return MoreObjects.toStringHelper(this)
       .add("workerId", getWorkerId())
       .add("workerName", getWorkerName())
+      .add("config", getConfig())
       .toString();
   }
 

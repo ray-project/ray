@@ -38,7 +38,6 @@ public class RemoteCallWorker {
       // java
       result = ((RayActor<JobWorker>) actor).call(JobWorker::init, context);
     }
-    result.get();
 
     LOG.info("Finished calling worker to initiate.");
     return result;

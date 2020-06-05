@@ -50,7 +50,7 @@ public abstract class StreamTask implements Runnable {
    * Build upstream and downstream data transmission channels according to {@link ExecutionVertex}.
    */
   private void prepareTask() {
-    LOG.info("Preparing stream task.");
+    LOG.debug("Preparing stream task.");
     ExecutionVertex executionVertex = jobWorker.getExecutionVertex();
 
     // set vertex info into config for native using
@@ -101,7 +101,7 @@ public abstract class StreamTask implements Runnable {
         jobWorker.getWorkerConfig().configMap, executionVertex.getParallelism());
 
     processor.open(collectors, runtimeContext);
-    LOG.info("Finished preparing stream task.");
+    LOG.debug("Finished preparing stream task.");
   }
 
   /**
