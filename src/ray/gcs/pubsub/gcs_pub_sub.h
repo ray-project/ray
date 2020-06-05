@@ -90,15 +90,16 @@ class GcsPubSub {
   Status Unsubscribe(const std::string &channel, const std::string &id);
 
  private:
-  struct SubscribeCommand {
+  /// Represents a caller's command to subscribe or unsubscribe to a given
+  /// channel.
+  struct Command {
     /// SUBSCRIBE constructor.
-    SubscribeCommand(const Callback &subscribe_callback,
-                     const StatusCallback &done_callback)
+    Command(const Callback &subscribe_callback, const StatusCallback &done_callback)
         : is_subscribe(true),
           subscribe_callback(subscribe_callback),
           done_callback(done_callback) {}
     /// UNSUBSCRIBE constructor.
-    SubscribeCommand() : is_subscribe(false) {}
+    Command() : is_subscribe(false) {}
     /// True if this is a SUBSCRIBE command and false if UNSUBSCRIBE.
     const bool is_subscribe;
     /// Callback that is called whenever a new pubsub message is received from
@@ -115,7 +116,7 @@ class GcsPubSub {
     /// unsubscribe commands must alternate. A subscribe command can execute if
     /// the callback index below is not set. An unsubscribe command can execute
     /// if the callback index is set.
-    std::deque<SubscribeCommand> command_queue;
+    std::deque<Command> command_queue;
     /// The current Redis callback index stored in the RedisContext for this
     /// channel. This callback index is used to identify any pubsub
     /// notifications meant for this channel. The callback index is set once we

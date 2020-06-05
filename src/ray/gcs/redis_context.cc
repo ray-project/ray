@@ -217,6 +217,7 @@ int64_t RedisCallbackManager::AddCallback(const RedisCallback &function,
 
   std::lock_guard<std::mutex> lock(mutex_);
   if (callback_index == -1) {
+    // No callback index was specified. Allocate a new callback index.
     callback_index = num_callbacks_;
     num_callbacks_++;
   }

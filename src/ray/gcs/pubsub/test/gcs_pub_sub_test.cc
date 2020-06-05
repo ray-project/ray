@@ -139,18 +139,20 @@ TEST_F(GcsPubSubTest, TestManyPubsub) {
   SubscribeAll(channel, all_result);
   // Test many concurrent subscribes and unsubscribes.
   for (int i = 0; i < 1000; i++) {
-    std::vector<std::string> result;
-    Subscribe(channel, id, result);
-    Unsubscribe(channel, id);
+    auto subscribe = [](const std::string &id, const std::string &data) {};
+    RAY_CHECK_OK((pub_sub_->Subscribe(channel, id, subscribe, nullptr)));
+    RAY_CHECK_OK((pub_sub_->Unsubscribe(channel, id)));
   }
   for (int i = 0; i < 1000; i++) {
     std::vector<std::string> result;
+    // Use the synchronous subscribe to make sure our SUBSCRIBE message reaches
+    // Redis before the PUBLISH.
     Subscribe(channel, id, result);
     Publish(channel, id, data);
 
     WaitPendingDone(result, 1);
     WaitPendingDone(all_result, i + 1);
-    Unsubscribe(channel, id);
+    RAY_CHECK_OK((pub_sub_->Unsubscribe(channel, id)));
   }
 }
 

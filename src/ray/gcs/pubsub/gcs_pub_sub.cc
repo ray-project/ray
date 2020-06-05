@@ -51,7 +51,7 @@ Status GcsPubSub::Unsubscribe(const std::string &channel_name, const std::string
   // Add the UNSUBSCRIBE command to the queue.
   auto channel = channels_.find(pattern);
   RAY_CHECK(channel != channels_.end());
-  channel->second.command_queue.push_back(SubscribeCommand());
+  channel->second.command_queue.push_back(Command());
 
   // Process the first command on the queue, if possible.
   return ExecuteCommandIfPossible(channel->first, channel->second);
@@ -71,7 +71,7 @@ Status GcsPubSub::SubscribeInternal(const std::string &channel_name,
   }
 
   // Add the SUBSCRIBE command to the queue.
-  channel->second.command_queue.push_back(SubscribeCommand(subscribe, done));
+  channel->second.command_queue.push_back(Command(subscribe, done));
 
   // Process the first command on the queue, if possible.
   return ExecuteCommandIfPossible(channel->first, channel->second);
@@ -83,6 +83,8 @@ Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
   Status status;
   auto &command = channel.command_queue.front();
   if (command.is_subscribe && channel.callback_index == -1) {
+    // The next command is SUBSCRIBE and we are currently unsubscribed, so we
+    // can execute the command.
     int64_t callback_index =
         ray::gcs::RedisCallbackManager::instance().AllocateCallbackIndex();
     const auto &command_done_callback = command.done_callback;
@@ -143,11 +145,14 @@ Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
     channel.pending_reply = true;
     channel.command_queue.pop_front();
   } else if (!command.is_subscribe && channel.callback_index != -1) {
+    // The next command is UNSUBSCRIBE and we are currently subscribed, so we
+    // can execute the command. The reply for will be received through the
+    // SUBSCRIBE command's callback.
     status = redis_client_->GetPrimaryContext()->PUnsubscribeAsync(channel_key);
     channel.pending_reply = true;
     channel.command_queue.pop_front();
   } else if (!channel.pending_reply) {
-    // There is no in-flight command, but none of the queued commands are
+    // There is no in-flight command, but the next command to execute is not
     // runnable. The caller must have sent a command out-of-order.
     RAY_LOG(FATAL) << "Caller attempted a duplicate subscribe or unsubscribe to channel "
                    << channel_key;
