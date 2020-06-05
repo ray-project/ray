@@ -1,7 +1,7 @@
 package io.ray.streaming.runtime.transfer;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.BaseActor;
+import io.ray.api.BaseActorHandle;
 import io.ray.streaming.runtime.util.Platform;
 import io.ray.streaming.util.Config;
 import java.nio.ByteBuffer;
@@ -24,7 +24,7 @@ public class DataReader {
   private Queue<DataMessage> buf = new LinkedList<>();
 
   public DataReader(List<String> inputChannels,
-                    Map<String, BaseActor> fromActors,
+                    Map<String, BaseActorHandle> fromActors,
                     Map<String, String> conf) {
     Preconditions.checkArgument(inputChannels.size() > 0);
     Preconditions.checkArgument(inputChannels.size() == fromActors.size());

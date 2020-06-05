@@ -1,7 +1,7 @@
 package io.ray.api.runtime;
 
-import io.ray.api.BaseActor;
-import io.ray.api.RayActor;
+import io.ray.api.BaseActorHandle;
+import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.RayPyActor;
 import io.ray.api.WaitResult;
@@ -88,7 +88,7 @@ public interface RayRuntime {
    * @param actor The actor to be killed.
    * @param noRestart If set to true, the killed actor will not be restarted anymore.
    */
-  void killActor(BaseActor actor, boolean noRestart);
+  void killActor(BaseActorHandle actor, boolean noRestart);
 
   /**
    * Invoke a remote function.
@@ -118,7 +118,7 @@ public interface RayRuntime {
    * @param args The arguments of the remote function.
    * @return The result object.
    */
-  ObjectRef callActor(RayActor<?> actor, RayFunc func, Object[] args);
+  ObjectRef callActor(ActorHandle<?> actor, RayFunc func, Object[] args);
 
   /**
    * Invoke a remote Python function on an actor.
@@ -139,8 +139,8 @@ public interface RayRuntime {
    * @param options The options for creating actor.
    * @return A handle to the actor.
    */
-  <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args,
-      ActorCreationOptions options);
+  <T> ActorHandle<T> createActor(RayFunc actorFactoryFunc, Object[] args,
+                                 ActorCreationOptions options);
 
   /**
    * Create a Python actor on a remote node.

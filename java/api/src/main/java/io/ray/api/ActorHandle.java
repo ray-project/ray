@@ -24,6 +24,6 @@ package io.ray.api;
  *
  * @param <A> The type of the concrete actor class.
  */
-public interface RayActor<A> extends BaseActor, ActorCall<A> {
+public interface ActorHandle<A> extends BaseActorHandle, ActorCall<A> {
 
 }

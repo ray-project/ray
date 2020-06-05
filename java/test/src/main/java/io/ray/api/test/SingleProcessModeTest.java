@@ -1,7 +1,7 @@
 package io.ray.api.test;
 
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
+import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.TestUtils;
 import io.ray.api.id.ActorId;
@@ -31,17 +31,17 @@ public class SingleProcessModeTest extends BaseTest {
   public void testActorTasksInOneThread() {
     TestUtils.skipTestUnderClusterMode();
 
-    List<RayActor<MyActor>> actors = new ArrayList<>();
+    List<ActorHandle<MyActor>> actors = new ArrayList<>();
     Map<ActorId, Long> actorThreadIds = new HashMap<>();
     for (int i = 0; i < NUM_ACTOR_INSTANCE; ++i) {
-      RayActor<MyActor> actor = Ray.createActor(MyActor::new);
+      ActorHandle<MyActor> actor = Ray.createActor(MyActor::new);
       actors.add(actor);
       actorThreadIds.put(actor.getId(), actor.call(MyActor::getThreadId).get());
     }
 
     Map<ActorId, List<ObjectRef<Long>>> allResults = new HashMap<>();
     for (int i = 0; i < NUM_ACTOR_INSTANCE; ++i) {
-      final RayActor<MyActor> actor = actors.get(i);
+      final ActorHandle<MyActor> actor = actors.get(i);
       List<ObjectRef<Long>> thisActorResult = new ArrayList<>();
       for (int j = 0; j < TIMES_TO_CALL_PER_ACTOR; ++j) {
         thisActorResult.add(actor.call(MyActor::getThreadId));
@@ -51,7 +51,7 @@ public class SingleProcessModeTest extends BaseTest {
 
     // check result.
     for (int i = 0; i < NUM_ACTOR_INSTANCE; ++i) {
-      final RayActor<MyActor> actor = actors.get(i);
+      final ActorHandle<MyActor> actor = actors.get(i);
       final List<ObjectRef<Long>> thisActorResult = allResults.get(actor.getId());
       // assert
       for (ObjectRef<Long> threadId : thisActorResult) {

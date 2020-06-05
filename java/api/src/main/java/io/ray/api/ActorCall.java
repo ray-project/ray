@@ -23,632 +23,632 @@ interface ActorCall<A> {
 
   default <R> ObjectRef<R> call(RayFunc1<A, R> f) {
     Object[] args = new Object[]{};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default void call(RayFuncVoid1<A> f) {
     Object[] args = new Object[]{};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, R> ObjectRef<R> call(RayFunc2<A, T0, R> f, T0 t0) {
     Object[] args = new Object[]{t0};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, R> ObjectRef<R> call(RayFunc2<A, T0, R> f, ObjectRef<T0> t0) {
     Object[] args = new Object[]{t0};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0> void call(RayFuncVoid2<A, T0> f, T0 t0) {
     Object[] args = new Object[]{t0};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0> void call(RayFuncVoid2<A, T0> f, ObjectRef<T0> t0) {
     Object[] args = new Object[]{t0};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, R> ObjectRef<R> call(RayFunc3<A, T0, T1, R> f, T0 t0, T1 t1) {
     Object[] args = new Object[]{t0, t1};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, R> ObjectRef<R> call(RayFunc3<A, T0, T1, R> f, T0 t0, ObjectRef<T1> t1) {
     Object[] args = new Object[]{t0, t1};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, R> ObjectRef<R> call(RayFunc3<A, T0, T1, R> f, ObjectRef<T0> t0, T1 t1) {
     Object[] args = new Object[]{t0, t1};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, R> ObjectRef<R> call(RayFunc3<A, T0, T1, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1) {
     Object[] args = new Object[]{t0, t1};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1> void call(RayFuncVoid3<A, T0, T1> f, T0 t0, T1 t1) {
     Object[] args = new Object[]{t0, t1};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1> void call(RayFuncVoid3<A, T0, T1> f, T0 t0, ObjectRef<T1> t1) {
     Object[] args = new Object[]{t0, t1};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1> void call(RayFuncVoid3<A, T0, T1> f, ObjectRef<T0> t0, T1 t1) {
     Object[] args = new Object[]{t0, t1};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1> void call(RayFuncVoid3<A, T0, T1> f, ObjectRef<T0> t0, ObjectRef<T1> t1) {
     Object[] args = new Object[]{t0, t1};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, R> ObjectRef<R> call(RayFunc4<A, T0, T1, T2, R> f, T0 t0, T1 t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, R> ObjectRef<R> call(RayFunc4<A, T0, T1, T2, R> f, T0 t0, T1 t1, ObjectRef<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, R> ObjectRef<R> call(RayFunc4<A, T0, T1, T2, R> f, T0 t0, ObjectRef<T1> t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, R> ObjectRef<R> call(RayFunc4<A, T0, T1, T2, R> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, R> ObjectRef<R> call(RayFunc4<A, T0, T1, T2, R> f, ObjectRef<T0> t0, T1 t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, R> ObjectRef<R> call(RayFunc4<A, T0, T1, T2, R> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, R> ObjectRef<R> call(RayFunc4<A, T0, T1, T2, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, R> ObjectRef<R> call(RayFunc4<A, T0, T1, T2, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2> void call(RayFuncVoid4<A, T0, T1, T2> f, T0 t0, T1 t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2> void call(RayFuncVoid4<A, T0, T1, T2> f, T0 t0, T1 t1, ObjectRef<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2> void call(RayFuncVoid4<A, T0, T1, T2> f, T0 t0, ObjectRef<T1> t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2> void call(RayFuncVoid4<A, T0, T1, T2> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2> void call(RayFuncVoid4<A, T0, T1, T2> f, ObjectRef<T0> t0, T1 t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2> void call(RayFuncVoid4<A, T0, T1, T2> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2> void call(RayFuncVoid4<A, T0, T1, T2> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2> void call(RayFuncVoid4<A, T0, T1, T2> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, R> ObjectRef<R> call(RayFunc5<A, T0, T1, T2, T3, R> f, T0 t0, T1 t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, R> ObjectRef<R> call(RayFunc5<A, T0, T1, T2, T3, R> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, R> ObjectRef<R> call(RayFunc5<A, T0, T1, T2, T3, R> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, R> ObjectRef<R> call(RayFunc5<A, T0, T1, T2, T3, R> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, R> ObjectRef<R> call(RayFunc5<A, T0, T1, T2, T3, R> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, R> ObjectRef<R> call(RayFunc5<A, T0, T1, T2, T3, R> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, R> ObjectRef<R> call(RayFunc5<A, T0, T1, T2, T3, R> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, R> ObjectRef<R> call(RayFunc5<A, T0, T1, T2, T3, R> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, R> ObjectRef<R> call(RayFunc5<A, T0, T1, T2, T3, R> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, R> ObjectRef<R> call(RayFunc5<A, T0, T1, T2, T3, R> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, R> ObjectRef<R> call(RayFunc5<A, T0, T1, T2, T3, R> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, R> ObjectRef<R> call(RayFunc5<A, T0, T1, T2, T3, R> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, R> ObjectRef<R> call(RayFunc5<A, T0, T1, T2, T3, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, R> ObjectRef<R> call(RayFunc5<A, T0, T1, T2, T3, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, R> ObjectRef<R> call(RayFunc5<A, T0, T1, T2, T3, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, R> ObjectRef<R> call(RayFunc5<A, T0, T1, T2, T3, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3> void call(RayFuncVoid5<A, T0, T1, T2, T3> f, T0 t0, T1 t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3> void call(RayFuncVoid5<A, T0, T1, T2, T3> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3> void call(RayFuncVoid5<A, T0, T1, T2, T3> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3> void call(RayFuncVoid5<A, T0, T1, T2, T3> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3> void call(RayFuncVoid5<A, T0, T1, T2, T3> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3> void call(RayFuncVoid5<A, T0, T1, T2, T3> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3> void call(RayFuncVoid5<A, T0, T1, T2, T3> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3> void call(RayFuncVoid5<A, T0, T1, T2, T3> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3> void call(RayFuncVoid5<A, T0, T1, T2, T3> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3> void call(RayFuncVoid5<A, T0, T1, T2, T3> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3> void call(RayFuncVoid5<A, T0, T1, T2, T3> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3> void call(RayFuncVoid5<A, T0, T1, T2, T3> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3> void call(RayFuncVoid5<A, T0, T1, T2, T3> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3> void call(RayFuncVoid5<A, T0, T1, T2, T3> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3> void call(RayFuncVoid5<A, T0, T1, T2, T3> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3> void call(RayFuncVoid5<A, T0, T1, T2, T3> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ObjectRef<R> call(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().callActor((RayActor) this, f, args);
+    return Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, T1 t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
   default <T0, T1, T2, T3, T4> void call(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    Ray.internal().callActor((RayActor) this, f, args);
+    Ray.internal().callActor((ActorHandle) this, f, args);
   }
 
 }

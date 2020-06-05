@@ -1,6 +1,6 @@
 package io.ray.streaming.runtime.rpc;
 
-import io.ray.api.RayActor;
+import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.worker.JobWorker;
@@ -23,7 +23,7 @@ public class RemoteCallWorker {
    * @param ctx JobWorker's context
    * @return init result
    */
-  public static ObjectRef<Boolean> initWorker(RayActor actor, JobWorkerContext ctx) {
+  public static ObjectRef<Boolean> initWorker(ActorHandle actor, JobWorkerContext ctx) {
     LOG.info("Call worker to init, actor: {}, context: {}.", actor.getId(), ctx);
     ObjectRef<Boolean> result = null;
 
@@ -39,7 +39,7 @@ public class RemoteCallWorker {
    * @param actor target JobWorker actor
    * @return start result
    */
-  public static ObjectRef<Boolean> startWorker(RayActor actor) {
+  public static ObjectRef<Boolean> startWorker(ActorHandle actor) {
     LOG.info("Call worker to start, actor: {}.", actor.getId());
     ObjectRef<Boolean> result = null;
 
@@ -55,7 +55,7 @@ public class RemoteCallWorker {
    * @param actor target JobWorker actor
    * @return destroy result
    */
-  public static Boolean shutdownWithoutReconstruction(RayActor actor) {
+  public static Boolean shutdownWithoutReconstruction(ActorHandle actor) {
     LOG.info("Call worker to shutdown without reconstruction, actor is {}.",
         actor.getId());
     Boolean result = false;

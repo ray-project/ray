@@ -3,14 +3,14 @@ package io.ray.api.test;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
+import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.RayPyActor;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyRemoteFunction;
-import io.ray.runtime.actor.NativeRayActor;
-import io.ray.runtime.actor.NativeRayPyActor;
+import io.ray.runtime.actor.NativeActorHandle;
+import io.ray.runtime.actor.NativePyActorHandle;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -165,9 +165,9 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
   @Test
   public void testPassActorHandleFromJavaToPython() {
     // Create a java actor, and pass actor handle to python.
-    RayActor<TestActor> javaActor = Ray.createActor(TestActor::new, "1".getBytes());
-    Preconditions.checkState(javaActor instanceof NativeRayActor);
-    byte[] actorHandleBytes = ((NativeRayActor) javaActor).toBytes();
+    ActorHandle<TestActor> javaActor = Ray.createActor(TestActor::new, "1".getBytes());
+    Preconditions.checkState(javaActor instanceof NativeActorHandle);
+    byte[] actorHandleBytes = ((NativeActorHandle) javaActor).toBytes();
     ObjectRef<byte[]> res = Ray.call(
         new PyRemoteFunction<>(PYTHON_MODULE,
             "py_func_call_java_actor_from_handle",
@@ -177,8 +177,8 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     // Create a python actor, and pass actor handle to python.
     RayPyActor pyActor = Ray.createActor(
         new PyActorClass(PYTHON_MODULE, "Counter"), "1".getBytes());
-    Preconditions.checkState(pyActor instanceof NativeRayActor);
-    actorHandleBytes = ((NativeRayActor) pyActor).toBytes();
+    Preconditions.checkState(pyActor instanceof NativeActorHandle);
+    actorHandleBytes = ((NativeActorHandle) pyActor).toBytes();
     res = Ray.call(
         new PyRemoteFunction<>(PYTHON_MODULE,
             "py_func_call_python_actor_from_handle",
@@ -218,7 +218,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
 
   public static byte[] callPythonActorHandle(byte[] value) {
     // This function will be called from test_cross_language_invocation.py
-    NativeRayPyActor actor = (NativeRayPyActor) NativeRayActor.fromBytes(value);
+    NativePyActorHandle actor = (NativePyActorHandle) NativeActorHandle.fromBytes(value);
     ObjectRef<byte[]> res = actor.call(
         new PyActorMethod<>("increase", byte[].class),
         "1".getBytes());

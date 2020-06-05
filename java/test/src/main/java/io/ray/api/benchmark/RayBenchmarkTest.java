@@ -2,7 +2,7 @@ package io.ray.api.benchmark;
 
 import com.google.common.util.concurrent.RateLimiter;
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
+import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.function.RayFunc1;
 import io.ray.api.test.BaseTest;
@@ -74,7 +74,7 @@ public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializab
     }
   }
 
-  public void singleLatencyTest(int times, RayActor rayActor) {
+  public void singleLatencyTest(int times, ActorHandle rayActor) {
 
     List<Long> counterList = new ArrayList<>();
     for (int i = 0; i < times; i++) {
@@ -92,7 +92,7 @@ public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializab
     printList(counterList);
   }
 
-  public abstract ObjectRef<RemoteResult<T>> rayCall(RayActor rayActor);
+  public abstract ObjectRef<RemoteResult<T>> rayCall(ActorHandle rayActor);
 
   public abstract boolean checkResult(T t);
 

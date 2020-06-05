@@ -1,8 +1,8 @@
 package io.ray.streaming.runtime.streamingqueue;
 
-import io.ray.api.BaseActor;
+import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
+import io.ray.api.ActorHandle;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.streaming.runtime.transfer.ChannelID;
 import io.ray.streaming.runtime.transfer.ChannelCreationParametersBuilder;
@@ -52,10 +52,10 @@ class ReaderWorker extends Worker {
 
   private String name = null;
   private List<String> inputQueueList = null;
-  Map<String, BaseActor> fromActors = new HashMap<>();
+  Map<String, BaseActorHandle> fromActors = new HashMap<>();
   private DataReader dataReader = null;
   private long handler = 0;
-  private RayActor<WriterWorker> peerActor = null;
+  private ActorHandle<WriterWorker> peerActor = null;
   private int msgCount = 0;
   private int totalMsg = 0;
 
@@ -77,7 +77,7 @@ class ReaderWorker extends Worker {
     return "testRayCall";
   }
 
-  public boolean init(List<String> inputQueueList, RayActor<WriterWorker> peer, int msgCount) {
+  public boolean init(List<String> inputQueueList, ActorHandle<WriterWorker> peer, int msgCount) {
 
     this.inputQueueList = inputQueueList;
     this.peerActor = peer;
@@ -171,9 +171,9 @@ class WriterWorker extends Worker {
 
   private String name = null;
   private List<String> outputQueueList = null;
-  Map<String, BaseActor> toActors = new HashMap<>();
+  Map<String, BaseActorHandle> toActors = new HashMap<>();
   DataWriter dataWriter = null;
-  RayActor<ReaderWorker> peerActor = null;
+  ActorHandle<ReaderWorker> peerActor = null;
   int msgCount = 0;
 
   public WriterWorker(String name) {
@@ -188,13 +188,13 @@ class WriterWorker extends Worker {
     return name;
   }
 
-  public String testCallReader(RayActor<ReaderWorker> readerActor) {
+  public String testCallReader(ActorHandle<ReaderWorker> readerActor) {
     String name = readerActor.call(ReaderWorker::getName).get();
     LOGGER.info("testCallReader: {}", name);
     return name;
   }
 
-  public boolean init(List<String> outputQueueList, RayActor<ReaderWorker> peer, int msgCount) {
+  public boolean init(List<String> outputQueueList, ActorHandle<ReaderWorker> peer, int msgCount) {
 
     this.outputQueueList = outputQueueList;
     this.peerActor = peer;

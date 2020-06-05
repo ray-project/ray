@@ -9,16 +9,16 @@ import java.io.ObjectInput;
 /**
  * Python actor handle implementation for cluster mode.
  */
-public class NativeRayPyActor extends NativeRayActor implements RayPyActor {
+public class NativePyActorHandle extends NativeActorHandle implements RayPyActor {
 
-  NativeRayPyActor(byte[] actorId) {
+  NativePyActorHandle(byte[] actorId) {
     super(actorId, Language.PYTHON);
   }
 
   /**
    * Required by FST
    */
-  public NativeRayPyActor() {
+  public NativePyActorHandle() {
     super();
   }
 

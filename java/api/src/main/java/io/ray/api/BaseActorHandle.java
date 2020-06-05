@@ -7,7 +7,7 @@ import io.ray.api.id.ActorId;
  *
  * A handle can be used to invoke a remote actor method.
  */
-public interface BaseActor {
+public interface BaseActorHandle {
 
   /**
    * @return The id of this actor.

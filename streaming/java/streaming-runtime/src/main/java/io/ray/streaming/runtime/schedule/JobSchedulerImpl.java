@@ -1,8 +1,8 @@
 package io.ray.streaming.runtime.schedule;
 
-import io.ray.api.BaseActor;
+import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
+import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.RayPyActor;
 import io.ray.api.function.PyActorMethod;
@@ -55,10 +55,10 @@ public class JobSchedulerImpl implements JobScheduler {
       List<ExecutionTask> executionTasks = executionNode.getExecutionTasks();
       for (ExecutionTask executionTask : executionTasks) {
         int taskId = executionTask.getTaskId();
-        BaseActor worker = executionTask.getWorker();
+        BaseActorHandle worker = executionTask.getWorker();
         switch (executionNode.getLanguage()) {
           case JAVA:
-            RayActor<JobWorker> jobWorker = (RayActor<JobWorker>) worker;
+            ActorHandle<JobWorker> jobWorker = (ActorHandle<JobWorker>) worker;
             waits.add(jobWorker.call(JobWorker::init,
                 new WorkerContext(taskId, executionGraph, jobConfig)));
             break;

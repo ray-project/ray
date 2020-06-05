@@ -3,8 +3,8 @@ package io.ray.runtime;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
-import io.ray.api.BaseActor;
-import io.ray.api.RayActor;
+import io.ray.api.BaseActorHandle;
+import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.RayPyActor;
 import io.ray.api.WaitResult;
@@ -119,7 +119,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public ObjectRef callActor(RayActor<?> actor, RayFunc func, Object[] args) {
+  public ObjectRef callActor(ActorHandle<?> actor, RayFunc func, Object[] args) {
     RayFunction rayFunction = functionManager.getFunction(workerContext.getCurrentJobId(), func);
     FunctionDescriptor functionDescriptor = rayFunction.functionDescriptor;
     Optional<Class<?>> returnType = rayFunction.getReturnType();
@@ -137,12 +137,12 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   @SuppressWarnings("unchecked")
-  public <T> RayActor<T> createActor(RayFunc actorFactoryFunc,
-      Object[] args, ActorCreationOptions options) {
+  public <T> ActorHandle<T> createActor(RayFunc actorFactoryFunc,
+                                        Object[] args, ActorCreationOptions options) {
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(workerContext.getCurrentJobId(), actorFactoryFunc)
             .functionDescriptor;
-    return (RayActor<T>) createActorImpl(functionDescriptor, args, options);
+    return (ActorHandle<T>) createActorImpl(functionDescriptor, args, options);
   }
 
   @Override
@@ -222,7 +222,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     }
   }
 
-  private ObjectRef callActorFunction(BaseActor rayActor,
+  private ObjectRef callActorFunction(BaseActorHandle rayActor,
                                       FunctionDescriptor functionDescriptor, Object[] args, Optional<Class<?>> returnType) {
     int numReturns = returnType.isPresent() ? 1 : 0;
     List<FunctionArg> functionArgs = ArgumentsBuilder
@@ -237,14 +237,14 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     }
   }
 
-  private BaseActor createActorImpl(FunctionDescriptor functionDescriptor,
-      Object[] args, ActorCreationOptions options) {
+  private BaseActorHandle createActorImpl(FunctionDescriptor functionDescriptor,
+                                          Object[] args, ActorCreationOptions options) {
     List<FunctionArg> functionArgs = ArgumentsBuilder
         .wrap(args, functionDescriptor.getLanguage());
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
       Preconditions.checkState(Strings.isNullOrEmpty(options.jvmOptions));
     }
-    BaseActor actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
+    BaseActorHandle actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
     return actor;
   }
 

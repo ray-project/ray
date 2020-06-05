@@ -1,7 +1,7 @@
 package io.ray.streaming.runtime.master.scheduler.controller;
 
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
+import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.WaitResult;
 import io.ray.api.id.ActorId;
@@ -50,7 +50,7 @@ public class WorkerLifecycleController {
         .setMaxRestarts(-1)
         .createActorCreationOptions();
 
-    RayActor<JobWorker> actor = null;
+    ActorHandle<JobWorker> actor = null;
     // TODO (datayjz): ray create actor
 
     if (null == actor) {
@@ -139,7 +139,7 @@ public class WorkerLifecycleController {
   }
 
   private boolean destroyWorker(ExecutionVertex executionVertex) {
-    RayActor rayActor = executionVertex.getWorkerActor();
+    ActorHandle rayActor = executionVertex.getWorkerActor();
     LOG.info("Begin destroying worker[vertex={}, actor={}].",
         executionVertex.getVertexName(), rayActor.getId());
 
