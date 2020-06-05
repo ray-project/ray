@@ -43,7 +43,6 @@ class PositionwiseFeedforward(nn.Module):
             activation_fn=output_activation
         )
 
-
     def forward(self, inputs, **kwargs):
         del kwargs
         output = self._hidden_layer(inputs)
@@ -52,58 +51,6 @@ class PositionwiseFeedforward(nn.Module):
 
 
 if __name__ == '__main__':
-    # BELOW THIS TESTS THE SLIMFC
-    """
-    # N is batch size; D_in is input dimension;
-    # H is hidden dimension; D_out is output dimension.
-    N, D_in, H, D_out = 64, 1000, 100, 10
-
-    # Create random Tensors to hold inputs and outputs
-    x = torch.randn(N, D_in)
-    y = torch.randn(N, D_out)
-
-    # Construct our model by instantiating the class defined above
-    model = PositionwiseFeedforward(D_in, H, D_out)
-
-    # Construct our loss function and an Optimizer. The call to model.parameters()
-    # in the SGD constructor will contain the learnable parameters of the two
-    # nn.Linear modules which are members of the model.
-    criterion = torch.nn.MSELoss(reduction='sum')
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-4)
-    for t in range(500):
-        # Forward pass: Compute predicted y by passing x to the model
-        y_pred = model(x)
-
-        # Compute and print loss
-        loss = criterion(y_pred, y)
-        if t % 100 == 99:
-            print(t, loss.item())
-
-        # Zero gradients, perform a backward pass, and update the weights.
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        """
-    # TEST MULTIHEAD ATTENTION
-
-    N, D_in, D_out = 64, 32, 10
-
-    # Create random Tensors to hold inputs and outputs
-    x = torch.randn(N, D_in)
-    y = torch.randn(N, D_out)
-
-    model = MultiHeadAttention(in_dim=D_in, out_dim=D_out, num_heads=2, head_dim=32)
-
-    criterion = torch.nn.MSELoss(reduction='sum')
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-4)
-    for t in range(500):
-        y_pred = model(x)
-
-        loss = criterion(y_pred, y)
-        if t % 100 == 99:
-            print(t, loss.item())
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+    raise NotImplementedError
+    #    model = PositionwiseFeedforward(D_in, H, D_out)
+    #TODO a lot. port the whole gtrxl
