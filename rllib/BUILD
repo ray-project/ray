@@ -1275,7 +1275,7 @@ py_test(
 py_test(
     name = "tests/test_multi_agent_env",
     tags = ["tests_dir", "tests_dir_M"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_multi_agent_env.py"]
 )
 
@@ -1297,7 +1297,7 @@ py_test(
 py_test(
     name = "tests/test_reproducibility",
     tags = ["tests_dir", "tests_dir_R"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_reproducibility.py"]
 )
 
@@ -1313,7 +1313,7 @@ py_test(
 py_test(
     name = "tests/test_rollout_worker",
     tags = ["tests_dir", "tests_dir_R"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_rollout_worker.py"]
 )
 

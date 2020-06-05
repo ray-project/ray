@@ -21,7 +21,7 @@ def check_support_multiagent(alg, config):
         else:
             a = get_agent_class(alg)(config=config, env="multi_agent_cartpole")
         try:
-            a.train()
+            print(a.train())
         finally:
             a.stop()
 
@@ -49,7 +49,7 @@ class TestSupportedMultiAgent(unittest.TestCase):
                 "num_workers": 2,
                 "timesteps_per_iteration": 100,
                 "num_gpus": 0,
-                "buffer_size": 10000,
+                "buffer_size": 1000,
                 "min_iter_time_s": 1,
                 "learning_starts": 10,
                 "target_network_update_freq": 100,
@@ -60,7 +60,7 @@ class TestSupportedMultiAgent(unittest.TestCase):
             "APEX_DDPG", {
                 "num_workers": 2,
                 "timesteps_per_iteration": 100,
-                "buffer_size": 10000,
+                "buffer_size": 1000,
                 "num_gpus": 0,
                 "min_iter_time_s": 1,
                 "learning_starts": 10,
@@ -72,12 +72,16 @@ class TestSupportedMultiAgent(unittest.TestCase):
         check_support_multiagent(
             "DDPG", {
                 "timesteps_per_iteration": 1,
+                "buffer_size": 1000,
                 "use_state_preprocessor": True,
                 "learning_starts": 500,
             })
 
     def test_dqn_multiagent(self):
-        check_support_multiagent("DQN", {"timesteps_per_iteration": 1})
+        check_support_multiagent("DQN", {
+            "timesteps_per_iteration": 1,
+            "buffer_size": 1000,
+        })
 
     def test_impala_multiagent(self):
         check_support_multiagent("IMPALA", {"num_gpus": 0})
@@ -98,6 +102,7 @@ class TestSupportedMultiAgent(unittest.TestCase):
     def test_sac_multiagent(self):
         check_support_multiagent("SAC", {
             "num_workers": 0,
+            "buffer_size": 1000,
             "normalize_actions": False,
         })
 
