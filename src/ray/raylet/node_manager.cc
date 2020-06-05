@@ -425,6 +425,12 @@ void NodeManager::DoLocalGC() {
 // debug_dump_period_ milliseconds.
 // See https://github.com/ray-project/ray/issues/5790 for details.
 void NodeManager::WarnResourceDeadlock() {
+  if (local_queues_.GetTasks(TaskState::RUNNING).empty()) {
+    // No tasks running at all, don't warn. Probably we are just waiting for
+    // workers to start and join the pool.
+    resource_deadlock_warned_ = false;
+    return;
+  }
   // Check if any progress is being made on this raylet.
   for (const auto &task : local_queues_.GetTasks(TaskState::RUNNING)) {
     // Ignore blocked tasks.
