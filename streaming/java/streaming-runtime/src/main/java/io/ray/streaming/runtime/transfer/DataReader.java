@@ -62,7 +62,7 @@ public class DataReader {
         ChannelUtils.toNativeConf(workerConfig),
         isMock
     );
-    LOGGER.info("create DataReader succeed");
+    LOGGER.info("Create DataReader succeeded.");
   }
 
   // params set by getBundleNative: bundle data address + size

@@ -60,7 +60,7 @@ public class DataWriter {
         ChannelUtils.toNativeConf(workerConfig),
         isMock
     );
-    LOGGER.info("create DataWriter succeeded.");
+    LOGGER.info("Create DataWriter succeeded.");
   }
 
   /**

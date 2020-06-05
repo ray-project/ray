@@ -4,6 +4,7 @@ import io.ray.api.BaseActor;
 import io.ray.api.Ray;
 import io.ray.streaming.api.collector.Collector;
 import io.ray.streaming.api.context.RuntimeContext;
+import io.ray.streaming.runtime.config.worker.WorkerInternalConfig;
 import io.ray.streaming.runtime.core.collector.OutputCollector;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionEdge;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
@@ -49,12 +50,18 @@ public abstract class StreamTask implements Runnable {
    * Build upstream and downstream data transmission channels according to {@link ExecutionVertex}.
    */
   private void prepareTask() {
+    LOG.info("Preparing stream task.");
     ExecutionVertex executionVertex = jobWorker.getExecutionVertex();
+
+    // set vertex info into config for native using
+    jobWorker.getWorkerConfig().workerInternalConfig.setProperty(
+        WorkerInternalConfig.WORKER_NAME_INTERNAL, executionVertex.getVertexName());
+    jobWorker.getWorkerConfig().workerInternalConfig.setProperty(
+        WorkerInternalConfig.OP_NAME_INTERNAL, executionVertex.getJobVertexName());
 
     // producer
     List<ExecutionEdge> outputEdges = executionVertex.getOutputEdges();
     Map<String, BaseActor> outputActors = new HashMap<>();
-
 
     for (ExecutionEdge edge : outputEdges) {
       String queueName = ChannelID.genIdStr(
@@ -94,6 +101,7 @@ public abstract class StreamTask implements Runnable {
         jobWorker.getWorkerConfig().configMap, executionVertex.getParallelism());
 
     processor.open(collectors, runtimeContext);
+    LOG.info("Finished preparing stream task.");
   }
 
   /**

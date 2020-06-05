@@ -68,10 +68,14 @@ public class JobWorker implements Serializable {
 
       // create stream task
       task = createStreamTask();
+      if (task == null) {
+        return false;
+      }
     } catch (Exception e) {
       LOG.error("Failed to initiate job worker.", e);
       return false;
     }
+    LOG.info("Initiating job worker succeeded: {}.", workerContext.getWorkerName());
     return true;
   }
 
@@ -94,16 +98,24 @@ public class JobWorker implements Serializable {
    * Create tasks based on the processor corresponding of the operator.
    */
   private StreamTask createStreamTask() {
-    StreamTask task;
+    StreamTask task = null;
     StreamProcessor streamProcessor = ProcessBuilder
         .buildProcessor(executionVertex.getStreamOperator());
-    if (streamProcessor instanceof SourceProcessor) {
-      task = new SourceStreamTask(getTaskId(), streamProcessor, this);
-    } else if (streamProcessor instanceof OneInputProcessor) {
-      task = new OneInputStreamTask(getTaskId(), streamProcessor, this);
-    } else {
-      throw new RuntimeException("Unsupported processor type:" + streamProcessor);
+    LOG.debug("Stream processor created: {}.", streamProcessor);
+
+    try {
+      if (streamProcessor instanceof SourceProcessor) {
+        task = new SourceStreamTask(getTaskId(), streamProcessor, this);
+      } else if (streamProcessor instanceof OneInputProcessor) {
+        task = new OneInputStreamTask(getTaskId(), streamProcessor, this);
+      } else {
+        throw new RuntimeException("Unsupported processor type:" + streamProcessor);
+      }
+    } catch (Exception e) {
+      LOG.info("Failed to create stream task.", e);
+      return task;
     }
+    LOG.info("Stream task created: {}.", task);
     return task;
   }
 

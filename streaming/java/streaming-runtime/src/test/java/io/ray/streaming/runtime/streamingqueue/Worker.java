@@ -94,7 +94,7 @@ class ReaderWorker extends Worker {
 
     Map<String, String> conf = new HashMap<>();
 
-    conf.put(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL);
+    conf.put(Config.CHANNEL_TYPE, "NATIVE_CHANNEL");
     conf.put(Config.CHANNEL_SIZE, "100000");
     conf.put(Config.STREAMING_JOB_NAME, "integrationTest1");
     ChannelCreationParametersBuilder.setJavaWriterFunctionDesc(
@@ -221,7 +221,7 @@ class WriterWorker extends Worker {
     }
     Map<String, String> conf = new HashMap<>();
 
-    conf.put(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL);
+    conf.put(Config.CHANNEL_TYPE, "NATIVE_CHANNEL");
     conf.put(Config.CHANNEL_SIZE, "100000");
     conf.put(Config.STREAMING_JOB_NAME, "integrationTest1");
     ChannelCreationParametersBuilder.setJavaReaderFunctionDesc(
