@@ -28,7 +28,7 @@ class MultiHeadAttention(nn.Module):
 
         #TODO port the keras.layers.TimeDistributed wrapper
         self._linear_layer = SlimFC(
-            in_size=3 * num_heads * head_dim,
+            in_size= num_heads * head_dim,
             out_size=out_dim,
             use_bias=False)
 
@@ -50,15 +50,17 @@ class MultiHeadAttention(nn.Module):
         score = score / D**0.5
 
         # causal mask of the same length as the sequence
-        mask = sequence_mask(torch.range(1, L + 1), dtype=score.dtype)
+        mask = sequence_mask(torch.arange(1, L + 1), dtype=score.dtype, maxlen=None)
         mask = mask[None, :, :, None]
+        mask = mask.float()
 
         masked_score = score * mask + 1e30 * (mask - 1.)
-        wmat = nn.Softmax(masked_score, dim=2)
+        wmat = nn.functional.softmax(masked_score, dim=2)
 
         out = torch.einsum("bijh,bjhd->bihd", wmat, values)
+        shape = list(out.size())[:2] + [H*D]
+#        temp = torch.cat(temp2, [H * D], dim=0)
         out = torch.reshape(out,
-                            torch.concat((list(out.size())[:2], [H * D]),
-                            dim=0))
+                            shape)
         return self._linear_layer(out)
 

@@ -68,7 +68,7 @@ def sequence_mask(lengths, maxlen, dtype=None):
     if maxlen is None:
         maxlen = lengths.max()
 
-    mask = ~(torch.ones((len(lengths), maxlen)).to(
+    mask = ~(torch.ones((len(lengths), maxlen.int())).to(
         lengths.device).cumsum(dim=1).t() > lengths).t()
     mask.type(dtype or torch.bool)
 
