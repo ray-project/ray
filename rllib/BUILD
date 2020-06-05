@@ -296,7 +296,7 @@ py_test(
 py_test(
     name = "run_regression_tests_repeat_after_me_torch",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_tf"],
+    tags = ["learning_tests_torch"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/repeatafterme-ppo-lstm.yaml"],

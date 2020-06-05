@@ -84,7 +84,7 @@ def check_framework(framework, allow_none=True):
     # Invalid value.
     else:
         raise ValueError("Invalid framework='{}'. Use one of "
-                         "[tf|tfe|torch|auto].".format(framework))
+                         "[tf|tfe|torch|auto|None].".format(framework))
     return framework
 
 
