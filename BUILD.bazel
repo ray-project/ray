@@ -7,7 +7,7 @@ load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//bazel:ray.bzl", "COPTS")
+load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS")
 
 # === Begin of protobuf definitions ===
 
@@ -1598,7 +1598,8 @@ pyx_library(
     # We need to dlopen this lib with RTLD_GLOBAL to use ABI in this
     # shared lib, see python/ray/__init__.py.
     cc_kwargs = dict(
-        copts = COPTS,
+        srcs = PYX_SRCS,
+        copts = COPTS + PYX_COPTS,
         # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
         linkopts = select({
             "@bazel_tools//src/conditions:darwin": [
@@ -1636,7 +1637,8 @@ pyx_library(
         "python/ray/streaming/includes/*.pxi",
     ]),
     cc_kwargs = dict(
-        copts = COPTS,
+        srcs = PYX_SRCS,
+        copts = COPTS + PYX_COPTS,
     ),
     deps = [
         "//streaming:streaming_lib",
