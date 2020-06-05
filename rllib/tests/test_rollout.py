@@ -8,7 +8,9 @@ from ray.rllib.utils.test_utils import framework_iterator
 
 def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
     extra_config = ""
-    if algo == "ES":
+    if algo == "ARS":
+        extra_config = ",\"train_batch_size\": 10, \"noise_size\": 250000"
+    elif algo == "ES":
         extra_config = ",\"episodes_per_batch\": 1,\"train_batch_size\": 10, "\
                        "\"noise_size\": 250000"
 
