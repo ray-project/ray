@@ -5,6 +5,7 @@ It supports both traced and non-traced eager execution modes."""
 import functools
 import logging
 import numpy as np
+from gym.spaces import Tuple, Dict
 
 from ray.util.debug import log_once
 from ray.rllib.models.catalog import ModelCatalog
@@ -586,10 +587,17 @@ def build_eager_tf_policy(name,
                 SampleBatch.NEXT_OBS: np.array(
                     [self.observation_space.sample()]),
                 SampleBatch.DONES: np.array([False], dtype=np.bool),
-                SampleBatch.ACTIONS: tf.nest.map_structure(
-                    lambda c: np.array([c]), self.action_space.sample()),
                 SampleBatch.REWARDS: np.array([0], dtype=np.float32),
             }
+            if isinstance(self.action_space, Tuple) or isinstance(
+                    self.action_space, Dict):
+                dummy_batch[SampleBatch.ACTIONS] = [
+                    flatten_to_single_ndarray(self.action_space.sample())
+                ]
+            else:
+                dummy_batch[SampleBatch.ACTIONS] = tf.nest.map_structure(
+                    lambda c: np.array([c]), self.action_space.sample())
+
             if obs_include_prev_action_reward:
                 dummy_batch.update({
                     SampleBatch.PREV_ACTIONS: dummy_batch[SampleBatch.ACTIONS],

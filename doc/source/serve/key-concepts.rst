@@ -23,10 +23,18 @@ model that you'll be serving. To create one, we'll simply specify the name, rout
 
 .. code-block:: python
 
-  serve.create_endpoint("simple_endpoint", "/simple")
+  serve.create_endpoint("simple_endpoint", "/simple", methods=["GET"])
 
-You can also delete an endpoint using `serve.delete_endpoint`.
-Note that this will not delete any associated backends, which can be reused for other endpoints.
+To view all of the existing endpoints that have created, use `serve.list_endpoints`.
+
+.. code-block:: python
+
+  >>> serve.list_endpoints()
+  {'simple_endpoint': {'route': '/simple', 'methods': ['GET'], 'traffic': {}}}
+
+You can also delete an endpoint using ``serve.delete_endpoint``.
+Endpoints and backends are independent, so deleting an endpoint will not delete its backends.
+However, an endpoint must be deleted in order to delete the backends that serve its traffic.
 
 .. code-block:: python
 
@@ -45,6 +53,7 @@ Use a function when your response is stateless and a class when you
 might need to maintain some state (like a model). 
 For both functions and classes (that take as input Flask Requests), you'll need to 
 define them as backends to Ray Serve.
+You can specify arguments to be passed to class constructors in ``serve.create_backend``, shown below.
 
 It's important to note that Ray Serve places these backends in individual worker processes, which are replicas of the model.
 
@@ -54,14 +63,33 @@ It's important to note that Ray Serve places these backends in individual worker
     return "hello world"
 
   class RequestHandler:
-    def __init__(self):
-        self.msg = "hello, world!"
+    # Take the message to return as an argument to the constructor.
+    def __init__(self, msg):
+        self.msg = msg
 
     def __call__(self, flask_request):
         return self.msg
 
   serve.create_backend("simple_backend", handle_request)
-  serve.create_backend("simple_backend_class", RequestHandler)
+  # Pass in the message that the backend will return as an argument.
+  # If we call this backend, it will respond with "hello, world!".
+  serve.create_backend("simple_backend_class", RequestHandler, "hello, world!")
+
+We can also list all available backends and delete them to reclaim resources.
+Note that a backend cannot be deleted while it is in use by an endpoint because then traffic to an endpoint may not be able to be handled.
+
+.. code-block:: python
+
+  >> serve.list_backends()
+  {
+      'simple_backend': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
+      'simple_backend_class': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
+  }
+  >> serve.delete_backend("simple_backend")
+  >> serve.list_backends()
+  {
+      'simple_backend_class': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
+  }
 
 Setting Traffic
 ===============
