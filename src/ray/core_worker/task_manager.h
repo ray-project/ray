@@ -53,17 +53,22 @@ class TaskResubmissionInterface {
 };
 
 using RetryTaskCallback = std::function<void(const TaskSpecification &spec, bool delay)>;
+using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
  public:
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
               std::shared_ptr<ActorManagerInterface> actor_manager,
-              RetryTaskCallback retry_task_callback)
+              RetryTaskCallback retry_task_callback,
+              const std::function<bool(const ClientID &node_id)> &check_node_alive,
+              ReconstructObjectCallback reconstruct_object_callback)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         actor_manager_(actor_manager),
-        retry_task_callback_(retry_task_callback) {
+        retry_task_callback_(retry_task_callback),
+        check_node_alive_(check_node_alive),
+        reconstruct_object_callback_(reconstruct_object_callback) {
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
           RemoveLineageReference(object_id, ids_to_release);
@@ -237,6 +242,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;
+
+  const std::function<bool(const ClientID &node_id)> check_node_alive_;
+  const ReconstructObjectCallback reconstruct_object_callback_;
 
   // The number of task failures we have logged total.
   int64_t num_failure_logs_ GUARDED_BY(mu_) = 0;
