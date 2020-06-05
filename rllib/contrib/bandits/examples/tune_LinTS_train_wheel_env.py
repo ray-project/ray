@@ -39,7 +39,7 @@ if __name__ == "__main__":
 
     print("Running training for %s time steps" % training_iterations)
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     analysis = tune.run(
         LinTSTrainer,
         config=TS_CONFIG,
@@ -47,7 +47,7 @@ if __name__ == "__main__":
         num_samples=2,
         checkpoint_at_end=True)
 
-    print("The trials took", time.time() - start_time, "seconds\n")
+    print("The trials took", time.perf_counter() - start_time, "seconds\n")
 
     # Analyze cumulative regrets of the trials
     frame = pd.DataFrame()

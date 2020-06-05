@@ -43,7 +43,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                  _fake_gpus=False):
         PolicyOptimizer.__init__(self, workers)
 
-        self._stats_start_time = time.time()
+        self._stats_start_time = time.perf_counter()
         self._last_stats_time = {}
         self._last_stats_sum = {}
 
@@ -79,7 +79,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
 
         # Stats
         self._optimizer_step_timer = TimerStat()
-        self._stats_start_time = time.time()
+        self._stats_start_time = time.perf_counter()
         self._last_stats_time = {}
 
         if num_aggregation_workers > 0:
@@ -111,7 +111,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self._last_stats_sum[key] += val
 
     def get_mean_stats_and_reset(self):
-        now = time.time()
+        now = time.perf_counter()
         mean_stats = {
             key: round(val / (now - self._last_stats_time[key]), 3)
             for key, val in self._last_stats_sum.items()
@@ -119,7 +119,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
 
         for key in self._last_stats_sum.keys():
             self._last_stats_sum[key] = 0
-            self._last_stats_time[key] = time.time()
+            self._last_stats_time[key] = time.perf_counter()
 
         return mean_stats
 

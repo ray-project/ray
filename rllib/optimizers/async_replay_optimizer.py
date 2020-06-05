@@ -139,9 +139,9 @@ class AsyncReplayOptimizer(PolicyOptimizer):
     def step(self):
         assert self.learner.is_alive()
         assert len(self.workers.remote_workers()) > 0
-        start = time.time()
+        start = time.perf_counter()
         sample_timesteps, train_timesteps = self._step()
-        time_delta = time.time() - start
+        time_delta = time.perf_counter() - start
         self.timers["sample"].push(time_delta)
         self.timers["sample"].push_units_processed(sample_timesteps)
         if train_timesteps > 0:

@@ -47,7 +47,7 @@ class BanditPolicyOverrides:
 
         info = {}
 
-        start = time.time()
+        start = time.perf_counter()
         self.model.partial_fit(unflattened_obs,
                                train_batch[SampleBatch.REWARDS],
                                train_batch[SampleBatch.ACTIONS])
@@ -62,7 +62,7 @@ class BanditPolicyOverrides:
             if log_once("no_regrets"):
                 logger.warning("The env did not report `regret` values in "
                                "its `info` return, ignoring.")
-        info["update_latency"] = time.time() - start
+        info["update_latency"] = time.perf_counter() - start
         return {LEARNER_STATS_KEY: info}
 
 

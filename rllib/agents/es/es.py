@@ -119,9 +119,9 @@ class Worker:
         eval_returns, eval_lengths = [], []
 
         # Perform some rollouts with noise.
-        task_tstart = time.time()
+        task_tstart = time.perf_counter()
         while (len(noise_indices) == 0
-               or time.time() - task_tstart < self.min_task_runtime):
+               or time.perf_counter() - task_tstart < self.min_task_runtime):
 
             if np.random.uniform() < self.config["eval_prob"]:
                 # Do an evaluation run with no perturbation.
@@ -207,7 +207,7 @@ class ESTrainer(Trainer):
 
         self.episodes_so_far = 0
         self.reward_list = []
-        self.tstart = time.time()
+        self.tstart = time.perf_counter()
 
     @override(Trainer)
     def get_policy(self, policy=DEFAULT_POLICY_ID):

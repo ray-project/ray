@@ -223,7 +223,7 @@ class PolicyClient:
 
     def _update_local_policy(self, force=False):
         assert self.inference_thread.is_alive()
-        if (self.update_interval and time.time() - self.last_updated >
+        if (self.update_interval and time.perf_counter() - self.last_updated >
                 self.update_interval) or force:
             logger.info("Querying server for new policy weights.")
             resp = self._send({
@@ -235,7 +235,7 @@ class PolicyClient:
                 "Updating rollout worker weights and global vars {}.".format(
                     global_vars))
             self.rollout_worker.set_weights(weights, global_vars)
-            self.last_updated = time.time()
+            self.last_updated = time.perf_counter()
 
 
 class _LocalInferenceThread(threading.Thread):

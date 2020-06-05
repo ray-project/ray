@@ -158,7 +158,7 @@ class AggregationWorker(AggregationWorkerBase):
 
     def get_train_batches(self):
         assert self.initialized, "Must call init() before using this class."
-        start = time.time()
+        start = time.perf_counter()
         result = []
         for batch in self.iter_train_batches(max_yield=5):
             result.append(batch)
@@ -168,7 +168,7 @@ class AggregationWorker(AggregationWorkerBase):
                 result.append(batch)
         logger.debug("Returning {} train batches, {}s".format(
             len(result),
-            time.time() - start))
+            time.perf_counter() - start))
         return result
 
     def get_host(self):

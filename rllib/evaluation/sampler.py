@@ -455,11 +455,11 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
 
     while True:
         perf_stats.iters += 1
-        t0 = time.time()
+        t0 = time.perf_counter()
         # Get observations from all ready agents.
         unfiltered_obs, rewards, dones, infos, off_policy_actions = \
             base_env.poll()
-        perf_stats.env_wait_time += time.time() - t0
+        perf_stats.env_wait_time += time.perf_counter() - t0
 
         if log_once("env_returns"):
             logger.info("Raw obs from env: {}".format(
@@ -467,7 +467,7 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
             logger.info("Info return from env: {}".format(summarize(infos)))
 
         # Process observations and prepare for policy evaluation.
-        t1 = time.time()
+        t1 = time.perf_counter()
         active_envs, to_eval, outputs = _process_observations(
             worker=worker,
             base_env=base_env,
@@ -487,21 +487,21 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
             soft_horizon=soft_horizon,
             no_done_at_end=no_done_at_end,
             observation_fn=observation_fn)
-        perf_stats.processing_time += time.time() - t1
+        perf_stats.processing_time += time.perf_counter() - t1
         for o in outputs:
             yield o
 
         # Do batched policy eval (accross vectorized envs).
-        t2 = time.time()
+        t2 = time.perf_counter()
         eval_results = _do_policy_eval(
             to_eval=to_eval,
             policies=policies,
             active_episodes=active_episodes,
             tf_sess=tf_sess)
-        perf_stats.inference_time += time.time() - t2
+        perf_stats.inference_time += time.perf_counter() - t2
 
         # Process results and update episode state.
-        t3 = time.time()
+        t3 = time.perf_counter()
         actions_to_send = _process_policy_eval_results(
             to_eval=to_eval,
             eval_results=eval_results,
@@ -510,13 +510,13 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
             off_policy_actions=off_policy_actions,
             policies=policies,
             clip_actions=clip_actions)
-        perf_stats.processing_time += time.time() - t3
+        perf_stats.processing_time += time.perf_counter() - t3
 
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
-        t4 = time.time()
+        t4 = time.perf_counter()
         base_env.send_actions(actions_to_send)
-        perf_stats.env_wait_time += time.time() - t4
+        perf_stats.env_wait_time += time.perf_counter() - t4
 
 
 def _process_observations(

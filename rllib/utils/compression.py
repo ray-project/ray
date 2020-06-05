@@ -72,8 +72,8 @@ if __name__ == "__main__":
     data = np.ones(size).reshape((32, 80, 80, 4))
 
     count = 0
-    start = time.time()
-    while time.time() - start < 1:
+    start = time.perf_counter()
+    while time.perf_counter() - start < 1:
         pack(data)
         count += 1
     compressed = pack(data)
@@ -81,8 +81,8 @@ if __name__ == "__main__":
     print("Compression ratio: {}".format(round(size * 4 / len(compressed), 2)))
 
     count = 0
-    start = time.time()
-    while time.time() - start < 1:
+    start = time.perf_counter()
+    while time.perf_counter() - start < 1:
         unpack(compressed)
         count += 1
     print("Decompression speed: {} MB/s".format(count * size * 4 / 1e6))

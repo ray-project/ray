@@ -265,8 +265,8 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
         return local, remotes
 
     def _wait_for(self, optimizer, num_steps_sampled, num_steps_trained):
-        start = time.time()
-        while time.time() - start < 30:
+        start = time.perf_counter()
+        while time.perf_counter() - start < 30:
             optimizer.step()
             if optimizer.num_steps_sampled > num_steps_sampled and \
                     optimizer.num_steps_trained > num_steps_trained:

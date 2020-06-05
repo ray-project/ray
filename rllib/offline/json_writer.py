@@ -60,7 +60,7 @@ class JsonWriter(OutputWriter):
 
     @override(OutputWriter)
     def write(self, sample_batch):
-        start = time.time()
+        start = time.perf_counter()
         data = _to_json(sample_batch, self.compress_columns)
         f = self._get_file()
         f.write(data)
@@ -70,7 +70,7 @@ class JsonWriter(OutputWriter):
         self.bytes_written += len(data)
         logger.debug("Wrote {} bytes to {} in {}s".format(
             len(data), f,
-            time.time() - start))
+            time.perf_counter() - start))
 
     def _get_file(self):
         if not self.cur_file or self.bytes_written >= self.max_file_size:

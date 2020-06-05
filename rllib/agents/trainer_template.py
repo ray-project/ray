@@ -136,7 +136,7 @@ def build_trainer(
                 before_train_step(self)
             prev_steps = self.optimizer.num_steps_sampled
 
-            start = time.time()
+            start = time.perf_counter()
             optimizer_steps_this_iter = 0
             while True:
                 fetches = self.optimizer.step()
@@ -145,7 +145,7 @@ def build_trainer(
                     deprecation_warning("after_optimizer_step",
                                         "execution_plan")
                     after_optimizer_step(self, fetches)
-                if (time.time() - start >= self.config["min_iter_time_s"]
+                if (time.perf_counter() - start >= self.config["min_iter_time_s"]
                         and self.optimizer.num_steps_sampled - prev_steps >=
                         self.config["timesteps_per_iteration"]):
                     break

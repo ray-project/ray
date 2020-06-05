@@ -109,12 +109,12 @@ def test_metrics(ray_start_regular_shared):
             "collect_metrics_timeout": 10,
         })
 
-    start = time.time()
+    start = time.perf_counter()
     res1 = next(b)
     assert res1["episode_reward_mean"] > 0, res1
     res2 = next(b)
     assert res2["episode_reward_mean"] > 0, res2
-    assert time.time() - start > 2.4
+    assert time.perf_counter() - start > 2.4
     workers.stop()
 
 

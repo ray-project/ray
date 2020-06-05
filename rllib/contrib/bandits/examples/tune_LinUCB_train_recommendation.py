@@ -24,7 +24,7 @@ if __name__ == "__main__":
 
     print("Running training for %s time steps" % training_iterations)
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     analysis = tune.run(
         "contrib/LinUCB",
         config=UCB_CONFIG,
@@ -32,7 +32,7 @@ if __name__ == "__main__":
         num_samples=5,
         checkpoint_at_end=False)
 
-    print("The trials took", time.time() - start_time, "seconds\n")
+    print("The trials took", time.perf_counter() - start_time, "seconds\n")
 
     # Analyze cumulative regrets of the trials
     frame = pd.DataFrame()

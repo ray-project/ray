@@ -250,7 +250,7 @@ class TorchPolicy(Policy):
                         if p.grad is not None:
                             grads.append(p.grad)
 
-                start = time.time()
+                start = time.perf_counter()
                 if torch.cuda.is_available():
                     # Sadly, allreduce_coalesced does not work with CUDA yet.
                     for g in grads:
@@ -265,7 +265,7 @@ class TorchPolicy(Policy):
                         if p.grad is not None:
                             p.grad /= self.distributed_world_size
 
-                grad_info["allreduce_latency"] += time.time() - start
+                grad_info["allreduce_latency"] += time.perf_counter() - start
 
             # Step the optimizer.
             opt.step()

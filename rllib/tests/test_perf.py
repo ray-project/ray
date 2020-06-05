@@ -25,13 +25,13 @@ class TestPerf(unittest.TestCase):
                 env_creator=lambda _: gym.make("CartPole-v0"),
                 policy=MockPolicy,
                 rollout_fragment_length=100)
-            start = time.time()
+            start = time.perf_counter()
             count = 0
-            while time.time() - start < 1:
+            while time.perf_counter() - start < 1:
                 count += ev.sample().count
             print()
             print("Samples per second {}".format(
-                count / (time.time() - start)))
+                count / (time.perf_counter() - start)))
             print()
 
 

@@ -118,9 +118,9 @@ class OncePerTimeInterval:
 
     Examples:
         >>> throttled_op = train_op.filter(OncePerTimeInterval(5))
-        >>> start = time.time()
+        >>> start = time.perf_counter()
         >>> next(throttled_op)
-        >>> print(time.time() - start)
+        >>> print(time.perf_counter() - start)
         5.00001  # will be greater than 5 seconds
     """
 
@@ -131,7 +131,7 @@ class OncePerTimeInterval:
     def __call__(self, item):
         if self.delay <= 0.0:
             return True
-        now = time.time()
+        now = time.perf_counter()
         if now - self.last_called > self.delay:
             self.last_called = now
             return True
