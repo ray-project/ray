@@ -6,9 +6,9 @@ from ray.rllib.utils.framework import TensorType
 
 @PublicAPI
 class RepeatedValues:
-    """Represents a variable-length list of items from extra_spaces.Repeated.
+    """Represents a variable-length list of items from spaces.Repeated.
 
-    RepeatedValues are created when you use extra_spaces.Repeated, and are
+    RepeatedValues are created when you use spaces.Repeated, and are
     accessible as part of input_dict["obs"] in ModelV2 forward functions.
 
     Example:

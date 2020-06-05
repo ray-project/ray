@@ -1,7 +1,7 @@
 import gym
 from gym.spaces import Discrete, Box, Dict
 
-from ray.rllib.models.extra_spaces import Repeated
+from ray.rllib.utils.spaces import Repeated
 
 # Constraints on the Repeated space.
 MAX_PLAYERS = 4
@@ -16,7 +16,7 @@ class SimpleRPG(gym.Env):
     attributes, and may further hold a list of items (categorical space).
 
     Note that the env doesn't train, it's just a dummy example to show how to
-    use extra_spaces.Repeated in a custom model (see CustomRPGModel below).
+    use spaces.Repeated in a custom model (see CustomRPGModel below).
     """
 
     def __init__(self, config):

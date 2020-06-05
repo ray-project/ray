@@ -13,7 +13,6 @@ from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.extra_spaces import Repeated
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -21,6 +20,7 @@ from ray.rllib.rollout import rollout
 from ray.rllib.tests.test_external_env import SimpleServing
 from ray.tune.registry import register_env
 from ray.rllib.utils import try_import_tf, try_import_torch
+from ray.rllib.utils.spaces import Repeated
 
 tf = try_import_tf()
 _, nn = try_import_torch()
