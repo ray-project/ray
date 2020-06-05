@@ -255,7 +255,8 @@ def load_operator(descriptor_operator_bytes: bytes):
     function_desc_bytes, module_name, class_name \
         = gateway_client.deserialize(descriptor_operator_bytes)
     if function_desc_bytes:
-        return create_operator_with_func(function.load_function(function_desc_bytes))
+        return create_operator_with_func(
+            function.load_function(function_desc_bytes))
     else:
         assert module_name
         assert class_name

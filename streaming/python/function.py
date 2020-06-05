@@ -25,6 +25,7 @@ class Function(ABC):
 
 class EmptyFunction(Function):
     """Default function which does nothing"""
+
     def open(self, runtime_context):
         pass
 
