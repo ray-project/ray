@@ -45,7 +45,7 @@ following:
   serve.create_backend("my_gpu_backend", handle_request, ray_actor_options=config)
 
 Configuring Parallelism with OMP_NUM_THREADS
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+--------------------------------------------
 
 Deep learning models like PyTorch and Tensorflow often use multithreading when performing inference.
 The number of CPUs they use is controlled by the OMP_NUM_THREADS environment variable.
