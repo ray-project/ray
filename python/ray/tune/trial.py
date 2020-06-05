@@ -467,8 +467,8 @@ class Trial:
         result.update(trial_id=self.trial_id, done=terminate)
         if self.experiment_tag:
             result.update(experiment_tag=self.experiment_tag)
-        if self.verbose and (terminate or time.perf_counter() - self.last_debug >
-                             DEBUG_PRINT_INTERVAL):
+        if self.verbose and (terminate or time.perf_counter() - self.last_debug
+                             > DEBUG_PRINT_INTERVAL):
             print("Result for {}:".format(self))
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.perf_counter()

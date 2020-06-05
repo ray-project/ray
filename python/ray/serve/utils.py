@@ -131,7 +131,8 @@ def async_retryable(cls):
             @wraps(f)
             async def retry_method(*args, **kwargs):
                 start = time.perf_counter()
-                while time.perf_counter() - start < ACTOR_FAILURE_RETRY_TIMEOUT_S:
+                while time.perf_counter(
+                ) - start < ACTOR_FAILURE_RETRY_TIMEOUT_S:
                     try:
                         return await f(*args, **kwargs)
                     except ray.exceptions.RayActorError:

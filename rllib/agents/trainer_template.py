@@ -145,7 +145,8 @@ def build_trainer(
                     deprecation_warning("after_optimizer_step",
                                         "execution_plan")
                     after_optimizer_step(self, fetches)
-                if (time.perf_counter() - start >= self.config["min_iter_time_s"]
+                if (time.perf_counter() - start >=
+                        self.config["min_iter_time_s"]
                         and self.optimizer.num_steps_sampled - prev_steps >=
                         self.config["timesteps_per_iteration"]):
                     break

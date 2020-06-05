@@ -406,7 +406,8 @@ class RayTrialExecutor(TrialExecutor):
         wait_time = time.perf_counter() - start
         if wait_time > NONTRIVIAL_WAIT_TIME_THRESHOLD_S:
             self._last_nontrivial_wait = time.perf_counter()
-        if time.perf_counter() - self._last_nontrivial_wait > BOTTLENECK_WARN_PERIOD_S:
+        if time.perf_counter(
+        ) - self._last_nontrivial_wait > BOTTLENECK_WARN_PERIOD_S:
             logger.warning(
                 "Over the last {} seconds, the Tune event loop has been "
                 "backlogged processing new results. Consider increasing your "
@@ -521,7 +522,8 @@ class RayTrialExecutor(TrialExecutor):
         has exceeded self._refresh_period. This also assumes that the
         cluster is not resizing very frequently.
         """
-        if time.perf_counter() - self._last_resource_refresh > self._refresh_period:
+        if time.perf_counter(
+        ) - self._last_resource_refresh > self._refresh_period:
             self._update_avail_resources()
 
         currently_available = Resources.subtract(self._avail_resources,

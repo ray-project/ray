@@ -321,7 +321,8 @@ class Router:
             self.num_error_backend_request.labels(backend=backend).add()
             result = error
         await self.mark_worker_idle(backend, backend_replica_tag)
-        logger.debug("Got result in {:.2f}s".format(time.perf_counter() - start))
+        logger.debug(
+            "Got result in {:.2f}s".format(time.perf_counter() - start))
         return result
 
     def _assign_query_to_worker(self,

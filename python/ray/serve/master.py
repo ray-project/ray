@@ -197,7 +197,8 @@ class ServeMaster:
              self.backends_to_remove, self.endpoints_to_remove))
 
         self.kv_store.put(CHECKPOINT_KEY, checkpoint)
-        logger.debug("Wrote checkpoint in {:.2f}".format(time.perf_counter() - start))
+        logger.debug(
+            "Wrote checkpoint in {:.2f}".format(time.perf_counter() - start))
 
         if random.random() < _CRASH_AFTER_CHECKPOINT_PROBABILITY:
             logger.warning("Intentionally crashing after checkpoint")
@@ -270,7 +271,8 @@ class ServeMaster:
         await self._remove_pending_endpoints()
 
         logger.info(
-            "Recovered from checkpoint in {:.3f}s".format(time.perf_counter() - start))
+            "Recovered from checkpoint in {:.3f}s".format(time.perf_counter() -
+                                                          start))
 
         self.write_lock.release()
 

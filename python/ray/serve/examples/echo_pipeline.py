@@ -80,4 +80,5 @@ handle4_oid = handle4.remote(
 print("Firing ended now waiting for the result,"
       "time taken: {} s".format(time.perf_counter() - start))
 result = ray.get(handle4_oid)
-print("Result: {}, time taken: {} s".format(result, time.perf_counter() - start))
+print("Result: {}, time taken: {} s".format(result,
+                                            time.perf_counter() - start))
