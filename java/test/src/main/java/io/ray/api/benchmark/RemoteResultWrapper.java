@@ -1,12 +1,12 @@
 package io.ray.api.benchmark;
 
-import io.ray.api.RayObject;
+import io.ray.api.ObjectRef;
 
 public class RemoteResultWrapper<T> {
 
   private long startTime;
 
-  private RayObject<RemoteResult<T>> rayObject;
+  private ObjectRef<RemoteResult<T>> objectRef;
 
   public long getStartTime() {
     return startTime;
@@ -16,11 +16,11 @@ public class RemoteResultWrapper<T> {
     this.startTime = startTime;
   }
 
-  public RayObject<RemoteResult<T>> getRayObject() {
-    return rayObject;
+  public ObjectRef<RemoteResult<T>> getObjectRef() {
+    return objectRef;
   }
 
-  public void setRayObject(RayObject<RemoteResult<T>> rayObject) {
-    this.rayObject = rayObject;
+  public void setObjectRef(ObjectRef<RemoteResult<T>> objectRef) {
+    this.objectRef = objectRef;
   }
 }

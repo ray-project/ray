@@ -4,7 +4,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
-import io.ray.api.RayObject;
+import io.ray.api.ObjectRef;
 import io.ray.api.TestUtils;
 import io.ray.api.WaitResult;
 import io.ray.api.options.ActorCreationOptions;
@@ -48,7 +48,7 @@ public class ResourcesManagementTest extends BaseTest {
 
     // This is a case that can satisfy required resources.
     // The static resources for test are "CPU:4,RES-A:4".
-    RayObject<Integer> result1 = Ray.call(ResourcesManagementTest::echo, 100, callOptions1);
+    ObjectRef<Integer> result1 = Ray.call(ResourcesManagementTest::echo, 100, callOptions1);
     Assert.assertEquals(100, (int) result1.get());
 
     CallOptions callOptions2 =
@@ -56,7 +56,7 @@ public class ResourcesManagementTest extends BaseTest {
 
     // This is a case that can't satisfy required resources.
     // The static resources for test are "CPU:4,RES-A:4".
-    final RayObject<Integer> result2 = Ray.call(ResourcesManagementTest::echo, 200, callOptions2);
+    final ObjectRef<Integer> result2 = Ray.call(ResourcesManagementTest::echo, 200, callOptions2);
     WaitResult<Integer> waitResult = Ray.wait(ImmutableList.of(result2), 1, 1000);
 
     Assert.assertEquals(1, waitResult.getReady().size());
@@ -81,7 +81,7 @@ public class ResourcesManagementTest extends BaseTest {
     // This is a case that can satisfy required resources.
     // The static resources for test are "CPU:4,RES-A:4".
     RayActor<Echo> echo1 = Ray.createActor(Echo::new, actorCreationOptions1);
-    final RayObject<Integer> result1 = echo1.call(Echo::echo, 100);
+    final ObjectRef<Integer> result1 = echo1.call(Echo::echo, 100);
     Assert.assertEquals(100, (int) result1.get());
 
     // This is a case that can't satisfy required resources.
@@ -91,7 +91,7 @@ public class ResourcesManagementTest extends BaseTest {
 
     RayActor<ResourcesManagementTest.Echo> echo2 =
         Ray.createActor(Echo::new, actorCreationOptions2);
-    final RayObject<Integer> result2 = echo2.call(Echo::echo, 100);
+    final ObjectRef<Integer> result2 = echo2.call(Echo::echo, 100);
     WaitResult<Integer> waitResult = Ray.wait(ImmutableList.of(result2), 1, 1000);
 
     Assert.assertEquals(0, waitResult.getReady().size());

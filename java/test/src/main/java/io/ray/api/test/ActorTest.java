@@ -3,7 +3,7 @@ package io.ray.api.test;
 import com.google.common.collect.ImmutableList;
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
-import io.ray.api.RayObject;
+import io.ray.api.ObjectRef;
 import io.ray.api.RayPyActor;
 import io.ray.api.TestUtils;
 import io.ray.api.exception.UnreconstructableException;
@@ -65,7 +65,7 @@ public class ActorTest extends BaseTest {
    */
   public void testGetObjectTwice() {
     RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
-    RayObject<Integer> result = actor.call(Counter::getValue);
+    ObjectRef<Integer> result = actor.call(Counter::getValue);
     Assert.assertEquals(result.get(), Integer.valueOf(1));
     Assert.assertEquals(result.get(), Integer.valueOf(1));
     // TODO(hchen): The following code will still fail, and can be fixed by using ref counting.
@@ -92,17 +92,17 @@ public class ActorTest extends BaseTest {
   }
 
   static int testActorAsFirstParameter(RayActor<Counter> actor, int delta) {
-    RayObject<Integer> res = actor.call(Counter::increaseAndGet, delta);
+    ObjectRef<Integer> res = actor.call(Counter::increaseAndGet, delta);
     return res.get();
   }
 
   static int testActorAsSecondParameter(int delta, RayActor<Counter> actor) {
-    RayObject<Integer> res = actor.call(Counter::increaseAndGet, delta);
+    ObjectRef<Integer> res = actor.call(Counter::increaseAndGet, delta);
     return res.get();
   }
 
   static int testActorAsFieldOfParameter(List<RayActor<Counter>> actor, int delta) {
-    RayObject<Integer> res = actor.get(0).call(Counter::increaseAndGet, delta);
+    ObjectRef<Integer> res = actor.get(0).call(Counter::increaseAndGet, delta);
     return res.get();
   }
 
@@ -125,7 +125,7 @@ public class ActorTest extends BaseTest {
     // The UnreconstructableException is created by raylet.
     RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
     // Call an actor method.
-    RayObject value = counter.call(Counter::getValue);
+    ObjectRef value = counter.call(Counter::getValue);
     Assert.assertEquals(100, value.get());
     // Delete the object from the object store.
     Ray.internal().free(ImmutableList.of(value.getId()), false, false);

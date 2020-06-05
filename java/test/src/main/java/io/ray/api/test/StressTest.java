@@ -3,7 +3,7 @@ package io.ray.api.test;
 import com.google.common.collect.ImmutableList;
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
-import io.ray.api.RayObject;
+import io.ray.api.ObjectRef;
 import io.ray.api.TestUtils;
 import io.ray.api.id.ObjectId;
 import java.util.ArrayList;
@@ -38,7 +38,7 @@ public class StressTest extends BaseTest {
   @Test
   public void testDependency() {
     TestUtils.skipTestUnderSingleProcess();
-    RayObject<Integer> x = Ray.call(StressTest::echo, 1);
+    ObjectRef<Integer> x = Ray.call(StressTest::echo, 1);
     for (int i = 0; i < 1000; i++) {
       x = Ray.call(StressTest::echo, x);
     }
@@ -93,12 +93,12 @@ public class StressTest extends BaseTest {
   public void testPuttingAndGettingManyObjects() {
     TestUtils.skipTestUnderSingleProcess();
     Integer objectToPut = 1;
-    List<RayObject<Integer>> objects = new ArrayList<>();
+    List<ObjectRef<Integer>> objects = new ArrayList<>();
     for (int i = 0; i < 100_000; i++) {
       objects.add(Ray.put(objectToPut));
     }
 
-    for (RayObject<Integer> object : objects) {
+    for (ObjectRef<Integer> object : objects) {
       Assert.assertEquals(object.get(), objectToPut);
     }
   }

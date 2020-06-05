@@ -3,7 +3,7 @@ package io.ray.streaming.runtime.schedule;
 import io.ray.api.BaseActor;
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
-import io.ray.api.RayObject;
+import io.ray.api.ObjectRef;
 import io.ray.api.RayPyActor;
 import io.ray.api.function.PyActorMethod;
 import io.ray.streaming.api.Language;
@@ -50,7 +50,7 @@ public class JobSchedulerImpl implements JobScheduler {
     if (hasPythonNode) {
       executionGraphPb = new GraphPbBuilder().buildExecutionGraphPb(executionGraph);
     }
-    List<RayObject<Object>> waits = new ArrayList<>();
+    List<ObjectRef<Object>> waits = new ArrayList<>();
     for (ExecutionNode executionNode : executionNodes) {
       List<ExecutionTask> executionTasks = executionNode.getExecutionTasks();
       for (ExecutionTask executionTask : executionTasks) {

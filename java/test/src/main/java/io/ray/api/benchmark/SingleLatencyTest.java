@@ -2,7 +2,7 @@ package io.ray.api.benchmark;
 
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
-import io.ray.api.RayObject;
+import io.ray.api.ObjectRef;
 import org.testng.annotations.Test;
 
 public class SingleLatencyTest extends RayBenchmarkTest {
@@ -22,7 +22,7 @@ public class SingleLatencyTest extends RayBenchmarkTest {
   }
 
   @Override
-  public RayObject<RemoteResult<Integer>> rayCall(RayActor rayActor) {
+  public ObjectRef<RemoteResult<Integer>> rayCall(RayActor rayActor) {
     return Ray.call(SingleLatencyTest::doFunc);
   }
 

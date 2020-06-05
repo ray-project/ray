@@ -1,7 +1,7 @@
 package io.ray.runtime.object;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.RayObject;
+import io.ray.api.ObjectRef;
 import io.ray.api.WaitResult;
 import io.ray.api.exception.RayException;
 import io.ray.api.id.ObjectId;
@@ -131,17 +131,17 @@ public abstract class ObjectStore {
    * @param timeoutMs The maximum time in milliseconds to wait before returning.
    * @return Two lists, one containing locally available objects, one containing the rest.
    */
-  public <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns, int timeoutMs) {
+  public <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns, int timeoutMs) {
     Preconditions.checkNotNull(waitList);
     if (waitList.isEmpty()) {
       return new WaitResult<>(Collections.emptyList(), Collections.emptyList());
     }
 
-    List<ObjectId> ids = waitList.stream().map(RayObject::getId).collect(Collectors.toList());
+    List<ObjectId> ids = waitList.stream().map(ObjectRef::getId).collect(Collectors.toList());
 
     List<Boolean> ready = wait(ids, numReturns, timeoutMs);
-    List<RayObject<T>> readyList = new ArrayList<>();
-    List<RayObject<T>> unreadyList = new ArrayList<>();
+    List<ObjectRef<T>> readyList = new ArrayList<>();
+    List<ObjectRef<T>> unreadyList = new ArrayList<>();
 
     for (int i = 0; i < ready.size(); i++) {
       if (ready.get(i)) {

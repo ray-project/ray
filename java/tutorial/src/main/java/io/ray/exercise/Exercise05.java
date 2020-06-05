@@ -2,7 +2,7 @@ package io.ray.exercise;
 
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
-import io.ray.api.RayObject;
+import io.ray.api.ObjectRef;
 
 /**
  * Show usage of actors.
@@ -15,9 +15,9 @@ public class Exercise05 {
       // `Ray.createActor` creates an actor instance.
       RayActor<Adder> adder = Ray.createActor(Adder::new, 0);
       // Use `Ray.call(actor, parameters)` to call an actor method.
-      RayObject<Integer> result1 = adder.call(Adder::add, 1);
+      ObjectRef<Integer> result1 = adder.call(Adder::add, 1);
       System.out.println(result1.get());
-      RayObject<Integer> result2 = adder.call(Adder::add, 10);
+      ObjectRef<Integer> result2 = adder.call(Adder::add, 10);
       System.out.println(result2.get());
     } catch (Throwable t) {
       t.printStackTrace();

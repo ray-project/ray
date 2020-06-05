@@ -6,7 +6,7 @@ import io.ray.api.id.ObjectId;
  * Represents an object in the object store.
  * @param <T> The object type.
  */
-public interface RayObject<T> {
+public interface ObjectRef<T> {
 
   /**
    * Fetch the object from the object store, this method will block

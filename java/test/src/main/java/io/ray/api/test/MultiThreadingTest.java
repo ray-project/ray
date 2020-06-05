@@ -3,7 +3,7 @@ package io.ray.api.test;
 import com.google.common.collect.ImmutableList;
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
-import io.ray.api.RayObject;
+import io.ray.api.ObjectRef;
 import io.ray.api.TestUtils;
 import io.ray.api.WaitResult;
 import io.ray.api.exception.RayException;
@@ -73,7 +73,7 @@ public class MultiThreadingTest extends BaseTest {
     // Test calling normal functions.
     runTestCaseInMultipleThreads(() -> {
       int arg = random.nextInt();
-      RayObject<Integer> obj = Ray.call(MultiThreadingTest::echo, arg);
+      ObjectRef<Integer> obj = Ray.call(MultiThreadingTest::echo, arg);
       Assert.assertEquals(arg, (int) obj.get());
     }, LOOP_COUNTER);
 
@@ -81,7 +81,7 @@ public class MultiThreadingTest extends BaseTest {
     RayActor<Echo> echoActor = Ray.createActor(Echo::new);
     runTestCaseInMultipleThreads(() -> {
       int arg = random.nextInt();
-      RayObject<Integer> obj = echoActor.call(Echo::echo, arg);
+      ObjectRef<Integer> obj = echoActor.call(Echo::echo, arg);
       Assert.assertEquals(arg, (int) obj.get());
     }, LOOP_COUNTER);
 
@@ -96,20 +96,20 @@ public class MultiThreadingTest extends BaseTest {
       } catch (InterruptedException e) {
         LOGGER.warn("Got exception while sleeping.", e);
       }
-      RayObject<Integer> obj = echoActor1.call(Echo::echo, arg);
+      ObjectRef<Integer> obj = echoActor1.call(Echo::echo, arg);
       Assert.assertEquals(arg, (int) obj.get());
     }, 1);
 
     // Test put and get.
     runTestCaseInMultipleThreads(() -> {
       int arg = random.nextInt();
-      RayObject<Integer> obj = Ray.put(arg);
+      ObjectRef<Integer> obj = Ray.put(arg);
       Assert.assertEquals(arg, (int) obj.get());
     }, LOOP_COUNTER);
 
     TestUtils.warmUpCluster();
     // Test wait for one object in multi threads.
-    RayObject<Integer> obj = Ray.call(MultiThreadingTest::echo, 100);
+    ObjectRef<Integer> obj = Ray.call(MultiThreadingTest::echo, 100);
     runTestCaseInMultipleThreads(() -> {
       WaitResult<Integer> result = Ray.wait(ImmutableList.of(obj), 1, 1000);
       Assert.assertEquals(1, result.getReady().size());
@@ -125,7 +125,7 @@ public class MultiThreadingTest extends BaseTest {
   public void testInWorker() {
     // Single-process mode doesn't have real workers.
     TestUtils.skipTestUnderSingleProcess();
-    RayObject<String> obj = Ray.call(MultiThreadingTest::testMultiThreading);
+    ObjectRef<String> obj = Ray.call(MultiThreadingTest::testMultiThreading);
     Assert.assertEquals("ok", obj.get());
   }
 
@@ -137,10 +137,10 @@ public class MultiThreadingTest extends BaseTest {
   }
 
   /**
-   * Call this method each time to avoid hitting the cache in {@link RayObject#get()}.
+   * Call this method each time to avoid hitting the cache in {@link ObjectRef#get()}.
    */
   static Runnable[] generateRunnables() {
-    final RayObject<Integer> fooObject = Ray.put(1);
+    final ObjectRef<Integer> fooObject = Ray.put(1);
     final RayActor<Echo> fooActor = Ray.createActor(Echo::new);
     return new Runnable[]{
         () -> Ray.put(1),
@@ -303,7 +303,7 @@ public class MultiThreadingTest extends BaseTest {
   }
 
   public void testGetAsyncContextAndSetAsyncContextInWorker() {
-    RayObject<Boolean> obj = Ray.call(MultiThreadingTest::testGetAsyncContextAndSetAsyncContext);
+    ObjectRef<Boolean> obj = Ray.call(MultiThreadingTest::testGetAsyncContextAndSetAsyncContext);
     Assert.assertTrue(obj.get());
   }
 

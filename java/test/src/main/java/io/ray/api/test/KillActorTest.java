@@ -3,7 +3,7 @@ package io.ray.api.test;
 import com.google.common.collect.ImmutableList;
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
-import io.ray.api.RayObject;
+import io.ray.api.ObjectRef;
 import io.ray.api.TestUtils;
 import io.ray.api.exception.RayActorException;
 import io.ray.api.options.ActorCreationOptions;
@@ -61,7 +61,7 @@ public class KillActorTest extends BaseTest {
     ActorCreationOptions options =
         new ActorCreationOptions.Builder().setMaxRestarts(1).createActorCreationOptions();
     RayActor<HangActor> actor = Ray.createActor(HangActor::new, options);
-    RayObject<Boolean> result = actor.call(HangActor::hang);
+    ObjectRef<Boolean> result = actor.call(HangActor::hang);
     // The actor will hang in this task.
     Assert.assertEquals(0, Ray.wait(ImmutableList.of(result), 1, 500).getReady().size());
 
