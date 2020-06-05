@@ -220,6 +220,7 @@ class TrialRunner(object):
             logger.info("Downloading from {}".format(
                 self._remote_checkpoint_dir))
             self._syncer.sync_down_if_needed()
+            self._syncer.wait()
 
             if not self.checkpoint_exists(self._local_checkpoint_dir):
                 raise ValueError("Called resume when no checkpoint exists "
