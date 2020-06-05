@@ -8,7 +8,9 @@ from ray.rllib.utils.test_utils import framework_iterator
 
 def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
     extra_config = ""
-    if algo == "ES":
+    if algo == "ARS":
+        extra_config = ",\"train_batch_size\": 10, \"noise_size\": 250000"
+    elif algo == "ES":
         extra_config = ",\"episodes_per_batch\": 1,\"train_batch_size\": 10, "\
                        "\"noise_size\": 250000"
 
@@ -28,10 +30,10 @@ def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
                   "--checkpoint-freq=1 ".format(rllib_dir, tmp_dir, algo) +
                   "--config='{" + "\"num_workers\": 1, \"num_gpus\": 0{}{}".
                   format(fw_, extra_config) +
-                  ", \"model\": {\"fcnet_hiddens\": [10]}"
-                  "}' --stop='{\"training_iteration\": 1, "
-                  "\"timesteps_per_iter\": 5, "
-                  "\"min_iter_time_s\": 0.1}'" + " --env={}".format(env))
+                  ", \"timesteps_per_iteration\": 5,\"min_iter_time_s\": 0.1, "
+                  "\"model\": {\"fcnet_hiddens\": [10]}"
+                  "}' --stop='{\"training_iteration\": 1}'" +
+                  " --env={}".format(env))
 
         checkpoint_path = os.popen("ls {}/default/*/checkpoint_1/"
                                    "checkpoint-1".format(tmp_dir)).read()[:-1]
