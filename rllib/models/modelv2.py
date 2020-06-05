@@ -3,7 +3,7 @@ import gym
 
 from ray.rllib.models.preprocessors import get_preprocessor, \
     RepeatedValuesPreprocessor
-from ray.rllib.models import extra_spaces
+from ray.rllib.utils.spaces import simplex
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
@@ -345,7 +345,7 @@ def _unpack_obs(obs, space, tensorlib=tf):
 
     if (isinstance(space, gym.spaces.Dict)
             or isinstance(space, gym.spaces.Tuple)
-            or isinstance(space, extra_spaces.Repeated)):
+            or isinstance(space, simplex.Repeated)):
         if id(space) in _cache:
             prep = _cache[id(space)]
         else:
@@ -387,7 +387,7 @@ def _unpack_obs(obs, space, tensorlib=tf):
                     tensorlib.reshape(obs_slice, batch_dims + list(p.shape)),
                     v,
                     tensorlib=tensorlib)
-        elif isinstance(space, extra_spaces.Repeated):
+        elif isinstance(space, simplex.Repeated):
             assert isinstance(prep, RepeatedValuesPreprocessor), prep
             child_size = prep.child_preprocessor.size
             # The list lengths are stored in the first slot of the flat obs.

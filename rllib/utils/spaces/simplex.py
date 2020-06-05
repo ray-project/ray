@@ -36,6 +36,50 @@ class Repeated(gym.Space):
         return (isinstance(x, list) and len(x) <= self.max_len
                 and all(self.child_space.contains(c) for c in x))
 
+class FlexDict(gym.spaces.Dict):
+   """Gym Dictionary with arbitrary keys updatable after instantiation
+
+   Example:
+      space = FlexDict({})
+      space['key'] = spaces.Box(4,)
+   See also: documentation for gym.spaces.Dict
+   """
+
+   def __init__(self, spaces=None, **spaces_kwargs):
+      err = 'Use either Dict(spaces=dict(...)) or Dict(foo=x, bar=z)'
+      assert (spaces is None) or (not spaces_kwargs), err
+
+      if spaces is None:
+         spaces = spaces_kwargs
+
+      self.spaces = spaces
+      for space in spaces.values():
+         self.assertSpace(space)
+
+      # None for shape and dtype, since it'll require special handling
+      self.np_random = None
+      self.shape     = None
+      self.dtype     = None
+      self.seed()
+
+   def assertSpace(self, space):
+      err = 'Values of the dict should be instances of gym.Space'
+      assert isinstance(space, gym.spaces.Space), err
+
+   def sample(self):
+      return dict([(k, space.sample())
+            for k, space in self.spaces.items()])
+
+   def __getitem__(self, key):
+      return self.spaces[key]
+
+   def __setitem__(self, key, space):
+      self.assertSpace(space)
+      self.spaces[key] = space
+
+   def __repr__(self):
+      return "FlexDict(" + ", ". join([str(k) + ":" + str(s) for k, s in self.spaces.items()]) + ")"
+
 
 @PublicAPI
 class Simplex(gym.Space):
