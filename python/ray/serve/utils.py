@@ -92,7 +92,7 @@ def block_until_http_ready(http_endpoint,
                            backoff_time_s=1,
                            timeout=HTTP_PROXY_TIMEOUT):
     http_is_ready = False
-    start_time = time.time()
+    start_time = time.perf_counter()
 
     while not http_is_ready:
         try:
@@ -102,7 +102,7 @@ def block_until_http_ready(http_endpoint,
         except Exception:
             pass
 
-        if 0 < timeout < time.time() - start_time:
+        if 0 < timeout < time.perf_counter() - start_time:
             raise TimeoutError(
                 "HTTP proxy not ready after {} seconds.".format(timeout))
 
@@ -130,8 +130,8 @@ def async_retryable(cls):
         def decorate_with_retry(f):
             @wraps(f)
             async def retry_method(*args, **kwargs):
-                start = time.time()
-                while time.time() - start < ACTOR_FAILURE_RETRY_TIMEOUT_S:
+                start = time.perf_counter()
+                while time.perf_counter() - start < ACTOR_FAILURE_RETRY_TIMEOUT_S:
                     try:
                         return await f(*args, **kwargs)
                     except ray.exceptions.RayActorError:
@@ -150,8 +150,8 @@ def async_retryable(cls):
 
 
 def retry_actor_failures(f, *args, **kwargs):
-    start = time.time()
-    while time.time() - start < ACTOR_FAILURE_RETRY_TIMEOUT_S:
+    start = time.perf_counter()
+    while time.perf_counter() - start < ACTOR_FAILURE_RETRY_TIMEOUT_S:
         try:
             return ray.get(f.remote(*args, **kwargs))
         except ray.exceptions.RayActorError:
@@ -165,8 +165,8 @@ def retry_actor_failures(f, *args, **kwargs):
 
 
 async def retry_actor_failures_async(f, *args, **kwargs):
-    start = time.time()
-    while time.time() - start < ACTOR_FAILURE_RETRY_TIMEOUT_S:
+    start = time.perf_counter()
+    while time.perf_counter() - start < ACTOR_FAILURE_RETRY_TIMEOUT_S:
         try:
             return await f.remote(*args, **kwargs)
         except ray.exceptions.RayActorError:

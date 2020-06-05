@@ -27,9 +27,9 @@ def main():
     def f(object_id_list):
         diffs = []
         for object_id in object_id_list:
-            before = time.time()
+            before = time.perf_counter()
             ray.get(object_id)
-            after = time.time()
+            after = time.perf_counter()
             diffs.append(after - before)
             time.sleep(1)
         return np.mean(diffs), np.std(diffs)

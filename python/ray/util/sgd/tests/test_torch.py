@@ -82,7 +82,7 @@ def test_non_serialized_data(ray_start_2_cpus):  # noqa: F811
 
         return slowed_func
 
-    start = time.time()
+    start = time.perf_counter()
     trainer = TorchTrainer(
         model_creator=model_creator,
         data_creator=slow_data(data_creator),
@@ -90,7 +90,7 @@ def test_non_serialized_data(ray_start_2_cpus):  # noqa: F811
         serialize_data_creation=False,
         loss_creator=lambda config: nn.MSELoss(),
         num_workers=2)
-    elapsed = time.time() - start
+    elapsed = time.perf_counter() - start
     assert elapsed < duration * 2
     trainer.shutdown()
 

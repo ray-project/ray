@@ -18,7 +18,7 @@ except ImportError:
 
 _pinned_objects = []
 PINNED_OBJECT_PREFIX = "ray.tune.PinnedObject:"
-START_OF_TIME = time.time()
+START_OF_TIME = time.perf_counter()
 
 
 class UtilMonitor(Thread):
@@ -124,11 +124,11 @@ class warn_if_slow:
         self.too_slow = False
 
     def __enter__(self):
-        self.start = time.time()
+        self.start = time.perf_counter()
         return self
 
     def __exit__(self, type, value, traceback):
-        now = time.time()
+        now = time.perf_counter()
         if now - self.start > self.threshold and now - START_OF_TIME > 60.0:
             self.too_slow = True
             logger.warning(

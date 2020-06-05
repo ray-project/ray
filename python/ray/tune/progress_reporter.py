@@ -86,11 +86,11 @@ class TuneReporterBase(ProgressReporter):
         self._max_error_rows = max_error_rows
 
         self._max_report_freqency = max_report_frequency
-        self._last_report_time = 0
+        self._last_report_time = time.perf_counter()
 
     def should_report(self, trials, done=False):
-        if time.time() - self._last_report_time > self._max_report_freqency:
-            self._last_report_time = time.time()
+        if time.perf_counter() - self._last_report_time > self._max_report_freqency:
+            self._last_report_time = time.perf_counter()
             return True
         return done
 

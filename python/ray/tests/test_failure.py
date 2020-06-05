@@ -683,8 +683,8 @@ def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
 
     ray.get(create_remote_function.remote())
 
-    start_time = time.time()
-    while time.time() < start_time + 10:
+    start_time = time.perf_counter()
+    while time.perf_counter() < start_time + 10:
         log_contents = log_capture_string.getvalue()
         if len(log_contents) > 0:
             break
@@ -719,8 +719,8 @@ def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
 
     ray.get(create_actor_class.remote())
 
-    start_time = time.time()
-    while time.time() < start_time + 10:
+    start_time = time.perf_counter()
+    while time.perf_counter() < start_time + 10:
         log_contents = log_capture_string.getvalue()
         if len(log_contents) > 0:
             break
@@ -932,10 +932,10 @@ def test_fill_object_store_lru_fallback(shutdown_only):
 
     # Check that objects out of scope are cleaned up quickly.
     ray.get(expensive_task.remote())
-    start = time.time()
+    start = time.perf_counter()
     for _ in range(3):
         ray.get(expensive_task.remote())
-    end = time.time()
+    end = time.perf_counter()
     assert end - start < 3
 
     oids = []

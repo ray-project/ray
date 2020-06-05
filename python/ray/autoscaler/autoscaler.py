@@ -71,7 +71,7 @@ class StandardAutoscaler:
         self.num_failed_updates = defaultdict(int)
         self.num_successful_updates = defaultdict(int)
         self.num_failures = 0
-        self.last_update_time = 0.0
+        self.last_update_time = time.perf_counter()
         self.update_interval_s = update_interval_s
         self.bringup = True
 
@@ -118,7 +118,7 @@ class StandardAutoscaler:
                 raise e
 
     def _update(self):
-        now = time.time()
+        now = time.perf_counter()
 
         # Throttle autoscaling updates to this interval to avoid exceeding
         # rate limits on API calls.

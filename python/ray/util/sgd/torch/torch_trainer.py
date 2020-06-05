@@ -686,7 +686,7 @@ class TorchTrainer:
         for i in range(max_retries):
             new_remote_workers = self._check_potential_remote_workers_size()
             if new_remote_workers:
-                self._last_resize = time.time()
+                self._last_resize = time.perf_counter()
                 self._start_workers(int(new_remote_workers) + 1)
                 self.load_state_dict(self.state_dict())
                 return
@@ -700,7 +700,7 @@ class TorchTrainer:
     def _should_resize(self):
         """Returns True if past cooldown and exists resources to scale up."""
         worker_gap = self.max_replicas - 1 - len(self.remote_workers)
-        past_cooldown = (time.time() - self._last_resize) > RESIZE_COOLDOWN_S
+        past_cooldown = (time.perf_counter() - self._last_resize) > RESIZE_COOLDOWN_S
         if past_cooldown and worker_gap:
             # Assume 1 resource is already reserved for local worker.
             potential_remote_size = self._check_potential_remote_workers_size()

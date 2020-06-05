@@ -100,7 +100,7 @@ def test_defining_remote_functions(shutdown_only):
 
     @ray.remote
     def j():
-        return time.time()
+        return time.perf_counter()
 
     ray.get(j.remote())
 
@@ -241,9 +241,9 @@ def test_get_with_timeout(ray_start_regular):
     signal = ray.test_utils.SignalActor.remote()
 
     # Check that get() returns early if object is ready.
-    start = time.time()
+    start = time.perf_counter()
     ray.get(signal.wait.remote(should_wait=False), timeout=30)
-    assert time.time() - start < 30
+    assert time.perf_counter() - start < 30
 
     # Check that get() raises a TimeoutError after the timeout if the object
     # is not ready yet.
@@ -253,9 +253,9 @@ def test_get_with_timeout(ray_start_regular):
 
     # Check that a subsequent get() returns early.
     ray.get(signal.send.remote())
-    start = time.time()
+    start = time.perf_counter()
     ray.get(result_id, timeout=30)
-    assert time.time() - start < 30
+    assert time.perf_counter() - start < 30
 
 
 @pytest.mark.parametrize(
@@ -517,9 +517,9 @@ def test_actor_pass_by_ref_order_optimization(shutdown_only):
     runner.remote(slow_value)
     time.sleep(1)
     x2 = runner.remote(fast_value)
-    start = time.time()
+    start = time.perf_counter()
     ray.get(x2)
-    delta = time.time() - start
+    delta = time.perf_counter() - start
     assert delta < 10, "did not skip slow value"
 
 

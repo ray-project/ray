@@ -17,9 +17,9 @@ def test_timing(ray_start_regular):
     # Measure the time required to submit a remote task to the scheduler.
     elapsed_times = []
     for _ in range(1000):
-        start_time = time.time()
+        start_time = time.perf_counter()
         empty_function.remote()
-        end_time = time.time()
+        end_time = time.perf_counter()
         elapsed_times.append(end_time - start_time)
     elapsed_times = np.sort(elapsed_times)
     average_elapsed_time = sum(elapsed_times) / 1000
@@ -34,9 +34,9 @@ def test_timing(ray_start_regular):
     # (where the remote task returns one value).
     elapsed_times = []
     for _ in range(1000):
-        start_time = time.time()
+        start_time = time.perf_counter()
         trivial_function.remote()
-        end_time = time.time()
+        end_time = time.perf_counter()
         elapsed_times.append(end_time - start_time)
     elapsed_times = np.sort(elapsed_times)
     average_elapsed_time = sum(elapsed_times) / 1000
@@ -51,10 +51,10 @@ def test_timing(ray_start_regular):
     # and get the result.
     elapsed_times = []
     for _ in range(1000):
-        start_time = time.time()
+        start_time = time.perf_counter()
         x = trivial_function.remote()
         ray.get(x)
-        end_time = time.time()
+        end_time = time.perf_counter()
         elapsed_times.append(end_time - start_time)
     elapsed_times = np.sort(elapsed_times)
     average_elapsed_time = sum(elapsed_times) / 1000
@@ -69,9 +69,9 @@ def test_timing(ray_start_regular):
     # Measure the time required to do do a put.
     elapsed_times = []
     for _ in range(1000):
-        start_time = time.time()
+        start_time = time.perf_counter()
         ray.put(1)
-        end_time = time.time()
+        end_time = time.perf_counter()
         elapsed_times.append(end_time - start_time)
     elapsed_times = np.sort(elapsed_times)
     average_elapsed_time = sum(elapsed_times) / 1000
@@ -89,14 +89,14 @@ def test_cache(ray_start_regular):
     v = np.random.rand(1000000)
     A_id = ray.put(A)
     v_id = ray.put(v)
-    a = time.time()
+    a = time.perf_counter()
     for i in range(100):
         A.dot(v)
-    b = time.time() - a
-    c = time.time()
+    b = time.perf_counter() - a
+    c = time.perf_counter()
     for i in range(100):
         ray.get(A_id).dot(ray.get(v_id))
-    d = time.time() - c
+    d = time.perf_counter() - c
 
     if d > 1.5 * b:
         print("WARNING: The caching test was too slow. "

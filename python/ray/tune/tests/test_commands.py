@@ -53,9 +53,9 @@ def test_time(start_ray, tmpdir):
     })
     times = []
     for i in range(5):
-        start = time.time()
+        start = time.perf_counter()
         subprocess.check_call(["tune", "ls", experiment_path])
-        times += [time.time() - start]
+        times += [time.perf_counter() - start]
 
     assert sum(times) / len(times) < 3.0, "CLI is taking too long!"
 

@@ -976,7 +976,7 @@ def print_error_messages_raylet(task_error_queue, threads_stopped):
             continue
         # Delay errors a little bit of time to attempt to suppress redundant
         # messages originating from the worker.
-        while t + UNCAUGHT_ERROR_GRACE_PERIOD > time.time():
+        while t + UNCAUGHT_ERROR_GRACE_PERIOD > time.perf_counter():
             threads_stopped.wait(timeout=1)
             if threads_stopped.is_set():
                 break

@@ -139,13 +139,13 @@ def optimizer_creator(model, cfg):
 
 def data_creator(config):
     args = config["args"]
-    start = time.time()
+    start = time.perf_counter()
     tokenizer = AutoTokenizer.from_pretrained(
         args.tokenizer_name
         if args.tokenizer_name else args.model_name_or_path,
         cache_dir=args.cache_dir if args.cache_dir else None,
     )
-    logger.info("tokenizer instantiation time: {}".format(time.time() - start))
+    logger.info("tokenizer instantiation time: {}".format(time.perf_counter() - start))
 
     train_dataset = load_and_cache_examples(
         args, args.task_name, tokenizer, evaluate=False)

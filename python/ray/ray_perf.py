@@ -72,18 +72,18 @@ def timeit(name, fn, multiplier=1):
     if filter_pattern not in name:
         return
     # warmup
-    start = time.time()
-    while time.time() - start < 1:
+    start = time.perf_counter()
+    while time.perf_counter() - start < 1:
         fn()
     # real run
     stats = []
     for _ in range(4):
-        start = time.time()
+        start = time.perf_counter()
         count = 0
-        while time.time() - start < 2:
+        while time.perf_counter() - start < 2:
             fn()
             count += 1
-        end = time.time()
+        end = time.perf_counter()
         stats.append(multiplier * count / (end - start))
     print(name, "per second", round(np.mean(stats), 2), "+-",
           round(np.std(stats), 2))

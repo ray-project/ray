@@ -16,14 +16,14 @@ class Stopper:
 
         class TimeStopper(Stopper):
             def __init__(self):
-                self._start = time.time()
+                self._start = time.perf_counter()
                 self._deadline = 300
 
             def __call__(self, trial_id, result):
                 return False
 
             def stop_all(self):
-                return time.time() - self._start > self.deadline
+                return time.perf_counter() - self._start > self.deadline
 
         tune.run(Trainable, num_samples=200, stop=TimeStopper())
 

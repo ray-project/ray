@@ -65,11 +65,11 @@ class Queue:
         elif timeout < 0:
             raise ValueError("'timeout' must be a non-negative number")
         else:
-            endtime = time.time() + timeout
+            endtime = time.perf_counter() + timeout
             # Polling
             # Use a condition variable or switch to promise?
             success = False
-            while not success and time.time() < endtime:
+            while not success and time.perf_counter() < endtime:
                 success = ray.get(self.actor.put.remote(item))
             if not success:
                 raise Full
@@ -100,11 +100,11 @@ class Queue:
         elif timeout < 0:
             raise ValueError("'timeout' must be a non-negative number")
         else:
-            endtime = time.time() + timeout
+            endtime = time.perf_counter() + timeout
             # Polling
             # Use a not_full condition variable or return a promise?
             success = False
-            while not success and time.time() < endtime:
+            while not success and time.perf_counter() < endtime:
                 success, item = ray.get(self.actor.get.remote())
             if not success:
                 raise Empty

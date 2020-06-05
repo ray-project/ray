@@ -41,15 +41,15 @@ def test_resource_constraints(shutdown_only):
     def f(n):
         time.sleep(n)
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     ray.get([f.remote(0.5) for _ in range(10)])
-    duration = time.time() - start_time
+    duration = time.perf_counter() - start_time
     assert duration < 0.5 + time_buffer
     assert duration > 0.5
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     ray.get([f.remote(0.5) for _ in range(11)])
-    duration = time.time() - start_time
+    duration = time.perf_counter() - start_time
     assert duration < 1 + time_buffer
     assert duration > 1
 
@@ -57,15 +57,15 @@ def test_resource_constraints(shutdown_only):
     def f(n):
         time.sleep(n)
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     ray.get([f.remote(0.5) for _ in range(3)])
-    duration = time.time() - start_time
+    duration = time.perf_counter() - start_time
     assert duration < 0.5 + time_buffer
     assert duration > 0.5
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     ray.get([f.remote(0.5) for _ in range(4)])
-    duration = time.time() - start_time
+    duration = time.perf_counter() - start_time
     assert duration < 1 + time_buffer
     assert duration > 1
 
@@ -73,21 +73,21 @@ def test_resource_constraints(shutdown_only):
     def f(n):
         time.sleep(n)
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     ray.get([f.remote(0.5) for _ in range(2)])
-    duration = time.time() - start_time
+    duration = time.perf_counter() - start_time
     assert duration < 0.5 + time_buffer
     assert duration > 0.5
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     ray.get([f.remote(0.5) for _ in range(3)])
-    duration = time.time() - start_time
+    duration = time.perf_counter() - start_time
     assert duration < 1 + time_buffer
     assert duration > 1
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     ray.get([f.remote(0.5) for _ in range(4)])
-    duration = time.time() - start_time
+    duration = time.perf_counter() - start_time
     assert duration < 1 + time_buffer
     assert duration > 1
 
@@ -120,27 +120,27 @@ def test_multi_resource_constraints(shutdown_only):
 
     time_buffer = 2
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     ray.get([f.remote(0.5), g.remote(0.5)])
-    duration = time.time() - start_time
+    duration = time.perf_counter() - start_time
     assert duration < 0.5 + time_buffer
     assert duration > 0.5
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     ray.get([f.remote(0.5), f.remote(0.5)])
-    duration = time.time() - start_time
+    duration = time.perf_counter() - start_time
     assert duration < 1 + time_buffer
     assert duration > 1
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     ray.get([g.remote(0.5), g.remote(0.5)])
-    duration = time.time() - start_time
+    duration = time.perf_counter() - start_time
     assert duration < 1 + time_buffer
     assert duration > 1
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     ray.get([f.remote(0.5), f.remote(0.5), g.remote(0.5), g.remote(0.5)])
-    duration = time.time() - start_time
+    duration = time.perf_counter() - start_time
     assert duration < 1 + time_buffer
     assert duration > 1
 
@@ -168,13 +168,13 @@ def test_gpu_ids(shutdown_only):
         time.sleep(0.2)
         return os.getpid()
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     while True:
         num_workers_started = len(
             set(ray.get([f.remote() for _ in range(num_gpus)])))
         if num_workers_started == num_gpus:
             break
-        if time.time() > start_time + 10:
+        if time.perf_counter() > start_time + 10:
             raise RayTestTimeoutException(
                 "Timed out while waiting for workers to start "
                 "up.")

@@ -143,9 +143,9 @@ def test_sklearn_benchmarks(ray_start_cluster_2_nodes):
 
             if "n_jobs" in estimator_params:
                 estimator.set_params(n_jobs=num_jobs)
-            time_start = time.time()
+            time_start = time.perf_counter()
             estimator.fit(X_train, y_train)
-            train_time[name] = time.time() - time_start
+            train_time[name] = time.perf_counter() - time_start
             print("training", name, "took", train_time[name], "seconds")
 
 

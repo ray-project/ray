@@ -85,12 +85,12 @@ class GlobalState:
         self.global_state_accessor = GlobalStateAccessor(
             redis_address, redis_password, False)
         self.global_state_accessor.connect()
-        start_time = time.time()
+        start_time = time.perf_counter()
 
         num_redis_shards = None
         redis_shard_addresses = []
 
-        while time.time() - start_time < timeout:
+        while time.perf_counter() - start_time < timeout:
             # Attempt to get the number of Redis shards.
             num_redis_shards = self.redis_client.get("NumRedisShards")
             if num_redis_shards is None:
@@ -114,7 +114,7 @@ class GlobalState:
             break
 
         # Check to see if we timed out.
-        if time.time() - start_time >= timeout:
+        if time.perf_counter() - start_time >= timeout:
             raise TimeoutError("Timed out while attempting to initialize the "
                                "global state. num_redis_shards = {}, "
                                "redis_shard_addresses = {}".format(
@@ -637,7 +637,7 @@ class GlobalState:
             overall_largest = max(overall_largest, rev_range[0][1])
 
             num_tasks += self.redis_client.zcount(
-                event_log_set, min=0, max=time.time())
+                event_log_set, min=0, max=time.perf_counter())
         if num_tasks == 0:
             return 0, 0, 0
         return overall_smallest, overall_largest, num_tasks

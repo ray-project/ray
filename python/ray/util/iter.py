@@ -1130,8 +1130,8 @@ class ParallelIteratorWorker(object):
         if batch_ms == 0:
             batch.append(self.par_iter_next())
             return batch
-        t_end = time.time() + (0.001 * batch_ms)
-        while time.time() < t_end:
+        t_end = time.perf_counter() + (0.001 * batch_ms)
+        while time.perf_counter() < t_end:
             try:
                 batch.append(self.par_iter_next())
             except StopIteration:
@@ -1170,8 +1170,8 @@ class ParallelIteratorWorker(object):
         if batch_ms == 0:
             batch.append(self.par_iter_slice(step, start))
             return batch
-        t_end = time.time() + (0.001 * batch_ms)
-        while time.time() < t_end:
+        t_end = time.perf_counter() + (0.001 * batch_ms)
+        while time.perf_counter() < t_end:
             try:
                 batch.append(self.par_iter_slice(step, start))
             except StopIteration:

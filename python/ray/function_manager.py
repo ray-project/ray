@@ -294,7 +294,7 @@ class FunctionActorManager:
             job_id (str): The ID of the job to push the error message to
                 if this times out.
         """
-        start_time = time.time()
+        start_time = time.perf_counter()
         # Only send the warning once.
         warning_sent = False
         while True:
@@ -306,7 +306,7 @@ class FunctionActorManager:
                 elif not self._worker.actor_id.is_nil() and (
                         self._worker.actor_id in self._worker.actors):
                     break
-            if time.time() - start_time > timeout:
+            if time.perf_counter() - start_time > timeout:
                 warning_message = ("This worker was asked to execute a "
                                    "function that it does not have "
                                    "registered. You may have to restart "
@@ -605,7 +605,7 @@ class FunctionActorManager:
         actor_id = self._worker.actor_id
         checkpoint_info = self._worker.actor_checkpoint_info[actor_id]
         checkpoint_info.num_tasks_since_last_checkpoint += 1
-        now = int(1000 * time.time())
+        now = int(1000 * time.perf_counter())
         checkpoint_context = ray.actor.CheckpointContext(
             actor_id, checkpoint_info.num_tasks_since_last_checkpoint,
             now - checkpoint_info.last_checkpoint_timestamp)
@@ -613,7 +613,7 @@ class FunctionActorManager:
         # and then call `save_checkpoint`.
         if actor.should_checkpoint(checkpoint_context):
             try:
-                now = int(1000 * time.time())
+                now = int(1000 * time.perf_counter())
                 checkpoint_id = (
                     self._worker.core_worker.prepare_actor_checkpoint(actor_id)
                 )

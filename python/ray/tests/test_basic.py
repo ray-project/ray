@@ -163,9 +163,9 @@ def test_many_fractional_resources(shutdown_only):
 
     # Check that the available resources at the end are the same as the
     # beginning.
-    stop_time = time.time() + 10
+    stop_time = time.perf_counter() + 10
     correct_available_resources = False
-    while time.time() < stop_time:
+    while time.perf_counter() < stop_time:
         if (ray.available_resources()["CPU"] == 2.0
                 and ray.available_resources()["GPU"] == 2.0
                 and ray.available_resources()["Custom"] == 2.0):

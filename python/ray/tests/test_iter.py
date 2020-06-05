@@ -370,13 +370,13 @@ def test_gather_async_optimized_benchmark(ray_start_regular_shared):
     for i in range(20):
         record = next(local_it)
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     #print(start_time)
     count = 0
     for record in local_it:
         count += 1
     assert count == len(items) - 20
-    end_time = time.time() - start_time
+    end_time = time.perf_counter() - start_time
     print(end_time)
 """
 

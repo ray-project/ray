@@ -8,13 +8,13 @@ from ray import serve
 
 
 def request_with_retries(endpoint, timeout=30):
-    start = time.time()
+    start = time.perf_counter()
     while True:
         try:
             return requests.get(
                 "http://127.0.0.1:8000" + endpoint, timeout=timeout)
         except requests.RequestException:
-            if time.time() - start > timeout:
+            if time.perf_counter() - start > timeout:
                 raise TimeoutError
             time.sleep(0.1)
 
@@ -172,8 +172,8 @@ def test_worker_restart(serve_instance):
     ray.kill(handles[0], no_restart=False)
 
     # Wait until the worker is killed and a one is started.
-    start = time.time()
-    while time.time() - start < 30:
+    start = time.perf_counter()
+    while time.perf_counter() - start < 30:
         response = request_with_retries("/worker_failure", timeout=30)
         if response.text != old_pid:
             break

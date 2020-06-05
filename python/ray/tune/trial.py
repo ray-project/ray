@@ -467,14 +467,14 @@ class Trial:
         result.update(trial_id=self.trial_id, done=terminate)
         if self.experiment_tag:
             result.update(experiment_tag=self.experiment_tag)
-        if self.verbose and (terminate or time.time() - self.last_debug >
+        if self.verbose and (terminate or time.perf_counter() - self.last_debug >
                              DEBUG_PRINT_INTERVAL):
             print("Result for {}:".format(self))
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
-            self.last_debug = time.time()
+            self.last_debug = time.perf_counter()
         self.set_location(Location(result.get("node_ip"), result.get("pid")))
         self.last_result = result
-        self.last_update_time = time.time()
+        self.last_update_time = time.perf_counter()
         self.result_logger.on_result(self.last_result)
 
         for metric, value in flatten_dict(result).items():

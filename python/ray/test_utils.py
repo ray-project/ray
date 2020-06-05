@@ -52,8 +52,8 @@ def _pid_alive(pid):
 
 
 def wait_for_pid_to_exit(pid, timeout=20):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
+    start_time = time.perf_counter()
+    while time.perf_counter() - start_time < timeout:
         if not _pid_alive(pid):
             return
         time.sleep(0.1)
@@ -63,8 +63,8 @@ def wait_for_pid_to_exit(pid, timeout=20):
 
 def wait_for_children_of_pid(pid, num_children=1, timeout=20):
     p = psutil.Process(pid)
-    start_time = time.time()
-    while time.time() - start_time < timeout:
+    start_time = time.perf_counter()
+    while time.perf_counter() - start_time < timeout:
         num_alive = len(p.children(recursive=False))
         if num_alive >= num_children:
             return
@@ -145,8 +145,8 @@ def relevant_errors(error_type):
 
 
 def wait_for_errors(error_type, num_errors, timeout=20):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
+    start_time = time.perf_counter()
+    while time.perf_counter() - start_time < timeout:
         if len(relevant_errors(error_type)) >= num_errors:
             return
         time.sleep(0.1)
@@ -165,8 +165,8 @@ def wait_for_condition(condition_predictor, timeout=30, retry_interval_ms=100):
     Return:
         Whether the condition is met within the timeout.
     """
-    start = time.time()
-    while time.time() - start <= timeout:
+    start = time.perf_counter()
+    while time.perf_counter() - start <= timeout:
         if condition_predictor():
             return True
         time.sleep(retry_interval_ms / 1000.0)
@@ -196,13 +196,13 @@ def wait_until_succeeded_without_exception(func,
         return False
 
     time_elapsed = 0
-    start = time.time()
+    start = time.perf_counter()
     while time_elapsed <= timeout_ms:
         try:
             func(*args)
             return True
         except exceptions:
-            time_elapsed = (time.time() - start) * 1000
+            time_elapsed = (time.perf_counter() - start) * 1000
             time.sleep(retry_interval_ms / 1000.0)
     return False
 
@@ -274,14 +274,14 @@ def wait_until_server_available(address,
     ip = ip_port[0]
     port = int(ip_port[1])
     time_elapsed = 0
-    start = time.time()
+    start = time.perf_counter()
     while time_elapsed <= timeout_ms:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(1)
         try:
             s.connect((ip, port))
         except Exception:
-            time_elapsed = (time.time() - start) * 1000
+            time_elapsed = (time.perf_counter() - start) * 1000
             time.sleep(retry_interval_ms / 1000.0)
             s.close()
             continue

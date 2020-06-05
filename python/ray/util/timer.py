@@ -23,11 +23,11 @@ class _Timer:
 
     def __enter__(self):
         assert self._start_time is None, "concurrent updates not supported"
-        self._start_time = time.time()
+        self._start_time = time.perf_counter()
 
     def __exit__(self, exc_type, exc_value, tb):
         assert self._start_time is not None
-        time_delta = time.time() - self._start_time
+        time_delta = time.perf_counter() - self._start_time
         self.push(time_delta)
         self._start_time = None
 

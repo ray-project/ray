@@ -71,13 +71,13 @@ handle2 = serve.get_handle("echo_v2")
 handle3 = serve.get_handle("echo_v3")
 handle4 = serve.get_handle("echo_v4")
 
-start = time.time()
-print("Start firing to the pipeline: {} s".format(time.time()))
+start = time.perf_counter()
+print("Start firing to the pipeline: {} s".format(time.perf_counter()))
 handle1_oid = handle1.remote(response="hello")
 handle4_oid = handle4.remote(
     relay1=handle2.remote(relay=handle1_oid),
     relay2=handle3.remote(relay=handle1_oid))
 print("Firing ended now waiting for the result,"
-      "time taken: {} s".format(time.time() - start))
+      "time taken: {} s".format(time.perf_counter() - start))
 result = ray.get(handle4_oid)
-print("Result: {}, time taken: {} s".format(result, time.time() - start))
+print("Result: {}, time taken: {} s".format(result, time.perf_counter() - start))

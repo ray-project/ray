@@ -479,8 +479,8 @@ def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
     # Make sure that the actor method calls succeeded.
     ray.get(actor_results)
 
-    start_time = time.time()
-    while time.time() - start_time < 30:
+    start_time = time.perf_counter()
+    while time.perf_counter() - start_time < 30:
         seen_gpu_ids, num_calls = ray.get(
             record_gpu_actor.get_gpu_ids_and_calls.remote())
         if num_calls == num_gpus:

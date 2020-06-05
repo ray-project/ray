@@ -17,14 +17,14 @@ def test_get_webui(shutdown_only):
 
     assert re.match(r"^(localhost|\d+\.\d+\.\d+\.\d+):\d+$", webui_url)
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     while True:
         try:
             node_info = requests.get("http://" + webui_url +
                                      "/api/node_info").json()
             break
         except requests.exceptions.ConnectionError:
-            if time.time() > start_time + 30:
+            if time.perf_counter() > start_time + 30:
                 error_log = None
                 out_log = None
                 with open(

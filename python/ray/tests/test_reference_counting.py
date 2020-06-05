@@ -55,13 +55,13 @@ def _check_refcounts(expected):
 
 
 def check_refcounts(expected, timeout=10):
-    start = time.time()
+    start = time.perf_counter()
     while True:
         try:
             _check_refcounts(expected)
             break
         except AssertionError as e:
-            if time.time() - start > timeout:
+            if time.perf_counter() - start > timeout:
                 raise e
             else:
                 time.sleep(0.1)

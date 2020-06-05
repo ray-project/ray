@@ -190,14 +190,14 @@ class ServeMaster:
     def _checkpoint(self):
         """Checkpoint internal state and write it to the KV store."""
         logger.debug("Writing checkpoint")
-        start = time.time()
+        start = time.perf_counter()
         checkpoint = pickle.dumps(
             (self.routes, self.backends, self.traffic_policies, self.replicas,
              self.replicas_to_start, self.replicas_to_stop,
              self.backends_to_remove, self.endpoints_to_remove))
 
         self.kv_store.put(CHECKPOINT_KEY, checkpoint)
-        logger.debug("Wrote checkpoint in {:.2f}".format(time.time() - start))
+        logger.debug("Wrote checkpoint in {:.2f}".format(time.perf_counter() - start))
 
         if random.random() < _CRASH_AFTER_CHECKPOINT_PROBABILITY:
             logger.warning("Intentionally crashing after checkpoint")
@@ -218,7 +218,7 @@ class ServeMaster:
         """
         assert self.write_lock.locked()
 
-        start = time.time()
+        start = time.perf_counter()
         logger.info("Recovering from checkpoint")
 
         # Load internal state from the checkpoint data.
@@ -270,7 +270,7 @@ class ServeMaster:
         await self._remove_pending_endpoints()
 
         logger.info(
-            "Recovered from checkpoint in {:.3f}s".format(time.time() - start))
+            "Recovered from checkpoint in {:.3f}s".format(time.perf_counter() - start))
 
         self.write_lock.release()
 

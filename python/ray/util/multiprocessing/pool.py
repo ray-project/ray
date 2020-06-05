@@ -236,12 +236,12 @@ class OrderedIMapIterator(IMapIterator):
             # self._result_thread.next_ready_index() raises a timeout.
             index = -1
             while index != self._next_chunk_index:
-                start = time.time()
+                start = time.perf_counter()
                 index = self._result_thread.next_ready_index(timeout=timeout)
                 self._submit_next_chunk()
                 self._submitted_chunks[index] = True
                 if timeout is not None:
-                    timeout = max(0, timeout - (time.time() - start))
+                    timeout = max(0, timeout - (time.perf_counter() - start))
 
             while self._next_chunk_index < len(
                     self._submitted_chunks

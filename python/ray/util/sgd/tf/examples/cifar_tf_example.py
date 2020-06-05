@@ -202,7 +202,7 @@ if __name__ == "__main__":
             }
         })
 
-    training_start = time.time()
+    training_start = time.perf_counter()
     num_epochs = 1 if args.smoke_test else 3
     for i in range(num_epochs):
         # Trains num epochs
@@ -210,7 +210,7 @@ if __name__ == "__main__":
         train_stats1.update(trainer.validate())
         print("iter {}:".format(i), train_stats1)
 
-    dt = (time.time() - training_start) / 3
+    dt = (time.perf_counter() - training_start) / 3
     print(f"Training on workers takes: {dt:.3f} seconds/epoch")
 
     model = trainer.get_model()
@@ -218,9 +218,9 @@ if __name__ == "__main__":
     dataset, test_dataset = data_augmentation_creator(
         dict(batch_size=batch_size))
 
-    training_start = time.time()
+    training_start = time.perf_counter()
     model.fit(dataset, steps_per_epoch=num_train_steps, epochs=1)
-    dt = (time.time() - training_start)
+    dt = (time.perf_counter() - training_start)
     print(f"Training on workers takes: {dt:.3f} seconds/epoch")
 
     scores = model.evaluate(test_dataset, steps=num_eval_steps)

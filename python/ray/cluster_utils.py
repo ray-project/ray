@@ -153,8 +153,8 @@ class Cluster:
             TimeoutError: An exception is raised if the timeout expires before
                 the node appears in the client table.
         """
-        start_time = time.time()
-        while time.time() - start_time < timeout:
+        start_time = time.perf_counter()
+        while time.perf_counter() - start_time < timeout:
             clients = self.global_state.node_table()
             object_store_socket_names = [
                 client["ObjectStoreSocketName"] for client in clients
@@ -182,8 +182,8 @@ class Cluster:
             TimeoutError: An exception is raised if we time out while waiting
                 for nodes to join.
         """
-        start_time = time.time()
-        while time.time() - start_time < timeout:
+        start_time = time.perf_counter()
+        while time.perf_counter() - start_time < timeout:
             clients = self.global_state.node_table()
             live_clients = [client for client in clients if client["Alive"]]
 

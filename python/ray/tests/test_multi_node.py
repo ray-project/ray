@@ -180,8 +180,8 @@ import time
 import ray
 ray.init(address="{}")
 object_ids = [ray.put(i) for i in range(1000)]
-start_time = time.time()
-while time.time() - start_time < 30:
+start_time = time.perf_counter()
+while time.perf_counter() - start_time < 30:
     if len(ray.objects()) == 1000:
         break
 else:
@@ -192,8 +192,8 @@ print("success")
     run_string_as_driver(driver_script)
 
     # Make sure the objects are removed from the object table.
-    start_time = time.time()
-    while time.time() - start_time < 30:
+    start_time = time.perf_counter()
+    while time.perf_counter() - start_time < 30:
         if len(ray.objects()) == 0:
             break
     else:
@@ -329,8 +329,8 @@ print("success")
 
     def wait_for_success_output(process_handle, timeout=10):
         # Wait until the process prints "success" and then return.
-        start_time = time.time()
-        while time.time() - start_time < timeout:
+        start_time = time.perf_counter()
+        while time.perf_counter() - start_time < timeout:
             output_line = ray.utils.decode(
                 process_handle.stdout.readline()).strip()
             print(output_line)

@@ -86,8 +86,8 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
 
 
 def wait_for_num_actors(num_actors, timeout=10):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
+    start_time = time.perf_counter()
+    while time.perf_counter() - start_time < timeout:
         if len(ray.actors()) >= num_actors:
             return
         time.sleep(0.1)
@@ -95,8 +95,8 @@ def wait_for_num_actors(num_actors, timeout=10):
 
 
 def wait_for_num_objects(num_objects, timeout=10):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
+    start_time = time.perf_counter()
+    while time.perf_counter() - start_time < timeout:
         if len(ray.objects()) >= num_objects:
             return
         time.sleep(0.1)
@@ -403,8 +403,8 @@ def test_ray_stack(ray_start_2_cpus):
     unique_name_3.remote()
 
     success = False
-    start_time = time.time()
-    while time.time() - start_time < 30:
+    start_time = time.perf_counter()
+    while time.perf_counter() - start_time < 30:
         # Attempt to parse the "ray stack" call.
         output = ray.utils.decode(subprocess.check_output(["ray", "stack"]))
         if ("unique_name_1" in output and "unique_name_2" in output

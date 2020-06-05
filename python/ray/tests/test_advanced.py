@@ -186,7 +186,7 @@ def test_profiling_api(ray_start_2_cpus):
     # Wait until all of the profiling information appears in the profile
     # table.
     timeout_seconds = 20
-    start_time = time.time()
+    start_time = time.perf_counter()
     while True:
         profile_data = ray.timeline()
         event_types = {event["cat"] for event in profile_data}
@@ -209,7 +209,7 @@ def test_profiling_api(ray_start_2_cpus):
                for expected_type in expected_types):
             break
 
-        if time.time() - start_time > timeout_seconds:
+        if time.perf_counter() - start_time > timeout_seconds:
             raise RayTestTimeoutException(
                 "Timed out while waiting for information in "
                 "profile table. Missing events: {}.".format(
@@ -232,9 +232,9 @@ def test_wait_cluster(ray_start_cluster):
     # Make sure we have enough workers on the remote nodes to execute some
     # tasks.
     tasks = [f.remote() for _ in range(10)]
-    start = time.time()
+    start = time.perf_counter()
     ray.get(tasks)
-    end = time.time()
+    end = time.perf_counter()
 
     # Submit some more tasks that can only be executed on the remote nodes.
     tasks = [f.remote() for _ in range(10)]

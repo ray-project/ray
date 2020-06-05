@@ -298,7 +298,7 @@ class SerializationContext:
                             error_timeout=10):
         assert len(data_metadata_pairs) == len(object_ids)
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         results = []
         warning_sent = False
         i = 0
@@ -317,7 +317,7 @@ class SerializationContext:
                 # so that the import thread can acquire it.
                 time.sleep(0.01)
 
-                if time.time() - start_time > error_timeout:
+                if time.perf_counter() - start_time > error_timeout:
                     warning_message = ("This worker or driver is waiting to "
                                        "receive a class definition so that it "
                                        "can deserialize an object from the "

@@ -102,11 +102,11 @@ class MemoryMonitor:
         self.worker_name = worker_name
 
     def raise_if_low_memory(self):
-        if time.time() - self.last_checked > self.check_interval:
+        if time.perf_counter() - self.last_checked > self.check_interval:
             if "RAY_DEBUG_DISABLE_MEMORY_MONITOR" in os.environ:
                 return  # escape hatch, not intended for user use
 
-            self.last_checked = time.time()
+            self.last_checked = time.perf_counter()
             total_gb = psutil.virtual_memory().total / (1024**3)
             used_gb = total_gb - psutil.virtual_memory().available / (1024**3)
             if self.cgroup_memory_limit_gb < total_gb:

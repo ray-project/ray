@@ -84,7 +84,7 @@ class Syncer:
             sync_period (int): Time period between subsequent syncs.
         """
 
-        if time.time() - self.last_sync_up_time > sync_period:
+        if time.perf_counter() - self.last_sync_up_time > sync_period:
             self.sync_up()
 
     def sync_down_if_needed(self, sync_period):
@@ -93,7 +93,7 @@ class Syncer:
         Arguments:
             sync_period (int): Time period between subsequent syncs.
         """
-        if time.time() - self.last_sync_down_time > sync_period:
+        if time.perf_counter() - self.last_sync_down_time > sync_period:
             self.sync_down()
 
     def sync_up(self):
@@ -107,7 +107,7 @@ class Syncer:
             try:
                 result = self.sync_client.sync_up(self._local_dir,
                                                   self._remote_path)
-                self.last_sync_up_time = time.time()
+                self.last_sync_up_time = time.perf_counter()
             except Exception:
                 logger.exception("Sync execution failed.")
         return result
@@ -123,7 +123,7 @@ class Syncer:
             try:
                 result = self.sync_client.sync_down(self._remote_path,
                                                     self._local_dir)
-                self.last_sync_down_time = time.time()
+                self.last_sync_down_time = time.perf_counter()
             except Exception:
                 logger.exception("Sync execution failed.")
         return result

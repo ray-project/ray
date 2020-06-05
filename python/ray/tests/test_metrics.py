@@ -89,9 +89,9 @@ def test_worker_stats(shutdown_only):
     assert target_worker_present
 
     timeout_seconds = 20
-    start_time = time.time()
+    start_time = time.perf_counter()
     while True:
-        if time.time() - start_time > timeout_seconds:
+        if time.perf_counter() - start_time > timeout_seconds:
             raise RayTestTimeoutException(
                 "Timed out while waiting for worker processes")
 
@@ -144,9 +144,9 @@ def test_worker_stats(shutdown_only):
                 "port": worker.core_worker_stats.port
             })
     timeout_seconds = 20
-    start_time = time.time()
+    start_time = time.perf_counter()
     while True:
-        if time.time() - start_time > timeout_seconds:
+        if time.perf_counter() - start_time > timeout_seconds:
             raise RayTestTimeoutException("Timed out while killing actors")
         if all(
                 actor_killed(worker.pid) for worker in reply.workers_stats
@@ -192,7 +192,7 @@ def test_raylet_info_endpoint(shutdown_only):
 
     assert (wait_until_server_available(addresses["webui_url"]) is True)
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     while True:
         time.sleep(1)
         try:
@@ -215,11 +215,11 @@ def test_raylet_info_endpoint(shutdown_only):
                 assert len(children) == 2
                 break
             except AssertionError:
-                if time.time() > start_time + 30:
+                if time.perf_counter() > start_time + 30:
                     raise Exception("Timed out while waiting for actor info \
                         or object store info update.")
         except requests.exceptions.ConnectionError:
-            if time.time() > start_time + 30:
+            if time.perf_counter() > start_time + 30:
                 raise Exception(
                     "Timed out while waiting for dashboard to start.")
 
@@ -240,10 +240,10 @@ def test_raylet_info_endpoint(shutdown_only):
             "pid": actor_pid,
             "duration": 5
         }).json()["result"]
-    start_time = time.time()
+    start_time = time.perf_counter()
     while True:
         # Sometimes some startup time is required
-        if time.time() - start_time > 30:
+        if time.perf_counter() - start_time > 30:
             raise RayTestTimeoutException(
                 "Timed out while collecting profiling stats.")
         profiling_info = requests.get(

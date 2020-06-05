@@ -235,9 +235,9 @@ def test_object_transfer_retry(ray_start_cluster):
     # Get the objects locally to cause them to be transferred. This is the
     # first time the objects are getting transferred, so it should happen
     # quickly.
-    start_time = time.time()
+    start_time = time.perf_counter()
     xs = ray.get(x_ids)
-    end_time = time.time()
+    end_time = time.perf_counter()
     if end_time - start_time > repeated_push_delay:
         warnings.warn("The initial transfer took longer than the repeated "
                       "push delay, so this test may not be testing the thing "
@@ -252,14 +252,14 @@ def test_object_transfer_retry(ray_start_cluster):
         ray.worker.global_worker.core_worker.object_exists(x_id)
         for x_id in x_ids)
 
-    end_time = time.time()
+    end_time = time.perf_counter()
     # Make sure that the first time the objects get transferred, it happens
     # quickly.
     assert end_time - start_time < repeated_push_delay
 
     # Get the objects again and make sure they get transferred.
     xs = ray.get(x_ids)
-    end_transfer_time = time.time()
+    end_transfer_time = time.perf_counter()
     # We should have had to wait for the repeated push delay.
     assert end_transfer_time - start_time >= repeated_push_delay
 
@@ -276,9 +276,9 @@ def test_object_transfer_retry(ray_start_cluster):
 
     # Get the objects locally to cause them to be transferred. This should
     # happen quickly.
-    start_time = time.time()
+    start_time = time.perf_counter()
     ray.get(x_ids)
-    end_time = time.time()
+    end_time = time.perf_counter()
     assert end_time - start_time < repeated_push_delay
 
 

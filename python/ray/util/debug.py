@@ -22,11 +22,11 @@ def log_once(key):
         return False
     elif key not in _logged:
         _logged.add(key)
-        _last_logged = time.time()
+        _last_logged = time.perf_counter()
         return True
-    elif _periodic_log and time.time() - _last_logged > 60.0:
+    elif _periodic_log and time.perf_counter() - _last_logged > 60.0:
         _logged.clear()
-        _last_logged = time.time()
+        _last_logged = time.perf_counter()
         return False
     else:
         return False
