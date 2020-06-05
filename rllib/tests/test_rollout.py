@@ -7,8 +7,12 @@ from ray.rllib.utils.test_utils import framework_iterator
 
 
 def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
+    extra_config = ""
+    if algo == "ES":
+        extra_config = ",\"episodes_per_batch\": 1,\"train_batch_size\": 10, "\
+                       "\"noise_size\": 250000"
 
-    for fw in framework_iterator(frameworks=("torch", "tf")):
+    for fw in framework_iterator(frameworks=("tf", "torch")):
         fw_ = ", \"framework\": \"{}\"".format(fw)
 
         tmp_dir = os.popen("mktemp -d").read()[:-1]
@@ -22,8 +26,8 @@ def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
                                                  os.path.exists(rllib_dir)))
         os.system("python {}/train.py --local-dir={} --run={} "
                   "--checkpoint-freq=1 ".format(rllib_dir, tmp_dir, algo) +
-                  "--config='{" +
-                  "\"num_workers\": 0, \"num_gpus\": 0{}".format(fw_) +
+                  "--config='{" + "\"num_workers\": 1, \"num_gpus\": 0{}{}".
+                  format(fw_, extra_config) +
                   ", \"model\": {\"fcnet_hiddens\": [10]}"
                   "}' --stop='{\"training_iteration\": 1, "
                   "\"timesteps_per_iter\": 5, "
@@ -57,6 +61,12 @@ def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
 
 
 class TestRollout(unittest.TestCase):
+    def test_a3c(self):
+        rollout_test("A3C")
+
+    def test_ars(self):
+        rollout_test("ARS")
+
     def test_ddpg(self):
         rollout_test("DDPG", env="Pendulum-v0")
 
@@ -67,10 +77,10 @@ class TestRollout(unittest.TestCase):
         rollout_test("ES")
 
     def test_impala(self):
-        rollout_test("IMPALA", env="Pong-ram-v4")
+        rollout_test("IMPALA", env="CartPole-v0")
 
     def test_ppo(self):
-        rollout_test("PPO", env="Pendulum-v0", test_episode_rollout=True)
+        rollout_test("PPO", env="CartPole-v0", test_episode_rollout=True)
 
     def test_sac(self):
         rollout_test("SAC", env="Pendulum-v0")
