@@ -298,13 +298,10 @@ class SSHCommandRunner:
 
 
 class DockerCommandRunner(SSHCommandRunner):
-    def __init__(self, docker_config, log_prefix, node_id, provider,
-                 auth_config, cluster_name, process_runner, use_internal_ip):
-        self.ssh_command_runner = SSHCommandRunner(
-            log_prefix, node_id, provider, auth_config, cluster_name,
-            process_runner, use_internal_ip)
-        self.docker_name = doker_config["container_name"]
-        self.docker_config = doker_config
+    def __init__(self, docker_config, **common_args):
+        self.ssh_command_runner = SSHCommandRunner(**common_args)
+        self.docker_name = docker_config["container_name"]
+        self.docker_config = docker_config
 
     def run(self,
             cmd,
@@ -320,11 +317,11 @@ class DockerCommandRunner(SSHCommandRunner):
     def run_rsync_up(self, source, target):
         self.ssh_command_runner.run_rsync_up(source, target)
         self.ssh_command_runner.run("docker cp {} {}:{}".format(
-            target, self.docker_name, self.clean_squiggly(target)))
+            target, self.docker_name, self.docker_expand_user(target)))
 
     def run_rsync_down(self, source, target):
         self.ssh_command_runner.run("docker cp {}:{} {}".format(
-            self.docker_name, self.clean_squiggly(source), source))
+            self.docker_name, self.docker_expand_user(source), source))
         self.ssh_command_runner.run_rsync_down(source, target)
 
     def remote_shell_command_str(self):
@@ -333,9 +330,13 @@ class DockerCommandRunner(SSHCommandRunner):
         return inner_str + " docker exec -it {} /bin/bash\n".format(
             self.docker_name)
 
-    def clean_squiggly(self, string):
-        return string.replace(
-            "~", "`docker exec ray_docker env | grep HOME | cut -d'=' -f2`")
+    def docker_expand_user(self, string):
+        if string.find("~") == 0:
+            return string.replace(
+                "~",
+                "`docker exec ray_docker env | grep HOME | cut -d'=' -f2`", 1)
+        else:
+            return string
 
 
 class NodeUpdater:
