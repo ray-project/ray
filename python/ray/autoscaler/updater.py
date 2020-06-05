@@ -47,6 +47,7 @@ class KubernetesCommandRunner:
     def run(self,
             cmd=None,
             timeout=120,
+            allocate_tty=False,
             exit_on_fail=False,
             port_forward=None,
             with_output=False):
@@ -76,12 +77,12 @@ class KubernetesCommandRunner:
             raise Exception(exception_str)
         else:
             logger.info(self.log_prefix + "Running {}...".format(cmd))
-            final_cmd = self.kubectl + ["exec", "-it"]
-            final_cmd += [
+            final_cmd = self.kubectl + [
+                "exec",
+                "-it" if allocate_tty else "-i",
                 self.node_id,
                 "--",
-            ]
-            final_cmd += with_interactive(cmd)
+            ] + with_interactive(cmd)
             try:
                 if with_output:
                     return self.process_runner.check_output(
@@ -229,13 +230,16 @@ class SSHCommandRunner:
     def run(self,
             cmd,
             timeout=120,
+            allocate_tty=False,
             exit_on_fail=False,
             port_forward=None,
             with_output=False):
 
         self.set_ssh_ip_if_required()
 
-        ssh = ["ssh", "-tt"]
+        ssh = ["ssh"]
+        if allocate_tty:
+            ssh.append("-tt")
 
         if port_forward:
             if not isinstance(port_forward, list):
@@ -256,8 +260,7 @@ class SSHCommandRunner:
         else:
             # We do this because `-o ControlMaster` causes the `-N` flag to
             # still create an interactive shell in some ssh versions.
-            final_cmd.append(quote("while true; do sleep 86400; done"))
-
+            final_cmd.append("while true; do sleep 86400; done")
         try:
             if with_output:
                 return self.process_runner.check_output(final_cmd)
