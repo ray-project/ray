@@ -104,7 +104,7 @@ Each request is routed randomly between the backends in the traffic dictionary a
 Please see :ref:`session-affinity` for details on how to ensure that clients or users are consistently mapped to the same backend.
 
 A/B Testing
-~~~~~~~~~~~
+-----------
 
 ``set_traffic`` can be used to implement A/B testing by having one backend serve the majority of traffic while a fraction is routed to a second model:
 
@@ -128,7 +128,7 @@ A/B Testing
   serve.set_traffic("ab_endpoint", {"default_backend": 1.0})
 
 Incremental Rollout
-~~~~~~~~~~~~~~~~~~~
+-------------------
 
 ``set_traffic`` can also be used to implement incremental rollout.
 Here, we want to replace an existing backend with a new implementation by gradually increasing the proportion of traffic that it serves.
@@ -155,7 +155,7 @@ In the example below, we do this repeatedly in one script, but in practice this 
 .. _session-affinity:
 
 Session Affinity
-~~~~~~~~~~~~~~~~
+----------------
 
 Splitting traffic randomly among backends for each request is is general and simple, but it can be an issue when you want to ensure that a given user or client is served by the same backend repeatedly.
 To address this, Serve offers a "shard key" can be specified for each request that will deterministically map to a backend.
