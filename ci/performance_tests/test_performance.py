@@ -155,9 +155,9 @@ def warm_up_cluster(num_nodes, object_store_memory):
 def run_multiple_trials(f, num_trials):
     durations = []
     for _ in range(num_trials):
-        start = time.time()
+        start = time.perf_counter()
         f()
-        durations.append(time.time() - start)
+        durations.append(time.perf_counter() - start)
     return durations
 
 

@@ -9,8 +9,8 @@ def f():
 @ray.remote
 def g():
     import time
-    start = time.time()
-    while time.time() < start + 1:
+    start = time.perf_counter()
+    while time.perf_counter() < start + 1:
         ray.get([f.remote() for _ in range(10)])
 
 
