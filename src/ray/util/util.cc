@@ -7,11 +7,10 @@
 #endif
 
 #include <algorithm>
+#include <boost/asio/generic/stream_protocol.hpp>
 #include <sstream>
 #include <string>
 #include <vector>
-
-#include <boost/asio/generic/stream_protocol.hpp>
 #ifndef _WIN32
 #include <boost/asio/local/stream_protocol.hpp>
 #endif

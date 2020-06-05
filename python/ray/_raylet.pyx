@@ -158,7 +158,6 @@ cdef RayObjectsToDataMetadataPairs(
     return data_metadata_pairs
 
 
-
 cdef VectorToObjectIDs(const c_vector[CObjectID] &object_ids):
     result = []
     for i in range(object_ids.size()):
