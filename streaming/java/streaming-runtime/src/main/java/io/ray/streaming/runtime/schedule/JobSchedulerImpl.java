@@ -1,10 +1,10 @@
 package io.ray.streaming.runtime.schedule;
 
-import io.ray.api.BaseActorHandle;
-import io.ray.api.Ray;
 import io.ray.api.ActorHandle;
+import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
+import io.ray.api.Ray;
 import io.ray.api.function.PyActorMethod;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.jobgraph.JobGraph;

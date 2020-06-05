@@ -1,8 +1,8 @@
 package io.ray.streaming.runtime.master.scheduler.controller;
 
-import io.ray.api.Ray;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
+import io.ray.api.Ray;
 import io.ray.api.WaitResult;
 import io.ray.api.id.ActorId;
 import io.ray.api.options.ActorCreationOptions;

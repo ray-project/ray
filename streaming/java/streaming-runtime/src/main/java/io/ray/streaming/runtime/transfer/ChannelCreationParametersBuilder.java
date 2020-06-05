@@ -10,7 +10,6 @@ import io.ray.runtime.functionmanager.FunctionDescriptor;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.runtime.functionmanager.PyFunctionDescriptor;
 import io.ray.streaming.runtime.worker.JobWorker;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -107,8 +106,9 @@ public class ChannelCreationParametersBuilder {
     javaWriterSyncFuncDesc = syncFunc;
   }
 
-  public ChannelCreationParametersBuilder buildInputQueueParameters(List<String> queues,
-                                                                    Map<String, BaseActorHandle> actors) {
+  public ChannelCreationParametersBuilder buildInputQueueParameters(
+      List<String> queues,
+      Map<String, BaseActorHandle> actors) {
     return buildParameters(queues, actors, javaWriterAsyncFuncDesc, javaWriterSyncFuncDesc,
       pyWriterAsyncFunctionDesc, pyWriterSyncFunctionDesc);
   }
