@@ -277,7 +277,7 @@ for i in range(1, 1 + iterations):
     model_id = ray.put(model)
     gradient_ids = []
     # Launch tasks to compute gradients from multiple rollouts in parallel.
-    start_time = time.time()
+    start_time = time.perf_counter()
     gradient_ids = [
         actor.compute_gradient.remote(model_id) for actor in actors
     ]
@@ -289,7 +289,7 @@ for i in range(1, 1 + iterations):
             grad_buffer[k] += grad[k]
         running_reward = (reward_sum if running_reward is None else
                           running_reward * 0.99 + reward_sum * 0.01)
-    end_time = time.time()
+    end_time = time.perf_counter()
     print("Batch {} computed {} rollouts in {} seconds, "
           "running mean is {}".format(i, batch_size, end_time - start_time,
                                       running_reward))
