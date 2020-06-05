@@ -158,6 +158,7 @@ cdef RayObjectsToDataMetadataPairs(
     return data_metadata_pairs
 
 
+
 cdef VectorToObjectIDs(const c_vector[CObjectID] &object_ids):
     result = []
     for i in range(object_ids.size()):
@@ -183,6 +184,34 @@ cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
 
 def compute_task_id(ObjectID object_id):
     return TaskID(object_id.native().TaskId().Binary())
+
+
+def setup_logging(stdout_file, stderr_file):
+    assert stdout_file is not None
+    assert stderr_file is not None
+    # Before redirecting stdout/stderr we need to make sure userspace buffers
+    # are all flushed.
+    # Flush python's userspace buffers
+    sys.stdout.flush()
+    sys.stderr.flush()
+
+    # Flush the c/c++ userspace buffers
+    cdef extern from "ray/util/util.h":
+        flush_out()
+        flush_err()
+
+    # Redirect stdout/stderr at the file descriptor level. If we simply
+    # set sys.stdout and sys.stderr, then logging from C++ can fail to
+    # be redirected.
+    os.dup2(stdout_file.fileno(), sys.stdout.fileno())
+    os.dup2(stderr_file.fileno(), sys.stderr.fileno())
+
+    # We also manually set sys.stdout and sys.stderr because that seems
+    # to have an affect on the output buffering. Without doing this,
+    # stdout and stderr are heavily buffered resulting in seemingly
+    # lost logging statements.
+    sys.stdout = stdout_file
+    sys.stderr = stderr_file
 
 
 cdef increase_recursion_limit():
@@ -324,6 +353,7 @@ cdef execute_task(
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
         TaskID task_id = core_worker.get_current_task_id()
+        TaskID caller_id = core_worker.get_caller_id()
         CFiberEvent task_done_event
 
     # Automatically restrict the GPUs available to this task.
@@ -709,6 +739,10 @@ cdef class CoreWorker:
     def get_current_job_id(self):
         return JobID(
             CCoreWorkerProcess.GetCoreWorker().GetCurrentJobId().Binary())
+
+    def get_caller_id(self):
+        return JobID(
+            CCoreWorkerProcess.GetCoreWorker().GetCallerId().Binary())
 
     def get_actor_id(self):
         return ActorID(
