@@ -58,7 +58,7 @@ def minimize_and_clip(optimizer, clip_val=10):
                 torch.nn.utils.clip_grad_norm_(p.grad, clip_val)
 
 
-def sequence_mask(lengths, maxlen, dtype=None):
+def sequence_mask(lengths, maxlen=None, dtype=None):
     """
     Exact same behavior as tf.sequence_mask.
     Thanks to Dimitris Papatheodorou

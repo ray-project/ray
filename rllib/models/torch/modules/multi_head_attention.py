@@ -7,7 +7,6 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.utils.torch_ops import sequence_mask
 
-
 torch, nn = try_import_torch()
 
 
@@ -15,22 +14,18 @@ class MultiHeadAttention(nn.Module):
     """A multi-head attention layer described in [1]."""
 
     # Change to the tf implementation: include the in_dim parameter
-    def __init__(self, in_dim,  out_dim, num_heads, head_dim, **kwargs):
+    def __init__(self, in_dim, out_dim, num_heads, head_dim, **kwargs):
         super().__init__(**kwargs)
 
         # No bias or non-linearity.
         self._num_heads = num_heads
         self._head_dim = head_dim
         self._qkv_layer = SlimFC(
-            in_size=in_dim,
-            out_size=3 * num_heads * head_dim,
-            use_bias=False)
+            in_size=in_dim, out_size=3 * num_heads * head_dim, use_bias=False)
 
-        #TODO port the keras.layers.TimeDistributed wrapper
+        # TODO: (Tanay) port the keras.layers.TimeDistributed wrapper
         self._linear_layer = SlimFC(
-            in_size= num_heads * head_dim,
-            out_size=out_dim,
-            use_bias=False)
+            in_size=num_heads * head_dim, out_size=out_dim, use_bias=False)
 
     def forward(self, inputs):
         L = list(inputs.size())[1]  # length of segment
@@ -50,7 +45,7 @@ class MultiHeadAttention(nn.Module):
         score = score / D**0.5
 
         # causal mask of the same length as the sequence
-        mask = sequence_mask(torch.arange(1, L + 1), dtype=score.dtype, maxlen=None)
+        mask = sequence_mask(torch.arange(1, L + 1), dtype=score.dtype)
         mask = mask[None, :, :, None]
         mask = mask.float()
 
@@ -58,9 +53,7 @@ class MultiHeadAttention(nn.Module):
         wmat = nn.functional.softmax(masked_score, dim=2)
 
         out = torch.einsum("bijh,bjhd->bihd", wmat, values)
-        shape = list(out.size())[:2] + [H*D]
-#        temp = torch.cat(temp2, [H * D], dim=0)
-        out = torch.reshape(out,
-                            shape)
+        shape = list(out.size())[:2] + [H * D]
+        #        temp = torch.cat(temp2, [H * D], dim=0)
+        out = torch.reshape(out, shape)
         return self._linear_layer(out)
-

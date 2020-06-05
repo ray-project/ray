@@ -1,11 +1,8 @@
 import unittest
-from ray.rllib.utils.framework import try_import_torch
+
 from ray.rllib.models.torch.modules.multi_head_attention import \
     MultiHeadAttention
-from ray.rllib.models.torch.modules.gru_gate import GRUGate
-from ray.rllib.models.torch.modules.relative_multi_head_attention import \
-    RelativeMultiHeadAttention
-from ray.rllib.models.torch.modules.skip_connection import SkipConnection
+from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
 
@@ -13,7 +10,7 @@ torch, nn = try_import_torch()
 class TestDistributions(unittest.TestCase):
     """Tests models/torch/modules helper classes for attention net."""
 
-    def test_MultiHeadAttention(self):
+    def test_multi_head_attention(self):
         """Tests the MultiHeadAttention mechanism of Vaswani et al."""
 
         B = 1
@@ -24,8 +21,8 @@ class TestDistributions(unittest.TestCase):
         y = torch.randn(B, L, D_out)
 
         # Create a single attention layer with 2 heads
-        model = MultiHeadAttention(in_dim=D_in, out_dim=D_out, num_heads=2,
-                                   head_dim=32)
+        model = MultiHeadAttention(
+            in_dim=D_in, out_dim=D_out, num_heads=2, head_dim=32)
 
         # Check that the layer is instantiated correctly
         criterion = torch.nn.MSELoss(reduction='sum')
@@ -45,6 +42,7 @@ class TestDistributions(unittest.TestCase):
 
         # The final layer has trained correctly to have nearly zero loss
         self.assertLess(abs(loss.item()), 100)
+
 
 if __name__ == "__main__":
     import pytest

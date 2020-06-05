@@ -10,6 +10,5 @@ torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
-
 if name == "__main__":
     print("Ran")

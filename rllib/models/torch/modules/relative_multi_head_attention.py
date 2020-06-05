@@ -46,7 +46,6 @@ class RelativeMultiHeadAttention(nn.Module):
             tf.keras.layers.Dense(
                 out_dim, use_bias=False, activation=output_activation))
 
-
         self._uvar = self.add_weight(shape=(num_heads, head_dim))
         self._vvar = self.add_weight(shape=(num_heads, head_dim))
 
@@ -84,7 +83,8 @@ class RelativeMultiHeadAttention(nn.Module):
         keys = torch.reshape(keys, [-1, T + Tau, H, d])
         values = torch.reshape(values, [-1, T + Tau, H, d])
 
-        print("relative MHA: ", T.shape, H, d, queries.shape, keys.shape, values.shape)
+        print("relative MHA: ", T.shape, H, d, queries.shape, keys.shape,
+              values.shape)
         R = self._pos_proj(self._rel_pos_encoder)
         print("relative MHA R1 shape: ", R.shape)
         R = torch.reshape(R, [T + Tau, H, d])
@@ -95,7 +95,8 @@ class RelativeMultiHeadAttention(nn.Module):
         # h=head
         # d=head-dim (over which we will reduce-sum)
         score = torch.einsum("bihd,bjhd->bijh", queries + self._uvar, keys)
-        print("relative MHA einsum: ", queries.shape, self._uvar.shape, (queries+self._uvar).shape, score.shape)
+        print("relative MHA einsum: ", queries.shape, self._uvar.shape,
+              (queries + self._uvar).shape, score.shape)
         pos_score = torch.einsum("bihd,jhd->bijh", queries + self._vvar, R)
         score = score + self.rel_shift(pos_score)
         score = score / d**0.5
@@ -110,7 +111,8 @@ class RelativeMultiHeadAttention(nn.Module):
         wmat = nn.Softmax(masked_score, axis=2)
 
         out = torch.einsum("bijh,bjhd->bihd", wmat, values)
-        out = torch.reshape(out, tf.concat((tf.shape(out)[:2], [H * d]), axis=0))
+        out = torch.reshape(out, tf.concat(
+            (tf.shape(out)[:2], [H * d]), axis=0))
         return self._linear_layer(out)
 
     @staticmethod

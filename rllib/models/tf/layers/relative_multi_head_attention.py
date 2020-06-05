@@ -44,7 +44,6 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
             tf.keras.layers.Dense(
                 out_dim, use_bias=False, activation=output_activation))
 
-
         self._uvar = self.add_weight(shape=(num_heads, head_dim))
         self._vvar = self.add_weight(shape=(num_heads, head_dim))
 
@@ -85,7 +84,8 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         keys = tf.reshape(keys, [-1, T + Tau, H, d])
         values = tf.reshape(values, [-1, T + Tau, H, d])
 
-        print("relative MHA: ", T.shape, H, d, queries.shape, keys.shape, values.shape)
+        print("relative MHA: ", T.shape, H, d, queries.shape, keys.shape,
+              values.shape)
         R = self._pos_proj(self._rel_pos_encoder)
         print("relative MHA R1 shape: ", R.shape)
         R = tf.reshape(R, [T + Tau, H, d])
@@ -96,7 +96,8 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         # h=head
         # d=head-dim (over which we will reduce-sum)
         score = tf.einsum("bihd,bjhd->bijh", queries + self._uvar, keys)
-        print("relative MHA einsum: ", queries.shape, self._uvar.shape, (queries+self._uvar).shape, score.shape)
+        print("relative MHA einsum: ", queries.shape, self._uvar.shape,
+              (queries + self._uvar).shape, score.shape)
         pos_score = tf.einsum("bihd,jhd->bijh", queries + self._vvar, R)
         score = score + self.rel_shift(pos_score)
         score = score / d**0.5
@@ -106,7 +107,6 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         mask = tf.sequence_mask(
             tf.range(Tau + 1, T + Tau + 1), dtype=score.dtype)
         mask = mask[None, :, :, None]
-
 
         masked_score = score * mask + 1e30 * (mask - 1.)
         wmat = tf.nn.softmax(masked_score, axis=2)

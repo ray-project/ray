@@ -26,28 +26,30 @@ class PositionwiseFeedforward(nn.Module):
     layer separately.
     """
 
-    def __init__(self, input_dim, hidden_dim, output_dim, output_activation=None, **kwargs):
+    def __init__(self,
+                 input_dim,
+                 hidden_dim,
+                 output_dim,
+                 output_activation=None,
+                 **kwargs):
         super().__init__(**kwargs)
 
         self._hidden_layer = SlimFC(
             in_size=input_dim,
             out_size=hidden_dim,
             use_bias=False,
-            activation_fn=nn.ReLU
-        )
+            activation_fn=nn.ReLU)
 
         self._output_layer = SlimFC(
             in_size=hidden_dim,
             out_size=output_dim,
             use_bias=False,
-            activation_fn=output_activation
-        )
+            activation_fn=output_activation)
 
     def forward(self, inputs, **kwargs):
         del kwargs
         output = self._hidden_layer(inputs)
         return self._output_layer(output)
-
 
 
 if __name__ == '__main__':
