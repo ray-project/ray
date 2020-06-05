@@ -39,7 +39,11 @@ For more information, see our :ref:`guide for distributed hyperparameter tuning 
 What if I'm already doing hyperparameter tuning?
 ------------------------------------------------
 
-You might be already using an existing hyperparameter tuning tool. XXTODO
+You might be already using an existing hyperparameter tuning tool such as HyperOpt or Bayesian Optimization.
+
+In this situation, Ray Tune actually allows you to power up your existing workflow. Tune's Search Algorithm integrate with a variety of popular hyperparameter tuning libraries (such as Nevergrad or HyperOpt) and allow you to seamlessly scale up your optimization process -- without sacrificing performance.
+
+For more information, take a look at the documentation on :ref:`Optimization Algorithms <tune-search-alg>`.
 
 Further Information
 -------------------
