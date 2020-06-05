@@ -1,4 +1,4 @@
-package io.ray.api.test;
+package io.ray.runtime.serializer;
 
 import io.ray.runtime.serializer.Serializer;
 import java.util.ArrayList;
