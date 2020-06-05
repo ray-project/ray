@@ -1175,6 +1175,20 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_exec_api",
+    tags = ["tests_dir", "tests_dir_E"],
+    size = "medium",
+    srcs = ["tests/test_exec_api.py"]
+)
+
+py_test(
+    name = "tests/test_execution",
+    tags = ["tests_dir", "tests_dir_E"],
+    size = "medium",
+    srcs = ["tests/test_execution.py"]
+)
+
+py_test(
     name = "tests/test_export",
     tags = ["tests_dir", "tests_dir_E"],
     size = "medium",
@@ -1217,13 +1231,6 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_execution",
-    tags = ["tests_dir", "tests_dir_E"],
-    size = "medium",
-    srcs = ["tests/test_execution.py"]
-)
-
-py_test(
     name = "tests/test_local",
     tags = ["tests_dir", "tests_dir_L"],
     size = "medium",
@@ -1248,7 +1255,7 @@ py_test(
 py_test(
     name = "tests/test_multi_agent_env",
     tags = ["tests_dir", "tests_dir_M"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_multi_agent_env.py"]
 )
 
@@ -1268,16 +1275,9 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_exec_api",
-    tags = ["tests_dir", "tests_dir_E"],
-    size = "medium",
-    srcs = ["tests/test_exec_api.py"]
-)
-
-py_test(
     name = "tests/test_reproducibility",
     tags = ["tests_dir", "tests_dir_R"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_reproducibility.py"]
 )
 
@@ -1293,7 +1293,7 @@ py_test(
 py_test(
     name = "tests/test_rollout_worker",
     tags = ["tests_dir", "tests_dir_R"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_rollout_worker.py"]
 )
 
@@ -1307,7 +1307,7 @@ py_test(
 py_test(
     name = "tests/test_supported_spaces",
     tags = ["tests_dir", "tests_dir_S"],
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_supported_spaces.py"]
 )
 
