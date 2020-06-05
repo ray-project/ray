@@ -17,7 +17,7 @@ package io.ray.api.function;
  * suppose we have got the Python actor class A's handle in Java
  *
  * {@code
- * RayPyActor actor = ...; // returned from Ray.createActor or passed from Python
+ * PyActorHandle actor = ...; // returned from Ray.createActor or passed from Python
  * }
  *
  * then we can call the actor method:
