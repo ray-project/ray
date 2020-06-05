@@ -328,10 +328,12 @@ class DockerCommandRunner(SSHCommandRunner):
         self.ssh_command_runner.run_rsync_down(source, target)
 
     def remote_shell_command_str(self):
-        return "ssh -tt -o IdentitiesOnly=yes -i {} {}@{} docker exec -it {} "
-        "/bin/bash\n".format(self.ssh_command_runner.ssh_private_key,
-                             self.ssh_command_runner.ssh_user,
-                             self.ssh_command_runner.ssh_ip, self.docker_name)
+        ## TODO(ilr): FIXME
+        return "ssh -tt -o IdentitiesOnly=yes -i {} {}@{} docker \
+            exec -it {} /bin/bash\n".format(
+            self.ssh_command_runner.ssh_private_key,
+            self.ssh_command_runner.ssh_user, self.ssh_command_runner.ssh_ip,
+            self.docker_name)
 
     def clean_squiggly(self, string):
         return string.replace(
