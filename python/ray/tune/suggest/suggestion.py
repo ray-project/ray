@@ -57,6 +57,7 @@ class Searcher:
 
 
     """
+    FINISHED = "FINISHED"
 
     def __init__(self,
                  metric="episode_reward_mean",
@@ -251,6 +252,11 @@ class SearchGenerator(SearchAlgorithm):
         logger.debug("creating trial")
         trial_id = Trial.generate_id()
         suggested_config = self.searcher.suggest(trial_id)
+        if suggested_config == Searcher.FINISHED:
+            self._finished = True
+            logger.debug("Searcher has finished.")
+            return
+
         if suggested_config is None:
             return
         spec = copy.deepcopy(experiment_spec)

@@ -1,6 +1,8 @@
 import copy
+from collections import defaultdict
 import logging
 import pickle
+import json
 try:  # Python 3 only -- needed for lint test.
     import bayes_opt as byo
 except ImportError:
@@ -9,6 +11,10 @@ except ImportError:
 from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
+
+
+def _dict_hash(config):
+    return json.dumps(config, sort_keys=True, default=str)
 
 
 class BayesOptSearch(Searcher):
@@ -70,6 +76,8 @@ class BayesOptSearch(Searcher):
                  random_state=42,
                  random_search_steps=10,
                  verbose=0,
+                 patience=5,
+                 skip_repeated=True,
                  analysis=None,
                  max_concurrent=None,
                  use_early_stopped_trials=None):
@@ -88,6 +96,11 @@ class BayesOptSearch(Searcher):
             random_search_steps (int): Number of initial random searches.
                 This is necessary to avoid initial local overfitting
                 of the Bayesian process.
+            patience (int): Must be > 0. If the optimizer suggests a set of
+                hyperparameters more than 'patience' times,
+                then the whole experiment will stop.
+            skip_repeated (bool): If true, BayesOptSearch will not create
+                a trial with a previously seen set of hyperparameters.
             analysis (ExperimentAnalysis): Optionally, the previous analysis
                 to integrate.
             verbose (int): Sets verbosity level for BayesOpt packages.
@@ -99,6 +112,11 @@ class BayesOptSearch(Searcher):
             " the command: `pip install bayesian-optimization`.")
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
         self.max_concurrent = max_concurrent
+        self._config_counter = defaultdict(int)
+        self._patience = patience
+        if self._patience <= 0:
+            raise ValueError("patience must be set to a value greater than 0!")
+        self._skip_repeated = skip_repeated
         super(BayesOptSearch, self).__init__(
             metric=metric,
             mode=mode,
@@ -120,7 +138,7 @@ class BayesOptSearch(Searcher):
             self._metric_op = -1.
 
         self._live_trial_mapping = {}
-        self._cached_results = []
+        self._buffered_trial_results = []
         self.random_search_trials = random_search_steps
         self._total_random_search_trials = 0
 
@@ -152,7 +170,7 @@ class BayesOptSearch(Searcher):
 
         # If we are still in the random search part and we are waiting for
         # trials to complete
-        if len(self._cached_results) < self.random_search_trials:
+        if len(self._buffered_trial_results) < self.random_search_trials:
             # We check if we have already maxed out the number of requested
             # random search trials
             if self._total_random_search_trials == self.random_search_trials:
@@ -162,12 +180,24 @@ class BayesOptSearch(Searcher):
             self._total_random_search_trials += 1
 
         # We compute the new point to explore
-        new_trial = self.optimizer.suggest(self.utility)
+        config = self.optimizer.suggest(self.utility)
+
+        config_hash = _dict_hash(config)
+        # Check if already computed
+        already_seen = config_hash in self._config_counter
+        self._config_counter[config_hash] += 1
+        if any(value > self._patience
+               for value in self._config_counter.values()):
+            logger.debug("Patience has been reached.")
+            return Searcher.FINISHED
+        if already_seen and self._skip_repeated:
+            return None
+
         # Save the new trial to the trial mapping
-        self._live_trial_mapping[trial_id] = new_trial
+        self._live_trial_mapping[trial_id] = config
 
         # Return a deep copy of the mapping
-        return copy.deepcopy(new_trial)
+        return copy.deepcopy(config)
 
     def register_analysis(self, analysis):
         """Integrate the given analysis into the gaussian process.
@@ -205,18 +235,18 @@ class BayesOptSearch(Searcher):
             return
 
         # If we don't have to execute some random search steps
-        if len(self._cached_results) >= self.random_search_trials:
+        if len(self._buffered_trial_results) >= self.random_search_trials:
             #  we simply register the obtained result
             self._register_result(params, result)
             return
 
         # We store the results into a temporary cache
-        self._cached_results.append((params, result))
+        self._buffered_trial_results.append((params, result))
 
         # If the random search finished,
         # we update the BO with all the computer points.
-        if len(self._cached_results) == self.random_search_trials:
-            for params, result in self._cached_results:
+        if len(self._buffered_trial_results) == self.random_search_trials:
+            for params, result in self._buffered_trial_results:
                 self._register_result(params, result)
 
     def _register_result(self, params, result):
@@ -226,11 +256,13 @@ class BayesOptSearch(Searcher):
     def save(self, checkpoint_dir):
         """Storing current optimizer state."""
         with open(checkpoint_dir, "wb") as f:
-            pickle.dump((self.optimizer, self._cached_results,
-                         self._total_random_search_trials), f)
+            pickle.dump(
+                (self.optimizer, self._buffered_trial_results,
+                 self._total_random_search_trials, self._config_counter), f)
 
     def restore(self, checkpoint_dir):
         """Restoring current optimizer state."""
         with open(checkpoint_dir, "rb") as f:
-            (self.optimizer, self._cached_results,
-             self._total_random_search_trials) = pickle.load(f)
+            (self.optimizer, self._buffered_trial_results,
+             self._total_random_search_trials,
+             self._config_counter) = pickle.load(f)
