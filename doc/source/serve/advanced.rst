@@ -85,28 +85,81 @@ dive.
 
 .. _`serve-split-traffic`:
 
-Splitting Traffic and A/B Testing
+Splitting Traffic Between Backends
 ==================================
 
-It's trivial to also split traffic, simply specify the endpoint and the backends that you want to split.
+At times it may be useful to expose a single endpoint that is served by multiple backends.
+You can do this by splitting the traffic for an endpoint between backends using ``set_traffic``.
+When calling ``set_traffic``, you provide a dictionary of backend name to a float value that will be used to randomly route that portion of traffic (out of a total of 1.0) to the given backend.
+For example, here we split traffic 50/50 between two backends:
 
 .. code-block:: python
+
+  serve.create_endpoint("fifty-fifty", "/fifty")
+  serve.create_backend("backend1", MyClass1)
+  serve.create_backend("backend2", MyClass2)
+  serve.set_traffic("fifty-fifty", {"backend1": 0.5, "backend2": 0.5})
+
+Each request is routed randomly between the backends in the traffic dictionary according to the provided weights.
+Please see :ref:`session-affinity` for details on how to ensure that clients or users are consistently mapped to the same backend.
+
+A/B Testing
+-----------
+
+``set_traffic`` can be used to implement A/B testing by having one backend serve the majority of traffic while a fraction is routed to a second model:
+
+.. code-block:: python
+
+  serve.create_endpoint("ab_endpoint", "/a-b-test")
+  serve.create_backend("default_backend", MyClass)
+
+  # Initially, set all traffic to be served by the "default" backend.
+  serve.set_traffic("ab_endpoint", {"default_backend": 1.0})
+
+  # Add a second backend and route 1% of the traffic to it.
+  serve.create_backend("new_backend", MyNewClass)
+  serve.set_traffic("ab_endpoint", {"default_backend": 0.99, "new_backend": 0.01})
+
+  # Add a third backend that serves another 1% of the traffic.
+  serve.create_backend("new_backend2", MyNewClass2)
+  serve.set_traffic("ab_endpoint", {"default_backend": 0.98, "new_backend": 0.01, "new_backend2": 0.01})
+
+  # Revert to the "default" backend serving all traffic.
+  serve.set_traffic("ab_endpoint", {"default_backend": 1.0})
+
+Incremental Rollout
+-------------------
+
+``set_traffic`` can also be used to implement incremental rollout.
+Here, we want to replace an existing backend with a new implementation by gradually increasing the proportion of traffic that it serves.
+In the example below, we do this repeatedly in one script, but in practice this would likely happen over time across multiple scripts.
+
+.. code-block:: python
+
+  serve.create_endpoint("incremental_endpoint", "/incremental")
+  serve.create_backend("existing_backend", MyClass)
+
+  # Initially, all traffic is served by the existing backend.
+  serve.set_traffic("incremental_endpoint", {"existing_backend": 1.0})
+
+  # Then we can slowly increase the proportion of traffic served by the new backend.
+  serve.create_backend("new_backend", MyNewClass)
+  serve.set_traffic("incremental_endpoint", {"existing_backend": 0.9, "new_backend": 0.1})
+  serve.set_traffic("incremental_endpoint", {"existing_backend": 0.8, "new_backend": 0.2})
+  serve.set_traffic("incremental_endpoint", {"existing_backend": 0.5, "new_backend": 0.5})
+  serve.set_traffic("incremental_endpoint", {"new_backend": 1.0})
   
-  serve.create_endpoint("endpoint_identifier_split", "/split", methods=["GET", "POST"])
-
-  # splitting traffic 70/30
-  serve.set_traffic("endpoint_identifier_split", {"my_endpoint_backend": 0.7, "my_endpoint_backend_class": 0.3})
-
-While splitting traffic is general simple, at times you'll want to consider :ref:`session-affinity`, making it easy to
-control what users see which version of the model. See the docs on :ref:`session-affinity` for more information.
+  # At any time, we can roll back to the existing backend.
+  serve.set_traffic("incremental_endpoint", {"existing_backend": 1.0})
 
 .. _session-affinity:
 
 Session Affinity
-================
+----------------
 
-In some cases, you may want to ensure that requests from the same client, user, etc. get mapped to the same backend.
-To do this, you can specify a "shard key" that will deterministically map requests to a backend.
+Splitting traffic randomly among backends for each request is is general and simple, but it can be an issue when you want to ensure that a given user or client is served by the same backend repeatedly.
+To address this, Serve offers a "shard key" can be specified for each request that will deterministically map to a backend.
+In practice, this should be something that uniquely identifies the entity that you want to consistently map, like a client ID or session ID.
 The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or ``handle.options(shard_key="key")``.
 
 .. note:: The mapping from shard key to backend may change when you update the traffic policy for an endpoint.
