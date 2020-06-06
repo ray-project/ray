@@ -1160,6 +1160,8 @@ cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
+    # TODO(swang): Enable again once pubsub client supports GCS server restart.
+    tags = ["manual"],
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
