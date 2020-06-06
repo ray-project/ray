@@ -173,8 +173,10 @@ class ConcurrencyLimiter(Searcher):
     def suggest(self, trial_id):
         if len(self.live_trials) >= self.max_concurrent:
             return
-        self.live_trials.add(trial_id)
-        return self.searcher.suggest(trial_id)
+        suggestion = self.searcher.suggest(trial_id)
+        if suggestion:
+            self.live_trials.add(trial_id)
+        return suggestion
 
     def on_trial_complete(self, trial_id, result=None, error=False):
         if trial_id not in self.live_trials:
