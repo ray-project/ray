@@ -235,14 +235,6 @@ RedisContext::~RedisContext() {
   if (context_) {
     redisFree(context_);
   }
-
-  if (redis_async_context_) {
-    redis_async_context_.reset();
-  }
-
-  if (async_redis_subscribe_context_) {
-    async_redis_subscribe_context_.reset();
-  }
 }
 
 Status AuthenticateRedis(redisContext *context, const std::string &password) {
