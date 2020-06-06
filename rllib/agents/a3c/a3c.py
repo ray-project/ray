@@ -54,6 +54,10 @@ def get_policy_class(config):
 def validate_config(config):
     if config["entropy_coeff"] < 0:
         raise DeprecationWarning("entropy_coeff must be >= 0")
+    if config["sample_async"] and config["framework"] == "torch":
+        config["sample_async"] = False
+        logger.warning("`sample_async=True` is not supported for PyTorch! "
+                       "Multithreading can lead to crashes.")
 
 
 def execution_plan(workers, config):

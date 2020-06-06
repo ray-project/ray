@@ -471,7 +471,6 @@ def _exec(updater, cmd, screen, tmux, port_forward=None, with_output=False):
             cmd = " ".join(cmd)
     return updater.cmd_runner.run(
         cmd,
-        allocate_tty=True,
         exit_on_fail=True,
         port_forward=port_forward,
         with_output=with_output)

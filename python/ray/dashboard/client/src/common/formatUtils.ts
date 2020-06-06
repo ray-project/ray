@@ -30,3 +30,18 @@ export const formatDuration = (durationInSeconds: number) => {
     `${pad(durationSeconds)}s`,
   ].join(" ");
 };
+
+export const formatValue = (rawFloat: number) => {
+  try {
+    const decimals = rawFloat.toString().split(".")[1].length || 0;
+    if (decimals <= 3) {
+      return rawFloat.toString();
+    } // Few decimals
+    if (Math.abs(rawFloat.valueOf()) >= 1.0) {
+      return rawFloat.toPrecision(5);
+    } // Values >= 1
+    return rawFloat.toExponential(); // Values in (-1; 1)
+  } catch (e) {
+    return rawFloat.toString();
+  }
+};
