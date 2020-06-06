@@ -189,8 +189,11 @@ class BayesOptSearch(Searcher):
         self._config_counter[config_hash] += 1
         top_repeats = max(self._config_counter.values())
 
+        # If patience is set and we've repeated a trial numerous times,
+        # we terminate the experiment.
         if self._patience is not None and top_repeats > self._patience:
             return Searcher.FINISHED
+        # If we have seen a value before, we'll skip it.
         if already_seen and self._skip_duplicate:
             logger.info("Skipping duplicated config: {}.".format(config))
             return None
