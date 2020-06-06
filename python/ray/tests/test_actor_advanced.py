@@ -668,10 +668,8 @@ def test_detached_actor(ray_start_regular):
             ValueError, match="Actor name cannot be an empty string"):
         DetachedActor._remote(name="")
 
-    DetachedActor._remote(name="d_actor")
-    with pytest.raises(ValueError):
-        # If get_actor is called before actor is created, it should fail.
-        ray.get_actor("d_actor")
+    d = DetachedActor._remote(name="d_actor")
+    assert ray.get(d.ping.remote()) == "pong"
 
     with pytest.raises(ValueError, match="Please use a different name"):
         DetachedActor._remote(name="d_actor")
