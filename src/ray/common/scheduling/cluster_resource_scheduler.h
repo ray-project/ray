@@ -152,7 +152,8 @@ class TaskRequest {
 
 // Data structure specifying the capacity of each instance of each resource
 // allocated to a task.
-// TODO(AlisaWu): rename this class, because it will support allocated to a placement group.
+// TODO(AlisaWu): rename this class, because it will support allocated to a placement
+// group.
 class TaskResourceInstances {
  public:
   /// The list of instances of each predifined resource allocated to a task.
@@ -342,10 +343,9 @@ class ClusterResourceScheduler {
       const std::unordered_map<std::string, double> &task_request, int64_t *violations);
 
   /// Check the node if we can schedule the bundle.
-  /// 
+  ///
   ///  \return true if the node can schedule the current request; else return false.
-  bool CheckIfSchedulable(
-      const std::unordered_map<std::string, double> &unit_resource);
+  bool CheckIfSchedulable(const std::unordered_map<std::string, double> &unit_resource);
   /// Decrease the available resources of a node when a task request is
   /// scheduled on the given node.
   ///

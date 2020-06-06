@@ -257,7 +257,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler_;
   /// The handler to handle the successful scheduling.
   std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler_;
-//   /// Reference of GcsPlacementGroupManager.
+  //   /// Reference of GcsPlacementGroupManager.
   const GcsPlacementGroupManager &gcs_placement_group_manager_;
   /// Factory for producing new clients to request leases from remote nodes.
   LeaseClientFactoryFn lease_client_factory_;

@@ -60,13 +60,13 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
     actor->UpdateAddress(rpc::Address());
   }
 
-  if(actor->GetBundleID() != BundleID::Nil()) {
-    auto node_id = gcs_placement_group_manager_.GetBundleScheduleNode(actor->GetBundleID());
-     if (!node_id.IsNil()) {
-      if (auto node = gcs_node_manager_.GetNode(node_id)){
-        RAY_CHECK(node_to_actors_when_leasing_[node_id]
-                  .emplace(actor->GetActorID())
-                  .second);
+  if (actor->GetBundleID() != BundleID::Nil()) {
+    auto node_id =
+        gcs_placement_group_manager_.GetBundleScheduleNode(actor->GetBundleID());
+    if (!node_id.IsNil()) {
+      if (auto node = gcs_node_manager_.GetNode(node_id)) {
+        RAY_CHECK(
+            node_to_actors_when_leasing_[node_id].emplace(actor->GetActorID()).second);
         LeaseWorkerFromNode(actor, node);
         return;
       }

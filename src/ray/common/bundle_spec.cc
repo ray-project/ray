@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 #include "bundle_spec.h"
 namespace ray {
 
@@ -41,4 +40,4 @@ BundleID BundleSpecification::BundleID() const {
 // uint64_t BundleSpecification::UnitCount() const {
 //     // TODO(AlisaWu): fill this function.
 // }
-} //namespace
+}  // namespace ray

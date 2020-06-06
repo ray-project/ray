@@ -456,8 +456,8 @@ class PlacementGroupInfoGcsServiceHandler {
   virtual ~PlacementGroupInfoGcsServiceHandler() = default;
 
   virtual void HandleCreatePlacementGroup(const CreatePlacementGroupRequest &request,
-                                 CreatePlacementGroupReply *reply,
-                                 SendReplyCallback send_reply_callback) = 0;
+                                          CreatePlacementGroupReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
   // TODO(AlisaWu): add new method in this class.
 };
 
@@ -468,7 +468,7 @@ class PlacementGroupInfoGrpcService : public GrpcService {
   ///
   /// \param[in] handler The service handler that actually handle the requests.
   explicit PlacementGroupInfoGrpcService(boost::asio::io_service &io_service,
-                                PlacementGroupInfoGcsServiceHandler &handler)
+                                         PlacementGroupInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:

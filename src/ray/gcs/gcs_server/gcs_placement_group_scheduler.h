@@ -33,8 +33,9 @@ namespace gcs {
 
 using LeaseResourceClientFactoryFn =
     std::function<std::shared_ptr<ResourceLeaseInterface>(const rpc::Address &address)>;
-  
-typedef std::function<void(const Status &,const rpc::RequestResourceLeaseReply &)> LeaseResourceCallback;
+
+typedef std::function<void(const Status &, const rpc::RequestResourceLeaseReply &)>
+    LeaseResourceCallback;
 
 class GcsPlacementGroup;
 
@@ -48,8 +49,8 @@ class GcsPlacementGroupSchedulerInterface {
   virtual ~GcsPlacementGroupSchedulerInterface() {}
 };
 
-/// GcsPlacementGroupScheduler is responsible for scheduling placement_groups registered to GcsPlacementGroupManager.
-/// This class is not thread-safe.
+/// GcsPlacementGroupScheduler is responsible for scheduling placement_groups registered
+/// to GcsPlacementGroupManager. This class is not thread-safe.
 class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
  public:
   /// Create a GcsPlacementGroupScheduler
@@ -59,11 +60,12 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param gcs_node_manager The node manager which is used when scheduling.
   /// \param schedule_failure_handler Invoked when there are no available nodes to
   /// schedule placement_groups.
-  /// \param schedule_success_handler Invoked when placement_groups are created on the worker
-  /// successfully.
+  /// \param schedule_success_handler Invoked when placement_groups are created on the
+  /// worker successfully.
   explicit GcsPlacementGroupScheduler(
-      boost::asio::io_context &io_context, gcs::PlacementGroupInfoAccessor &placement_group_info_accessor,
-      const GcsNodeManager &gcs_node_manager,std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+      boost::asio::io_context &io_context,
+      gcs::PlacementGroupInfoAccessor &placement_group_info_accessor,
+      const GcsNodeManager &gcs_node_manager, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_failure_handler,
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_success_handler,
       LeaseResourceClientFactoryFn lease_client_factory = nullptr);
@@ -71,35 +73,36 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// Schedule the specified placement_group.
   /// If there is no available nodes then the `schedule_failed_handler_` will be
-  /// triggered, otherwise the placement_group will be scheduled until succeed or canceled.
+  /// triggered, otherwise the placement_group will be scheduled until succeed or
+  /// canceled.
   ///
   /// \param placement_group to be scheduled.
   void Schedule(std::shared_ptr<GcsPlacementGroup> placement_group) override;
 
-  std::deque<std::tuple<BundleSpecification,std::shared_ptr<rpc::GcsNodeInfo>,LeaseResourceCallback>>GetLeaseResourceQueue(){
+  std::deque<std::tuple<BundleSpecification, std::shared_ptr<rpc::GcsNodeInfo>,
+                        LeaseResourceCallback>>
+  GetLeaseResourceQueue() {
     return lease_resource_queue_;
   }
 
-  const std::vector<ClientID>& GetDecision() const{
-    return decision_;
-  }
+  const std::vector<ClientID> &GetDecision() const { return decision_; }
 
-  void SetDecision(std::vector<ClientID>decision){
-    decision_ = decision;
-  }
+  void SetDecision(std::vector<ClientID> decision) { decision_ = decision; }
 
  protected:
   /// The GcsLeasedWorker is kind of abstraction of remote leased worker inside raylet. It
   /// contains the address of remote leased worker as well as the leased resources and the
-  /// ID of the placement_group associated with this worker. Through this class, we can easily get
-  /// the WorkerID, Endpoint, NodeID and the associated PlacementGroupID of the remote worker.
+  /// ID of the placement_group associated with this worker. Through this class, we can
+  /// easily get the WorkerID, Endpoint, NodeID and the associated PlacementGroupID of the
+  /// remote worker.
   class GcsLeasedWorker {
    public:
     /// Create a GcsLeasedWorker
     ///
     /// \param address the Address of the remote leased worker.
     /// \param resources the resources that leased from the remote node(raylet).
-    /// \param placement_group_id ID of the placement_group associated with this leased worker.
+    /// \param placement_group_id ID of the placement_group associated with this leased
+    /// worker.
     explicit GcsLeasedWorker(rpc::Address address,
                              std::vector<rpc::ResourceMapEntry> resources,
                              const PlacementGroupID &placement_group_id)
@@ -118,14 +121,14 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
     uint16_t GetPort() const { return address_.port(); }
 
     /// Get the id of the placement_group which is assigned to this leased worker.
-    PlacementGroupID GetAssignedPlacementGroupID() const { return assigned_placement_group_id_; }
+    PlacementGroupID GetAssignedPlacementGroupID() const {
+      return assigned_placement_group_id_;
+    }
 
     /// Get the leased resources.
     const std::vector<rpc::ResourceMapEntry> &GetLeasedResources() const {
       return resources_;
     }
-
-
 
    private:
     /// The address of the remote leased worker.
@@ -134,24 +137,24 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
     std::vector<rpc::ResourceMapEntry> resources_;
     /// Id of the placement_group assigned to this worker.
     PlacementGroupID assigned_placement_group_id_;
-
   };
 
   /// Lease resource from the specified node for the specified bundle.
-    void LeaseResourceFromNode();
+  void LeaseResourceFromNode();
 
   /// return resource for the specified node for the specified bundle.
   ///
   /// \param bundle A description of the bundle to return.
   /// \param node The node that the worker will be returned for.
-    void RetureReourceForNode(BundleSpecification bundle_spec,std::shared_ptr<ray::rpc::GcsNodeInfo>node);
+  void RetureReourceForNode(BundleSpecification bundle_spec,
+                            std::shared_ptr<ray::rpc::GcsNodeInfo> node);
 
   /// Handler to process a granted lease.
   ///
-  /// \param bundle Contains the resources needed to lease workers from the specified node.
-  /// \param reply The reply of `RequestWorkerLeaseForBundleRequest`.
-    Status HandleResourceLeasedReply(const rpc::Bundle &bundle, 
-                                            const ray::rpc::RequestResourceLeaseReply &reply);
+  /// \param bundle Contains the resources needed to lease workers from the specified
+  /// node. \param reply The reply of `RequestWorkerLeaseForBundleRequest`.
+  Status HandleResourceLeasedReply(const rpc::Bundle &bundle,
+                                   const ray::rpc::RequestResourceLeaseReply &reply);
 
   /// Get an existing lease client or connect a new one.
   std::shared_ptr<ResourceLeaseInterface> GetOrConnectLeaseClient(
@@ -175,7 +178,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   LeaseResourceClientFactoryFn lease_client_fplacement_groupy_;
   /// Fplacement_groupy for producing new core worker clients.
   rpc::ClientFactoryFn client_fplacement_groupy_;
-    /// The cached node clients which are used to communicate with raylet to lease workers.
+  /// The cached node clients which are used to communicate with raylet to lease workers.
   absl::flat_hash_map<ClientID, std::shared_ptr<ResourceLeaseInterface>>
       remote_lease_clients_;
   /// Factory for producing new clients to request leases from remote nodes.
@@ -186,23 +189,25 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// receive a reply or the node is removed.
   absl::flat_hash_map<ClientID, absl::flat_hash_set<BundleID>>
       node_to_bundles_when_leasing_;
-  
+
   /// The queue which is used to store the whole LeaseResourceFromNode
-  std::deque<std::tuple<BundleSpecification,std::shared_ptr<rpc::GcsNodeInfo>,LeaseResourceCallback>>lease_resource_queue_;
+  std::deque<std::tuple<BundleSpecification, std::shared_ptr<rpc::GcsNodeInfo>,
+                        LeaseResourceCallback>>
+      lease_resource_queue_;
 
   /// To store the decison which the bundle belong to.
-  /// if lease resource failed, decision[i] = ClientID::Nil() 
-  std::vector<ClientID>decision_;
+  /// if lease resource failed, decision[i] = ClientID::Nil()
+  std::vector<ClientID> decision_;
 
-  /// The count stores how many lease resource from node success; 
+  /// The count stores how many lease resource from node success;
   int64_t finish_count = 0;
 
   /// Store the resource lease position
   // std::vector<std::vector<ResourceMapEntry>>resource_lease_;
-  std::vector<std::vector<std::tuple<std::string, int64_t, double>>>resource_lease_;
+  std::vector<std::vector<std::tuple<std::string, int64_t, double>>> resource_lease_;
 };
 
-}
-}
+}  // namespace gcs
+}  // namespace ray
 
 #endif

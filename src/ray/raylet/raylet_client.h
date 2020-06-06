@@ -23,9 +23,9 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ray/common/bundle_spec.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/common/bundle_spec.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 
 using ray::ActorCheckpointID;
@@ -100,7 +100,6 @@ class ResourceLeaseInterface {
       const ray::rpc::ClientCallback<ray::rpc::RequestResourceReturnReply> &callback) = 0;
 
   virtual ~ResourceLeaseInterface(){};
-
 };
 
 /// Interface for waiting dependencies. Abstract for testing.

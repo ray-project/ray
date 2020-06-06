@@ -16,8 +16,8 @@
 #define RAY_GCS_ACCESSOR_H
 
 #include "ray/common/id.h"
-#include "ray/common/task/task_spec.h"
 #include "ray/common/placement_group.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/entry_change_notification.h"
 #include "ray/protobuf/gcs.pb.h"
@@ -619,15 +619,16 @@ class WorkerInfoAccessor {
 
 class PlacementGroupInfoAccessor {
  public:
-    // TODO(AlisaWu): fill the accessor.
+  // TODO(AlisaWu): fill the accessor.
   /// Create an placement group to GCS asynchronously.
   ///
   /// \param placement_group_spec The specification for the placement group creation task.
-  /// \param callback Callback that will be called after the placement group info is written to GCS.
-  /// \return Status
-  virtual Status AsyncCreatePlacementGroup(const PlacementGroupSpecification &placement_group_spec,
-                                  const StatusCallback &callback) = 0;
-                        
+  /// \param callback Callback that will be called after the placement group info is
+  /// written to GCS. \return Status
+  virtual Status AsyncCreatePlacementGroup(
+      const PlacementGroupSpecification &placement_group_spec,
+      const StatusCallback &callback) = 0;
+
   /// Update dynamic states of placement group in GCS asynchronously.
   ///
   /// \param placement_group_id ID of the placement_group to update.
@@ -635,9 +636,11 @@ class PlacementGroupInfoAccessor {
   /// \param callback Callback that will be called after update finishes.
   /// \return Status
   /// updating dynamic states.
-  virtual Status AsyncUpdate(const PlacementGroupID &placement_group_id,
-                             const std::shared_ptr<rpc::PlacementGroupTableData> &data_ptr,
-                             const StatusCallback &callback) = 0;
+  virtual Status AsyncUpdate(
+      const PlacementGroupID &placement_group_id,
+      const std::shared_ptr<rpc::PlacementGroupTableData> &data_ptr,
+      const StatusCallback &callback) = 0;
+
  protected:
   PlacementGroupInfoAccessor() = default;
 };

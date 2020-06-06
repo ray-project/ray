@@ -34,13 +34,13 @@ using rpc::HeartbeatTableData;
 using rpc::JobTableData;
 using rpc::ObjectTableData;
 using rpc::ObjectTableDataList;
-using rpc::ProfileTableData;
 using rpc::PlacementGroupName;
-using rpc::PlacementGroupTableData;
 using rpc::PlacementGroupResourceMap;
-using rpc::ScheduleData;
+using rpc::PlacementGroupTableData;
+using rpc::ProfileTableData;
 using rpc::ResourceMap;
 using rpc::ResourceTableData;
+using rpc::ScheduleData;
 using rpc::TaskLeaseData;
 using rpc::TaskReconstructionData;
 using rpc::TaskTableData;
@@ -157,7 +157,8 @@ class GcsActorTable : public GcsTableWithJobId<ActorID, ActorTableData> {
   JobID GetJobIdFromKey(const ActorID &key) override { return key.JobId(); }
 };
 
-class GcsPlacementGroupTable : public GcsTable<PlacementGroupID, PlacementGroupTableData> {
+class GcsPlacementGroupTable
+    : public GcsTable<PlacementGroupID, PlacementGroupTableData> {
  public:
   explicit GcsPlacementGroupTable(std::shared_ptr<StoreClient> &store_client)
       : GcsTable(store_client) {
@@ -165,7 +166,8 @@ class GcsPlacementGroupTable : public GcsTable<PlacementGroupID, PlacementGroupT
   }
 };
 
-// class GcsPlacementGroupNameTable : public GcsTable<PlacementGroupName, PlacementGroupID> {
+// class GcsPlacementGroupNameTable : public GcsTable<PlacementGroupName,
+// PlacementGroupID> {
 //  public:
 //   explicit GcsPlacementGroupNameTable(std::shared_ptr<StoreClient> &store_client)
 //       : GcsTable(store_client) {
@@ -254,7 +256,8 @@ class GcsNodeResourceTable : public GcsTable<ClientID, ResourceMap> {
   }
 };
 
-class GcsPlacementGroupResourceTable : public GcsTable<BundleID, PlacementGroupResourceMap> {
+class GcsPlacementGroupResourceTable
+    : public GcsTable<BundleID, PlacementGroupResourceMap> {
  public:
   explicit GcsPlacementGroupResourceTable(std::shared_ptr<StoreClient> &store_client)
       : GcsTable(store_client) {
@@ -453,8 +456,10 @@ class RedisGcsTableStorage : public GcsTableStorage {
     object_table_.reset(new GcsObjectTable(store_client_));
     node_table_.reset(new GcsNodeTable(store_client_));
     node_resource_table_.reset(new GcsNodeResourceTable(store_client_));
-    placement_group_resource_table_.reset(new GcsPlacementGroupResourceTable(store_client_));
-    placement_group_schedule_table_.reset(new GcsPlacementGroupScheduleTable(store_client_));
+    placement_group_resource_table_.reset(
+        new GcsPlacementGroupResourceTable(store_client_));
+    placement_group_schedule_table_.reset(
+        new GcsPlacementGroupScheduleTable(store_client_));
     heartbeat_table_.reset(new GcsHeartbeatTable(store_client_));
     heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(store_client_));
     error_info_table_.reset(new GcsErrorInfoTable(store_client_));
@@ -482,8 +487,10 @@ class InMemoryGcsTableStorage : public GcsTableStorage {
     object_table_.reset(new GcsObjectTable(store_client_));
     node_table_.reset(new GcsNodeTable(store_client_));
     node_resource_table_.reset(new GcsNodeResourceTable(store_client_));
-    placement_group_resource_table_.reset(new GcsPlacementGroupResourceTable(store_client_));
-    placement_group_schedule_table_.reset(new GcsPlacementGroupScheduleTable(store_client_));
+    placement_group_resource_table_.reset(
+        new GcsPlacementGroupResourceTable(store_client_));
+    placement_group_schedule_table_.reset(
+        new GcsPlacementGroupScheduleTable(store_client_));
     heartbeat_table_.reset(new GcsHeartbeatTable(store_client_));
     heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(store_client_));
     error_info_table_.reset(new GcsErrorInfoTable(store_client_));

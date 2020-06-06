@@ -201,18 +201,16 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
   ///
   /// \return The random `ActorID`.
   static PlacementGroupID Of(const JobID &job_id, const TaskID &parent_task_id,
-                    const size_t parent_task_counter);
-    /// Constructor of `PlacementGroupID`.
+                             const size_t parent_task_counter);
+  /// Constructor of `PlacementGroupID`.
   PlacementGroupID() : BaseID() {}
-  
+
   MSGPACK_DEFINE(id_);
 
-private:
+ private:
   uint8_t id_[kLength];
 
   // TODO(AlisaWu): fill the class of PlacementGroupID.
-
-
 };
 
 class BundleID : public BaseID<BundleID> {

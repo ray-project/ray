@@ -1845,56 +1845,55 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   SubmitTask(task, Lineage());
 }
 
-void NodeManager::HandleRequestResourceLease(const rpc::RequestResourceLeaseRequest &request,
-                                            rpc::RequestResourceLeaseReply *reply,
-                                            rpc::SendReplyCallback send_reply_callback){
+void NodeManager::HandleRequestResourceLease(
+    const rpc::RequestResourceLeaseRequest &request,
+    rpc::RequestResourceLeaseReply *reply, rpc::SendReplyCallback send_reply_callback) {
   // rpc::Bundle bundle_spec;
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "bundle lease request " << bundle_spec.BundleID();
-  bundle_spec.OnScheduleInstead([reply, send_reply_callback]
-                                      (const ResourceIdSet &resource_ids){
+  bundle_spec.OnScheduleInstead(
+      [reply, send_reply_callback](const ResourceIdSet &resource_ids) {
         for (const auto &mapping : resource_ids.AvailableResources()) {
-        auto resource = reply->add_resource_mapping();
-        resource->set_name(mapping.first);
-        for (const auto &id : mapping.second.WholeIds()) {
-          auto rid = resource->add_resource_ids();
-          rid->set_index(id);
-          rid->set_quantity(1.0);
+          auto resource = reply->add_resource_mapping();
+          resource->set_name(mapping.first);
+          for (const auto &id : mapping.second.WholeIds()) {
+            auto rid = resource->add_resource_ids();
+            rid->set_index(id);
+            rid->set_quantity(1.0);
+          }
+          for (const auto &id : mapping.second.FractionalIds()) {
+            auto rid = resource->add_resource_ids();
+            rid->set_index(id.first);
+            rid->set_quantity(id.second.ToDouble());
+          }
         }
-        for (const auto &id : mapping.second.FractionalIds()) {
-          auto rid = resource->add_resource_ids();
-          rid->set_index(id.first);
-          rid->set_quantity(id.second.ToDouble());
-        }
-      }
-      send_reply_callback(Status::OK(), nullptr, nullptr);
-  });
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      });
 
-  bundle_spec.OnSpillbackInstead([send_reply_callback](){
-      send_reply_callback(Status::OK(), nullptr, nullptr);
-    }
-  );
+  bundle_spec.OnSpillbackInstead(
+      [send_reply_callback]() { send_reply_callback(Status::OK(), nullptr, nullptr); });
 
   LeaseBundle(bundle_spec);
   return;
 }
 
-void NodeManager::HandleRequestResourceReturn(const rpc::RequestResourceReturnRequest &request,
-                                            rpc::RequestResourceReturnReply *reply,
-                                            rpc::SendReplyCallback send_reply_callback){
-    auto bundle_spec = BundleSpecification(request.bundle_spec());
-    RAY_LOG(DEBUG) << "bundle return resource request " << bundle_spec.BundleID();
-    auto release_resources_id = BundleResourceIdSet.find(bundle_spec.BundleID());
-    if(release_resources_id != BundleResourceIdSet.end()) {
-      excavated_resources_.Release(release_resources_id->second);
-      local_available_resources_.Plus(release_resources_id->second);
-      cluster_resource_map_[self_node_id_].Release(release_resources_id->second.ToResourceSet());
-      BundleResourceIdSet.erase(release_resources_id);
-      send_reply_callback(Status::OK(), nullptr, nullptr);
-    } else {
-      // The bundle resource has been release.
-       send_reply_callback(Status::OK(), nullptr, nullptr);
-    }     
+void NodeManager::HandleRequestResourceReturn(
+    const rpc::RequestResourceReturnRequest &request,
+    rpc::RequestResourceReturnReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  auto bundle_spec = BundleSpecification(request.bundle_spec());
+  RAY_LOG(DEBUG) << "bundle return resource request " << bundle_spec.BundleID();
+  auto release_resources_id = BundleResourceIdSet.find(bundle_spec.BundleID());
+  if (release_resources_id != BundleResourceIdSet.end()) {
+    excavated_resources_.Release(release_resources_id->second);
+    local_available_resources_.Plus(release_resources_id->second);
+    cluster_resource_map_[self_node_id_].Release(
+        release_resources_id->second.ToResourceSet());
+    BundleResourceIdSet.erase(release_resources_id);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  } else {
+    // The bundle resource has been release.
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
 }
 
 void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
@@ -1962,10 +1961,10 @@ void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &r
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::HandleCancelResourceLease(const rpc::CancelResourceLeaseRequest &request,
-                                          rpc::CancelResourceLeaseReply *reply,
-                                          rpc::SendReplyCallback send_reply_callback) {
-    // TODO(AlisaWu): fill this function.
+void NodeManager::HandleCancelResourceLease(
+    const rpc::CancelResourceLeaseRequest &request, rpc::CancelResourceLeaseReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  // TODO(AlisaWu): fill this function.
 }
 
 void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
@@ -2026,27 +2025,27 @@ void NodeManager::ProcessSetResourceRequest(
   }
 }
 
-void NodeManager::ScheduleBundle( 
+void NodeManager::ScheduleBundle(
     std::unordered_map<ClientID, SchedulingResources> &resource_map,
     const BundleSpecification &bundle_spec) {
-    // If the resource map contains the local raylet, update load before calling policy.
+  // If the resource map contains the local raylet, update load before calling policy.
   if (resource_map.count(self_node_id_) > 0) {
     resource_map[self_node_id_].SetLoadResources(local_queues_.GetResourceLoad());
-  }      
+  }
   // Invoke the scheduling policy.
-  auto schedule_success = scheduling_policy_.ScheduleBundle(resource_map, self_node_id_,bundle_spec);
+  auto schedule_success =
+      scheduling_policy_.ScheduleBundle(resource_map, self_node_id_, bundle_spec);
   auto bundle_id = bundle_spec.BundleID();
-  if(schedule_success){
-      auto acquired_resources =
-          local_available_resources_.Acquire(bundle_spec.GetRequiredResources());
-      excavated_resources_.Plus(acquired_resources);
-      cluster_resource_map_[self_node_id_].Acquire(bundle_spec.GetRequiredResources());
-      BundleResourceIdSet.insert({bundle_id, acquired_resources});
-      bundle_spec.OnSchedule()(acquired_resources);
+  if (schedule_success) {
+    auto acquired_resources =
+        local_available_resources_.Acquire(bundle_spec.GetRequiredResources());
+    excavated_resources_.Plus(acquired_resources);
+    cluster_resource_map_[self_node_id_].Acquire(bundle_spec.GetRequiredResources());
+    BundleResourceIdSet.insert({bundle_id, acquired_resources});
+    bundle_spec.OnSchedule()(acquired_resources);
   } else {
     bundle_spec.OnSpillback()();
   }
-
 }
 
 void NodeManager::ScheduleTasks(
@@ -2242,9 +2241,9 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
   }
 }
 
-void NodeManager::LeaseBundle(const BundleSpecification &bundle_spec){
+void NodeManager::LeaseBundle(const BundleSpecification &bundle_spec) {
   BundleID bundle_id = bundle_spec.BundleID();
-  if(BundleResourceIdSet.find(bundle_id) != BundleResourceIdSet.end()){
+  if (BundleResourceIdSet.find(bundle_id) != BundleResourceIdSet.end()) {
     RAY_LOG(WARNING) << "leased bundle " << bundle_id
                      << " is already mapped and will not be released ";
     return;
@@ -2252,7 +2251,6 @@ void NodeManager::LeaseBundle(const BundleSpecification &bundle_spec){
   ScheduleBundle(cluster_resource_map_, bundle_spec);
   // TODO(atumanov): assert that !placeable.isempty() => insufficient available
   // resources locally.
-
 }
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
@@ -2612,17 +2610,16 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
   ResourceIdSet acquired_resources;
   if (spec.IsActorCreationTask() && spec.BundleId() != BundleID::Nil()) {
     auto it = BundleResourceIdSet.find(spec.BundleId());
-    if(it != BundleResourceIdSet.end()){
+    if (it != BundleResourceIdSet.end()) {
       acquired_resources = it->second;
-    }else {
+    } else {
       acquired_resources =
-        local_available_resources_.Acquire(spec.GetRequiredResources());
+          local_available_resources_.Acquire(spec.GetRequiredResources());
       excavated_resources_.Acquire(spec.GetRequiredResources());
     }
   } else {
     // Resource accounting: acquire resources for the assigned task.
-    acquired_resources = 
-        local_available_resources_.Acquire(spec.GetRequiredResources());
+    acquired_resources = local_available_resources_.Acquire(spec.GetRequiredResources());
   }
   cluster_resource_map_[self_node_id_].Acquire(spec.GetRequiredResources());
 

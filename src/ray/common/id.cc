@@ -203,7 +203,7 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
 }
 
 PlacementGroupID PlacementGroupID::Of(const JobID &job_id, const TaskID &parent_task_id,
-                    const size_t parent_task_counter) {
+                                      const size_t parent_task_counter) {
   auto data = GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter,
                                   PlacementGroupID::kUniqueBytesLength);
   std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));

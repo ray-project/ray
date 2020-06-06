@@ -67,7 +67,7 @@ ActorID GcsActor::GetActorID() const {
   return ActorID::FromBinary(actor_table_data_.actor_id());
 }
 
-BundleID GcsActor::GetBundleID() const{
+BundleID GcsActor::GetBundleID() const {
   return BundleID::FromBinary(actor_table_data_.bundle_id());
 }
 

@@ -18,8 +18,8 @@
 #include <random>
 #include <unordered_map>
 
-#include "ray/common/task/scheduling_resources.h"
 #include "ray/common/bundle_spec.h"
+#include "ray/common/task/scheduling_resources.h"
 #include "ray/raylet/scheduling_queue.h"
 
 namespace ray {
@@ -63,8 +63,7 @@ class SchedulingPolicy {
   /// \return Scheduling decision, mapping bundles to raylets for placement.
   bool ScheduleBundle(
       std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
-      const ClientID &local_client_id,
-      const ray::BundleSpecification &bundle_spec);
+      const ClientID &local_client_id, const ray::BundleSpecification &bundle_spec);
 
   /// \brief Given a set of cluster resources perform a spill-over scheduling operation.
   ///

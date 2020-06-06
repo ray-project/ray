@@ -286,24 +286,25 @@ class ServiceBasedStatsInfoAccessor : public StatsInfoAccessor {
 };
 
 /// \class ServiceBasedPlacementGroupInfoAccessor
-/// ServiceBasedPlacementGroupInfoAccessor is an implementation of `PlacementGroupInfoAccessor`
-/// that uses GCS Service as the backend.
+/// ServiceBasedPlacementGroupInfoAccessor is an implementation of
+/// `PlacementGroupInfoAccessor` that uses GCS Service as the backend.
 
-class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor{
-    // TODO(AlisaWu):fill the ServiceAccessor.
-public:
+class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
+  // TODO(AlisaWu):fill the ServiceAccessor.
+ public:
   explicit ServiceBasedPlacementGroupInfoAccessor(ServiceBasedGcsClient *client_impl);
 
   virtual ~ServiceBasedPlacementGroupInfoAccessor() = default;
 
-  Status AsyncCreatePlacementGroup(const PlacementGroupSpecification &placement_group_spec,
-                    const StatusCallback &callback) override;
+  Status AsyncCreatePlacementGroup(
+      const PlacementGroupSpecification &placement_group_spec,
+      const StatusCallback &callback) override;
 
   Status AsyncUpdate(const PlacementGroupID &placement_group_id,
-                             const std::shared_ptr<rpc::PlacementGroupTableData> &data_ptr,
-                             const StatusCallback &callback) override;
+                     const std::shared_ptr<rpc::PlacementGroupTableData> &data_ptr,
+                     const StatusCallback &callback) override;
 
-private:
+ private:
   ServiceBasedGcsClient *client_impl_;
   Sequencer<PlacementGroupID> sequencer_;
 };

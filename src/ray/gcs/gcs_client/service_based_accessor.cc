@@ -1152,7 +1152,8 @@ Status ServiceBasedWorkerInfoAccessor::AsyncRegisterWorker(
 }
 
 Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
-    const ray::PlacementGroupSpecification &placement_group_spec, const ray::gcs::StatusCallback &callback) {
+    const ray::PlacementGroupSpecification &placement_group_spec,
+    const ray::gcs::StatusCallback &callback) {
   RAY_CHECK(callback);
   rpc::CreatePlacementGroupRequest request;
   request.mutable_placement_group_spec()->CopyFrom(placement_group_spec.GetMessage());
@@ -1168,9 +1169,11 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
 }
 
 Status ServiceBasedPlacementGroupInfoAccessor::AsyncUpdate(
-    const PlacementGroupID &placement_group_id, const std::shared_ptr<rpc::PlacementGroupTableData> &data_ptr,
+    const PlacementGroupID &placement_group_id,
+    const std::shared_ptr<rpc::PlacementGroupTableData> &data_ptr,
     const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Updating placement group info, placement group id = " << placement_group_id;
+  RAY_LOG(DEBUG) << "Updating placement group info, placement group id = "
+                 << placement_group_id;
   rpc::UpdatePlacementGroupInfoRequest request;
   request.set_placement_group_id(placement_group_id.Binary());
   request.mutable_placement_group_table_data()->CopyFrom(*data_ptr);
@@ -1178,8 +1181,9 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncUpdate(
   auto operation = [this, request, placement_group_id,
                     callback](const SequencerDoneCallback &done_callback) {
     client_impl_->GetGcsRpcClient().UpdatePlacementGroupInfo(
-        request, [placement_group_id, callback, done_callback](
-                     const Status &status, const rpc::UpdatePlacementGroupInfoReply &reply) {
+        request,
+        [placement_group_id, callback, done_callback](
+            const Status &status, const rpc::UpdatePlacementGroupInfoReply &reply) {
           if (callback) {
             callback(status);
           }

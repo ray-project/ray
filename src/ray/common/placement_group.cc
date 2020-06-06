@@ -14,42 +14,42 @@
 
 #include "ray/common/placement_group.h"
 
-namespace ray{
-    void PlacementGroupSpecification::ConstructBundles() {
-        for (int i = 0; i < message_->bundles_size(); i++){
-            bundles.push_back(BundleSpecification(message_->bundles(i)));
-        }
-    }
+namespace ray {
+void PlacementGroupSpecification::ConstructBundles() {
+  for (int i = 0; i < message_->bundles_size(); i++) {
+    bundles.push_back(BundleSpecification(message_->bundles(i)));
+  }
+}
 
-    PlacementGroupID PlacementGroupSpecification::PlacementGroupId() const  {
-        if (message_->placement_group_id().empty()) {
-            return PlacementGroupID::Nil();
-        } else {
-            return PlacementGroupID::FromBinary(message_->placement_group_id());
-        }
-    }
+PlacementGroupID PlacementGroupSpecification::PlacementGroupId() const {
+  if (message_->placement_group_id().empty()) {
+    return PlacementGroupID::Nil();
+  } else {
+    return PlacementGroupID::FromBinary(message_->placement_group_id());
+  }
+}
 
-    int64_t PlacementGroupSpecification::MaxActorRestarts() const {
-        return int64_t(message_->max_placement_group_restart());
-    }
+int64_t PlacementGroupSpecification::MaxActorRestarts() const {
+  return int64_t(message_->max_placement_group_restart());
+}
 
-    std::vector<BundleSpecification> PlacementGroupSpecification::GetBundles() const{
-        return bundles;
-    }
+std::vector<BundleSpecification> PlacementGroupSpecification::GetBundles() const {
+  return bundles;
+}
 
-    Strategy PlacementGroupSpecification::GetStrategy() const {
-        if(message_->strategy() == rpc::PlacementStrategy::PACK) {
-            return Strategy::PACK;
-        } else  {
-            return Strategy::SPREAD;
-        }
-    }
+Strategy PlacementGroupSpecification::GetStrategy() const {
+  if (message_->strategy() == rpc::PlacementStrategy::PACK) {
+    return Strategy::PACK;
+  } else {
+    return Strategy::SPREAD;
+  }
+}
 
-    BundleSpecification PlacementGroupSpecification::GetBundle(int position) const {
-        return bundles[position];
-    }
+BundleSpecification PlacementGroupSpecification::GetBundle(int position) const {
+  return bundles[position];
+}
 
-    std::string PlacementGroupSpecification::GetName() const {
-        return std::string(message_->name());
-    }
-} // namespcae
+std::string PlacementGroupSpecification::GetName() const {
+  return std::string(message_->name());
+}
+}  // namespace ray

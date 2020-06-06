@@ -299,4 +299,4 @@ RAY_CONFIG(bool, gcs_actor_service_enabled,
 
 RAY_CONFIG(bool, gcs_placement_group_service_enabled,
            getenv("RAY_GCS_PLACEMENT_GROUP_SERVICE_ENABLED") != nullptr &&
-           getenv("RAY_GCS_PLACEMENT_GROUP_SERVICE_ENABLED") == std::string("true"))
+               getenv("RAY_GCS_PLACEMENT_GROUP_SERVICE_ENABLED") == std::string("true"))

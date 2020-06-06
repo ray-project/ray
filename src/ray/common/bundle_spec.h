@@ -27,71 +27,70 @@
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/common/task/task_common.h"
 
-namespace ray{
+namespace ray {
 
 typedef std::function<void(const ResourceIdSet &)> ScheduleBundleCallback;
 /// Arguments are the raylet ID to spill back to, the raylet's
 /// address and the raylet's port.
-typedef std::function<void()>  SpillbackBundleCallback;
+typedef std::function<void()> SpillbackBundleCallback;
 
 class BundleSpecification : public MessageWrapper<rpc::Bundle> {
  public:
-    /// Construct from a protobuf message object.
-    /// The input message will be **copied** into this object.
-    ///
-    /// \param message The protobuf message.
-    explicit BundleSpecification(rpc::Bundle message) : MessageWrapper(message) {
-        ComputeResources();
-    }
-    /// Construct from a protobuf message shared_ptr.
-    ///
-    /// \param message The protobuf message.
-    explicit BundleSpecification(std::shared_ptr<rpc::Bundle> message): MessageWrapper(message) {
-        ComputeResources();
-    }
+  /// Construct from a protobuf message object.
+  /// The input message will be **copied** into this object.
+  ///
+  /// \param message The protobuf message.
+  explicit BundleSpecification(rpc::Bundle message) : MessageWrapper(message) {
+    ComputeResources();
+  }
+  /// Construct from a protobuf message shared_ptr.
+  ///
+  /// \param message The protobuf message.
+  explicit BundleSpecification(std::shared_ptr<rpc::Bundle> message)
+      : MessageWrapper(message) {
+    ComputeResources();
+  }
 
-    BundleID BundleID() const;
+  BundleID BundleID() const;
 
-    /// Return the resources that are to be acquired by this bundle.
-    ///
-    /// \return The resources that will be acquired by this bundle.
-    const ResourceSet &GetRequiredResources() const;
+  /// Return the resources that are to be acquired by this bundle.
+  ///
+  /// \return The resources that will be acquired by this bundle.
+  const ResourceSet &GetRequiredResources() const;
 
-    // Get the bundle count.
-    // TODO(AlisaWu): use the unit count.
-    uint64_t UnitCount() const;
+  // Get the bundle count.
+  // TODO(AlisaWu): use the unit count.
+  uint64_t UnitCount() const;
 
-      /// Override dispatch behaviour.
-    void OnScheduleInstead(const ScheduleBundleCallback &callback) {
-        on_schedule_ = callback;
-    }
+  /// Override dispatch behaviour.
+  void OnScheduleInstead(const ScheduleBundleCallback &callback) {
+    on_schedule_ = callback;
+  }
 
-    /// Override spillback behaviour.
-    void OnSpillbackInstead(const SpillbackBundleCallback &callback) {
-        on_spillback_ = callback;
-    }
+  /// Override spillback behaviour.
+  void OnSpillbackInstead(const SpillbackBundleCallback &callback) {
+    on_spillback_ = callback;
+  }
 
-    /// Returns the schedule bundle callback, or nullptr.
-    const ScheduleBundleCallback &OnSchedule() const { return on_schedule_; }
+  /// Returns the schedule bundle callback, or nullptr.
+  const ScheduleBundleCallback &OnSchedule() const { return on_schedule_; }
 
-    /// Returns the spillback bundle callback, or nullptr.
-    const SpillbackBundleCallback &OnSpillback() const { return on_spillback_; }
-
+  /// Returns the spillback bundle callback, or nullptr.
+  const SpillbackBundleCallback &OnSpillback() const { return on_spillback_; }
 
  private:
+  void ComputeResources();
 
-    void ComputeResources();
+  /// Field storing unit resources. Initialized in constructor.
+  /// TODO(ekl) consider optimizing the representation of ResourceSet for fast copies
+  /// instead of keeping shared pointers here.
+  std::shared_ptr<ResourceSet> unit_resource_;
 
-    /// Field storing unit resources. Initialized in constructor.
-    /// TODO(ekl) consider optimizing the representation of ResourceSet for fast copies
-    /// instead of keeping shared pointers here.
-    std::shared_ptr<ResourceSet> unit_resource_;
+  mutable ScheduleBundleCallback on_schedule_ = nullptr;
 
-    mutable ScheduleBundleCallback on_schedule_ = nullptr;
-    
-    mutable SpillbackBundleCallback on_spillback_ = nullptr;
+  mutable SpillbackBundleCallback on_spillback_ = nullptr;
 };
 
-} // namespace
+}  // namespace ray
 
 #endif

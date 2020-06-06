@@ -24,16 +24,16 @@ namespace ray {
 namespace rpc {
 
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
-#define RAY_NODE_MANAGER_RPC_HANDLERS                           \
-  RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease)   \
+#define RAY_NODE_MANAGER_RPC_HANDLERS                                                    \
+  RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease)                            \
   RPC_SERVICE_HANDLER(NodeManagerService, RequestResourceLease) \  
-  RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker)         \
-  RPC_SERVICE_HANDLER(NodeManagerService, CancelWorkerLease)    \
-  RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask)          \
-  RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs)         \
-  RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats)         \
-  RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)             \
-  RPC_SERVICE_HANDLER(NodeManagerService, FormatGlobalMemoryInfo)
+  RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker)                                  \
+      RPC_SERVICE_HANDLER(NodeManagerService, CancelWorkerLease)                         \
+          RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask)                           \
+              RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs) RPC_SERVICE_HANDLER( \
+                  NodeManagerService, GetNodeStats)                                      \
+                  RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)                      \
+                      RPC_SERVICE_HANDLER(NodeManagerService, FormatGlobalMemoryInfo)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -62,16 +62,17 @@ class NodeManagerServiceHandler {
                                        rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleRequestResourceLease(const rpc::RequestResourceLeaseRequest &request,
-                                      rpc::RequestResourceLeaseReply *reply,
-                                      rpc::SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleRequestResourceReturn(const rpc::RequestResourceReturnRequest &request,
-                                    rpc::RequestResourceReturnReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) = 0;
-                                      
-  virtual void HandleCancelResourceLease(const rpc::CancelResourceLeaseRequest &request,
-                                          rpc::CancelResourceLeaseReply *reply,
+                                          rpc::RequestResourceLeaseReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRequestResourceReturn(
+      const rpc::RequestResourceReturnRequest &request,
+      rpc::RequestResourceReturnReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleCancelResourceLease(const rpc::CancelResourceLeaseRequest &request,
+                                         rpc::CancelResourceLeaseReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleForwardTask(const ForwardTaskRequest &request,
                                  ForwardTaskReply *reply,

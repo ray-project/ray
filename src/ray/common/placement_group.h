@@ -15,94 +15,86 @@
 #ifndef RAY_COMMON_PLACEMENT_GROUP_H
 #define RAY_COMMON_PLACEMENT_GROUP_H
 
-#include "ray/common/id.h"
-#include "ray/common/grpc_util.h"
-#include "ray/protobuf/common.pb.h"
 #include "ray/common/bundle_spec.h"
+#include "ray/common/grpc_util.h"
+#include "ray/common/id.h"
+#include "ray/protobuf/common.pb.h"
 
-namespace ray{
+namespace ray {
 
 enum class Strategy {
   PACK = 0x0,
   SPREAD = 0x1,
 };
 
-
 class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpec> {
  public:
-    /// Construct from a protobuf message object.
-    /// The input message will be **copied** into this object.
-    ///
-    /// \param message The protobuf message.
-    explicit PlacementGroupSpecification(rpc::PlacementGroupSpec message) : MessageWrapper(message) {
-        ConstructBundles();
-    }
-    /// Construct from a protobuf message shared_ptr.
-    ///
-    /// \param message The protobuf message.
-    explicit PlacementGroupSpecification(std::shared_ptr<rpc::PlacementGroupSpec> message): MessageWrapper(message) {
-        ConstructBundles();
-    }
-    // TODO(AlisaWu): add more function to construct.
+  /// Construct from a protobuf message object.
+  /// The input message will be **copied** into this object.
+  ///
+  /// \param message The protobuf message.
+  explicit PlacementGroupSpecification(rpc::PlacementGroupSpec message)
+      : MessageWrapper(message) {
+    ConstructBundles();
+  }
+  /// Construct from a protobuf message shared_ptr.
+  ///
+  /// \param message The protobuf message.
+  explicit PlacementGroupSpecification(std::shared_ptr<rpc::PlacementGroupSpec> message)
+      : MessageWrapper(message) {
+    ConstructBundles();
+  }
+  // TODO(AlisaWu): add more function to construct.
 
+  PlacementGroupID PlacementGroupId() const;
 
-    PlacementGroupID PlacementGroupId() const;
+  int64_t MaxActorRestarts() const;
 
-    int64_t MaxActorRestarts() const;
+  std::vector<BundleSpecification> GetBundles() const;
 
-    std::vector<BundleSpecification> GetBundles() const;
+  Strategy GetStrategy() const;
 
-    Strategy GetStrategy() const;
+  BundleSpecification GetBundle(int position) const;
 
-    BundleSpecification GetBundle(int position) const;
-
-    std::string GetName() const;
-
-    
+  std::string GetName() const;
 
  private:
-    
-    void ConstructBundles();
-    
-    std::vector<BundleSpecification>bundles;
-    
+  void ConstructBundles();
+
+  std::vector<BundleSpecification> bundles;
 };
 
 class PlacementGroupSpecBuilder {
  public:
-    PlacementGroupSpecBuilder() : message_(std::make_shared<rpc::PlacementGroupSpec>()) {}
-    
+  PlacementGroupSpecBuilder() : message_(std::make_shared<rpc::PlacementGroupSpec>()) {}
 
-/// Set the common attributes of the placement group spec.
-/// See `common.proto` for meaning of the arguments.
-///
-/// \return Reference to the builder object itself.
-PlacementGroupSpecBuilder &SetPlacementGroupSpec(
-    const PlacementGroupID &placement_group_id,
-    const int64_t restart, std::string name, 
-    const std::vector<rpc::Bundle>&bundles,
-    const rpc::PlacementStrategy strategy){
+  /// Set the common attributes of the placement group spec.
+  /// See `common.proto` for meaning of the arguments.
+  ///
+  /// \return Reference to the builder object itself.
+  PlacementGroupSpecBuilder &SetPlacementGroupSpec(
+      const PlacementGroupID &placement_group_id, const int64_t restart, std::string name,
+      const std::vector<rpc::Bundle> &bundles, const rpc::PlacementStrategy strategy) {
     message_->set_placement_group_id(placement_group_id.Binary());
     message_->set_max_placement_group_restart(restart);
     message_->set_name(name);
     message_->set_strategy(strategy);
-    for(auto bundle : bundles){
-        auto message_bundle = message_->add_bundles();
-        message_bundle->set_bundle_id(bundle.bundle_id());
-        message_bundle->mutable_unit_resources()->insert(bundle.unit_resources().begin(),
-                                                        bundle.unit_resources().end());
-        message_bundle->set_unit_count(bundle.unit_count());
+    for (auto bundle : bundles) {
+      auto message_bundle = message_->add_bundles();
+      message_bundle->set_bundle_id(bundle.bundle_id());
+      message_bundle->mutable_unit_resources()->insert(bundle.unit_resources().begin(),
+                                                       bundle.unit_resources().end());
+      message_bundle->set_unit_count(bundle.unit_count());
     }
     return *this;
-}
+  }
 
-PlacementGroupSpecification Build() { return PlacementGroupSpecification(message_); }
+  PlacementGroupSpecification Build() { return PlacementGroupSpecification(message_); }
 
  private:
-    std::shared_ptr<rpc::PlacementGroupSpec> message_;
+  std::shared_ptr<rpc::PlacementGroupSpec> message_;
 };
 
-}
-
+}  // namespace ray
 
 #endif
