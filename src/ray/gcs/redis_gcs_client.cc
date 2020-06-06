@@ -94,7 +94,6 @@ void RedisGcsClient::Disconnect() {
   RAY_CHECK(is_connected_);
   is_connected_ = false;
   redis_client_->Disconnect();
-  redis_client_.reset();
   RAY_LOG(DEBUG) << "RedisGcsClient Disconnected.";
 }
 
