@@ -294,48 +294,6 @@ class SSHCommandRunner:
             self.ssh_private_key, self.ssh_user, self.ssh_ip)
 
 
-class DockerCommandRunner(SSHCommandRunner):
-    def __init__(self, docker_config, **common_args):
-        self.ssh_command_runner = SSHCommandRunner(**common_args)
-        self.docker_name = docker_config["container_name"]
-        self.docker_config = docker_config
-
-    def run(self,
-            cmd,
-            timeout=120,
-            allocate_tty=False,
-            exit_on_fail=False,
-            port_forward=None,
-            with_output=False):
-        return self.ssh_command_runner.run(cmd, timeout, allocate_tty,
-                                           exit_on_fail, port_forward,
-                                           with_output)
-
-    def run_rsync_up(self, source, target):
-        self.ssh_command_runner.run_rsync_up(source, target)
-        self.ssh_command_runner.run("docker cp {} {}:{}".format(
-            target, self.docker_name, self.docker_expand_user(target)))
-
-    def run_rsync_down(self, source, target):
-        self.ssh_command_runner.run("docker cp {}:{} {}".format(
-            self.docker_name, self.docker_expand_user(source), source))
-        self.ssh_command_runner.run_rsync_down(source, target)
-
-    def remote_shell_command_str(self):
-        inner_str = self.ssh_command_runner.remote_shell_command_str().replace(
-            "ssh", "ssh -tt", 1).strip("\n")
-        return inner_str + " docker exec -it {} /bin/bash\n".format(
-            self.docker_name)
-
-    def docker_expand_user(self, string):
-        if string.find("~") == 0:
-            return string.replace(
-                "~",
-                "`docker exec ray_docker env | grep HOME | cut -d'=' -f2`", 1)
-        else:
-            return string
-
-
 class NodeUpdater:
     """A process for syncing files and running init commands on a node."""
 
@@ -351,15 +309,14 @@ class NodeUpdater:
                  ray_start_commands,
                  runtime_hash,
                  process_runner=subprocess,
-                 use_internal_ip=False,
-                 docker_config=None):
+                 use_internal_ip=False):
 
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
         use_internal_ip = (use_internal_ip
                            or provider_config.get("use_internal_ips", False))
         self.cmd_runner = provider.get_command_runner(
             self.log_prefix, node_id, auth_config, cluster_name,
-            process_runner, use_internal_ip, docker_config)
+            process_runner, use_internal_ip)
 
         self.daemon = True
         self.process_runner = process_runner

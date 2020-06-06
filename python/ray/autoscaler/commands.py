@@ -147,8 +147,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
                 initialization_commands=[],
                 setup_commands=[],
                 ray_start_commands=[],
-                runtime_hash="",
-                docker_config=config["docker"])
+                runtime_hash="")
 
             _exec(updater, "ray stop", False, False)
 
@@ -287,7 +286,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             setup_commands=init_commands,
             ray_start_commands=ray_start_commands,
             runtime_hash=runtime_hash,
-            docker_config=config["docker"])
+        )
         updater.start()
         updater.join()
 
@@ -408,7 +407,7 @@ def exec_cluster(config_file,
             setup_commands=[],
             ray_start_commands=[],
             runtime_hash="",
-            docker_config=config["docker"])
+        )
 
         def wrap_docker(command):
             container_name = config["docker"]["container_name"]
@@ -530,7 +529,7 @@ def rsync(config_file,
                 setup_commands=[],
                 ray_start_commands=[],
                 runtime_hash="",
-                docker_config=config["docker"])
+            )
             if down:
                 rsync = updater.rsync_down
             else:
