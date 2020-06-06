@@ -723,6 +723,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   // The resource which be excavated.
   ResourceIdSet excavated_resources_;
+  // TODO(AlisaWu): add tot excavated resources and change excavated_resources_ to excavated_avi_resources_
   // A map connect Bundle with the resource belong to it.
   std::unordered_map<BundleID,ResourceIdSet>BundleResourceIdSet;
   /// A pool of workers.

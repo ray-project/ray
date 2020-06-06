@@ -16,12 +16,11 @@
 #define RAY_GCS_PLACEMENT_GROUP_MANAGER_H
 
 #include <ray/common/id.h>
-#include <ray/common/bundle_spec.h>
-#include <ray/gcs/accessor.h>
-#include <ray/protobuf/gcs.pb.h>
-#include <ray/rpc/client_call.h>
-#include <ray/rpc/gcs_server/gcs_rpc_server.h>
-#include "ray/common/network_util.h"
+#include <ray/common/task/task_execution_spec.h>
+#include <ray/common/task/task_spec.h>
+#include <ray/protobuf/gcs_service.pb.h>
+#include <ray/rpc/worker/core_worker_client.h>
+#include <utility>
 
 
 #include "absl/container/flat_hash_map.h"
@@ -142,6 +141,8 @@ class GcsPlacementGroupManager {
 
   void HandleCreatePlacementGroup(const rpc::CreatePlacementGroupRequest &request, rpc::CreatePlacementGroupReply *reply,
                                   rpc::SendReplyCallback send_reply_callback);
+                            
+  ClientID GetBundleScheduleNode(const BundleID bundle_id) const;
 
   void ScheduleTick();
 

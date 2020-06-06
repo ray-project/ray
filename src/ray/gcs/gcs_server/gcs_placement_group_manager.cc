@@ -177,6 +177,15 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
   }
 }
 
+ClientID GcsPlacementGroupManager::GetBundleScheduleNode(const BundleID bundle_id) const{
+  ClientID node_id = ClientID::Nil();
+  auto it = schedule_bundle_map_.find(bundle_id);
+  if (it != schedule_bundle_map_.end()) {
+    node_id = it->second;
+  }
+  return node_id;
+}
+
 void GcsPlacementGroupManager::ScheduleTick() {
   reschedule_timer_.expires_from_now(boost::posix_time::milliseconds(5));
   reschedule_timer_.async_wait([this](const boost::system::error_code &error) {

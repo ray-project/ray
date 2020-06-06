@@ -2609,9 +2609,21 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
                  << worker->GetProcess().GetId() << ", worker id: " << worker->WorkerId();
   flatbuffers::FlatBufferBuilder fbb;
 
-  // Resource accounting: acquire resources for the assigned task.
-  auto acquired_resources =
-      local_available_resources_.Acquire(spec.GetRequiredResources());
+  ResourceIdSet acquired_resources;
+  if (spec.IsActorCreationTask() && spec.BundleId() != BundleID::Nil()) {
+    auto it = BundleResourceIdSet.find(spec.BundleId());
+    if(it != BundleResourceIdSet.end()){
+      acquired_resources = it->second;
+    }else {
+      acquired_resources =
+        local_available_resources_.Acquire(spec.GetRequiredResources());
+      excavated_resources_.Acquire(spec.GetRequiredResources());
+    }
+  } else {
+    // Resource accounting: acquire resources for the assigned task.
+    acquired_resources = 
+        local_available_resources_.Acquire(spec.GetRequiredResources());
+  }
   cluster_resource_map_[self_node_id_].Acquire(spec.GetRequiredResources());
 
   if (spec.IsActorCreationTask()) {

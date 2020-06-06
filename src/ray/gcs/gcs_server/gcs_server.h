@@ -131,6 +131,7 @@ class GcsServer {
   std::shared_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
   /// The gcs actor manager
   std::shared_ptr<GcsActorManager> gcs_actor_manager_;
+  std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
   /// Job info handler and service
   std::unique_ptr<rpc::JobInfoHandler> job_info_handler_;
   std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;

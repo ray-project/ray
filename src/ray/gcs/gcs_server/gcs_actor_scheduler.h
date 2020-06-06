@@ -28,6 +28,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "gcs_node_manager.h"
+#include "gcs_placement_group_manager.h"
 
 namespace ray {
 namespace gcs {
@@ -82,7 +83,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       const GcsNodeManager &gcs_node_manager, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
-      // const gcs::GcsPlacementGroupManager &placement_group_manager,
+      const gcs::GcsPlacementGroupManager &placement_group_manager,
       LeaseClientFactoryFn lease_client_factory = nullptr,
       rpc::ClientFactoryFn client_factory = nullptr);
   virtual ~GcsActorScheduler() = default;
@@ -257,7 +258,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// The handler to handle the successful scheduling.
   std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler_;
 //   /// Reference of GcsPlacementGroupManager.
-//   const GcsPlacementGroupManager &gcs_placement_group_manager_;
+  const GcsPlacementGroupManager &gcs_placement_group_manager_;
   /// Factory for producing new clients to request leases from remote nodes.
   LeaseClientFactoryFn lease_client_factory_;
   /// Factory for producing new core worker clients.

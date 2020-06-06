@@ -155,6 +155,7 @@ void GcsServer::InitGcsActorManager() {
       [this](std::shared_ptr<GcsActor> actor) {
         gcs_actor_manager_->OnActorCreationSuccess(std::move(actor));
       },
+      *gcs_placement_group_manager_,
       /*lease_client_factory=*/
       [this](const rpc::Address &address) {
         auto node_manager_worker_client = rpc::NodeManagerWorkerClient::make(
