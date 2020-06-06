@@ -99,7 +99,8 @@ class VisionNetwork(TorchModelV2):
             # build a parallel set of hidden layers for the value net
             last_layer = inputs
             for i, (out_size, kernel, stride) in enumerate(filters[:-1], 1):
-                last_layer = tf.keras.layers.Conv2D(
+                last_layer = SlimConv2d(
+                    #in_size=,
                     out_size,
                     kernel,
                     strides=(stride, stride),
@@ -108,7 +109,8 @@ class VisionNetwork(TorchModelV2):
                     data_format="channels_last",
                     name="conv_value_{}".format(i))(last_layer)
             out_size, kernel, stride = filters[-1]
-            last_layer = tf.keras.layers.Conv2D(
+            last_layer = SlimConv2d(
+                #in_size=,
                 out_size,
                 kernel,
                 strides=(stride, stride),
@@ -116,7 +118,8 @@ class VisionNetwork(TorchModelV2):
                 padding="valid",
                 data_format="channels_last",
                 name="conv_value_{}".format(i + 1))(last_layer)
-            last_layer = tf.keras.layers.Conv2D(
+            last_layer = SlimConv2d(
+                #in_size=,
                 1, [1, 1],
                 activation=None,
                 padding="same",
@@ -144,7 +147,12 @@ class VisionNetwork(TorchModelV2):
     @override(TorchModelV2)
     def value_function(self):
         assert self._features is not None, "must call forward() first"
-        return self._value_branch(self._features).squeeze(1)
+        if not self.last_layer_is_flattened:
+            features = self._features.squeeze(3)
+            features = features.squeeze(2)
+        else:
+            features = self._features
+        return self._value_branch(features).squeeze(1)
 
     def _hidden_layers(self, obs):
         res = self._convs(obs.permute(0, 3, 1, 2))  # switch to channel-major
