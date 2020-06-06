@@ -111,7 +111,6 @@ void GcsServer::Start() {
       is_started_ = true;
     }
   };
-  gcs_actor_manager_->LoadInitialData(on_done);
   gcs_object_manager_->LoadInitialData(on_done);
   gcs_node_manager_->LoadInitialData(on_done);
 }

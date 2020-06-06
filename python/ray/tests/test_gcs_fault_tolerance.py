@@ -34,6 +34,43 @@ def test_gcs_server_restart():
     ray.shutdown()
 
 
+def test_gcs_server_re_schedule_actor():
+    ray.init()
+
+    @ray.remote
+    class Increase:
+        def method(self, x):
+            return x + 2
+
+    @ray.remote
+    def increase(x):
+        return x + 1
+
+    actor1 = Increase.remote()
+    result = ray.get(actor1.method.remote(1))
+    assert result == 3
+
+    actor_list = []
+    for i in range(0, 100):
+        actor = Increase.remote()
+        actor.method.remote(1)
+        actor_list.append(actor)
+
+    ray.worker._global_node.kill_gcs_server()
+    ray.worker._global_node.start_gcs_server()
+
+    # TODO(ffbin): After gcs server restarts, if an RPC request is sent to
+    # gcs server immediately, gcs server cannot receive the request,
+    # but the request will return success. We will fix this in the next pr.
+    time.sleep(1)
+
+    for i in range(0, 100):
+        actor_list[i]
+        result = ray.get(actor1.method.remote(7))
+        assert result == 9
+
+    ray.shutdown()
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

@@ -758,6 +758,14 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
         }
       }
     }
+
+    for (auto &item : registered_actors_) {
+      auto &actor = item.second;
+      if (actor->GetState() != ray::rpc::ActorTableData::ALIVE) {
+        gcs_actor_scheduler_->Schedule(actor);
+      }
+    }
+
     RAY_LOG(INFO) << "Finished loading initial data.";
     done();
   };
