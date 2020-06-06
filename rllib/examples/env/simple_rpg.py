@@ -1,7 +1,7 @@
 import gym
 from gym.spaces import Discrete, Box, Dict
 
-from ray.rllib.utils.spaces import Repeated
+from ray.rllib.utils.spaces.repeated import Repeated
 
 # Constraints on the Repeated space.
 MAX_PLAYERS = 4

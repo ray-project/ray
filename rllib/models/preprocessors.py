@@ -5,7 +5,7 @@ import numpy as np
 import gym
 
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.spaces import Repeated
+from ray.rllib.utils.spaces.repeated import Repeated
 
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128, )
