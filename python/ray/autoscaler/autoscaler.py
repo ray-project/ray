@@ -321,8 +321,7 @@ class StandardAutoscaler:
                 self.config["worker_start_ray_commands"]),
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
-            use_internal_ip=True,
-            docker_config=self.config["docker"])
+            use_internal_ip=True)
         updater.start()
         self.updaters[node_id] = updater
 
@@ -361,8 +360,7 @@ class StandardAutoscaler:
             ray_start_commands=with_head_node_ip(ray_start_commands),
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
-            use_internal_ip=True,
-            docker_config=self.config["docker"])
+            use_internal_ip=True)
         updater.start()
         self.updaters[node_id] = updater
 
