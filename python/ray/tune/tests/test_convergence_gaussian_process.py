@@ -17,9 +17,7 @@ class ConvergenceTest(unittest.TestCase):
 
     def test_convergence_gaussian_process(self):
         np.random.seed(0)
-        ray.init(
-            local_mode=True, num_cpus=1,
-            num_gpus=1)
+        ray.init(local_mode=True, num_cpus=1, num_gpus=1)
 
         space = {
             "x": (0, 20)  # This is the space of parameters to explore
