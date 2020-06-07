@@ -119,18 +119,49 @@ def init(name=None,
 
 
 @_ensure_connected
-def create_endpoint(endpoint_name, route=None, methods=["GET"]):
+def create_endpoint(endpoint_name,
+                    *,
+                    backend=None,
+                    route=None,
+                    methods=["GET"]):
     """Create a service endpoint given route_expression.
 
     Args:
-        endpoint_name (str): A name to associate to the endpoint. It will be
-            used as key to set traffic policy.
-        route (str): A string begin with "/". HTTP server will use
+        endpoint_name (str): A name to associate to with the endpoint.
+        backend (str, required): The backend that will serve requests to
+            this endpoint. To change this or split traffic among backends, use
+            `serve.set_traffic`.
+        route (str, optional): A string begin with "/". HTTP server will use
             the string to match the path.
+        methods(List[str], optional): The HTTP methods that are valid for this
+            endpoint.
     """
+    if backend is None:
+        raise TypeError("backend must be specified when creating "
+                        "an endpoint.")
+    elif not isinstance(backend, str):
+        raise TypeError("backend must be a string, got {}.".format(
+            type(backend)))
+
+    if route is not None:
+        if not isinstance(route, str) or not route.startswith("/"):
+            raise TypeError("route must be a string starting with '/'.")
+
+    if not isinstance(methods, list):
+        raise TypeError(
+            "methods must be a list of strings, but got type {}".format(
+                type(methods)))
+
+    upper_methods = []
+    for method in methods:
+        if not isinstance(method, str):
+            raise TypeError("methods must be a list of strings, but contained "
+                            "an element of type {}".format(type(method)))
+        upper_methods.append(method.upper())
+
     ray.get(
-        master_actor.create_endpoint.remote(route, endpoint_name,
-                                            [m.upper() for m in methods]))
+        master_actor.create_endpoint.remote(endpoint_name, {backend: 1.0},
+                                            route, upper_methods))
 
 
 @_ensure_connected
