@@ -1541,9 +1541,10 @@ def determine_plasma_store_config(object_store_memory,
                              ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES))
 
     # Print the object store memory using two decimal places.
-    logger.debug("Determine to start the Plasma object store with {} GB memory "
-                 "using {}.".format(
-                     round(object_store_memory / 10 ** 9, 2), plasma_directory))
+    logger.debug(
+        "Determine to start the Plasma object store with {} GB memory "
+        "using {}.".format(
+            round(object_store_memory / 10**9, 2), plasma_directory))
 
     return plasma_directory, object_store_memory
 
@@ -1560,7 +1561,8 @@ def start_plasma_store(resource_spec,
 
     Args:
         resource_spec (ResourceSpec): Resources for the node.
-        plasma_store_socket_name (str): The path/name of the plasma store socket.
+        plasma_store_socket_name (str): The path/name of the plasma
+            store socket.
         stdout_file: A file handle opened for writing to redirect stdout
             to. If no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr
