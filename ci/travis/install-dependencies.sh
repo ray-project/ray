@@ -88,8 +88,7 @@ install_miniconda() {
         mkdir -p -- "${miniconda_dir}"
         # We're forced to pass -b for non-interactive mode.
         # Unfortunately it inhibits PATH modifications as a side effect.
-        "${miniconda_target}" -f -b -p "${miniconda_dir}" | grep --line-buffered -v \
-          '^\(reinstalling: \|installing: \|using -f (force) option\|installation finished\.\|$\)'
+        "${WORKSPACE_DIR}"/ci/suppress_output "${miniconda_target}" -f -b -p "${miniconda_dir}"
         conda="${miniconda_dir}/bin/conda"
         ;;
     esac
@@ -113,7 +112,7 @@ install_miniconda() {
     (
       set +x
       echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
-      conda install -q -y python="${PYTHON}"
+      "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
     )
   fi
 
