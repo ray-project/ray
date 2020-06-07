@@ -66,7 +66,7 @@ reload_env() {
     export TRAVIS_PULL_REQUEST
   fi
 
-  if [ -z "${TRAVIS_BRANCH-}" ] && [ -n "${GITHUB_WORKFLOW-}" ]; then
+  if [ "${GITHUB_ACTIONS-}" = true ] && [ -z "${TRAVIS_BRANCH-}" ]; then
     # Define TRAVIS_BRANCH to make Travis scripts run on GitHub Actions.
     TRAVIS_BRANCH="${GITHUB_BASE_REF:-${GITHUB_REF}}"  # For pull requests, the base branch name
     TRAVIS_BRANCH="${TRAVIS_BRANCH#refs/heads/}"  # Remove refs/... prefix
@@ -403,7 +403,7 @@ _check_job_triggers() {
   fi
 
   if ! (set +x && should_run_job ${job_names//,/ }); then
-    if [ -n "${GITHUB_WORKFLOW-}" ]; then
+    if [ "${GITHUB_ACTIONS-}" = true ]; then
       # If this job is to be skipped, emit 'exit' into .bashrc to quickly exit all following steps.
       # This isn't needed on Travis (since everything runs in one shell), but is on GitHub Actions.
       cat <<EOF1 >> ~/.bashrc
@@ -448,7 +448,8 @@ init() {
 
 build() {
   if ! need_wheels; then
-    bazel build ${ENABLE_ASAN-} -k "//:*"   # Do a full build first to ensure everything passes
+    # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
+    bazel build -k "//:*"  # Full build first, since pip install will build only a subset of targets
     install_ray
     if [ "${LINT-}" = 1 ]; then
       # Try generating Sphinx documentation. To do this, we need to install Ray first.
@@ -470,7 +471,7 @@ build() {
 }
 
 _main() {
-  if [ -n "${GITHUB_WORKFLOW-}" ]; then
+  if [ "${GITHUB_ACTIONS-}" = true ]; then
     exec 2>&1  # Merge stdout and stderr to prevent out-of-order buffering issues
     reload_env
   fi
