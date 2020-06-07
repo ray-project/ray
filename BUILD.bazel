@@ -374,7 +374,7 @@ cc_library(
 )
 
 cc_library(
-    name = "plasma_lib",
+    name = "plasma_store_server_lib",
     srcs = [
         "src/ray/plasma/dlmalloc.cc",
         "src/ray/plasma/events.cc",
@@ -382,6 +382,7 @@ cc_library(
         "src/ray/plasma/external_store.cc",
         "src/ray/plasma/plasma_allocator.cc",
         "src/ray/plasma/quota_aware_policy.cc",
+        "src/ray/plasma/store.cc",
     ],
     hdrs = [
         "src/ray/plasma/events.h",
@@ -406,12 +407,12 @@ cc_library(
 cc_binary(
     name = "plasma_store_server",
     srcs = [
-        "src/ray/plasma/store.cc",
+        "src/ray/plasma/store_exec.cc",
     ],
     copts = PLASMA_COPTS,
     visibility = ["//visibility:public"],
     deps = [
-        ":plasma_lib",
+        ":plasma_store_server_lib",
         ":platform_shims",
     ],
 )
