@@ -1137,7 +1137,11 @@ Status PlasmaStore::ProcessMessage(Client* client) {
 void HandleSignal(int signal) {
   if (signal == SIGTERM) {
     ARROW_LOG(INFO) << "SIGTERM Signal received, closing Plasma Server...";
+#ifdef _WIN32
+    ExitThread(0);
+#else
     pthread_exit(0);
+#endif
   }
 }
 
