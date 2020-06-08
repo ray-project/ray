@@ -503,7 +503,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 self.async_env, self.env, self.policy_map))
 
     @DeveloperAPI
-    def sample(self):
+    def sample(self, dataset_id=None):
         """Returns a batch of experience sampled from this worker.
 
         This method must be implemented by subclasses.
@@ -524,7 +524,7 @@ class RolloutWorker(ParallelIteratorWorker):
             logger.info("Generating sample batch of size {}".format(
                 self.rollout_fragment_length))
 
-        batches = [self.input_reader.next()]
+        batches = [self.input_reader.next(dataset_id=dataset_id)]
         steps_so_far = batches[0].count
 
         # In truncate_episodes mode, never pull more than 1 batch per env.
@@ -536,7 +536,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         while (steps_so_far < self.rollout_fragment_length
                and len(batches) < max_batches):
-            batch = self.input_reader.next()
+            batch = self.input_reader.next(dataset_id=dataset_id)
             steps_so_far += batch.count
             batches.append(batch)
         batch = batches[0].concat_samples(batches)
@@ -748,10 +748,10 @@ class RolloutWorker(ParallelIteratorWorker):
         return info, batch.count
 
     @DeveloperAPI
-    def get_metrics(self):
+    def get_metrics(self, dataset_id=None):
         """Returns a list of new RolloutMetric objects from evaluation."""
 
-        out = self.sampler.get_metrics()
+        out = self.sampler.get_metrics(dataset_id=dataset_id)
         for m in self.reward_estimators:
             out.extend(m.get_metrics())
         return out
@@ -967,6 +967,15 @@ class RolloutWorker(ParallelIteratorWorker):
         """Finds a free port on the current node."""
         from ray.util.sgd import utils
         return utils.find_free_port()
+
+    def sample_tasks(self, n_tasks):
+        """Samples n_tasks subtasks from an environment"""
+        return self.async_env.vector_env.envs[0].sample_tasks(n_tasks)
+
+    def set_task(self, task):
+        """Sets a specific subtask for the worker across all vectorized environments"""
+        for env in self.async_env.vector_env.envs:
+            env.set_task(task)
 
     def __del__(self):
         if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):

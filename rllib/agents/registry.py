@@ -94,6 +94,10 @@ def _import_marwil():
     from ray.rllib.agents import marwil
     return marwil.MARWILTrainer
 
+def _import_maml():
+    from ray.rllib.agents import maml
+    return maml.MAMLTrainer
+
 
 ALGORITHMS = {
     "SAC": _import_sac,
@@ -114,6 +118,7 @@ ALGORITHMS = {
     "APPO": _import_appo,
     "DDPPO": _import_ddppo,
     "MARWIL": _import_marwil,
+    "MAML": _import_maml,
 }
 
 
