@@ -19,10 +19,9 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_common.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
-
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 DEFINE_string(raylet_socket_name, "", "The socket name of raylet.");
 DEFINE_string(store_socket_name, "", "The socket name of object store.");
