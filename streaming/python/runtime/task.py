@@ -20,6 +20,7 @@ class StreamTask(ABC):
         self.task_id = task_id
         self.processor = processor
         self.worker = worker
+        self.config = worker.config
         self.reader = None  # DataReader
         self.writers = {}  # ExecutionEdge -> DataWriter
         self.thread = None
@@ -88,8 +89,8 @@ class StreamTask(ABC):
 
         # TODO(chaokunyang) add task/job config
         runtime_context = RuntimeContextImpl(
-            self.worker.execution_task.task_id,
-            self.worker.execution_task.task_index,
+            self.worker.task_id,
+            vertex_context.vertex.vertex_index,
             vertex_context.get_parallelism())
         logger.info("open Processor {}".format(self.processor))
         self.processor.open(collectors, runtime_context)
