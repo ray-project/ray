@@ -244,7 +244,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   const RetryTaskCallback retry_task_callback_;
 
   /// Called to check whether a raylet is still alive. This is used when
-  /// processing a worker's reply, to check whether the node that the worker
+  /// processing a worker's reply to check whether the node that the worker
   /// was on is still alive. If the node is down, the plasma objects returned by the task are marked as failed.
   const std::function<bool(const ClientID &node_id)> check_node_alive_;
   /// Called when processing a worker's reply if the node that the worker was
