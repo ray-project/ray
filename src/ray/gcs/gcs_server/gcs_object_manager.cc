@@ -226,6 +226,22 @@ void GcsObjectManager::RemoveObjectLocationInCache(const ObjectID &object_id,
   }
 }
 
+void GcsObjectManager::RemoveObjectLocationsInCache(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+
+  auto *object_locations = GetObjectLocationSet(object_id, false);
+  if (object_locations) {
+    object_to_locations_.erase(object_id);
+  }
+
+  for (auto &objects : node_to_objects_) {
+    objects.second.erase(object_id);
+    if (objects.second.empty()) {
+      node_to_objects_.erase(objects.first);
+    }
+  }
+}
+
 GcsObjectManager::LocationSet *GcsObjectManager::GetObjectLocationSet(
     const ObjectID &object_id, bool create_if_not_exist) {
   LocationSet *object_locations = nullptr;

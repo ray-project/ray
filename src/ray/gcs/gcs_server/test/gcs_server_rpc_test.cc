@@ -594,8 +594,10 @@ TEST_F(GcsServerTest, TestJobGarbageCollection) {
   };
   ASSERT_TRUE(WaitForCondition(condition_func, 10 * 1000));
 
-  // object_locations = GetObjectLocations(object_id.Binary());
-  // ASSERT_TRUE(object_locations.size() == 0);
+  condition_func = [this, &object_id]() -> bool {
+    return GetObjectLocations(object_id.Binary()).empty();
+  };
+  ASSERT_TRUE(WaitForCondition(condition_func, 10 * 1000));
 
   condition_func = [this, &actor_table_data]() -> bool {
     return !GetActorInfo(actor_table_data->actor_id()).has_value();

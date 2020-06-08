@@ -15,6 +15,7 @@
 #ifndef RAY_GCS_JOB_INFO_HANDLER_IMPL_H
 #define RAY_GCS_JOB_INFO_HANDLER_IMPL_H
 
+#include "gcs_object_manager.h"
 #include "gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_gcs_client.h"
@@ -27,8 +28,10 @@ namespace rpc {
 class DefaultJobInfoHandler : public rpc::JobInfoHandler {
  public:
   explicit DefaultJobInfoHandler(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                                 gcs::GcsObjectManager &gcs_object_manager,
                                  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub)
       : gcs_table_storage_(std::move(gcs_table_storage)),
+        gcs_object_manager_(gcs_object_manager),
         gcs_pub_sub_(std::move(gcs_pub_sub)) {}
 
   void HandleAddJob(const AddJobRequest &request, AddJobReply *reply,
@@ -43,6 +46,7 @@ class DefaultJobInfoHandler : public rpc::JobInfoHandler {
 
  private:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  gcs::GcsObjectManager &gcs_object_manager_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
 
   void ClearJobInfos(const JobID &job_id);

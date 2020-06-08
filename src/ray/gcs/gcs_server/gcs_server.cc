@@ -59,6 +59,11 @@ void GcsServer::Start() {
   InitGcsActorManager();
 
   // Register rpc service.
+  gcs_object_manager_ = InitObjectManager();
+  object_info_service_.reset(
+      new rpc::ObjectInfoGrpcService(main_service_, *gcs_object_manager_));
+  rpc_server_.RegisterService(*object_info_service_);
+
   job_info_handler_ = InitJobInfoHandler();
   job_info_service_.reset(new rpc::JobInfoGrpcService(main_service_, *job_info_handler_));
   rpc_server_.RegisterService(*job_info_service_);
@@ -70,11 +75,6 @@ void GcsServer::Start() {
   node_info_service_.reset(
       new rpc::NodeInfoGrpcService(main_service_, *gcs_node_manager_));
   rpc_server_.RegisterService(*node_info_service_);
-
-  gcs_object_manager_ = InitObjectManager();
-  object_info_service_.reset(
-      new rpc::ObjectInfoGrpcService(main_service_, *gcs_object_manager_));
-  rpc_server_.RegisterService(*object_info_service_);
 
   task_info_handler_ = InitTaskInfoHandler();
   task_info_service_.reset(
@@ -204,8 +204,8 @@ void GcsServer::InitGcsActorManager() {
 }
 
 std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
-  return std::unique_ptr<rpc::DefaultJobInfoHandler>(
-      new rpc::DefaultJobInfoHandler(gcs_table_storage_, gcs_pub_sub_));
+  return std::unique_ptr<rpc::DefaultJobInfoHandler>(new rpc::DefaultJobInfoHandler(
+      gcs_table_storage_, *gcs_object_manager_, gcs_pub_sub_));
 }
 
 std::unique_ptr<GcsObjectManager> GcsServer::InitObjectManager() {

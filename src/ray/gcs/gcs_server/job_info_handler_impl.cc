@@ -70,21 +70,23 @@ void DefaultJobInfoHandler::HandleMarkJobFinished(
 void DefaultJobInfoHandler::ClearJobInfos(const JobID &job_id) {
   // Actor related
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().DeleteByJobId(job_id, nullptr));
-  auto on_done = [this](
-                     const std::unordered_map<ActorID, ActorCheckpointIdData> &result) {
-    if (!result.empty()) {
-      std::vector<ActorCheckpointID> ids;
-      for (auto &item : result) {
-        for (auto &id : item.second.checkpoint_ids()) {
-          ids.push_back(ActorCheckpointID::FromBinary(id));
+  auto on_checkpoint_done =
+      [this](const std::unordered_map<ActorID, ActorCheckpointIdData> &result) {
+        if (!result.empty()) {
+          std::vector<ActorCheckpointID> ids;
+          for (auto &item : result) {
+            for (auto &id : item.second.checkpoint_ids()) {
+              ids.push_back(ActorCheckpointID::FromBinary(id));
+            }
+          }
+          RAY_CHECK_OK(
+              gcs_table_storage_->ActorCheckpointTable().BatchDelete(ids, nullptr));
         }
-      }
-      RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointTable().BatchDelete(ids, nullptr));
-    }
-  };
+      };
   // Get checkpoint id first from checkpoint id table and delete all checkpoints related
   // to this job
-  RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointIdTable().GetByJobId(job_id, on_done));
+  RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointIdTable().GetByJobId(
+      job_id, on_checkpoint_done));
   RAY_CHECK_OK(
       gcs_table_storage_->ActorCheckpointIdTable().DeleteByJobId(job_id, nullptr));
 
@@ -95,6 +97,16 @@ void DefaultJobInfoHandler::ClearJobInfos(const JobID &job_id) {
       gcs_table_storage_->TaskReconstructionTable().DeleteByJobId(job_id, nullptr));
 
   // Object related
+  auto on_object_done =
+      [this](const std::unordered_map<ObjectID, ObjectTableDataList> &result) {
+        if (!result.empty()) {
+          for (auto &item : result) {
+            gcs_object_manager_.RemoveObjectLocationsInCache(item.first);
+          }
+        }
+      };
+  // Get all object id first from object table and remove object locations in cache.
+  RAY_CHECK_OK(gcs_table_storage_->ObjectTable().GetByJobId(job_id, on_object_done));
   RAY_CHECK_OK(gcs_table_storage_->ObjectTable().DeleteByJobId(job_id, nullptr));
 }
 
