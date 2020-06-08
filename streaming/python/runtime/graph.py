@@ -43,8 +43,8 @@ class ExecutionVertex:
         self.execution_vertex_index = vertex_pb.execution_vertex_index
         self.parallelism = vertex_pb.parallelism
         if vertex_pb.language == Language.PYTHON:
-            self.stream_operator = operator.create_operator(
-                function.load_function(vertex_pb.function))
+            operator_bytes = vertex_pb.operator  # python operator descriptor
+            self.stream_operator = operator.load_operator(operator_bytes)
         self.worker_actor = ray.actor.ActorHandle. \
             _deserialization_helper(vertex_pb.worker_actor)
         self.container_id = vertex_pb.container_id

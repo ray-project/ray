@@ -19,12 +19,17 @@ message ExecutionVertexContext {
   }
 
   message ExecutionVertex {
+    // unique id of execution vertex
     int32 execution_vertex_id = 1;
+    // unique id of execution job vertex
     int32 execution_job_vertex_Id = 2;
+    // name of execution job vertex, e.g. 1-SourceOperator
     string execution_job_vertex_name = 3;
+    // index of execution vertex
     int32 execution_vertex_index = 4;
     int32 parallelism = 5;
-    bytes function = 6;
+    // serialized operator
+    bytes operator = 6;
     bytes worker_actor = 7;
     string container_id = 8;
     uint64 build_time = 9;

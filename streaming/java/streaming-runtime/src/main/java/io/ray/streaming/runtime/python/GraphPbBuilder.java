@@ -4,7 +4,9 @@ import com.google.protobuf.ByteString;
 import io.ray.runtime.actor.NativeRayActor;
 import io.ray.streaming.api.function.Function;
 import io.ray.streaming.api.partition.Partition;
+import io.ray.streaming.operator.Operator;
 import io.ray.streaming.python.PythonFunction;
+import io.ray.streaming.python.PythonOperator;
 import io.ray.streaming.python.PythonPartition;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionEdge;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
@@ -65,37 +67,52 @@ public class GraphPbBuilder {
   private RemoteCall.ExecutionVertexContext.ExecutionVertex buildVertex(
       ExecutionVertex executionVertex) {
     // build vertex infos
-    RemoteCall.ExecutionVertexContext.ExecutionVertex.Builder vertexBuilder =
+    RemoteCall.ExecutionVertexContext.ExecutionVertex.Builder executionVertexBuilder =
         RemoteCall.ExecutionVertexContext.ExecutionVertex.newBuilder();
-    vertexBuilder.setExecutionVertexId(executionVertex.getExecutionVertexId());
-    vertexBuilder.setExecutionJobVertexId(executionVertex.getExecutionJobVertexId());
-    vertexBuilder.setExecutionJobVertexName(executionVertex.getExecutionJobVertexName());
-    vertexBuilder.setExecutionVertexIndex(executionVertex.getExecutionVertexIndex());
-    vertexBuilder.setParallelism(executionVertex.getParallelism());
-    vertexBuilder.setFunction(
+    executionVertexBuilder.setExecutionVertexId(executionVertex.getExecutionVertexId());
+    executionVertexBuilder.setExecutionJobVertexId(executionVertex.getExecutionJobVertexId());
+    executionVertexBuilder.setExecutionJobVertexName(executionVertex.getExecutionJobVertexName());
+    executionVertexBuilder.setExecutionVertexIndex(executionVertex.getExecutionVertexIndex());
+    executionVertexBuilder.setParallelism(executionVertex.getParallelism());
+    executionVertexBuilder.setOperator(
         ByteString.copyFrom(
-            serializeFunction(executionVertex.getStreamOperator().getFunction())));
-    vertexBuilder.setWorkerActor(
+            serializeOperator(executionVertex.getStreamOperator())));
+    executionVertexBuilder.setWorkerActor(
         ByteString.copyFrom(
             ((NativeRayActor) (executionVertex.getWorkerActor())).toBytes()));
-    vertexBuilder.setContainerId(executionVertex.getContainerId().toString());
-    vertexBuilder.setBuildTime(executionVertex.getBuildTime());
-    vertexBuilder.setLanguage(Streaming.Language.valueOf(executionVertex.getLanguage().name()));
-    vertexBuilder.putAllConfig(executionVertex.getWorkerConfig());
-    vertexBuilder.putAllResource(executionVertex.getResource());
+    executionVertexBuilder.setContainerId(executionVertex.getContainerId().toString());
+    executionVertexBuilder.setBuildTime(executionVertex.getBuildTime());
+    executionVertexBuilder.setLanguage(
+        Streaming.Language.valueOf(executionVertex.getLanguage().name()));
+    executionVertexBuilder.putAllConfig(executionVertex.getWorkerConfig());
+    executionVertexBuilder.putAllResource(executionVertex.getResource());
 
-    return vertexBuilder.build();
+    return executionVertexBuilder.build();
   }
 
   private RemoteCall.ExecutionVertexContext.ExecutionEdge buildEdge(ExecutionEdge executionEdge) {
     // build edge infos
-    RemoteCall.ExecutionVertexContext.ExecutionEdge.Builder edgeBuilder =
+    RemoteCall.ExecutionVertexContext.ExecutionEdge.Builder executionEdgeBuilder =
         RemoteCall.ExecutionVertexContext.ExecutionEdge.newBuilder();
-    edgeBuilder.setSourceExecutionVertexId(executionEdge.getSourceVertexId());
-    edgeBuilder.setTargetExecutionVertexId(executionEdge.getTargetVertexId());
-    edgeBuilder.setPartition(ByteString.copyFrom(serializePartition(executionEdge.getPartition())));
+    executionEdgeBuilder.setSourceExecutionVertexId(executionEdge.getSourceVertexId());
+    executionEdgeBuilder.setTargetExecutionVertexId(executionEdge.getTargetVertexId());
+    executionEdgeBuilder.setPartition(
+        ByteString.copyFrom(serializePartition(executionEdge.getPartition())));
 
-    return edgeBuilder.build();
+    return executionEdgeBuilder.build();
+  }
+
+  private byte[] serializeOperator(Operator operator) {
+    if (operator instanceof PythonOperator) {
+      PythonOperator pythonOperator = (PythonOperator) operator;
+      return serializer.serialize(Arrays.asList(
+          serializeFunction(pythonOperator.getFunction()),
+          pythonOperator.getModuleName(),
+          pythonOperator.getClassName()
+      ));
+    } else {
+      return new byte[0];
+    }
   }
 
   private byte[] serializeFunction(Function function) {

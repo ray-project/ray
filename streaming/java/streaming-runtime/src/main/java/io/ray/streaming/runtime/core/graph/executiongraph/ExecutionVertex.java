@@ -52,8 +52,17 @@ public class ExecutionVertex implements Serializable {
    * Might be changed in dynamic scheduling.
    */
   private int executionVertexIndex;
+
   private ExecutionVertexState state = ExecutionVertexState.TO_ADD;
+
+  /**
+   * The id of the container which this vertex's worker actor belongs to.
+   */
   private ContainerID containerId;
+
+  /**
+   * Worker actor handle.
+   */
   private BaseActor workerActor;
 
   /**
