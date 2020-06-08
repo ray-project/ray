@@ -641,8 +641,8 @@ def build_eager_tf_policy(name,
                 dummy_batch["seq_lens"] = np.array([1], dtype=np.int32)
 
             # Convert everything to tensors.
-            dummy_batch = tf.nest.map_structure(tf.convert_to_tensor,
-                                                dummy_batch)
+            dummy_batch = tf.nest.map_structure(
+                tf.convert_to_tensor, dummy_batch)
 
             # for IMPALA which expects a certain sample batch size.
             def tile_to(tensor, n):
@@ -653,6 +653,11 @@ def build_eager_tf_policy(name,
                 dummy_batch = tf.nest.map_structure(
                     lambda c: tile_to(c, get_batch_divisibility_req(self)),
                     dummy_batch)
+            i = 0
+            self._state_in = []
+            while "state_in_{}".format(i) in dummy_batch:
+                self._state_in.append(dummy_batch["state_in_{}".format(i)])
+                i += 1
 
             # Execute a forward pass to get self.action_dist etc initialized,
             # and also obtain the extra action fetches

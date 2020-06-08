@@ -178,10 +178,15 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
     # Everything else (assume numeric or tf/torch.Tensor).
     else:
         if tf is not None:
-            # y should never be a Tensor (y=expected value).
+            # y should never be a non-eager Tensor (y=expected value).
             if isinstance(y, tf.Tensor):
-                raise ValueError("`y` (expected value) must not be a Tensor. "
-                                 "Use numpy.ndarray instead")
+                # In eager mode, numpyize tensors.
+                if tf.executing_eagerly():
+                    y = y.numpy()
+                else:
+                    raise ValueError(
+                        "`y` (expected value) must not be a Tensor. "
+                        "Use numpy.ndarray instead")
             if isinstance(x, tf.Tensor):
                 # In eager mode, numpyize tensors.
                 if tf.executing_eagerly():
