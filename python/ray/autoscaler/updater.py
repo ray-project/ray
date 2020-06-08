@@ -306,6 +306,7 @@ class DockerCommandRunner(SSHCommandRunner):
             exit_on_fail=False,
             port_forward=None,
             with_output=False):
+
         return self.ssh_command_runner.run(
             cmd,
             timeout=timeout,
