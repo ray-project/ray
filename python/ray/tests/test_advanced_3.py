@@ -126,7 +126,7 @@ def test_global_state_api(shutdown_only):
     assert ray.cluster_resources()["GPU"] == 3
     assert ray.cluster_resources()["CustomResource"] == 1
 
-    # A driver/worker creates a temporary object during startup. Althougth the
+    # A driver/worker creates a temporary object during startup. Although the
     # temporary object is freed immediately, in a rare case, we can still find
     # the object ID in GCS because Raylet removes the object ID from GCS
     # asynchronously.
