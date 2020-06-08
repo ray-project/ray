@@ -81,7 +81,7 @@ if __name__ == "__main__":
         "num_workers": args.num_workers if args.file_name else 0,
         # Other settings.
         "lr": 0.0003,
-        "gae_lambda": 0.95,
+        "lambda": 0.95,
         "gamma": 0.99,
         "sgd_minibatch_size": 256,
         "train_batch_size": 4000,
