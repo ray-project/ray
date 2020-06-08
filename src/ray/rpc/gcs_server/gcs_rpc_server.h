@@ -15,10 +15,9 @@
 #ifndef RAY_RPC_GCS_RPC_SERVER_H
 #define RAY_RPC_GCS_RPC_SERVER_H
 
-#include "src/ray/rpc/grpc_server.h"
-#include "src/ray/rpc/server_call.h"
-
-#include "src/ray/protobuf/gcs_service.grpc.pb.h"
+#include "ray/protobuf/gcs_service.grpc.pb.h"
+#include "ray/rpc/grpc_server.h"
+#include "ray/rpc/server_call.h"
 
 namespace ray {
 namespace rpc {

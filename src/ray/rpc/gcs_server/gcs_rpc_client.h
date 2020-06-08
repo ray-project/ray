@@ -16,9 +16,10 @@
 #define RAY_RPC_GCS_RPC_CLIENT_H
 
 #include <unistd.h>
-#include "src/ray/common/network_util.h"
-#include "src/ray/protobuf/gcs_service.grpc.pb.h"
-#include "src/ray/rpc/grpc_client.h"
+
+#include "ray/common/network_util.h"
+#include "ray/protobuf/gcs_service.grpc.pb.h"
+#include "ray/rpc/grpc_client.h"
 
 namespace ray {
 namespace rpc {

@@ -21,7 +21,7 @@ class FullyConnectedNetwork(TFModelV2):
         vf_share_layers = model_config.get("vf_share_layers")
         free_log_std = model_config.get("free_log_std")
 
-        # Maybe generate free-floating bias variables for the second half of
+        # Generate free-floating bias variables for the second half of
         # the outputs.
         if free_log_std:
             assert num_outputs % 2 == 0, (
@@ -34,7 +34,10 @@ class FullyConnectedNetwork(TFModelV2):
         # We are using obs_flat, so take the flattened shape as input.
         inputs = tf.keras.layers.Input(
             shape=(np.product(obs_space.shape), ), name="observations")
-        last_layer = layer_out = inputs
+        # Last hidden layer output (before logits outputs).
+        last_layer = inputs
+        # The action distribution outputs.
+        logits_out = None
         i = 1
 
         # Create layers 0 to second-last.
@@ -49,7 +52,7 @@ class FullyConnectedNetwork(TFModelV2):
         # The last layer is adjusted to be of size num_outputs, but it's a
         # layer with activation.
         if no_final_linear and num_outputs:
-            layer_out = tf.keras.layers.Dense(
+            logits_out = tf.keras.layers.Dense(
                 num_outputs,
                 name="fc_out",
                 activation=activation,
@@ -64,7 +67,7 @@ class FullyConnectedNetwork(TFModelV2):
                     activation=activation,
                     kernel_initializer=normc_initializer(1.0))(last_layer)
             if num_outputs:
-                layer_out = tf.keras.layers.Dense(
+                logits_out = tf.keras.layers.Dense(
                     num_outputs,
                     name="fc_out",
                     activation=None,
@@ -72,38 +75,42 @@ class FullyConnectedNetwork(TFModelV2):
             # Adjust num_outputs to be the number of nodes in the last layer.
             else:
                 self.num_outputs = (
-                    [np.product(obs_space.shape)] + hiddens[-1:-1])[-1]
+                    [np.product(obs_space.shape)] + hiddens[-1:])[-1]
 
         # Concat the log std vars to the end of the state-dependent means.
-        if free_log_std:
+        if free_log_std and logits_out is not None:
 
             def tiled_log_std(x):
                 return tf.tile(
                     tf.expand_dims(self.log_std_var, 0), [tf.shape(x)[0], 1])
 
             log_std_out = tf.keras.layers.Lambda(tiled_log_std)(inputs)
-            layer_out = tf.keras.layers.Concatenate(axis=1)(
-                [layer_out, log_std_out])
+            logits_out = tf.keras.layers.Concatenate(axis=1)(
+                [logits_out, log_std_out])
 
+        last_vf_layer = None
         if not vf_share_layers:
-            # build a parallel set of hidden layers for the value net
-            last_layer = inputs
+            # Build a parallel set of hidden layers for the value net.
+            last_vf_layer = inputs
             i = 1
             for size in hiddens:
-                last_layer = tf.keras.layers.Dense(
+                last_vf_layer = tf.keras.layers.Dense(
                     size,
                     name="fc_value_{}".format(i),
                     activation=activation,
-                    kernel_initializer=normc_initializer(1.0))(last_layer)
+                    kernel_initializer=normc_initializer(1.0))(last_vf_layer)
                 i += 1
 
         value_out = tf.keras.layers.Dense(
             1,
             name="value_out",
             activation=None,
-            kernel_initializer=normc_initializer(0.01))(last_layer)
+            kernel_initializer=normc_initializer(0.01))(
+                last_vf_layer if last_vf_layer is not None else last_layer)
 
-        self.base_model = tf.keras.Model(inputs, [layer_out, value_out])
+        self.base_model = tf.keras.Model(
+            inputs, [(logits_out
+                      if logits_out is not None else last_layer), value_out])
         self.register_variables(self.base_model.variables)
 
     def forward(self, input_dict, state, seq_lens):

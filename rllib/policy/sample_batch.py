@@ -65,6 +65,15 @@ class SampleBatch:
     @staticmethod
     @PublicAPI
     def concat_samples(samples):
+        """Concatenates n data dicts or MultiAgentBatches.
+
+        Args:
+            samples (List[Dict[np.ndarray]]]): List of dicts of data (numpy).
+
+        Returns:
+            Union[SampleBatch,MultiAgentBatch]: A new (compressed) SampleBatch/
+                MultiAgentBatch.
+        """
         if isinstance(samples[0], MultiAgentBatch):
             return MultiAgentBatch.concat_samples(samples)
         out = {}
@@ -84,7 +93,10 @@ class SampleBatch:
             {"a": [1, 2, 3, 4, 5]}
         """
 
-        assert self.keys() == other.keys(), "must have same columns"
+        if self.keys() != other.keys():
+            raise ValueError(
+                "SampleBatches to concat must have same columns! {} vs {}".
+                format(list(self.keys()), list(other.keys())))
         out = {}
         for k in self.keys():
             out[k] = concat_aligned([self[k], other[k]])
@@ -117,7 +129,14 @@ class SampleBatch:
 
     @PublicAPI
     def columns(self, keys):
-        """Returns a list of just the specified columns.
+        """Returns a list of the batch-data in the specified columns.
+
+        Args:
+            keys (List[str]): List of column names fo which to return the data.
+
+        Returns:
+            List[any]: The list of data items ordered by the order of column
+                names in `keys`.
 
         Examples:
             >>> batch = SampleBatch({"a": [1], "b": [2], "c": [3]})
@@ -143,7 +162,7 @@ class SampleBatch:
         """Splits this batch's data by `eps_id`.
 
         Returns:
-            list of SampleBatch, one per distinct episode.
+            List[SampleBatch]: List of batches, one per distinct episode.
         """
 
         slices = []
@@ -166,7 +185,7 @@ class SampleBatch:
     def slice(self, start, end):
         """Returns a slice of the row data of this batch.
 
-        Arguments:
+        Args:
             start (int): Starting index.
             end (int): Ending index.
 
@@ -234,23 +253,37 @@ class SampleBatch:
 @PublicAPI
 class MultiAgentBatch:
     """A batch of experiences from multiple policies in the environment.
-
-    Attributes:
-        policy_batches (dict): Mapping from policy id to a normal SampleBatch
-            of experiences. Note that these batches may be of different length.
-        count (int): The number of timesteps in the environment this batch
-            contains. This will be less than the number of transitions this
-            batch contains across all policies in total.
     """
 
     @PublicAPI
     def __init__(self, policy_batches, count):
+        """Initializes a MultiAgentBatch object.
+
+        Args:
+            policy_batches (Dict[str,SampleBatch]): Mapping from policy id
+                (str) to a SampleBatch of experiences. Note that these batches
+                may be of different length.
+            count (int): The number of timesteps in the environment this batch
+                contains. This will be less than the number of transitions this
+                batch contains across all policies in total.
+        """
         self.policy_batches = policy_batches
         self.count = count
 
     @staticmethod
     @PublicAPI
     def wrap_as_needed(batches, count):
+        """Returns SampleBatch or MultiAgentBatch, depending on given policies.
+
+        Args:
+            batches (Dict[str,SampleBatch]): Mapping from policy ID to
+                SampleBatch.
+            count (int): A count to use, when returning a MultiAgentBatch.
+
+        Returns:
+            Union[SampleBatch,MultiAgentBatch]: The single default policy's
+                SampleBatch or a MultiAgentBatch (more than one policy).
+        """
         if len(batches) == 1 and DEFAULT_POLICY_ID in batches:
             return batches[DEFAULT_POLICY_ID]
         return MultiAgentBatch(batches, count)
@@ -258,10 +291,23 @@ class MultiAgentBatch:
     @staticmethod
     @PublicAPI
     def concat_samples(samples):
+        """Concatenates a list of MultiAgentBatches into a new MultiAgentBatch.
+
+        Args:
+            samples (List[MultiAgentBatch]): List of MultiagentBatch objects
+                to concatenate.
+
+        Returns:
+            MultiAgentBatch: A new MultiAgentBatch consisting of the
+                concatenated inputs.
+        """
         policy_batches = collections.defaultdict(list)
         total_count = 0
         for s in samples:
-            assert isinstance(s, MultiAgentBatch)
+            if not isinstance(s, MultiAgentBatch):
+                raise ValueError(
+                    "`MultiAgentBatch.concat_samples()` can only concat "
+                    "MultiAgentBatch types, not {}!".format(type(s).__name__))
             for policy_id, batch in s.policy_batches.items():
                 policy_batches[policy_id].append(batch)
             total_count += s.count
@@ -272,12 +318,22 @@ class MultiAgentBatch:
 
     @PublicAPI
     def copy(self):
+        """Deep-copies self into a new MultiAgentBatch.
+
+        Returns:
+            MultiAgentBatch: The copy of self with deep-copied data.
+        """
         return MultiAgentBatch(
             {k: v.copy()
              for (k, v) in self.policy_batches.items()}, self.count)
 
     @PublicAPI
     def total(self):
+        """Calculates the sum of all step-counts over all policy batches.
+
+        Returns:
+            int: The sum of counts over all policy batches.
+        """
         ct = 0
         for batch in self.policy_batches.values():
             ct += batch.count
@@ -285,11 +341,24 @@ class MultiAgentBatch:
 
     @DeveloperAPI
     def compress(self, bulk=False, columns=frozenset(["obs", "new_obs"])):
+        """Compresses each policy batch.
+
+        Args:
+            bulk (bool): Whether to compress across the batch dimension (0)
+                as well. If False will compress n separate list items, where n
+                is the batch size.
+            columns (Set[str]): Set of column names to compress.
+        """
         for batch in self.policy_batches.values():
             batch.compress(bulk=bulk, columns=columns)
 
     @DeveloperAPI
     def decompress_if_needed(self, columns=frozenset(["obs", "new_obs"])):
+        """Decompresses each policy batch, if already compressed.
+
+        Args:
+            columns (Set[str]): Set of column names to decompress.
+        """
         for batch in self.policy_batches.values():
             batch.decompress_if_needed(columns)
         return self

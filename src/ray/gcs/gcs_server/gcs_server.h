@@ -19,6 +19,7 @@
 #include <ray/gcs/redis_gcs_client.h>
 #include <ray/rpc/client_call.h>
 #include <ray/rpc/gcs_server/gcs_rpc_server.h>
+#include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 
@@ -47,7 +48,8 @@ class GcsActorManager;
 /// https://docs.google.com/document/d/1d-9qBlsh2UQHo-AWMWR0GptI_Ajwu4SKx0Q0LHKPpeI/edit#heading=h.csi0gaglj2pv
 class GcsServer {
  public:
-  explicit GcsServer(const GcsServerConfig &config);
+  explicit GcsServer(const GcsServerConfig &config,
+                     boost::asio::io_service &main_service);
   virtual ~GcsServer();
 
   /// Start gcs server.
@@ -82,8 +84,8 @@ class GcsServer {
   /// The job info handler
   virtual std::unique_ptr<rpc::JobInfoHandler> InitJobInfoHandler();
 
-  /// The object info handler
-  virtual std::unique_ptr<rpc::ObjectInfoHandler> InitObjectInfoHandler();
+  /// The object manager
+  virtual std::unique_ptr<GcsObjectManager> InitObjectManager();
 
   /// The task info handler
   virtual std::unique_ptr<rpc::TaskInfoHandler> InitTaskInfoHandler();
@@ -107,10 +109,10 @@ class GcsServer {
 
   /// Gcs server configuration
   GcsServerConfig config_;
+  /// The main io service to drive event posted from grpc threads.
+  boost::asio::io_context &main_service_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
-  /// The main io service to drive event posted from grpc threads.
-  boost::asio::io_context main_service_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
   rpc::ClientCallManager client_call_manager_;
   /// The gcs node manager.
@@ -127,7 +129,7 @@ class GcsServer {
   /// Node info handler and service
   std::unique_ptr<rpc::NodeInfoGrpcService> node_info_service_;
   /// Object info handler and service
-  std::unique_ptr<rpc::ObjectInfoHandler> object_info_handler_;
+  std::unique_ptr<gcs::GcsObjectManager> gcs_object_manager_;
   std::unique_ptr<rpc::ObjectInfoGrpcService> object_info_service_;
   /// Task info handler and service
   std::unique_ptr<rpc::TaskInfoHandler> task_info_handler_;

@@ -30,22 +30,28 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 
  protected:
   void SetUp() override {
-    config.grpc_server_port = 0;
-    config.grpc_server_name = "MockedGcsServer";
-    config.grpc_server_thread_num = 1;
-    config.redis_address = "127.0.0.1";
-    config.is_test = true;
-    config.redis_port = TEST_REDIS_SERVER_PORTS.front();
-    gcs_server_.reset(new gcs::GcsServer(config));
-    io_service_.reset(new boost::asio::io_service());
+    config_.grpc_server_port = 0;
+    config_.grpc_server_name = "MockedGcsServer";
+    config_.grpc_server_thread_num = 1;
+    config_.redis_address = "127.0.0.1";
+    config_.is_test = true;
+    config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
 
-    thread_io_service_.reset(new std::thread([this] {
+    client_io_service_.reset(new boost::asio::io_service());
+    client_io_service_thread_.reset(new std::thread([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(*io_service_));
-      io_service_->run();
+          new boost::asio::io_service::work(*client_io_service_));
+      client_io_service_->run();
     }));
 
-    thread_gcs_server_.reset(new std::thread([this] { gcs_server_->Start(); }));
+    server_io_service_.reset(new boost::asio::io_service());
+    gcs_server_.reset(new gcs::GcsServer(config_, *server_io_service_));
+    gcs_server_->Start();
+    server_io_service_thread_.reset(new std::thread([this] {
+      std::unique_ptr<boost::asio::io_service::work> work(
+          new boost::asio::io_service::work(*server_io_service_));
+      server_io_service_->run();
+    }));
 
     // Wait until server starts listening.
     while (!gcs_server_->IsStarted()) {
@@ -53,28 +59,40 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     }
 
     // Create GCS client.
-    gcs::GcsClientOptions options(config.redis_address, config.redis_port,
-                                  config.redis_password, config.is_test);
+    gcs::GcsClientOptions options(config_.redis_address, config_.redis_port,
+                                  config_.redis_password, config_.is_test);
     gcs_client_.reset(new gcs::ServiceBasedGcsClient(options));
-    RAY_CHECK_OK(gcs_client_->Connect(*io_service_));
+    RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   }
 
   void TearDown() override {
-    io_service_->stop();
-    gcs_server_->Stop();
-    thread_io_service_->join();
-    thread_gcs_server_->join();
+    client_io_service_->stop();
     gcs_client_->Disconnect();
+
+    gcs_server_->Stop();
+    server_io_service_->stop();
+    gcs_server_.reset();
+    server_io_service_thread_->join();
     TestSetupUtil::FlushAllRedisServers();
+    client_io_service_thread_->join();
   }
 
   void RestartGcsServer() {
     RAY_LOG(INFO) << "Stopping GCS service, port = " << gcs_server_->GetPort();
     gcs_server_->Stop();
-    thread_gcs_server_->join();
+    server_io_service_->stop();
+    gcs_server_.reset();
+    server_io_service_thread_->join();
+    RAY_LOG(INFO) << "Finished stopping GCS service.";
 
-    gcs_server_.reset(new gcs::GcsServer(config));
-    thread_gcs_server_.reset(new std::thread([this] { gcs_server_->Start(); }));
+    server_io_service_.reset(new boost::asio::io_service());
+    gcs_server_.reset(new gcs::GcsServer(config_, *server_io_service_));
+    gcs_server_->Start();
+    server_io_service_thread_.reset(new std::thread([this] {
+      std::unique_ptr<boost::asio::io_service::work> work(
+          new boost::asio::io_service::work(*server_io_service_));
+      server_io_service_->run();
+    }));
 
     // Wait until server starts listening.
     while (gcs_server_->GetPort() == 0) {
@@ -466,14 +484,15 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   // GCS server.
-  gcs::GcsServerConfig config;
+  gcs::GcsServerConfig config_;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
-  std::unique_ptr<std::thread> thread_io_service_;
-  std::unique_ptr<std::thread> thread_gcs_server_;
-  std::unique_ptr<boost::asio::io_service> io_service_;
+  std::unique_ptr<std::thread> server_io_service_thread_;
+  std::unique_ptr<boost::asio::io_service> server_io_service_;
 
   // GCS client.
   std::unique_ptr<gcs::GcsClient> gcs_client_;
+  std::unique_ptr<std::thread> client_io_service_thread_;
+  std::unique_ptr<boost::asio::io_service> client_io_service_;
 
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};
@@ -878,6 +897,7 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableReSubscribe) {
   ASSERT_TRUE(UpdateActor(actor2_id, actor2_table_data));
   WaitPendingDone(actor1_update_count, 3);
   WaitPendingDone(actor2_update_count, 1);
+  UnsubscribeActor(actor1_id);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestObjectTableReSubscribe) {
@@ -1019,6 +1039,30 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerTableReSubscribe) {
   auto worker_failure_data = Mocker::GenWorkerFailureData();
   ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
   WaitPendingDone(worker_failure_count, 1);
+}
+
+TEST_F(ServiceBasedGcsClientTest, TestGcsTableReload) {
+  ObjectID object_id = ObjectID::FromRandom();
+  ClientID node_id = ClientID::FromRandom();
+
+  // Register node to GCS.
+  auto node_info = Mocker::GenNodeInfo();
+  ASSERT_TRUE(RegisterNode(*node_info));
+
+  // Add location of object to GCS.
+  ASSERT_TRUE(AddLocation(object_id, node_id));
+
+  // Restart GCS.
+  RestartGcsServer();
+
+  // Get information of nodes from GCS.
+  std::vector<rpc::GcsNodeInfo> node_list = GetNodeInfoList();
+  EXPECT_EQ(node_list.size(), 1);
+
+  // Get object's locations from GCS.
+  auto locations = GetLocations(object_id);
+  ASSERT_EQ(locations.size(), 1);
+  ASSERT_EQ(locations.back().manager(), node_id.Binary());
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
