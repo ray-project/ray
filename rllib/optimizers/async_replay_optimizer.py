@@ -5,7 +5,7 @@ https://arxiv.org/abs/1803.00933"""
 import collections
 import logging
 import numpy as np
-import os
+import platform
 import random
 from six.moves import queue
 import threading
@@ -340,7 +340,7 @@ class LocalReplayBuffer(ParallelIteratorWorker):
         return _local_replay_buffer
 
     def get_host(self):
-        return os.uname()[1]
+        return platform.node()
 
     def add_batch(self, batch):
         # Make a copy so the replay buffer doesn't pin plasma memory.
