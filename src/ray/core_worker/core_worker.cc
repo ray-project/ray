@@ -299,7 +299,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   core_worker_server_ = std::unique_ptr<rpc::GrpcServer>(
       new rpc::GrpcServer(WorkerTypeString(options_.worker_type), assigned_port));
   core_worker_server_->RegisterService(grpc_service_);
-  core_worker_server_->Run();
+  core_worker_server_->Run(/*num_retries=*/1);
 
   // Tell the raylet the port that we are listening on.
   RAY_CHECK_OK(local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));

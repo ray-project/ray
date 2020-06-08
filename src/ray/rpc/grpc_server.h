@@ -65,7 +65,9 @@ class GrpcServer {
   ~GrpcServer() { Shutdown(); }
 
   /// Initialize and run this server.
-  void Run();
+  ///
+  /// \param[in] number of retries if starting the server fails
+  void Run(int num_retries = 0);
 
   // Shutdown this server
   void Shutdown() {
