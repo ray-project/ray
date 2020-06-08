@@ -303,13 +303,15 @@ class DockerCommandRunner(SSHCommandRunner):
     def run(self,
             cmd,
             timeout=120,
-            allocate_tty=False,
             exit_on_fail=False,
             port_forward=None,
             with_output=False):
-        return self.ssh_command_runner.run(cmd, timeout, allocate_tty,
-                                           exit_on_fail, port_forward,
-                                           with_output)
+        return self.ssh_command_runner.run(
+            cmd,
+            timeout=timeout,
+            exit_on_fail=exit_on_fail,
+            port_forward=None,
+            with_output=False)
 
     def run_rsync_up(self, source, target):
         self.ssh_command_runner.run_rsync_up(source, target)
