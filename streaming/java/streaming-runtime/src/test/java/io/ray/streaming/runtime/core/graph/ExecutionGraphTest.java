@@ -54,7 +54,7 @@ public class ExecutionGraphTest extends BaseUnitTest {
         Assert.assertNotNull(vertex.getVertexType());
         Assert.assertNotNull(vertex.getLanguage());
         Assert.assertEquals(vertex.getExecutionVertexName(),
-          vertex.getExecutionJobVertexId() + "-" + vertex.getExecutionJobVertexName() + "-" + vertex.getExecutionVertexIndex());
+          vertex.getExecutionJobVertexName() + "-" + vertex.getExecutionVertexIndex());
     });
 
     int startIndex = 0;

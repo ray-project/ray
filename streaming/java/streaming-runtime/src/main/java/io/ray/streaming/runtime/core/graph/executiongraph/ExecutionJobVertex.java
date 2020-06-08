@@ -60,7 +60,8 @@ public class ExecutionJobVertex {
       AtomicInteger idGenerator,
       long buildTime) {
     this.executionJobVertexId = jobVertex.getVertexId();
-    this.executionJobVertexName = jobVertex.getStreamOperator().getName();
+    this.executionJobVertexName = generateExecutionJobVertexName(
+        executionJobVertexId, jobVertex.getStreamOperator().getName());
     this.streamOperator = jobVertex.getStreamOperator();
     this.vertexType = jobVertex.getVertexType();
     this.language = jobVertex.getLanguage();
@@ -79,6 +80,10 @@ public class ExecutionJobVertex {
           idGenerator.getAndIncrement(), subIndex, this, resourceConfig));
     }
     return executionVertices;
+  }
+
+  private String generateExecutionJobVertexName(int jobVertexId, String streamOperatorName) {
+    return jobVertexId + "-" + streamOperatorName;
   }
 
   public Map<Integer, BaseActor> getExecutionVertexWorkers() {
