@@ -168,6 +168,10 @@ venv
 # Vim
 .*.swp
 *.swp
+tags
+
+# Emacs
+.#*
 
 # tools
 tools/prometheus*

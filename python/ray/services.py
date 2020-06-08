@@ -1230,7 +1230,8 @@ def start_raylet(redis_address,
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
-                 fate_share=None):
+                 fate_share=None,
+                 socket_to_use=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1361,6 +1362,8 @@ def start_raylet(redis_address,
         "--temp_dir={}".format(temp_dir),
         "--session_dir={}".format(session_dir),
     ]
+    if socket_to_use:
+        socket_to_use.close()
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET,

@@ -6,12 +6,14 @@ import traceback
 import json
 
 import ray
-from ray.autoscaler.autoscaler import LoadMetrics, StandardAutoscaler
+from ray.autoscaler.autoscaler import StandardAutoscaler
+from ray.autoscaler.load_metrics import LoadMetrics
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
 from ray.utils import binary_to_hex, setup_logger
 from ray.autoscaler.commands import teardown_cluster
+import redis
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +162,11 @@ class Monitor:
         subscribe_clients = [self.primary_subscribe_client]
         for subscribe_client in subscribe_clients:
             for _ in range(max_messages):
-                message = subscribe_client.get_message()
+                message = None
+                try:
+                    message = subscribe_client.get_message()
+                except redis.exceptions.ConnectionError:
+                    pass
                 if message is None:
                     # Continue on to the next subscribe client.
                     break

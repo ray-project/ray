@@ -9,7 +9,7 @@ from ray.serve.context import TaskContext
 from ray.serve.metric import MetricClient
 from ray.serve.request_params import RequestMetadata
 from ray.serve.http_util import Response
-from ray.serve.utils import logger, retry_actor_failures_async
+from ray.serve.utils import logger
 
 from urllib.parse import parse_qs
 
@@ -31,13 +31,11 @@ class HTTPProxy:
         assert ray.is_initialized()
         master = serve.api._get_master_actor()
 
-        self.route_table, [
-            self.router_handle
-        ] = await retry_actor_failures_async(master.get_http_proxy_config)
+        self.route_table, [self.router_handle
+                           ] = await master.get_http_proxy_config.remote()
 
         # The exporter is required to return results for /-/metrics endpoint.
-        [self.metric_exporter] = await retry_actor_failures_async(
-            master.get_metric_exporter)
+        [self.metric_exporter] = await master.get_metric_exporter.remote()
 
         self.metric_client = MetricClient(self.metric_exporter)
         self.request_counter = self.metric_client.new_counter(
@@ -107,8 +105,7 @@ class HTTPProxy:
         if current_path == "/-/routes":
             await Response(self.route_table).send(scope, receive, send)
         elif current_path == "/-/metrics":
-            metric_info = await retry_actor_failures_async(
-                self.metric_exporter.inspect_metrics)
+            metric_info = await self.metric_exporter.inspect_metrics.remote()
             await Response(metric_info).send(scope, receive, send)
         else:
             await Response(

@@ -7,7 +7,7 @@ load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//bazel:ray.bzl", "COPTS")
+load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS")
 
 # === Begin of protobuf definitions ===
 
@@ -243,6 +243,203 @@ cc_library(
 
 # === End of rpc definitions ===
 
+# === Begin of plasma definitions ===
+
+# TODO(mehrdadn): (How to) support dynamic linking?
+PROPAGATED_WINDOWS_DEFINES = ["ARROW_STATIC"]
+
+PLASMA_COPTS = COPTS + select({
+    "@bazel_tools//src/conditions:windows": [
+        "-D" + "WIN32_REPLACE_FD_APIS",
+        "/FI" + "win32fd.h",
+    ] + ["-D" + define for define in PROPAGATED_WINDOWS_DEFINES],
+    "//conditions:default": [
+        "-DARROW_USE_GLOG",
+    ],
+})
+
+PLASMA_LINKOPTS = [] + select({
+    "@bazel_tools//src/conditions:windows": [
+        "-DefaultLib:" + "ws2_32.lib",
+    ],
+    "//conditions:default": [
+    ],
+})
+
+cc_library(
+    name = "plasma_client",
+    srcs = [
+        "src/ray/plasma/client.cc",
+        "src/ray/plasma/common.cc",
+        "src/ray/plasma/fling.cc",
+        "src/ray/plasma/io.cc",
+        "src/ray/plasma/malloc.cc",
+        "src/ray/plasma/plasma.cc",
+        "src/ray/plasma/protocol.cc",
+    ],
+    hdrs = [
+        "src/ray/plasma/client.h",
+        "src/ray/plasma/common.h",
+        "src/ray/plasma/common_generated.h",
+        "src/ray/plasma/compat.h",
+        "src/ray/plasma/external_store.h",
+        "src/ray/plasma/fling.h",
+        "src/ray/plasma/io.h",
+        "src/ray/plasma/malloc.h",
+        "src/ray/plasma/plasma.h",
+        "src/ray/plasma/plasma_generated.h",
+        "src/ray/plasma/protocol.h",
+    ],
+    copts = PLASMA_COPTS,
+    defines = select({
+        "@bazel_tools//src/conditions:windows": PROPAGATED_WINDOWS_DEFINES,
+        "//conditions:default": [],
+    }),
+    linkopts = PLASMA_LINKOPTS,
+    strip_include_prefix = "src/ray",
+    deps = [
+        ":common_fbs",
+        ":plasma_fbs",
+        ":platform_shims",
+        "@arrow",
+        "@com_github_google_glog//:glog",
+    ],
+)
+
+cc_binary(
+    name = "libplasma_java.so",
+    srcs = [
+        "src/ray/plasma/lib/java/org_apache_arrow_plasma_PlasmaClientJNI.cc",
+        "src/ray/plasma/lib/java/org_apache_arrow_plasma_PlasmaClientJNI.h",
+        ":jni.h",
+        ":jni_md.h",
+    ],
+    copts = PLASMA_COPTS,
+    includes = [
+        "src/ray",
+    ],
+    linkshared = 1,
+    linkstatic = 1,
+    deps = [":plasma_client"],
+)
+
+genrule(
+    name = "copy_jni_h",
+    srcs = ["@bazel_tools//tools/jdk:jni_header"],
+    outs = ["jni.h"],
+    cmd = "cp -f $< $@",
+)
+
+genrule(
+    name = "copy_jni_md_h",
+    srcs = select({
+        "@bazel_tools//src/conditions:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"],
+        "@bazel_tools//src/conditions:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
+        "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
+    }),
+    outs = ["jni_md.h"],
+    cmd = "cp -f $< $@",
+)
+
+genrule(
+    name = "plasma-jni-darwin-compat",
+    srcs = [":libplasma_java.so"],
+    outs = ["libplasma_java.dylib"],
+    cmd = "cp $< $@",
+    output_to_bindir = 1,
+)
+
+cc_library(
+    name = "ae",
+    srcs = [
+        "src/ray/plasma/thirdparty/ae/ae.c",
+    ],
+    hdrs = [
+        "src/ray/plasma/thirdparty/ae/ae.h",
+        "src/ray/plasma/thirdparty/ae/ae_epoll.c",
+        "src/ray/plasma/thirdparty/ae/ae_evport.c",
+        "src/ray/plasma/thirdparty/ae/ae_kqueue.c",
+        "src/ray/plasma/thirdparty/ae/ae_select.c",
+        "src/ray/plasma/thirdparty/ae/config.h",
+        "src/ray/plasma/thirdparty/ae/zmalloc.h",
+    ],
+    copts = PLASMA_COPTS,
+    includes = [
+        "src/ray/plasma/thirdparty/ae",
+    ],
+    strip_include_prefix = "src/ray",
+    deps = [
+        ":platform_shims",
+    ],
+)
+
+cc_library(
+    name = "plasma_store_server_lib",
+    srcs = [
+        "src/ray/plasma/dlmalloc.cc",
+        "src/ray/plasma/events.cc",
+        "src/ray/plasma/eviction_policy.cc",
+        "src/ray/plasma/external_store.cc",
+        "src/ray/plasma/plasma_allocator.cc",
+        "src/ray/plasma/quota_aware_policy.cc",
+        "src/ray/plasma/store.cc",
+    ],
+    hdrs = [
+        "src/ray/plasma/events.h",
+        "src/ray/plasma/eviction_policy.h",
+        "src/ray/plasma/external_store.h",
+        "src/ray/plasma/plasma_allocator.h",
+        "src/ray/plasma/quota_aware_policy.h",
+        "src/ray/plasma/store.h",
+        "src/ray/plasma/thirdparty/dlmalloc.c",
+    ],
+    copts = PLASMA_COPTS,
+    linkopts = PLASMA_LINKOPTS,
+    strip_include_prefix = "src/ray",
+    deps = [
+        ":ae",
+        ":plasma_client",
+        ":platform_shims",
+        "@com_github_google_glog//:glog",
+    ],
+)
+
+cc_binary(
+    name = "plasma_store_server",
+    srcs = [
+        "src/ray/plasma/store_exec.cc",
+    ],
+    copts = PLASMA_COPTS,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":plasma_store_server_lib",
+        ":platform_shims",
+    ],
+)
+
+FLATC_ARGS = [
+    "--gen-object-api",
+    "--gen-mutable",
+    "--scoped-enums",
+]
+
+flatbuffer_cc_library(
+    name = "common_fbs",
+    srcs = ["src/ray/plasma/common.fbs"],
+    flatc_args = FLATC_ARGS,
+    out_prefix = "src/ray/plasma/",
+)
+
+flatbuffer_cc_library(
+    name = "plasma_fbs",
+    srcs = ["src/ray/plasma/plasma.fbs"],
+    flatc_args = FLATC_ARGS,
+    includes = ["src/ray/plasma/common.fbs"],
+    out_prefix = "src/ray/plasma/",
+)
+
+# === End of plasma definitions ===
+
 cc_library(
     name = "ray_common",
     srcs = glob(
@@ -267,6 +464,7 @@ cc_library(
         ":common_cc_proto",
         ":gcs_cc_proto",
         ":node_manager_fbs",
+        ":plasma_client",
         ":ray_util",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
@@ -275,7 +473,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
         "@msgpack",
-        "@plasma//:plasma_client",
     ],
 )
 
@@ -453,6 +650,7 @@ cc_library(
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":object_manager",
+        ":plasma_client",
         ":ray_common",
         ":ray_util",
         ":service_based_gcs_client_lib",
@@ -468,7 +666,6 @@ cc_library(
         "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
         "@io_opencensus_cpp//opencensus/stats",
         "@io_opencensus_cpp//opencensus/tags",
-        "@plasma//:plasma_client",
     ],
 )
 
@@ -533,17 +730,17 @@ cc_binary(
 cc_test(
     name = "core_worker_test",
     srcs = ["src/ray/core_worker/test/core_worker_test.cc"],
-    args = ["$(location @plasma//:plasma_store_server) $(location raylet) $(location raylet_monitor) $(location mock_worker) $(location gcs_server) $(location redis-cli) $(location redis-server) $(location libray_redis_module.so)"],
+    args = ["$(location //:plasma_store_server) $(location raylet) $(location raylet_monitor) $(location mock_worker) $(location gcs_server) $(location redis-cli) $(location redis-server) $(location libray_redis_module.so)"],
     copts = COPTS,
     data = [
         "//:gcs_server",
         "//:libray_redis_module.so",
         "//:mock_worker",
+        "//:plasma_store_server",
         "//:raylet",
         "//:raylet_monitor",
         "//:redis-cli",
         "//:redis-server",
-        "@plasma//:plasma_store_server",
     ],
     deps = [
         ":core_worker_lib",
@@ -964,6 +1161,8 @@ cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
+    # TODO(swang): Enable again once pubsub client supports GCS server restart.
+    tags = ["manual"],
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
@@ -1002,10 +1201,10 @@ cc_library(
         ":gcs",
         ":object_manager_fbs",
         ":object_manager_rpc",
+        ":plasma_client",
         ":ray_common",
         ":ray_util",
         "@boost//:asio",
-        "@plasma//:plasma_client",
     ],
 )
 
@@ -1076,13 +1275,13 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":plasma_client",
         ":sha256",
         "@boost//:asio",
         "@com_github_google_glog//:glog",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        "@plasma//:plasma_client",
     ],
 )
 
@@ -1375,19 +1574,6 @@ cc_test(
     ],
 )
 
-FLATC_ARGS = [
-    "--gen-object-api",
-    "--gen-mutable",
-    "--scoped-enums",
-]
-
-flatbuffer_cc_library(
-    name = "common_fbs",
-    srcs = ["@plasma//:cpp/src/plasma/common.fbs"],
-    flatc_args = FLATC_ARGS,
-    out_prefix = "src/ray/common/",
-)
-
 flatbuffer_cc_library(
     name = "node_manager_fbs",
     srcs = ["src/ray/raylet/format/node_manager.fbs"],
@@ -1415,7 +1601,8 @@ pyx_library(
     # We need to dlopen this lib with RTLD_GLOBAL to use ABI in this
     # shared lib, see python/ray/__init__.py.
     cc_kwargs = dict(
-        copts = COPTS,
+        srcs = PYX_SRCS,
+        copts = COPTS + PYX_COPTS,
         # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
         linkopts = select({
             "@bazel_tools//src/conditions:darwin": [
@@ -1453,7 +1640,8 @@ pyx_library(
         "python/ray/streaming/includes/*.pxi",
     ]),
     cc_kwargs = dict(
-        copts = COPTS,
+        srcs = PYX_SRCS,
+        copts = COPTS + PYX_COPTS,
     ),
     deps = [
         "//streaming:streaming_lib",
@@ -1471,7 +1659,10 @@ cc_binary(
         "@bazel_tools//src/conditions:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"],
         "@bazel_tools//src/conditions:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
         "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
-    }),
+    }) + [
+        ":jni.h",
+        ":jni_md.h",
+    ],
     copts = COPTS,
     includes = [
         "src",
@@ -1639,7 +1830,7 @@ genrule(
         "//:raylet",
         "//:raylet_monitor",
         "//:gcs_server",
-        "@plasma//:plasma_store_server",
+        "//:plasma_store_server",
         "//streaming:copy_streaming_py_proto",
     ],
     outs = ["ray_pkg.out"],
@@ -1664,7 +1855,7 @@ genrule(
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/" &&
         cp -f $(locations //:libray_redis_module.so) "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/" &&
         cp -f $(location //:raylet_monitor) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
-        cp -f $(location @plasma//:plasma_store_server) "$$WORK_DIR/python/ray/core/src/plasma/" &&
+        cp -f $(location //:plasma_store_server) "$$WORK_DIR/python/ray/core/src/plasma/" &&
         cp -f $(location //:raylet) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
         cp -f $(location //:gcs_server) "$$WORK_DIR/python/ray/core/src/ray/gcs/" &&
         mkdir -p "$$WORK_DIR/python/ray/core/generated/ray/protocol/" &&
