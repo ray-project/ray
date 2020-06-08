@@ -19,6 +19,7 @@
 #include <ray/gcs/redis_gcs_client.h>
 #include <ray/rpc/client_call.h>
 #include <ray/rpc/gcs_server/gcs_rpc_server.h>
+#include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 
@@ -82,8 +83,8 @@ class GcsServer {
   /// The job info handler
   virtual std::unique_ptr<rpc::JobInfoHandler> InitJobInfoHandler();
 
-  /// The object info handler
-  virtual std::unique_ptr<rpc::ObjectInfoHandler> InitObjectInfoHandler();
+  /// The object manager
+  virtual std::unique_ptr<GcsObjectManager> InitObjectManager();
 
   /// The task info handler
   virtual std::unique_ptr<rpc::TaskInfoHandler> InitTaskInfoHandler();
@@ -127,7 +128,7 @@ class GcsServer {
   /// Node info handler and service
   std::unique_ptr<rpc::NodeInfoGrpcService> node_info_service_;
   /// Object info handler and service
-  std::unique_ptr<rpc::ObjectInfoHandler> object_info_handler_;
+  std::unique_ptr<gcs::GcsObjectManager> gcs_object_manager_;
   std::unique_ptr<rpc::ObjectInfoGrpcService> object_info_service_;
   /// Task info handler and service
   std::unique_ptr<rpc::TaskInfoHandler> task_info_handler_;

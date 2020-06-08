@@ -225,6 +225,7 @@ class TrialRunner:
             #  which may also contain trial checkpoints. We should selectively
             #  sync the necessary files instead.
             self._syncer.sync_down_if_needed()
+            self._syncer.wait()
 
             if not self.checkpoint_exists(self._local_checkpoint_dir):
                 raise ValueError("Called resume when no checkpoint exists "

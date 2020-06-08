@@ -127,7 +127,7 @@ async def test_split_traffic_random(serve_instance, task_runner_mock_actor):
 async def test_queue_remove_replicas(serve_instance):
     class TestRouter(Router):
         def worker_queue_size(self, backend):
-            return self.worker_queues["backend-remove"].qsize()
+            return len(self.worker_queues["backend-remove"])
 
     temp_actor = mock_task_runner()
     q = ray.remote(TestRouter).remote()
