@@ -2,7 +2,6 @@ import enum
 
 import ray
 import ray.streaming.generated.remote_call_pb2 as remote_call_pb
-import ray.streaming.generated.streaming_pb2 as streaming_pb
 import ray.streaming.operator as operator
 import ray.streaming.partition as partition
 from ray.streaming import function

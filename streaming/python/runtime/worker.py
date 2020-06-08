@@ -5,7 +5,7 @@ import ray.streaming._streaming as _streaming
 import ray.streaming.generated.remote_call_pb2 as remote_call_pb
 import ray.streaming.runtime.processor as processor
 from ray.streaming.config import Config
-from ray.streaming.runtime.graph import SubExecutionGraph
+from ray.streaming.runtime.graph import ExecutionVertexContext
 from ray.streaming.runtime.task import SourceStreamTask, OneInputStreamTask
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ class JobWorker(object):
         self.worker_context = worker_context
 
         # build vertex context from pb
-        self.vertex_context = SubExecutionGraph(worker_context.sub_graph)
+        self.vertex_context = ExecutionVertexContext(worker_context.sub_graph)
 
         # use vertex id as task id
         self.task_id = self.sub_graph.get_task_id()
