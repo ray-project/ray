@@ -44,17 +44,12 @@ Status GcsPubSub::SubscribeAll(const std::string &channel, const Callback &subsc
   return SubscribeInternal(channel, subscribe, done);
 }
 
-Status GcsPubSub::Unsubscribe(const std::string &channel_name, const std::string &id) {
-  std::string pattern = GenChannelPattern(channel_name, id);
+Status GcsPubSub::Unsubscribe(const std::string &channel, const std::string &id) {
+  return UnsubscribeInternal(channel, id);
+}
 
-  absl::MutexLock lock(&mutex_);
-  // Add the UNSUBSCRIBE command to the queue.
-  auto channel = channels_.find(pattern);
-  RAY_CHECK(channel != channels_.end());
-  channel->second.command_queue.push_back(Command());
-
-  // Process the first command on the queue, if possible.
-  return ExecuteCommandIfPossible(channel->first, channel->second);
+Status GcsPubSub::UnsubscribeAll(const std::string &channel) {
+  return UnsubscribeInternal(channel);
 }
 
 Status GcsPubSub::SubscribeInternal(const std::string &channel_name,
@@ -72,6 +67,20 @@ Status GcsPubSub::SubscribeInternal(const std::string &channel_name,
 
   // Add the SUBSCRIBE command to the queue.
   channel->second.command_queue.push_back(Command(subscribe, done));
+
+  // Process the first command on the queue, if possible.
+  return ExecuteCommandIfPossible(channel->first, channel->second);
+}
+
+Status GcsPubSub::UnsubscribeInternal(const std::string &channel_name,
+                                      const boost::optional<std::string> &id) {
+  std::string pattern = GenChannelPattern(channel_name, id);
+
+  absl::MutexLock lock(&mutex_);
+  // Add the UNSUBSCRIBE command to the queue.
+  auto channel = channels_.find(pattern);
+  RAY_CHECK(channel != channels_.end());
+  channel->second.command_queue.push_back(Command());
 
   // Process the first command on the queue, if possible.
   return ExecuteCommandIfPossible(channel->first, channel->second);
@@ -154,8 +163,6 @@ Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
   } else if (!channel.pending_reply) {
     // There is no in-flight command, but the next command to execute is not
     // runnable. The caller must have sent a command out-of-order.
-    // TODO(swang): This can cause a fatal error if the GCS server restarts and
-    // the client attempts to subscribe again.
     RAY_LOG(FATAL) << "Caller attempted a duplicate subscribe or unsubscribe to channel "
                    << channel_key;
   }

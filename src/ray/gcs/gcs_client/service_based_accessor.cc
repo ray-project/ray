@@ -82,6 +82,7 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeToFinishedJobs(
 Status ServiceBasedJobInfoAccessor::AsyncReSubscribe() {
   RAY_LOG(INFO) << "Reestablishing subscription for job info.";
   if (subscribe_operation_ != nullptr) {
+    RAY_CHECK_OK(client_impl_->GetGcsPubSub().UnsubscribeAll(JOB_CHANNEL));
     return subscribe_operation_(nullptr);
   }
   return Status::OK();
@@ -388,9 +389,12 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
 Status ServiceBasedActorInfoAccessor::AsyncReSubscribe() {
   RAY_LOG(INFO) << "Reestablishing subscription for actor info.";
   if (subscribe_all_operation_ != nullptr) {
+    RAY_CHECK_OK(client_impl_->GetGcsPubSub().UnsubscribeAll(ACTOR_CHANNEL));
     RAY_CHECK_OK(subscribe_all_operation_(nullptr));
   }
   for (auto &item : subscribe_operations_) {
+    RAY_CHECK_OK(
+        client_impl_->GetGcsPubSub().Unsubscribe(ACTOR_CHANNEL, item.first.Hex()));
     RAY_CHECK_OK(item.second(nullptr));
   }
   return Status::OK();
@@ -754,12 +758,15 @@ void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_in
 Status ServiceBasedNodeInfoAccessor::AsyncReSubscribe() {
   RAY_LOG(INFO) << "Reestablishing subscription for node info.";
   if (subscribe_node_operation_ != nullptr) {
+    RAY_CHECK_OK(client_impl_->GetGcsPubSub().UnsubscribeAll(NODE_CHANNEL));
     return subscribe_node_operation_(nullptr);
   }
   if (subscribe_resource_operation_ != nullptr) {
+    RAY_CHECK_OK(client_impl_->GetGcsPubSub().UnsubscribeAll(NODE_RESOURCE_CHANNEL));
     return subscribe_resource_operation_(nullptr);
   }
   if (subscribe_batch_heartbeat_operation_ != nullptr) {
+    RAY_CHECK_OK(client_impl_->GetGcsPubSub().UnsubscribeAll(HEARTBEAT_BATCH_CHANNEL));
     return subscribe_batch_heartbeat_operation_(nullptr);
   }
   return Status::OK();
@@ -984,9 +991,13 @@ Status ServiceBasedTaskInfoAccessor::AttemptTaskReconstruction(
 Status ServiceBasedTaskInfoAccessor::AsyncReSubscribe() {
   RAY_LOG(INFO) << "Reestablishing subscription for task info.";
   for (auto &item : subscribe_task_operations_) {
+    RAY_CHECK_OK(
+        client_impl_->GetGcsPubSub().Unsubscribe(TASK_CHANNEL, item.first.Hex()));
     RAY_CHECK_OK(item.second(nullptr));
   }
   for (auto &item : subscribe_task_lease_operations_) {
+    RAY_CHECK_OK(
+        client_impl_->GetGcsPubSub().Unsubscribe(TASK_LEASE_CHANNEL, item.first.Hex()));
     RAY_CHECK_OK(item.second(nullptr));
   }
   return Status::OK();
@@ -1139,6 +1150,8 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
 Status ServiceBasedObjectInfoAccessor::AsyncReSubscribe() {
   RAY_LOG(INFO) << "Reestablishing subscription for object locations.";
   for (auto &item : subscribe_object_operations_) {
+    RAY_CHECK_OK(
+        client_impl_->GetGcsPubSub().Unsubscribe(OBJECT_CHANNEL, item.first.Hex()));
     RAY_CHECK_OK(item.second(nullptr));
   }
   return Status::OK();
@@ -1243,6 +1256,7 @@ Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
 Status ServiceBasedWorkerInfoAccessor::AsyncReSubscribe() {
   RAY_LOG(INFO) << "Reestablishing subscription for worker failures.";
   if (subscribe_operation_ != nullptr) {
+    RAY_CHECK_OK(client_impl_->GetGcsPubSub().UnsubscribeAll(WORKER_FAILURE_CHANNEL));
     return subscribe_operation_(nullptr);
   }
   return Status::OK();
