@@ -5,7 +5,7 @@ cluster_name: asan_python_tests
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers. min_workers defaults to 0.
-max_workers: 1
+max_workers: 0
 
 # Cloud-provider specific configuration.
 provider:

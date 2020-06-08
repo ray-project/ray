@@ -1,3 +1,7 @@
+# This bazelrc specifies configuration for the release asan test.
+# It exists because we want everything to be "default" configuration
+# instead of "--config=ci" or "--config=asan".
+
 # Cache
 build --remote_cache=https://storage.googleapis.com/ray-bazel-cache
 build --disk_cache=/tmp/bazel-cache
