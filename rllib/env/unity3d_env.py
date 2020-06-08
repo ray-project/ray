@@ -13,7 +13,10 @@ logger = logging.getLogger(__name__)
 class Unity3DEnv(MultiAgentEnv):
     """A MultiAgentEnv representing a single Unity3D game instance.
 
-    For an example on how to use this class inside a Unity game client, which
+    For an example on how to use this Env with a running Unity3D editor
+    or with a compiled game, see:
+    `rllib/examples/unity3d_env_local.py`
+    For an example on how to use it inside a Unity game client, which
     connects to an RLlib Policy server, see:
     `rllib/examples/serving/unity3d_[client|server].py`
 
