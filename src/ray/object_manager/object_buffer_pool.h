@@ -28,6 +28,7 @@
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/object_manager/plasma/client.h"
 
 namespace ray {
 

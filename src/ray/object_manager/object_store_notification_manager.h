@@ -28,8 +28,8 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-
 #include "ray/object_manager/object_directory.h"
+#include "ray/object_manager/plasma/client.h"
 
 namespace ray {
 
