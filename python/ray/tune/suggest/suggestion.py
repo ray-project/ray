@@ -121,7 +121,11 @@ class Searcher:
             trial_id (str): Trial ID used for subsequent notifications.
 
         Returns:
-            dict|None: Configuration for a trial, if possible.
+            dict | FINISHED | None: Configuration for a trial, if possible.
+                If FINISHED is returned, Tune will be notified that
+                no more suggestions/configurations will be provided.
+                If None is returned, Tune will skip the querying of the
+                searcher for this step.
 
         """
         raise NotImplementedError
@@ -174,7 +178,7 @@ class ConcurrencyLimiter(Searcher):
         if len(self.live_trials) >= self.max_concurrent:
             return
         suggestion = self.searcher.suggest(trial_id)
-        if suggestion:
+        if suggestion not in (None, Searcher.FINISHED):
             self.live_trials.add(trial_id)
         return suggestion
 
