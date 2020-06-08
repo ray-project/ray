@@ -23,7 +23,7 @@ class SkipConnection(nn.Module):
         self._layer = layer
         self._fan_in_layer = fan_in_layer
 
-    def call(self, inputs, **kwargs):
+    def forward(self, inputs, **kwargs):
         # del kwargs
         outputs = self._layer(inputs, **kwargs)
         # Residual case, just add inputs to outputs.

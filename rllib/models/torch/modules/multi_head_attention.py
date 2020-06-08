@@ -10,7 +10,7 @@ from ray.rllib.utils.torch_ops import sequence_mask
 torch, nn = try_import_torch()
 
 
-class MultiHeadAttention(nn.Module):
+class TorchMultiHeadAttention(nn.Module):
     """A multi-head attention layer described in [1]."""
 
     # Change to the tf implementation: include the in_dim parameter

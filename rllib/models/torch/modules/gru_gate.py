@@ -15,6 +15,8 @@ class GRUGate(nn.Module):
                 "Both inputs to GRUGate must have equal size in last axis!")
 
         dim = int(h_shape[-1])
+
+        # Xavier initialization of torch tensors
         self._w_r = torch.zeros(dim, dim)
         self._w_z = torch.zeros(dim, dim)
         self._w_h = torch.zeros(dim, dim)
@@ -31,37 +33,22 @@ class GRUGate(nn.Module):
         nn.init.xavier_uniform(self._u_z)
         nn.init.xavier_uniform(self._u_h)
 
-        #TODO what dtype should we be using
-        dtype = torch.float32
-        self._init_bias = self._init_bias(dtype)
-        self._bias_z = torch.empty((dim, ), self._init_bias)
+        self._bias_z = torch.zeros(dim, ).fill_(self._init_bias)
 
-
-#        self._bias_z = bias_initializer(shape=(dim,),)
-
-    def call(self, inputs, **kwargs):
+    def forward(self, inputs, **kwargs):
         # Pass in internal state first.
         h, X = inputs
 
-        #TODO check if this is the same as multiplication along axis=1
-        r = torch.einsum("ij...,jk...->ik...", X, self._w_r) + \
-            torch.einsum("ij...,jk...->ik...", h, self._u_r)
-        #        r = tf.tensordot(X, self._w_r, axes=1) + \
-        #            tf.tensordot(h, self._u_r, axes=1)
-        r = nn.Sigmoid(r)
+        r = torch.tensordot(X, self._w_r, dims=1) + \
+            torch.tensordot(h, self._u_r, dims=1)
+        r = nn.functional.sigmoid(r)
 
-        z = torch.einsum("ij...,jk...->ik...", X, self._w_z) + \
-            torch.einsum("ij...,jk...->ik...", h, self._u_z)
+        z = torch.tensordot(X, self._w_z, dims=1) + \
+            torch.tensordot(h, self._u_z, dims=1) - self._bias_z
+        z = nn.functional.sigmoid(z)
 
-        #        z = tf.tensordot(X, self._w_z, axes=1) + \
-        #            tf.tensordot(h, self._u_z, axes=1) - self._bias_z
-        z = nn.Sigmoid(z)
-
-        h_next = torch.einsum("ij...,jk...->ik...", X, self._w_h) + \
-            torch.einsum("ij...,jk...->ik...", h, self._u_h)
-
-        #        h_next = tf.tensordot(X, self._w_h, axes=1) + \
-        #            tf.tensordot((h * r), self._u_h, axes=1)
-        h_next = nn.Tanh(h_next)
+        h_next = torch.tensordot(X, self._w_h, dims=1) + \
+            torch.tensordot((h * r), self._u_h, dims=1)
+        h_next = nn.functional.tanh(h_next)
 
         return (1 - z) * h + z * h_next
