@@ -62,7 +62,8 @@ build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
 build:tsan --linkopt -fsanitize=thread
 
-# Memory sanitizer configuration:
+# Memory sanitizer configuration
+# If you change these make sure you also change ci/asan_tests/bazelrc
 build:asan --strip=never
 build:asan --copt -g
 build:asan --copt -fsanitize=address
