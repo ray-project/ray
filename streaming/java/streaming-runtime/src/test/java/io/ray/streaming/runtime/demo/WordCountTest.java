@@ -18,29 +18,17 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 public class WordCountTest extends BaseUnitTest implements Serializable {
 
   private static final Logger LOG = LoggerFactory.getLogger(WordCountTest.class);
 
-  // TODO(zhenxuanpan): this test only works in single-process mode, because we put
-  //   results in this in-memory map.
   static Map<String, Integer> wordCount = new ConcurrentHashMap<>();
-
-  private Object rayAsyncContext;
-
-  @BeforeClass
-  public void setUp() {
-    super.setUp();
-    Ray.init();
-    rayAsyncContext = Ray.getAsyncContext();
-  }
 
   @Test
   public void testWordCount() {
-    Ray.setAsyncContext(rayAsyncContext);
+    Ray.shutdown();
 
     StreamingContext streamingContext = StreamingContext.buildContext();
     Map<String, String> config = new HashMap<>();
