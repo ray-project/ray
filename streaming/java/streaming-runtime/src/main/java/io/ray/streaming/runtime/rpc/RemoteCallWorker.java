@@ -55,12 +55,11 @@ public class RemoteCallWorker {
 
     // python
     if (actor instanceof RayPyActor) {
-      // result = Ray.callPy((RayPyActor) actor, "start");
+      result = ((RayPyActor) actor).call(new PyActorMethod("start", Object.class));
     } else {
       // java
       result = ((RayActor<JobWorker>) actor).call(JobWorker::start);
     }
-    result.get();
 
     LOG.info("Finished calling worker to start.");
     return result;
