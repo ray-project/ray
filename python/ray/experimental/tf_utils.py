@@ -1,7 +1,8 @@
 from collections import deque, OrderedDict
 import numpy as np
 
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils import force_list
+from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()
 
@@ -47,8 +48,7 @@ class TensorFlowVariables:
                 list.
         """
         self.sess = sess
-        if not isinstance(output, (list, tuple)):
-            output = [output]
+        output = force_list(output)
         queue = deque(output)
         variable_names = []
         explored_inputs = set(output)

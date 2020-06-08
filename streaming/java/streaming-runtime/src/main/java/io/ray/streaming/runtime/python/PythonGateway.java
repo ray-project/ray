@@ -3,8 +3,11 @@ package io.ray.streaming.runtime.python;
 import com.google.common.base.Preconditions;
 import com.google.common.primitives.Primitives;
 import io.ray.streaming.api.context.StreamingContext;
+import io.ray.streaming.api.stream.DataStream;
+import io.ray.streaming.api.stream.Stream;
 import io.ray.streaming.python.PythonFunction;
 import io.ray.streaming.python.PythonPartition;
+import io.ray.streaming.python.stream.PythonDataStream;
 import io.ray.streaming.python.stream.PythonStreamSource;
 import io.ray.streaming.runtime.serialization.MsgPackSerializer;
 import io.ray.streaming.runtime.util.ReflectionUtils;
@@ -99,6 +102,26 @@ public class PythonGateway {
     return serializer.serialize(getReferenceId(partition));
   }
 
+  public byte[] union(byte[] paramsBytes) {
+    List<Object> streams = (List<Object>) serializer.deserialize(paramsBytes);
+    streams = processParameters(streams);
+    LOG.info("Call union with streams {}", streams);
+    Preconditions.checkArgument(streams.size() >= 2,
+        "Union needs at least two streams");
+    Stream unionStream;
+    Stream stream1 = (Stream) streams.get(0);
+    List otherStreams = streams.subList(1, streams.size());
+    if (stream1 instanceof DataStream) {
+      DataStream dataStream = (DataStream) stream1;
+      unionStream = dataStream.union(otherStreams);
+    } else {
+      Preconditions.checkArgument(stream1 instanceof PythonDataStream);
+      PythonDataStream pythonDataStream = (PythonDataStream) stream1;
+      unionStream = pythonDataStream.union(otherStreams);
+    }
+    return serialize(unionStream);
+  }
+
   public byte[] callFunction(byte[] paramsBytes) {
     try {
       List<Object> params = (List<Object>) serializer.deserialize(paramsBytes);
@@ -111,12 +134,7 @@ public class PythonGateway {
           .map(Object::getClass).toArray(Class[]::new);
       Method method = findMethod(clz, funcName, paramsTypes);
       Object result = method.invoke(null, params.subList(2, params.size()).toArray());
-      if (returnReference(result)) {
-        referenceMap.put(getReferenceId(result), result);
-        return serializer.serialize(getReferenceId(result));
-      } else {
-        return serializer.serialize(result);
-      }
+      return serialize(result);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
@@ -134,12 +152,7 @@ public class PythonGateway {
           .map(Object::getClass).toArray(Class[]::new);
       Method method = findMethod(clz, methodName, paramsTypes);
       Object result = method.invoke(obj, params.subList(2, params.size()).toArray());
-      if (returnReference(result)) {
-        referenceMap.put(getReferenceId(result), result);
-        return serializer.serialize(getReferenceId(result));
-      } else {
-        return serializer.serialize(result);
-      }
+      return serialize(result);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
@@ -177,6 +190,15 @@ public class PythonGateway {
         String.format("Method %s with type %s doesn't exist on class %s",
             methodName, Arrays.toString(paramsTypes), cls));
     return any.get();
+  }
+
+  private byte[] serialize(Object value) {
+    if (returnReference(value)) {
+      referenceMap.put(getReferenceId(value), value);
+      return serializer.serialize(getReferenceId(value));
+    } else {
+      return serializer.serialize(value);
+    }
   }
 
   private static boolean returnReference(Object value) {

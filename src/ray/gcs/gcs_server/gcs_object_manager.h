@@ -54,6 +54,12 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
                                   rpc::RemoveObjectLocationReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Load initial data from gcs storage to memory cache asynchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param done Callback that will be called when load is complete.
+  void LoadInitialData(const EmptyCallback &done);
+
  protected:
   typedef absl::flat_hash_set<ClientID> LocationSet;
 

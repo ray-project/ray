@@ -1021,6 +1021,30 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerTableReSubscribe) {
   WaitPendingDone(worker_failure_count, 1);
 }
 
+TEST_F(ServiceBasedGcsClientTest, TestGcsTableReload) {
+  ObjectID object_id = ObjectID::FromRandom();
+  ClientID node_id = ClientID::FromRandom();
+
+  // Register node to GCS.
+  auto node_info = Mocker::GenNodeInfo();
+  ASSERT_TRUE(RegisterNode(*node_info));
+
+  // Add location of object to GCS.
+  ASSERT_TRUE(AddLocation(object_id, node_id));
+
+  // Restart GCS.
+  RestartGcsServer();
+
+  // Get information of nodes from GCS.
+  std::vector<rpc::GcsNodeInfo> node_list = GetNodeInfoList();
+  EXPECT_EQ(node_list.size(), 1);
+
+  // Get object's locations from GCS.
+  auto locations = GetLocations(object_id);
+  ASSERT_EQ(locations.size(), 1);
+  ASSERT_EQ(locations.back().manager(), node_id.Binary());
+}
+
 TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
   // Stop redis.
   TestSetupUtil::ShutDownRedisServers();

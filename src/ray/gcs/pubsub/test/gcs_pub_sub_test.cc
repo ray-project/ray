@@ -92,6 +92,8 @@ class GcsPubSubTest : public ::testing::Test {
   template <typename Data>
   void WaitPendingDone(const std::vector<Data> &data, int expected_count) {
     auto condition = [&data, expected_count]() {
+      RAY_CHECK((int)data.size() <= expected_count)
+          << "Expected " << expected_count << " data " << data.size();
       return (int)data.size() == expected_count;
     };
     EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
@@ -127,6 +129,31 @@ TEST_F(GcsPubSubTest, TestPubSubApi) {
   Publish(channel, id, data);
   WaitPendingDone(result, 2);
   WaitPendingDone(all_result, 3);
+}
+
+TEST_F(GcsPubSubTest, TestManyPubsub) {
+  std::string channel("channel");
+  std::string id("id");
+  std::string data("data");
+  std::vector<std::pair<std::string, std::string>> all_result;
+  SubscribeAll(channel, all_result);
+  // Test many concurrent subscribes and unsubscribes.
+  for (int i = 0; i < 1000; i++) {
+    auto subscribe = [](const std::string &id, const std::string &data) {};
+    RAY_CHECK_OK((pub_sub_->Subscribe(channel, id, subscribe, nullptr)));
+    RAY_CHECK_OK((pub_sub_->Unsubscribe(channel, id)));
+  }
+  for (int i = 0; i < 1000; i++) {
+    std::vector<std::string> result;
+    // Use the synchronous subscribe to make sure our SUBSCRIBE message reaches
+    // Redis before the PUBLISH.
+    Subscribe(channel, id, result);
+    Publish(channel, id, data);
+
+    WaitPendingDone(result, 1);
+    WaitPendingDone(all_result, i + 1);
+    RAY_CHECK_OK((pub_sub_->Unsubscribe(channel, id)));
+  }
 }
 
 TEST_F(GcsPubSubTest, TestMultithreading) {

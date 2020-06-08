@@ -9,10 +9,11 @@ import blist
 import ray.cloudpickle as pickle
 from ray.exceptions import RayTaskError
 
+import ray
 from ray import serve
 from ray.serve.metric import MetricClient
 from ray.serve.policy import RandomEndpointPolicy
-from ray.serve.utils import logger, retry_actor_failures
+from ray.serve.utils import logger
 
 
 class Query:
@@ -136,25 +137,21 @@ class Router:
         serve.init(name=instance_name)
         master_actor = serve.api._get_master_actor()
 
-        traffic_policies = retry_actor_failures(
-            master_actor.get_traffic_policies)
+        traffic_policies = ray.get(master_actor.get_traffic_policies.remote())
         for endpoint, traffic_policy in traffic_policies.items():
             await self.set_traffic(endpoint, traffic_policy)
 
-        backend_dict = retry_actor_failures(
-            master_actor.get_all_worker_handles)
+        backend_dict = ray.get(master_actor.get_all_worker_handles.remote())
         for backend_tag, replica_dict in backend_dict.items():
             for replica_tag, worker in replica_dict.items():
                 await self.add_new_worker(backend_tag, replica_tag, worker)
 
-        backend_configs = retry_actor_failures(
-            master_actor.get_backend_configs)
+        backend_configs = ray.get(master_actor.get_backend_configs.remote())
         for backend, backend_config in backend_configs.items():
             await self.set_backend_config(backend, backend_config)
 
         # -- Metric Registration -- #
-        [metric_exporter] = retry_actor_failures(
-            master_actor.get_metric_exporter)
+        [metric_exporter] = ray.get(master_actor.get_metric_exporter.remote())
         self.metric_client = MetricClient(metric_exporter)
         self.num_router_requests = self.metric_client.new_counter(
             "num_router_requests",

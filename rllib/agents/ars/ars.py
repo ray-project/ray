@@ -11,8 +11,8 @@ import ray
 from ray.rllib.agents import Trainer, with_common_config
 
 from ray.rllib.agents.ars.ars_tf_policy import ARSTFPolicy
-from ray.rllib.agents.es import optimizers
-from ray.rllib.agents.es import utils
+from ray.rllib.agents.es import optimizers, utils
+from ray.rllib.agents.es.es import validate_config
 from ray.rllib.agents.es.es_tf_policy import rollout
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -179,6 +179,7 @@ class ARSTrainer(Trainer):
 
     @override(Trainer)
     def _init(self, config, env_creator):
+        validate_config(config)
         env_context = EnvContext(config["env_config"] or {}, worker_index=0)
         env = env_creator(env_context)
 
