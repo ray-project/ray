@@ -43,7 +43,7 @@ class JobWorker(object):
         self.task_id = self.vertex_context.get_task_id()
 
         # build and get processor from operator
-        operator = self.vertex_context.get_stream_operator
+        operator = self.vertex_context.stream_operator
         self.stream_processor = processor.build_processor(operator)
         logger.info(
             "Initializing job worker, task_id: {}, operator: {}.".format(
