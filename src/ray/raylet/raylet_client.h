@@ -84,7 +84,6 @@ class WorkerLeaseInterface {
 
   virtual ~WorkerLeaseInterface(){};
 };
-// TODO(AlisaWu): fill the class
 /// Interface for leasing resource.
 class ResourceLeaseInterface {
  public:

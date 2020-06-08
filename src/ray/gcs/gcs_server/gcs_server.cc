@@ -60,6 +60,8 @@ void GcsServer::Start() {
   // Init gcs actor manager.
   InitGcsActorManager();
 
+  InitGcsPlacementGroupManager();
+
   // Register rpc service.
   job_info_handler_ = InitJobInfoHandler();
   job_info_service_.reset(new rpc::JobInfoGrpcService(main_service_, *job_info_handler_));
@@ -194,6 +196,11 @@ void GcsServer::InitGcsActorManager() {
                                          worker_failure_data.intentional_disconnect());
       },
       /*done_callback=*/nullptr));
+}
+
+void GcsServer::InitGcsPlacementGroupManager() {
+  // TODO(AlisaWu): init.
+  RAY_CHECK(redis_gcs_client_ != nullptr && gcs_node_manager_ != nullptr);
 }
 
 std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {

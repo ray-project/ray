@@ -169,11 +169,9 @@ bool SchedulingPolicy::ScheduleBundle(
   RAY_LOG(DEBUG) << "client_id " << node_client_id
                  << " avail: " << node_resources.GetAvailableResources().ToString()
                  << " load: " << node_resources.GetLoadResources().ToString();
+  /// If the resource_demand is subset of the whole available_node_resources, this bundle
+  /// can be set in this node, return true.
   if (resource_demand.IsSubset(available_node_resources)) {
-    // TODO(AlisaWu): update resource.
-    // ResourceSet new_load(cluster_resources[dst_client_id].GetLoadResources());
-    //     new_load.AddResources(resource_demand);
-    //     cluster_resources[dst_client_id].SetLoadResources(std::move(new_load));
     return true;
   } else {
     return false;

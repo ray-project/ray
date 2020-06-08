@@ -42,9 +42,17 @@ void GcsPlacementGroupScheduler::Schedule(
   auto bundles = placement_group->GetBundles();
   auto strategy = placement_group->GetStrategy();
   auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
-  if (alive_nodes.empty()) {
+
+  if (bundles.size() == 0) {
+    schedule_success_handler_(placement_group);
     return;
   }
+
+  if (alive_nodes.empty()) {
+    schedule_failure_handler_(placement_group);
+    return;
+  }
+
   std::vector<ClientID> schedule_bundles(bundles.size());
   // TODO(AlisaWu): add function to schedule the node.
   if (strategy == rpc::SPREAD) {
@@ -72,7 +80,6 @@ void GcsPlacementGroupScheduler::Schedule(
   auto decision = GetDecision();
   decision.resize(bundles.size());
   resource_lease_.resize(bundles.size());
-  // TODO(AlisaWu): add a callback function.
   for (int pos = 0; pos < bundles.size(); pos++) {
     RAY_CHECK(node_to_bundles_when_leasing_[schedule_bundles[pos]]
                   .emplace(bundles[pos].BundleID())
@@ -96,8 +103,6 @@ void GcsPlacementGroupScheduler::Schedule(
                 resource_lease_[pos].push_back(std::make_tuple(name, index, quantity));
               }
             }
-            // resource_lease_[pos].
-            // TODO(AlisaWu): store the plan.
           } else {
             decision[pos] = ClientID::Nil();
           }
@@ -119,7 +124,6 @@ void GcsPlacementGroupScheduler::Schedule(
                                        gcs_node_manager_.GetNode(schedule_bundles[pos]));
                   resource_lease_[i].clear();
                 }
-                // TODO(AlisaWu): reutrn resource
               }
               schedule_failure_handler_(placement_group);
             }

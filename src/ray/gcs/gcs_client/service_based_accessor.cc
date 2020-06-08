@@ -1188,7 +1188,7 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncUpdate(
             callback(status);
           }
           RAY_LOG(DEBUG) << "Finished updating placement group info, status = " << status
-                         << ", actor id = " << placement_group_id;
+                         << ", placement group id = " << placement_group_id;
           done_callback();
         });
   };

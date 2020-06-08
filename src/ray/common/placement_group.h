@@ -44,7 +44,6 @@ class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpe
       : MessageWrapper(message) {
     ConstructBundles();
   }
-  // TODO(AlisaWu): add more function to construct.
 
   PlacementGroupID PlacementGroupId() const;
 

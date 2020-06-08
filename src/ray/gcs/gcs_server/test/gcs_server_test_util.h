@@ -167,6 +167,34 @@ struct GcsServerMocker {
     int num_retry_creating_count_ = 0;
   };
 
+  class MockedGcsPlacementGroupScheduler : public gcs::GcsPlacementGroupScheduler {
+   public:
+    using gcs::GcsPlacementGroupScheduler::GcsPlacementGroupScheduler;
+
+    void ResetLeaseClientFactory(gcs::LeaseClientFactoryFn lease_client_factory) {
+      // lease_client_factory_ = std::move(lease_client_factory);
+    }
+
+    //  protected:
+    //   void RetryLeasingWorkerFromNode(std::shared_ptr<gcs::GcsActor> actor,
+    //                                   std::shared_ptr<rpc::GcsNodeInfo> node) override
+    //                                   {
+    //     ++num_retry_leasing_count_;
+    //     DoRetryLeasingWorkerFromNode(actor, node);
+    //   }
+
+    //   void RetryCreatingActorOnWorker(std::shared_ptr<gcs::GcsActor> actor,
+    //                                   std::shared_ptr<GcsLeasedWorker> worker) override
+    //                                   {
+    //     ++num_retry_creating_count_;
+    //     DoRetryCreatingActorOnWorker(actor, worker);
+    //   }
+
+    //  public:
+    //   int num_retry_leasing_count_ = 0;
+    //   int num_retry_creating_count_ = 0;
+  };
+
   class MockedActorInfoAccessor : public gcs::ActorInfoAccessor {
    public:
     Status GetAll(std::vector<rpc::ActorTableData> *actor_table_data_list) override {
@@ -354,6 +382,27 @@ struct GcsServerMocker {
    public:
     Status AsyncReportJobError(const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
                                const gcs::StatusCallback &callback) override {
+      if (callback) {
+        callback(Status::OK());
+      }
+      return Status::OK();
+    }
+  };
+
+  class MockedPlacementGroupInfoAccessor : public gcs::PlacementGroupInfoAccessor {
+   public:
+    Status AsyncCreatePlacementGroup(
+        const PlacementGroupSpecification &placement_group_spec,
+        const gcs::StatusCallback &callback) override {
+      if (callback) {
+        callback(Status::OK());
+      }
+      return Status::OK();
+    };
+
+    Status AsyncUpdate(const PlacementGroupID &placement_group_id,
+                       const std::shared_ptr<rpc::PlacementGroupTableData> &data_ptr,
+                       const gcs::StatusCallback &callback) {
       if (callback) {
         callback(Status::OK());
       }

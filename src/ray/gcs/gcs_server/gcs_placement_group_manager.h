@@ -53,8 +53,8 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_num_restarts(0);
 
     placement_group_table_data_.set_state(rpc::PlacementGroupTableData::PENDING);
-    // TODO(AlisaWu) : fix the proto.
-    // placement_group_table_data_.set_bundles(placement_group_spec.bundles());
+    placement_group_table_data_.mutable_bundles()->CopyFrom(
+        placement_group_spec.bundles());
     placement_group_table_data_.set_strategy(placement_group_spec.strategy());
   }
 

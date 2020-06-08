@@ -19,6 +19,8 @@
 #include <utility>
 
 #include "gmock/gmock.h"
+#include "src/ray/common/buffer.h"
+#include "src/ray/common/placement_group.h"
 #include "src/ray/common/task/task.h"
 #include "src/ray/common/task/task_util.h"
 #include "src/ray/common/test_util.h"
@@ -60,6 +62,31 @@ struct Mocker {
     auto actor_creation_task_spec =
         GenActorCreationTask(job_id, max_restarts, detached, name, owner_address);
     request.mutable_task_spec()->CopyFrom(actor_creation_task_spec.GetMessage());
+    return request;
+  }
+
+  static PlacementGroupSpecification GenPlacementGroupCreation(
+      const JobID &job_id, int max_restarts, const std::string &name,
+      const std::vector<rpc::Bundle> &bundles, rpc::PlacementStrategy strategy) {
+    PlacementGroupSpecBuilder builder;
+
+    auto placement_group_id = PlacementGroupID::Of(job_id, RandomTaskId(), 0);
+    builder.SetPlacementGroupSpec(placement_group_id, max_restarts, name, bundles,
+                                  strategy);
+    return builder.Build();
+  }
+
+  static rpc::CreatePlacementGroupRequest GenCreatePlacementGroupRequest(
+      const JobID &job_id, int max_restarts = 0, const std::string name = "") {
+    rpc::CreatePlacementGroupRequest request;
+    std::vector<rpc::Bundle> bundles;
+    rpc::PlacementStrategy strategy = rpc::PlacementStrategy::SPREAD;
+    rpc::Bundle bundle;
+    bundles.push_back(bundle);
+    auto placement_group_creation_spec =
+        GenPlacementGroupCreation(job_id, max_restarts, name, bundles, strategy);
+    request.mutable_placement_group_spec()->CopyFrom(
+        placement_group_creation_spec.GetMessage());
     return request;
   }
 
