@@ -4,7 +4,7 @@ from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as TFFCNet
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFCNet
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 

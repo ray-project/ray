@@ -1,3 +1,4 @@
+from gym.spaces import Box
 import logging
 
 from ray.rllib.agents.trainer import with_common_config
@@ -5,6 +6,7 @@ from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.ddpg.ddpg_tf_policy import DDPGTFPolicy
 from ray.rllib.utils.deprecation import deprecation_warning, \
     DEPRECATED_VALUE
+from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration.per_worker_ornstein_uhlenbeck_noise import \
     PerWorkerOrnsteinUhlenbeckNoise
 
@@ -157,6 +159,12 @@ DEFAULT_CONFIG = with_common_config({
 
 
 def validate_config(config):
+    if config["model"]["custom_model"]:
+        logger.warning(
+            "Setting use_state_preprocessor=True since a custom model "
+            "was specified.")
+        config["use_state_preprocessor"] = True
+
     # TODO(sven): Remove at some point.
     #  Backward compatibility of noise-based exploration config.
     schedule_max_timesteps = None
@@ -202,6 +210,19 @@ def validate_config(config):
             config["batch_mode"] = "complete_episodes"
 
 
+def validate_spaces(pid, observation_space, action_space):
+    if not isinstance(action_space, Box):
+        raise UnsupportedSpaceException(
+            "Action space ({}) of {} is not supported for "
+            "DDPG.".format(action_space, pid))
+    elif len(action_space.shape) > 1:
+        raise UnsupportedSpaceException(
+            "Action space ({}) of {} has multiple dimensions "
+            "{}. ".format(action_space, pid, action_space.shape) +
+            "Consider reshaping this into a single dimension, "
+            "using a Tuple action space, or the multi-agent API.")
+
+
 def get_policy_class(config):
     if config["framework"] == "torch":
         from ray.rllib.agents.ddpg.ddpg_torch_policy import DDPGTorchPolicy
@@ -216,4 +237,5 @@ DDPGTrainer = GenericOffPolicyTrainer.with_updates(
     default_policy=DDPGTFPolicy,
     get_policy_class=get_policy_class,
     validate_config=validate_config,
+    validate_spaces=validate_spaces,
 )

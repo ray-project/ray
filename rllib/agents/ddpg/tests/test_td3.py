@@ -16,7 +16,7 @@ class TestTD3(unittest.TestCase):
         config["num_workers"] = 0  # Run locally.
 
         # Test against all frameworks.
-        for _ in framework_iterator(config, frameworks=["tf"]):
+        for _ in framework_iterator(config):
             trainer = td3.TD3Trainer(config=config, env="Pendulum-v0")
             num_iterations = 2
             for i in range(num_iterations):
@@ -31,7 +31,7 @@ class TestTD3(unittest.TestCase):
         obs = np.array([0.0, 0.1, -0.1])
 
         # Test against all frameworks.
-        for _ in framework_iterator(config, frameworks="tf"):
+        for _ in framework_iterator(config):
             # Default GaussianNoise setup.
             trainer = td3.TD3Trainer(config=config, env="Pendulum-v0")
             # Setting explore=False should always return the same action.

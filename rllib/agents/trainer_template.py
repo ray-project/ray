@@ -32,8 +32,10 @@ def default_execution_plan(workers, config):
 def build_trainer(
         name,
         default_policy,
+        *,
         default_config=None,
         validate_config=None,
+        validate_spaces=None,
         get_initial_state=None,  # DEPRECATED
         get_policy_class=None,
         before_init=None,
@@ -59,19 +61,20 @@ def build_trainer(
         default_policy (cls): the default Policy class to use
         default_config (dict): The default config dict of the algorithm,
             otherwise uses the Trainer default config.
-        validate_config (func): optional callback that checks a given config
+        validate_config (Optional[callable]): Optional callable that takes the
+            observation_space, action_space, and the config to check
             for correctness. It may mutate the config as needed.
-        get_policy_class (func): optional callback that takes a config and
-            returns the policy class to override the default with
-        before_init (func): optional function to run at the start of trainer
-            init that takes the trainer instance as argument
-        after_init (func): optional function to run at the end of trainer init
-            that takes the trainer instance as argument
-        before_evaluate_fn (func): callback to run before evaluation. This
-            takes the trainer instance as argument.
+        get_policy_class (Optional[callable]): Optional callable that takes a
+            config and returns the policy class to override the default with.
+        before_init (Optional[callable]): Optional callable to run at the start
+            of trainer init that takes the trainer instance as argument.
+        after_init (Optional[callable]): Optional callable to run at the end of
+            trainer init that takes the trainer instance as argument.
+        before_evaluate_fn (Optional[callable]): callback to run before
+            evaluation. This takes the trainer instance as argument.
         mixins (list): list of any class mixins for the returned trainer class.
             These mixins will be applied in order and will have higher
-            precedence than the Trainer class
+            precedence than the Trainer class.
         execution_plan (func): Setup the distributed execution workflow.
 
     Returns:
@@ -113,6 +116,9 @@ def build_trainer(
                 self.workers = self._make_workers(env_creator, self._policy,
                                                   config,
                                                   self.config["num_workers"])
+            if validate_spaces:
+                for pid, p in self.workers.local_worker().policy_map.items():
+                    validate_spaces(pid, p.observation_space, p.action_space)
             self.train_exec_impl = None
             self.optimizer = None
             self.execution_plan = execution_plan

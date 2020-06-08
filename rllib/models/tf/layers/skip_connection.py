@@ -1,6 +1,6 @@
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 
 class SkipConnection(tf.keras.layers.Layer):

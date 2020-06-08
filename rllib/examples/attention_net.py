@@ -11,7 +11,7 @@ from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune import registry
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")

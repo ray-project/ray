@@ -39,7 +39,7 @@ class TestDDPG(unittest.TestCase):
         num_iterations = 2
 
         # Test against all frameworks.
-        for _ in framework_iterator(config, ("tf", "torch")):
+        for _ in framework_iterator(config):
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
             for i in range(num_iterations):
                 results = trainer.train()
@@ -53,7 +53,7 @@ class TestDDPG(unittest.TestCase):
         obs = np.array([0.0, 0.1, -0.1])
 
         # Test against all frameworks.
-        for _ in framework_iterator(core_config, ("torch", "tf")):
+        for _ in framework_iterator(core_config):
             config = core_config.copy()
             # Default OUNoise setup.
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")

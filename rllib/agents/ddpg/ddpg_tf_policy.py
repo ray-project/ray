@@ -1,4 +1,3 @@
-from gym.spaces import Box
 import logging
 import numpy as np
 
@@ -15,7 +14,6 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import Deterministic
 from ray.rllib.models.torch.torch_action_dist import TorchDeterministic
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf, get_variable
@@ -36,22 +34,6 @@ logger = logging.getLogger(__name__)
 
 
 def build_ddpg_models(policy, observation_space, action_space, config):
-    if config["model"]["custom_model"]:
-        logger.warning(
-            "Setting use_state_preprocessor=True since a custom model "
-            "was specified.")
-        config["use_state_preprocessor"] = True
-
-    if not isinstance(action_space, Box):
-        raise UnsupportedSpaceException(
-            "Action space {} is not supported for DDPG.".format(action_space))
-    elif len(action_space.shape) > 1:
-        raise UnsupportedSpaceException(
-            "Action space has multiple dimensions "
-            "{}. ".format(action_space.shape) +
-            "Consider reshaping this into a single dimension, "
-            "using a Tuple action space, or the multi-agent API.")
-
     if policy.config["use_state_preprocessor"]:
         default_model = None  # catalog decides
         num_outputs = 256  # arbitrary
@@ -329,12 +311,6 @@ def build_apply_op(policy, optimizer, grads_and_vars):
 
 
 def gradients_fn(policy, optimizer, loss):
-    # For tf2.x, `optimizer` is an OptimizerWrapper with `tape` property,
-    # which already has everything (grads and vars) "taped" from loss.
-    #if tfv == 2:
-    #    raise ValueError(
-    #        "tfe version of DDPG should not define a gradient_fn!")
-
     if policy.config["grad_norm_clipping"] is not None:
         actor_grads_and_vars = minimize_and_clip(
             policy._actor_optimizer,
@@ -347,7 +323,7 @@ def gradients_fn(policy, optimizer, loss):
             var_list=policy.model.q_variables(),
             clip_val=policy.config["grad_norm_clipping"])
     else:
-        if tfv == 2:
+        if tf.executing_eagerly():
             tape = optimizer.tape
             pol_weights = policy.model.policy_variables()
             actor_grads_and_vars = list(zip(tape.gradient(
@@ -455,7 +431,7 @@ DDPGTFPolicy = build_tf_policy(
     stats_fn=build_ddpg_stats,
     postprocess_fn=postprocess_nstep_and_prio,
     optimizer_fn=make_ddpg_optimizers,
-    gradients_fn=gradients_fn,  # if tfv == 1 else None,
+    gradients_fn=gradients_fn,
     apply_gradients_fn=build_apply_op,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
     before_init=before_init_fn,
