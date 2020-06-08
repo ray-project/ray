@@ -15,14 +15,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "plasma/events.h"
+#include "ray/object_manager/plasma/events.h"
 
 #include <utility>
 
 #include <errno.h>
 
 extern "C" {
-#include "plasma/thirdparty/ae/ae.h"
+#include "ray/thirdparty/ae/ae.h"
 }
 
 namespace plasma {

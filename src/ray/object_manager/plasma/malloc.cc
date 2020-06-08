@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "plasma/malloc.h"
+#include "ray/object_manager/plasma/malloc.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -27,8 +27,8 @@
 #include <string>
 #include <vector>
 
-#include "plasma/common.h"
-#include "plasma/plasma.h"
+#include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/plasma.h"
 
 namespace plasma {
 

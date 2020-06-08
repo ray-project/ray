@@ -21,7 +21,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "plasma/client.h"
+#include "ray/object_manager/plasma/client.h"
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"

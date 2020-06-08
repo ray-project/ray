@@ -30,7 +30,7 @@
 #endif
 #include <unordered_map>
 
-#include "plasma/compat.h"
+#include "ray/object_manager/plasma/compat.h"
 
 #include "arrow/status.h"
 #ifdef PLASMA_CUDA

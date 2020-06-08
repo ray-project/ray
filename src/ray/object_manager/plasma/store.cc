@@ -26,7 +26,7 @@
 // It keeps a hash table that maps object_ids (which are 20 byte long,
 // just enough to store and SHA1 hash) to memory mapped files.
 
-#include "plasma/store.h"
+#include "ray/object_manager/plasma/store.h"
 
 #include <assert.h>
 #include <fcntl.h>
@@ -50,13 +50,13 @@
 
 #include "arrow/status.h"
 
-#include "plasma/common.h"
-#include "plasma/common_generated.h"
-#include "plasma/fling.h"
-#include "plasma/io.h"
-#include "plasma/malloc.h"
-#include "plasma/plasma_allocator.h"
-#include "plasma/protocol.h"
+#include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/common_generated.h"
+#include "ray/object_manager/plasma/fling.h"
+#include "ray/object_manager/plasma/io.h"
+#include "ray/object_manager/plasma/malloc.h"
+#include "ray/object_manager/plasma/plasma_allocator.h"
+#include "ray/object_manager/plasma/protocol.h"
 
 #ifdef PLASMA_CUDA
 #include "arrow/gpu/cuda_api.h"

@@ -32,12 +32,12 @@
 #include <unordered_set>
 #include <vector>
 
-#include "plasma/compat.h"
+#include "ray/object_manager/plasma/compat.h"
 
 #include "arrow/status.h"
 #include "arrow/util/logging.h"
 #include "arrow/util/macros.h"
-#include "plasma/common.h"
+#include "ray/object_manager/plasma/common.h"
 
 #ifdef PLASMA_CUDA
 using arrow::cuda::CudaIpcMemHandle;

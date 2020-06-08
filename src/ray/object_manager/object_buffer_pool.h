@@ -24,7 +24,7 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
-#include "plasma/client.h"
+#include "ray/object_manager/plasma/client.h"
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"

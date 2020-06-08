@@ -25,12 +25,12 @@
 #include <unordered_set>
 #include <vector>
 
-#include "plasma/common.h"
-#include "plasma/events.h"
-#include "plasma/external_store.h"
-#include "plasma/plasma.h"
-#include "plasma/protocol.h"
-#include "plasma/quota_aware_policy.h"
+#include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/events.h"
+#include "ray/object_manager/plasma/external_store.h"
+#include "ray/object_manager/plasma/plasma.h"
+#include "ray/object_manager/plasma/protocol.h"
+#include "ray/object_manager/plasma/quota_aware_policy.h"
 
 namespace arrow {
 class Status;

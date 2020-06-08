@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "plasma/lib/java/org_apache_arrow_plasma_PlasmaClientJNI.h"
+#include "ray/object_manager/plasma/lib/java/org_apache_arrow_plasma_PlasmaClientJNI.h"
 
 #include <pthread.h>
 #include <stdlib.h>
@@ -30,7 +30,7 @@
 
 #include "arrow/util/logging.h"
 
-#include "plasma/client.h"
+#include "ray/object_manager/plasma/client.h"
 
 constexpr jsize OBJECT_ID_SIZE = sizeof(plasma::ObjectID) / sizeof(jbyte);
 

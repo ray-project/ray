@@ -17,7 +17,7 @@
 
 // PLASMA CLIENT: Client library for using the plasma store and manager
 
-#include "plasma/client.h"
+#include "ray/object_manager/plasma/client.h"
 
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -49,12 +49,12 @@
 #include "arrow/buffer.h"
 #include "arrow/util/thread_pool.h"
 
-#include "plasma/common.h"
-#include "plasma/fling.h"
-#include "plasma/io.h"
-#include "plasma/malloc.h"
-#include "plasma/plasma.h"
-#include "plasma/protocol.h"
+#include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/fling.h"
+#include "ray/object_manager/plasma/io.h"
+#include "ray/object_manager/plasma/malloc.h"
+#include "ray/object_manager/plasma/plasma.h"
+#include "ray/object_manager/plasma/protocol.h"
 
 #ifdef PLASMA_CUDA
 #include "arrow/gpu/cuda_api.h"

@@ -29,7 +29,7 @@
 #include <boost/bind.hpp>
 
 #include "absl/time/clock.h"
-#include "plasma/client.h"
+#include "ray/object_manager/plasma/client.h"
 
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"

@@ -22,7 +22,7 @@
 #include <limits>
 #include <random>
 
-#include "plasma/common.h"
+#include "ray/object_manager/plasma/common.h"
 
 namespace plasma {
 

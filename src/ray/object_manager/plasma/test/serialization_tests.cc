@@ -25,11 +25,11 @@
 #include "arrow/testing/gtest_util.h"
 #include "arrow/util/io_util.h"
 
-#include "plasma/common.h"
-#include "plasma/io.h"
-#include "plasma/plasma.h"
-#include "plasma/protocol.h"
-#include "plasma/test_util.h"
+#include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/io.h"
+#include "ray/object_manager/plasma/plasma.h"
+#include "ray/object_manager/plasma/protocol.h"
+#include "ray/object_manager/plasma/test_util.h"
 
 namespace fb = plasma::flatbuf;
 

@@ -15,15 +15,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "plasma/protocol.h"
+#include "ray/object_manager/plasma/protocol.h"
 
 #include <utility>
 
 #include "flatbuffers/flatbuffers.h"
 
-#include "plasma/common.h"
-#include "plasma/io.h"
-#include "plasma/plasma_generated.h"
+#include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/io.h"
+#include "ray/object_manager/plasma/plasma_generated.h"
 
 #ifdef PLASMA_CUDA
 #include "arrow/gpu/cuda_api.h"

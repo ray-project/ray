@@ -27,7 +27,7 @@
 #include "arrow/status.h"
 #include "arrow/util/macros.h"
 #include "arrow/util/visibility.h"
-#include "plasma/common.h"
+#include "ray/object_manager/plasma/common.h"
 
 using arrow::Buffer;
 using arrow::Status;

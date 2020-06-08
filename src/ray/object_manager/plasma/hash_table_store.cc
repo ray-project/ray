@@ -20,7 +20,7 @@
 
 #include "arrow/util/logging.h"
 
-#include "plasma/hash_table_store.h"
+#include "ray/object_manager/plasma/hash_table_store.h"
 
 namespace plasma {
 

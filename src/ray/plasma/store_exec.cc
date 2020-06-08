@@ -1,4 +1,4 @@
-#include "plasma/store.h"
+#include "ray/object_manager/plasma/store.h"
 #include <getopt.h>
 #include <stdio.h>
 

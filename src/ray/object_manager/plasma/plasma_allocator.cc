@@ -17,8 +17,8 @@
 
 #include <arrow/util/logging.h>
 
-#include "plasma/malloc.h"
-#include "plasma/plasma_allocator.h"
+#include "ray/object_manager/plasma/malloc.h"
+#include "ray/object_manager/plasma/plasma_allocator.h"
 
 namespace plasma {
 

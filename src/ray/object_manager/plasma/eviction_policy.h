@@ -25,8 +25,8 @@
 #include <utility>
 #include <vector>
 
-#include "plasma/common.h"
-#include "plasma/plasma.h"
+#include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/plasma.h"
 
 namespace plasma {
 

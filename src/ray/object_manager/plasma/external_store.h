@@ -23,7 +23,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "plasma/client.h"
+#include "ray/object_manager/plasma/client.h"
 
 namespace plasma {
 

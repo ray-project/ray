@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "plasma/io.h"
+#include "ray/object_manager/plasma/io.h"
 
 #include <cstdint>
 #include <memory>
@@ -24,8 +24,8 @@
 #include "arrow/status.h"
 #include "arrow/util/logging.h"
 
-#include "plasma/common.h"
-#include "plasma/plasma_generated.h"
+#include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/plasma_generated.h"
 #ifndef _WIN32
 #include <arpa/inet.h>
 #include <netinet/in.h>

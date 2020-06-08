@@ -17,7 +17,7 @@
 
 #include <cstdint>
 #include <cstdio>
-#include "plasma/client.h"
+#include "ray/object_manager/plasma/client.h"
 #include "ray/common/status.h"
 
 namespace arrow {

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "plasma/quota_aware_policy.h"
-#include "plasma/common.h"
-#include "plasma/plasma_allocator.h"
+#include "ray/object_manager/plasma/quota_aware_policy.h"
+#include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/plasma_allocator.h"
 
 #include <algorithm>
 #include <memory>

@@ -24,8 +24,8 @@
 #include <vector>
 
 #include "arrow/status.h"
-#include "plasma/plasma.h"
-#include "plasma/plasma_generated.h"
+#include "ray/object_manager/plasma/plasma.h"
+#include "ray/object_manager/plasma/plasma_generated.h"
 
 namespace plasma {
 

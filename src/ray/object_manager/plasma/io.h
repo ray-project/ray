@@ -28,8 +28,8 @@
 #include <vector>
 
 #include "arrow/status.h"
-#include "plasma/common.h"
-#include "plasma/compat.h"
+#include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/compat.h"
 
 namespace plasma {
 

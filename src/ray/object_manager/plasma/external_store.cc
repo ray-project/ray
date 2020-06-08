@@ -20,7 +20,7 @@
 
 #include "arrow/util/memory.h"
 
-#include "plasma/external_store.h"
+#include "ray/object_manager/plasma/external_store.h"
 
 namespace plasma {
 

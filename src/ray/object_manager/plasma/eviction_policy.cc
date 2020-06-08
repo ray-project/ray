@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "plasma/eviction_policy.h"
-#include "plasma/plasma_allocator.h"
+#include "ray/object_manager/plasma/eviction_policy.h"
+#include "ray/object_manager/plasma/plasma_allocator.h"
 
 #include <algorithm>
 #include <sstream>

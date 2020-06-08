@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "plasma/malloc.h"
+#include "ray/object_manager/plasma/malloc.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -32,8 +32,8 @@
 #include <string>
 #include <vector>
 
-#include "plasma/common.h"
-#include "plasma/plasma.h"
+#include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/plasma.h"
 
 namespace plasma {
 
@@ -49,7 +49,7 @@ int fake_munmap(void*, int64_t);
 #define DEFAULT_MMAP_THRESHOLD MAX_SIZE_T
 #define DEFAULT_GRANULARITY ((size_t)128U * 1024U)
 
-#include "plasma/thirdparty/dlmalloc.c"  // NOLINT
+#include "ray/object_manager/plasma/thirdparty/dlmalloc.c"  // NOLINT
 
 #undef MMAP
 #undef MUNMAP

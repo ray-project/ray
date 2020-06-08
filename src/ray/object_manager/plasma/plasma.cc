@@ -15,15 +15,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "plasma/plasma.h"
+#include "ray/object_manager/plasma/plasma.h"
 
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "plasma/common.h"
-#include "plasma/common_generated.h"
-#include "plasma/protocol.h"
+#include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/common_generated.h"
+#include "ray/object_manager/plasma/protocol.h"
 
 namespace fb = plasma::flatbuf;
 

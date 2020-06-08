@@ -30,12 +30,12 @@
 #include "arrow/testing/gtest_util.h"
 #include "arrow/util/io_util.h"
 
-#include "plasma/client.h"
-#include "plasma/common.h"
-#include "plasma/external_store.h"
-#include "plasma/plasma.h"
-#include "plasma/protocol.h"
-#include "plasma/test_util.h"
+#include "ray/object_manager/plasma/client.h"
+#include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/external_store.h"
+#include "ray/object_manager/plasma/plasma.h"
+#include "ray/object_manager/plasma/protocol.h"
+#include "ray/object_manager/plasma/test_util.h"
 
 namespace plasma {
 
