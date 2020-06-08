@@ -49,7 +49,7 @@ int fake_munmap(void*, int64_t);
 #define DEFAULT_MMAP_THRESHOLD MAX_SIZE_T
 #define DEFAULT_GRANULARITY ((size_t)128U * 1024U)
 
-#include "ray/object_manager/plasma/thirdparty/dlmalloc.c"  // NOLINT
+#include "ray/thirdparty/dlmalloc.c"  // NOLINT
 
 #undef MMAP
 #undef MUNMAP

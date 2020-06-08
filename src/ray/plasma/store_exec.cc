@@ -1,6 +1,11 @@
 #include "ray/object_manager/plasma/store.h"
 #include <getopt.h>
 #include <stdio.h>
+// TODO(pcm): Convert getopt and sscanf in the store to use more idiomatic C++
+// and get rid of the next three lines:
+#ifndef __STDC_FORMAT_MACROS
+#define __STDC_FORMAT_MACROS
+#endif
 
 int main(int argc, char* argv[]) {
   std::string socket_name;

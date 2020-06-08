@@ -388,7 +388,7 @@ cc_library(
         "src/ray/object_manager/plasma/plasma_allocator.h",
         "src/ray/object_manager/plasma/quota_aware_policy.h",
         "src/ray/object_manager/plasma/store.h",
-        "src/ray/object_manager/plasma/thirdparty/dlmalloc.c",
+        "src/ray/thirdparty/dlmalloc.c",
     ],
     copts = PLASMA_COPTS,
     linkopts = PLASMA_LINKOPTS,

@@ -20,14 +20,8 @@
 
 #include <stddef.h>
 
-#include <cstring>
 #include <memory>
 #include <string>
-// TODO(pcm): Convert getopt and sscanf in the store to use more idiomatic C++
-// and get rid of the next three lines:
-#ifndef __STDC_FORMAT_MACROS
-#define __STDC_FORMAT_MACROS
-#endif
 #include <unordered_map>
 
 #include "ray/object_manager/plasma/compat.h"
