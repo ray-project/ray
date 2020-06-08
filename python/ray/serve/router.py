@@ -213,10 +213,10 @@ class Router:
         await self.mark_worker_idle(backend_tag, backend_replica_tag)
 
     async def mark_worker_idle(self, backend_tag, backend_replica_tag):
+        logger.debug(
+            "Marking backend with tag {} as idle.".format(backend_replica_tag))
         if backend_replica_tag not in self.replicas:
             return
-
-        self.queries_counter[backend_replica_tag] -= 1
 
         async with self.flush_lock:
             # NOTE(simon): This is a O(n) operation where n=len(worker_queue)
@@ -318,6 +318,7 @@ class Router:
         except RayTaskError as error:
             self.num_error_backend_request.labels(backend=backend).add()
             result = error
+        self.queries_counter[backend_replica_tag] -= 1
         await self.mark_worker_idle(backend, backend_replica_tag)
         logger.debug("Got result in {:.2f}s".format(time.time() - start))
         return result
@@ -331,17 +332,25 @@ class Router:
                 continue
 
             # This replica has too many in flight and processing queries.
+            # We will just break out of the loop because we can't send any
+            # queries.
             max_queries = 1
             if backend in self.backend_info:
                 max_queries = self.backend_info[backend].max_concurrent_queries
             curr_queries = self.queries_counter[backend_replica_tag]
             if curr_queries >= max_queries:
-                continue
+                # Put the worker back to the head of the queue.
+                worker_queue.append(backend_replica_tag)
+                logger.debug(
+                    "Skipping backend {} because it has {} in flight "
+                    "requests which exceeded the concurrency limit.".format(
+                        backend, curr_queries))
+                break
 
             request = buffer_queue.pop(0)
+            self.queries_counter[backend_replica_tag] += 1
             future = asyncio.get_event_loop().create_task(
                 self._do_query(backend, backend_replica_tag, request))
             chain_future(future, request.async_future)
 
-            self.queries_counter[backend_replica_tag] += 1
             worker_queue.appendleft(backend_replica_tag)

@@ -161,6 +161,8 @@ class RayServeWorker:
                                     "which is specified in the request. "
                                     "The available methods are {}".format(
                                         method_name, dir(self.callable)))
+        if self.is_function:
+            return self.callable
         return getattr(self.callable, method_name)
 
     def has_positional_args(self, f):
@@ -317,5 +319,5 @@ class RayServeWorker:
         assert not isinstance(request, list)
         logger.debug("Worker {} got request {}".format(self.name, request))
         request.async_future = asyncio.get_event_loop().create_future()
-        await self.query_queue.put(request)
+        self.query_queue.put_nowait(request)
         return await request.async_future
