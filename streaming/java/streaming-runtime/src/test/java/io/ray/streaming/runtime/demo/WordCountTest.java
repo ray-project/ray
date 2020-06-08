@@ -53,16 +53,14 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
 
     streamingContext.execute("testWordCount");
 
-    // Sleep until the count for every word is computed.
-    while (wordCount.size() < 2) {
+    ImmutableMap<String, Integer> expected = ImmutableMap.of("eagle", 3, "hello", 1);
+    while (!wordCount.equals(expected)) {
       try {
-        Thread.sleep(100);
+        Thread.sleep(1000);
       } catch (InterruptedException e) {
         LOG.warn("Got an exception while sleeping.", e);
       }
     }
-
-    Assert.assertEquals(wordCount, ImmutableMap.of("eagle", 3, "hello", 1));
     streamingContext.stop();
   }
 
