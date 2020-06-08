@@ -25,7 +25,7 @@ public class GraphPbBuilder {
         RemoteCall.ExecutionVertexContext.newBuilder();
 
     // build vertex
-    builder.setCurrentVertex(buildVertex(executionVertex));
+    builder.setCurrentExecutionVertex(buildVertex(executionVertex));
 
     // build upstream vertices
     List<ExecutionVertex> upstreamVertices = executionVertex.getInputVertices();
@@ -33,7 +33,7 @@ public class GraphPbBuilder {
         upstreamVertices.stream()
         .map(this::buildVertex)
         .collect(Collectors.toList());
-    builder.addAllUpstreamVertices(upstreamVertexPbs);
+    builder.addAllUpstreamExecutionVertices(upstreamVertexPbs);
 
     // build downstream vertices
     List<ExecutionVertex> downstreamVertices = executionVertex.getOutputVertices();
@@ -41,7 +41,7 @@ public class GraphPbBuilder {
         downstreamVertices.stream()
             .map(this::buildVertex)
             .collect(Collectors.toList());
-    builder.addAllDownstreamVertices(downstreamVertexPbs);
+    builder.addAllDownstreamExecutionVertices(downstreamVertexPbs);
 
     // build input edges
     List<ExecutionEdge> inputEdges = executionVertex.getInputEdges();
@@ -49,7 +49,7 @@ public class GraphPbBuilder {
         inputEdges.stream()
             .map(this::buildEdge)
             .collect(Collectors.toList());
-    builder.addAllInputEdges(inputEdgesPbs);
+    builder.addAllInputExecutionEdges(inputEdgesPbs);
 
     // build output edges
     List<ExecutionEdge> outputEdges = executionVertex.getOutputEdges();
@@ -57,7 +57,7 @@ public class GraphPbBuilder {
         outputEdges.stream()
             .map(this::buildEdge)
             .collect(Collectors.toList());
-    builder.addAllOutputEdges(outputEdgesPbs);
+    builder.addAllOutputExecutionEdges(outputEdgesPbs);
 
     return builder.build();
   }
@@ -67,10 +67,10 @@ public class GraphPbBuilder {
     // build vertex infos
     RemoteCall.ExecutionVertexContext.ExecutionVertex.Builder vertexBuilder =
         RemoteCall.ExecutionVertexContext.ExecutionVertex.newBuilder();
-    vertexBuilder.setVertexId(executionVertex.getExecutionVertexId());
-    vertexBuilder.setJobVertexId(executionVertex.getJobVertexId());
-    vertexBuilder.setJobVertexName(executionVertex.getJobVertexName());
-    vertexBuilder.setVertexIndex(executionVertex.getExecutionVertexIndex());
+    vertexBuilder.setExecutionVertexId(executionVertex.getExecutionVertexId());
+    vertexBuilder.setExecutionJobVertexId(executionVertex.getExecutionJobVertexId());
+    vertexBuilder.setExecutionJobVertexName(executionVertex.getExecutionJobVertexName());
+    vertexBuilder.setExecutionVertexIndex(executionVertex.getExecutionVertexIndex());
     vertexBuilder.setParallelism(executionVertex.getParallelism());
     vertexBuilder.setFunction(
         ByteString.copyFrom(
@@ -91,8 +91,8 @@ public class GraphPbBuilder {
     // build edge infos
     RemoteCall.ExecutionVertexContext.ExecutionEdge.Builder edgeBuilder =
         RemoteCall.ExecutionVertexContext.ExecutionEdge.newBuilder();
-    edgeBuilder.setSourceVertexId(executionEdge.getSourceVertexId());
-    edgeBuilder.setTargetVertexId(executionEdge.getTargetVertexId());
+    edgeBuilder.setSourceExecutionVertexId(executionEdge.getSourceVertexId());
+    edgeBuilder.setTargetExecutionVertexId(executionEdge.getTargetVertexId());
     edgeBuilder.setPartition(ByteString.copyFrom(serializePartition(executionEdge.getPartition())));
 
     return edgeBuilder.build();

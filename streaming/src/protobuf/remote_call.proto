@@ -11,18 +11,18 @@ message ExecutionVertexContext {
   // An edge between 2 execution vertices
   message ExecutionEdge {
     // upstream execution vertex id
-    int32 source_vertex_id = 1;
+    int32 source_execution_vertex_id = 1;
     // downstream execution vertex id
-    int32 target_vertex_id = 2;
+    int32 target_execution_vertex_id = 2;
     // serialized partition between source/target vertex
     bytes partition = 3;
   }
 
   message ExecutionVertex {
-    int32 vertex_id = 1;
-    int32 job_vertex_Id = 2;
-    string job_vertex_name = 3;
-    int32 vertex_index = 4;
+    int32 execution_vertex_id = 1;
+    int32 execution_job_vertex_Id = 2;
+    string execution_job_vertex_name = 3;
+    int32 execution_vertex_index = 4;
     int32 parallelism = 5;
     bytes function = 6;
     bytes worker_actor = 7;
@@ -34,13 +34,13 @@ message ExecutionVertexContext {
   }
 
   // vertices
-  ExecutionVertex current_vertex = 1;
-  repeated ExecutionVertex upstream_vertices = 2;
-  repeated ExecutionVertex downstream_vertices = 3;
+  ExecutionVertex current_execution_vertex = 1;
+  repeated ExecutionVertex upstream_execution_vertices = 2;
+  repeated ExecutionVertex downstream_execution_vertices = 3;
 
   // edges
-  repeated ExecutionEdge input_edges = 4;
-  repeated ExecutionEdge output_edges = 5;
+  repeated ExecutionEdge input_execution_edges = 4;
+  repeated ExecutionEdge output_execution_edges = 5;
 }
 
 // Streaming python worker context
@@ -48,5 +48,5 @@ message PythonJobWorkerContext {
   // serialized master actor handle
   bytes master_actor = 1;
   // vertex including it's upstream and downstream
-  ExecutionVertexContext vertex_context = 2;
+  ExecutionVertexContext execution_vertex_context = 2;
 }

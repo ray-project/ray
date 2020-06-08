@@ -21,7 +21,7 @@ class JobWorker(object):
 
     def __init__(self):
         self.worker_context = None
-        self.vertex_context = None
+        self.execution_vertex_context = None
         self.config = None
         self.task_id = None
         self.task = None
@@ -36,21 +36,21 @@ class JobWorker(object):
         self.worker_context = worker_context
 
         # build vertex context from pb
-        self.vertex_context = ExecutionVertexContext(
-            worker_context.vertex_context)
+        self.execution_vertex_context = ExecutionVertexContext(
+            worker_context.execution_vertex_context)
 
         # use vertex id as task id
-        self.task_id = self.vertex_context.get_task_id()
+        self.task_id = self.execution_vertex_context.get_task_id()
 
         # build and get processor from operator
-        operator = self.vertex_context.stream_operator
+        operator = self.execution_vertex_context.stream_operator
         self.stream_processor = processor.build_processor(operator)
         logger.info(
             "Initializing job worker, task_id: {}, operator: {}.".format(
                 self.task_id, self.stream_processor))
 
         # get config from vertex
-        self.config = self.vertex_context.config
+        self.config = self.execution_vertex_context.config
 
         if self.config.get(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL):
             self.reader_client = _streaming.ReaderClient()

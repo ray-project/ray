@@ -26,8 +26,8 @@ class NodeType(enum.Enum):
 
 class ExecutionEdge:
     def __init__(self, edge_pb, language):
-        self.source_vertex_id = edge_pb.source_vertex_id
-        self.target_vertex_id = edge_pb.target_vertex_id
+        self.source_execution_vertex_id = edge_pb.source_execution_vertex_id
+        self.target_execution_vertex_id = edge_pb.target_execution_vertex_id
         partition_bytes = edge_pb.partition
         # Sink node doesn't have partition function,
         # so we only deserialize partition_bytes when it's not None or empty
@@ -37,12 +37,11 @@ class ExecutionEdge:
 
 class ExecutionVertex:
     def __init__(self, vertex_pb):
-        self.vertex_id = vertex_pb.vertex_id
-        self.job_vertex_Id = vertex_pb.job_vertex_Id
-        self.job_vertex_name = vertex_pb.job_vertex_name
-        self.vertex_index = vertex_pb.vertex_index
+        self.execution_vertex_id = vertex_pb.execution_vertex_id
+        self.execution_job_vertex_Id = vertex_pb.execution_job_vertex_Id
+        self.execution_job_vertex_name = vertex_pb.execution_job_vertex_name
+        self.execution_vertex_index = vertex_pb.execution_vertex_index
         self.parallelism = vertex_pb.parallelism
-        self.job_vertex_Id = vertex_pb.job_vertex_Id
         if vertex_pb.language == Language.PYTHON:
             self.stream_operator = operator.create_operator(
                 function.load_function(vertex_pb.function))
@@ -58,60 +57,63 @@ class ExecutionVertex:
 class ExecutionVertexContext:
     def __init__(self,
                  vertex_context_pb: remote_call_pb.ExecutionVertexContext):
-        self.vertex = ExecutionVertex(vertex_context_pb.current_vertex)
-        self.upstream_vertices = [
+        self.execution_vertex = \
+            ExecutionVertex(vertex_context_pb.current_execution_vertex)
+        self.upstream_execution_vertices = [
             ExecutionVertex(vertex)
-            for vertex in vertex_context_pb.upstream_vertices
+            for vertex in vertex_context_pb.upstream_execution_vertices
         ]
-        self.downstream_vertices = [
+        self.downstream_execution_vertices = [
             ExecutionVertex(vertex)
-            for vertex in vertex_context_pb.downstream_vertices
+            for vertex in vertex_context_pb.downstream_execution_vertices
         ]
-        self.input_edges = [
-            ExecutionEdge(edge, self.vertex.language)
-            for edge in vertex_context_pb.input_edges
+        self.input_execution_edges = [
+            ExecutionEdge(edge, self.execution_vertex.language)
+            for edge in vertex_context_pb.input_execution_edges
         ]
-        self.output_edges = [
-            ExecutionEdge(edge, self.vertex.language)
-            for edge in vertex_context_pb.output_edges
+        self.output_execution_edges = [
+            ExecutionEdge(edge, self.execution_vertex.language)
+            for edge in vertex_context_pb.output_execution_edges
         ]
 
     def get_parallelism(self):
-        return self.vertex.parallelism
+        return self.execution_vertex.parallelism
 
     def get_upstream_parallelism(self):
-        if self.upstream_vertices:
-            return self.upstream_vertices[0].parallelism
+        if self.upstream_execution_vertices:
+            return self.upstream_execution_vertices[0].parallelism
         return 0
 
     def get_downstream_parallelism(self):
-        if self.downstream_vertices:
-            return self.downstream_vertices[0].parallelism
+        if self.downstream_execution_vertices:
+            return self.downstream_execution_vertices[0].parallelism
         return 0
 
     @property
     def build_time(self):
-        return self.vertex.build_time
+        return self.execution_vertex.build_time
 
     @property
     def stream_operator(self):
-        return self.vertex.stream_operator
+        return self.execution_vertex.stream_operator
 
     @property
     def config(self):
-        return self.vertex.config
+        return self.execution_vertex.config
 
     def get_task_id(self):
-        return self.vertex.vertex_id
+        return self.execution_vertex.execution_vertex_id
 
-    def get_source_actor_by_vertex_id(self, vertex_id):
-        for vertex in self.upstream_vertices:
-            if vertex.vertex_id == vertex_id:
+    def get_source_actor_by_vertex_id(self, execution_vertex_id):
+        for vertex in self.upstream_execution_vertices:
+            if vertex.execution_vertex_id == execution_vertex_id:
                 return vertex.worker_actor
-        raise Exception("Vertex %s does not exist!".format(vertex_id))
+        raise Exception("ExecutionVertex %s does not exist!"
+                        .format(execution_vertex_id))
 
-    def get_target_actor_by_vertex_id(self, vertex_id):
-        for vertex in self.downstream_vertices:
-            if vertex.vertex_id == vertex_id:
+    def get_target_actor_by_vertex_id(self, execution_vertex_id):
+        for vertex in self.downstream_execution_vertices:
+            if vertex.execution_vertex_id == execution_vertex_id:
                 return vertex.worker_actor
-        raise Exception("Vertex %s does not exist!".format(vertex_id))
+        raise Exception("ExecutionVertex %s does not exist!"
+                        .format(execution_vertex_id))

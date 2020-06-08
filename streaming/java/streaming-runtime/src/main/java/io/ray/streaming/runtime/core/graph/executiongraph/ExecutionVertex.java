@@ -30,8 +30,8 @@ public class ExecutionVertex implements Serializable {
   /**
    * Immutable field inherited from {@link ExecutionJobVertex}.
    */
-  private final int jobVertexId;
-  private final String jobVertexName;
+  private final int executionJobVertexId;
+  private final String executionJobVertexName;
   private final StreamOperator streamOperator;
   private final VertexType vertexType;
   private final Language language;
@@ -70,8 +70,8 @@ public class ExecutionVertex implements Serializable {
       ExecutionJobVertex executionJobVertex,
       ResourceConfig resourceConfig) {
     this.executionVertexId = globalIndex;
-    this.jobVertexId = executionJobVertex.getExecutionJobVertexId();
-    this.jobVertexName = executionJobVertex.getExecutionJobVertexName();
+    this.executionJobVertexId = executionJobVertex.getExecutionJobVertexId();
+    this.executionJobVertexName = executionJobVertex.getExecutionJobVertexName();
     this.streamOperator = executionJobVertex.getStreamOperator();
     this.vertexType = executionJobVertex.getVertexType();
     this.language = executionJobVertex.getLanguage();
@@ -97,15 +97,15 @@ public class ExecutionVertex implements Serializable {
    * e.g. 1-SourceOperator-3 (vertex index is 3)
    */
   public String getExecutionVertexName() {
-    return jobVertexId + "-" + jobVertexName + "-" + executionVertexIndex;
+    return executionJobVertexId + "-" + executionJobVertexName + "-" + executionVertexIndex;
   }
 
-  public int getJobVertexId() {
-    return jobVertexId;
+  public int getExecutionJobVertexId() {
+    return executionJobVertexId;
   }
 
-  public String getJobVertexName() {
-    return jobVertexName;
+  public String getExecutionJobVertexName() {
+    return executionJobVertexName;
   }
 
   public StreamOperator getStreamOperator() {

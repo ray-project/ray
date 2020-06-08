@@ -74,7 +74,7 @@ public class JobWorkerContext implements Serializable {
 
     byte[] contextBytes = RemoteCall.PythonJobWorkerContext.newBuilder()
       .setMasterActor(ByteString.copyFrom((((NativeRayActor) (master)).toBytes())))
-      .setVertexContext(executionVertexContext)
+      .setExecutionVertexContext(executionVertexContext)
       .build()
       .toByteArray();
 

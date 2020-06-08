@@ -152,7 +152,7 @@ public class Container implements Serializable {
       reclaimResource(vertex.getResource());
     } else {
       throw new RuntimeException(String.format("Current container [%s] not found vertex [%s].",
-          this, vertex.getJobVertexName()));
+          this, vertex.getExecutionJobVertexName()));
     }
   }
 

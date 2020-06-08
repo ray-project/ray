@@ -36,16 +36,16 @@ class StreamTask(ABC):
         channel_conf[Config.CHANNEL_TYPE] = self.worker.config \
             .get(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL)
 
-        vertex_context = self.worker.vertex_context
-        build_time = vertex_context.build_time
+        execution_vertex_context = self.worker.execution_vertex_context
+        build_time = execution_vertex_context.build_time
 
         # writers
         collectors = []
         output_actors_map = {}
-        for edge in vertex_context.output_edges:
-            target_task_id = edge.target_vertex_id
-            target_actor = vertex_context.get_target_actor_by_vertex_id(
-                target_task_id)
+        for edge in execution_vertex_context.output_execution_edges:
+            target_task_id = edge.target_execution_vertex_id
+            target_actor = execution_vertex_context\
+                .get_target_actor_by_vertex_id(target_task_id)
             channel_name = ChannelID.gen_id(self.task_id, target_task_id,
                                             build_time)
             output_actors_map[channel_name] = target_actor
@@ -64,10 +64,10 @@ class StreamTask(ABC):
 
         # readers
         input_actor_map = {}
-        for edge in vertex_context.input_edges:
-            source_task_id = edge.source_vertex_id
-            source_actor = vertex_context.get_source_actor_by_vertex_id(
-                edge.source_vertex_id)
+        for edge in execution_vertex_context.input_execution_edges:
+            source_task_id = edge.source_execution_vertex_id
+            source_actor = execution_vertex_context\
+                .get_source_actor_by_vertex_id(source_task_id)
             channel_name = ChannelID.gen_id(source_task_id, self.task_id,
                                             build_time)
             input_actor_map[channel_name] = source_actor
@@ -90,8 +90,8 @@ class StreamTask(ABC):
         # TODO(chaokunyang) add task/job config
         runtime_context = RuntimeContextImpl(
             self.worker.task_id,
-            vertex_context.vertex.vertex_index,
-            vertex_context.get_parallelism())
+            execution_vertex_context.execution_vertex.execution_vertex_index,
+            execution_vertex_context.get_parallelism())
         logger.info("open Processor {}".format(self.processor))
         self.processor.open(collectors, runtime_context)
 
