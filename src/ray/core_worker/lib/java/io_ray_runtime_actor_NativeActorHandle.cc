@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/lib/java/io_ray_runtime_actor_NativeRayActor.h"
+#include "ray/core_worker/lib/java/io_ray_runtime_actor_NativeActorHandle.h"
 #include <jni.h>
 #include "ray/common/id.h"
 #include "ray/core_worker/actor_handle.h"
@@ -24,7 +24,7 @@
 extern "C" {
 #endif
 
-JNIEXPORT jint JNICALL Java_io_ray_runtime_actor_NativeRayActor_nativeGetLanguage(
+JNIEXPORT jint JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeGetLanguage(
     JNIEnv *env, jclass o, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
   ray::ActorHandle *native_actor_handle = nullptr;
@@ -35,7 +35,7 @@ JNIEXPORT jint JNICALL Java_io_ray_runtime_actor_NativeRayActor_nativeGetLanguag
 }
 
 JNIEXPORT jobject JNICALL
-Java_io_ray_runtime_actor_NativeRayActor_nativeGetActorCreationTaskFunctionDescriptor(
+Java_io_ray_runtime_actor_NativeActorHandle_nativeGetActorCreationTaskFunctionDescriptor(
     JNIEnv *env, jclass o, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
   ray::ActorHandle *native_actor_handle = nullptr;
@@ -46,7 +46,7 @@ Java_io_ray_runtime_actor_NativeRayActor_nativeGetActorCreationTaskFunctionDescr
   return NativeRayFunctionDescriptorToJavaStringList(env, function_descriptor);
 }
 
-JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeRayActor_nativeSerialize(
+JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeSerialize(
     JNIEnv *env, jclass o, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
   std::string output;
@@ -59,7 +59,7 @@ JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeRayActor_nativeSeri
   return bytes;
 }
 
-JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeRayActor_nativeDeserialize(
+JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(
     JNIEnv *env, jclass o, jbyteArray data) {
   auto buffer = JavaByteArrayToNativeBuffer(env, data);
   RAY_CHECK(buffer->Size() > 0);
