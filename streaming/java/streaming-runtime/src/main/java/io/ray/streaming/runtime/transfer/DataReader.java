@@ -19,7 +19,7 @@ import org.slf4j.LoggerFactory;
  * from channels of upstream workers
  */
 public class DataReader {
-  private static final Logger LOGGER = LoggerFactory.getLogger(DataReader.class);
+  private static final Logger LOG = LoggerFactory.getLogger(DataReader.class);
 
   private long nativeReaderPtr;
   private Queue<DataMessage> buf = new LinkedList<>();
@@ -62,7 +62,8 @@ public class DataReader {
         ChannelUtils.toNativeConf(workerConfig),
         isMock
     );
-    LOGGER.debug("Create DataReader succeeded.");
+    LOG.info("Create DataReader succeed for worker: {}.",
+        workerConfig.workerInternalConfig.workerName());
   }
 
   // params set by getBundleNative: bundle data address + size
@@ -153,10 +154,10 @@ public class DataReader {
     if (nativeReaderPtr == 0) {
       return;
     }
-    LOGGER.info("closing DataReader.");
+    LOG.info("Closing DataReader.");
     closeReaderNative(nativeReaderPtr);
     nativeReaderPtr = 0;
-    LOGGER.info("closing DataReader done.");
+    LOG.info("Finish closing DataReader.");
   }
 
   private static native long createDataReaderNative(

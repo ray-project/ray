@@ -119,8 +119,8 @@ public abstract class StreamTask implements Runnable {
   protected abstract void cancelTask() throws Exception;
 
   public void start() {
-    this.thread.start();
     LOG.info("Start stream task: {}-{}", this.getClass().getSimpleName(), taskId);
+    this.thread.start();
   }
 
   /**
@@ -129,7 +129,7 @@ public abstract class StreamTask implements Runnable {
   public void close() {
     this.running = false;
     if (thread.isAlive() && !Ray.getRuntimeContext().isSingleProcess()) {
-      //Runtime halt is proposed cause System.exist can't kill process absolutely.
+      // `Runtime.halt` is used because System.exist can't ensure the process killing.
       Runtime.getRuntime().halt(0);
       LOG.warn("runtime halt 0");
       System.exit(0);

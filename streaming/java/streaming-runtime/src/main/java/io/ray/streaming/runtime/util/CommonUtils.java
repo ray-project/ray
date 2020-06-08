@@ -5,7 +5,7 @@ import java.util.Map;
 /**
  * Common tools.
  */
-public class CommonUtil {
+public class CommonUtils {
 
   public static Map<String, Object> strMapToObjectMap(Map<String, String> srcMap) {
     Map<String,Object> destMap = (Map) srcMap;

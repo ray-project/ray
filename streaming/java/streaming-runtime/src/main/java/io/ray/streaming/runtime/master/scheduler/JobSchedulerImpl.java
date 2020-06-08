@@ -156,12 +156,12 @@ public class JobSchedulerImpl implements JobScheduler {
     RayActor<JobMaster> masterActor = jobMaster.getJobMasterActor();
 
     // build workers' context
-    Map<ExecutionVertex, JobWorkerContext> needRegistryVertexToContextMap = new HashMap<>();
+    Map<ExecutionVertex, JobWorkerContext> vertexToContextMap = new HashMap<>();
     executionGraph.getAllExecutionVertices().forEach(vertex -> {
       JobWorkerContext context = buildJobWorkerContext(vertex, masterActor);
-      needRegistryVertexToContextMap.put(vertex, context);
+      vertexToContextMap.put(vertex, context);
     });
-    return needRegistryVertexToContextMap;
+    return vertexToContextMap;
   }
 
   private JobWorkerContext buildJobWorkerContext(

@@ -24,7 +24,7 @@ public class JobClientImpl implements JobClient {
 
   @Override
   public void submit(JobGraph jobGraph, Map<String, String> jobConfig) {
-    LOG.info("Submit job [{}] with job graph [{}] and job config [{}].",
+    LOG.info("Submitting job [{}] with job graph [{}] and job config [{}].",
         jobGraph.getJobName(), jobGraph, jobConfig);
     Map<String, Double> resources = new HashMap<>();
     ActorCreationOptions options = new ActorCreationOptions.Builder()
@@ -38,12 +38,18 @@ public class JobClientImpl implements JobClient {
 
     jobGraph.getJobConfig().putAll(jobConfig);
 
+    // create job master actor
     this.jobMasterActor = Ray.createActor(JobMaster::new, jobConfig, options);
-    RayObject<Boolean> submitResult = jobMasterActor.call(JobMaster::submitJob,
-        jobMasterActor, jobGraph);
 
-    if (submitResult.get()) {
-      LOG.info("Submit job [{}] success.", jobGraph.getJobName());
+    try {
+      RayObject<Boolean> submitResult = jobMasterActor.call(JobMaster::submitJob,
+          jobMasterActor, jobGraph);
+
+      if (submitResult.get()) {
+        LOG.info("Finish submitting job: {}.", jobGraph.getJobName());
+      }
+    } catch (Exception e) {
+      LOG.error("Failed to submit job: {}.", jobGraph.getJobName(), e);
     }
   }
 }

@@ -24,12 +24,13 @@ import org.aeonbits.owner.ConfigFactory;
 public class ExecutionJobVertex {
 
   /**
-   * Unique id of operator(use {@link JobVertex}'s id). Used as executionJobVertex's id.
+   * Unique id. Use {@link JobVertex}'s id directly.
    */
   private final int executionJobVertexId;
 
   /**
-   * Unique name of operator(use {@link StreamOperator}'s name). Used as executionJobVertex's name.
+   * Use jobVertex id and operator(use {@link StreamOperator}'s name) as name.
+   * e.g. 1-SourceOperator
    */
   private final String executionJobVertexName;
   private final StreamOperator streamOperator;

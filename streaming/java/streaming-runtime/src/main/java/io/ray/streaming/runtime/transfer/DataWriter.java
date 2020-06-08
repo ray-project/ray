@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
  * to downstream workers
  */
 public class DataWriter {
-  private static final Logger LOGGER = LoggerFactory.getLogger(DataWriter.class);
+  private static final Logger LOG = LoggerFactory.getLogger(DataWriter.class);
 
   private long nativeWriterPtr;
   private ByteBuffer buffer = ByteBuffer.allocateDirect(0);
@@ -60,7 +60,8 @@ public class DataWriter {
         ChannelUtils.toNativeConf(workerConfig),
         isMock
     );
-    LOGGER.debug("Create DataWriter succeeded.");
+    LOG.info("Create DataWriter succeed for worker: {}.",
+        workerConfig.workerInternalConfig.workerName());
   }
 
   /**
@@ -116,10 +117,10 @@ public class DataWriter {
     if (nativeWriterPtr == 0) {
       return;
     }
-    LOGGER.info("closing data writer.");
+    LOG.info("Closing data writer.");
     closeWriterNative(nativeWriterPtr);
     nativeWriterPtr = 0;
-    LOGGER.info("closing data writer done.");
+    LOG.info("Finish closing data writer.");
   }
 
   private static native long createWriterNative(
