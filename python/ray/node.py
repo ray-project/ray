@@ -910,6 +910,12 @@ class Node:
                 check_alive=check_alive,
                 allow_graceful=allow_graceful)
 
+        if ray_constants.PROCESS_TYPE_GCS_SERVER in self.all_processes:
+            self._kill_process_type(
+                ray_constants.PROCESS_TYPE_GCS_SERVER,
+                check_alive=check_alive,
+                allow_graceful=allow_graceful)
+
         # We call "list" to copy the keys because we are modifying the
         # dictionary while iterating over it.
         for process_type in list(self.all_processes.keys()):
