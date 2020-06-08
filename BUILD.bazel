@@ -315,9 +315,6 @@ cc_binary(
         ":jni_md.h",
     ],
     copts = PLASMA_COPTS,
-    includes = [
-        "src/ray",
-    ],
     linkshared = 1,
     linkstatic = 1,
     deps = [":plasma_client"],
