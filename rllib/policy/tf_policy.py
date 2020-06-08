@@ -12,7 +12,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
@@ -739,8 +739,9 @@ class EntropyCoeffSchedule:
 
     @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
-        self.entropy_coeff = tf.get_variable(
-            "entropy_coeff", initializer=entropy_coeff, trainable=False)
+        self.entropy_coeff = get_variable(
+            entropy_coeff, framework="tf", tf_name="entropy_coeff",
+            trainable=False)
 
         if entropy_coeff_schedule is None:
             self.entropy_coeff_schedule = ConstantSchedule(

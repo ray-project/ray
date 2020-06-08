@@ -40,7 +40,15 @@ def framework_iterator(config=None,
             A tuple of the current fw and the tf.Session if fw="tf".
     """
     config = config or {}
-    frameworks = [frameworks] if isinstance(frameworks, str) else frameworks
+    frameworks = [frameworks] if isinstance(frameworks, str) else \
+        list(frameworks)
+    if tfv == 2 and "tf" in frameworks:
+        # Both tf present -> remove "tf".
+        if "tfe" in frameworks:
+            frameworks.remove("tf")
+        # Only "tf" present -> replace with "tfe".
+        else:
+            frameworks[frameworks.index("tf")] = "tfe"
 
     for fw in frameworks:
         if fw == "auto":

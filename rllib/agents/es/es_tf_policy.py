@@ -76,9 +76,12 @@ class ESTFPolicy:
         self.observation_filter = get_filter(config["observation_filter"],
                                              self.preprocessor.shape)
         self.single_threaded = config.get("single_threaded", False)
-        self.sess = make_session(single_threaded=self.single_threaded)
-        self.inputs = tf.placeholder(tf.float32,
-                                     [None] + list(self.preprocessor.shape))
+        if config["framework"] == "tf":
+            self.sess = make_session(single_threaded=self.single_threaded)
+            self.inputs = tf.placeholder(
+                tf.float32, [None] + list(self.preprocessor.shape))
+        else:
+            self.sess = self.inputs = None
 
         # Policy network.
         dist_class, dist_dim = ModelCatalog.get_action_dist(
@@ -98,7 +101,8 @@ class ESTFPolicy:
         self.num_params = sum(
             np.prod(variable.shape.as_list())
             for _, variable in self.variables.variables.items())
-        self.sess.run(tf.global_variables_initializer())
+        if self.sess is not None:
+            self.sess.run(tf.global_variables_initializer())
 
     def compute_actions(self, observation, add_noise=False, update=True):
         observation = self.preprocessor.transform(observation)

@@ -56,7 +56,7 @@ class ParametricActionsModel(DistributionalQTFModel):
         action_logits = tf.reduce_sum(avail_actions * intent_vector, axis=2)
 
         # Mask out invalid actions (use tf.float32.min for stability)
-        inf_mask = tf.maximum(tf.log(action_mask), tf.float32.min)
+        inf_mask = tf.maximum(tf.math.log(action_mask), tf.float32.min)
         return action_logits + inf_mask, state
 
     def value_function(self):

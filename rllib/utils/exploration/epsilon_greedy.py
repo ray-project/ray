@@ -114,9 +114,13 @@ class EpsilonGreedy(Exploration):
             ),
             false_fn=lambda: exploit_action)
 
-        assign_op = tf.assign(self.last_timestep, timestep)
-        with tf.control_dependencies([assign_op]):
+        if tfv == 2:
+            self.last_timestep = timestep
             return action, tf.zeros_like(action, dtype=tf.float32)
+        else:
+            assign_op = tf.assign(self.last_timestep, timestep)
+            with tf.control_dependencies([assign_op]):
+                return action, tf.zeros_like(action, dtype=tf.float32)
 
     def _get_torch_exploration_action(self, q_values, explore, timestep):
         """Torch method to produce an epsilon exploration action.

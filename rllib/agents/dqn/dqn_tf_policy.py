@@ -58,7 +58,7 @@ class QLoss:
             # indispensable judgement which is missed in most implementations
             # when b happens to be an integer, lb == ub, so pr_j(s', a*) will
             # be discarded because (ub-b) == (b-lb) == 0
-            floor_equal_ceil = tf.to_float(tf.less(ub - lb, 0.5))
+            floor_equal_ceil = tf.cast(tf.less(ub - lb, 0.5), tf.float32)
 
             l_project = tf.one_hot(
                 tf.cast(lb, dtype=tf.int32),

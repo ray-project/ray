@@ -222,12 +222,13 @@ def multi_from_logits(behaviour_policy_logits,
         behaviour_policy_logits[i].shape.assert_has_rank(3)
         target_policy_logits[i].shape.assert_has_rank(3)
 
-    with tf.name_scope(
-            name,
-            values=[
-                behaviour_policy_logits, target_policy_logits, actions,
-                discounts, rewards, values, bootstrap_value
-            ]):
+    name_scope_kwargs = {}
+    if tfv == 1:
+        name_scope_kwargs["values"] = [
+            behaviour_policy_logits, target_policy_logits, actions,
+            discounts, rewards, values, bootstrap_value
+        ]
+    with tf.name_scope(name, **name_scope_kwargs):
         target_action_log_probs = multi_log_probs_from_logits_and_actions(
             target_policy_logits, actions, dist_class, model)
 
@@ -332,9 +333,11 @@ def from_importance_weights(log_rhos,
     if clip_pg_rho_threshold is not None:
         clip_pg_rho_threshold.shape.assert_has_rank(0)
 
-    with tf.name_scope(
-            name,
-            values=[log_rhos, discounts, rewards, values, bootstrap_value]):
+    name_scope_kwargs = {}
+    if tfv == 1:
+        name_scope_kwargs["values"] = [
+            log_rhos, discounts, rewards, values, bootstrap_value]
+    with tf.name_scope(name, **name_scope_kwargs):
         rhos = tf.exp(log_rhos)
         if clip_rho_threshold is not None:
             clipped_rhos = tf.minimum(

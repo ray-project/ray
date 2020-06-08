@@ -96,7 +96,7 @@ class GaussianNoise(Exploration):
         deterministic_actions = action_dist.deterministic_sample()
 
         # Take a Gaussian sample with our stddev (mean=0.0) and scale it.
-        gaussian_sample = self.scale_schedule(ts) * tf.random_normal(
+        gaussian_sample = self.scale_schedule(ts) * tf.random.normal(
             tf.shape(deterministic_actions), stddev=self.stddev)
 
         # Stochastic actions could either be: random OR action + noise.

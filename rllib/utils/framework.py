@@ -41,10 +41,13 @@ def get_auto_framework():
             "Neither TensorFlow nor PyTorch are installed! You must install "
             "one of them by running either `pip install tensorflow` OR "
             "`pip install torch torchvision`")
+    fw = "tfe" if tf.executing_eagerly() else "tf"
     # Only TensorFlow installed -> return tf.
     if log_once("get_auto_framework"):
-        logger.info("`framework=auto` found in config -> Detected TensorFlow.")
-    return "tf"
+        logger.info(
+            "`framework=auto` found in config -> Detected "
+            "TensorFlow{}.".format(" (eager)" if fw == "tfe" else ""))
+    return fw
 
 
 def check_framework(framework, allow_none=True):
@@ -54,7 +57,7 @@ def check_framework(framework, allow_none=True):
 
     Args:
         framework (str): Once of "tf", "torch", or None.
-        allow_none (bool): Whether framework=None (e.g. numpy implementatiopn)
+        allow_none (bool): Whether framework=None (e.g. numpy implementation)
             is allowed or not.
 
     Returns:

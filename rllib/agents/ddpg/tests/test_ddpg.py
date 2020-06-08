@@ -206,8 +206,11 @@ class TestDDPG(unittest.TestCase):
 
             # Set all weights (of all nets) to fixed values.
             if weights_dict is None:
-                assert fw == "tf"  # Start with the tf vars-dict.
-                weights_dict = policy.get_weights()
+                assert fw in ["tf", "tfe"]  # Start with the tf vars-dict.
+                if tfv == 2:
+                    weights_dict = policy.get_weights(as_dict=True)
+                else:
+                    weights_dict = policy.get_weights()
             else:
                 assert fw == "torch"  # Then transfer that to torch Model.
                 model_dict = self._translate_weights_to_torch(
@@ -402,14 +405,15 @@ class TestDDPG(unittest.TestCase):
         policy_t = sigmoid(2.0 * fc(
             relu(
                 fc(model_out_t, weights[ks[1]], weights[ks[0]], framework=fw)),
-            weights[ks[5]], weights[ks[4]]))
+            weights[ks[5]], weights[ks[4]], framework=fw))
         # Get policy output for t+1 (target model).
         policy_tp1 = sigmoid(2.0 * fc(
             relu(
                 fc(target_model_out_tp1,
                    weights[ks[3]],
                    weights[ks[2]],
-                   framework=fw)), weights[ks[7]], weights[ks[6]]))
+                   framework=fw)),
+            weights[ks[7]], weights[ks[6]], framework=fw))
         # Assume no smooth target policy.
         policy_tp1_smoothed = policy_tp1
 

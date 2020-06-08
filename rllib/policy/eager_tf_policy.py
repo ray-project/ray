@@ -457,8 +457,10 @@ def build_eager_tf_policy(name,
             return _convert_to_numpy(self.exploration.get_info())
 
         @override(Policy)
-        def get_weights(self):
+        def get_weights(self, as_dict=False):
             variables = self.variables()
+            if as_dict:
+                return {v.name: v.numpy() for v in variables}
             return [v.numpy() for v in variables]
 
         @override(Policy)
