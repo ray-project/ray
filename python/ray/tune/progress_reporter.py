@@ -128,7 +128,7 @@ class TuneReporterBase(ProgressReporter):
         """Adds a parameter to the existing columns.
 
         Args:
-            parameter (str): Metric to add. This must be a parameter specified
+            parameter (str): Parameter to add. This must be a parameter specified
                 in the configuration.
             representation (str): Representation to use in table. Defaults to
                 `parameter`.
