@@ -42,7 +42,7 @@ public class WorkerLifecycleController {
    */
   private boolean createWorker(ExecutionVertex executionVertex) {
     LOG.info("Start to create worker actor for vertex: {} with resource: {}.",
-        executionVertex.getVertexName(), executionVertex.getResource());
+        executionVertex.getExecutionVertexName(), executionVertex.getResource());
 
     Language language = executionVertex.getLanguage();
 
@@ -67,7 +67,7 @@ public class WorkerLifecycleController {
     executionVertex.setWorkerActor(actor);
 
     LOG.info("Worker actor created, actor: {}, vertex: {}.",
-        executionVertex.getWorkerActorId(), executionVertex.getVertexName());
+        executionVertex.getWorkerActorId(), executionVertex.getExecutionVertexName());
     return true;
   }
 
@@ -147,13 +147,13 @@ public class WorkerLifecycleController {
   private boolean destroyWorker(ExecutionVertex executionVertex) {
     BaseActor rayActor = executionVertex.getWorkerActor();
     LOG.info("Begin destroying worker[vertex={}, actor={}].",
-        executionVertex.getVertexName(), rayActor.getId());
+        executionVertex.getExecutionVertexName(), rayActor.getId());
 
     boolean destroyResult = RemoteCallWorker.shutdownWithoutReconstruction(rayActor);
 
     if (!destroyResult) {
       LOG.error("Failed to destroy JobWorker[{}]'s actor: {}.",
-          executionVertex.getVertexName(), rayActor);
+          executionVertex.getExecutionVertexName(), rayActor);
       return false;
     }
 

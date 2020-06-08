@@ -35,7 +35,7 @@ public class JobWorkerContext implements Serializable {
   }
 
   public int getWorkerId() {
-    return executionVertex.getId();
+    return executionVertex.getExecutionVertexId();
   }
 
   public ActorId getActorId() {
@@ -43,7 +43,7 @@ public class JobWorkerContext implements Serializable {
   }
 
   public String getWorkerName() {
-    return executionVertex.getVertexName();
+    return executionVertex.getExecutionVertexName();
   }
 
   public Map<String, String> getConfig() {

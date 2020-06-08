@@ -67,10 +67,10 @@ public class GraphPbBuilder {
     // build vertex infos
     RemoteCall.ExecutionVertexContext.ExecutionVertex.Builder vertexBuilder =
         RemoteCall.ExecutionVertexContext.ExecutionVertex.newBuilder();
-    vertexBuilder.setVertexId(executionVertex.getId());
+    vertexBuilder.setVertexId(executionVertex.getExecutionVertexId());
     vertexBuilder.setJobVertexId(executionVertex.getJobVertexId());
     vertexBuilder.setJobVertexName(executionVertex.getJobVertexName());
-    vertexBuilder.setVertexIndex(executionVertex.getVertexIndex());
+    vertexBuilder.setVertexIndex(executionVertex.getExecutionVertexIndex());
     vertexBuilder.setParallelism(executionVertex.getParallelism());
     vertexBuilder.setFunction(
         ByteString.copyFrom(

@@ -25,8 +25,8 @@ public class StreamingRuntimeContext implements RuntimeContext {
       ExecutionVertex executionVertex,
       Map<String, String> config,
       int parallelism) {
-    this.taskId = executionVertex.getId();
-    this.subTaskIndex = executionVertex.getVertexIndex();
+    this.taskId = executionVertex.getExecutionVertexId();
+    this.subTaskIndex = executionVertex.getExecutionVertexIndex();
     this.parallelism = parallelism;
     this.config = config;
   }

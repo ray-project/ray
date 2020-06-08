@@ -24,14 +24,14 @@ import org.aeonbits.owner.ConfigFactory;
 public class ExecutionJobVertex {
 
   /**
-   * Unique id of operator(use {@link JobVertex}'s id). Used as jobVertex's id.
+   * Unique id of operator(use {@link JobVertex}'s id). Used as executionJobVertex's id.
    */
-  private final int jobVertexId;
+  private final int executionJobVertexId;
 
   /**
-   * Unique name of operator(use {@link StreamOperator}'s name). Used as jobVertex's name.
+   * Unique name of operator(use {@link StreamOperator}'s name). Used as executionJobVertex's name.
    */
-  private final String jobVertexName;
+  private final String executionJobVertexName;
   private final StreamOperator streamOperator;
   private final VertexType vertexType;
   private final Language language;
@@ -59,8 +59,8 @@ public class ExecutionJobVertex {
       Map<String, String> jobConfig,
       AtomicInteger idGenerator,
       long buildTime) {
-    this.jobVertexId = jobVertex.getVertexId();
-    this.jobVertexName = jobVertex.getStreamOperator().getName();
+    this.executionJobVertexId = jobVertex.getVertexId();
+    this.executionJobVertexName = jobVertex.getStreamOperator().getName();
     this.streamOperator = jobVertex.getStreamOperator();
     this.vertexType = jobVertex.getVertexType();
     this.language = jobVertex.getLanguage();
@@ -91,18 +91,18 @@ public class ExecutionJobVertex {
       Preconditions.checkArgument(
           vertex.getWorkerActor() != null,
           "Empty execution vertex worker actor.");
-      executionVertexWorkersMap.put(vertex.getId(), vertex.getWorkerActor());
+      executionVertexWorkersMap.put(vertex.getExecutionVertexId(), vertex.getWorkerActor());
     });
 
     return executionVertexWorkersMap;
   }
 
-  public int getJobVertexId() {
-    return jobVertexId;
+  public int getExecutionJobVertexId() {
+    return executionJobVertexId;
   }
 
-  public String getJobVertexName() {
-    return jobVertexName;
+  public String getExecutionJobVertexName() {
+    return executionJobVertexName;
   }
 
   /**
@@ -110,8 +110,8 @@ public class ExecutionJobVertex {
    *
    * @return operator name with index
    */
-  public String getVertexNameWithIndex() {
-    return jobVertexId + "-" + jobVertexName;
+  public String getExecutionJobVertexNameWithIndex() {
+    return executionJobVertexId + "-" + executionJobVertexName;
   }
 
   public int getParallelism() {
@@ -180,8 +180,8 @@ public class ExecutionJobVertex {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("jobVertexId", jobVertexId)
-        .add("jobVertexName", jobVertexName)
+        .add("executionJobVertexId", executionJobVertexId)
+        .add("executionJobVertexName", executionJobVertexName)
         .add("vertexType", vertexType)
         .add("parallelism", parallelism)
         .toString();

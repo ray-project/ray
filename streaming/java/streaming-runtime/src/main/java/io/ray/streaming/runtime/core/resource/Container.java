@@ -138,7 +138,7 @@ public class Container implements Serializable {
   public void allocateActor(ExecutionVertex vertex) {
     LOG.info("Allocating vertex [{}] in container [{}].", vertex, this);
 
-    executionVertexIds.add(vertex.getId());
+    executionVertexIds.add(vertex.getExecutionVertexId());
     vertex.setContainerIfNotExist(this.getId());
     // Binding dynamic resource
     vertex.getResource().put(getName(), 1.0);
@@ -147,8 +147,8 @@ public class Container implements Serializable {
 
   public void releaseActor(ExecutionVertex vertex) {
     LOG.info("Release actor, vertex: {}, container: {}.", vertex, vertex.getContainerId());
-    if (executionVertexIds.contains(vertex.getId())) {
-      executionVertexIds.removeIf(id -> id == vertex.getId());
+    if (executionVertexIds.contains(vertex.getExecutionVertexId())) {
+      executionVertexIds.removeIf(id -> id == vertex.getExecutionVertexId());
       reclaimResource(vertex.getResource());
     } else {
       throw new RuntimeException(String.format("Current container [%s] not found vertex [%s].",

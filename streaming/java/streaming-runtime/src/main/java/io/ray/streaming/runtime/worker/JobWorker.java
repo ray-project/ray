@@ -88,7 +88,7 @@ public class JobWorker implements Serializable {
     try {
       task.start();
     } catch (Exception e) {
-      LOG.error("Start worker [{}] occur error.", executionVertex.getVertexName(), e);
+      LOG.error("Start worker [{}] occur error.", executionVertex.getExecutionVertexName(), e);
       return false;
     }
     return true;
@@ -120,7 +120,7 @@ public class JobWorker implements Serializable {
   }
 
   public int getTaskId() {
-    return executionVertex.getId();
+    return executionVertex.getExecutionVertexId();
   }
 
   public StreamingWorkerConfig getWorkerConfig() {

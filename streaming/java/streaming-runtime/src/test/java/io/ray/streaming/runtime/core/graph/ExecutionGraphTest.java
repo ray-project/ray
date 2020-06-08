@@ -53,21 +53,21 @@ public class ExecutionGraphTest extends BaseUnitTest {
         Assert.assertNotNull(vertex.getJobVertexName());
         Assert.assertNotNull(vertex.getVertexType());
         Assert.assertNotNull(vertex.getLanguage());
-        Assert.assertEquals(vertex.getVertexName(),
-          vertex.getJobVertexId() + "-" + vertex.getJobVertexName() + "-" + vertex.getVertexIndex());
+        Assert.assertEquals(vertex.getExecutionVertexName(),
+          vertex.getJobVertexId() + "-" + vertex.getJobVertexName() + "-" + vertex.getExecutionVertexIndex());
     });
 
     int startIndex = 0;
     ExecutionJobVertex upStream = executionJobVertices.get(startIndex);
     ExecutionJobVertex downStream = executionJobVertices.get(startIndex + 1);
-    Assert.assertEquals(upStream.getOutputEdges().get(0).getTargetVertex(), downStream);
+    Assert.assertEquals(upStream.getOutputEdges().get(0).getTargetExecutionJobVertex(), downStream);
 
     List<ExecutionVertex> upStreamVertices = upStream.getExecutionVertices();
     List<ExecutionVertex> downStreamVertices = downStream.getExecutionVertices();
     upStreamVertices.forEach(vertex -> {
         Assert.assertEquals(vertex.getResource().get(ResourceType.CPU.name()), 2.0);
         vertex.getOutputEdges().stream().forEach(upStreamOutPutEdge -> {
-            Assert.assertTrue(downStreamVertices.contains(upStreamOutPutEdge.getTargetVertex()));
+            Assert.assertTrue(downStreamVertices.contains(upStreamOutPutEdge.getTargetExecutionVertex()));
         });
     });
   }

@@ -55,7 +55,7 @@ public abstract class StreamTask implements Runnable {
 
     // set vertex info into config for native using
     jobWorker.getWorkerConfig().workerInternalConfig.setProperty(
-        WorkerInternalConfig.WORKER_NAME_INTERNAL, executionVertex.getVertexName());
+        WorkerInternalConfig.WORKER_NAME_INTERNAL, executionVertex.getExecutionVertexName());
     jobWorker.getWorkerConfig().workerInternalConfig.setProperty(
         WorkerInternalConfig.OP_NAME_INTERNAL, executionVertex.getJobVertexName());
 
@@ -65,8 +65,8 @@ public abstract class StreamTask implements Runnable {
 
     for (ExecutionEdge edge : outputEdges) {
       String queueName = ChannelID.genIdStr(
-          taskId, edge.getTargetVertex().getId(), executionVertex.getBuildTime());
-      outputActors.put(queueName, edge.getTargetVertex().getWorkerActor());
+          taskId, edge.getTargetExecutionVertex().getExecutionVertexId(), executionVertex.getBuildTime());
+      outputActors.put(queueName, edge.getTargetExecutionVertex().getWorkerActor());
     }
 
     if (!outputActors.isEmpty()) {
@@ -85,8 +85,8 @@ public abstract class StreamTask implements Runnable {
     Map<String, BaseActor> inputActors = new HashMap<>();
     for (ExecutionEdge edge : inputEdges) {
       String queueName = ChannelID.genIdStr(
-          edge.getSourceVertex().getId(), taskId, executionVertex.getBuildTime());
-      inputActors.put(queueName, edge.getSourceVertex().getWorkerActor());
+          edge.getSourceExecutionVertex().getExecutionVertexId(), taskId, executionVertex.getBuildTime());
+      inputActors.put(queueName, edge.getSourceExecutionVertex().getWorkerActor());
     }
     if (!inputActors.isEmpty()) {
       List<String> channelIDs = new ArrayList<>();

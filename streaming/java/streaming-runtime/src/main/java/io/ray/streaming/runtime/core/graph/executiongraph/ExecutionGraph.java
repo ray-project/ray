@@ -129,7 +129,7 @@ public class ExecutionGraph implements Serializable {
   public ExecutionVertex getExecutionJobVertexByJobVertexId(int vertexId) {
     for (ExecutionJobVertex executionJobVertex : executionJobVertexMap.values()) {
       for (ExecutionVertex executionVertex : executionJobVertex.getExecutionVertices()) {
-        if (executionVertex.getId() == vertexId) {
+        if (executionVertex.getExecutionVertexId() == vertexId) {
           return executionVertex;
         }
       }
