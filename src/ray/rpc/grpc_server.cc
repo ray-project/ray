@@ -28,10 +28,10 @@ GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads)
   cqs_.resize(num_threads_);
 }
 
-void GrpcServer::Run(int num_retries) {
+void GrpcServer::Run() {
   uint32_t specified_port = port_;
   std::string server_address("0.0.0.0:" + std::to_string(port_));
-
+  int num_retries = RayConfig::instance().grpc_server_num_retries();
   while (num_retries >= 0) {
     grpc::ServerBuilder builder;
     // Disable the SO_REUSEPORT option. We don't need it in ray. If the option is enabled
