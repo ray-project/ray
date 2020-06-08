@@ -118,12 +118,12 @@ void GcsServer::Start() {
 
 void GcsServer::Stop() {
   if (!is_stopped_) {
-    RAY_LOG(INFO) << "Stopping gcs server.";
+    RAY_LOG(INFO) << "Stopping GCS server.";
     // Shutdown the rpc server
     rpc_server_.Shutdown();
 
     is_stopped_ = true;
-    RAY_LOG(INFO) << "Finished stopping gcs server.";
+    RAY_LOG(INFO) << "GCS server stopped.";
   }
 }
 
