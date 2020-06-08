@@ -3,7 +3,7 @@ package io.ray.api;
 import io.ray.api.id.ObjectId;
 
 /**
- * Represents an object in the object store.
+ * Represents a reference to an object in the object store.
  * @param <T> The object type.
  */
 public interface ObjectRef<T> {

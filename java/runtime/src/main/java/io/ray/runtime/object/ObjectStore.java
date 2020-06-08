@@ -126,7 +126,7 @@ public abstract class ObjectStore {
    * Wait for a list of RayObjects to be locally available, until specified number of objects are
    * ready, or specified timeout has passed.
    *
-   * @param waitList A list of object refs to wait for.
+   * @param waitList A list of object references to wait for.
    * @param numReturns The number of objects that should be returned.
    * @param timeoutMs The maximum time in milliseconds to wait before returning.
    * @return Two lists, one containing locally available objects, one containing the rest.
