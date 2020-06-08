@@ -17,9 +17,8 @@ serve.init()
 def driver(flask_request):
     return "OK!"
 
-serve.create_endpoint("driver", "/driver")
 serve.create_backend("driver", driver)
-serve.set_traffic("driver", {{"driver": 1.0}})
+serve.create_endpoint("driver", backend="driver", route="/driver")
 """.format(ray.worker._global_node._redis_address)
 
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:

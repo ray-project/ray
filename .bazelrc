@@ -5,6 +5,7 @@ build --enable_platform_specific_config
 # On all platforms, provide: PYTHON3_BIN_PATH=python
 ###############################################################################
 build --action_env=PATH
+# For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
 build --compilation_mode=opt
 # This workaround is needed to prevent Bazel from compiling the same file twice (once PIC and once not).
 build:linux --force_pic
@@ -44,6 +45,14 @@ build:windows --color=yes
 # For compiler colored output (seems necessary on Windows)
 build:windows --per_file_copt="-\\.(asm|S)$@-fansi-escape-codes"
 build:windows --per_file_copt="-\\.(asm|S)$@-fcolor-diagnostics"
+
+# Debug build flags. Uncomment in '-c dbg' builds to enable checks in the C++ standard library:
+#build:linux --cxxopt="-D_GLIBCXX_DEBUG=1"
+#build:linux --cxxopt="-D_GLIBCXX_DEBUG_PEDANTIC=1"
+#build:linux --cxxopt="-D_LIBCPP_DEBUG=1"
+#build:macos --cxxopt="-D_GLIBCXX_DEBUG=1"
+#build:macos --cxxopt="-D_GLIBCXX_DEBUG_PEDANTIC=1"
+#build:windows --cxxopt="-D_ITERATOR_DEBUG_LEVEL=2"
 
 # Thread sanitizer configuration:
 build:tsan --strip=never
