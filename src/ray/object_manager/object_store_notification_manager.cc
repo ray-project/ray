@@ -142,7 +142,7 @@ void ObjectStoreNotificationManager::ProcessStoreNotification(
   for (size_t i = 0; i < object_notification->object_info()->size(); ++i) {
     auto object_info = object_notification->object_info()->Get(i);
     const ObjectID object_id =
-        ObjectID::FromPlasmaIdBinary(object_info->object_id()->str());
+        ObjectID::FromBinary(object_info->object_id()->str());
     if (object_info->is_deletion()) {
       ProcessStoreRemove(object_id);
     } else {

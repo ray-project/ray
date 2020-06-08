@@ -110,31 +110,6 @@ bool IsPlasmaStoreFull(const arrow::Status& status) {
   return IsPlasmaStatus(status, PlasmaErrorCode::PlasmaStoreFull);
 }
 
-UniqueID UniqueID::from_binary(const std::string& binary) {
-  UniqueID id;
-  std::memcpy(&id, binary.data(), sizeof(id));
-  return id;
-}
-
-const uint8_t* UniqueID::data() const { return id_; }
-
-uint8_t* UniqueID::mutable_data() { return id_; }
-
-std::string UniqueID::binary() const {
-  return std::string(reinterpret_cast<const char*>(id_), kUniqueIDSize);
-}
-
-std::string UniqueID::hex() const {
-  constexpr char hex[] = "0123456789abcdef";
-  std::string result;
-  for (int i = 0; i < kUniqueIDSize; i++) {
-    unsigned int val = id_[i];
-    result.push_back(hex[val >> 4]);
-    result.push_back(hex[val & 0xf]);
-  }
-  return result;
-}
-
 // This code is from https://sites.google.com/site/murmurhash/
 // and is public domain.
 uint64_t MurmurHash64A(const void* key, int len, unsigned int seed) {
@@ -182,12 +157,6 @@ uint64_t MurmurHash64A(const void* key, int len, unsigned int seed) {
   h ^= h >> r;
 
   return h;
-}
-
-size_t UniqueID::hash() const { return MurmurHash64A(&id_[0], kUniqueIDSize, 0); }
-
-bool UniqueID::operator==(const UniqueID& rhs) const {
-  return std::memcmp(data(), rhs.data(), kUniqueIDSize) == 0;
 }
 
 const PlasmaStoreInfo* plasma_config;
