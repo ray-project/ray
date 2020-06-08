@@ -1,0 +1,22 @@
+diff --git blist/_blist.c blist/_blist.c
+--- blist/_blist.c
++++ blist/_blist.c
+@@ -5989,6 +5989,7 @@
+ #if PY_MAJOR_VERSION < 3 || PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 2
+                 if (PySlice_GetIndicesEx((PySliceObject*)item, self->n,
++                                         &start, &stop,&step,&slicelength)<0)
+ #else
+                 if (PySlice_GetIndicesEx(item, self->n,
++                                         &start, &stop,&step,&slicelength)<0)
+ #endif
+-                                         &start, &stop,&step,&slicelength)<0)
+@@ -6958,6 +6959,7 @@
+ #if PY_MAJOR_VERSION < 3 || PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 2
+                 if (PySlice_GetIndicesEx((PySliceObject*)item, self->n,
++                                         &start, &stop,&step,&slicelength)<0) {
+ #else
+                 if (PySlice_GetIndicesEx(item, self->n,
++                                         &start, &stop,&step,&slicelength)<0) {
+ #endif
+-                                         &start, &stop,&step,&slicelength)<0) {
+-- 

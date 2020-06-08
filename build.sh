@@ -144,10 +144,28 @@ if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
     TEMP_DIR="$(mktemp -d)"
     pushd "$TEMP_DIR"
     curl -f -s -L -R -o "pickle5-backport.zip" "https://github.com/pitrou/pickle5-backport/archive/c0c1a158f59366696161e0dffdd10cfe17601372.zip"
-    unzip -q pickle5-backport.zip
-    pushd pickle5-backport-c0c1a158f59366696161e0dffdd10cfe17601372
+    unzip -q "pickle5-backport.zip"
+    rm -f -- "pickle5-backport.zip"
+    pushd "pickle5-backport-c0c1a158f59366696161e0dffdd10cfe17601372"
       CC=gcc "$PYTHON_EXECUTABLE" setup.py --quiet bdist_wheel
       unzip -q -o dist/*.whl -d "$pickle5_path"
+    popd
+    popd
+    rm -rf "$TEMP_DIR"
+  fi
+
+  blist_path="$ROOT_DIR/python/ray/blist_files"
+  if [ "${OSTYPE}" = msys ] && ! "$PYTHON_EXECUTABLE" -s -c "import blist" 2>/dev/null; then
+    # Install patched blist
+    TEMP_DIR="$(mktemp -d)"
+    pushd "$TEMP_DIR"
+    curl -f -s -L -R -o "blist.zip" "https://github.com/DanielStutzbach/blist/archive/0ed541a5f5fce18b3a8535d32ec64eef78485044.zip"
+    unzip -q "blist.zip"
+    rm -f -- "blist.zip"
+    pushd "blist-0ed541a5f5fce18b3a8535d32ec64eef78485044"
+      patch -s -f -F 2 -p0 --no-backup-if-mismatch < "$ROOT_DIR/thirdparty/patches/blist-windows-preprocessor.patch"
+      "$PYTHON_EXECUTABLE" setup.py --quiet bdist_wheel
+      unzip -q -o dist/*.whl -d "$blist_path"
     popd
     popd
     rm -rf "$TEMP_DIR"
