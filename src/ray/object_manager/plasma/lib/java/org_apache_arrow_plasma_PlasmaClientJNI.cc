@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "ray/object_manager/plasma/lib/java/org_apache_arrow_plasma_PlasmaClientJNI.h"
+#include "org_apache_arrow_plasma_PlasmaClientJNI.h"
 
 #include <pthread.h>
 #include <stdlib.h>
