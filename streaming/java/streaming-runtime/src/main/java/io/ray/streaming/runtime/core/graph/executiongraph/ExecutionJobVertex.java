@@ -67,10 +67,10 @@ public class ExecutionJobVertex {
     this.jobConfig = jobConfig;
     this.buildTime = buildTime;
     this.parallelism = jobVertex.getParallelism();
-    this.executionVertices = createExecutionVertics(idGenerator);
+    this.executionVertices = createExecutionVertices(idGenerator);
   }
 
-  private List<ExecutionVertex> createExecutionVertics(AtomicInteger idGenerator) {
+  private List<ExecutionVertex> createExecutionVertices(AtomicInteger idGenerator) {
     List<ExecutionVertex> executionVertices = new ArrayList<>();
     ResourceConfig resourceConfig = ConfigFactory.create(ResourceConfig.class, jobConfig);
 

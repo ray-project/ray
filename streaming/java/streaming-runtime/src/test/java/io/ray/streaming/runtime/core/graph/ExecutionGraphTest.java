@@ -35,6 +35,8 @@ public class ExecutionGraphTest extends BaseUnitTest {
     StreamingConfig streamingConfig = new StreamingConfig(jobConf);
     GraphManager graphManager = new GraphManagerImpl(new JobRuntimeContext(streamingConfig));
     JobGraph jobGraph = buildJobGraph();
+    jobGraph.getJobConfig().put("streaming.task.resource.cpu.limitation.enable", "true");
+
     ExecutionGraph executionGraph = buildExecutionGraph(graphManager, jobGraph);
     List<ExecutionJobVertex> executionJobVertices = executionGraph.getExecutionJobVertexList();
 
