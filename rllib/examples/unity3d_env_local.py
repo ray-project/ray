@@ -80,13 +80,21 @@ if __name__ == "__main__":
         # one Unity running)!
         "num_workers": args.num_workers if args.file_name else 0,
         # Other settings.
-        "sample_batch_size": 128,
-        "train_batch_size": 512,
-        "rollout_fragment_length": 20,
+        "lr": 0.0003,
+        "gae_lambda": 0.95,
+        "gamma": 0.99,
+        "sgd_minibatch_size": 256,
+        "train_batch_size": 4000,
+        "num_sgd_iter": 20,
+        "rollout_fragment_length": 200,
+        "clip_param": 0.2,
         # Multi-agent setup for the particular env.
         "multiagent": {
             "policies": policies,
             "policy_mapping_fn": policy_mapping_fn,
+        },
+        "model": {
+            "fcnet_hiddens": [512, 512],
         },
         "framework": "tf",
         "no_done_at_end": True,
