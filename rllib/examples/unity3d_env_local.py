@@ -35,7 +35,9 @@ parser.add_argument(
     help="The name of the Env to run in the Unity3D editor. Either `3DBall` "
     "or `SoccerStrikersVsGoalie` (feel free to add more to this script!)")
 parser.add_argument(
-    "--file-name", type=str, default=None,
+    "--file-name",
+    type=str,
+    default=None,
     help="The Unity3d binary (compiled) game, e.g. "
     "'/home/ubuntu/soccer_strikers_vs_goalie_linux.x86_64'. Use `None` for "
     "a currently running Unity3D editor.")
