@@ -58,6 +58,7 @@ class VisionNetwork(TorchModelV2):
                     stride,
                     None,  # padding=valid
                     activation_fn=activation))
+            out_channels = num_outputs
         # Finish network normally (w/o overriding last layer size with
         # `num_outputs`), then add another linear one of size `num_outputs`.
         else:
@@ -93,7 +94,7 @@ class VisionNetwork(TorchModelV2):
         self._value_branch_separate = self._value_branch = None
         if vf_share_layers:
             self._value_branch = SlimFC(
-                self.num_outputs, 1, initializer=normc_initializer(0.01))
+                out_channels, 1, initializer=normc_initializer(0.01))
         else:
             vf_layers = []
             (w, h, in_channels) = obs_space.shape
