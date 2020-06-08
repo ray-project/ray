@@ -31,25 +31,26 @@ class JobWorker(object):
         logger.info("Creating job worker succeeded.")
 
     def init(self, worker_context_bytes):
-        worker_context = remote_call_pb.WorkerContext()
+        worker_context = remote_call_pb.PythonJobWorkerContext()
         worker_context.ParseFromString(worker_context_bytes)
         self.worker_context = worker_context
 
         # build vertex context from pb
-        self.vertex_context = ExecutionVertexContext(worker_context.sub_graph)
+        self.vertex_context = ExecutionVertexContext(
+            worker_context.vertex_context)
 
         # use vertex id as task id
-        self.task_id = self.sub_graph.get_task_id()
+        self.task_id = self.vertex_context.get_task_id()
 
         # build and get processor from operator
-        operator = self.sub_graph.get_stream_operator
+        operator = self.vertex_context.get_stream_operator
         self.stream_processor = processor.build_processor(operator)
         logger.info(
             "Initializing job worker, task_id: {}, operator: {}.".format(
                 self.task_id, self.stream_processor))
 
         # get config from vertex
-        self.config = self.sub_graph.get_config()
+        self.config = self.vertex_context.config
 
         if self.config.get(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL):
             self.reader_client = _streaming.ReaderClient()
