@@ -74,8 +74,9 @@ if __name__ == "__main__":
             "file_name": args.file_name,
             "episode_horizon": args.horizon,
         },
-        # IMPORTANT: Just use one Worker (we only have one Unity running)!
-        "num_workers": args.num_workers,
+        # For running in editor, force to use just one Worker (we only have
+        # one Unity running)!
+        "num_workers": args.num_workers if args.file_name else 0,
         # Other settings.
         "sample_batch_size": 128,
         "train_batch_size": 512,
@@ -86,7 +87,10 @@ if __name__ == "__main__":
             "policy_mapping_fn": policy_mapping_fn,
         },
         "framework": "tf",
-        "evaluation_interval": 10,
+        "no_done_at_end": True,
+        # If no executable is provided (use Unity3D editor), do not evaluate,
+        # b/c the editor only allows one connection at a time.
+        "evaluation_interval": 10 if args.file_name else 0,
         "evaluation_num_episodes": 1,
     }
 
