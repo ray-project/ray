@@ -59,8 +59,8 @@ def minimize_and_clip(optimizer, clip_val=10):
 
 
 def sequence_mask(lengths, maxlen=None, dtype=None):
-    """
-    Exact same behavior as tf.sequence_mask.
+    """Offers same behavior as tf.sequence_mask for torch.
+
     Thanks to Dimitris Papatheodorou
     (https://discuss.pytorch.org/t/pytorch-equivalent-for-tf-sequence-mask/
     39036).
@@ -68,7 +68,7 @@ def sequence_mask(lengths, maxlen=None, dtype=None):
     if maxlen is None:
         maxlen = lengths.max()
 
-    mask = ~(torch.ones((len(lengths), maxlen.int())).to(
+    mask = ~(torch.ones((len(lengths), maxlen)).to(
         lengths.device).cumsum(dim=1).t() > lengths).t()
     mask.type(dtype or torch.bool)
 

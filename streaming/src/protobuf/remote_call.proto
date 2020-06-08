@@ -14,8 +14,8 @@ message ExecutionGraph {
     int32 parallelism = 2;
     NodeType node_type = 3;
     Language language = 4;
-    // serialized user function
-    bytes function = 5;
+    // serialized operator
+    bytes operator = 5;
     repeated ExecutionTask execution_tasks = 6;
     repeated ExecutionEdge input_edges = 7;
     repeated ExecutionEdge output_edges = 8;
