@@ -248,7 +248,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// was on is still alive. This is used to check whether a plasma object
   /// returned by the task is still present.
   const std::function<bool(const ClientID &node_id)> check_node_alive_;
-  /// Called when processing a worker's reply, if the node that the worker was
+  /// Called when processing a worker's reply if the node that the worker was
   /// on died. This should be called to attempt to recover a plasma object
   /// returned by the task (or store an error if the object is not
   /// recoverable).
