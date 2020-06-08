@@ -98,12 +98,18 @@ class TrainableUtil:
         return checkpoint_dir
 
     @staticmethod
-    def make_checkpoint_dir(checkpoint_dir, suffix):
-        """Creates a checkpoint directory at the provided path."""
+    def make_checkpoint_dir(checkpoint_dir, index):
+        """Creates a checkpoint directory within the provided path.
 
-        if suffix is not None:
-            checkpoint_dir = os.path.join(checkpoint_dir,
-                                          "checkpoint_{}".format(suffix))
+        Args:
+            checkpoint_dir (str): Path to checkpoint directory.
+            index (str): A subdirectory will be created
+                at the checkpoint directory named 'checkpoint_{index}'.
+        """
+        suffix = "checkpoint"
+        if index is not None:
+            suffix += "_{}".format(index)
+        checkpoint_dir = os.path.join(checkpoint_dir, suffix)
 
         os.makedirs(checkpoint_dir, exist_ok=True)
         # Drop marker in directory to identify it as a checkpoint dir.
@@ -396,11 +402,13 @@ class Trainable:
             str: Checkpoint path or prefix that may be passed to restore().
         """
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
-            checkpoint_dir or self.logdir, iteration=self.iteration)
+            checkpoint_dir or self.logdir, index=self.iteration)
         checkpoint = self._save(checkpoint_dir)
         trainable_state = self.get_state()
         checkpoint_path = TrainableUtil.process_checkpoint(
-            checkpoint, parent=checkpoint_dir, trainable_state=trainable_state)
+            checkpoint,
+            parent_dir=checkpoint_dir,
+            trainable_state=trainable_state)
         return checkpoint_path
 
     def save_to_object(self):

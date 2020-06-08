@@ -85,7 +85,7 @@ class StatusReporter:
 
     def make_checkpoint_dir(self, step=None):
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
-            self.logdir, suffix=step)
+            self.logdir, index=step)
         return checkpoint_dir
 
     def save_checkpoint(self, checkpoint):
@@ -196,9 +196,8 @@ class FunctionRunner(Trainable):
 
     def _start(self):
         def entrypoint():
-            return self._trainable_func(
-                self.config, self._status_reporter,
-                self._status_reporter.get_checkpoint())
+            return self._trainable_func(self.config, self._status_reporter,
+                                        self._status_reporter.get_checkpoint())
 
         # the runner thread is not started until the first call to _train
         self._runner = _RunnerThread(entrypoint, self._error_queue)
@@ -289,10 +288,10 @@ class FunctionRunner(Trainable):
         if not checkpoint:
             state.update(iteration=0, timesteps_total=0, episodes_total=0)
             parent_dir = TrainableUtil.make_checkpoint_dir(
-                self.logdir, suffix="default")
+                self.logdir, index="default")
         elif isinstance(checkpoint, dict):
             parent_dir = TrainableUtil.make_checkpoint_dir(
-                self.logdir, suffix=self.training_iteration)
+                self.logdir, index=self.training_iteration)
         else:
             parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint)
         checkpoint_path = TrainableUtil.process_checkpoint(
