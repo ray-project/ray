@@ -50,8 +50,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         self._pos_proj = tf.keras.layers.Dense(
             num_heads * head_dim, use_bias=False)
         self._rel_pos_encoder = rel_pos_encoder
-        print("relatve MHA pos_encoder: ", self._rel_pos_encoder.shape)
-        #print("relatve MHA pos_proj: ", self._pos_proj.shape)
+
         self._input_layernorm = None
         if input_layernorm:
             self._input_layernorm = tf.keras.layers.LayerNormalization(axis=-1)
@@ -75,33 +74,23 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
 
         queries, keys, values = tf.split(qkv, 3, -1)
         # Cut out Tau memory timesteps from query.
-        print("QUERIES 1: ", queries.shape)
         queries = queries[:, -T:]
-        print("QUERIES 2: ", queries.shape)
 
         queries = tf.reshape(queries, [-1, T, H, d])
-        print("QUERIES 3: ", queries.shape)
         keys = tf.reshape(keys, [-1, T + Tau, H, d])
         values = tf.reshape(values, [-1, T + Tau, H, d])
 
-        print("relative MHA: ", T.shape, H, d, queries.shape, keys.shape,
-              values.shape)
         R = self._pos_proj(self._rel_pos_encoder)
-        print("relative MHA R1 shape: ", R.shape)
         R = tf.reshape(R, [T + Tau, H, d])
-        print("relative MHA R2 shape: ", R.shape)
 
         # b=batch
         # i and j=time indices (i=max-timesteps (inputs); j=Tau memory space)
         # h=head
         # d=head-dim (over which we will reduce-sum)
         score = tf.einsum("bihd,bjhd->bijh", queries + self._uvar, keys)
-        print("relative MHA einsum: ", queries.shape, self._uvar.shape,
-              (queries + self._uvar).shape, score.shape)
         pos_score = tf.einsum("bihd,jhd->bijh", queries + self._vvar, R)
         score = score + self.rel_shift(pos_score)
         score = score / d**0.5
-        print("relative MHA score: ", score.shape)
 
         # causal mask of the same length as the sequence
         mask = tf.sequence_mask(
@@ -124,7 +113,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
 
         x = tf.pad(x, [[0, 0], [0, 0], [1, 0], [0, 0]])
         x = tf.reshape(x, [x_size[0], x_size[2] + 1, x_size[1], x_size[3]])
-        x = tf.slice(x, [0, 1, 0, 0], [-1, -1, -1, -1])
+        x = x[:, 1:, :, :]
         x = tf.reshape(x, x_size)
 
         return x

@@ -16,7 +16,7 @@ tf = try_import_tf()
 class TestModules(unittest.TestCase):
     """Tests models/torch/modules helper classes for attention net."""
 
-    def test_torch_layer(model, input, output):
+    def torch_layer(self, model, inputs, outputs):
         """Model is a torch nn.Module. Input and output are randomly tensors"""
 
         # Train the model for a fixed number of timesteps, and then test that
@@ -26,14 +26,13 @@ class TestModules(unittest.TestCase):
 
         # Check that the layer trains correctly
         for t in range(250):
-            y_pred = model(input)
+            y_pred = model(inputs)
+            # if t % 100 == 99:
+            #    print(t, loss.item())
 
             if t == 1:
                 init_loss = loss.item()
-            loss = criterion(y_pred, output)
-
-            if t % 100 == 99:
-                print(t, loss.item())
+            loss = criterion(y_pred, outputs)
 
             optimizer.zero_grad()
             loss.backward()
@@ -41,31 +40,31 @@ class TestModules(unittest.TestCase):
 
         final_loss = loss.item()
 
-        # The final loss has decreased by a factor of 4, which tests
-        # that training decreased the loss.
-        self.assertLess(final_loss / init_loss, 0.25)
+        # The final loss has decreased by a factor of 2, which tests
+        # that the model is learning.
+        self.assertLess(final_loss / init_loss, 0.5)
 
-    def test_tf_layer(model, input, output):
+    def tf_layer(self, model, inputs, outputs):
         """Model is a keras.Layer object, to be trained on fixed random data"""
 
         # Configure a model for mean-squared error loss.
         model.compile(
-            optimizer=tf.keras.optimizers.SGD,
+            optimizer='SGD',
             loss='mse',  # mean squared error
             metrics=['mae'])  # mean absolute error
 
         hist = model.fit(
-            input, output, verbose=0, epochs=250, batch_size=32).history
+            inputs, outputs, verbose=0, epochs=250, batch_size=32).history
         init_loss = hist['loss'][0]
         final_loss = hist['loss'][-1]
 
-        print(init_loss, final_loss)
+        self.assertLess(final_loss / init_loss, 0.5)
 
     def test_multi_head_attention(self):
         """Tests the MultiHeadAttention mechanism of Vaswani et al."""
 
         for fw, sess in framework_iterator(
-            frameworks=("torch", "tf", "tfe"), session=True):
+            frameworks=("tfe", "torch", "tf"), session=True):
 
             # Create a single attention layer with 2 heads
             if fw == 'torch':
@@ -79,19 +78,21 @@ class TestModules(unittest.TestCase):
                 model = TorchMultiHeadAttention(
                     in_dim=D_in, out_dim=D_out, num_heads=2, head_dim=32)
 
-                test_torch_layer(model, x, y)
+                self.torch_layer(model, x, y)
 
-            else:  # framwork is tensorflow or tensorflow eager
+            else:  # framework is tensorflow or tensorflow-eager
                 B = 1
-                L, D_out = 2, 10
+                L, D_in, D_out = 2, 32, 10
 
-                x = np.random.random((1000,32))
-                y = np.random.random((1000,10))
+                x = np.random.random((B, L, D_in))
+                y = np.random.random((B, L, D_out))
+
+                inputs = tf.keras.layers.Input(shape=(L, D_in))
 
                 model = tf.keras.Sequential(
-                    [MultiHeadAttention(out_dim=D_out, num_heads=2,
+                    [inputs, MultiHeadAttention(out_dim=D_out, num_heads=2,
                                         head_dim=32)])
-                test_tf_layer(model, x, y)
+                self.tf_layer(model, x, y)
 
     def test_gru_gate(self):
         """Tests the MultiHeadAttention mechanism of Vaswani et al."""
@@ -108,7 +109,7 @@ class TestModules(unittest.TestCase):
         model = MultiHeadAttention(
             in_dim=D_in, out_dim=D_out, num_heads=2, head_dim=32)
 
-        test_torch_layer(model, x, y)
+        self.torch_layer(model, x, y)
 
 if __name__ == "__main__":
     import pytest

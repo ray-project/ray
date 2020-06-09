@@ -1,4 +1,5 @@
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.utils.torch_ops import sequence_mask
 
 torch, nn = try_import_torch()
@@ -11,6 +12,7 @@ class RelativeMultiHeadAttention(nn.Module):
     """
 
     def __init__(self,
+                 in_dim,
                  out_dim,
                  num_heads,
                  head_dim,
@@ -21,6 +23,7 @@ class RelativeMultiHeadAttention(nn.Module):
         """Initializes a RelativeMultiHeadAttention nn.Module object.
 
         Args:
+            in_dim (int):
             out_dim (int):
             num_heads (int): The number of attention heads to use.
                 Denoted `H` in [2].
@@ -33,41 +36,46 @@ class RelativeMultiHeadAttention(nn.Module):
                 activation function. Should be relu for GTrXL.
             **kwargs:
         """
-        # TODO port to torch
         super().__init__(**kwargs)
 
         # No bias or non-linearity.
         self._num_heads = num_heads
         self._head_dim = head_dim
+
         # 3=Query, key, and value inputs.
-        self._qkv_layer = tf.keras.layers.Dense(
-            3 * num_heads * head_dim, use_bias=False)
-        self._linear_layer = tf.keras.layers.TimeDistributed(
-            tf.keras.layers.Dense(
-                out_dim, use_bias=False, activation=output_activation))
+        self._qkv_layer = SlimFC(
+            in_size=in_dim, out_size=3 * num_heads * head_dim, use_bias=False)
 
-        self._uvar = self.add_weight(shape=(num_heads, head_dim))
-        self._vvar = self.add_weight(shape=(num_heads, head_dim))
+        # TODO (Tanay): keras TimeDistributed wrapper
+        self._linear_layer = SlimFC(
+            in_size=num_heads*head_dim, out_size=out_dim, use_bias=False,
+            activation_fn=output_activation)
 
-        self._pos_proj = tf.keras.layers.Dense(
-            num_heads * head_dim, use_bias=False)
+        self._pos_proj = SlimFC(
+            in_size=in_dim, out_size=num_heads * head_dim, use_bias=False)
+
+        self._uvar = torch.zeros(num_heads, head_dim)
+        self._vvar = torch.zeros(num_heads, head_dim)
+        nn.init.xavier_uniform(self._uvar)
+        nn.init.xavier_uniform(self._vvar)
+
         self._rel_pos_encoder = rel_pos_encoder
-        print("relatve MHA pos_encoder: ", self._rel_pos_encoder.shape)
-        #print("relatve MHA pos_proj: ", self._pos_proj.shape)
         self._input_layernorm = None
-        if input_layernorm:
-            self._input_layernorm = tf.keras.layers.LayerNormalization(axis=-1)
 
-    def call(self, inputs, memory=None):
-        T = tf.shape(inputs)[1]  # length of segment (time)
+        if input_layernorm:
+            self._input_layernorm = torch.nn.LayerNorm(self._head_dim)
+
+    def forward(self, inputs, memory=None):
+        T = list(inputs.size())[1]  # length of segment (time)
         H = self._num_heads  # number of attention heads
         d = self._head_dim  # attention head dimension
 
         # Add previous memory chunk (as const, w/o gradient) to input.
         # Tau (number of (prev) time slices in each memory chunk).
-        Tau = memory.shape.as_list()[1] if memory is not None else 0
+        Tau = list(memory.size())[1] if memory is not None else 0
         if memory is not None:
-            inputs = tf.concat((tf.stop_gradient(memory), inputs), axis=1)
+            memory.requires_grad_(False)
+            inputs = torch.cat((memory, inputs), dim=1)
 
         # Apply the Layer-Norm.
         if self._input_layernorm is not None:
@@ -75,7 +83,7 @@ class RelativeMultiHeadAttention(nn.Module):
 
         qkv = self._qkv_layer(inputs)
 
-        queries, keys, values = tf.split(qkv, 3, -1)
+        queries, keys, values = torch.chunk(input=qkv, chunks=3, dim=-1)
         # Cut out Tau memory timesteps from query.
         queries = queries[:, -T:]
 
@@ -83,24 +91,18 @@ class RelativeMultiHeadAttention(nn.Module):
         keys = torch.reshape(keys, [-1, T + Tau, H, d])
         values = torch.reshape(values, [-1, T + Tau, H, d])
 
-        print("relative MHA: ", T.shape, H, d, queries.shape, keys.shape,
-              values.shape)
+
         R = self._pos_proj(self._rel_pos_encoder)
-        print("relative MHA R1 shape: ", R.shape)
         R = torch.reshape(R, [T + Tau, H, d])
-        print("relative MHA R2 shape: ", R.shape)
 
         # b=batch
         # i and j=time indices (i=max-timesteps (inputs); j=Tau memory space)
         # h=head
         # d=head-dim (over which we will reduce-sum)
         score = torch.einsum("bihd,bjhd->bijh", queries + self._uvar, keys)
-        print("relative MHA einsum: ", queries.shape, self._uvar.shape,
-              (queries + self._uvar).shape, score.shape)
         pos_score = torch.einsum("bihd,jhd->bijh", queries + self._vvar, R)
         score = score + self.rel_shift(pos_score)
         score = score / d**0.5
-        print("relative MHA score: ", score.shape)
 
         # causal mask of the same length as the sequence
         mask = sequence_mask(
@@ -108,11 +110,12 @@ class RelativeMultiHeadAttention(nn.Module):
         mask = mask[None, :, :, None]
 
         masked_score = score * mask + 1e30 * (mask - 1.)
-        wmat = nn.Softmax(masked_score, axis=2)
+        wmat = nn.functional.softmax(masked_score, axis=2)
 
         out = torch.einsum("bijh,bjhd->bihd", wmat, values)
-        out = torch.reshape(out, tf.concat(
-            (tf.shape(out)[:2], [H * d]), axis=0))
+        shape = list(out.shape())[:2] + [H * d]
+        out = torch.reshape(out, shape)
+
         return self._linear_layer(out)
 
     @staticmethod
@@ -122,9 +125,9 @@ class RelativeMultiHeadAttention(nn.Module):
         # 44781ed21dbaec88b280f74d9ae2877f52b492a5/tf/model.py#L31
         x_size = list(torch.shape(x))
 
-        x = tf.pad(x, [[0, 0], [0, 0], [1, 0], [0, 0]])
+        x = torch.nn.functional.pad(x, (0, 0, 1, 0, 0, 0, 0, 0 ))
         x = torch.reshape(x, [x_size[0], x_size[2] + 1, x_size[1], x_size[3]])
-        x = tf.slice(x, [0, 1, 0, 0], [-1, -1, -1, -1])
+        x = x[:, 1:, :, :]
         x = torch.reshape(x, x_size)
 
         return x
