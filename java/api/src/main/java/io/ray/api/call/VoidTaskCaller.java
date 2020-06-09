@@ -5,10 +5,9 @@ import io.ray.api.function.RayFuncVoid;
 import java.util.HashMap;
 import java.util.Map;
 
-public class VoidTaskCaller extends BaseTaskCaller {
+public class VoidTaskCaller extends BaseCaller {
   private final RayFuncVoid func;
   private final Object[] args;
-  private Map<String, Double> resources = new HashMap<>();
 
   public VoidTaskCaller(RayFuncVoid func, Object[] args) {
     this.func = func;

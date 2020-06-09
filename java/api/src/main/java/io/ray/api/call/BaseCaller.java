@@ -4,7 +4,7 @@ import io.ray.api.options.CallOptions;
 import java.util.HashMap;
 import java.util.Map;
 
-public class BaseTaskCaller<T extends BaseTaskCaller<T>> {
+public class BaseCaller<T extends BaseCaller<T>> {
   private Map<String, Double> resources = new HashMap<>();
 
   public T setResource(String key, Double value) {
