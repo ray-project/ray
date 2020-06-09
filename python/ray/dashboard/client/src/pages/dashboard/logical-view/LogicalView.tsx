@@ -23,13 +23,13 @@ type LogicalViewProps = {
 } & ReturnType<typeof mapStateToProps>;
 
 const LogicalView = ({ rayletInfo }: LogicalViewProps) => {
-  const [nameFilter, setNameFilter] = useState<string | null>(null);
+  const [nameFilter, setNameFilter] = useState("");
 
   if (rayletInfo === null) {
     return <Typography color="textSecondary">Loading...</Typography>;
   }
   let filteredActors = rayletInfo.actors;
-  if (nameFilter !== null) {
+  if (nameFilter !== "") {
     filteredActors = filterObj(
       filteredActors,
       ([_, actor]: [any, RayletActorInfo]) =>
@@ -74,7 +74,7 @@ const actorMatchesSearch = (
 
 const getNestedActorTitles = (actor: RayletActorInfo): string[] => {
   const actorTitle = actor.actorTitle;
-  const titles = [actorTitle];
+  const titles: string[] = actorTitle ? [actorTitle] : [];
   if (actor.state === -1) {
     return titles;
   }
