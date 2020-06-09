@@ -663,8 +663,8 @@ class Node:
         Returns:
             (tuple) The worker's stdout and stderr file names.
         """
-        worker_stdout_file, worker_stderr_file = (
-            self.new_log_file_names("worker-" + ray.utils.binary_to_hex(worker_id)))
+        worker_stdout_file, worker_stderr_file = (self.new_log_file_names(
+            "worker-" + ray.utils.binary_to_hex(worker_id)))
         return worker_stdout_file, worker_stderr_file
 
     def start_worker(self):
