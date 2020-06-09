@@ -89,11 +89,9 @@ You can also have Ray Serve batch requests for performance. In order to do use t
                   responses.append(request.json())
           return responses
 
-  serve.create_endpoint("counter1", "/increment")
-
   config = {"max_batch_size": 5}
   serve.create_backend("counter1", BatchingExample, config=config)
-  serve.set_traffic("counter1", {"counter1": 1.0})
+  serve.create_endpoint("counter1", backend="counter1", route="/increment")
 
 Please take a look at :ref:`Batching Tutorial<serve-batch-tutorial>` for a deep
 dive.
@@ -109,10 +107,11 @@ When calling ``set_traffic``, you provide a dictionary of backend name to a floa
 For example, here we split traffic 50/50 between two backends:
 
 .. code-block:: python
-
-  serve.create_endpoint("fifty-fifty", "/fifty")
+  
   serve.create_backend("backend1", MyClass1)
   serve.create_backend("backend2", MyClass2)
+
+  serve.create_endpoint("fifty-fifty", backend="backend1", route="/fifty")
   serve.set_traffic("fifty-fifty", {"backend1": 0.5, "backend2": 0.5})
 
 Each request is routed randomly between the backends in the traffic dictionary according to the provided weights.
@@ -125,11 +124,10 @@ A/B Testing
 
 .. code-block:: python
 
-  serve.create_endpoint("ab_endpoint", "/a-b-test")
   serve.create_backend("default_backend", MyClass)
-
+  
   # Initially, set all traffic to be served by the "default" backend.
-  serve.set_traffic("ab_endpoint", {"default_backend": 1.0})
+  serve.create_endpoint("ab_endpoint", backend="default_backend", route="/a-b-test")
 
   # Add a second backend and route 1% of the traffic to it.
   serve.create_backend("new_backend", MyNewClass)
@@ -151,11 +149,10 @@ In the example below, we do this repeatedly in one script, but in practice this 
 
 .. code-block:: python
 
-  serve.create_endpoint("incremental_endpoint", "/incremental")
   serve.create_backend("existing_backend", MyClass)
-
+  
   # Initially, all traffic is served by the existing backend.
-  serve.set_traffic("incremental_endpoint", {"existing_backend": 1.0})
+  serve.create_endpoint("incremental_endpoint", backend="existing_backend", route="/incremental")
 
   # Then we can slowly increase the proportion of traffic served by the new backend.
   serve.create_backend("new_backend", MyNewClass)

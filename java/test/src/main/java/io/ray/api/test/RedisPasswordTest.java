@@ -1,7 +1,7 @@
 package io.ray.api.test;
 
+import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.RayObject;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -27,7 +27,7 @@ public class RedisPasswordTest extends BaseTest {
 
   @Test
   public void testRedisPassword() {
-    RayObject<String> obj = Ray.call(RedisPasswordTest::echo, "hello");
+    ObjectRef<String> obj = Ray.call(RedisPasswordTest::echo, "hello");
     Assert.assertEquals("hello", obj.get());
   }
 

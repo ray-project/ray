@@ -37,6 +37,14 @@ py_test(
 )
 
 py_test(
+    name = "test_convergence_gaussian_process",
+    size = "small",
+    srcs = ["tests/test_convergence_gaussian_process.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
     name = "test_dependency",
     size = "small",
     srcs = ["tests/test_dependency.py"],
@@ -135,7 +143,7 @@ py_test(
 
 py_test(
     name = "test_api",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_api.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],

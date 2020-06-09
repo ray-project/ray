@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/object_manager/object_manager.h"
+
 #include "ray/common/common_protocol.h"
 #include "ray/stats/stats.h"
 #include "ray/util/util.h"
@@ -74,7 +75,7 @@ void ObjectManager::StopRpcService() {
 void ObjectManager::HandleObjectAdded(
     const object_manager::protocol::ObjectInfoT &object_info) {
   // Notify the object directory that the object has been added to this node.
-  ObjectID object_id = ObjectID::FromPlasmaIdBinary(object_info.object_id);
+  ObjectID object_id = ObjectID::FromBinary(object_info.object_id);
   RAY_LOG(DEBUG) << "Object added " << object_id;
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id].object_info = object_info;

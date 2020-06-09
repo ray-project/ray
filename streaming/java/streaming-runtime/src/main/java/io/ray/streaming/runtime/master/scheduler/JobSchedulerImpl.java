@@ -1,6 +1,6 @@
 package io.ray.streaming.runtime.master.scheduler;
 
-import io.ray.api.RayActor;
+import io.ray.api.ActorHandle;
 import io.ray.streaming.runtime.config.StreamingConfig;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
@@ -153,7 +153,7 @@ public class JobSchedulerImpl implements JobScheduler {
    */
   protected Map<ExecutionVertex, JobWorkerContext> buildWorkersContext(
       ExecutionGraph executionGraph) {
-    RayActor masterActor = jobMaster.getJobMasterActor();
+    ActorHandle masterActor = jobMaster.getJobMasterActor();
 
     // build workers' context
     Map<ExecutionVertex, JobWorkerContext> needRegistryVertexToContextMap = new HashMap<>();
@@ -166,7 +166,7 @@ public class JobSchedulerImpl implements JobScheduler {
 
   private JobWorkerContext buildJobWorkerContext(
       ExecutionVertex executionVertex,
-      RayActor<JobMaster> masterActor) {
+      ActorHandle<JobMaster> masterActor) {
 
     // create worker context
     JobWorkerContext ctx = new JobWorkerContext(

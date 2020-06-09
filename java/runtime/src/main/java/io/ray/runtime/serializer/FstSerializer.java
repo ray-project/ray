@@ -1,7 +1,7 @@
 package io.ray.runtime.serializer;
 
-import io.ray.runtime.actor.NativeRayActor;
-import io.ray.runtime.actor.NativeRayActorSerializer;
+import io.ray.runtime.actor.NativeActorHandle;
+import io.ray.runtime.actor.NativeActorHandleSerializer;
 import org.nustaq.serialization.FSTConfiguration;
 
 /**
@@ -11,7 +11,7 @@ public class FstSerializer {
 
   private static final ThreadLocal<FSTConfiguration> conf = ThreadLocal.withInitial(() -> {
     FSTConfiguration conf = FSTConfiguration.createDefaultConfiguration();
-    conf.registerSerializer(NativeRayActor.class, new NativeRayActorSerializer(), true);
+    conf.registerSerializer(NativeActorHandle.class, new NativeActorHandleSerializer(), true);
     return conf;
   });
 

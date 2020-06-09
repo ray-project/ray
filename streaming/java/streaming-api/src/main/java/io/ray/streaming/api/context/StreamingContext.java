@@ -58,6 +58,7 @@ public class StreamingContext implements Serializable {
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(this.streamSinks, jobName);
     this.jobGraph = jobGraphBuilder.build();
     jobGraph.printJobGraph();
+    LOG.info("JobGraph digraph\n{}", jobGraph.generateDigraph());
 
     if (Ray.internal() == null) {
       if (Config.MEMORY_CHANNEL.equalsIgnoreCase(jobConfig.get(Config.CHANNEL_TYPE))) {
