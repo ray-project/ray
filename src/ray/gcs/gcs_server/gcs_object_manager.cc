@@ -226,19 +226,30 @@ void GcsObjectManager::RemoveObjectLocationInCache(const ObjectID &object_id,
   }
 }
 
-void GcsObjectManager::RemoveObjectLocationsInCache(const ObjectID &object_id) {
+void GcsObjectManager::RemoveAllObjectLocationsInCacheByJobId(const JobID &job_id) {
   absl::MutexLock lock(&mutex_);
 
-  auto *object_locations = GetObjectLocationSet(object_id, false);
-  if (object_locations) {
-    object_to_locations_.erase(object_id);
+  std::unordered_set<ObjectID> matched_object_ids;
+  for (auto &kv : object_to_locations_) {
+    if (kv.first.TaskId().JobId() == job_id) {
+      matched_object_ids.insert(kv.first);
+    }
   }
 
-  for (auto &objects : node_to_objects_) {
-    objects.second.erase(object_id);
-    if (objects.second.empty()) {
-      node_to_objects_.erase(objects.first);
+  for (auto &key : matched_object_ids) {
+    object_to_locations_.erase(key);
+  }
+
+  std::unordered_set<ClientID> idle_nodes;
+  for (auto &kv : node_to_objects_) {
+    for (auto &value : matched_object_ids) {
+      kv.second.erase(value);
     }
+    if (kv.second.empty()) idle_nodes.insert(kv.first);
+  }
+
+  for (auto &node : idle_nodes) {
+    node_to_objects_.erase(node);
   }
 }
 
