@@ -47,8 +47,8 @@ class DQNTorchModel(TorchModelV2):
             add_layer_norm (bool): Enable layer norm (for param noise).
         """
 
-        super(DQNTorchModel, self).__init__(obs_space, action_space,
-                                            num_outputs, model_config, name)
+        super().__init__(obs_space, action_space,
+                         num_outputs, model_config, name)
 
         self.dueling = dueling
         ins = num_outputs

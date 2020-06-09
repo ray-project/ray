@@ -93,7 +93,7 @@ if torch:
     )
 
 
-class TorchSharedWeightsModel(TorchModelV2, nn.Module):
+class TorchSharedWeightsModel(TorchModelV2):
     """Example of weight sharing between two different TorchModelV2s.
 
     The shared (single) layer is simply defined outside of the two Models,
@@ -104,7 +104,6 @@ class TorchSharedWeightsModel(TorchModelV2, nn.Module):
                  model_config, name):
         TorchModelV2.__init__(self, observation_space, action_space,
                               num_outputs, model_config, name)
-        nn.Module.__init__(self)
 
         # Non-shared initial layer.
         self.first_layer = SlimFC(

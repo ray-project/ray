@@ -96,8 +96,8 @@ def build_q_model_and_distribution(policy, obs_space, action_space, config):
         or config["exploration_config"]["type"] == "ParameterNoise")
 
     policy.q_model = ModelCatalog.get_model_v2(
-        obs_space=obs_space,
-        action_space=action_space,
+        input_space=obs_space,
+        output_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
         framework="torch",
@@ -114,8 +114,8 @@ def build_q_model_and_distribution(policy, obs_space, action_space, config):
     policy.q_func_vars = policy.q_model.variables()
 
     policy.target_q_model = ModelCatalog.get_model_v2(
-        obs_space=obs_space,
-        action_space=action_space,
+        input_space=obs_space,
+        output_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
         framework="torch",

@@ -1,3 +1,4 @@
+from abc import ABCMeta
 from collections import OrderedDict
 import gym
 
@@ -14,7 +15,7 @@ torch, _ = try_import_torch()
 
 
 @PublicAPI
-class ModelV2:
+class ModelV2(metaclass=ABCMeta):
     """Defines a Keras-style abstract network model for use with RLlib.
 
     Custom models should extend either TFModelV2 or TorchModelV2 instead of

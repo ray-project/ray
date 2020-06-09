@@ -22,19 +22,39 @@ logger = logging.getLogger(__name__)
 
 
 def make_model_and_dist(policy, obs_space, action_space, config):
+    # Get the output distribution class for predicting rewards and next-obs.
+    distr_cls_next_obs = ModelCatalog.get_action_dist(
+        obs_space, config, dist_type="deterministic")
+    distr_cls_rewards = ModelCatalog.get_action_dist(gym.spaces.Box(
+        float("-inf"), float("inf"), ()
+    ), config, dist_type=)
+
     # Build one dynamics model if we are a Worker.
     # If we are the main MAML learner, build n (num_workers) dynamics Models
     # for being able to create checkpoints for the current state of training.
-    policy.dynamics_model = ModelCatalog.get_model_v2()
+    policy.dynamics_model = ModelCatalog.get_model_v2(
+        input_space=obs_space,
+        output_space=obs_space,
+        num_outputs=None,
+        model_config=config["dynamics_model"],
+        framework="torch",
+        name="dynamics_model",
+    )
 
     # Create the pi-model and register it with the Policy.
-    policy.pi = ModelCatalog.get_model_v2()
+    policy.pi = ModelCatalog.get_model_v2(
+        input_space=obs_space,
+        output_space=action_space,
+        model_config=config["model"],
+        framework="torch",
+        name="policy_model",
+    )
 
     dist_cls = partial(TorchMultiActionDistribution)
     return policy.pi, dist_cls
 
 
-def dynamics_model_loss(policy, model, dist_class, train_batch):
+def dyna_torch_loss(policy, model, dist_class, train_batch):
     # Get the predictions on the next state.
     # `predictions` will be a Tuple of
     predictions, _ = model.from_batch(train_batch)
@@ -58,8 +78,9 @@ def stats_fn(policy, train_batch):
 DYNATorchPolicy = build_torch_policy(
     name="DYNATorchPolicy",
     get_default_config=lambda: ray.rllib.agents.dyna.dyna.DEFAULT_CONFIG,
-    loss_fn=dynamics_model_loss,
+    loss_fn=dyna_torch_loss,
     stats_fn=stats_fn,
+    make_model_and_action_dist=make_model_and_dist,
     #extra_action_out_fn=vf_preds_fetches,
     #postprocess_fn=postprocess_ppo_gae,
     #extra_grad_process_fn=apply_grad_clipping,

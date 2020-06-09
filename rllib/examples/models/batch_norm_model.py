@@ -136,7 +136,7 @@ class KerasBatchNormModel(TFModelV2):
         return tf.reshape(self._value_out, [-1])
 
 
-class TorchBatchNormModel(TorchModelV2, nn.Module):
+class TorchBatchNormModel(TorchModelV2):
     """Example of a TorchModelV2 using batch normalization."""
     capture_index = 0
 
@@ -144,7 +144,6 @@ class TorchBatchNormModel(TorchModelV2, nn.Module):
                  name, **kwargs):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
-        nn.Module.__init__(self)
         layers = []
         prev_layer_size = int(np.product(obs_space.shape))
         self._logits = None

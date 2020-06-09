@@ -8,14 +8,13 @@ tf = try_import_tf()
 torch, nn = try_import_torch()
 
 
-class CustomTorchRPGModel(TorchModelV2, nn.Module):
+class CustomTorchRPGModel(TorchModelV2):
     """Example of interpreting repeated observations."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         super().__init__(obs_space, action_space, num_outputs, model_config,
                          name)
-        nn.Module.__init__(self)
         self.model = TorchFCNet(obs_space, action_space, num_outputs,
                                 model_config, name)
 
