@@ -5,7 +5,6 @@ import ray.streaming.generated.remote_call_pb2 as remote_call_pb
 import ray.streaming.generated.streaming_pb2 as streaming_pb
 import ray.streaming.operator as operator
 import ray.streaming.partition as partition
-from ray.streaming import function
 from ray.streaming.generated.streaming_pb2 import Language
 
 
@@ -32,9 +31,8 @@ class ExecutionNode:
             node_pb.node_type)]
         self.parallelism = node_pb.parallelism
         if node_pb.language == Language.PYTHON:
-            func_bytes = node_pb.function  # python function descriptor
-            func = function.load_function(func_bytes)
-            self.stream_operator = operator.create_operator(func)
+            operator_bytes = node_pb.operator  # python operator descriptor
+            self.stream_operator = operator.load_operator(operator_bytes)
         self.execution_tasks = [
             ExecutionTask(task) for task in node_pb.execution_tasks
         ]

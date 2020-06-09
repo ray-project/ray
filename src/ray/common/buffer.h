@@ -17,8 +17,9 @@
 
 #include <cstdint>
 #include <cstdio>
-#include "plasma/client.h"
+
 #include "ray/common/status.h"
+#include "ray/object_manager/plasma/client.h"
 
 namespace arrow {
 class Buffer;
