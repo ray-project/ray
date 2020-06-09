@@ -114,7 +114,7 @@ JNIEXPORT jobject JNICALL Java_org_apache_arrow_plasma_PlasmaClientJNI_create(
   if (plasma::IsPlasmaObjectExists(s)) {
     jclass exceptionClass =
         env->FindClass("org/apache/arrow/plasma/exceptions/DuplicateObjectException");
-    env->ThrowNew(exceptionClass, oid.hex().c_str());
+    env->ThrowNew(exceptionClass, oid.Hex().c_str());
     return nullptr;
   }
   if (plasma::IsPlasmaStoreFull(s)) {
