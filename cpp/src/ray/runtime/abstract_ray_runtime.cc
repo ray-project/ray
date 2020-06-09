@@ -21,7 +21,6 @@ AbstractRayRuntime *AbstractRayRuntime::DoInit(std::shared_ptr<RayConfig> config
   } else {
     ProcessHelper::RayStart();
     runtime = new NativeRayRuntime(config);
-    //throw RayException("Only single process mode supported now");
   }
   RAY_CHECK(runtime);
   return runtime;

@@ -3,9 +3,7 @@
 namespace ray {
 namespace api {
 
-void ProcessHelper::RayStart() {
-  return;
-}
+void ProcessHelper::RayStart() { return; }
 
 }  // namespace api
 }  // namespace ray

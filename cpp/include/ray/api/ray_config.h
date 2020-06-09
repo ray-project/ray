@@ -20,8 +20,8 @@ class RayConfig {
 
   static std::shared_ptr<RayConfig> GetInstance();
 
-  private:
-   static std::shared_ptr<RayConfig> config_;
+ private:
+  static std::shared_ptr<RayConfig> config_;
 };
 
 }  // namespace api

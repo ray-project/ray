@@ -11,15 +11,13 @@
 namespace ray {
 namespace api {
 NativeObjectStore::NativeObjectStore(NativeRayRuntime &native_ray_tuntime)
-    : native_ray_tuntime_(native_ray_tuntime) {
-}
+    : native_ray_tuntime_(native_ray_tuntime) {}
 
 void NativeObjectStore::PutRaw(const ObjectID &object_id,
-                                  std::shared_ptr<msgpack::sbuffer> data) {
-}
+                               std::shared_ptr<msgpack::sbuffer> data) {}
 
 std::shared_ptr<msgpack::sbuffer> NativeObjectStore::GetRaw(const ObjectID &object_id,
-                                                               int timeout_ms) {
+                                                            int timeout_ms) {
   return nullptr;
 }
 
@@ -29,7 +27,7 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> NativeObjectStore::GetRaw(
 }
 
 WaitResult NativeObjectStore::Wait(const std::vector<ObjectID> &ids, int num_objects,
-                                      int timeout_ms) {
+                                   int timeout_ms) {
   native_ray_tuntime_.GetWorkerContext();
   return WaitResult();
 }

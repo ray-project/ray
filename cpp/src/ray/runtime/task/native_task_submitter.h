@@ -23,7 +23,6 @@ class NativeTaskSubmitter : public TaskSubmitter {
   ObjectID SubmitActorTask(const InvocationSpec &invocation);
 
  private:
-
   NativeRayRuntime &native_ray_tuntime_;
 
   ObjectID Submit(const InvocationSpec &invocation, TaskType type);

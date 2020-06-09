@@ -4,8 +4,8 @@ namespace ray {
 namespace api {
 
 class ProcessHelper {
-  public:
-    static void RayStart();
+ public:
+  static void RayStart();
 };
 }  // namespace api
 }  // namespace ray
