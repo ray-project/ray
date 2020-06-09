@@ -41,6 +41,7 @@ def echo(_):
     ray.show_in_webui(str(serve.context.batch_size), key="Current batch size")
     return ["hi {}".format(i) for i in range(serve.context.batch_size)]
 
+
 config = {"num_replicas": 30, "max_batch_size": 16}
 serve.create_backend("echo:v1", echo, config=config)
 serve.create_endpoint("echo", backend="echo:v1", route="/echo")

@@ -82,7 +82,8 @@ class RandomTest:
             return new_endpoint
 
         serve.create_backend(new_endpoint, handler)
-        serve.create_endpoint(new_endpoint, backend=new_endpoint, route="/" + new_endpoint)
+        serve.create_endpoint(
+            new_endpoint, backend=new_endpoint, route="/" + new_endpoint)
 
         self.endpoints.append(new_endpoint)
 
