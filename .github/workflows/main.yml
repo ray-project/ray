@@ -26,6 +26,15 @@ jobs:
           - name: macos
             os: macos-10.15
             python-version: 3.6
+          - name: ubuntu-jenkins-tune
+            os: ubuntu-latest
+            jenkins-test: RUN_TUNE_TESTS
+          - name: ubuntu-jenkins-doc
+            os: ubuntu-latest
+            jenkins-test: RUN_DOC_TESTS
+          - name: ubuntu-jenkins-sgd
+            os: ubuntu-latest
+            jenkins-test: RUN_SGD_TESTS
     env:
       PYTHON: ${{ matrix.python-version }}
       TRAVIS_COMMIT: ${{ github.sha }}
@@ -55,8 +64,16 @@ jobs:
         aws-access-key-id: ${{ secrets.GHA_AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.GHA_AWS_SECRET_ACCESS_KEY }}
         aws-region: us-west-2
+    - name: Run Jenkins tests
+      shell: bash -e -o pipefail -l {0}
+      if: matrix.jenkins-test != ''
+      env:
+        SIGOPT_KEY: ${{ secrets.TUNE_SIGOPT_KEY }}
+        TEST_CASE: ${{ matrix.jenkins-test }}
+      run: env "${TEST_CASE}=1" HOME="${PWD}" ci/jenkins_tests/entry_point.sh
     - name: Run CI script
       shell: bash -e -o pipefail -l {0}
+      if: matrix.jenkins-test == ''
       env:
         BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
