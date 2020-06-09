@@ -18,7 +18,7 @@ class RecurrentNetwork(TorchModelV2):
     takes batches with the time dimension added already.
 
     Here is an example implementation for a subclass
-    ``MyRNNClass(nn.Module, RecurrentNetwork)``::
+    ``MyRNNClass(RecurrentNetwork)``::
 
         def __init__(self, obs_space, num_outputs):
             self.obs_size = _get_size(obs_space)

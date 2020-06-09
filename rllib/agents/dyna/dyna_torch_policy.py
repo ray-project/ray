@@ -16,11 +16,11 @@ logger = logging.getLogger(__name__)
 
 def make_model_and_dist(policy, obs_space, action_space, config):
     # Get the output distribution class for predicting rewards and next-obs.
-    # distr_cls_next_obs = ModelCatalog.get_action_dist(
-    #    obs_space, config, dist_type="deterministic")
+    distr_cls_next_obs = ModelCatalog.get_action_dist(
+        obs_space, config, dist_type="deterministic")
     # distr_cls_rewards = ModelCatalog.get_action_dist(gym.spaces.Box(
-    #     float("-inf"), float("inf"), ()
-    # ), config, dist_type=)
+    #    float("-inf"), float("inf"), ()
+    # ), config, dist_type="")
 
     # Build one dynamics model if we are a Worker.
     # If we are the main MAML learner, build n (num_workers) dynamics Models
@@ -28,7 +28,7 @@ def make_model_and_dist(policy, obs_space, action_space, config):
     policy.dynamics_model = ModelCatalog.get_model_v2(
         input_space=obs_space,
         output_space=obs_space,
-        num_outputs=None,
+        num_outputs=num_outputs,
         model_config=config["dynamics_model"],
         framework="torch",
         name="dynamics_model",

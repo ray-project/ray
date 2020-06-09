@@ -129,7 +129,8 @@ class ModelCatalog:
         Args:
             action_space (Space): Action space of the target gym env.
             config (Optional[dict]): Optional model config.
-            dist_type (Optional[str]): Identifier of the action distribution.
+            dist_type (Optional[str]): Identifier of the action distribution
+                interpreted as a hint. One of "deterministic",
             framework (str): One of "tf", "tfe", or "torch".
             kwargs (dict): Optional kwargs to pass on to the Distribution's
                 constructor.
