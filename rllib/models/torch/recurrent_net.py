@@ -11,7 +11,7 @@ torch, nn = try_import_torch()
 
 
 @DeveloperAPI
-class RecurrentNetwork(TorchModelV2):
+class RecurrentNetwork(TorchModelV2, nn.Module):
     """Helper class to simplify implementing RNN models with TorchModelV2.
 
     Instead of implementing forward(), you can implement forward_rnn() which
@@ -51,6 +51,12 @@ class RecurrentNetwork(TorchModelV2):
             self._cur_value = self.value_branch(h).squeeze(1)
             return q, [h]
     """
+
+    def __init__(self, obs_space, action_space, num_outputs, model_config,
+                 name):
+        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
+                              model_config, name)
+        nn.Module.__init__(self)
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
@@ -94,8 +100,8 @@ class LSTMWrapper(RecurrentNetwork):
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
 
-        super(LSTMWrapper, self).__init__(obs_space, action_space, None,
-                                          model_config, name)
+        super().__init__(obs_space, action_space, None,
+                         model_config, name)
 
         self.cell_size = model_config["lstm_cell_size"]
         self.lstm = nn.LSTM(self.num_outputs, self.cell_size, batch_first=True)

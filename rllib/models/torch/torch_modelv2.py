@@ -6,7 +6,7 @@ _, nn = try_import_torch()
 
 
 @PublicAPI
-class TorchModelV2(ModelV2, nn.Module):
+class TorchModelV2(ModelV2):
     """Torch version of ModelV2.
 
     Note that this class by itself is not a valid model unless you
@@ -35,7 +35,6 @@ class TorchModelV2(ModelV2, nn.Module):
             model_config,
             name,
             framework="torch")
-        nn.Module.__init__(self)
 
     @override(ModelV2)
     def variables(self, as_dict=False):
