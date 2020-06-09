@@ -52,6 +52,13 @@ If using TF2 and TensorBoard, Tune will also automatically generate TensorBoard 
 
 .. tip:: Join the `Ray community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray Tune (and other Ray libraries)!
 
+Why choose Tune?
+----------------
+
+There are many other hyperparameter optimization libraries out there. If you're new to Tune, you're probably wondering what makes Tune different?
+
+.. include:: tune/why_tune.rst
+
 Guides/Materials
 ----------------
 

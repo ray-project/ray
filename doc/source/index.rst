@@ -154,7 +154,6 @@ Getting Involved
    :caption: Tune
 
    tune.rst
-   tune/why_tune.rst
    Tutorials, Guides, Examples <tune/tutorials/overview.rst>
    tune/api_docs/overview.rst
    tune-contrib.rst
