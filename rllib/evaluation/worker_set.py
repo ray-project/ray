@@ -1,5 +1,4 @@
 import logging
-import gym
 from types import FunctionType
 
 import ray
