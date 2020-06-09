@@ -277,3 +277,8 @@ async def test_task_runner_perform_async(serve_instance):
     assert len(done) == 10
     for item in done:
         await item == "done!"
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

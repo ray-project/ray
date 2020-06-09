@@ -234,3 +234,8 @@ async def test_router_use_max_concurrency(serve_instance):
     queries_counter, backend_queues = await q.get_queues.remote()
     assert queries_counter["max-concurrent-test:replica-tag"] == 0
     assert len(backend_queues["max-concurrent-test"]) == 0
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

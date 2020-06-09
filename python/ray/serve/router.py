@@ -324,6 +324,7 @@ class Router:
         return result
 
     def _assign_query_to_worker(self, backend, buffer_queue, worker_queue):
+        overloaded_replicas = set()
         while len(buffer_queue) and len(worker_queue):
             backend_replica_tag = worker_queue.pop()
 
@@ -331,21 +332,25 @@ class Router:
             if backend_replica_tag not in self.replicas:
                 continue
 
+            # We have reached the end of the worker queue where all replicas
+            # are overloaded.
+            if backend_replica_tag in overloaded_replicas:
+                break
+
             # This replica has too many in flight and processing queries.
-            # We will just break out of the loop because we can't send any
-            # queries.
             max_queries = 1
             if backend in self.backend_info:
                 max_queries = self.backend_info[backend].max_concurrent_queries
             curr_queries = self.queries_counter[backend_replica_tag]
             if curr_queries >= max_queries:
-                # Put the worker back to the head of the queue.
-                worker_queue.append(backend_replica_tag)
+                # Put the worker back to the queue.
+                worker_queue.appendleft(backend_replica_tag)
+                overloaded_replicas.add(backend_replica_tag)
                 logger.debug(
                     "Skipping backend {} because it has {} in flight "
                     "requests which exceeded the concurrency limit.".format(
                         backend, curr_queries))
-                break
+                continue
 
             request = buffer_queue.pop(0)
             self.queries_counter[backend_replica_tag] += 1

@@ -507,3 +507,8 @@ def test_endpoint_input_validation(serve_instance):
     with pytest.raises(TypeError):
         serve.create_endpoint("endpoint", backend=2)
     serve.create_endpoint("endpoint", backend="backend")
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))
