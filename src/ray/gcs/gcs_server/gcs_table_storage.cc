@@ -85,9 +85,17 @@ Status GcsTableWithJobId<Key, Data>::Put(const Key &key, const Data &value,
 template <typename Key, typename Data>
 Status GcsTableWithJobId<Key, Data>::GetByJobId(const JobID &job_id,
                                                 const MapCallback<Key, Data> &callback) {
-  // TODO(ffbin): We will add this function after redis store client support
-  // AsyncGetByIndex interface.
-  return Status::NotImplemented("GetByJobId not implemented");
+  auto on_done = [callback](const std::unordered_map<std::string, std::string> &result) {
+    std::unordered_map<Key, Data> values;
+    for (auto &item : result) {
+      Data data;
+      data.ParseFromString(item.second);
+      values[Key::FromBinary(item.first)] = std::move(data);
+    }
+    callback(values);
+  };
+  return this->store_client_->AsyncGetByIndex(this->table_name_, job_id.Binary(),
+                                              on_done);
 }
 
 template <typename Key, typename Data>

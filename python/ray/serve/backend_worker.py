@@ -7,8 +7,7 @@ from ray import serve
 from ray.serve import context as serve_context
 from ray.serve.context import FakeFlaskRequest
 from collections import defaultdict
-from ray.serve.utils import (parse_request_item, _get_logger,
-                             retry_actor_failures)
+from ray.serve.utils import (parse_request_item, _get_logger)
 from ray.serve.exceptions import RayServeException
 from ray.serve.metric import MetricClient
 from ray.async_compat import sync_to_async
@@ -31,16 +30,15 @@ def create_backend_worker(func_or_class):
                      backend_tag,
                      replica_tag,
                      init_args,
-                     cluster_name=None):
-            serve.init(cluster_name=cluster_name)
+                     instance_name=None):
+            serve.init(name=instance_name)
             if is_function:
                 _callable = func_or_class
             else:
                 _callable = func_or_class(*init_args)
 
             master = serve.api._get_master_actor()
-            [metric_exporter] = retry_actor_failures(
-                master.get_metric_exporter)
+            [metric_exporter] = ray.get(master.get_metric_exporter.remote())
             metric_client = MetricClient(
                 metric_exporter, default_labels={"backend": backend_tag})
             self.backend = RayServeWorker(backend_tag, replica_tag, _callable,

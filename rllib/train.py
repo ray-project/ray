@@ -50,6 +50,11 @@ def create_parser(parser_creator=None):
         action="store_true",
         help="Whether to disable the Ray web ui.")
     parser.add_argument(
+        "--local-mode",
+        action="store_true",
+        help="Whether to run ray with `local_mode=True`. "
+        "Only if --ray-num-nodes is not used.")
+    parser.add_argument(
         "--ray-num-cpus",
         default=None,
         type=int,
@@ -135,7 +140,6 @@ def create_parser(parser_creator=None):
 
 
 def run(args, parser):
-    pass  # XXX: force CI
     if args.config_file:
         with open(args.config_file) as f:
             experiments = yaml.safe_load(f)
@@ -176,9 +180,11 @@ def run(args, parser):
         if not exp.get("env") and not exp.get("config", {}).get("env"):
             parser.error("the following arguments are required: --env")
         if args.eager:
-            exp["config"]["eager"] = True
-        if args.torch:
-            exp["config"]["use_pytorch"] = True
+            exp["config"]["framework"] = "tfe"
+        elif args.torch:
+            exp["config"]["framework"] = "torch"
+        else:
+            exp["config"]["framework"] = "tf"
         if args.v:
             exp["config"]["log_level"] = "INFO"
             verbose = 2
@@ -186,7 +192,7 @@ def run(args, parser):
             exp["config"]["log_level"] = "DEBUG"
             verbose = 3
         if args.trace:
-            if not exp["config"].get("eager"):
+            if exp["config"]["framework"] != "tfe":
                 raise ValueError("Must enable --eager to enable tracing.")
             exp["config"]["eager_tracing"] = True
 
@@ -208,7 +214,8 @@ def run(args, parser):
             memory=args.ray_memory,
             redis_max_memory=args.ray_redis_max_memory,
             num_cpus=args.ray_num_cpus,
-            num_gpus=args.ray_num_gpus)
+            num_gpus=args.ray_num_gpus,
+            local_mode=args.local_mode)
     run_experiments(
         experiments,
         scheduler=_make_scheduler(args),

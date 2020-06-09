@@ -152,6 +152,12 @@ class ActorInfoAccessor {
       const ActorID &actor_id,
       const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) = 0;
 
+  /// Reestablish subscription.
+  /// This should be called when GCS server restarts from a failure.
+  ///
+  /// \return Status
+  virtual Status AsyncReSubscribe() = 0;
+
  protected:
   ActorInfoAccessor() = default;
 };
@@ -195,6 +201,12 @@ class JobInfoAccessor {
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
   virtual Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) = 0;
+
+  /// Reestablish subscription.
+  /// This should be called when GCS server restarts from a failure.
+  ///
+  /// \return Status
+  virtual Status AsyncReSubscribe() = 0;
 
  protected:
   JobInfoAccessor() = default;
@@ -298,6 +310,12 @@ class TaskInfoAccessor {
       const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
       const StatusCallback &callback) = 0;
 
+  /// Reestablish subscription.
+  /// This should be called when GCS server restarts from a failure.
+  ///
+  /// \return Status
+  virtual Status AsyncReSubscribe() = 0;
+
  protected:
   TaskInfoAccessor() = default;
 };
@@ -317,6 +335,13 @@ class ObjectInfoAccessor {
   virtual Status AsyncGetLocations(
       const ObjectID &object_id,
       const MultiItemCallback<rpc::ObjectTableData> &callback) = 0;
+
+  /// Get all object's locations from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finished.
+  /// \return Status
+  virtual Status AsyncGetAll(
+      const MultiItemCallback<rpc::ObjectLocationInfo> &callback) = 0;
 
   /// Add location of object to GCS asynchronously.
   ///
@@ -353,6 +378,12 @@ class ObjectInfoAccessor {
   /// \param object_id The ID of the object to be unsubscribed to.
   /// \return Status
   virtual Status AsyncUnsubscribeToLocations(const ObjectID &object_id) = 0;
+
+  /// Reestablish subscription.
+  /// This should be called when GCS server restarts from a failure.
+  ///
+  /// \return Status
+  virtual Status AsyncReSubscribe() = 0;
 
  protected:
   ObjectInfoAccessor() = default;
@@ -524,6 +555,12 @@ class NodeInfoAccessor {
       const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
       const StatusCallback &done) = 0;
 
+  /// Reestablish subscription.
+  /// This should be called when GCS server restarts from a failure.
+  ///
+  /// \return Status
+  virtual Status AsyncReSubscribe() = 0;
+
  protected:
   NodeInfoAccessor() = default;
 };
@@ -571,6 +608,13 @@ class StatsInfoAccessor {
       const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
       const StatusCallback &callback) = 0;
 
+  /// Get all profile info from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finished.
+  /// \return Status
+  virtual Status AsyncGetAll(
+      const MultiItemCallback<rpc::ProfileTableData> &callback) = 0;
+
  protected:
   StatsInfoAccessor() = default;
 };
@@ -612,6 +656,12 @@ class WorkerInfoAccessor {
       rpc::WorkerType worker_type, const WorkerID &worker_id,
       const std::unordered_map<std::string, std::string> &worker_info,
       const StatusCallback &callback) = 0;
+
+  /// Reestablish subscription.
+  /// This should be called when GCS server restarts from a failure.
+  ///
+  /// \return Status
+  virtual Status AsyncReSubscribe() = 0;
 
  protected:
   WorkerInfoAccessor() = default;

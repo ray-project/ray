@@ -61,7 +61,7 @@ if __name__ == "__main__":
             "custom_model": "pa_model",
         },
         "num_workers": 0,
-        "use_pytorch": args.torch,
+        "framework": "torch" if args.torch else "tf",
     }, **cfg)
 
     stop = {

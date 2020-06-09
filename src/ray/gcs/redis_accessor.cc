@@ -443,7 +443,7 @@ Status RedisTaskInfoAccessor::AsyncGetTaskLease(
 
   auto on_failure = [callback](RedisGcsClient *client, const TaskID &task_id) {
     boost::optional<TaskLeaseData> result;
-    callback(Status::Invalid("Task not exist."), result);
+    callback(Status::Invalid("Task lease not exist."), result);
   };
 
   TaskLeaseTable &task_lease_table = client_impl_->task_lease_table();

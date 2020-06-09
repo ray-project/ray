@@ -131,4 +131,5 @@ if __name__ == "__main__":
                     "custom_model": "keras_q_model"
                     if args.run == "DQN" else "keras_model"
                 },
+                "framework": "tf",
             }))

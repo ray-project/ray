@@ -149,9 +149,9 @@ RAY_CONFIG(uint64_t, max_lineage_size, 100)
 /// objects to store.
 RAY_CONFIG(int64_t, actor_max_dummy_objects, 1000)
 
-/// Number of times we try connecting to a socket.
-RAY_CONFIG(int64_t, num_connect_attempts, 5)
-RAY_CONFIG(int64_t, connect_timeout_milliseconds, 500)
+/// Number of times raylet client tries connecting to a raylet.
+RAY_CONFIG(int64_t, raylet_client_num_connect_attempts, 10)
+RAY_CONFIG(int64_t, raylet_client_connect_timeout_milliseconds, 1000)
 
 /// The duration that the raylet will wait before reinitiating a
 /// fetch request for a missing task dependency. This time may adapt based on
@@ -283,6 +283,12 @@ RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
 
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
+
+/// The interval at which the gcs rpc client will check if gcs rpc server is ready.
+RAY_CONFIG(int64_t, ping_gcs_rpc_server_interval_milliseconds, 1000)
+
+/// Maximum number of times to retry ping gcs rpc server when gcs server restarts.
+RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 600)
 
 /// Whether to enable gcs service.
 /// RAY_GCS_SERVICE_ENABLED is an env variable which only set in ci job.

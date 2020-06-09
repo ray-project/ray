@@ -19,13 +19,12 @@
 #include <utility>
 
 #include "gmock/gmock.h"
-#include "src/ray/common/buffer.h"
+#include "ray/common/task/task.h"
+#include "ray/common/task/task_util.h"
+#include "ray/common/test_util.h"
+#include "ray/protobuf/gcs_service.grpc.pb.h"
+#include "ray/util/asio_util.h"
 #include "src/ray/common/placement_group.h"
-#include "src/ray/common/task/task.h"
-#include "src/ray/common/task/task_util.h"
-#include "src/ray/common/test_util.h"
-#include "src/ray/protobuf/gcs_service.grpc.pb.h"
-#include "src/ray/util/asio_util.h"
 
 namespace ray {
 
@@ -90,11 +89,12 @@ struct Mocker {
     return request;
   }
 
-  static std::shared_ptr<rpc::GcsNodeInfo> GenNodeInfo(uint16_t port = 0) {
+  static std::shared_ptr<rpc::GcsNodeInfo> GenNodeInfo(
+      uint16_t port = 0, const std::string address = "127.0.0.1") {
     auto node = std::make_shared<rpc::GcsNodeInfo>();
     node->set_node_id(ClientID::FromRandom().Binary());
     node->set_node_manager_port(port);
-    node->set_node_manager_address("127.0.0.1");
+    node->set_node_manager_address(address);
     return node;
   }
 
@@ -137,6 +137,7 @@ struct Mocker {
     auto task_lease_data = std::make_shared<rpc::TaskLeaseData>();
     task_lease_data->set_task_id(task_id);
     task_lease_data->set_node_manager_id(node_id);
+    task_lease_data->set_timeout(9999);
     return task_lease_data;
   }
 

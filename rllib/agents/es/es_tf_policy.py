@@ -11,7 +11,8 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.space_utils import get_base_struct_from_space, unbatch
+from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
+    unbatch
 
 tf = try_import_tf()
 tree = try_import_tree()
@@ -118,6 +119,12 @@ class ESTFPolicy:
             single_action += np.random.randn(*single_action.shape) * \
                 self.action_noise_std
         return single_action
+
+    def get_state(self):
+        return {"state": self.get_flat_weights()}
+
+    def set_state(self, state):
+        return self.set_flat_weights(state["state"])
 
     def set_flat_weights(self, x):
         self.variables.set_flat(x)

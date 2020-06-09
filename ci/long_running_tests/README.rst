@@ -9,6 +9,7 @@ forever until they fail. To set up the project you need to run
     pip install anyscale
     anyscale project create
 
+Note that all the long running test is running inside virtual environment, tensorflow_p36
 
 Running the Workloads
 ---------------------

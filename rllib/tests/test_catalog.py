@@ -35,19 +35,21 @@ class CustomModel(TFModelV2):
 class CustomActionDistribution(TFActionDistribution):
     def __init__(self, inputs, model):
         # Store our output shape.
-        custom_options = model.model_config["custom_options"]
-        if "output_dim" in custom_options:
+        custom_model_config = model.model_config["custom_model_config"]
+        if "output_dim" in custom_model_config:
             self.output_shape = tf.concat(
-                [tf.shape(inputs)[:1], custom_options["output_dim"]], axis=0)
+                [tf.shape(inputs)[:1], custom_model_config["output_dim"]],
+                axis=0)
         else:
             self.output_shape = tf.shape(inputs)
         super().__init__(inputs, model)
 
     @staticmethod
     def required_model_output_shape(action_space, model_config=None):
-        custom_options = model_config["custom_options"] or {}
-        if custom_options is not None and custom_options.get("output_dim"):
-            return custom_options.get("output_dim")
+        custom_model_config = model_config["custom_model_config"] or {}
+        if custom_model_config is not None and \
+                custom_model_config.get("output_dim"):
+            return custom_model_config.get("output_dim")
         return action_space.shape
 
     @override(TFActionDistribution)
@@ -157,7 +159,7 @@ class ModelCatalogTest(unittest.TestCase):
             dist.entropy()
 
         # test passing the options to it
-        model_config["custom_options"].update({"output_dim": (3, )})
+        model_config["custom_model_config"].update({"output_dim": (3, )})
         dist_cls, param_shape = ModelCatalog.get_action_dist(
             action_space, model_config)
         self.assertEqual(param_shape, (3, ))

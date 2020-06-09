@@ -21,7 +21,12 @@
 
 namespace ray {
 
-class GlobalStateAccessorTest : public RedisServiceManagerForTest {
+class GlobalStateAccessorTest : public ::testing::Test {
+ public:
+  GlobalStateAccessorTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
+
+  virtual ~GlobalStateAccessorTest() { TestSetupUtil::ShutDownRedisServers(); }
+
  protected:
   void SetUp() override {
     config.grpc_server_port = 0;
@@ -29,17 +34,17 @@ class GlobalStateAccessorTest : public RedisServiceManagerForTest {
     config.grpc_server_thread_num = 1;
     config.redis_address = "127.0.0.1";
     config.is_test = true;
-    config.redis_port = REDIS_SERVER_PORTS.front();
-    gcs_server_.reset(new gcs::GcsServer(config));
+    config.redis_port = TEST_REDIS_SERVER_PORTS.front();
+
     io_service_.reset(new boost::asio::io_service());
+    gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
+    gcs_server_->Start();
 
     thread_io_service_.reset(new std::thread([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(*io_service_));
       io_service_->run();
     }));
-
-    thread_gcs_server_.reset(new std::thread([this] { gcs_server_->Start(); }));
 
     // Wait until server starts listening.
     while (!gcs_server_->IsStarted()) {
@@ -62,12 +67,13 @@ class GlobalStateAccessorTest : public RedisServiceManagerForTest {
   void TearDown() override {
     gcs_server_->Stop();
     io_service_->stop();
+    gcs_server_.reset();
     thread_io_service_->join();
-    thread_gcs_server_->join();
+
     gcs_client_->Disconnect();
     global_state_->Disconnect();
     global_state_.reset();
-    FlushAll();
+    TestSetupUtil::FlushAllRedisServers();
   }
 
   bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms) {
@@ -79,7 +85,6 @@ class GlobalStateAccessorTest : public RedisServiceManagerForTest {
   gcs::GcsServerConfig config;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
-  std::unique_ptr<std::thread> thread_gcs_server_;
   std::unique_ptr<boost::asio::io_service> io_service_;
 
   // GCS client.
@@ -105,13 +110,129 @@ TEST_F(GlobalStateAccessorTest, TestJobTable) {
   ASSERT_EQ(global_state_->GetAllJobInfo().size(), job_count);
 }
 
+TEST_F(GlobalStateAccessorTest, TestNodeTable) {
+  int node_count = 100;
+  ASSERT_EQ(global_state_->GetAllNodeInfo().size(), 0);
+  // It's useful to check if index value will be marked as address suffix.
+  for (int index = 0; index < node_count; ++index) {
+    auto node_table_data =
+        Mocker::GenNodeInfo(index, std::string("127.0.0.") + std::to_string(index));
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
+        *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+    WaitReady(promise.get_future(), timeout_ms_);
+  }
+  auto node_table = global_state_->GetAllNodeInfo();
+  ASSERT_EQ(node_table.size(), node_count);
+  for (int index = 0; index < node_count; ++index) {
+    rpc::GcsNodeInfo node_data;
+    node_data.ParseFromString(node_table[index]);
+    ASSERT_EQ(node_data.node_manager_address(),
+              std::string("127.0.0.") + std::to_string(node_data.node_manager_port()));
+  }
+}
+
+TEST_F(GlobalStateAccessorTest, TestNodeResourceTable) {
+  int node_count = 100;
+  ASSERT_EQ(global_state_->GetAllNodeInfo().size(), 0);
+  for (int index = 0; index < node_count; ++index) {
+    auto node_table_data =
+        Mocker::GenNodeInfo(index, std::string("127.0.0.") + std::to_string(index));
+    auto node_id = ClientID::FromBinary(node_table_data->node_id());
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
+        *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+    WaitReady(promise.get_future(), timeout_ms_);
+    ray::gcs::NodeInfoAccessor::ResourceMap resources;
+    rpc::ResourceTableData resource_table_data;
+    resource_table_data.set_resource_capacity(static_cast<double>(index + 1) + 0.1);
+    resources[std::to_string(index)] =
+        std::make_shared<rpc::ResourceTableData>(resource_table_data);
+    RAY_IGNORE_EXPR(gcs_client_->Nodes().AsyncUpdateResources(
+        node_id, resources, [](Status status) { RAY_CHECK(status.ok()); }));
+  }
+  auto node_table = global_state_->GetAllNodeInfo();
+  ASSERT_EQ(node_table.size(), node_count);
+  for (int index = 0; index < node_count; ++index) {
+    rpc::GcsNodeInfo node_data;
+    node_data.ParseFromString(node_table[index]);
+    auto resource_map_str =
+        global_state_->GetNodeResourceInfo(ClientID::FromBinary(node_data.node_id()));
+    rpc::ResourceMap resource_map;
+    resource_map.ParseFromString(resource_map_str);
+    ASSERT_EQ(
+        static_cast<uint32_t>(
+            (*resource_map.mutable_items())[std::to_string(node_data.node_manager_port())]
+                .resource_capacity()),
+        node_data.node_manager_port() + 1);
+  }
+}
+
+TEST_F(GlobalStateAccessorTest, TestProfileTable) {
+  int profile_count = 100;
+  ASSERT_EQ(global_state_->GetAllProfileInfo().size(), 0);
+  for (int index = 0; index < profile_count; ++index) {
+    auto client_id = ClientID::FromRandom();
+    auto profile_table_data = Mocker::GenProfileTableData(client_id);
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(
+        profile_table_data,
+        [&promise](Status status) { promise.set_value(status.ok()); }));
+    WaitReady(promise.get_future(), timeout_ms_);
+  }
+  ASSERT_EQ(global_state_->GetAllProfileInfo().size(), profile_count);
+}
+
+TEST_F(GlobalStateAccessorTest, TestObjectTable) {
+  int object_count = 1;
+  ASSERT_EQ(global_state_->GetAllObjectInfo().size(), 0);
+  std::vector<ObjectID> object_ids;
+  object_ids.reserve(object_count);
+  for (int index = 0; index < object_count; ++index) {
+    ObjectID object_id = ObjectID::FromRandom();
+    object_ids.emplace_back(object_id);
+    ClientID node_id = ClientID::FromRandom();
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Objects().AsyncAddLocation(
+        object_id, node_id,
+        [&promise](Status status) { promise.set_value(status.ok()); }));
+    WaitReady(promise.get_future(), timeout_ms_);
+  }
+  ASSERT_EQ(global_state_->GetAllObjectInfo().size(), object_count);
+
+  for (auto &object_id : object_ids) {
+    ASSERT_TRUE(global_state_->GetObjectInfo(object_id));
+  }
+}
+
+TEST_F(GlobalStateAccessorTest, TestActorTable) {
+  int actor_count = 1;
+  ASSERT_EQ(global_state_->GetAllActorInfo().size(), 0);
+  auto job_id = JobID::FromInt(1);
+  std::vector<ActorID> actor_ids;
+  actor_ids.reserve(actor_count);
+  for (int index = 0; index < actor_count; ++index) {
+    auto actor_table_data = Mocker::GenActorTableData(job_id);
+    actor_ids.emplace_back(ActorID::FromBinary(actor_table_data->actor_id()));
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncRegister(
+        actor_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+    WaitReady(promise.get_future(), timeout_ms_);
+  }
+  ASSERT_EQ(global_state_->GetAllActorInfo().size(), actor_count);
+
+  for (auto &actor_id : actor_ids) {
+    ASSERT_TRUE(global_state_->GetActorInfo(actor_id));
+  }
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

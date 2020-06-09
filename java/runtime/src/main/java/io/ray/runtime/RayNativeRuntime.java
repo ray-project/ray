@@ -96,19 +96,25 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     objectStore = new NativeObjectStore(workerContext);
     taskSubmitter = new NativeTaskSubmitter();
 
-    LOGGER.info("RayNativeRuntime started with store {}, raylet {}",
+    LOGGER.debug("RayNativeRuntime started with store {}, raylet {}",
         rayConfig.objectStoreSocketName, rayConfig.rayletSocketName);
   }
 
   @Override
   public void shutdown() {
-    nativeShutdown();
-    if (null != manager) {
-      manager.cleanup();
-      manager = null;
+    if (rayConfig.workerMode == WorkerType.DRIVER) {
+      nativeShutdown();
+      if (null != manager) {
+        manager.cleanup();
+        manager = null;
+      }
+    }
+    if (null != gcsClient) {
+      gcsClient.destroy();
+      gcsClient = null;
     }
     RayConfig.reset();
-    LOGGER.info("RayNativeRuntime shutdown");
+    LOGGER.debug("RayNativeRuntime shutdown");
   }
 
   // For test purpose only

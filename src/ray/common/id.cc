@@ -60,21 +60,12 @@ constexpr uint8_t kCreatedByTaskBitsOffset = 15;
 /// The bit offset of the flag `ObjectType` in a flags bytes.
 constexpr uint8_t kObjectTypeBitsOffset = 14;
 
-/// The bit offset of the flag `TransportType` in a flags bytes.
-// TODO(edoakes): this isn't used anymore, should update ID layout.
-// constexpr uint8_t kTransportTypeBitsOffset = 11;
-
 /// The mask that is used to mask the flag `CreatedByTask`.
 constexpr ObjectIDFlagsType kCreatedByTaskFlagBitMask = 0x1 << kCreatedByTaskBitsOffset;
 
 /// The mask that is used to mask a bit to indicates the type of this object.
 /// So it can represent for 2 types.
 constexpr ObjectIDFlagsType kObjectTypeFlagBitMask = 0x1 << kObjectTypeBitsOffset;
-
-/// The mask that is used to mask 3 bits to indicate the type of transport.
-// TODO(edoakes): this isn't used anymore, should update ID layout.
-// constexpr ObjectIDFlagsType kTransportTypeFlagBitMask = 0x7 <<
-// kTransportTypeBitsOffset;
 
 /// The implementations of helper functions.
 inline void SetCreatedByTaskFlag(bool created_by_task, ObjectIDFlagsType *flags) {

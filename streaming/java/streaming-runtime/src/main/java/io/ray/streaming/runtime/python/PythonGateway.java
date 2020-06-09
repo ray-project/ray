@@ -3,8 +3,11 @@ package io.ray.streaming.runtime.python;
 import com.google.common.base.Preconditions;
 import com.google.common.primitives.Primitives;
 import io.ray.streaming.api.context.StreamingContext;
+import io.ray.streaming.api.stream.DataStream;
+import io.ray.streaming.api.stream.Stream;
 import io.ray.streaming.python.PythonFunction;
 import io.ray.streaming.python.PythonPartition;
+import io.ray.streaming.python.stream.PythonDataStream;
 import io.ray.streaming.python.stream.PythonStreamSource;
 import io.ray.streaming.runtime.serialization.MsgPackSerializer;
 import io.ray.streaming.runtime.util.ReflectionUtils;
@@ -31,13 +34,12 @@ import org.slf4j.LoggerFactory;
 public class PythonGateway {
   private static final Logger LOG = LoggerFactory.getLogger(PythonGateway.class);
   private static final String REFERENCE_ID_PREFIX = "__gateway_reference_id__";
+  private static MsgPackSerializer serializer = new MsgPackSerializer();
 
-  private MsgPackSerializer serializer;
   private Map<String, Object> referenceMap;
   private StreamingContext streamingContext;
 
   public PythonGateway() {
-    serializer = new MsgPackSerializer();
     referenceMap = new HashMap<>();
     LOG.info("PythonGateway created");
   }
@@ -100,6 +102,26 @@ public class PythonGateway {
     return serializer.serialize(getReferenceId(partition));
   }
 
+  public byte[] union(byte[] paramsBytes) {
+    List<Object> streams = (List<Object>) serializer.deserialize(paramsBytes);
+    streams = processParameters(streams);
+    LOG.info("Call union with streams {}", streams);
+    Preconditions.checkArgument(streams.size() >= 2,
+        "Union needs at least two streams");
+    Stream unionStream;
+    Stream stream1 = (Stream) streams.get(0);
+    List otherStreams = streams.subList(1, streams.size());
+    if (stream1 instanceof DataStream) {
+      DataStream dataStream = (DataStream) stream1;
+      unionStream = dataStream.union(otherStreams);
+    } else {
+      Preconditions.checkArgument(stream1 instanceof PythonDataStream);
+      PythonDataStream pythonDataStream = (PythonDataStream) stream1;
+      unionStream = pythonDataStream.union(otherStreams);
+    }
+    return serialize(unionStream);
+  }
+
   public byte[] callFunction(byte[] paramsBytes) {
     try {
       List<Object> params = (List<Object>) serializer.deserialize(paramsBytes);
@@ -112,12 +134,7 @@ public class PythonGateway {
           .map(Object::getClass).toArray(Class[]::new);
       Method method = findMethod(clz, funcName, paramsTypes);
       Object result = method.invoke(null, params.subList(2, params.size()).toArray());
-      if (returnReference(result)) {
-        referenceMap.put(getReferenceId(result), result);
-        return serializer.serialize(getReferenceId(result));
-      } else {
-        return serializer.serialize(result);
-      }
+      return serialize(result);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
@@ -135,12 +152,7 @@ public class PythonGateway {
           .map(Object::getClass).toArray(Class[]::new);
       Method method = findMethod(clz, methodName, paramsTypes);
       Object result = method.invoke(obj, params.subList(2, params.size()).toArray());
-      if (returnReference(result)) {
-        referenceMap.put(getReferenceId(result), result);
-        return serializer.serialize(getReferenceId(result));
-      } else {
-        return serializer.serialize(result);
-      }
+      return serialize(result);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
@@ -156,8 +168,23 @@ public class PythonGateway {
         .map((Function<Class, Class>) Primitives::unwrap)
         .toArray(Class[]::new);
     Optional<Method> any = methods.stream()
-        .filter(m -> Arrays.equals(m.getParameterTypes(), paramsTypes) ||
-            Arrays.equals(m.getParameterTypes(), unwrappedTypes))
+        .filter(m -> {
+          boolean exactMatch = Arrays.equals(m.getParameterTypes(), paramsTypes) ||
+              Arrays.equals(m.getParameterTypes(), unwrappedTypes);
+          if (exactMatch) {
+            return true;
+          } else if (paramsTypes.length == m.getParameterTypes().length) {
+            for (int i = 0; i < m.getParameterTypes().length; i++) {
+              Class<?> parameterType = m.getParameterTypes()[i];
+              if (!parameterType.isAssignableFrom(paramsTypes[i])) {
+                return false;
+              }
+            }
+            return true;
+          } else {
+            return false;
+          }
+        })
         .findAny();
     Preconditions.checkArgument(any.isPresent(),
         String.format("Method %s with type %s doesn't exist on class %s",
@@ -165,8 +192,31 @@ public class PythonGateway {
     return any.get();
   }
 
+  private byte[] serialize(Object value) {
+    if (returnReference(value)) {
+      referenceMap.put(getReferenceId(value), value);
+      return serializer.serialize(getReferenceId(value));
+    } else {
+      return serializer.serialize(value);
+    }
+  }
+
   private static boolean returnReference(Object value) {
-    return !(value instanceof Number) && !(value instanceof String) && !(value instanceof byte[]);
+    if (isBasic(value)) {
+      return false;
+    } else {
+      try {
+        serializer.serialize(value);
+        return false;
+      } catch (Exception e) {
+        return true;
+      }
+    }
+  }
+
+  private static boolean isBasic(Object value) {
+    return value == null || (value instanceof Boolean) || (value instanceof Number) ||
+        (value instanceof String) || (value instanceof byte[]);
   }
 
   public byte[] newInstance(byte[] classNameBytes) {

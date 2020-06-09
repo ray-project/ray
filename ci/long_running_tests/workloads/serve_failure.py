@@ -31,7 +31,7 @@ ray.init(
     include_webui=True,
     webui_host="0.0.0.0",
     log_to_driver=False)
-serve.init(blocking=True)
+serve.init()
 
 
 @ray.remote

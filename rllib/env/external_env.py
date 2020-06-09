@@ -32,16 +32,14 @@ class ExternalEnv(threading.Thread):
         >>> register_env("my_env", lambda config: YourExternalEnv(config))
         >>> trainer = DQNTrainer(env="my_env")
         >>> while True:
-              print(trainer.train())
+        >>>     print(trainer.train())
     """
 
     @PublicAPI
     def __init__(self, action_space, observation_space, max_concurrent=100):
-        """Initialize an external env.
+        """Initializes an external env.
 
-        ExternalEnv subclasses must call this during their __init__.
-
-        Arguments:
+        Args:
             action_space (gym.Space): Action space of the env.
             observation_space (gym.Space): Observation space of the env.
             max_concurrent (int): Max number of active episodes to allow at
@@ -49,6 +47,7 @@ class ExternalEnv(threading.Thread):
         """
 
         threading.Thread.__init__(self)
+
         self.daemon = True
         self.action_space = action_space
         self.observation_space = observation_space
@@ -78,9 +77,9 @@ class ExternalEnv(threading.Thread):
     def start_episode(self, episode_id=None, training_enabled=True):
         """Record the start of an episode.
 
-        Arguments:
-            episode_id (str): Unique string id for the episode or None for
-                it to be auto-assigned.
+        Args:
+            episode_id (Optional[str]): Unique string id for the episode or
+                None for it to be auto-assigned and returned.
             training_enabled (bool): Whether to use experiences for this
                 episode to improve the policy.
 
@@ -108,7 +107,7 @@ class ExternalEnv(threading.Thread):
     def get_action(self, episode_id, observation):
         """Record an observation and get the on-policy action.
 
-        Arguments:
+        Args:
             episode_id (str): Episode id returned from start_episode().
             observation (obj): Current environment observation.
 
@@ -123,7 +122,7 @@ class ExternalEnv(threading.Thread):
     def log_action(self, episode_id, observation, action):
         """Record an observation and (off-policy) action taken.
 
-        Arguments:
+        Args:
             episode_id (str): Episode id returned from start_episode().
             observation (obj): Current environment observation.
             action (obj): Action for the observation.
@@ -140,7 +139,7 @@ class ExternalEnv(threading.Thread):
         episode. Rewards accumulate until the next action. If no reward is
         logged before the next action, a reward of 0.0 is assumed.
 
-        Arguments:
+        Args:
             episode_id (str): Episode id returned from start_episode().
             reward (float): Reward from the environment.
             info (dict): Optional info dict.
@@ -156,7 +155,7 @@ class ExternalEnv(threading.Thread):
     def end_episode(self, episode_id, observation):
         """Record the end of an episode.
 
-        Arguments:
+        Args:
             episode_id (str): Episode id returned from start_episode().
             observation (obj): Current environment observation.
         """
@@ -267,6 +266,7 @@ class _ExternalEnvEpisode:
             self.cur_reward = 0.0
             if not self.training_enabled:
                 item["info"]["training_enabled"] = False
+
         with self.results_avail_condition:
             self.data_queue.put_nowait(item)
             self.results_avail_condition.notify()

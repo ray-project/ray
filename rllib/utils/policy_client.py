@@ -38,8 +38,8 @@ class PolicyClient:
         """Record the start of an episode.
 
         Arguments:
-            episode_id (str): Unique string id for the episode or None for
-                it to be auto-assigned.
+            episode_id (Optional[str]): Unique string id for the episode or
+                None for it to be auto-assigned.
             training_enabled (bool): Whether to use experiences for this
                 episode to improve the policy.
 

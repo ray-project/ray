@@ -171,11 +171,10 @@ def get_address_info_from_redis_helper(redis_address,
                                        node_ip_address,
                                        redis_password=None):
     redis_ip_address, redis_port = redis_address.split(":")
-    # For this command to work, some other client (on the same machine as
-    # Redis) must have run "CONFIG SET protected-mode no".
-    redis_client = create_redis_client(redis_address, password=redis_password)
-
-    client_table = ray.state._parse_client_table(redis_client)
+    # Get node table from global state accessor.
+    global_state = ray.state.GlobalState()
+    global_state._initialize_global_state(redis_address, redis_password)
+    client_table = global_state.node_table()
     if len(client_table) == 0:
         raise RuntimeError(
             "Redis has started but no raylets have registered yet.")
@@ -1231,7 +1230,8 @@ def start_raylet(redis_address,
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
-                 fate_share=None):
+                 fate_share=None,
+                 socket_to_use=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1362,6 +1362,8 @@ def start_raylet(redis_address,
         "--temp_dir={}".format(temp_dir),
         "--session_dir={}".format(session_dir),
     ]
+    if socket_to_use:
+        socket_to_use.close()
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET,

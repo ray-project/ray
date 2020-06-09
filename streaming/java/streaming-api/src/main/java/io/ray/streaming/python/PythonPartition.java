@@ -2,6 +2,7 @@ package io.ray.streaming.python;
 
 import com.google.common.base.Preconditions;
 import io.ray.streaming.api.partition.Partition;
+import java.util.StringJoiner;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -35,6 +36,7 @@ public class PythonPartition implements Partition<Object> {
 
   /**
    * Create a python partition from a moduleName and partition function name
+   *
    * @param moduleName module name of python partition
    * @param functionName function/class name of the partition function.
    */
@@ -63,4 +65,18 @@ public class PythonPartition implements Partition<Object> {
   public String getFunctionName() {
     return functionName;
   }
+
+  @Override
+  public String toString() {
+    StringJoiner stringJoiner = new StringJoiner(", ",
+        PythonPartition.class.getSimpleName() + "[", "]");
+    if (partition != null) {
+      stringJoiner.add("partition=binary partition");
+    } else {
+      stringJoiner.add("moduleName='" + moduleName + "'")
+          .add("functionName='" + functionName + "'");
+    }
+    return stringJoiner.toString();
+  }
+
 }

@@ -24,20 +24,19 @@ def echo_v2(_):
 
 # specify the router policy as FixedPacking with packing num as 5
 serve.init(
-    blocking=True,
     queueing_policy=serve.RoutePolicy.FixedPacking,
     policy_kwargs={"packing_num": 5})
-
-# create a service
-serve.create_endpoint("my_endpoint", "/echo")
 
 # create first backend
 serve.create_backend("echo:v1", echo_v1)
 
+# create service backed by the first backend
+serve.create_endpoint("my_endpoint", backend="echo:v1", route="/echo")
+
 # create second backend
 serve.create_backend("echo:v2", echo_v2)
 
-# link and split the service to two backends
+# split the service between the two backends
 serve.set_traffic("my_endpoint", {"echo:v1": 0.5, "echo:v2": 0.5})
 
 while True:

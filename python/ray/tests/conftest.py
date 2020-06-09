@@ -49,6 +49,13 @@ def _ray_start(**kwargs):
     ray.shutdown()
 
 
+@pytest.fixture
+def ray_start_with_dashboard(request):
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=1, include_webui=True, **param) as address_info:
+        yield address_info
+
+
 # The following fixture will start ray with 0 cpu.
 @pytest.fixture
 def ray_start_no_cpu(request):
@@ -105,8 +112,10 @@ def _ray_start_cluster(**kwargs):
     remote_nodes = []
     for _ in range(num_nodes):
         remote_nodes.append(cluster.add_node(**init_kwargs))
-    if do_init:
-        ray.init(address=cluster.address)
+        # We assume driver will connect to the head (first node),
+        # so ray init will be invoked if do_init is true
+        if len(remote_nodes) == 1 and do_init:
+            ray.init(address=cluster.address)
     yield cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()

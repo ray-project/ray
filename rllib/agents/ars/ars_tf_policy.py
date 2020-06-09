@@ -11,7 +11,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.space_utils import unbatch
+from ray.rllib.utils.spaces.space_utils import unbatch
 
 tf = try_import_tf()
 
@@ -63,6 +63,12 @@ class ARSTFPolicy:
         if add_noise and isinstance(self.action_space, gym.spaces.Box):
             action += np.random.randn(*action.shape) * self.action_noise_std
         return action
+
+    def get_state(self):
+        return {"state": self.get_flat_weights()}
+
+    def set_state(self, state):
+        return self.set_flat_weights(state["state"])
 
     def set_flat_weights(self, x):
         self.variables.set_flat(x)

@@ -54,10 +54,10 @@ raylet::RayletConnection::RayletConnection(boost::asio::io_service &io_service,
     : conn_(io_service) {
   // Pick the default values if the user did not specify.
   if (num_retries < 0) {
-    num_retries = RayConfig::instance().num_connect_attempts();
+    num_retries = RayConfig::instance().raylet_client_num_connect_attempts();
   }
   if (timeout < 0) {
-    timeout = RayConfig::instance().connect_timeout_milliseconds();
+    timeout = RayConfig::instance().raylet_client_connect_timeout_milliseconds();
   }
   RAY_CHECK(!raylet_socket.empty());
   boost::system::error_code ec;

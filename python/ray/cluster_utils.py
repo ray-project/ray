@@ -2,8 +2,6 @@ import json
 import logging
 import time
 
-import redis
-
 import ray
 from ray import ray_constants
 
@@ -33,6 +31,8 @@ class Cluster:
         self.worker_nodes = set()
         self.redis_address = None
         self.connected = False
+        # Create a new global state accessor for fetching GCS table.
+        self.global_state = ray.state.GlobalState()
         self._shutdown_at_exit = shutdown_at_exit
         if not initialize_head and connect:
             raise RuntimeError("Cannot connect to uninitialized cluster.")
@@ -96,6 +96,9 @@ class Cluster:
             self.redis_password = node_args.get(
                 "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD)
             self.webui_url = self.head_node.webui_url
+            # Init global state accessor when creating head node.
+            self.global_state._initialize_global_state(self.redis_address,
+                                                       self.redis_password)
         else:
             ray_params.update_if_absent(redis_address=self.redis_address)
             # We only need one log monitor per physical node.
@@ -150,13 +153,9 @@ class Cluster:
             TimeoutError: An exception is raised if the timeout expires before
                 the node appears in the client table.
         """
-        ip_address, port = self.redis_address.split(":")
-        redis_client = redis.StrictRedis(
-            host=ip_address, port=int(port), password=self.redis_password)
-
         start_time = time.time()
         while time.time() - start_time < timeout:
-            clients = ray.state._parse_client_table(redis_client)
+            clients = self.global_state.node_table()
             object_store_socket_names = [
                 client["ObjectStoreSocketName"] for client in clients
             ]
@@ -183,13 +182,9 @@ class Cluster:
             TimeoutError: An exception is raised if we time out while waiting
                 for nodes to join.
         """
-        ip_address, port = self.address.split(":")
-        redis_client = redis.StrictRedis(
-            host=ip_address, port=int(port), password=self.redis_password)
-
         start_time = time.time()
         while time.time() - start_time < timeout:
-            clients = ray.state._parse_client_table(redis_client)
+            clients = self.global_state.node_table()
             live_clients = [client for client in clients if client["Alive"]]
 
             expected = len(self.list_all_nodes())

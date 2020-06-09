@@ -20,8 +20,12 @@
 
 namespace ray {
 
-class GcsServerTest : public RedisServiceManagerForTest {
+class GcsServerTest : public ::testing::Test {
  public:
+  GcsServerTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
+
+  virtual ~GcsServerTest() { TestSetupUtil::ShutDownRedisServers(); }
+
   void SetUp() override {
     gcs::GcsServerConfig config;
     config.grpc_server_port = 0;
@@ -29,16 +33,15 @@ class GcsServerTest : public RedisServiceManagerForTest {
     config.grpc_server_thread_num = 1;
     config.redis_address = "127.0.0.1";
     config.is_test = true;
-    config.redis_port = REDIS_SERVER_PORTS.front();
-    gcs_server_.reset(new gcs::GcsServer(config));
+    config.redis_port = TEST_REDIS_SERVER_PORTS.front();
+    gcs_server_.reset(new gcs::GcsServer(config, io_service_));
+    gcs_server_->Start();
 
     thread_io_service_.reset(new std::thread([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(io_service_));
       io_service_.run();
     }));
-
-    thread_gcs_server_.reset(new std::thread([this] { gcs_server_->Start(); }));
 
     // Wait until server starts listening.
     while (gcs_server_->GetPort() == 0) {
@@ -54,8 +57,8 @@ class GcsServerTest : public RedisServiceManagerForTest {
   void TearDown() override {
     gcs_server_->Stop();
     io_service_.stop();
+    gcs_server_.reset();
     thread_io_service_->join();
-    thread_gcs_server_->join();
   }
 
   bool AddJob(const rpc::AddJobRequest &request) {
@@ -387,7 +390,6 @@ class GcsServerTest : public RedisServiceManagerForTest {
   // Gcs server
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
-  std::unique_ptr<std::thread> thread_gcs_server_;
   boost::asio::io_service io_service_;
 
   // Gcs client
@@ -606,8 +608,8 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

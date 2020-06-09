@@ -49,7 +49,7 @@ if __name__ == "__main__":
             "custom_model": "autoregressive_model",
             "custom_action_dist": "binary_autoreg_dist",
         },
-        "use_pytorch": args.torch,
+        "framework": "torch" if args.torch else "tf",
     }
 
     stop = {
