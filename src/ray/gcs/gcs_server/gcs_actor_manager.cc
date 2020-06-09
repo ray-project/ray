@@ -371,8 +371,7 @@ Status GcsActorManager::RegisterActor(
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
 
   auto iter = registered_actors_.find(actor_id);
-  if (iter != registered_actors_.end() &&
-      iter->second->GetState() == rpc::ActorTableData::ALIVE) {
+  if (iter != registered_actors_.end()) {
     // When the network fails, Driver/Worker is not sure whether GcsServer has received
     // the request of actor creation task, so Driver/Worker will try again and again until
     // receiving the reply from GcsServer. If the actor has been created successfully then
@@ -450,6 +449,7 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
           RAY_LOG(INFO) << "Worker " << owner_id << " failed, destroying actor child";
         }
 
+        RAY_LOG(INFO) << "Destroy actor, actor id = " << actor_id;
         auto node_it = owners_.find(owner_node_id);
         if (node_it != owners_.end() && node_it->second.count(owner_id)) {
           // Only destroy the actor if its owner is still alive. The actor may
@@ -578,7 +578,7 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
   }
 
   if (!actor_id.IsNil()) {
-    RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
+    RAY_LOG(WARNING) << "Worker " << worker_id << " on node " << node_id
                   << " failed, restarting actor " << actor_id;
     // Reconstruct the actor.
     ReconstructActor(actor_id, /*need_reschedule=*/!intentional_exit);
@@ -586,7 +586,7 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
 }
 
 void GcsActorManager::OnNodeDead(const ClientID &node_id) {
-  RAY_LOG(INFO) << "Node " << node_id << " failed, reconstructing actors";
+  RAY_LOG(WARNING) << "Node " << node_id << " failed, reconstructing actors";
   const auto it = owners_.find(node_id);
   if (it != owners_.end()) {
     std::vector<ActorID> children_ids;
@@ -759,10 +759,10 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
       }
     }
 
+    RAY_LOG(INFO) << "registered actors num = " << registered_actors_.size();
     for (auto &item : registered_actors_) {
       auto &actor = item.second;
       if (actor->GetState() != ray::rpc::ActorTableData::ALIVE) {
-        RAY_LOG(INFO) << "gcs_actor_scheduler_->Schedule(actor)......";
         gcs_actor_scheduler_->Schedule(actor);
       }
     }

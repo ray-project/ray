@@ -558,7 +558,7 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   // TODO(swang): If we receive a notification for our own death, clean up and
   // exit immediately.
   const ClientID node_id = ClientID::FromBinary(node_info.node_id());
-  RAY_LOG(DEBUG) << "[NodeRemoved] Received callback from client id " << node_id;
+  RAY_LOG(INFO) << "[NodeRemoved] Received callback from client id " << node_id;
 
   RAY_CHECK(node_id != self_node_id_)
       << "Exiting because this node manager has mistakenly been marked dead by the "
@@ -972,7 +972,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
                                        const uint8_t *message_data) {
   auto registered_worker = worker_pool_.GetRegisteredWorker(client);
   auto message_type_value = static_cast<protocol::MessageType>(message_type);
-  RAY_LOG(DEBUG) << "[Worker] Message "
+  RAY_LOG(WARNING) << "[Worker] Message "
                  << protocol::EnumNameMessageType(message_type_value) << "("
                  << message_type << ") from worker with PID "
                  << (registered_worker
