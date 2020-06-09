@@ -1,6 +1,5 @@
-package io.ray.api.test;
+package io.ray.runtime.config;
 
-import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.generated.Common.WorkerType;
 import org.testng.Assert;
 import org.testng.annotations.Test;

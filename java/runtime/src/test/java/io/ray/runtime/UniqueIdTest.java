@@ -1,4 +1,4 @@
-package io.ray.api.test;
+package io.ray.runtime;
 
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.util.IdUtil;
