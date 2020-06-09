@@ -1,8 +1,8 @@
 package io.ray.streaming.runtime.client;
 
+import io.ray.api.ActorHandle;
+import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
-import io.ray.api.RayObject;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.streaming.client.JobClient;
 import io.ray.streaming.jobgraph.JobGraph;
@@ -20,7 +20,7 @@ public class JobClientImpl implements JobClient {
 
   public static final Logger LOG = LoggerFactory.getLogger(JobClientImpl.class);
 
-  private RayActor<JobMaster> jobMasterActor;
+  private ActorHandle<JobMaster> jobMasterActor;
 
   @Override
   public void submit(JobGraph jobGraph, Map<String, String> jobConfig) {
@@ -42,7 +42,7 @@ public class JobClientImpl implements JobClient {
     this.jobMasterActor = Ray.createActor(JobMaster::new, jobConfig, options);
 
     try {
-      RayObject<Boolean> submitResult = jobMasterActor.call(JobMaster::submitJob,
+      ObjectRef<Boolean> submitResult = jobMasterActor.call(JobMaster::submitJob,
           jobMasterActor, jobGraph);
 
       if (submitResult.get()) {

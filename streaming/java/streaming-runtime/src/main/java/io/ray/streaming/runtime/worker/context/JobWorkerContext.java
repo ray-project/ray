@@ -1,11 +1,9 @@
 package io.ray.streaming.runtime.worker.context;
 
 import com.google.common.base.MoreObjects;
-import io.ray.api.ActorHandle;
 import com.google.protobuf.ByteString;
-import io.ray.api.RayActor;
-import io.ray.api.id.ActorId;
-import io.ray.runtime.actor.NativeRayActor;
+import io.ray.api.ActorHandle;
+import io.ray.runtime.actor.NativeActorHandle;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import io.ray.streaming.runtime.generated.RemoteCall;
 import io.ray.streaming.runtime.master.JobMaster;
@@ -29,7 +27,6 @@ public class JobWorkerContext implements Serializable {
   private ExecutionVertex executionVertex;
 
   public JobWorkerContext(
-      ActorId workerId,
       ActorHandle<JobMaster> master,
       ExecutionVertex executionVertex) {
     this.master = master;
@@ -38,10 +35,6 @@ public class JobWorkerContext implements Serializable {
 
   public int getWorkerId() {
     return executionVertex.getExecutionVertexId();
-  }
-
-  public ActorId getActorId() {
-    return executionVertex.getWorkerActorId();
   }
 
   public String getWorkerName() {
@@ -75,7 +68,7 @@ public class JobWorkerContext implements Serializable {
         new GraphPbBuilder().buildExecutionVertexContext(executionVertex);
 
     byte[] contextBytes = RemoteCall.PythonJobWorkerContext.newBuilder()
-      .setMasterActor(ByteString.copyFrom((((NativeRayActor) (master)).toBytes())))
+      .setMasterActor(ByteString.copyFrom((((NativeActorHandle) (master)).toBytes())))
       .setExecutionVertexContext(executionVertexContext)
       .build()
       .toByteArray();

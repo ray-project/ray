@@ -1,10 +1,9 @@
 package io.ray.streaming.runtime.master.scheduler.controller;
 
-import io.ray.api.BaseActor;
 import io.ray.api.ActorHandle;
+import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.RayObject;
 import io.ray.api.WaitResult;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.id.ActorId;
@@ -53,7 +52,7 @@ public class WorkerLifecycleController {
         .setMaxRestarts(-1)
         .createActorCreationOptions();
 
-    ActorHandle actor;
+    BaseActorHandle actor;
     if (Language.JAVA == language) {
       actor = Ray.createActor(JobWorker::new, options);
     } else {
@@ -147,7 +146,7 @@ public class WorkerLifecycleController {
   }
 
   private boolean destroyWorker(ExecutionVertex executionVertex) {
-    ActorHandle rayActor = executionVertex.getWorkerActor();
+    BaseActorHandle rayActor = executionVertex.getWorkerActor();
     LOG.info("Begin destroying worker[vertex={}, actor={}].",
         executionVertex.getExecutionVertexName(), rayActor.getId());
 

@@ -1,11 +1,10 @@
 package io.ray.streaming.runtime.rpc;
 
-import io.ray.api.RayActor;
-import io.ray.api.RayObject;
-import io.ray.api.RayPyActor;
-import io.ray.api.function.PyActorMethod;
 import io.ray.api.ActorHandle;
+import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
+import io.ray.api.PyActorHandle;
+import io.ray.api.function.PyActorMethod;
 import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.worker.JobWorker;
 import io.ray.streaming.runtime.worker.context.JobWorkerContext;
@@ -27,17 +26,17 @@ public class RemoteCallWorker {
    * @param context JobWorker's context
    * @return init result
    */
-  public static ObjectRef<Boolean> initWorker(ActorHandle actor, JobWorkerContext context) {
+  public static ObjectRef<Boolean> initWorker(BaseActorHandle actor, JobWorkerContext context) {
     LOG.info("Call worker to initiate, actor: {}, context: {}.", actor.getId(), context);
     ObjectRef<Boolean> result;
 
     // python
-    if (actor instanceof RayPyActor) {
-      result = ((RayPyActor) actor).call(
+    if (actor instanceof PyActorHandle) {
+      result = ((PyActorHandle) actor).call(
           new PyActorMethod("init", Object.class), context.getPythonWorkerContextBytes());
     } else {
       // java
-      result = ((RayActor<JobWorker>) actor).call(JobWorker::init, context);
+      result = ((ActorHandle<JobWorker>) actor).call(JobWorker::init, context);
     }
 
     LOG.info("Finished calling worker to initiate.");
@@ -50,16 +49,16 @@ public class RemoteCallWorker {
    * @param actor target JobWorker actor
    * @return start result
    */
-  public static ObjectRef<Boolean> startWorker(ActorHandle actor) {
+  public static ObjectRef<Boolean> startWorker(BaseActorHandle actor) {
     LOG.info("Call worker to start, actor: {}.", actor.getId());
     ObjectRef<Boolean> result = null;
 
     // python
-    if (actor instanceof RayPyActor) {
-      result = ((RayPyActor) actor).call(new PyActorMethod("start", Object.class));
+    if (actor instanceof PyActorHandle) {
+      result = ((PyActorHandle) actor).call(new PyActorMethod("start", Object.class));
     } else {
       // java
-      result = ((RayActor<JobWorker>) actor).call(JobWorker::start);
+      result = ((ActorHandle<JobWorker>) actor).call(JobWorker::start);
     }
 
     LOG.info("Finished calling worker to start.");
@@ -72,7 +71,7 @@ public class RemoteCallWorker {
    * @param actor target JobWorker actor
    * @return destroy result
    */
-  public static Boolean shutdownWithoutReconstruction(ActorHandle actor) {
+  public static Boolean shutdownWithoutReconstruction(BaseActorHandle actor) {
     LOG.info("Call worker to shutdown without reconstruction, actor is {}.",
         actor.getId());
     Boolean result = false;
