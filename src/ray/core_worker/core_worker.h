@@ -605,6 +605,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] actor_id The actor ID to decrease the reference count for.
   void RemoveActorHandleReference(const ActorID &actor_id);
 
+  // SANG-TODO Move it to actor manager
   /// Add an actor handle from a serialized string.
   ///
   /// This should be called when an actor handle is given to us by another task
@@ -618,6 +619,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ActorID DeserializeAndRegisterActorHandle(const std::string &serialized,
                                             const ObjectID &outer_object_id);
 
+  // SANG-TODO Move it to actor manager
   /// Serialize an actor handle.
   ///
   /// This should be called when passing an actor handle to another task or
@@ -660,6 +662,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::vector<std::vector<ObjectID>> &contained_object_ids,
       std::vector<std::shared_ptr<RayObject>> *return_objects);
 
+  // SANG-TODO Move it to actor manager
   /// Get a handle to an actor.
   ///
   /// \param[in] actor_id The actor handle to get.
@@ -667,6 +670,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status::Invalid if we don't have this actor handle.
   Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
 
+  // SANG-TODO Move it to actor manager
   /// Get a handle to a named actor.
   ///
   /// \param[in] name The name of the actor whose handle to get.
@@ -814,6 +818,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     reference_counter_->AddLocalReference(object_id, call_site);
   }
 
+  // SANG-TODO Move it to actor manager
   /// Give this worker a handle to an actor.
   ///
   /// This handle will remain as long as the current actor or task is
@@ -1003,16 +1008,19 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Manages recovery of objects stored in remote plasma nodes.
   std::unique_ptr<ObjectRecoveryManager> object_recovery_manager_;
 
+  // SANG-TODO Move it to actor manager
   // TODO(swang): Refactor to merge actor_handles_mutex_ and all fields that it
   // protects into the ActorManager.
   /// The `actor_handles_` field could be mutated concurrently due to multi-threading, we
   /// need a mutex to protect it.
   mutable absl::Mutex actor_handles_mutex_;
 
+  // SANG-TODO Move it to actor manager
   /// Map from actor ID to a handle to that actor.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(actor_handles_mutex_);
 
+  // SANG-TODO Move it to actor manager
   /// Map from actor ID to a callback to call when all local handles to that
   /// actor have gone out of scpoe.
   absl::flat_hash_map<ActorID, std::function<void(const ActorID &)>>

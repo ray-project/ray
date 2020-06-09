@@ -1805,6 +1805,7 @@ void CoreWorker::HandleWaitForActorOutOfScope(
   if (it == actor_handles_.end()) {
     respond(actor_id);
   } else {
+    // SANG-TODO actor_manager_->add_out_of_scope_callback
     RAY_CHECK(actor_out_of_scope_callbacks_.emplace(actor_id, std::move(respond)).second);
   }
 }
