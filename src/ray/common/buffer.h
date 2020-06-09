@@ -21,10 +21,6 @@
 #include "arrow/buffer.h"
 #include "ray/common/status.h"
 
-namespace arrow {
-class Buffer;
-}
-
 namespace ray {
 
 /// The interface that represents a buffer of bytes.

@@ -110,55 +110,6 @@ bool IsPlasmaStoreFull(const arrow::Status& status) {
   return IsPlasmaStatus(status, PlasmaErrorCode::PlasmaStoreFull);
 }
 
-// This code is from https://sites.google.com/site/murmurhash/
-// and is public domain.
-uint64_t MurmurHash64A(const void* key, int len, unsigned int seed) {
-  const uint64_t m = 0xc6a4a7935bd1e995;
-  const int r = 47;
-
-  uint64_t h = seed ^ (len * m);
-
-  const uint64_t* data = reinterpret_cast<const uint64_t*>(key);
-  const uint64_t* end = data + (len / 8);
-
-  while (data != end) {
-    uint64_t k = arrow::util::SafeLoad(data++);
-
-    k *= m;
-    k ^= k >> r;
-    k *= m;
-
-    h ^= k;
-    h *= m;
-  }
-
-  const unsigned char* data2 = reinterpret_cast<const unsigned char*>(data);
-
-  switch (len & 7) {
-    case 7:
-      h ^= uint64_t(data2[6]) << 48;  // fall through
-    case 6:
-      h ^= uint64_t(data2[5]) << 40;  // fall through
-    case 5:
-      h ^= uint64_t(data2[4]) << 32;  // fall through
-    case 4:
-      h ^= uint64_t(data2[3]) << 24;  // fall through
-    case 3:
-      h ^= uint64_t(data2[2]) << 16;  // fall through
-    case 2:
-      h ^= uint64_t(data2[1]) << 8;  // fall through
-    case 1:
-      h ^= uint64_t(data2[0]);
-      h *= m;
-  }
-
-  h ^= h >> r;
-  h *= m;
-  h ^= h >> r;
-
-  return h;
-}
-
 const PlasmaStoreInfo* plasma_config;
 
 }  // namespace plasma
