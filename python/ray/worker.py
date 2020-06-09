@@ -1162,7 +1162,8 @@ def connect(node,
                 and int(redirect_worker_output_val) == 1):
             log_stdout_file, log_stderr_file = (
                 node.new_worker_redirected_log_file(worker.worker_id))
-            ray._raylet.setup_logging(log_stdout_file, log_stderr_file)
+            log_stdout_file_name, log_stderr_file_name = \
+                ray._raylet.setup_logging(log_stdout_file, log_stderr_file)
             # This should always be the first message to appear in the worker's
             # stdout and stderr log files. The string "Ray worker pid:" is
             # parsed in the log monitor process.
@@ -1170,12 +1171,6 @@ def connect(node,
             print("Ray worker pid: {}".format(os.getpid()), file=sys.stderr)
             sys.stdout.flush()
             sys.stderr.flush()
-            log_stdout_file_name = os.path.abspath(
-                (log_stdout_file
-                 if log_stdout_file is not None else sys.stdout).name)
-            log_stderr_file_name = os.path.abspath(
-                (log_stderr_file
-                 if log_stderr_file is not None else sys.stderr).name)
     elif not LOCAL_MODE:
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")

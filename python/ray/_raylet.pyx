@@ -184,9 +184,25 @@ def compute_task_id(ObjectID object_id):
     return TaskID(object_id.native().TaskId().Binary())
 
 
-def setup_logging(stdout_file, stderr_file):
-    assert stdout_file is not None
-    assert stderr_file is not None
+def setup_logging(stdout_name, stderr_name):
+    """Sets up logging for the current worker, creating the file and flushing
+    buffers as is necessary.
+
+    Args:
+        stdout_name (str): The file name that stdout should be written to.
+        stderr_name(str): The file name that stderr should be written to.
+
+    Returns:
+        (tuple) The absolute paths of the files that stdout and stderr will be
+    written to.
+    """
+    assert stdout_name is not None
+    assert stderr_name is not None
+
+    # Line-buffer the output (mode 1).
+    stdout_file = open(stdout_name, "a", buffering=1)
+    stderr_file = open(stderr_name, "a", buffering=1)
+
     # Before redirecting stdout/stderr we need to make sure userspace buffers
     # are all flushed.
     # Flush python's userspace buffers
@@ -210,6 +226,11 @@ def setup_logging(stdout_file, stderr_file):
     # lost logging statements.
     sys.stdout = stdout_file
     sys.stderr = stderr_file
+
+    stdout_path = os.path.abspath(stdout_file.name)
+    stderr_path = os.path.abspath(stderr_file.name)
+
+    return stdout_path, stderr_path
 
 
 cdef increase_recursion_limit():
@@ -472,7 +493,9 @@ cdef execute_task(
                 task_exception = True
                 try:
                     with ray.worker._changeproctitle(title, next_title):
+                        print("----------Change stdout-------------")
                         outputs = function_executor(*args, **kwargs)
+                        print("----------Change back-------------")
                     task_exception = False
                 except KeyboardInterrupt as e:
                     raise RayCancellationError(

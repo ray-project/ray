@@ -379,14 +379,14 @@ class Node:
         raise FileExistsError(errno.EEXIST,
                               "No usable temporary filename found")
 
-    def new_log_files(self, name):
+    def new_log_file_names(self, name):
         """Generate partially randomized filenames for log files.
 
         Args:
             name (str): descriptive string for this log file.
 
         Returns:
-            A tuple of two file handles for redirecting (stdout, stderr).
+            A tuple of two file names for redirecting (stdout, stderr).
         """
         redirect_output = self._ray_params.redirect_output
 
@@ -401,10 +401,32 @@ class Node:
             suffix=".out", prefix=name, directory_name=self._logs_dir)
         log_stderr = self._make_inc_temp(
             suffix=".err", prefix=name, directory_name=self._logs_dir)
-        # Line-buffer the output (mode 1).
-        log_stdout_file = open(log_stdout, "a", buffering=1)
-        log_stderr_file = open(log_stderr, "a", buffering=1)
-        return log_stdout_file, log_stderr_file
+        return log_stdout, log_stderr
+
+    def open_log(self, path):
+        """
+        Opens a path (or creates if necessary) for a log.
+
+        Args:
+            path (str): The name/path of the file to be opened.
+
+        Returns:
+            A file-like object which can be written to.
+        """
+        # (Alex) We should eventually be able to replace this with named-pipes.
+        return open(path, "a", buffer=1)
+
+    def new_log_files(self, name):
+        """Creates partially randomized filenames for log files.
+
+        Args:
+            name (str): descriptive string for this log file.
+
+        Returns:
+            A tuple of two files for redirecting (stdout, stderr).
+        """
+        log_stdout, log_stderr = self.new_log_file_names(name)
+        return self.open_log(log_stdout), self.open_log(log_stderr)
 
     def _get_unused_port(self, close_on_exit=True):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -633,9 +655,16 @@ class Node:
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
     def new_worker_redirected_log_file(self, worker_id):
-        """Create new logging files for workers to redirect its output."""
+        """Determines (but does not create) logging files for workers to redirect its output.
+
+        Args:
+            worker_id (bytes): A byte representation of the worker id.
+
+        Returns:
+            (tuple) The worker's stdout and stderr file names.
+        """
         worker_stdout_file, worker_stderr_file = (
-            self.new_log_files("worker-" + ray.utils.binary_to_hex(worker_id)))
+            self.new_log_file_names("worker-" + ray.utils.binary_to_hex(worker_id)))
         return worker_stdout_file, worker_stderr_file
 
     def start_worker(self):
