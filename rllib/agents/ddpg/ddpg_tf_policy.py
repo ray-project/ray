@@ -62,8 +62,8 @@ def build_ddpg_models(policy, observation_space, action_space, config):
         num_outputs = int(np.product(observation_space.shape))
 
     policy.model = ModelCatalog.get_model_v2(
-        obs_space=observation_space,
-        action_space=action_space,
+        observation_space,
+        action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
         framework=config["framework"],
@@ -81,8 +81,8 @@ def build_ddpg_models(policy, observation_space, action_space, config):
     )
 
     policy.target_model = ModelCatalog.get_model_v2(
-        obs_space=observation_space,
-        action_space=action_space,
+        observation_space,
+        action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
         framework=config["framework"],

@@ -37,8 +37,8 @@ class ARSTFPolicy:
             self.action_space, config["model"], dist_type="deterministic")
 
         self.model = ModelCatalog.get_model_v2(
-            obs_space=self.preprocessor.observation_space,
-            action_space=self.action_space,
+            self.preprocessor.observation_space,
+            self.action_space,
             num_outputs=dist_dim,
             model_config=config["model"])
         dist_inputs, _ = self.model({SampleBatch.CUR_OBS: self.inputs})
