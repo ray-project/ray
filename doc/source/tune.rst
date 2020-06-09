@@ -54,7 +54,7 @@ If using TF2 and TensorBoard, Tune will also automatically generate TensorBoard 
 Why choose Tune?
 ----------------
 
-There are many other hyperparameter optimization libraries out there. If you're new to Tune, you're probably wondering what makes Tune different?
+There are many other hyperparameter optimization libraries out there. If you're new to Tune, you're probably wondering, "what makes Tune different?"
 
 .. include:: tune/why_tune.rst
 
