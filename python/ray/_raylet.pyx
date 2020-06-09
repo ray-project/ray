@@ -94,7 +94,7 @@ from ray.exceptions import (
     RayTimeoutError,
     RayCancellationError
 )
-from ray.utils import decode
+from ray.utils import decode, open_log
 import gc
 import msgpack
 
@@ -200,8 +200,8 @@ def setup_logging(stdout_name, stderr_name):
     assert stderr_name is not None
 
     # Line-buffer the output (mode 1).
-    stdout_file = open(stdout_name, "a", buffering=1)
-    stderr_file = open(stderr_name, "a", buffering=1)
+    stdout_file = open_log(stdout_name)
+    stderr_file = open_log(stderr_name)
 
     # Before redirecting stdout/stderr we need to make sure userspace buffers
     # are all flushed.
@@ -372,8 +372,9 @@ cdef execute_task(
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
         TaskID task_id = core_worker.get_current_task_id()
-        TaskID caller_id = core_worker.get_caller_id()
         CFiberEvent task_done_event
+        c_string worker_stdout_path = core_worker.get_stdout_file()
+        c_string worker_stderr_path = core_worker.get_stderr_file()
 
     # Automatically restrict the GPUs available to this task.
     ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
@@ -493,9 +494,10 @@ cdef execute_task(
                 task_exception = True
                 try:
                     with ray.worker._changeproctitle(title, next_title):
-                        print("----------Change stdout-------------")
+                        job_stdout_path, job_stderr_path = worker.node.get_job_redirected_log_file(worker.worker_id, job_id.binary())
+                        setup_logging(job_stdout_path, job_stderr_path)
                         outputs = function_executor(*args, **kwargs)
-                        print("----------Change back-------------")
+                        setup_logging(worker_stdout_path, worker_stderr_path)
                     task_exception = False
                 except KeyboardInterrupt as e:
                     raise RayCancellationError(
@@ -748,13 +750,15 @@ cdef class CoreWorker:
         return JobID(
             CCoreWorkerProcess.GetCoreWorker().GetCurrentJobId().Binary())
 
-    def get_caller_id(self):
-        return JobID(
-            CCoreWorkerProcess.GetCoreWorker().GetCallerId().Binary())
-
     def get_actor_id(self):
         return ActorID(
             CCoreWorkerProcess.GetCoreWorker().GetActorId().Binary())
+
+    def get_stdout_file(self):
+        return CCoreWorkerProcess.GetCoreWorker().GetStdoutFile()
+
+    def get_stderr_file(self):
+        return CCoreWorkerProcess.GetCoreWorker().GetStderrFile()
 
     def set_webui_display(self, key, message):
         CCoreWorkerProcess.GetCoreWorker().SetWebuiDisplay(key, message)

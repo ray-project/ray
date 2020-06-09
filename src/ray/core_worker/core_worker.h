@@ -765,6 +765,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                 SetResultCallback fallback_callback, void *python_future);
 
+  /// The path to stdout's log file.
+  std::string GetStdoutFile();
+
+  /// The path to stderr's log file.
+  std::string GetStderrFile();
+
   /// Connect to plasma store for async futures
   using PlasmaSubscriptionCallback = std::function<void(ray::ObjectID, int64_t, int64_t)>;
 

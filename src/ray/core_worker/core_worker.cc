@@ -2005,6 +2005,14 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
   });
 }
 
+std::string CoreWorker::GetStdoutFile() {
+  return this->options_.stdout_file;
+}
+
+std::string CoreWorker::GetStderrFile() {
+  return this->options_.stderr_file;
+}
+
 void CoreWorker::SetPlasmaAddedCallback(PlasmaSubscriptionCallback subscribe_callback) {
   plasma_done_callback_ = subscribe_callback;
 }

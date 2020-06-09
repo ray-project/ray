@@ -390,6 +390,20 @@ def setup_logger(logging_level, logging_format):
     logger.propagate = False
 
 
+def open_log(path):
+    """
+    Opens a path (or creates if necessary) for a log.
+
+    Args:
+        path (str): The name/path of the file to be opened.
+
+    Returns:
+        A file-like object which can be written to.
+    """
+    # (Alex) We should eventually be able to replace this with named-pipes.
+    return open(path, "a", buffering=1)
+
+
 def get_system_memory():
     """Return the total amount of system memory in bytes.
 
