@@ -352,9 +352,22 @@ def wrap_function(train_func):
     class ImplicitFunc(FunctionRunner):
         def _trainable_func(self, config, reporter, checkpoint):
             func_args = inspect.getfullargspec(train_func).args
+            if len(func_args) > 1:  # more arguments than just the config
+                if "reporter" not in func_args and (
+                        "checkpoint" not in func_args):
+                    raise ValueError(
+                        "Unknown argument found in the Trainable function. "
+                        "Arguments other than the 'config' arg must be one "
+                        "of ['reporter', 'checkpoint']. Found: {}".format(
+                            func_args))
             use_reporter = "reporter" in func_args
             use_checkpoint = "checkpoint" in func_args
             if not use_checkpoint and not use_reporter:
+                logger.warning(
+                    "Function checkpointing is disabled. This may result in "
+                    "unexpected behavior when using checkpointing features or "
+                    "certain schedulers. To enable, set the train function "
+                    "arguments to be `func(config, checkpoint)`.")
                 output = train_func(config)
             elif use_checkpoint:
                 output = train_func(config, checkpoint=checkpoint)
