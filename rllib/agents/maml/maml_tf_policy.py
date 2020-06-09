@@ -9,7 +9,7 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils.tf_ops import make_tf_callable
 from ray.rllib.utils import try_import_tf
-from ray.rllib.agents.ppo.ppo_tf_policy import PPOLoss, postprocess_ppo_gae, vf_preds_fetches, clip_gradients, setup_config
+from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, vf_preds_fetches, clip_gradients, setup_config
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops, state_ops, control_flow_ops
@@ -79,8 +79,7 @@ def PPOLoss(
         vf_loss = reduce_mean_valid(vf_loss(value_fn, value_targets, vf_preds, vf_clip_param))
         entropy_loss = reduce_mean_valid(entropy_loss(pi_new_dist))
 
-        total_loss = - surr_loss + cur_kl_coeff * kl_loss + vf_loss_coeff * vf_loss - entropy_coeff * entropy_loss
-
+        total_loss = - surr_loss #+ cur_kl_coeff * kl_loss + vf_loss_coeff * vf_loss - entropy_coeff * entropy_loss
         return total_loss, surr_loss, kl_loss, vf_loss, entropy_loss
 
 
@@ -115,6 +114,7 @@ class WorkerLoss(object):
             vf_clip_param=vf_clip_param,
             vf_loss_coeff=vf_loss_coeff,
             clip_loss=clip_loss)
+        self.loss = tf.Print(self.loss, ["Worker Loss", self.loss])
 
 # This is the Meta-Update computation graph for master worker
 class MAMLLoss(object):
@@ -159,7 +159,7 @@ class MAMLLoss(object):
         self.policy_vars = {}
         for var in policy_vars:
             self.policy_vars[var.name] = var
-
+        import pdb; pdb.set_trace()
         # Calculate pi_new for PPO
         pi_new_logits, current_policy_vars, value_fns = [], [], []
         for i in range(self.num_tasks):
@@ -194,7 +194,6 @@ class MAMLLoss(object):
                     vf_loss_coeff = vf_loss_coeff,
                     clip_loss = False
                     )
-
                 adapted_policy_vars = self.compute_updated_variables(ppo_loss, current_policy_vars[i])
                 pi_new_logits[i], value_fns[i] = self.feed_forward(self.obs[step+1][i], adapted_policy_vars, policy_config=config["model"])
                 current_policy_vars[i] = adapted_policy_vars
@@ -302,6 +301,7 @@ class MAMLLoss(object):
         return placeholder_list
 
 def maml_loss(policy, model, dist_class, train_batch):
+    train_batch["obs"] = tf.Print(train_batch["obs"], ["Observatoins", train_batch["obs"]])
     logits, state = model.from_batch(train_batch)
     action_dist = dist_class(logits, model)
 
@@ -326,7 +326,6 @@ def maml_loss(policy, model, dist_class, train_batch):
             clip_loss=False
         )
     else:
-        print(train_batch["split"])
         policy.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                               tf.get_variable_scope().name)
         policy.loss_obj = MAMLLoss(
@@ -373,31 +372,6 @@ def maml_stats(policy, train_batch):
             "entropy": policy.loss_obj.mean_entropy,
         }
 
-
-def postprocess_maml(policy,
-                        sample_batch,
-                        other_agent_batches=None,
-                        episode=None):
-    """Adds the policy logits, VF preds, and advantages to the trajectory."""
-    completed = sample_batch["dones"][-1]
-    if completed:
-        last_r = 0.0
-    else:
-        next_state = []
-        for i in range(policy.num_state_tensors()):
-            next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-        last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
-                               sample_batch[SampleBatch.ACTIONS][-1],
-                               sample_batch[SampleBatch.REWARDS][-1],
-                               *next_state)
-    batch = compute_advantages(
-        sample_batch,
-        last_r,
-        policy.config["gamma"],
-        policy.config["lambda"],
-        use_gae=policy.config["use_gae"])
-
-    return batch
 
 class ValueNetworkMixin:
     def __init__(self, obs_space, action_space, config):
@@ -463,7 +437,7 @@ MAMLTFPolicy = build_tf_policy(
     stats_fn=maml_stats,
     optimizer_fn = maml_optimizer_fn,
     extra_action_fetches_fn=vf_preds_fetches,
-    postprocess_fn=postprocess_maml,
+    postprocess_fn=postprocess_ppo_gae,
     gradients_fn=clip_gradients,
     before_init=setup_config,
     before_loss_init=setup_mixins,

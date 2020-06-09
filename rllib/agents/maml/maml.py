@@ -21,12 +21,8 @@ DEFAULT_CONFIG = with_common_config({
     "kl_coeff": 0.0005,
     # Size of batches collected from each worker
     "rollout_fragment_length": 200,
-    # Number of SGD iterations in each outer loop
-    "num_sgd_iter": 30,
     # Stepsize of SGD
-    "lr": 5e-5,
-    # Learning rate schedule
-    "lr_schedule": None,
+    "lr": 1e-3,
     # Share layers for value function
     "vf_share_layers": False,
     # Coefficient of the value function loss
@@ -43,7 +39,7 @@ DEFAULT_CONFIG = with_common_config({
     # Target value for KL divergence
     "kl_target": 0.01,
     # Whether to rollout "complete_episodes" or "truncate_episodes"
-    "batch_mode": "truncate_episodes",
+    "batch_mode": "complete_episodes",
     # Which observation filter to apply to the observation
     "observation_filter": "NoFilter",
     # Number of Inner adaptation steps for Workers
@@ -52,7 +48,10 @@ DEFAULT_CONFIG = with_common_config({
     "maml_optimizer_steps": 5,
     # Inner Adaptation Step size
     "inner_lr": 0.1,
-    "use_kl_loss": True,
+    # Use PPO KL Loss
+    "use_kl_loss": False,
+    # Grad Clipping
+    "grad_clip": None
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -68,14 +67,14 @@ def execution_plan(workers, config):
 
     # Data Collection
     meta_split = []
-    samples = ray.get([e.sample.remote("pre") for i,e in enumerate(workers.remote_workers())])
+    samples = ray.get([e.sample.remote("0") for i,e in enumerate(workers.remote_workers())])
     meta_samples = SampleBatch.concat_samples(samples)
     meta_split.append([sample['obs'].shape[0] for sample in samples])
     for step in range(config["inner_adaptation_steps"]):
         for i,e in enumerate(workers.remote_workers()):
             e.learn_on_batch.remote(samples[i])
 
-        samples = ray_get_and_free([e.sample.remote("post") for e in workers.remote_workers()])
+        samples = ray_get_and_free([e.sample.remote(str(step+1)) for e in workers.remote_workers()])
         meta_samples = meta_samples.concat(SampleBatch.concat_samples(samples))
         meta_split.append([sample['obs'].shape[0] for sample in samples])
 
@@ -88,7 +87,8 @@ def execution_plan(workers, config):
 
 
 def after_optimizer_step(trainer, fetches):
-    trainer.workers.local_worker().for_policy(lambda pi: pi.update_kls(fetches["default_policy"]["inner_kl"]))
+    if trainer.config["use_kl_loss"]:
+        trainer.workers.local_worker().for_policy(lambda pi: pi.update_kls(fetches["default_policy"]["inner_kl"]))
 
 
 def maml_metrics(trainer):
@@ -97,6 +97,7 @@ def maml_metrics(trainer):
             min_history=trainer.config["metrics_smoothing_episodes"],
             selected_workers=trainer.workers.remote_workers(),
             dataset_id=str(0))
+    
     for i in range(1,trainer.config["inner_adaptation_steps"]+1):    
         res_adapt = trainer.optimizer.collect_metrics(
                 trainer.config["collect_metrics_timeout"],
