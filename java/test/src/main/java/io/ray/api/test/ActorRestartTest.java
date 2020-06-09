@@ -1,8 +1,8 @@
 package io.ray.api.test;
 
+import io.ray.api.ActorHandle;
 import io.ray.api.Checkpointable;
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
 import io.ray.api.TestUtils;
 import io.ray.api.exception.RayActorException;
 import io.ray.api.id.ActorId;
@@ -46,7 +46,7 @@ public class ActorRestartTest extends BaseTest {
     TestUtils.skipTestUnderSingleProcess();
     ActorCreationOptions options =
         new ActorCreationOptions.Builder().setMaxRestarts(1).createActorCreationOptions();
-    RayActor<Counter> actor = Ray.createActor(Counter::new, options);
+    ActorHandle<Counter> actor = Ray.createActor(Counter::new, options);
     // Call increase 3 times.
     for (int i = 0; i < 3; i++) {
       actor.call(Counter::increase).get();
@@ -125,7 +125,7 @@ public class ActorRestartTest extends BaseTest {
     TestUtils.skipTestUnderSingleProcess();
     ActorCreationOptions options =
         new ActorCreationOptions.Builder().setMaxRestarts(1).createActorCreationOptions();
-    RayActor<CheckpointableCounter> actor = Ray.createActor(CheckpointableCounter::new, options);
+    ActorHandle<CheckpointableCounter> actor = Ray.createActor(CheckpointableCounter::new, options);
     // Call increase 3 times.
     for (int i = 0; i < 3; i++) {
       actor.call(CheckpointableCounter::increase).get();

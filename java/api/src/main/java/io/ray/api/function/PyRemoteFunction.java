@@ -18,13 +18,13 @@ package io.ray.api.function;
  *
  * {@code
  * // bar returns input, so we have to set the returnType to int.class if bar accepts an int
- * RayObject<Integer> res = actor.call(
+ * ObjectRef<Integer> res = actor.call(
  *    new PyRemoteFunction<>("example_package.example_module", "bar", Integer.class),
  *    1);
  * Integer value = res.get();
  *
  * // bar returns input, so we have to set the returnType to String.class if bar accepts a string
- * RayObject<String> res = actor.call(
+ * ObjectRef<String> res = actor.call(
  *    new PyRemoteFunction<>("example_package.example_module", "bar", String.class),
  *    "Hello world!");
  * String value = res.get();

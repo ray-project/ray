@@ -36,7 +36,7 @@ EOF
 generate_one io.ray.runtime.RayNativeRuntime
 generate_one io.ray.runtime.task.NativeTaskSubmitter
 generate_one io.ray.runtime.context.NativeWorkerContext
-generate_one io.ray.runtime.actor.NativeRayActor
+generate_one io.ray.runtime.actor.NativeActorHandle
 generate_one io.ray.runtime.object.NativeObjectStore
 generate_one io.ray.runtime.task.NativeTaskExecutor
 generate_one io.ray.runtime.gcs.GlobalStateAccessor

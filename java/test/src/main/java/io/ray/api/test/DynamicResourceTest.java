@@ -2,8 +2,8 @@ package io.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.RayObject;
 import io.ray.api.TestUtils;
 import io.ray.api.WaitResult;
 import io.ray.api.options.CallOptions;
@@ -27,7 +27,7 @@ public class DynamicResourceTest extends BaseTest {
 
     CallOptions op1 =
         new CallOptions.Builder().setResources(ImmutableMap.of("A", 10.0)).createCallOptions();
-    RayObject<String> obj = Ray.call(DynamicResourceTest::sayHi, op1);
+    ObjectRef<String> obj = Ray.call(DynamicResourceTest::sayHi, op1);
     WaitResult<String> result = Ray.wait(ImmutableList.of(obj), 1, 1000);
     Assert.assertEquals(result.getReady().size(), 0);
 

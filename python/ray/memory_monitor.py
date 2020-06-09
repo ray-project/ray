@@ -1,5 +1,6 @@
 import logging
 import os
+import platform
 import sys
 import time
 
@@ -47,7 +48,7 @@ class RayOutOfMemoryError(Exception):
                 " ".join(cmdline)[:100].strip())
         return ("More than {}% of the memory on ".format(int(
             100 * threshold)) + "node {} is used ({} / {} GB). ".format(
-                os.uname()[1], round(used_gb, 2), round(total_gb, 2)) +
+                platform.node(), round(used_gb, 2), round(total_gb, 2)) +
                 "The top 10 memory consumers are:\n\n{}".format(proc_str) +
                 "\n\nIn addition, up to {} GiB of shared memory is ".format(
                     round(get_shared(psutil.virtual_memory()) / (1024**3), 2))
