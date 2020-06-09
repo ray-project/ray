@@ -2887,8 +2887,8 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
               << "by the redis LRU configuration. Consider increasing the memory "
                  "allocation via "
               << "ray.init(redis_max_memory=<max_memory_bytes>).";
-          MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
-                              {required_object_id}, JobID::Nil());
+          MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
+                              JobID::Nil());
         }
       }));
 }
@@ -2925,8 +2925,7 @@ void NodeManager::ResubmitTask(const Task &task, const ObjectID &required_object
         gcs::CreateErrorTableData(type, error_message.str(), current_time_ms(),
                                   task.GetTaskSpecification().JobId());
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
-    MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
-                        {required_object_id},
+    MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
                         task.GetTaskSpecification().JobId());
     return;
   }

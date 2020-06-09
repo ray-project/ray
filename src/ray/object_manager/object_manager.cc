@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/object_manager/object_manager.h"
+
 #include "ray/common/common_protocol.h"
 #include "ray/stats/stats.h"
 #include "ray/util/util.h"
