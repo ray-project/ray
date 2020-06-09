@@ -1,8 +1,8 @@
 package io.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
+import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.RayObject;
 import io.ray.api.id.ObjectId;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -17,19 +17,19 @@ public class ObjectStoreTest extends BaseTest {
   @Test
   public void testPutAndGet() {
     {
-      RayObject<Integer> obj = Ray.put(1);
+      ObjectRef<Integer> obj = Ray.put(1);
       Assert.assertEquals(1, (int) obj.get());
     }
 
     {
       String s = null;
-      RayObject<String> obj = Ray.put(s);
+      ObjectRef<String> obj = Ray.put(s);
       Assert.assertNull(obj.get());
     }
 
     {
       List<List<String>> l = ImmutableList.of(ImmutableList.of("abc"));
-      RayObject<List<List<String>>> obj = Ray.put(l);
+      ObjectRef<List<List<String>>> obj = Ray.put(l);
       Assert.assertEquals(obj.get(), l);
     }
   }

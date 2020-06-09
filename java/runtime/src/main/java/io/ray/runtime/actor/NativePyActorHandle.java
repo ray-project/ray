@@ -1,7 +1,7 @@
 package io.ray.runtime.actor;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.RayPyActor;
+import io.ray.api.PyActorHandle;
 import io.ray.runtime.generated.Common.Language;
 import java.io.IOException;
 import java.io.ObjectInput;
@@ -9,16 +9,16 @@ import java.io.ObjectInput;
 /**
  * Python actor handle implementation for cluster mode.
  */
-public class NativeRayPyActor extends NativeRayActor implements RayPyActor {
+public class NativePyActorHandle extends NativeActorHandle implements PyActorHandle {
 
-  NativeRayPyActor(byte[] actorId) {
+  NativePyActorHandle(byte[] actorId) {
     super(actorId, Language.PYTHON);
   }
 
   /**
    * Required by FST
    */
-  public NativeRayPyActor() {
+  public NativePyActorHandle() {
     super();
   }
 

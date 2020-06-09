@@ -1,9 +1,9 @@
 package io.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
+import io.ray.api.ActorHandle;
+import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
-import io.ray.api.RayObject;
 import io.ray.api.TestUtils;
 import io.ray.api.exception.RayActorException;
 import io.ray.api.options.ActorCreationOptions;
@@ -41,27 +41,27 @@ public class KillActorTest extends BaseTest {
 
   public static class KillerActor {
 
-    public void kill(RayActor<?> actor, boolean noRestart) {
+    public void kill(ActorHandle<?> actor, boolean noRestart) {
       actor.kill(noRestart);
     }
   }
 
-  private static void localKill(RayActor<?> actor, boolean noRestart) {
+  private static void localKill(ActorHandle<?> actor, boolean noRestart) {
     actor.kill(noRestart);
   }
 
-  private static void remoteKill(RayActor<?> actor, boolean noRestart) {
-    RayActor<KillerActor> killer = Ray.createActor(KillerActor::new);
+  private static void remoteKill(ActorHandle<?> actor, boolean noRestart) {
+    ActorHandle<KillerActor> killer = Ray.createActor(KillerActor::new);
     killer.call(KillerActor::kill, actor, noRestart);
   }
 
-  private void testKillActor(BiConsumer<RayActor<?>, Boolean> kill, boolean noRestart) {
+  private void testKillActor(BiConsumer<ActorHandle<?>, Boolean> kill, boolean noRestart) {
     TestUtils.skipTestUnderSingleProcess();
 
     ActorCreationOptions options =
         new ActorCreationOptions.Builder().setMaxRestarts(1).createActorCreationOptions();
-    RayActor<HangActor> actor = Ray.createActor(HangActor::new, options);
-    RayObject<Boolean> result = actor.call(HangActor::hang);
+    ActorHandle<HangActor> actor = Ray.createActor(HangActor::new, options);
+    ObjectRef<Boolean> result = actor.call(HangActor::hang);
     // The actor will hang in this task.
     Assert.assertEquals(0, Ray.wait(ImmutableList.of(result), 1, 500).getReady().size());
 

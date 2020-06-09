@@ -1,14 +1,14 @@
 package io.ray.runtime.object;
 
+import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.RayObject;
 import io.ray.api.id.ObjectId;
 import java.io.Serializable;
 
 /**
- * Implementation of {@link RayObject}.
+ * Implementation of {@link ObjectRef}.
  */
-public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
+public final class ObjectRefImpl<T> implements ObjectRef<T>, Serializable {
 
   private final ObjectId id;
 
@@ -27,7 +27,7 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
    */
   private transient boolean objectGotten;
 
-  public RayObjectImpl(ObjectId id, Class<T> type) {
+  public ObjectRefImpl(ObjectId id, Class<T> type) {
     this.id = id;
     this.type = type;
     object = null;

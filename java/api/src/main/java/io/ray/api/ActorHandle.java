@@ -12,9 +12,9 @@ package io.ray.api;
  *   }
  * }
  * // Create an actor, and get a handle.
- * RayActor<MyActor> myActor = Ray.createActor(MyActor::new);
+ * ActorHandle<MyActor> myActor = Ray.createActor(MyActor::new);
  * // Call the `echo` method remotely.
- * RayObject<Integer> result = myActor.call(MyActor::echo, 1);
+ * ObjectRef<Integer> result = myActor.call(MyActor::echo, 1);
  * // Get the result of the remote `echo` method.
  * Assert.assertEqual(result.get(), 1);
  * }</pre>
@@ -24,6 +24,6 @@ package io.ray.api;
  *
  * @param <A> The type of the concrete actor class.
  */
-public interface RayActor<A> extends BaseActor, ActorCall<A> {
+public interface ActorHandle<A> extends BaseActorHandle, ActorCall<A> {
 
 }

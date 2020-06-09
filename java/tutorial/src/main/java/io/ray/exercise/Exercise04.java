@@ -1,8 +1,8 @@
 package io.ray.exercise;
 
 import com.google.common.collect.ImmutableList;
+import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.RayObject;
 import io.ray.api.WaitResult;
 import java.util.List;
 
@@ -38,7 +38,7 @@ public class Exercise04 {
   public static void main(String[] args) throws Exception {
     try {
       Ray.init();
-      List<RayObject<String>> waitList = ImmutableList.of(
+      List<ObjectRef<String>> waitList = ImmutableList.of(
           Ray.call(Exercise04::f1),
           Ray.call(Exercise04::f2),
           Ray.call(Exercise04::f3)

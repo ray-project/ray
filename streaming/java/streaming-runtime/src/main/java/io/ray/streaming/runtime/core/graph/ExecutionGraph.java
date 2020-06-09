@@ -1,6 +1,6 @@
 package io.ray.streaming.runtime.core.graph;
 
-import io.ray.api.BaseActor;
+import io.ray.api.BaseActorHandle;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -17,19 +17,19 @@ import java.util.stream.Collectors;
 public class ExecutionGraph implements Serializable {
   private long buildTime;
   private List<ExecutionNode> executionNodeList;
-  private List<BaseActor> sourceWorkers = new ArrayList<>();
-  private List<BaseActor> sinkWorkers = new ArrayList<>();
+  private List<BaseActorHandle> sourceWorkers = new ArrayList<>();
+  private List<BaseActorHandle> sinkWorkers = new ArrayList<>();
 
   public ExecutionGraph(List<ExecutionNode> executionNodes) {
     this.executionNodeList = executionNodes;
     for (ExecutionNode executionNode : executionNodeList) {
       if (executionNode.getNodeType() == ExecutionNode.NodeType.SOURCE) {
-        List<BaseActor> actors = executionNode.getExecutionTasks().stream()
+        List<BaseActorHandle> actors = executionNode.getExecutionTasks().stream()
             .map(ExecutionTask::getWorker).collect(Collectors.toList());
         sourceWorkers.addAll(actors);
       }
       if (executionNode.getNodeType() == ExecutionNode.NodeType.SINK) {
-        List<BaseActor> actors = executionNode.getExecutionTasks().stream()
+        List<BaseActorHandle> actors = executionNode.getExecutionTasks().stream()
             .map(ExecutionTask::getWorker).collect(Collectors.toList());
         sinkWorkers.addAll(actors);
       }
@@ -37,11 +37,11 @@ public class ExecutionGraph implements Serializable {
     buildTime = System.currentTimeMillis();
   }
 
-  public List<BaseActor> getSourceWorkers() {
+  public List<BaseActorHandle> getSourceWorkers() {
     return sourceWorkers;
   }
 
-  public List<BaseActor> getSinkWorkers() {
+  public List<BaseActorHandle> getSinkWorkers() {
     return sinkWorkers;
   }
 
@@ -80,10 +80,10 @@ public class ExecutionGraph implements Serializable {
     throw new RuntimeException("Task " + taskId + " does not exist!");
   }
 
-  public Map<Integer, BaseActor> getTaskId2WorkerByNodeId(int nodeId) {
+  public Map<Integer, BaseActorHandle> getTaskId2WorkerByNodeId(int nodeId) {
     for (ExecutionNode executionNode : executionNodeList) {
       if (executionNode.getNodeId() == nodeId) {
-        Map<Integer, BaseActor> taskId2Worker = new HashMap<>();
+        Map<Integer, BaseActorHandle> taskId2Worker = new HashMap<>();
         for (ExecutionTask executionTask : executionNode.getExecutionTasks()) {
           taskId2Worker.put(executionTask.getTaskId(), executionTask.getWorker());
         }

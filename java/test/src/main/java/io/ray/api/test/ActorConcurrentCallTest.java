@@ -1,9 +1,9 @@
 package io.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
+import io.ray.api.ActorHandle;
+import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
-import io.ray.api.RayObject;
 import io.ray.api.TestUtils;
 import io.ray.api.options.ActorCreationOptions;
 import java.util.List;
@@ -35,10 +35,10 @@ public class ActorConcurrentCallTest extends BaseTest {
     ActorCreationOptions op = new ActorCreationOptions.Builder()
         .setMaxConcurrency(3)
         .createActorCreationOptions();
-    RayActor<ConcurrentActor> actor = Ray.createActor(ConcurrentActor::new, op);
-    RayObject<String> obj1 = actor.call(ConcurrentActor::countDown);
-    RayObject<String> obj2 = actor.call(ConcurrentActor::countDown);
-    RayObject<String> obj3 = actor.call(ConcurrentActor::countDown);
+    ActorHandle<ConcurrentActor> actor = Ray.createActor(ConcurrentActor::new, op);
+    ObjectRef<String> obj1 = actor.call(ConcurrentActor::countDown);
+    ObjectRef<String> obj2 = actor.call(ConcurrentActor::countDown);
+    ObjectRef<String> obj3 = actor.call(ConcurrentActor::countDown);
 
     List<Integer> expectedResult = ImmutableList.of(1, 2, 3);
     Assert.assertEquals(obj1.get(), "ok");

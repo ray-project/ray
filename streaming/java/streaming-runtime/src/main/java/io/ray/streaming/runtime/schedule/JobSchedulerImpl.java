@@ -1,10 +1,10 @@
 package io.ray.streaming.runtime.schedule;
 
-import io.ray.api.BaseActor;
+import io.ray.api.ActorHandle;
+import io.ray.api.BaseActorHandle;
+import io.ray.api.ObjectRef;
+import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
-import io.ray.api.RayObject;
-import io.ray.api.RayPyActor;
 import io.ray.api.function.PyActorMethod;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.jobgraph.JobGraph;
@@ -50,22 +50,22 @@ public class JobSchedulerImpl implements JobScheduler {
     if (hasPythonNode) {
       executionGraphPb = new GraphPbBuilder().buildExecutionGraphPb(executionGraph);
     }
-    List<RayObject<Object>> waits = new ArrayList<>();
+    List<ObjectRef<Object>> waits = new ArrayList<>();
     for (ExecutionNode executionNode : executionNodes) {
       List<ExecutionTask> executionTasks = executionNode.getExecutionTasks();
       for (ExecutionTask executionTask : executionTasks) {
         int taskId = executionTask.getTaskId();
-        BaseActor worker = executionTask.getWorker();
+        BaseActorHandle worker = executionTask.getWorker();
         switch (executionNode.getLanguage()) {
           case JAVA:
-            RayActor<JobWorker> jobWorker = (RayActor<JobWorker>) worker;
+            ActorHandle<JobWorker> jobWorker = (ActorHandle<JobWorker>) worker;
             waits.add(jobWorker.call(JobWorker::init,
                 new WorkerContext(taskId, executionGraph, jobConfig)));
             break;
           case PYTHON:
             byte[] workerContextBytes = buildPythonWorkerContext(
                 taskId, executionGraphPb, jobConfig);
-            waits.add(((RayPyActor)worker).call(new PyActorMethod("init", Object.class),
+            waits.add(((PyActorHandle)worker).call(new PyActorMethod("init", Object.class),
                 workerContextBytes));
             break;
           default:

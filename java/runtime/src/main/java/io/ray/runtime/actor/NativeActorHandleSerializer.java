@@ -8,20 +8,20 @@ import org.nustaq.serialization.FSTObjectInput;
 import org.nustaq.serialization.FSTObjectOutput;
 
 /**
- * To deal with serialization about {@link NativeRayActor}.
+ * To deal with serialization about {@link NativeActorHandle}.
  */
-public class NativeRayActorSerializer extends FSTBasicObjectSerializer {
+public class NativeActorHandleSerializer extends FSTBasicObjectSerializer {
 
   @Override
   public void writeObject(FSTObjectOutput out, Object toWrite, FSTClazzInfo clzInfo,
       FSTClazzInfo.FSTFieldInfo referencedBy, int streamPosition) throws IOException {
-    ((NativeRayActor) toWrite).writeExternal(out);
+    ((NativeActorHandle) toWrite).writeExternal(out);
   }
 
   @Override
   public void readObject(FSTObjectInput in, Object toRead, FSTClazzInfo clzInfo,
       FSTFieldInfo referencedBy) throws Exception {
     super.readObject(in, toRead, clzInfo, referencedBy);
-    ((NativeRayActor) toRead).readExternal(in);
+    ((NativeActorHandle) toRead).readExternal(in);
   }
 }
