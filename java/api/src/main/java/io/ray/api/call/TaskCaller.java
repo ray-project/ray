@@ -4,7 +4,7 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.function.RayFunc;
 
-public class TaskCaller<R> extends BaseCaller {
+public class TaskCaller<R> extends TaskCallerBase {
   private final RayFunc<R> func;
   private final Object[] args;
 

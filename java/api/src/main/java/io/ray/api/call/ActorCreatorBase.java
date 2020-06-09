@@ -4,7 +4,7 @@ import io.ray.api.options.ActorCreationOptions;
 import java.util.HashMap;
 import java.util.Map;
 
-public class BaseActorCreator<T extends BaseActorCreator> {
+public class ActorCreatorBase<T extends ActorCreatorBase> {
   private Map<String, Double> resources = new HashMap<>();
   private int maxRestarts = 0;
   private String jvmOptions = null;
