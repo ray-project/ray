@@ -17,7 +17,7 @@ import ray.ray_constants as ray_constants
 import ray.services
 import ray.utils
 from ray.resource_spec import ResourceSpec
-from ray.utils import try_to_create_directory, try_to_symlink, open_worker_log
+from ray.utils import try_to_create_directory, try_to_symlink, open_log
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -417,8 +417,7 @@ class Node:
             A tuple of two files for redirecting (stdout, stderr).
         """
         log_stdout, log_stderr = self.get_log_file_names(name, unique=True)
-        worker_pid = os.getpid()
-        return open_worker_log(log_stdout, worker_pid), open_worker_log(log_stderr, worker_pid)
+        return open_log(log_stdout), open_log(log_stderr)
 
     def _get_unused_port(self, close_on_exit=True):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

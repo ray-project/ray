@@ -390,6 +390,10 @@ def setup_logger(logging_level, logging_format):
     logger.propagate = False
 
 
+def open_log(path):
+    return open(path, "a", buffering=1)
+
+
 def open_worker_log(path, worker_pid):
     """
     Opens a path (or creates if necessary) for a log.
