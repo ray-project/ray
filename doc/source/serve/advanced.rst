@@ -185,6 +185,24 @@ The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or `
   handle = serve.get_handle("api_endpoint")
   handler.options(shard_key=session_id).remote(args)
 
+Composing Multiple Models
+=========================
+In many cases, you need to use multiple models to perform a prediction. It 
+could that you are connecting a preprocess model with a inference model; or
+using multiple models to perform stacking or ensembles. Ray Serve has built in
+support for composing models together.
+
+To define a higher-level composed model, you can define a Ray Serve backend and
+connect to an endpoint normally. With the following differences:
+
+- You can retrieve a "handle" to your physical models and call it with Python 
+  arguments via ``serve.get_handle("endpoint-name")``
+- You should make your backend implementation async python function with ``async def``.
+
+That's it. Let's take a look at an example:
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_model_composition.py
+
 
 .. _serve-faq:
 
