@@ -1,4 +1,7 @@
 from random import random
+
+import requests
+
 from ray import serve
 
 serve.init()
@@ -43,7 +46,6 @@ serve.create_backend(
 serve.create_endpoint(
     "composed", backend="composed_backend", route="/composed")
 
-import requests
 for _ in range(5):
     resp = requests.get("http://127.0.0.1:8000/composed", data="hey!")
     print(resp.json())
