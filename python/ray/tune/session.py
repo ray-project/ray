@@ -32,6 +32,9 @@ def init(reporter, ignore_reinit_error=True):
             return
         else:
             raise ValueError(reinit_msg)
+    else:
+        logger.warning("You are using a Tune session outside of Tune. "
+                       "Most session commands will have no effect.")
 
     _session = reporter
 

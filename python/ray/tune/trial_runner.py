@@ -385,10 +385,14 @@ class TrialRunner:
         self.trial_executor.try_checkpoint_metadata(trial)
 
     def debug_string(self, delim="\n"):
+        result_keys = [
+            list(t.last_result) for t in self.get_trials() if t.last_result
+        ]
+        metrics = set().union(*result_keys)
         messages = [
             self._scheduler_alg.debug_string(),
             self.trial_executor.debug_string(),
-            trial_progress_str(self.get_trials()),
+            trial_progress_str(self.get_trials(), metrics),
         ]
         return delim.join(messages)
 
