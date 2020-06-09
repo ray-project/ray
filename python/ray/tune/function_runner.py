@@ -342,11 +342,17 @@ class FunctionRunner(Trainable):
             pass
 
 
+def detect_checkpoint_function(train_func):
+    func_args = inspect.getfullargspec(train_func).args
+    use_checkpoint = "checkpoint" in func_args
+    return use_checkpoint
+
+
 def wrap_function(train_func):
     class ImplicitFunc(FunctionRunner):
         def _trainable_func(self, config, reporter, checkpoint):
             func_args = inspect.getfullargspec(train_func).args
-            use_reporter = ("reporter" in func_args)
+            use_reporter = "reporter" in func_args
             use_checkpoint = "checkpoint" in func_args
             if not use_checkpoint and not use_reporter:
                 output = train_func(config)
