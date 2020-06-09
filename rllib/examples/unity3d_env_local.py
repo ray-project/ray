@@ -41,6 +41,10 @@ parser.add_argument(
     help="The Unity3d binary (compiled) game, e.g. "
     "'/home/ubuntu/soccer_strikers_vs_goalie_linux.x86_64'. Use `None` for "
     "a currently running Unity3D editor.")
+parser.add_argument(
+    "--from-checkpoint", type=str, default=None,
+    help="Full path to a checkpoint file for restoring a previously saved "
+         "Trainer state.")
 parser.add_argument("--num-workers", type=int, default=0)
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=9999)
@@ -112,7 +116,8 @@ if __name__ == "__main__":
 
     # Run the experiment.
     results = tune.run(
-        "PPO", config=config, stop=stop, verbose=1, checkpoint_freq=10)
+        "PPO", config=config, stop=stop, verbose=1, checkpoint_freq=10,
+        restore=args.from_checkpoint)
 
     # And check the results.
     if args.as_test:
