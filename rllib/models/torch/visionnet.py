@@ -9,14 +9,13 @@ from ray.rllib.utils import try_import_torch
 _, nn = try_import_torch()
 
 
-class VisionNetwork(TorchModelV2, nn.Module):
+class VisionNetwork(TorchModelV2):
     """Generic vision network."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
-        nn.Module.__init__(self)
 
         activation = get_activation_fn(
             model_config.get("conv_activation"), framework="torch")

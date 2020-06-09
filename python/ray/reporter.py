@@ -6,7 +6,7 @@ import traceback
 import time
 import datetime
 import grpc
-import socket
+import platform
 import subprocess
 import sys
 from concurrent import futures
@@ -98,7 +98,7 @@ class Reporter:
         """Initialize the reporter object."""
         self.cpu_counts = (psutil.cpu_count(), psutil.cpu_count(logical=False))
         self.ip = ray.services.get_node_ip_address()
-        self.hostname = socket.gethostname()
+        self.hostname = platform.node()
 
         _ = psutil.cpu_percent()  # For initialization
 
@@ -280,7 +280,7 @@ if __name__ == "__main__":
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The reporter on node {} failed with the following "
-                   "error:\n{}".format(socket.gethostname(), traceback_str))
+                   "error:\n{}".format(platform.node(), traceback_str))
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.REPORTER_DIED_ERROR, message)
         raise e

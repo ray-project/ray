@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/ray/rpc/grpc_server.h"
+#include "ray/rpc/grpc_server.h"
 
 #include <grpcpp/impl/service_type.h>
+
 #include <boost/asio/detail/socket_holder.hpp>
 
 #include "ray/common/ray_config.h"

@@ -20,8 +20,7 @@ from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
-from ray.rllib.utils.framework import check_framework, try_import_tf, \
-    TensorStructType
+from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.from_config import from_config
@@ -149,8 +148,7 @@ COMMON_CONFIG = {
     # tf: TensorFlow
     # tfe: TensorFlow eager
     # torch: PyTorch
-    # auto: "torch" if only PyTorch installed, "tf" otherwise.
-    "framework": "auto",
+    "framework": "tf",
     # Enable tracing in eager mode. This greatly improves performance, but
     # makes it slightly harder to debug since Python code won't be evaluated
     # after the initial eager pass. Only possible if framework=tfe.
@@ -576,9 +574,7 @@ class Trainer(Trainable):
                 self.config["framework"] = "tfe"
             self.config.pop("eager")
 
-        # Check all dependencies and resolve "auto" framework.
-        self.config["framework"] = check_framework(self.config["framework"])
-        # Notify about eager/tracing support.
+        # Enable eager/tracing support.
         if tf and self.config["framework"] == "tfe":
             if not tf.executing_eagerly():
                 tf.enable_eager_execution()

@@ -73,7 +73,7 @@ public class TestUtils {
    * idle workers in Raylet's worker pool.
    */
   public static void warmUpCluster() {
-    RayObject<String> obj = Ray.call(TestUtils::hi);
+    ObjectRef<String> obj = Ray.call(TestUtils::hi);
     Assert.assertEquals(obj.get(), "hi");
   }
 

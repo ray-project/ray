@@ -17,14 +17,14 @@ package io.ray.api.function;
  * suppose we have got the Python actor class A's handle in Java
  *
  * {@code
- * RayPyActor actor = ...; // returned from Ray.createActor or passed from Python
+ * PyActorHandle actor = ...; // returned from Ray.createActor or passed from Python
  * }
  *
  * then we can call the actor method:
  *
  * {@code
  * // A.foo returns a string, so we have to set the returnType to String.class
- * RayObject<String> res = actor.call(new PyActorMethod<>("foo", String.class));
+ * ObjectRef<String> res = actor.call(new PyActorMethod<>("foo", String.class));
  * String x = res.get();
  * }
  * </pre>

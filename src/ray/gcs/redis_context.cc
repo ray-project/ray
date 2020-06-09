@@ -37,7 +37,8 @@ void ProcessCallback(int64_t callback_index,
                      std::shared_ptr<ray::gcs::CallbackReply> callback_reply) {
   RAY_CHECK(callback_index >= 0) << "The callback index must be greater than 0, "
                                  << "but it actually is " << callback_index;
-  auto callback_item = ray::gcs::RedisCallbackManager::instance().get(callback_index);
+  auto callback_item =
+      ray::gcs::RedisCallbackManager::instance().GetCallback(callback_index);
   if (!callback_item->is_subscription_) {
     // Record the redis latency for non-subscription redis operations.
     auto end_time = absl::GetCurrentTimeNanos() / 1000;
@@ -49,7 +50,7 @@ void ProcessCallback(int64_t callback_index,
 
   if (!callback_item->is_subscription_) {
     // Delete the callback if it's not a subscription callback.
-    ray::gcs::RedisCallbackManager::instance().remove(callback_index);
+    ray::gcs::RedisCallbackManager::instance().RemoveCallback(callback_index);
   }
 }
 
@@ -203,25 +204,38 @@ void GlobalRedisCallback(void *c, void *r, void *privdata) {
   ProcessCallback(callback_index, std::make_shared<CallbackReply>(reply));
 }
 
-int64_t RedisCallbackManager::add(const RedisCallback &function, bool is_subscription,
-                                  boost::asio::io_service &io_service) {
-  auto start_time = absl::GetCurrentTimeNanos() / 1000;
-
+int64_t RedisCallbackManager::AllocateCallbackIndex() {
   std::lock_guard<std::mutex> lock(mutex_);
-  callback_items_.emplace(
-      num_callbacks_,
-      std::make_shared<CallbackItem>(function, is_subscription, start_time, io_service));
   return num_callbacks_++;
 }
 
-std::shared_ptr<RedisCallbackManager::CallbackItem> RedisCallbackManager::get(
-    int64_t callback_index) {
+int64_t RedisCallbackManager::AddCallback(const RedisCallback &function,
+                                          bool is_subscription,
+                                          boost::asio::io_service &io_service,
+                                          int64_t callback_index) {
+  auto start_time = absl::GetCurrentTimeNanos() / 1000;
+
   std::lock_guard<std::mutex> lock(mutex_);
-  RAY_CHECK(callback_items_.find(callback_index) != callback_items_.end());
-  return callback_items_[callback_index];
+  if (callback_index == -1) {
+    // No callback index was specified. Allocate a new callback index.
+    callback_index = num_callbacks_;
+    num_callbacks_++;
+  }
+  callback_items_.emplace(
+      callback_index,
+      std::make_shared<CallbackItem>(function, is_subscription, start_time, io_service));
+  return callback_index;
 }
 
-void RedisCallbackManager::remove(int64_t callback_index) {
+std::shared_ptr<RedisCallbackManager::CallbackItem> RedisCallbackManager::GetCallback(
+    int64_t callback_index) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto it = callback_items_.find(callback_index);
+  RAY_CHECK(it != callback_items_.end()) << callback_index;
+  return it->second;
+}
+
+void RedisCallbackManager::RemoveCallback(int64_t callback_index) {
   std::lock_guard<std::mutex> lock(mutex_);
   callback_items_.erase(callback_index);
 }
@@ -362,7 +376,7 @@ Status RedisContext::RunArgvAsync(const std::vector<std::string> &args,
     argc.push_back(args[i].size());
   }
   int64_t callback_index =
-      RedisCallbackManager::instance().add(redis_callback, false, io_service_);
+      RedisCallbackManager::instance().AddCallback(redis_callback, false, io_service_);
   // Run the Redis command.
   Status status = redis_async_context_->RedisAsyncCommandArgv(
       reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
@@ -379,7 +393,7 @@ Status RedisContext::SubscribeAsync(const ClientID &client_id,
   RAY_CHECK(async_redis_subscribe_context_);
 
   int64_t callback_index =
-      RedisCallbackManager::instance().add(redisCallback, true, io_service_);
+      RedisCallbackManager::instance().AddCallback(redisCallback, true, io_service_);
   RAY_CHECK(out_callback_index != nullptr);
   *out_callback_index = callback_index;
   Status status = Status::OK();
@@ -403,12 +417,11 @@ Status RedisContext::SubscribeAsync(const ClientID &client_id,
 
 Status RedisContext::PSubscribeAsync(const std::string &pattern,
                                      const RedisCallback &redisCallback,
-                                     int64_t *out_callback_index) {
+                                     int64_t callback_index) {
   RAY_CHECK(async_redis_subscribe_context_);
 
-  int64_t callback_index =
-      RedisCallbackManager::instance().add(redisCallback, true, io_service_);
-  *out_callback_index = callback_index;
+  RAY_UNUSED(RedisCallbackManager::instance().AddCallback(redisCallback, true,
+                                                          io_service_, callback_index));
   std::string redis_command = "PSUBSCRIBE %b";
   return async_redis_subscribe_context_->RedisAsyncCommand(
       reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),

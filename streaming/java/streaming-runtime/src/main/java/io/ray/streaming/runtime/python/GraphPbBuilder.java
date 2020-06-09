@@ -1,10 +1,12 @@
 package io.ray.streaming.runtime.python;
 
 import com.google.protobuf.ByteString;
-import io.ray.runtime.actor.NativeRayActor;
+import io.ray.runtime.actor.NativeActorHandle;
 import io.ray.streaming.api.function.Function;
 import io.ray.streaming.api.partition.Partition;
+import io.ray.streaming.operator.Operator;
 import io.ray.streaming.python.PythonFunction;
+import io.ray.streaming.python.PythonOperator;
 import io.ray.streaming.python.PythonPartition;
 import io.ray.streaming.runtime.core.graph.ExecutionEdge;
 import io.ray.streaming.runtime.core.graph.ExecutionGraph;
@@ -34,14 +36,14 @@ public class GraphPbBuilder {
       nodeBuilder.setNodeType(
           Streaming.NodeType.valueOf(node.getNodeType().name()));
       nodeBuilder.setLanguage(Streaming.Language.valueOf(node.getLanguage().name()));
-      byte[] functionBytes = serializeFunction(node.getStreamOperator().getFunction());
-      nodeBuilder.setFunction(ByteString.copyFrom(functionBytes));
+      byte[] operatorBytes = serializeOperator(node.getStreamOperator());
+      nodeBuilder.setOperator(ByteString.copyFrom(operatorBytes));
 
       // build tasks
       for (ExecutionTask task : node.getExecutionTasks()) {
         RemoteCall.ExecutionGraph.ExecutionTask.Builder taskBuilder =
             RemoteCall.ExecutionGraph.ExecutionTask.newBuilder();
-        byte[] serializedActorHandle = ((NativeRayActor) task.getWorker()).toBytes();
+        byte[] serializedActorHandle = ((NativeActorHandle) task.getWorker()).toBytes();
         taskBuilder
             .setTaskId(task.getTaskId())
             .setTaskIndex(task.getTaskIndex())
@@ -70,6 +72,19 @@ public class GraphPbBuilder {
     edgeBuilder.setTargetNodeId(edge.getTargetNodeId());
     edgeBuilder.setPartition(ByteString.copyFrom(serializePartition(edge.getPartition())));
     return edgeBuilder.build();
+  }
+
+  private byte[] serializeOperator(Operator operator) {
+    if (operator instanceof PythonOperator) {
+      PythonOperator pythonOperator = (PythonOperator) operator;
+      return serializer.serialize(Arrays.asList(
+          serializeFunction(pythonOperator.getFunction()),
+          pythonOperator.getModuleName(),
+          pythonOperator.getClassName()
+      ));
+    } else {
+      return new byte[0];
+    }
   }
 
   private byte[] serializeFunction(Function function) {

@@ -2,7 +2,7 @@ package io.ray.streaming.runtime.streamingqueue;
 
 import com.google.common.collect.ImmutableMap;
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
+import io.ray.api.ActorHandle;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.ActorCreationOptions.Builder;
 import io.ray.runtime.config.RayConfig;
@@ -94,9 +94,9 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
 
     ActorCreationOptions.Builder builder = new Builder();
 
-    RayActor<WriterWorker> writerActor = Ray.createActor(WriterWorker::new, "writer",
+    ActorHandle<WriterWorker> writerActor = Ray.createActor(WriterWorker::new, "writer",
         builder.createActorCreationOptions());
-    RayActor<ReaderWorker> readerActor = Ray.createActor(ReaderWorker::new, "reader",
+    ActorHandle<ReaderWorker> readerActor = Ray.createActor(ReaderWorker::new, "reader",
         builder.createActorCreationOptions());
 
     LOGGER.info("call getName on writerActor: {}",
