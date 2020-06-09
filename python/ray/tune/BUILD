@@ -143,7 +143,7 @@ py_test(
 
 py_test(
     name = "test_api",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_api.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
