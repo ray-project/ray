@@ -2,6 +2,7 @@
 
 package io.ray.api;
 
+import io.ray.api.call.TaskCaller;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyRemoteFunction;
 import io.ray.api.function.RayFunc0;
@@ -31,6 +32,7 @@ class RayCall {
   // =======================================
   public static <R> ObjectRef<R> call(RayFunc0<R> f) {
     Object[] args = new Object[]{};
+    TaskCaller<R> taskCaller = new TaskCaller<>(f, args);
     return Ray.internal().call(f, args, null);
   }
 
