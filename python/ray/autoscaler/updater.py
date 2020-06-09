@@ -17,6 +17,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
 from ray.autoscaler.log_timer import LogTimer
+from ray.autoscaler.docker import get_docker_check
 
 logger = logging.getLogger(__name__)
 
@@ -314,10 +315,20 @@ class DockerCommandRunner(SSHCommandRunner):
             port_forward=None,
             with_output=False)
 
+    def check_container_status(self):
+        no_exist = "not present"
+        cmd = get_docker_check(self.docker_name) + " ".join(
+            ["||", "echo", quote(no_exist)])
+        output = str(self.ssh_command_runner.run(cmd, with_output=True))
+        if no_exist in output:
+            return False
+        return output
+
     def run_rsync_up(self, source, target):
         self.ssh_command_runner.run_rsync_up(source, target)
-        self.ssh_command_runner.run("docker cp {} {}:{}".format(
-            target, self.docker_name, self.docker_expand_user(target)))
+        if self.check_container_status():
+            self.ssh_command_runner.run("docker cp {} {}:{}".format(
+                target, self.docker_name, self.docker_expand_user(target)))
 
     def run_rsync_down(self, source, target):
         self.ssh_command_runner.run("docker cp {}:{} {}".format(
