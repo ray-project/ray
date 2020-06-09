@@ -64,6 +64,12 @@ class ARSTFPolicy:
             action += np.random.randn(*action.shape) * self.action_noise_std
         return action
 
+    def get_state(self):
+        return {"state": self.get_flat_weights()}
+
+    def set_state(self, state):
+        return self.set_flat_weights(state["state"])
+
     def set_flat_weights(self, x):
         self.variables.set_flat(x)
 

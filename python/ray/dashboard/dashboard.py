@@ -875,7 +875,7 @@ class TuneCollector(threading.Thread):
 
             # round all floats
             for key in float_keys:
-                details[key] = round(details[key], 3)
+                details[key] = round(details[key], 12)
 
             # group together config attributes
             for key in config_keys:

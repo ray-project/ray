@@ -28,11 +28,13 @@
 namespace ray {
 namespace gcs {
 
-GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config)
+GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
+                     boost::asio::io_service &main_service)
     : config_(config),
+      main_service_(main_service),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
                   config.grpc_server_thread_num),
-      client_call_manager_(main_service_) {}
+      client_call_manager_(main_service) {}
 
 GcsServer::~GcsServer() { Stop(); }
 
@@ -112,24 +114,17 @@ void GcsServer::Start() {
   gcs_actor_manager_->LoadInitialData(on_done);
   gcs_object_manager_->LoadInitialData(on_done);
   gcs_node_manager_->LoadInitialData(on_done);
-
-  // Run the event loop.
-  // Using boost::asio::io_context::work to avoid ending the event loop when
-  // there are no events to handle.
-  boost::asio::io_context::work worker(main_service_);
-  main_service_.run();
 }
 
 void GcsServer::Stop() {
-  RAY_LOG(INFO) << "Stopping gcs server.";
-  // Shutdown the rpc server
-  rpc_server_.Shutdown();
+  if (!is_stopped_) {
+    RAY_LOG(INFO) << "Stopping GCS server.";
+    // Shutdown the rpc server
+    rpc_server_.Shutdown();
 
-  // Stop the event loop.
-  main_service_.stop();
-
-  is_stopped_ = true;
-  RAY_LOG(INFO) << "Finished stopping gcs server.";
+    is_stopped_ = true;
+    RAY_LOG(INFO) << "GCS server stopped.";
+  }
 }
 
 void GcsServer::InitBackendClient() {

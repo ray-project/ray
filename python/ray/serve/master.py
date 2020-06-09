@@ -13,8 +13,7 @@ from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.metric.exporter import MetricExporterActor
 from ray.serve.router import Router
-from ray.serve.utils import (async_retryable, format_actor_name,
-                             get_random_letters, logger)
+from ray.serve.utils import (format_actor_name, get_random_letters, logger)
 
 import numpy as np
 
@@ -128,10 +127,11 @@ class ServeMaster:
             self.router = ray.get_actor(router_name)
         except ValueError:
             logger.info("Starting router with name '{}'".format(router_name))
-            self.router = async_retryable(ray.remote(Router)).options(
+            self.router = ray.remote(Router).options(
                 name=router_name,
                 max_concurrency=ASYNC_CONCURRENCY,
                 max_restarts=-1,
+                max_task_retries=-1,
             ).remote(instance_name=self.instance_name)
 
     def get_router(self):
@@ -150,10 +150,11 @@ class ServeMaster:
             logger.info(
                 "Starting HTTP proxy with name '{}' on node '{}'".format(
                     proxy_name, node_id))
-            self.http_proxy = async_retryable(HTTPProxyActor).options(
+            self.http_proxy = HTTPProxyActor.options(
                 name=proxy_name,
                 max_concurrency=ASYNC_CONCURRENCY,
                 max_restarts=-1,
+                max_task_retries=-1,
                 resources={
                     node_id: 0.01
                 },
@@ -305,9 +306,10 @@ class ServeMaster:
          replica_config) = self.backends[backend_tag]
 
         replica_name = format_actor_name(replica_tag, self.instance_name)
-        worker_handle = async_retryable(ray.remote(backend_worker)).options(
+        worker_handle = ray.remote(backend_worker).options(
             name=replica_name,
             max_restarts=-1,
+            max_task_retries=-1,
             **replica_config.ray_actor_options).remote(
                 backend_tag,
                 replica_tag,
@@ -463,44 +465,45 @@ class ServeMaster:
             }
         return endpoints
 
-    async def set_traffic(self, endpoint_name, traffic_policy_dictionary):
+    async def _set_traffic(self, endpoint_name, traffic_dict):
+        if endpoint_name not in self.get_all_endpoints():
+            raise ValueError("Attempted to assign traffic for an endpoint '{}'"
+                             " that is not registered.".format(endpoint_name))
+
+        assert isinstance(traffic_dict,
+                          dict), "Traffic policy must be dictionary"
+        prob = 0
+        for backend, weight in traffic_dict.items():
+            if weight < 0:
+                raise ValueError(
+                    "Attempted to assign a weight of {} to backend '{}'. "
+                    "Weights cannot be negative.".format(weight, backend))
+            prob += weight
+            if backend not in self.backends:
+                raise ValueError(
+                    "Attempted to assign traffic to a backend '{}' that "
+                    "is not registered.".format(backend))
+
+        # These weights will later be plugged into np.random.choice, which
+        # uses a tolerance of 1e-8.
+        assert np.isclose(
+            prob, 1, atol=1e-8
+        ), "weights must sum to 1, currently they sum to {}".format(prob)
+
+        self.traffic_policies[endpoint_name] = traffic_dict
+
+        # NOTE(edoakes): we must write a checkpoint before pushing the
+        # update to avoid inconsistent state if we crash after pushing the
+        # update.
+        self._checkpoint()
+        await self.router.set_traffic.remote(endpoint_name, traffic_dict)
+
+    async def set_traffic(self, endpoint_name, traffic_dict):
         """Sets the traffic policy for the specified endpoint."""
         async with self.write_lock:
-            if endpoint_name not in self.get_all_endpoints():
-                raise ValueError(
-                    "Attempted to assign traffic for an endpoint '{}'"
-                    " that is not registered.".format(endpoint_name))
+            await self._set_traffic(endpoint_name, traffic_dict)
 
-            assert isinstance(traffic_policy_dictionary,
-                              dict), "Traffic policy must be dictionary"
-            prob = 0
-            for backend, weight in traffic_policy_dictionary.items():
-                if weight < 0:
-                    raise ValueError(
-                        "Attempted to assign a weight of {} to backend '{}'. "
-                        "Weights cannot be negative.".format(weight, backend))
-                prob += weight
-                if backend not in self.backends:
-                    raise ValueError(
-                        "Attempted to assign traffic to a backend '{}' that "
-                        "is not registered.".format(backend))
-
-            # These weights will later be plugged into np.random.choice, which
-            # uses a tolerance of 1e-8.
-            assert np.isclose(
-                prob, 1, atol=1e-8
-            ), "weights must sum to 1, currently they sum to {}".format(prob)
-
-            self.traffic_policies[endpoint_name] = traffic_policy_dictionary
-
-            # NOTE(edoakes): we must write a checkpoint before pushing the
-            # update to avoid inconsistent state if we crash after pushing the
-            # update.
-            self._checkpoint()
-            await self.router.set_traffic.remote(endpoint_name,
-                                                 traffic_policy_dictionary)
-
-    async def create_endpoint(self, route, endpoint, methods):
+    async def create_endpoint(self, endpoint, traffic_dict, route, methods):
         """Create a new endpoint with the specified route and methods.
 
         If the route is None, this is a "headless" endpoint that will not
@@ -535,10 +538,8 @@ class ServeMaster:
 
             self.routes[route] = (endpoint, methods)
 
-            # NOTE(edoakes): we must write a checkpoint before pushing the
-            # update to avoid inconsistent state if we crash after pushing the
-            # update.
-            self._checkpoint()
+            # NOTE(edoakes): checkpoint is written in self._set_traffic.
+            await self._set_traffic(endpoint, traffic_dict)
             await self.http_proxy.set_route_table.remote(self.routes)
 
     async def delete_endpoint(self, endpoint):

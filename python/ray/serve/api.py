@@ -5,8 +5,7 @@ from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_MASTER_NAME, HTTP_PROXY_TIMEOUT)
 from ray.serve.master import ServeMaster
 from ray.serve.handle import RayServeHandle
-from ray.serve.utils import (block_until_http_ready, format_actor_name,
-                             retry_actor_failures)
+from ray.serve.utils import (block_until_http_ready, format_actor_name)
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig, ReplicaConfig
 from ray.serve.router import Query
@@ -111,6 +110,7 @@ def init(name=None,
     master_actor = ServeMaster.options(
         name=master_actor_name,
         max_restarts=-1,
+        max_task_retries=-1,
     ).remote(name, http_node_id, http_host, http_port, metric_exporter)
 
     block_until_http_ready(
@@ -119,17 +119,49 @@ def init(name=None,
 
 
 @_ensure_connected
-def create_endpoint(endpoint_name, route=None, methods=["GET"]):
+def create_endpoint(endpoint_name,
+                    *,
+                    backend=None,
+                    route=None,
+                    methods=["GET"]):
     """Create a service endpoint given route_expression.
 
     Args:
-        endpoint_name (str): A name to associate to the endpoint. It will be
-            used as key to set traffic policy.
-        route (str): A string begin with "/". HTTP server will use
+        endpoint_name (str): A name to associate to with the endpoint.
+        backend (str, required): The backend that will serve requests to
+            this endpoint. To change this or split traffic among backends, use
+            `serve.set_traffic`.
+        route (str, optional): A string begin with "/". HTTP server will use
             the string to match the path.
+        methods(List[str], optional): The HTTP methods that are valid for this
+            endpoint.
     """
-    retry_actor_failures(master_actor.create_endpoint, route, endpoint_name,
-                         [m.upper() for m in methods])
+    if backend is None:
+        raise TypeError("backend must be specified when creating "
+                        "an endpoint.")
+    elif not isinstance(backend, str):
+        raise TypeError("backend must be a string, got {}.".format(
+            type(backend)))
+
+    if route is not None:
+        if not isinstance(route, str) or not route.startswith("/"):
+            raise TypeError("route must be a string starting with '/'.")
+
+    if not isinstance(methods, list):
+        raise TypeError(
+            "methods must be a list of strings, but got type {}".format(
+                type(methods)))
+
+    upper_methods = []
+    for method in methods:
+        if not isinstance(method, str):
+            raise TypeError("methods must be a list of strings, but contained "
+                            "an element of type {}".format(type(method)))
+        upper_methods.append(method.upper())
+
+    ray.get(
+        master_actor.create_endpoint.remote(endpoint_name, {backend: 1.0},
+                                            route, upper_methods))
 
 
 @_ensure_connected
@@ -138,7 +170,7 @@ def delete_endpoint(endpoint):
 
     Does not delete any associated backends.
     """
-    retry_actor_failures(master_actor.delete_endpoint, endpoint)
+    ray.get(master_actor.delete_endpoint.remote(endpoint))
 
 
 @_ensure_connected
@@ -148,7 +180,7 @@ def list_endpoints():
     The dictionary keys are endpoint names and values are dictionaries
     of the form: {"methods": List[str], "traffic": Dict[str, float]}.
     """
-    return retry_actor_failures(master_actor.get_all_endpoints)
+    return ray.get(master_actor.get_all_endpoints.remote())
 
 
 @_ensure_connected
@@ -163,8 +195,8 @@ def update_backend_config(backend_tag, config_options):
     """
     if not isinstance(config_options, dict):
         raise ValueError("config_options must be a dictionary.")
-    retry_actor_failures(master_actor.update_backend_config, backend_tag,
-                         config_options)
+    ray.get(
+        master_actor.update_backend_config.remote(backend_tag, config_options))
 
 
 @_ensure_connected
@@ -174,7 +206,7 @@ def get_backend_config(backend_tag):
     Args:
         backend_tag(str): A registered backend.
     """
-    return retry_actor_failures(master_actor.get_backend_config, backend_tag)
+    return ray.get(master_actor.get_backend_config.remote(backend_tag))
 
 
 @_ensure_connected
@@ -206,8 +238,9 @@ def create_backend(backend_tag,
         func_or_class, *actor_init_args, ray_actor_options=ray_actor_options)
     backend_config = BackendConfig(config, replica_config.accepts_batches)
 
-    retry_actor_failures(master_actor.create_backend, backend_tag,
-                         backend_config, replica_config)
+    ray.get(
+        master_actor.create_backend.remote(backend_tag, backend_config,
+                                           replica_config))
 
 
 @_ensure_connected
@@ -216,7 +249,7 @@ def list_backends():
 
     Dictionary maps backend tags to backend configs.
     """
-    return retry_actor_failures(master_actor.get_all_backends)
+    return ray.get(master_actor.get_all_backends.remote())
 
 
 @_ensure_connected
@@ -225,7 +258,7 @@ def delete_backend(backend_tag):
 
     The backend must not currently be used by any endpoints.
     """
-    retry_actor_failures(master_actor.delete_backend, backend_tag)
+    ray.get(master_actor.delete_backend.remote(backend_tag))
 
 
 @_ensure_connected
@@ -244,8 +277,9 @@ def set_traffic(endpoint_name, traffic_policy_dictionary):
         traffic_policy_dictionary (dict): a dictionary maps backend names
             to their traffic weights. The weights must sum to 1.
     """
-    retry_actor_failures(master_actor.set_traffic, endpoint_name,
-                         traffic_policy_dictionary)
+    ray.get(
+        master_actor.set_traffic.remote(endpoint_name,
+                                        traffic_policy_dictionary))
 
 
 @_ensure_connected
@@ -268,11 +302,11 @@ def get_handle(endpoint_name,
         RayServeHandle
     """
     if not missing_ok:
-        assert endpoint_name in retry_actor_failures(
-            master_actor.get_all_endpoints)
+        assert endpoint_name in ray.get(
+            master_actor.get_all_endpoints.remote())
 
     return RayServeHandle(
-        retry_actor_failures(master_actor.get_router)[0],
+        ray.get(master_actor.get_router.remote())[0],
         endpoint_name,
         relative_slo_ms,
         absolute_slo_ms,

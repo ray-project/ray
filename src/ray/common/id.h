@@ -25,8 +25,8 @@
 #include <random>
 #include <string>
 
-#include "plasma/common.h"
 #include "ray/common/constants.h"
+#include "ray/object_manager/plasma/common.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 #include "ray/util/visibility.h"
