@@ -12,7 +12,7 @@ import io.ray.api.exception.RayException;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyRemoteFunction;
-import io.ray.api.function.RayFunc;
+import io.ray.api.function.RayJavaFunc;
 import io.ray.api.id.ObjectId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
@@ -99,7 +99,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public ObjectRef call(RayFunc func, Object[] args, CallOptions options) {
+  public ObjectRef call(RayJavaFunc func, Object[] args, CallOptions options) {
     RayFunction rayFunction = functionManager.getFunction(workerContext.getCurrentJobId(), func);
     FunctionDescriptor functionDescriptor = rayFunction.functionDescriptor;
     Optional<Class<?>> returnType = rayFunction.getReturnType();
@@ -119,7 +119,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public ObjectRef callActor(ActorHandle<?> actor, RayFunc func, Object[] args) {
+  public ObjectRef callActor(ActorHandle<?> actor, RayJavaFunc func, Object[] args) {
     RayFunction rayFunction = functionManager.getFunction(workerContext.getCurrentJobId(), func);
     FunctionDescriptor functionDescriptor = rayFunction.functionDescriptor;
     Optional<Class<?>> returnType = rayFunction.getReturnType();
@@ -137,7 +137,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   @SuppressWarnings("unchecked")
-  public <T> ActorHandle<T> createActor(RayFunc actorFactoryFunc,
+  public <T> ActorHandle<T> createActor(RayJavaFunc actorFactoryFunc,
                                         Object[] args, ActorCreationOptions options) {
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(workerContext.getCurrentJobId(), actorFactoryFunc)

@@ -8,7 +8,7 @@ import io.ray.api.WaitResult;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyRemoteFunction;
-import io.ray.api.function.RayFunc;
+import io.ray.api.function.RayJavaFunc;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
@@ -98,7 +98,7 @@ public interface RayRuntime {
    * @param options The options for this call.
    * @return The result object.
    */
-  ObjectRef call(RayFunc func, Object[] args, CallOptions options);
+  ObjectRef call(RayJavaFunc func, Object[] args, CallOptions options);
 
   /**
    * Invoke a remote Python function.
@@ -118,7 +118,7 @@ public interface RayRuntime {
    * @param args The arguments of the remote function.
    * @return The result object.
    */
-  ObjectRef callActor(ActorHandle<?> actor, RayFunc func, Object[] args);
+  ObjectRef callActor(ActorHandle<?> actor, RayJavaFunc func, Object[] args);
 
   /**
    * Invoke a remote Python function on an actor.
@@ -139,7 +139,7 @@ public interface RayRuntime {
    * @param options The options for creating actor.
    * @return A handle to the actor.
    */
-  <T> ActorHandle<T> createActor(RayFunc actorFactoryFunc, Object[] args,
+  <T> ActorHandle<T> createActor(RayJavaFunc actorFactoryFunc, Object[] args,
                                  ActorCreationOptions options);
 
   /**
