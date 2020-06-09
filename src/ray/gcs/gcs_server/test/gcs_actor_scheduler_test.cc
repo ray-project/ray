@@ -62,12 +62,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::vector<std::shared_ptr<gcs::GcsActor>> success_actors_;
   std::vector<std::shared_ptr<gcs::GcsActor>> failure_actors_;
   std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
-<<<<<<< HEAD
-  // std::shared_ptr<gcs::RedisClient> redis_client_;
-=======
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
->>>>>>> origin/master
 };
 
 TEST_F(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode) {
