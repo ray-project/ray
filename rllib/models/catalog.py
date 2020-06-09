@@ -368,9 +368,9 @@ class ModelCatalog:
                     # PyTorch automatically tracks nn.Modules inside the parent
                     # nn.Module's constructor.
                     # TODO(sven): Do this for TF as well.
-                    instance = model_cls(
-                        input_space, output_space, num_outputs,
-                        model_config, name, **model_kwargs)
+                    instance = model_cls(input_space, output_space,
+                                         num_outputs, model_config, name,
+                                         **model_kwargs)
                 return instance
             # TODO(sven): Hard-deprecate Model(V1). This check will be
             #   superflous then.
@@ -405,9 +405,8 @@ class ModelCatalog:
                 v2_class = make_v1_wrapper(ModelCatalog.get_model)
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
-            return wrapper(
-                input_space, output_space, num_outputs, model_config,
-                name, **model_kwargs)
+            return wrapper(input_space, output_space, num_outputs,
+                           model_config, name, **model_kwargs)
         elif framework == "torch":
             v2_class = \
                 default_model or ModelCatalog._get_v2_model_class(
@@ -420,9 +419,8 @@ class ModelCatalog:
                 v2_class._wrapped_forward = forward
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
-            return wrapper(
-                input_space, output_space, num_outputs, model_config,
-                name, **model_kwargs)
+            return wrapper(input_space, output_space, num_outputs,
+                           model_config, name, **model_kwargs)
         else:
             raise NotImplementedError(
                 "Framework must be 'tf' or 'torch': {}".format(framework))

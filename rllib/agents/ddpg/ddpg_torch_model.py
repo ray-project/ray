@@ -45,8 +45,8 @@ class DDPGTorchModel(TorchModelV2):
         only defines the layers for the output heads. Those layers for
         forward() should be defined in subclasses of DDPGTorchModel.
         """
-        super().__init__(obs_space, action_space,
-                         num_outputs, model_config, name)
+        super().__init__(obs_space, action_space, num_outputs, model_config,
+                         name)
 
         self.bounded = np.logical_and(action_space.bounded_above,
                                       action_space.bounded_below).any()
