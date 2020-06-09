@@ -12,17 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <future>
-#include <iostream>
+#include "ray/object_manager/object_store_notification_manager.h"
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
 #include <boost/function.hpp>
-
-#include "ray/common/status.h"
+#include <future>
+#include <iostream>
 
 #include "ray/common/common_protocol.h"
-#include "ray/object_manager/object_store_notification_manager.h"
+#include "ray/common/status.h"
 #include "ray/util/util.h"
 
 #ifdef _WIN32
@@ -141,8 +140,7 @@ void ObjectStoreNotificationManager::ProcessStoreNotification(
           notification_.data());
   for (size_t i = 0; i < object_notification->object_info()->size(); ++i) {
     auto object_info = object_notification->object_info()->Get(i);
-    const ObjectID object_id =
-        ObjectID::FromPlasmaIdBinary(object_info->object_id()->str());
+    const ObjectID object_id = ObjectID::FromBinary(object_info->object_id()->str());
     if (object_info->is_deletion()) {
       ProcessStoreRemove(object_id);
     } else {
