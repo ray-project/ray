@@ -1,6 +1,6 @@
 package io.ray.streaming.runtime.core.graph;
 
-import io.ray.api.BaseActor;
+import io.ray.api.BaseActorHandle;
 import java.io.Serializable;
 
 /**
@@ -11,9 +11,9 @@ import java.io.Serializable;
 public class ExecutionTask implements Serializable {
   private int taskId;
   private int taskIndex;
-  private BaseActor worker;
+  private BaseActorHandle worker;
 
-  public ExecutionTask(int taskId, int taskIndex, BaseActor worker) {
+  public ExecutionTask(int taskId, int taskIndex, BaseActorHandle worker) {
     this.taskId = taskId;
     this.taskIndex = taskIndex;
     this.worker = worker;
@@ -35,11 +35,11 @@ public class ExecutionTask implements Serializable {
     this.taskIndex = taskIndex;
   }
 
-  public BaseActor getWorker() {
+  public BaseActorHandle getWorker() {
     return worker;
   }
 
-  public void setWorker(BaseActor worker) {
+  public void setWorker(BaseActorHandle worker) {
     this.worker = worker;
   }
 }

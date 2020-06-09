@@ -1,7 +1,7 @@
 import numpy as np
 import random
-import os
 import collections
+import platform
 import sys
 
 import ray
@@ -343,7 +343,7 @@ class LocalReplayBuffer(ParallelIteratorWorker):
         return _local_replay_buffer
 
     def get_host(self):
-        return os.uname()[1]
+        return platform.node()
 
     def add_batch(self, batch):
         # Make a copy so the replay buffer doesn't pin plasma memory.

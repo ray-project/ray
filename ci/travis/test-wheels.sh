@@ -16,9 +16,13 @@ case "${OSTYPE}" in
   *) echo "Unrecognized platform."; exit 1;;
 esac
 
-TEST_DIR="$TRAVIS_BUILD_DIR/python/ray/tests"
+BUILD_DIR="${TRAVIS_BUILD_DIR-}"
+if [ -z "${BUILD_DIR}" ]; then
+  BUILD_DIR="${GITHUB_WORKSPACE}"
+fi
+TEST_DIR="${BUILD_DIR}/python/ray/tests"
 TEST_SCRIPTS=("$TEST_DIR/test_microbenchmarks.py" "$TEST_DIR/test_basic.py")
-UI_TEST_SCRIPT="$TRAVIS_BUILD_DIR/python/ray/tests/test_webui.py"
+UI_TEST_SCRIPT="${BUILD_DIR}/python/ray/tests/test_webui.py"
 
 function retry {
   local n=1

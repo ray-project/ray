@@ -6,6 +6,7 @@ import logging
 import glob
 import os
 import pickle
+import platform
 import pandas as pd
 from six import string_types
 import shutil
@@ -308,7 +309,7 @@ class Trainable:
             time_this_iter_s=time_this_iter,
             time_total_s=self._time_total,
             pid=os.getpid(),
-            hostname=os.uname()[1],
+            hostname=platform.node(),
             node_ip=self._local_ip,
             config=self.config,
             time_since_restore=self._time_since_restore,

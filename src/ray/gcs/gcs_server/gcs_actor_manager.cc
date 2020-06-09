@@ -657,11 +657,23 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
         }));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
+    // For detached actors, make sure to remove its name.
+    if (actor->IsDetached()) {
+      auto it = named_actors_.find(actor->GetName());
+      if (it != named_actors_.end()) {
+        RAY_CHECK(it->second == actor->GetActorID());
+        named_actors_.erase(it);
+      }
+    }
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, *mutable_actor_table_data,
-        [this, actor_id, mutable_actor_table_data](Status status) {
+        [this, actor, actor_id, mutable_actor_table_data](Status status) {
+          // if actor was an detached actor, make sure to destroy it.
+          // We need to do this because detached actors are not destroyed
+          // when its owners are dead because it doesn't have owners.
+          if (actor->IsDetached()) DestroyActor(actor_id);
           RAY_CHECK_OK(gcs_pub_sub_->Publish(
               ACTOR_CHANNEL, actor_id.Hex(),
               mutable_actor_table_data->SerializeAsString(), nullptr));

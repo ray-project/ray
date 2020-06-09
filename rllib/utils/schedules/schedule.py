@@ -1,7 +1,7 @@
 from abc import ABCMeta, abstractmethod
 
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.framework import check_framework, try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()
 
@@ -24,7 +24,7 @@ class Schedule(metaclass=ABCMeta):
     """
 
     def __init__(self, framework):
-        self.framework = check_framework(framework)
+        self.framework = framework
 
     def value(self, t):
         """Generates the value given a timestep (based on schedule's logic).
