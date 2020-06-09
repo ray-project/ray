@@ -1,5 +1,7 @@
 import inspect
 
+from ray.serve.constants import ASYNC_CONCURRENCY
+
 
 def _callable_accepts_batch(func_or_class):
     if inspect.isfunction(func_or_class):
@@ -8,15 +10,46 @@ def _callable_accepts_batch(func_or_class):
         return hasattr(func_or_class.__call__, "_serve_accept_batch")
 
 
+def _callable_is_blocking(func_or_class):
+    if inspect.isfunction(func_or_class):
+        return not inspect.iscoroutinefunction(func_or_class)
+    elif inspect.isclass(func_or_class):
+        return not inspect.iscoroutinefunction(func_or_class.__call__)
+
+
 class BackendConfig:
-    def __init__(self, config_dict, accepts_batches=False):
+    def __init__(self, config_dict, accepts_batches=False, is_blocking=True):
         assert isinstance(config_dict, dict)
         # Make a copy so that we don't modify the input dict.
         config_dict = config_dict.copy()
 
         self.accepts_batches = accepts_batches
+        self.is_blocking = is_blocking
         self.num_replicas = config_dict.pop("num_replicas", 1)
         self.max_batch_size = config_dict.pop("max_batch_size", None)
+        self.batch_wait_timeout = config_dict.pop("batch_wait_timeout", 0)
+        self.max_concurrent_queries = config_dict.pop("max_concurrent_queries",
+                                                      None)
+
+        if self.max_concurrent_queries is None:
+            # Model serving mode: if the servable is blocking and the wait
+            # timeout is default zero seconds, then we keep the existing
+            # behavior to allow at most max batch size queries.
+            if self.is_blocking and self.batch_wait_timeout == 0:
+                self.max_concurrent_queries = self.max_batch_size or 1
+
+            # Pipeline/async mode: if the servable is not blocking,
+            # router should just keep pushing queries to the worker
+            # replicas until a high limit.
+            if not self.is_blocking:
+                self.max_concurrent_queries = ASYNC_CONCURRENCY
+
+            # Batch inference mode: user specifies non zero timeout to wait for
+            # full batch. We will use 2*max_batch_size to perform double
+            # buffering to keep the replica busy.
+            if self.max_batch_size is not None and self.batch_wait_timeout > 0:
+                self.max_concurrent_queries = 2 * self.max_batch_size
+
         if len(config_dict) != 0:
             raise ValueError("Unknown options in backend config: {}".format(
                 list(config_dict.keys())))
@@ -64,6 +97,7 @@ class ReplicaConfig:
                  ray_actor_options=None):
         self.func_or_class = func_or_class
         self.accepts_batches = _callable_accepts_batch(func_or_class)
+        self.is_blocking = _callable_is_blocking(func_or_class)
         self.actor_init_args = list(actor_init_args)
         if ray_actor_options is None:
             self.ray_actor_options = {}

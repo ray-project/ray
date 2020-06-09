@@ -27,7 +27,7 @@ from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.framework import check_framework, try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import flatten_space
 
@@ -138,9 +138,6 @@ class ModelCatalog:
             dist_class (ActionDistribution): Python class of the distribution.
             dist_dim (int): The size of the input vector to the distribution.
         """
-
-        # Make sure, framework is ok.
-        framework = check_framework(framework)
 
         dist = None
         config = config or MODEL_DEFAULTS
@@ -291,9 +288,6 @@ class ModelCatalog:
         Returns:
             model (ModelV2): Model to use for the policy.
         """
-
-        # Make sure, framework is ok.
-        framework = check_framework(framework)
 
         if model_config.get("custom_model"):
 
@@ -591,9 +585,6 @@ class ModelCatalog:
 
     @staticmethod
     def _get_v2_model_class(obs_space, model_config, framework="tf"):
-        # Make sure, framework is ok.
-        framework = check_framework(framework)
-
         if framework == "torch":
             from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
                                                       FCNet)

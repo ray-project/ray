@@ -1,6 +1,6 @@
 package io.ray.streaming.runtime.worker.tasks;
 
-import io.ray.api.BaseActor;
+import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.streaming.api.collector.Collector;
 import io.ray.streaming.api.context.RuntimeContext;
@@ -64,8 +64,8 @@ public abstract class StreamTask implements Runnable {
     List<ExecutionEdge> outputEdges = executionNode.getOutputEdges();
     List<Collector> collectors = new ArrayList<>();
     for (ExecutionEdge edge : outputEdges) {
-      Map<String, BaseActor> outputActors = new HashMap<>();
-      Map<Integer, BaseActor> taskId2Worker = executionGraph
+      Map<String, BaseActorHandle> outputActors = new HashMap<>();
+      Map<Integer, BaseActorHandle> taskId2Worker = executionGraph
           .getTaskId2WorkerByNodeId(edge.getTargetNodeId());
       taskId2Worker.forEach((targetTaskId, targetActor) -> {
         String queueName = ChannelID.genIdStr(taskId, targetTaskId, executionGraph.getBuildTime());
@@ -87,9 +87,9 @@ public abstract class StreamTask implements Runnable {
 
     // consumer
     List<ExecutionEdge> inputEdges = executionNode.getInputsEdges();
-    Map<String, BaseActor> inputActors = new HashMap<>();
+    Map<String, BaseActorHandle> inputActors = new HashMap<>();
     for (ExecutionEdge edge : inputEdges) {
-      Map<Integer, BaseActor> taskId2Worker = executionGraph
+      Map<Integer, BaseActorHandle> taskId2Worker = executionGraph
           .getTaskId2WorkerByNodeId(edge.getSrcNodeId());
       taskId2Worker.forEach((srcTaskId, srcActor) -> {
         String queueName = ChannelID.genIdStr(srcTaskId, taskId, executionGraph.getBuildTime());

@@ -2,7 +2,7 @@ package io.ray.streaming.runtime.core.graph.executiongraph;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
-import io.ray.api.RayActor;
+import io.ray.api.ActorHandle;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.jobgraph.JobVertex;
 import io.ray.streaming.jobgraph.VertexType;
@@ -77,8 +77,8 @@ public class ExecutionJobVertex {
     return executionVertices;
   }
 
-  public Map<Integer, RayActor<JobWorker>> getExecutionVertexWorkers() {
-    Map<Integer, RayActor<JobWorker>> executionVertexWorkersMap = new HashMap<>();
+  public Map<Integer, ActorHandle<JobWorker>> getExecutionVertexWorkers() {
+    Map<Integer, ActorHandle<JobWorker>> executionVertexWorkersMap = new HashMap<>();
 
     Preconditions.checkArgument(
         executionVertices != null && !executionVertices.isEmpty(),

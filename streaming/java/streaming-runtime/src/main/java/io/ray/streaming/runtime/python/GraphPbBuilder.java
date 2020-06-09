@@ -1,7 +1,7 @@
 package io.ray.streaming.runtime.python;
 
 import com.google.protobuf.ByteString;
-import io.ray.runtime.actor.NativeRayActor;
+import io.ray.runtime.actor.NativeActorHandle;
 import io.ray.streaming.api.function.Function;
 import io.ray.streaming.api.partition.Partition;
 import io.ray.streaming.operator.Operator;
@@ -43,7 +43,7 @@ public class GraphPbBuilder {
       for (ExecutionTask task : node.getExecutionTasks()) {
         RemoteCall.ExecutionGraph.ExecutionTask.Builder taskBuilder =
             RemoteCall.ExecutionGraph.ExecutionTask.newBuilder();
-        byte[] serializedActorHandle = ((NativeRayActor) task.getWorker()).toBytes();
+        byte[] serializedActorHandle = ((NativeActorHandle) task.getWorker()).toBytes();
         taskBuilder
             .setTaskId(task.getTaskId())
             .setTaskIndex(task.getTaskIndex())

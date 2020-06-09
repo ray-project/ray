@@ -3,6 +3,7 @@ from collections import deque
 import copy
 from datetime import datetime
 import logging
+import platform
 import shutil
 import uuid
 import time
@@ -42,7 +43,7 @@ class Location:
     def __str__(self):
         if not self.pid:
             return ""
-        elif self.hostname == os.uname()[1]:
+        elif self.hostname == platform.node():
             return "pid={}".format(self.pid)
         else:
             return "{}:{}".format(self.hostname, self.pid)

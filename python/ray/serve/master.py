@@ -258,6 +258,7 @@ class ServeMaster:
         for backend, (_, backend_config, _) in self.backends.items():
             await self.router.set_backend_config.remote(
                 backend, backend_config)
+            await self.broadcast_backend_config(backend)
 
         # Push configuration state to the HTTP proxy.
         await self.http_proxy.set_route_table.remote(self.routes)
@@ -314,6 +315,7 @@ class ServeMaster:
                 backend_tag,
                 replica_tag,
                 replica_config.actor_init_args,
+                backend_config,
                 instance_name=self.instance_name)
         # TODO(edoakes): we should probably have a timeout here.
         await worker_handle.ready.remote()
@@ -602,6 +604,7 @@ class ServeMaster:
             # (particularly for max-batch-size).
             await self.router.set_backend_config.remote(
                 backend_tag, backend_config)
+            await self.broadcast_backend_config(backend_tag)
 
     async def delete_backend(self, backend_tag):
         async with self.write_lock:
@@ -663,6 +666,22 @@ class ServeMaster:
 
             await self._start_pending_replicas()
             await self._stop_pending_replicas()
+
+            await self.broadcast_backend_config(backend_tag)
+
+    async def broadcast_backend_config(self, backend_tag):
+        _, backend_config, _ = self.backends[backend_tag]
+        broadcast_futures = []
+        for replica_tag in self.replicas[backend_tag]:
+            try:
+                replica = ray.get_actor(replica_tag)
+            except ValueError:
+                continue
+
+            future = replica.update_config.remote(backend_config).as_future()
+            broadcast_futures.append(future)
+        if len(broadcast_futures) > 0:
+            await asyncio.gather(*broadcast_futures)
 
     def get_backend_config(self, backend_tag):
         """Get the current config for the specified backend."""

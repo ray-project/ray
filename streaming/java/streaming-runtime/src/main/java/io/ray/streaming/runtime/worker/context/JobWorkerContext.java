@@ -1,7 +1,7 @@
 package io.ray.streaming.runtime.worker.context;
 
 import com.google.common.base.MoreObjects;
-import io.ray.api.RayActor;
+import io.ray.api.ActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import io.ray.streaming.runtime.master.JobMaster;
@@ -20,7 +20,7 @@ public class JobWorkerContext implements Serializable {
   /**
    * JobMaster actor.
    */
-  private RayActor<JobMaster> master;
+  private ActorHandle<JobMaster> master;
 
   /**
    * Worker's vertex info.
@@ -29,7 +29,7 @@ public class JobWorkerContext implements Serializable {
 
   public JobWorkerContext(
       ActorId workerId,
-      RayActor<JobMaster> master,
+      ActorHandle<JobMaster> master,
       ExecutionVertex executionVertex) {
     this.workerId = workerId;
     this.master = master;
@@ -40,7 +40,7 @@ public class JobWorkerContext implements Serializable {
     return workerId;
   }
 
-  public RayActor<JobMaster> getMaster() {
+  public ActorHandle<JobMaster> getMaster() {
     return master;
   }
 

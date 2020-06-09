@@ -56,9 +56,9 @@ public final class Ray extends RayCall {
    * Store an object in the object store.
    *
    * @param obj The Java object to be stored.
-   * @return A RayObject instance that represents the in-store object.
+   * @return A ObjectRef instance that represents the in-store object.
    */
-  public static <T> RayObject<T> put(T obj) {
+  public static <T> ObjectRef<T> put(T obj) {
     return runtime.put(obj);
   }
 
@@ -85,15 +85,15 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Get a list of objects by RayObjects from the object store.
+   * Get a list of objects by `ObjectRef`s from the object store.
    *
-   * @param objectList A list of RayObject to get.
+   * @param objectList A list of object references.
    * @return A list of Java objects.
    */
-  public static <T> List<T> get(List<RayObject<T>> objectList) {
+  public static <T> List<T> get(List<ObjectRef<T>> objectList) {
     List<ObjectId> objectIds = new ArrayList<>();
     Class<T> objectType = null;
-    for (RayObject<T> o : objectList) {
+    for (ObjectRef<T> o : objectList) {
       objectIds.add(o.getId());
       objectType = o.getType();
     }
@@ -104,13 +104,13 @@ public final class Ray extends RayCall {
    * Wait for a list of RayObjects to be locally available,
    * until specified number of objects are ready, or specified timeout has passed.
    *
-   * @param waitList A list of RayObject to wait for.
+   * @param waitList A list of object references to wait for.
    * @param numReturns The number of objects that should be returned.
    * @param timeoutMs The maximum time in milliseconds to wait before returning.
    * @return Two lists, one containing locally available objects, one containing the rest.
    */
-  public static <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns,
-      int timeoutMs) {
+  public static <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns,
+                                       int timeoutMs) {
     return runtime.wait(waitList, numReturns, timeoutMs);
   }
 
@@ -118,11 +118,11 @@ public final class Ray extends RayCall {
    * A convenient helper method for Ray.wait. It will wait infinitely until
    * specified number of objects are locally available.
    *
-   * @param waitList A list of RayObject to wait for.
+   * @param waitList A list of object references to wait for.
    * @param numReturns The number of objects that should be returned.
    * @return Two lists, one containing locally available objects, one containing the rest.
    */
-  public static <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns) {
+  public static <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns) {
     return runtime.wait(waitList, numReturns, Integer.MAX_VALUE);
   }
 
@@ -130,10 +130,10 @@ public final class Ray extends RayCall {
    * A convenient helper method for Ray.wait. It will wait infinitely until
    * all objects are locally available.
    *
-   * @param waitList A list of RayObject to wait for.
+   * @param waitList A list of object references to wait for.
    * @return Two lists, one containing locally available objects, one containing the rest.
    */
-  public static <T> WaitResult<T> wait(List<RayObject<T>> waitList) {
+  public static <T> WaitResult<T> wait(List<ObjectRef<T>> waitList) {
     return runtime.wait(waitList, waitList.size(), Integer.MAX_VALUE);
   }
 
