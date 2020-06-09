@@ -27,6 +27,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "gcs_node_manager.h"
+#include "gcs_table_storage.h"
 
 namespace ray {
 namespace gcs {
@@ -64,7 +65,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// worker successfully.
   explicit GcsPlacementGroupScheduler(
       boost::asio::io_context &io_context,
-      gcs::PlacementGroupInfoAccessor &placement_group_info_accessor,
+      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       const GcsNodeManager &gcs_node_manager, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_failure_handler,
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_success_handler,
@@ -164,8 +165,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).
   boost::asio::io_context &io_context_;
-  /// The placement_group info accessor.
-  gcs::PlacementGroupInfoAccessor &placement_group_info_accessor_;
+  /// Used to update placement group information upon creation, deletion, etc.
+  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
   /// A publisher for publishing gcs messages.

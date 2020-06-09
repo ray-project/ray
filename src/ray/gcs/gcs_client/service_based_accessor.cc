@@ -1168,34 +1168,5 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
   return Status::OK();
 }
 
-Status ServiceBasedPlacementGroupInfoAccessor::AsyncUpdate(
-    const PlacementGroupID &placement_group_id,
-    const std::shared_ptr<rpc::PlacementGroupTableData> &data_ptr,
-    const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Updating placement group info, placement group id = "
-                 << placement_group_id;
-  rpc::UpdatePlacementGroupInfoRequest request;
-  request.set_placement_group_id(placement_group_id.Binary());
-  request.mutable_placement_group_table_data()->CopyFrom(*data_ptr);
-
-  auto operation = [this, request, placement_group_id,
-                    callback](const SequencerDoneCallback &done_callback) {
-    client_impl_->GetGcsRpcClient().UpdatePlacementGroupInfo(
-        request,
-        [placement_group_id, callback, done_callback](
-            const Status &status, const rpc::UpdatePlacementGroupInfoReply &reply) {
-          if (callback) {
-            callback(status);
-          }
-          RAY_LOG(DEBUG) << "Finished updating placement group info, status = " << status
-                         << ", placement group id = " << placement_group_id;
-          done_callback();
-        });
-  };
-
-  sequencer_.Post(placement_group_id, operation);
-  return Status::OK();
-}
-
 }  // namespace gcs
 }  // namespace ray

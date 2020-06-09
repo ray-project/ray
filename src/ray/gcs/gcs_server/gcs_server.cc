@@ -199,8 +199,29 @@ void GcsServer::InitGcsActorManager() {
 }
 
 void GcsServer::InitGcsPlacementGroupManager() {
-  // TODO(AlisaWu): init.
-  RAY_CHECK(redis_gcs_client_ != nullptr && gcs_node_manager_ != nullptr);
+  RAY_CHECK(gcs_table_storage_ != nullptr && gcs_node_manager_ != nullptr);
+  auto scheduler = std::make_shared<GcsPlacementGroupScheduler>(
+      main_service_, gcs_table_storage_, *gcs_node_manager_, gcs_pub_sub_,
+      /*schedule_failure_handler=*/
+      [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+        gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
+            std::move(placement_group));
+      },
+      /*schedule_success_handler=*/
+      [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+        gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(
+            std::move(placement_group));
+      },
+      /*lease_client_factory=*/
+      [this](const rpc::Address &address) {
+        auto node_manager_worker_client = rpc::NodeManagerWorkerClient::make(
+            address.ip_address(), address.port(), client_call_manager_);
+        return std::make_shared<ray::raylet::RayletClient>(
+            std::move(node_manager_worker_client));
+      });
+
+  gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
+      main_service_, scheduler, gcs_table_storage_, gcs_pub_sub_);
 }
 
 std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {

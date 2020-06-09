@@ -43,9 +43,9 @@ enum TablePrefix {
   DIRECT_ACTOR = 18;
   WORKER_FAILURE = 19;
   TABLE_PREFIX_MAX = 20;
-  PLACEMENT_GROUP_RESOURCE = 21;
+  BUNDLE_RESOURCE = 21;
   PLACEMENT_GROUP = 22;
-  PLACEMENT_GROUP_SCHEDULE = 23;
+  BUNDLE_SCHEDULE = 23;
   PLACEMENT_GROUP_NAME = 24;
 }
 
@@ -348,13 +348,23 @@ message WorkerFailureData {
   bool intentional_disconnect = 4;
 }
 
-message PlacementGroupResourceData{
-  int64 available_count = 1;
-  int64 tot_count = 2;
+message BundleResourceData {
+  string name = 1;
+  int64 index = 2;
+  double quantity = 3;
 }
 
-message PlacementGroupResourceMap{
-  map<string,PlacementGroupResourceData> items = 1;
+message BundleResourceMap {
+  // enum ResourceState {
+  //   // the bundle has been used by actor.
+  //   USED = 1;
+  //   // the bundle don't be used.
+  //   FREE = 2;
+  // }
+
+  // ResourceState state = 1;
+
+  repeated BundleResourceData Resource = 2;
 }
 
 message ResourceMap {

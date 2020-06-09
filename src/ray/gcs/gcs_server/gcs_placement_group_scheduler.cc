@@ -21,14 +21,14 @@ namespace gcs {
 
 GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     boost::asio::io_context &io_context,
-    gcs::PlacementGroupInfoAccessor &placement_group_info_accessor,
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     const gcs::GcsNodeManager &gcs_node_manager,
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_failure_handler,
     std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_success_handler,
     LeaseResourceClientFactoryFn lease_client_factory)
     : io_context_(io_context),
-      placement_group_info_accessor_(placement_group_info_accessor),
+      gcs_table_storage_(gcs_table_storage),
       gcs_node_manager_(gcs_node_manager),
       gcs_pub_sub_(std::move(gcs_pub_sub)),
       schedule_failure_handler_(std::move(schedule_failure_handler)),
@@ -115,7 +115,24 @@ void GcsPlacementGroupScheduler::Schedule(
               }
             }
             if (lease_success) {
-              // store
+              for (int i = 0; i < bundles.size(); i++) {
+                BundleID bundle_id = bundles[i].BundleID();
+                rpc::ScheduleData Data;
+                Data.set_client_id(decision[i].Binary());
+                RAY_CHECK_OK(gcs_table_storage_->BundleScheduleTable().Put(
+                    bundle_id, Data, [](Status status) {}));
+
+                rpc::BundleResourceMap resource_map;
+                for (int j = 0; j < resource_lease_[i].size(); j++) {
+                  auto resource = resource_map.add_resource();
+                  resource->set_name(std::get<0>(resource_lease_[i][j]));
+                  resource->set_index(std::get<1>(resource_lease_[i][j]));
+                  resource->set_quantity(std::get<2>(resource_lease_[i][j]));
+                }
+
+                RAY_CHECK_OK(gcs_table_storage_->BundleResourceTable().Put(
+                    bundle_id, resource_map, [](Status status) {}));
+              }
               schedule_success_handler_(placement_group);
             } else {
               for (int i = 0; i < finish_count; i++) {

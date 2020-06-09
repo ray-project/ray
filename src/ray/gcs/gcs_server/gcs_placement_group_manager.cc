@@ -59,10 +59,10 @@ const rpc::PlacementGroupTableData &GcsPlacementGroup::GetPlacementGroupTableDat
 GcsPlacementGroupManager::GcsPlacementGroupManager(
     boost::asio::io_context &io_context,
     std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
-    gcs::PlacementGroupInfoAccessor &placement_group_info_accessor,
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub)
     : gcs_placement_group_scheduler_(std::move(scheduler)),
-      placement_group_info_accessor_(placement_group_info_accessor),
+      gcs_table_storage_(gcs_table_storage),
       gcs_pub_sub_(std::move(gcs_pub_sub)),
       reschedule_timer_(io_context) {}
 
@@ -133,15 +133,14 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
   RAY_CHECK(registered_placement_groups_.count(placement_group_id) > 0);
   placement_group->UpdateState(rpc::PlacementGroupTableData::ALIVE);
 
-  auto placement_group_table_data = std::make_shared<rpc::PlacementGroupTableData>(
-      placement_group->GetPlacementGroupTableData());
+  auto placement_group_table_data = placement_group->GetPlacementGroupTableData();
   // The backend storage is reliable in the future, so the status must be ok.
-  RAY_CHECK_OK(placement_group_info_accessor_.AsyncUpdate(
+  RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
       placement_group_id, placement_group_table_data,
       [this, placement_group_id, placement_group_table_data](Status status) {
         RAY_CHECK_OK(gcs_pub_sub_->Publish(
-            ACTOR_CHANNEL, placement_group_id.Hex(),
-            placement_group_table_data->SerializeAsString(), nullptr));
+            PLACEMENT_CROUP_CHANNEL, placement_group_id.Hex(),
+            placement_group_table_data.SerializeAsString(), nullptr));
       }));
 
   // Invoke all callbacks for all registration requests of this placement_group

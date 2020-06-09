@@ -113,7 +113,7 @@ template class GcsTable<TaskID, TaskLeaseData>;
 template class GcsTable<TaskID, TaskReconstructionData>;
 template class GcsTable<ObjectID, ObjectTableDataList>;
 template class GcsTable<PlacementGroupID, PlacementGroupTableData>;
-template class GcsTable<BundleID, PlacementGroupResourceMap>;
+template class GcsTable<BundleID, BundleResourceMap>;
 template class GcsTable<BundleID, ScheduleData>;
 template class GcsTableWithJobId<ActorID, ActorTableData>;
 template class GcsTableWithJobId<ActorID, ActorCheckpointIdData>;

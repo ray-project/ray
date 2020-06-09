@@ -25,6 +25,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "gcs_placement_group_scheduler.h"
+#include "gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 
 namespace ray {
@@ -94,7 +95,7 @@ using RegisterPlacementGroupCallback =
     std::function<void(std::shared_ptr<GcsPlacementGroup>)>;
 /// GcsPlacementGroupManager is responsible for managing the lifecycle of all placement
 /// group. This class is not thread-safe.
-class GcsPlacementGroupManager {
+class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
  public:
   /// Create a GcsPlacementGroupManager
   ///
@@ -104,7 +105,7 @@ class GcsPlacementGroupManager {
   explicit GcsPlacementGroupManager(
       boost::asio::io_context &io_context,
       std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
-      gcs::PlacementGroupInfoAccessor &placement_group_info_accessor,
+      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub);
   ~GcsPlacementGroupManager() = default;
 
@@ -145,7 +146,7 @@ class GcsPlacementGroupManager {
 
   void HandleCreatePlacementGroup(const rpc::CreatePlacementGroupRequest &request,
                                   rpc::CreatePlacementGroupReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback);
+                                  rpc::SendReplyCallback send_reply_callback) override;
 
   ClientID GetBundleScheduleNode(const BundleID bundle_id) const;
 
@@ -170,8 +171,8 @@ class GcsPlacementGroupManager {
   /// The scheduler to schedule all registered placement_groups.
   std::shared_ptr<gcs::GcsPlacementGroupSchedulerInterface>
       gcs_placement_group_scheduler_;
-  /// Placement Group info accessor.
-  gcs::PlacementGroupInfoAccessor &placement_group_info_accessor_;
+  /// Used to update placement group information upon creation, deletion, etc.
+  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
 
