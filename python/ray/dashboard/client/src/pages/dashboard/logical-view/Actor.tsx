@@ -13,7 +13,7 @@ import {
   getProfilingResultURL,
   launchKillActor,
   launchProfiling,
-  RayletActorInfo
+  RayletActorInfo,
 } from "../../../api";
 import Actors from "./Actors";
 
