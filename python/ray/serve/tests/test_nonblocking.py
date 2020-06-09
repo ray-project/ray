@@ -20,4 +20,4 @@ def test_nonblocking():
 
 if __name__ == "__main__":
     import pytest
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "-s", __file__]))
