@@ -1,24 +1,20 @@
 import argparse
 import boto3
-import math
-import ray
-import re
-import uuid
-import pandas as pd
 import hashlib
+import math
+import re
+import ray
+import pandas as pd
 
 from os import path
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "input_bucket",
+    "bucket",
     help="S3 bucket containing input files of the form: "
-    "input/{tableStreamId}-{eventTime}.[parq|parquet].",
-    type=str)
-parser.add_argument(
-    "output_bucket",
-    help="S3 bucket to write intermediate hash bucket "
-    "and compacted parquet files.",
+    "input/{tableStreamId}-{eventTime}.[parq|parquet]. "
+    "Compacted parquet file output will also be written "
+    "to the output folder of this bucket.",
     type=str)
 parser.add_argument(
     "table_stream_id",
@@ -59,11 +55,14 @@ def read_parquet_files(file_paths):
     return dataframes
 
 
-def write_parquet_files(dataframe, output_file_path, max_records_per_file):
+def write_parquet_files(dataframe, output_file_prefix, max_records_per_file):
 
     dataframes = split_dataframe(dataframe, max_records_per_file)
     for i in range(len(dataframes)):
-        dataframe.to_parquet("{}_{}.parq".format(output_file_path, i))
+        dataframes[i].to_parquet(
+            "{}_{}.parq".format(output_file_prefix, i),
+            flavor="spark",
+        )
 
 
 ###################
@@ -104,9 +103,10 @@ def filter_keys_by_prefix(bucket, prefix):
     more_objects_to_list = True
     while more_objects_to_list:
         response = s3.list_objects_v2(**params)
-        for object in response["Contents"]:
-            key = object["Key"]
-            yield key
+        if "Contents" in response:
+            for object in response["Contents"]:
+                key = object["Key"]
+                yield key
         params["ContinuationToken"] = response.get("NextContinuationToken")
         more_objects_to_list = params["ContinuationToken"] is not None
 
@@ -114,46 +114,24 @@ def filter_keys_by_prefix(bucket, prefix):
 def read_parquet_files_by_prefix(bucket, prefix):
     input_file_paths = filter_file_paths_by_prefix(bucket, prefix)
     input_file_to_df = read_parquet_files(input_file_paths)
-    return concat_dataframes(input_file_to_df.values())
+    return input_file_to_df
 
 
-def delete_files_by_prefix(input_bucket, prefix):
-    s3 = _get_s3_client()
-    keys = filter_keys_by_prefix(input_bucket, prefix)
-    delete_request = {"Objects": [{"Key": key} for key in keys]}
-    s3.delete_objects(Bucket=input_bucket, Delete=delete_request)
+def get_dedupe_output_file_prefix(output_bucket, table_stream_id,
+                                  hash_bucket_index):
 
-
-def get_hash_bucket_output_file_path(output_bucket, table_stream_id,
-                                     hash_bucket_index):
-
-    hash_file_prefix = get_hash_file_prefix(table_stream_id, hash_bucket_index)
-    uuid4 = str(uuid.uuid4())
-    return "s3://{}/{}_{}.parq".format(output_bucket, hash_file_prefix, uuid4)
-
-
-def get_dedupe_output_file_path(output_bucket, table_stream_id,
-                                hash_bucket_index):
-
-    prefix = get_hash_bucket_file_prefix(table_stream_id, hash_bucket_index)
-    return "s3://{}/{}dedupe".format(output_bucket, prefix)
+    return "s3://{}/output/{}_{}_dedupe".format(
+        output_bucket,
+        table_stream_id,
+        hash_bucket_index,
+    )
 
 
 #####################
 # Hash Bucket Utils #
 #####################
-def get_hash_file_prefix(table_stream_id, hash_bucket_index):
-    prefix = get_hash_bucket_file_prefix(table_stream_id, hash_bucket_index)
-    return "{}hash".format(prefix)
-
-
-def get_hash_bucket_file_prefix(table_stream_id, hash_bucket_index):
-    return "output/{}_{}_".format(table_stream_id, hash_bucket_index)
-
-
 def group_by_pk_hash_bucket(dataframe, num_buckets, columns, hash_column_name):
     hash_bucket_column_name = hash_column_name + "_bucket"
-
     dataframe[hash_column_name] = \
         pd.DataFrame(dataframe[columns].astype("str").values.sum(axis=1))[0] \
         .astype("bytes") \
@@ -177,12 +155,11 @@ def hash_pk_bytes(pk_bytes):
 # Event Timestamp Utils #
 #########################
 def read_files_add_event_timestamp(file_paths, event_timestamp_column_name):
-    input_file_to_df = read_parquet_files(file_paths)
 
+    input_file_to_df = read_parquet_files(file_paths)
     for input_file, dataframe in input_file_to_df.items():
         event_timestamp = get_input_file_event_timestamp(input_file)
         dataframe[event_timestamp_column_name] = int(event_timestamp)
-
     return concat_dataframes(input_file_to_df.values())
 
 
@@ -196,6 +173,7 @@ def get_input_file_event_timestamp(input_file):
 # Preconditions #
 #################
 def check_preconditions(primary_keys, sort_keys, max_records_per_output_file):
+
     assert len(primary_keys) == len(set(primary_keys)), \
         "Primary key names must be unique: {}".format(primary_keys)
     assert len(sort_keys) == len(set(sort_keys)), \
@@ -207,8 +185,8 @@ def check_preconditions(primary_keys, sort_keys, max_records_per_output_file):
 #############
 # Compactor #
 #############
-def compact(input_bucket, output_bucket, table_stream_id, primary_keys,
-            sort_keys, max_records_per_output_file, num_hash_buckets):
+def compact(bucket, table_stream_id, primary_keys, sort_keys,
+            max_records_per_output_file, num_hash_buckets):
 
     # check preconditions before doing any computationally expensive work
     check_preconditions(
@@ -225,15 +203,17 @@ def compact(input_bucket, output_bucket, table_stream_id, primary_keys,
     # append the event timestamp column to the sort key list
     sort_keys.append(event_timestamp_column_name)
 
-    # first group like primary keys together by hashing them into buckets
+    # discover input file paths
     input_file_paths = filter_file_paths_by_prefix(
-        input_bucket, "input/{}".format(table_stream_id))
+        bucket, "input/{}".format(table_stream_id))
     all_hash_bucket_indices = set()
 
+    # create an actor to track dataset chunks for each hash bucket
     hb_actors = []
     for i in range(num_hash_buckets):
         hb_actors.append(HashBucket.remote())
 
+    # group like primary keys together by hashing them into buckets
     hb_tasks_pending = []
     for input_file_path in input_file_paths:
         hb_task_promise = hash_bucket.remote(
@@ -249,25 +229,12 @@ def compact(input_bucket, output_bucket, table_stream_id, primary_keys,
         hb_task_complete, hb_tasks_pending = ray.wait(hb_tasks_pending)
         all_hash_bucket_indices.update(ray.get(hb_task_complete[0]))
 
-    write_tasks_pending = []
-    for hb_index in all_hash_bucket_indices:
-        file_path = get_hash_bucket_output_file_path(
-            output_bucket,
-            table_stream_id,
-            hb_index,
-        )
-        write_task_promise = hb_actors[hb_index].write.remote(file_path)
-        write_tasks_pending.append(write_task_promise)
-    while len(write_tasks_pending):
-        write_task_complete, write_tasks_pending = ray.wait(
-            write_tasks_pending)
-
-    # then dedupe each bucket by primary key hash and sort key
+    # dedupe each bucket by primary key hash and sort key
     dd_tasks_pending = []
     for hb_index in all_hash_bucket_indices:
         dd_task_promise = dedupe.remote(
-            output_bucket,
-            output_bucket,
+            bucket,
+            hb_actors[hb_index].get.remote(),
             table_stream_id,
             hb_index,
             pk_hash_column_name,
@@ -287,10 +254,8 @@ class HashBucket:
     def append(self, dataframe):
         self.dataframes.append(dataframe)
 
-    def write(self, file_path):
-        output = next(iter(self.dataframes)) if len(self.dataframes) == 1 \
-            else pd.concat(self.dataframes, axis=0, copy=False)
-        output.to_parquet(file_path)
+    def get(self):
+        return self.dataframes
 
 
 @ray.remote
@@ -303,7 +268,7 @@ def hash_bucket(input_file_paths, primary_keys, num_buckets, hash_column_name,
         event_timestamp_column_name,
     )
 
-    # group the data by primary key hash bucket index
+    # group the data by primary key hash value
     df_groups = group_by_pk_hash_bucket(
         dataframe,
         num_buckets,
@@ -322,18 +287,23 @@ def hash_bucket(input_file_paths, primary_keys, num_buckets, hash_column_name,
 
 
 @ray.remote
-def dedupe(input_bucket, output_bucket, table_stream_id, hash_bucket_index,
+def dedupe(bucket, hb_dataframes, table_stream_id, hash_bucket_index,
            primary_keys, sort_keys, max_records_per_output_file):
 
-    # read uncompacted and compacted input parquet files
-    hash_bucket_file_prefix = get_hash_bucket_file_prefix(
+    # read previously compacted input parquet files
+    dedupe_output_file_prefix = get_dedupe_output_file_prefix(
+        bucket,
         table_stream_id,
         hash_bucket_index,
     )
-    dataframe = read_parquet_files_by_prefix(
-        input_bucket,
-        hash_bucket_file_prefix,
+    prev_output_file_to_df = read_parquet_files_by_prefix(
+        bucket,
+        dedupe_output_file_prefix,
     )
+
+    # concatenate uncompacted and previously compacted dataframes
+    hb_dataframes.extend(prev_output_file_to_df.values())
+    dataframe = pd.concat(hb_dataframes, axis=0, copy=False)
 
     # sort by sort keys
     dataframe.sort_values(sort_keys, inplace=True)
@@ -342,21 +312,10 @@ def dedupe(input_bucket, output_bucket, table_stream_id, hash_bucket_index,
     dataframe.drop_duplicates(primary_keys, inplace=True)
 
     # write sorted, compacted table back
-    dedupe_output_file_path = get_dedupe_output_file_path(
-        output_bucket,
-        table_stream_id,
-        hash_bucket_index,
-    )
     write_parquet_files(
         dataframe,
-        dedupe_output_file_path,
+        dedupe_output_file_prefix,
         max_records_per_output_file,
-    )
-
-    # delete uncompacted input files
-    delete_files_by_prefix(
-        input_bucket,
-        get_hash_file_prefix(table_stream_id, hash_bucket_index),
     )
 
 
@@ -364,8 +323,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(address="auto")
     compact(
-        args.input_bucket,
-        args.output_bucket,
+        args.bucket,
         args.table_stream_id,
         args.primary_keys,
         args.sort_keys,

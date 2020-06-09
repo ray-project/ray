@@ -11,14 +11,11 @@ from os import path
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "input_bucket",
+    "bucket",
     help="S3 bucket containing input files of the form: "
-    "input/{tableStreamId}-{eventTime}.[parq|parquet].",
-    type=str)
-parser.add_argument(
-    "output_bucket",
-    help="S3 bucket to write intermediate hash bucket "
-    "and compacted parquet files.",
+    "input/{tableStreamId}-{eventTime}.[parq|parquet]. "
+    "Compacted parquet file output will also be written "
+    "to the output folder of this bucket.",
     type=str)
 parser.add_argument(
     "table_stream_id",
@@ -63,7 +60,7 @@ def write_parquet_files(dataframe, output_file_path, max_records_per_file):
 
     dataframes = split_dataframe(dataframe, max_records_per_file)
     for i in range(len(dataframes)):
-        dataframe.to_parquet("{}_{}.parq".format(output_file_path, i))
+        dataframes[i].to_parquet("{}_{}.parq".format(output_file_path, i))
 
 
 ###################
@@ -104,17 +101,19 @@ def filter_keys_by_prefix(bucket, prefix):
     more_objects_to_list = True
     while more_objects_to_list:
         response = s3.list_objects_v2(**params)
-        for object in response["Contents"]:
-            key = object["Key"]
-            yield key
+        if "Contents" in response:
+            for object in response["Contents"]:
+                key = object["Key"]
+                yield key
         params["ContinuationToken"] = response.get("NextContinuationToken")
         more_objects_to_list = params["ContinuationToken"] is not None
 
 
 def read_parquet_files_by_prefix(bucket, prefix):
     input_file_paths = filter_file_paths_by_prefix(bucket, prefix)
-    input_file_to_df = read_parquet_files(input_file_paths)
-    return concat_dataframes(input_file_to_df.values())
+    file_to_df = read_parquet_files(input_file_paths)
+    dataframe = concat_dataframes(file_to_df.values()) if file_to_df else None
+    return dataframe
 
 
 def delete_files_by_prefix(input_bucket, prefix):
@@ -207,8 +206,8 @@ def check_preconditions(primary_keys, sort_keys, max_records_per_output_file):
 #############
 # Compactor #
 #############
-def compact(input_bucket, output_bucket, table_stream_id, primary_keys,
-            sort_keys, max_records_per_output_file, num_hash_buckets):
+def compact(bucket, table_stream_id, primary_keys, sort_keys,
+            max_records_per_output_file, num_hash_buckets):
 
     # check preconditions before doing any computationally expensive work
     check_preconditions(
@@ -227,7 +226,7 @@ def compact(input_bucket, output_bucket, table_stream_id, primary_keys,
 
     # filter all input files to compact by prefix
     input_file_paths = filter_file_paths_by_prefix(
-        input_bucket, "input/{}".format(table_stream_id))
+        bucket, "input/{}".format(table_stream_id))
 
     # group like primary keys together by hashing them into buckets
     all_hash_bucket_indices = set()
@@ -235,7 +234,7 @@ def compact(input_bucket, output_bucket, table_stream_id, primary_keys,
     for input_file_path in input_file_paths:
         hb_task_promise = hash_bucket.remote(
             [input_file_path],
-            output_bucket,
+            bucket,
             table_stream_id,
             primary_keys,
             num_hash_buckets,
@@ -251,8 +250,7 @@ def compact(input_bucket, output_bucket, table_stream_id, primary_keys,
     dd_tasks_pending = []
     for hb_index in all_hash_bucket_indices:
         dd_task_promise = dedupe.remote(
-            output_bucket,
-            output_bucket,
+            bucket,
             table_stream_id,
             hb_index,
             pk_hash_column_name,
@@ -295,8 +293,8 @@ def hash_bucket(input_file_paths, output_bucket, table_stream_id, primary_keys,
 
 
 @ray.remote
-def dedupe(input_bucket, output_bucket, table_stream_id, hash_bucket_index,
-           primary_keys, sort_keys, max_records_per_output_file):
+def dedupe(bucket, table_stream_id, hash_bucket_index, primary_keys, sort_keys,
+           max_records_per_output_file):
 
     # read uncompacted and compacted input parquet files
     hash_bucket_file_prefix = get_hash_bucket_file_prefix(
@@ -304,7 +302,7 @@ def dedupe(input_bucket, output_bucket, table_stream_id, hash_bucket_index,
         hash_bucket_index,
     )
     dataframe = read_parquet_files_by_prefix(
-        input_bucket,
+        bucket,
         hash_bucket_file_prefix,
     )
 
@@ -316,7 +314,7 @@ def dedupe(input_bucket, output_bucket, table_stream_id, hash_bucket_index,
 
     # write sorted, compacted table back
     dedupe_output_file_path = get_dedupe_output_file_path(
-        output_bucket,
+        bucket,
         table_stream_id,
         hash_bucket_index,
     )
@@ -328,7 +326,7 @@ def dedupe(input_bucket, output_bucket, table_stream_id, hash_bucket_index,
 
     # delete uncompacted input files
     delete_files_by_prefix(
-        input_bucket,
+        bucket,
         get_hash_file_prefix(table_stream_id, hash_bucket_index),
     )
 
@@ -337,8 +335,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(address="auto")
     compact(
-        args.input_bucket,
-        args.output_bucket,
+        args.bucket,
         args.table_stream_id,
         args.primary_keys,
         args.sort_keys,
