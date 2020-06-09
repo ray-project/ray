@@ -12,7 +12,7 @@ setup:
 	cd "${HOME}"/ray/doc/examples/cython; python setup.py install --user
 
 	echo "Settting up the shell"
-	cp bazelrc "${HOME}"/.bazelrc # Setup cache
+	echo "build --config=asan" >> ~/.bazelrc  # Setup cache
 	echo "LD_PRELOAD=/usr/lib/gcc/x86_64-linux-gnu/7/libasan.so" >> "${HOME}"/.bashrc
 	echo "ASAN_OPTIONS=detect_leaks=0" >> "${HOME}"/.bashrc
 
