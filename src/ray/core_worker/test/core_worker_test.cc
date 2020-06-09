@@ -105,13 +105,7 @@ class CoreWorkerTest : public ::testing::Test {
     }
 
     // start gcs server
-    if (RayConfig::instance().gcs_service_enabled()) {
-      gcs_server_socket_name_ = TestSetupUtil::StartGcsServer("127.0.0.1");
-    } else {
-      // core worker test relies on node resources. It's important that one raylet can
-      // receive the heartbeat from another. So starting raylet monitor is required here.
-      raylet_monitor_socket_name_ = TestSetupUtil::StartRayletMonitor("127.0.0.1");
-    }
+    gcs_server_socket_name_ = TestSetupUtil::StartGcsServer("127.0.0.1");
 
     // start raylet on each node. Assign each node with different resources so that
     // a task can be scheduled to the desired node.
@@ -129,10 +123,6 @@ class CoreWorkerTest : public ::testing::Test {
 
     for (const auto &store_socket_name : raylet_store_socket_names_) {
       TestSetupUtil::StopObjectStore(store_socket_name);
-    }
-
-    if (!raylet_monitor_socket_name_.empty()) {
-      TestSetupUtil::StopRayletMonitor(raylet_monitor_socket_name_);
     }
 
     if (!gcs_server_socket_name_.empty()) {
@@ -211,7 +201,6 @@ class CoreWorkerTest : public ::testing::Test {
   int num_nodes_;
   std::vector<std::string> raylet_socket_names_;
   std::vector<std::string> raylet_store_socket_names_;
-  std::string raylet_monitor_socket_name_;
   gcs::GcsClientOptions gcs_options_;
   std::string gcs_server_socket_name_;
 };

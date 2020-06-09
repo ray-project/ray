@@ -320,11 +320,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                 << ", raylet " << local_raylet_id;
 
   // Initialize gcs client.
-  if (RayConfig::instance().gcs_service_enabled()) {
-    gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(options_.gcs_options);
-  } else {
-    gcs_client_ = std::make_shared<ray::gcs::RedisGcsClient>(options_.gcs_options);
-  }
+  gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(options_.gcs_options);
+
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs();
 
@@ -434,8 +431,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   std::function<Status(const TaskSpecification &, const gcs::StatusCallback &)>
       actor_create_callback = nullptr;
-  if (RayConfig::instance().gcs_service_enabled() &&
-      RayConfig::instance().gcs_actor_service_enabled()) {
+  if (RayConfig::instance().gcs_actor_service_enabled()) {
     actor_create_callback = [this](const TaskSpecification &task_spec,
                                    const gcs::StatusCallback &callback) {
       return gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
@@ -1332,8 +1328,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
             // If we own the actor and the actor handle is no longer in scope,
             // terminate the actor. We do not do this if the GCS service is
             // enabled since then the GCS will terminate the actor for us.
-            if (!(RayConfig::instance().gcs_service_enabled() &&
-                  RayConfig::instance().gcs_actor_service_enabled())) {
+            if (!RayConfig::instance().gcs_actor_service_enabled()) {
               RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id
                             << " has gone out of scope, sending message to actor "
                             << actor_id << " to do a clean exit.";
@@ -1373,7 +1368,6 @@ Status CoreWorker::GetActorHandle(const ActorID &actor_id,
 
 Status CoreWorker::GetNamedActorHandle(const std::string &name,
                                        ActorHandle **actor_handle) {
-  RAY_CHECK(RayConfig::instance().gcs_service_enabled());
   RAY_CHECK(RayConfig::instance().gcs_actor_service_enabled());
   RAY_CHECK(!name.empty());
 
