@@ -6,7 +6,6 @@ import requests
 
 import ray
 from ray import serve
-from ray.serve.utils import retry_actor_failures
 from ray.cluster_utils import Cluster
 
 num_redis_shards = 1
@@ -42,11 +41,10 @@ class RandomKiller:
 
     def _get_all_serve_actors(self):
         master = serve.api._get_master_actor()
-        [router] = retry_actor_failures(master.get_router)
-        [http_proxy] = retry_actor_failures(master.get_http_proxy)
+        [router] = ray.get(master.get_router.remote())
+        [http_proxy] = ray.get(master.get_http_proxy.remote())
         all_handles = [master, router, http_proxy]
-        worker_handle_dict = retry_actor_failures(
-            master.get_all_worker_handles)
+        worker_handle_dict = ray.get(master.get_all_worker_handles.remote())
         for _, replica_dict in worker_handle_dict.items():
             all_handles.extend(list(replica_dict.values()))
 
