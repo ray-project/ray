@@ -300,6 +300,7 @@ class DockerCommandRunner(SSHCommandRunner):
         self.ssh_command_runner = SSHCommandRunner(**common_args)
         self.docker_name = docker_config["container_name"]
         self.docker_config = docker_config
+        self.home_dir = None
 
     def run(self,
             cmd,
@@ -319,7 +320,8 @@ class DockerCommandRunner(SSHCommandRunner):
         no_exist = "not present"
         cmd = get_docker_check(self.docker_name) + " ".join(
             ["||", "echo", quote(no_exist)])
-        output = str(self.ssh_command_runner.run(cmd, with_output=True))
+        output = self.ssh_command_runner.run(
+            cmd, with_output=True).decode("utf-8").strip()
         if no_exist in output:
             return False
         return output
@@ -343,9 +345,12 @@ class DockerCommandRunner(SSHCommandRunner):
 
     def docker_expand_user(self, string):
         if string.find("~") == 0:
-            return string.replace(
-                "~",
-                "`docker exec ray_docker env | grep HOME | cut -d'=' -f2`", 1)
+            if self.home_dir is None:
+                self.home_dir = self.ssh_command_runner.run(
+                    "docker exec {} env | grep HOME | cut -d'=' -f2".format(
+                        self.docker_name),
+                    with_output=True).decode("utf-8").strip()
+            return string.replace("~", self.home_dir)
         else:
             return string
 
