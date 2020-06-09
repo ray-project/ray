@@ -25,12 +25,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
   void SetUp() override {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
     worker_client_ = std::make_shared<GcsServerMocker::MockWorkerClient>();
-<<<<<<< HEAD
-    // gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
-=======
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
     gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
->>>>>>> origin/master
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
         io_service_, error_info_accessor_, gcs_pub_sub_, gcs_table_storage_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
