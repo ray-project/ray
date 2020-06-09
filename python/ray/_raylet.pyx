@@ -494,7 +494,9 @@ cdef execute_task(
                 task_exception = True
                 try:
                     with ray.worker._changeproctitle(title, next_title):
-                        job_stdout_path, job_stderr_path = worker.node.get_job_redirected_log_file(worker.worker_id, job_id.binary())
+                        job_stdout_path, job_stderr_path = \
+                            worker.node.get_job_redirected_log_file(
+                                worker.worker_id, job_id.binary())
                         setup_logging(job_stdout_path, job_stderr_path)
                         outputs = function_executor(*args, **kwargs)
                         setup_logging(worker_stdout_path, worker_stderr_path)

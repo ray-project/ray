@@ -658,23 +658,28 @@ class Node:
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
-
     def get_job_redirected_log_file(self, worker_id, job_id):
-        """Determines (but does not create) logging files for workers to redirect its output.
+        """Determines (but does not create) logging files for workers to
+        redirect its output.
 
         Args:
             worker_id (bytes): A byte representation of the worker id.
             job_id (bytes): A byte representation of the job id.
 
         Returns:
-            (tuple) The stdout and stderr file names that the job should be redirected to.
+            (tuple) The stdout and stderr file names that the job should be
+        redirected to.
         """
         worker_stdout_file, worker_stderr_file = (self.get_log_file_names(
-            "worker-{}-{}".format(ray.utils.binary_to_hex(worker_id), ray.utils.binary_to_hex(job_id)), unique=False))
+            "worker-{}-{}".format(
+                ray.utils.binary_to_hex(worker_id),
+                ray.utils.binary_to_hex(job_id)),
+            unique=False))
         return worker_stdout_file, worker_stderr_file
 
     def new_worker_redirected_log_file(self, worker_id):
-        """Determines (but does not create) logging files for workers to redirect its output.
+        """Determines (but does not create) logging files for workers to
+        redirect its output.
 
         Args:
             worker_id (bytes): A byte representation of the worker id.
@@ -683,7 +688,8 @@ class Node:
             (tuple) The worker's stdout and stderr file names.
         """
         worker_stdout_file, worker_stderr_file = (self.get_log_file_names(
-            "worker-{}".format(ray.utils.binary_to_hex(worker_id)), unique=False))
+            "worker-{}".format(ray.utils.binary_to_hex(worker_id)),
+            unique=False))
         return worker_stdout_file, worker_stderr_file
 
     def start_worker(self):
