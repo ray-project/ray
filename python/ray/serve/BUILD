@@ -98,7 +98,7 @@ py_test(
 )
 
 py_test(
-    name = "snippet_model_composition"
+    name = "snippet_model_composition",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
     tags = ["exclusive"],
