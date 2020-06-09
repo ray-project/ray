@@ -17,7 +17,7 @@ import ray.ray_constants as ray_constants
 import ray.services
 import ray.utils
 from ray.resource_spec import ResourceSpec
-from ray.utils import try_to_create_directory, try_to_symlink, open_log
+from ray.utils import try_to_create_directory, try_to_symlink, open_worker_log
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -407,19 +407,6 @@ class Node:
             log_stderr = os.path.join(self._logs_dir, "{}.err".format(name))
         return log_stdout, log_stderr
 
-    def open_log(self, path):
-        """
-        Opens a path (or creates if necessary) for a log.
-
-        Args:
-            path (str): The name/path of the file to be opened.
-
-        Returns:
-            A file-like object which can be written to.
-        """
-        # (Alex) We should eventually be able to replace this with named-pipes.
-        return open(path, "a", buffering=1)
-
     def new_log_files(self, name):
         """Creates partially randomized filenames for log files.
 
@@ -430,7 +417,8 @@ class Node:
             A tuple of two files for redirecting (stdout, stderr).
         """
         log_stdout, log_stderr = self.get_log_file_names(name, unique=True)
-        return open_log(log_stdout), open_log(log_stderr)
+        worker_pid = os.getpid()
+        return open_worker_log(log_stdout, worker_pid), open_worker_log(log_stderr, worker_pid)
 
     def _get_unused_port(self, close_on_exit=True):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

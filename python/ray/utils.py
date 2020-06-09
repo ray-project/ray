@@ -390,7 +390,7 @@ def setup_logger(logging_level, logging_format):
     logger.propagate = False
 
 
-def open_log(path):
+def open_worker_log(path, worker_pid):
     """
     Opens a path (or creates if necessary) for a log.
 
@@ -400,8 +400,17 @@ def open_log(path):
     Returns:
         A file-like object which can be written to.
     """
-    # (Alex) We should eventually be able to replace this with named-pipes.
-    return open(path, "a", buffering=1)
+    # TODO (Alex): We should eventually be able to replace this with named-pipes.
+    f = open(path, "a", buffering=1)
+    # Check to see if we're creating this file. No one else should ever write
+    # to this file, so we don't have to worry about TOCTOU.
+    if f.tell() == 0:
+        # This should always be the first message to appear in the worker's
+        # stdout and stderr log files. The string "Ray worker pid:" is
+        # parsed in the log monitor process.
+        print("Ray worker pid: {}".format(worker_pid), file=f)
+        f.flush()
+    return f
 
 
 def get_system_memory():
