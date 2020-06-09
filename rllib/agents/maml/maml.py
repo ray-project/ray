@@ -2,7 +2,7 @@ import logging
 
 import ray
 from ray.rllib.agents import with_common_config
-from ray.rllib.agents.maml.maml_policy import MAMLTFPolicy
+from ray.rllib.agents.maml.maml_tf_policy import MAMLTFPolicy
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.optimizers.maml_optimizer import MAMLOptimizer
 from gym.envs.registration import registry, register, make, spec
@@ -52,8 +52,7 @@ DEFAULT_CONFIG = with_common_config({
     "maml_optimizer_steps": 5,
     # Inner Adaptation Step size
     "inner_lr": 0.1,
-    # Use PPO KL Loss
-    "use_kl_loss": False,
+    "use_kl_loss": True,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -87,6 +86,31 @@ def execution_plan(workers, config):
 
     return get_learner_stats(fetches)
 
+
+def after_optimizer_step(trainer, fetches):
+    trainer.workers.local_worker().for_policy(lambda pi: pi.update_kls(fetches["default_policy"]["inner_kl"]))
+
+
+def maml_metrics(trainer):
+    res = trainer.optimizer.collect_metrics(
+            trainer.config["collect_metrics_timeout"],
+            min_history=trainer.config["metrics_smoothing_episodes"],
+            selected_workers=trainer.workers.remote_workers(),
+            dataset_id=str(0))
+    for i in range(1,trainer.config["inner_adaptation_steps"]+1):    
+        res_adapt = trainer.optimizer.collect_metrics(
+                trainer.config["collect_metrics_timeout"],
+                min_history=trainer.config["metrics_smoothing_episodes"],
+                selected_workers=trainer.workers.remote_workers(),
+                dataset_id=str(i))
+        res["episode_reward_max_adapt_" + str(i)] = res_adapt["episode_reward_max"]
+        res["episode_reward_mean_adapt_" + str(i)] = res_adapt["episode_reward_mean"]
+        res["episode_reward_min_adapt_" + str(i)] = res_adapt["episode_reward_min"]
+
+    res["adaptation_delta"] = res["episode_reward_mean_adapt_" + str(trainer.config["inner_adaptation_steps"])] - res["episode_reward_mean"]
+    return res
+
+"""
 # Fill Tensorboard with Pre/Post update Stats
 def update_pre_post_stats(self, pre_res, post_res):
     pre_reward_max = pre_res['episode_reward_max']
@@ -100,6 +124,7 @@ def update_pre_post_stats(self, pre_res, post_res):
     pre_res['pre-post-delta']= post_res['episode_reward_mean'] - pre_res['episode_reward_mean']
 
     return pre_res
+
 
 @override(Trainer)
 def _train(self):
@@ -130,20 +155,25 @@ def _train(self):
 
     res = self.update_pre_post_stats(res, res1)
     return res
+"""
 
 def get_policy_class(config):
     # @mluo: TODO
     assert config["framework"] != "torch"
     return MAMLTFPolicy
 
-def _validate_config(self):
-    if self.config["entropy_coeff"] < 0:
+def validate_config(config):
+    if config["inner_adaptation_steps"]<=0:
+        raise ValueError(
+            "Inner Adaptation Steps must be >=1."
+            )
+    if config["entropy_coeff"] < 0:
         raise DeprecationWarning("entropy_coeff must be >= 0")
-    if (self.config["batch_mode"] == "truncate_episodes" and not self.config["use_gae"]):
+    if (config["batch_mode"] == "truncate_episodes" and not config["use_gae"]):
         raise ValueError(
             "Episode truncation is not supported without a value "
             "function. Consider setting batch_mode=complete_episodes.")
-    if (self.config["multiagent"]["policies"] and not self.config["simple_optimizer"]):
+    if (config["multiagent"]["policies"] and not config["simple_optimizer"]):
         logger.info(
             "In multi-agent mode, policies will be optimized sequentially "
             "by the multi-GPU optimizer. Consider setting "
@@ -162,4 +192,6 @@ MAMLTrainer = build_trainer(
     get_policy_class=get_policy_class,
     #execution_plan=execution_plan,
     make_policy_optimizer=MAMLOptimizer,
+    after_optimizer_step=after_optimizer_step,
+    collect_metrics_fn=maml_metrics,
     validate_config=validate_config)

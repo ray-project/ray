@@ -172,6 +172,8 @@ class SyncSampler(SamplerInput):
     @override(SamplerInput)
     def get_metrics(self, dataset_id=None):
         completed = []
+        if dataset_id not in self.metrics_queues:
+            self.metrics_queues[dataset_id] = queue.Queue()
         while True:
             try:
                 completed.append(self.metrics_queues[dataset_id].get_nowait()._replace(

@@ -1,23 +1,31 @@
 import logging
 
 import ray
+import numpy as np
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import LearningRateSchedule, \
-    EntropyCoeffSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils.tf_ops import make_tf_callable
 from ray.rllib.utils import try_import_tf
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOLoss, postprocess_ppo_gae, vf_preds_fetches, clip_gradients, setup_config
 
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import math_ops, state_ops, control_flow_ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.training import optimizer
+from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import tf_export
+from ray.rllib.utils.framework import get_activation_fn
+
 
 tf = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
-def PPOLoss(self,
+
+def PPOLoss(
          dist_class,
          actions,
          curr_logits,
@@ -63,17 +71,50 @@ def PPOLoss(self,
             vf_loss = tf.maximum(vf_loss1, vf_loss2)
             return vf_loss
 
-        pi_new_dist = dist_class(curr_logits)
-        pi_old_dist = dist_class(behaviour_logits)
+        pi_new_dist = dist_class(curr_logits, None)
+        pi_old_dist = dist_class(behaviour_logits, None)
 
-        surr_loss = reduce_mean_valid(surrogate_loss(actions, pi_new_dist, pi_old_dist, advantages, clip_loss))
+        surr_loss = reduce_mean_valid(surrogate_loss(actions, pi_new_dist, pi_old_dist, advantages, clip_param, clip_loss))
         kl_loss = reduce_mean_valid(kl_loss(pi_new_dist, pi_old_dist))
         vf_loss = reduce_mean_valid(vf_loss(value_fn, value_targets, vf_preds, vf_clip_param))
         entropy_loss = reduce_mean_valid(entropy_loss(pi_new_dist))
 
-        total_loss = - surr_loss + cur_kl_coeff * action_kl + vf_loss_coeff * vf_loss - entropy_coeff * curr_entropy
+        total_loss = - surr_loss + cur_kl_coeff * kl_loss + vf_loss_coeff * vf_loss - entropy_coeff * entropy_loss
 
         return total_loss, surr_loss, kl_loss, vf_loss, entropy_loss
+
+
+class WorkerLoss(object):
+    def __init__(self,
+         dist_class,
+         actions,
+         curr_logits,
+         behaviour_logits,
+         advantages,
+         value_fn,
+         value_targets,
+         vf_preds,
+         cur_kl_coeff,
+         entropy_coeff,
+         clip_param,
+         vf_clip_param,
+         vf_loss_coeff,
+         clip_loss=False):
+        self.loss, self.mean_policy_loss, self.mean_kl, self.mean_vf_loss, self.mean_entropy = PPOLoss(
+            dist_class=dist_class,
+            actions=actions,
+            curr_logits=curr_logits,
+            behaviour_logits=behaviour_logits,
+            advantages=advantages,
+            value_fn=value_fn,
+            value_targets=value_targets,
+            vf_preds=vf_preds,
+            cur_kl_coeff=cur_kl_coeff,
+            entropy_coeff=entropy_coeff,
+            clip_param=clip_param,
+            vf_clip_param=vf_clip_param,
+            vf_loss_coeff=vf_loss_coeff,
+            clip_loss=clip_loss)
 
 # This is the Meta-Update computation graph for master worker
 class MAMLLoss(object):
@@ -138,6 +179,7 @@ class MAMLLoss(object):
             for i in range(self.num_tasks):
                 # Loss Function Shenanigans
                 ppo_loss, _, kl_loss, _, _ = PPOLoss(
+                    dist_class = dist_class,
                     actions = self.actions[step][i],
                     curr_logits = pi_new_logits[i],
                     behaviour_logits = self.behaviour_logits[step][i],
@@ -145,7 +187,7 @@ class MAMLLoss(object):
                     value_fn = value_fns[i],
                     value_targets = self.value_targets[step][i],
                     vf_preds = self.vf_preds[step][i],
-                    cur_kl_coeff = cur_kl_coeff,
+                    cur_kl_coeff = 0.0,
                     entropy_coeff = entropy_coeff,
                     clip_param = clip_param,
                     vf_clip_param = vf_clip_param,
@@ -167,7 +209,8 @@ class MAMLLoss(object):
 
         ppo_obj = []
         for i in range(self.num_tasks):
-            ppo_loss, _, kl_loss, _, _ = PPOLoss(
+            ppo_loss, surr_loss, kl_loss, val_loss, entropy_loss = PPOLoss(
+                    dist_class = dist_class,
                     actions = self.actions[self.inner_adaptation_steps][i],
                     curr_logits = pi_new_logits[i],
                     behaviour_logits = self.behaviour_logits[self.inner_adaptation_steps][i],
@@ -175,7 +218,7 @@ class MAMLLoss(object):
                     value_fn = value_fns[i],
                     value_targets = self.value_targets[self.inner_adaptation_steps][i],
                     vf_preds = self.vf_preds[self.inner_adaptation_steps][i],
-                    cur_kl_coeff = cur_kl_coeff,
+                    cur_kl_coeff = 0.0,
                     entropy_coeff = entropy_coeff,
                     clip_param = clip_param,
                     vf_clip_param = vf_clip_param,
@@ -183,12 +226,16 @@ class MAMLLoss(object):
                     clip_loss = True
                     )
             ppo_obj.append(ppo_loss)
-        self.kl_loss = tf.reduce_mean(tf.multiply(cur_kl_coeff, mean_inner_kl))
-        self.loss = tf.reduce_mean(tf.stack(ppo_obj, axis=0)) + self.kl_loss
-        self.loss = tf.Print(self.loss, ["Meta-Loss", self.loss, mean_inner_kl])
+        self.mean_policy_loss = surr_loss
+        self.mean_kl = kl_loss
+        self.mean_vf_loss = val_loss
+        self.mean_entropy = entropy_loss
+        self.inner_kl_loss = tf.reduce_mean(tf.multiply(self.cur_kl_coeff, mean_inner_kl))
+        self.loss = tf.reduce_mean(tf.stack(ppo_obj, axis=0)) + self.inner_kl_loss
+        self.loss = tf.Print(self.loss, ["Meta-Loss", self.loss, self.mean_inner_kl])
 
     def feed_forward(self, obs, policy_vars, policy_config, context = None):
-        # Hacky for now, reconstruct FC network with defined weights
+        # Hacky for now, reconstruct FC network with adapted weights
         # @mluo: TODO for any network
         def fc_network(inp, network_vars, hidden_nonlinearity, output_nonlinearity, policy_config, hyper_vars = None, context=None):
             hidden_sizes = policy_config["fcnet_hiddens"]
@@ -217,7 +264,7 @@ class MAMLLoss(object):
         valuen_vars = {}
         log_std = None
         for name, param in policy_vars.items():
-            if 'value_function' in name:
+            if 'value' in name:
                 valuen_vars[name] = param
             elif "log_std" in name:
                 log_std = param
@@ -258,30 +305,33 @@ def maml_loss(policy, model, dist_class, train_batch):
     logits, state = model.from_batch(train_batch)
     action_dist = dist_class(logits, model)
 
-    split_ph = tf.placeholder(tf.int32, name="meta-batch-splitting", shape=(policy.config["inner_adaptation_steps"]+1, policy.config["num_workers"]))
+    policy._loss_input_dict['split'] = tf.placeholder(tf.int32, name="Meta-Update-Splitting", shape=(policy.config["inner_adaptation_steps"]+1, policy.config["num_workers"]))
+    policy.cur_lr = policy.config["lr"]
 
     if policy.config["worker_index"]:
-        policy.loss_obj, _, _, _, _ = PPOLoss(
+        policy.loss_obj = WorkerLoss(
             dist_class=dist_class,
             actions=train_batch[SampleBatch.ACTIONS],
-            curr_logits=,
+            curr_logits=logits,
             behaviour_logits=train_batch[SampleBatch.ACTION_DIST_INPUTS],
             advantages=train_batch[Postprocessing.ADVANTAGES],
             value_fn=model.value_function(),
             value_targets=train_batch[Postprocessing.VALUE_TARGETS],
             vf_preds=train_batch[SampleBatch.VF_PREDS],
-            cur_kl_coeff=policy.kl_coeff,
-            entropy_coeff=policy.entropy_coeff,
+            cur_kl_coeff=0.0,
+            entropy_coeff=policy.config["entropy_coeff"],
             clip_param=policy.config["clip_param"],
             vf_clip_param=policy.config["vf_clip_param"],
             vf_loss_coeff=policy.config["vf_loss_coeff"],
             clip_loss=False
         )
     else:
+        print(train_batch["split"])
         policy.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                               tf.get_variable_scope().name)
         policy.loss_obj = MAMLLoss(
-                model = self.model,
+                model = model,
+                dist_class=dist_class,
                 value_targets = train_batch[Postprocessing.VALUE_TARGETS],
                 advantages = train_batch[Postprocessing.ADVANTAGES],
                 actions = train_batch[SampleBatch.ACTIONS],
@@ -291,7 +341,7 @@ def maml_loss(policy, model, dist_class, train_batch):
                 policy_vars = policy.var_list, 
                 obs = train_batch[SampleBatch.CUR_OBS],  
                 num_tasks = policy.config["num_workers"],
-                split = split_ph,
+                split = train_batch["split"],
                 config = policy.config,
                 inner_adaptation_steps=policy.config["inner_adaptation_steps"],
                 entropy_coeff=policy.config["entropy_coeff"],
@@ -319,9 +369,35 @@ def maml_stats(policy, train_batch):
                 train_batch[Postprocessing.VALUE_TARGETS],
                 policy.model.value_function()),
             "kl": policy.loss_obj.mean_kl,
+            "inner_kl": policy.loss_obj.mean_inner_kl,
             "entropy": policy.loss_obj.mean_entropy,
-            "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
         }
+
+
+def postprocess_maml(policy,
+                        sample_batch,
+                        other_agent_batches=None,
+                        episode=None):
+    """Adds the policy logits, VF preds, and advantages to the trajectory."""
+    completed = sample_batch["dones"][-1]
+    if completed:
+        last_r = 0.0
+    else:
+        next_state = []
+        for i in range(policy.num_state_tensors()):
+            next_state.append([sample_batch["state_out_{}".format(i)][-1]])
+        last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
+                               sample_batch[SampleBatch.ACTIONS][-1],
+                               sample_batch[SampleBatch.REWARDS][-1],
+                               *next_state)
+    batch = compute_advantages(
+        sample_batch,
+        last_r,
+        policy.config["gamma"],
+        policy.config["lambda"],
+        use_gae=policy.config["use_gae"])
+
+    return batch
 
 class ValueNetworkMixin:
     def __init__(self, obs_space, action_space, config):
@@ -365,43 +441,19 @@ class KLCoeffMixin:
                 self.kl_coeff_val[i] *= 0.5
             elif kl > 1.5 * self.kl_target:
                 self.kl_coeff_val[i] *= 2.0
-        self.kl_coeff.load(self.kl_coeff_val, session=self.sess)
+        self.kl_coeff.load(self.kl_coeff_val, session=self.get_session())
         return self.kl_coeff_val
 
 
-# Simple SGD Optimizer for Task-specific Works
-class SimpleOptimizer(optimizer.Optimizer):
-    def __init__(self, learning_rate=0.001,use_locking=False, name="SimpleOptimizer"):
-        super(SimpleOptimizer, self).__init__(use_locking, name)
-        self._lr = learning_rate
-        # Tensor versions of the constructor arguments, created in _prepare().
-        self._lr_t = None
-
-    def _prepare(self):
-        self._lr_t = ops.convert_to_tensor(self._lr, name="learning_rate")
-
-    def _apply_dense(self, grad, var):
-        lr_t = math_ops.cast(self._lr_t, var.dtype.base_dtype)
-        var_update = state_ops.assign_sub(var, lr_t*grad) #Update 'ref' by subtracting 'value
-        #Create an op that groups multiple operations.
-        #When this op finishes, all ops in input have finished
-        return control_flow_ops.group(*[var_update])
-
-    def _apply_sparse(self, grad, var):
-        raise NotImplementedError("Sparse gradient updates are not supported.")
-
-
-def maml_optimizer_fn(self, config):
+def maml_optimizer_fn(policy, config):
     if not config["worker_index"]:
         return tf.train.AdamOptimizer(learning_rate=config["lr"])
-    return SimpleOptimizer(learning_rate=config["inner_lr"])
+    return tf.train.GradientDescentOptimizer(learning_rate=config["inner_lr"])
 
 
 def setup_mixins(policy, obs_space, action_space, config):
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
     KLCoeffMixin.__init__(policy, config)
-    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
-                                  config["entropy_coeff_schedule"])
 
 
 MAMLTFPolicy = build_tf_policy(
@@ -411,11 +463,11 @@ MAMLTFPolicy = build_tf_policy(
     stats_fn=maml_stats,
     optimizer_fn = maml_optimizer_fn,
     extra_action_fetches_fn=vf_preds_fetches,
-    postprocess_fn=postprocess_ppo_gae,
+    postprocess_fn=postprocess_maml,
     gradients_fn=clip_gradients,
     before_init=setup_config,
     before_loss_init=setup_mixins,
     mixins=[
-        EntropyCoeffSchedule, KLCoeffMixin,
+        KLCoeffMixin,
         ValueNetworkMixin
     ])

@@ -55,12 +55,13 @@ def collect_metrics(local_worker=None,
 def collect_episodes(local_worker=None,
                      remote_workers=[],
                      to_be_collected=[],
-                     timeout_seconds=180):
+                     timeout_seconds=180,
+                     dataset_id=None):
     """Gathers new episodes metrics tuples from the given evaluators."""
 
     if remote_workers:
         pending = [
-            a.apply.remote(lambda ev: ev.get_metrics()) for a in remote_workers
+            a.apply.remote(lambda ev: ev.get_metrics(dataset_id=dataset_id)) for a in remote_workers
         ] + to_be_collected
         collected, to_be_collected = ray.wait(
             pending, num_returns=len(pending), timeout=timeout_seconds * 1.0)
@@ -73,7 +74,7 @@ def collect_episodes(local_worker=None,
         metric_lists = []
 
     if local_worker:
-        metric_lists.append(local_worker.get_metrics())
+        metric_lists.append(local_worker.get_metrics(dataset_id=dataset_id))
     episodes = []
     for metrics in metric_lists:
         episodes.extend(metrics)

@@ -2,7 +2,6 @@ import numpy as np
 import gym
 from gym.envs.mujoco.mujoco_env import MujocoEnv
 from gym.spaces import Box
-from rand_param_envs.gym.spaces import Box as OldBox
 import inspect
 import sys
 
@@ -228,7 +227,7 @@ class NormalizedEnv(Serializable):
         self._obs_var = d["_obs_var"]
 
     def step(self, action):
-        if isinstance(self._wrapped_env.action_space, Box) or isinstance(self._wrapped_env.action_space, OldBox):
+        if isinstance(self._wrapped_env.action_space, Box):
             # rescale the action
             lb, ub = self._wrapped_env.action_space.low, self._wrapped_env.action_space.high
             scaled_action = lb + (action + self._normalization_scale) * (ub - lb) / (2 * self._normalization_scale)

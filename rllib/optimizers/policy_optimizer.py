@@ -83,7 +83,8 @@ class PolicyOptimizer:
     def collect_metrics(self,
                         timeout_seconds,
                         min_history=100,
-                        selected_workers=None):
+                        selected_workers=None,
+                        dataset_id=None):
         """Returns worker and optimizer stats.
 
         Arguments:
@@ -101,7 +102,8 @@ class PolicyOptimizer:
             self.workers.local_worker(),
             selected_workers or self.workers.remote_workers(),
             self.to_be_collected,
-            timeout_seconds=timeout_seconds)
+            timeout_seconds=timeout_seconds,
+            dataset_id = dataset_id)
         orig_episodes = list(episodes)
         missing = min_history - len(episodes)
         if missing > 0:

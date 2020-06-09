@@ -56,6 +56,7 @@ class MAMLOptimizer(PolicyOptimizer):
 		# Set Tasks for each Worker
 		print("Setting Tasks for each Worker")
 		with self.set_tasks_timer:
+			env_configs = self.workers.local_worker().sample_tasks(self.num_tasks)
 			ray.get([e.set_task.remote(env_configs[i]) for i,e in enumerate(self.workers.remote_workers())])
 
 		# Collecting Data from Pre and Post Adaptations
