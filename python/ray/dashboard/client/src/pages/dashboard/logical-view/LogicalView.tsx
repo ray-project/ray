@@ -65,9 +65,12 @@ const actorMatchesSearch = (
   actor: RayletActorInfo,
   nameFilter: string,
 ): boolean => {
+  // Performs a case insensitive search for the name filter string within the 
+  // actor and all of its nested subactors.
   const actorTitles = getNestedActorTitles(actor);
+  const loweredNameFilter = nameFilter.toLowerCase()
   const match = actorTitles.find(
-    (actorTitle) => actorTitle.search(nameFilter) !== -1,
+    (actorTitle) => actorTitle.toLowerCase().search(loweredNameFilter) !== -1,
   );
   return match !== undefined;
 };
