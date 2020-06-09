@@ -547,12 +547,12 @@ def stop(force, verbose):
             raise ValueError(msg)
         found = []
         for candidate in process_infos:
-            (proc, proc_cmd, proc_args) = candidate
+            proc, proc_cmd, proc_args = candidate
             corpus = (proc_cmd
                       if filter_by_cmd else subprocess.list2cmdline(proc_args))
             if keyword in corpus:
                 found.append(candidate)
-        for (proc, proc_cmd, proc_args) in found:
+        for proc, proc_cmd, proc_args in found:
             if verbose:
                 operation = "Terminating" if force else "Killing"
                 logger.info("%s process %s: %s", operation, proc.pid,
