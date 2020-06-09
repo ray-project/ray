@@ -10,7 +10,6 @@ from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
     ShuffledInput
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.from_config import from_config
 
 tf = try_import_tf()
 
@@ -234,10 +233,6 @@ class WorkerSet:
             tmp = config["multiagent"]["policies"]
             _validate_multiagent_config(tmp, allow_none_graph=True)
             for k, v in tmp.items():
-                if isinstance(v[1], dict):
-                    v[1] = from_config(gym.Space, v[1])
-                if isinstance(v[2], dict):
-                    v[2] = from_config(gym.Space, v[2])
                 if v[0] is None:
                     tmp[k] = (policy, v[1], v[2], v[3])
             policy = tmp
