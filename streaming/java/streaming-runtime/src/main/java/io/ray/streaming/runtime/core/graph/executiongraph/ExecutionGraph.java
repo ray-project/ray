@@ -1,6 +1,6 @@
 package io.ray.streaming.runtime.core.graph.executiongraph;
 
-import io.ray.api.BaseActor;
+import io.ray.api.ActorHandle;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -142,7 +142,7 @@ public class ExecutionGraph implements Serializable {
    *
    * @return actor list
    */
-  public List<BaseActor> getAllActors() {
+  public List<ActorHandle> getAllActors() {
     return getActorsFromJobVertices(getExecutionJobVertexList());
   }
 
@@ -151,7 +151,7 @@ public class ExecutionGraph implements Serializable {
    *
    * @return actor list
    */
-  public List<BaseActor> getSourceActors() {
+  public List<ActorHandle> getSourceActors() {
     List<ExecutionJobVertex> executionJobVertices = getExecutionJobVertexList().stream()
         .filter(ExecutionJobVertex::isSourceVertex)
         .collect(Collectors.toList());
@@ -164,7 +164,7 @@ public class ExecutionGraph implements Serializable {
    *
    * @return actor list
    */
-  public List<BaseActor> getNonSourceActors() {
+  public List<ActorHandle> getNonSourceActors() {
     List<ExecutionJobVertex> executionJobVertices = getExecutionJobVertexList().stream()
         .filter(executionJobVertex -> executionJobVertex.isTransformationVertex()
             || executionJobVertex.isSinkVertex())
@@ -178,7 +178,7 @@ public class ExecutionGraph implements Serializable {
    *
    * @return actor list
    */
-  public List<BaseActor> getSinkActors() {
+  public List<ActorHandle> getSinkActors() {
     List<ExecutionJobVertex> executionJobVertices = getExecutionJobVertexList().stream()
         .filter(ExecutionJobVertex::isSinkVertex)
         .collect(Collectors.toList());
@@ -192,7 +192,7 @@ public class ExecutionGraph implements Serializable {
    * @param executionJobVertices specified job vertices
    * @return actor list
    */
-  public List<BaseActor> getActorsFromJobVertices(
+  public List<ActorHandle> getActorsFromJobVertices(
       List<ExecutionJobVertex> executionJobVertices) {
     return executionJobVertices.stream()
         .map(ExecutionJobVertex::getExecutionVertices)

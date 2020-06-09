@@ -3,6 +3,7 @@ import numpy as np
 import gym
 import logging
 import pickle
+import platform
 import os
 
 import ray
@@ -891,7 +892,7 @@ class RolloutWorker(ParallelIteratorWorker):
     def get_host(self):
         """Returns the hostname of the process running this evaluator."""
 
-        return os.uname()[1]
+        return platform.node()
 
     @DeveloperAPI
     def apply(self, func, *args):

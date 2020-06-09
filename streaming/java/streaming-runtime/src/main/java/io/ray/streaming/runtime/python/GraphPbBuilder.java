@@ -1,7 +1,7 @@
 package io.ray.streaming.runtime.python;
 
 import com.google.protobuf.ByteString;
-import io.ray.runtime.actor.NativeRayActor;
+import io.ray.runtime.actor.NativeActorHandle;
 import io.ray.streaming.api.function.Function;
 import io.ray.streaming.api.partition.Partition;
 import io.ray.streaming.operator.Operator;
@@ -79,7 +79,7 @@ public class GraphPbBuilder {
             serializeOperator(executionVertex.getStreamOperator())));
     executionVertexBuilder.setWorkerActor(
         ByteString.copyFrom(
-            ((NativeRayActor) (executionVertex.getWorkerActor())).toBytes()));
+            ((NativeActorHandle) (executionVertex.getWorkerActor())).toBytes()));
     executionVertexBuilder.setContainerId(executionVertex.getContainerId().toString());
     executionVertexBuilder.setBuildTime(executionVertex.getBuildTime());
     executionVertexBuilder.setLanguage(

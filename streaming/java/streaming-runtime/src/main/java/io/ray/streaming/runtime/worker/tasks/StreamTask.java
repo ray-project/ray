@@ -1,6 +1,6 @@
 package io.ray.streaming.runtime.worker.tasks;
 
-import io.ray.api.BaseActor;
+import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.streaming.api.collector.Collector;
 import io.ray.streaming.api.context.RuntimeContext;
@@ -61,7 +61,7 @@ public abstract class StreamTask implements Runnable {
 
     // producer
     List<ExecutionEdge> outputEdges = executionVertex.getOutputEdges();
-    Map<String, BaseActor> outputActors = new HashMap<>();
+    Map<String, BaseActorHandle> outputActors = new HashMap<>();
 
     for (ExecutionEdge edge : outputEdges) {
       String queueName = ChannelID.genIdStr(
@@ -84,7 +84,7 @@ public abstract class StreamTask implements Runnable {
 
     // consumer
     List<ExecutionEdge> inputEdges = executionVertex.getInputEdges();
-    Map<String, BaseActor> inputActors = new HashMap<>();
+    Map<String, BaseActorHandle> inputActors = new HashMap<>();
     for (ExecutionEdge edge : inputEdges) {
       String queueName = ChannelID.genIdStr(
           edge.getSourceExecutionVertex().getExecutionVertexId(),

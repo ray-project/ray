@@ -1380,15 +1380,14 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
   RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
       name, [this, &actor_id, name, ready, m, cv](
                 Status status, const boost::optional<gcs::ActorTableData> &result) {
-        if (!status.ok()) {
-          RAY_LOG(INFO) << "Failed to look up actor with name: " << name;
-          // Use a NIL actor ID to signal that the actor wasn't found.
-          actor_id = ActorID::Nil();
-        } else {
-          RAY_CHECK(result);
+        if (status.ok() && result) {
           auto actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(*result));
           actor_id = actor_handle->GetActorID();
           AddActorHandle(std::move(actor_handle), /*is_owner_handle=*/false);
+        } else {
+          RAY_LOG(INFO) << "Failed to look up actor with name: " << name;
+          // Use a NIL actor ID to signal that the actor wasn't found.
+          actor_id = ActorID::Nil();
         }
 
         // Notify the main thread that the RPC has finished.
@@ -1409,7 +1408,10 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
   Status status;
   if (actor_id.IsNil()) {
     std::stringstream stream;
-    stream << "Failed to look up actor with name '" << name << "'.";
+    stream
+        << "Failed to look up actor with name '" << name
+        << "'. It is either you look up the named actor you didn't create or the named "
+           "actor hasn't been created because named actor creation is asynchronous.";
     status = Status::NotFound(stream.str());
   } else {
     status = GetActorHandle(actor_id, actor_handle);

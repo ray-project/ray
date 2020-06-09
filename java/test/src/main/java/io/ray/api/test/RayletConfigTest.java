@@ -1,7 +1,7 @@
 package io.ray.api.test;
 
+import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
 import io.ray.api.TestUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -32,7 +32,7 @@ public class RayletConfigTest extends BaseTest {
 
   @Test
   public void testRayletConfigPassThrough() {
-    RayActor<TestActor> actor = Ray.createActor(TestActor::new);
+    ActorHandle<TestActor> actor = Ray.createActor(TestActor::new);
     String configValue = actor.call(TestActor::getConfigValue).get();
     Assert.assertEquals(configValue, RAY_CONFIG_VALUE);
   }

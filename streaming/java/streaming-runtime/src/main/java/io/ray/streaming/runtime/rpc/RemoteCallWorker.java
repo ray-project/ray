@@ -1,10 +1,11 @@
 package io.ray.streaming.runtime.rpc;
 
-import io.ray.api.BaseActor;
 import io.ray.api.RayActor;
 import io.ray.api.RayObject;
 import io.ray.api.RayPyActor;
 import io.ray.api.function.PyActorMethod;
+import io.ray.api.ActorHandle;
+import io.ray.api.ObjectRef;
 import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.worker.JobWorker;
 import io.ray.streaming.runtime.worker.context.JobWorkerContext;
@@ -26,9 +27,9 @@ public class RemoteCallWorker {
    * @param context JobWorker's context
    * @return init result
    */
-  public static RayObject<Boolean> initWorker(BaseActor actor, JobWorkerContext context) {
+  public static ObjectRef<Boolean> initWorker(ActorHandle actor, JobWorkerContext context) {
     LOG.info("Call worker to initiate, actor: {}, context: {}.", actor.getId(), context);
-    RayObject<Boolean> result;
+    ObjectRef<Boolean> result;
 
     // python
     if (actor instanceof RayPyActor) {
@@ -49,9 +50,9 @@ public class RemoteCallWorker {
    * @param actor target JobWorker actor
    * @return start result
    */
-  public static RayObject<Boolean> startWorker(BaseActor actor) {
+  public static ObjectRef<Boolean> startWorker(ActorHandle actor) {
     LOG.info("Call worker to start, actor: {}.", actor.getId());
-    RayObject<Boolean> result = null;
+    ObjectRef<Boolean> result = null;
 
     // python
     if (actor instanceof RayPyActor) {
@@ -71,7 +72,7 @@ public class RemoteCallWorker {
    * @param actor target JobWorker actor
    * @return destroy result
    */
-  public static Boolean shutdownWithoutReconstruction(BaseActor actor) {
+  public static Boolean shutdownWithoutReconstruction(ActorHandle actor) {
     LOG.info("Call worker to shutdown without reconstruction, actor is {}.",
         actor.getId());
     Boolean result = false;

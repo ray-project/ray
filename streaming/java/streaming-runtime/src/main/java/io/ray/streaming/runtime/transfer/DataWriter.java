@@ -1,7 +1,7 @@
 package io.ray.streaming.runtime.transfer;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.BaseActor;
+import io.ray.api.BaseActorHandle;
 import io.ray.streaming.runtime.config.StreamingWorkerConfig;
 import io.ray.streaming.runtime.config.types.TransferChannelType;
 import io.ray.streaming.runtime.util.Platform;
@@ -34,7 +34,7 @@ public class DataWriter {
    * @param workerConfig   configuration
    */
   public DataWriter(List<String> outputChannels,
-                    Map<String, BaseActor> toActors,
+                    Map<String, BaseActorHandle> toActors,
                     StreamingWorkerConfig workerConfig) {
     Preconditions.checkArgument(!outputChannels.isEmpty());
     Preconditions.checkArgument(outputChannels.size() == toActors.size());

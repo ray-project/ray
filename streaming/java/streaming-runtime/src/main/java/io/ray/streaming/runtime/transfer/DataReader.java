@@ -1,7 +1,7 @@
 package io.ray.streaming.runtime.transfer;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.BaseActor;
+import io.ray.api.BaseActorHandle;
 import io.ray.streaming.runtime.config.StreamingWorkerConfig;
 import io.ray.streaming.runtime.config.types.TransferChannelType;
 import io.ray.streaming.runtime.util.Platform;
@@ -30,7 +30,7 @@ public class DataReader {
    * @param workerConfig  configuration
    */
   public DataReader(List<String> inputChannels,
-                    Map<String, BaseActor> fromActors,
+                    Map<String, BaseActorHandle> fromActors,
                     StreamingWorkerConfig workerConfig) {
     Preconditions.checkArgument(inputChannels.size() > 0);
     Preconditions.checkArgument(inputChannels.size() == fromActors.size());
