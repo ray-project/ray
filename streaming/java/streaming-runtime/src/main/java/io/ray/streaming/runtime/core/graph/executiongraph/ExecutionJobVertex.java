@@ -2,7 +2,6 @@ package io.ray.streaming.runtime.core.graph.executiongraph;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
-import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.jobgraph.JobVertex;
