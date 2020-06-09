@@ -30,9 +30,3 @@ What if I'm already doing hyperparameter tuning?
 You might be already using an existing hyperparameter tuning tool such as HyperOpt or Bayesian Optimization.
 
 In this situation, Tune actually allows you to power up your existing workflow. Tune's :ref:`Search Algorithms <tune-search-alg>` integrate with a variety of popular hyperparameter tuning libraries (such as Nevergrad or HyperOpt) and allow you to seamlessly scale up your optimization process -- without sacrificing performance.
-
-Further Information
-~~~~~~~~~~~~~~~~~~~
-
-* Read more about :ref:`the core Tune concepts <tune-60-seconds>`.
-* Check out :ref:`code examples <tune-general-examples>` using Tune.
