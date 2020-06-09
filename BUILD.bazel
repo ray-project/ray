@@ -295,10 +295,10 @@ cc_library(
         "@bazel_tools//src/conditions:windows": PROPAGATED_WINDOWS_DEFINES,
         "//conditions:default": [],
     }),
-    linkopts = PLASMA_LINKOPTS,
     includes = [
         "src",
     ],
+    linkopts = PLASMA_LINKOPTS,
     deps = [
         ":common_fbs",
         ":plasma_fbs",
@@ -394,10 +394,10 @@ cc_library(
         "src/ray/thirdparty/dlmalloc.c",
     ],
     copts = PLASMA_COPTS,
-    linkopts = PLASMA_LINKOPTS,
     includes = [
         "src",
     ],
+    linkopts = PLASMA_LINKOPTS,
     deps = [
         ":ae",
         ":plasma_client",
