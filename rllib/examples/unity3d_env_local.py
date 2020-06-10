@@ -10,7 +10,8 @@ To run this script against a local Unity3D engine:
 2) Open the Unity3D Editor and load an example scene from the following
    ml-agents pip package location:
    `.../ml-agents/Project/Assets/ML-Agents/Examples/`
-   This script supports the `3DBall` and `SoccerStrikersVsGoalie` examples.
+   This script supports the `3DBall`, `3DBallHard`, `SoccerStrikersVsGoalie`,
+    `Tennis`, and `Walker` examples.
    Specify the game you chose on your command line via e.g. `--env 3DBall`.
    Feel free to add more supported examples here.
 
@@ -31,9 +32,11 @@ parser.add_argument(
     "--env",
     type=str,
     default="3DBall",
-    choices=["3DBall", "SoccerStrikersVsGoalie", "Walker"],
-    help="The name of the Env to run in the Unity3D editor: `3DBall|"
-    "SoccerStrikersVsGoalie|Walker` (feel free to add more to this script!)")
+    choices=[
+        "3DBall", "3DBallHard", "SoccerStrikersVsGoalie", "Tennis", "Walker"
+    ],
+    help="The name of the Env to run in the Unity3D editor: `3DBall(Hard)?|"
+    "SoccerStrikersVsGoalie|Tennis|Walker` (feel free to add more and PR!)")
 parser.add_argument(
     "--file-name",
     type=str,

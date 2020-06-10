@@ -196,6 +196,8 @@ class Unity3DEnv(MultiAgentEnv):
         obs_spaces = {
             # 3DBall.
             "3DBall": Box(float("-inf"), float("inf"), (8, )),
+            # 3DBallHard.
+            "3DBallHard": Box(float("-inf"), float("inf"), (45, )),
             # SoccerStrikersVsGoalie.
             "Goalie": Box(float("-inf"), float("inf"), (738, )),
             "Striker": Tuple([
@@ -203,14 +205,17 @@ class Unity3DEnv(MultiAgentEnv):
                 Box(float("-inf"), float("inf"), (63, )),
             ]),
             # Tennis.
-            "Tennis": Box(float("-inf"), float("inf"), (9, 9, 9)),
+            "Tennis": Box(float("-inf"), float("inf"), (27, )),
             # Walker.
             "Walker": Box(float("-inf"), float("inf"), (212, )),
         }
         action_spaces = {
             # 3DBall.
-            "3DBall":
-                Box(float("-inf"), float("inf"), (2,), dtype=np.float32),
+            "3DBall": Box(
+                float("-inf"), float("inf"), (2, ), dtype=np.float32),
+            # 3DBallHard.
+            "3DBallHard": Box(
+                float("-inf"), float("inf"), (2, ), dtype=np.float32),
             # SoccerStrikersVsGoalie.
             "Goalie": MultiDiscrete([3, 3, 3]),
             "Striker": MultiDiscrete([3, 3, 3]),
@@ -223,10 +228,10 @@ class Unity3DEnv(MultiAgentEnv):
         # Policies (Unity: "behaviors") and agent-to-policy mapping fns.
         if game_name == "SoccerStrikersVsGoalie":
             policies = {
-                "Striker": (None, obs_spaces["Striker"],
-                            action_spaces["Striker"], {}),
                 "Goalie": (None, obs_spaces["Goalie"], action_spaces["Goalie"],
                            {}),
+                "Striker": (None, obs_spaces["Striker"],
+                            action_spaces["Striker"], {}),
             }
 
             def policy_mapping_fn(agent_id):
