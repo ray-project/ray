@@ -404,7 +404,8 @@ def open_worker_log(path, worker_pid):
     Returns:
         A file-like object which can be written to.
     """
-    # TODO (Alex): We should eventually be able to replace this with named-pipes.
+    # TODO (Alex): We should eventually be able to replace this with
+    # named-pipes.
     f = open(path, "a", buffering=1)
     # Check to see if we're creating this file. No one else should ever write
     # to this file, so we don't have to worry about TOCTOU.

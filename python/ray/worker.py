@@ -1162,57 +1162,9 @@ def connect(node,
                 and int(redirect_worker_output_val) == 1):
             log_stdout_file, log_stderr_file = (
                 node.new_worker_redirected_log_file(worker.worker_id))
-
-
-            # from ray.utils import open_log
-            # log_stdout_file = open_log(log_stdout_file)
-            # log_stderr_file = open_log(log_stderr_file)
-
-
-
-
-            # Redirect stdout/stderr at the file descriptor level. If we simply
-            # set sys.stdout and sys.stderr, then logging from C++ can fail to
-            # be redirected.
-            # if log_stdout_file is not None:
-            #     os.dup2(log_stdout_file.fileno(), sys.stdout.fileno())
-            # if log_stderr_file is not None:
-            #     os.dup2(log_stderr_file.fileno(), sys.stderr.fileno())
-            # # We also manually set sys.stdout and sys.stderr because that seems
-            # # to have an affect on the output buffering. Without doing this,
-            # # stdout and stderr are heavily buffered resulting in seemingly
-            # # lost logging statements.
-            # if log_stdout_file is not None:
-            #     sys.stdout = log_stdout_file
-            # if log_stderr_file is not None:
-            #     sys.stderr = log_stderr_file
-            # # This should always be the first message to appear in the worker's
-            # # stdout and stderr log files. The string "Ray worker pid:" is
-            # # parsed in the log monitor process.
-            # print("Ray worker pid: {}".format(os.getpid()))
-            # print("Ray worker pid: {}".format(os.getpid()), file=sys.stderr)
-            # sys.stdout.flush()
-            # sys.stderr.flush()
-            # log_stdout_file_name = os.path.abspath(
-            #     (log_stdout_file
-            #      if log_stdout_file is not None else sys.stdout).name)
-            # log_stderr_file_name = os.path.abspath(
-            #     (log_stderr_file
-            #      if log_stderr_file is not None else sys.stderr).name)
-
-
-
-
-
-
-
-
-
-
-
-
             log_stdout_file_name, log_stderr_file_name = \
-                ray._raylet.setup_logging(log_stdout_file, log_stderr_file)
+                ray._raylet.setup_logging(log_stdout_file,
+                                          log_stderr_file)
     elif not LOCAL_MODE:
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
