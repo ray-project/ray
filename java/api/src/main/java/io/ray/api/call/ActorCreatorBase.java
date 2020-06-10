@@ -10,6 +10,11 @@ public class ActorCreatorBase<T extends ActorCreatorBase> {
   private String jvmOptions = null;
   private int maxConcurrency = 1;
 
+  public T setResource(String key, Double value) {
+    this.resources.put(key, value);
+    return self();
+  }
+
   public T setResources(Map<String, Double> resources) {
     this.resources = resources;
     return self();

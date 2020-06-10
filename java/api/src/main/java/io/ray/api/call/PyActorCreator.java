@@ -4,7 +4,7 @@ import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.function.PyActorClass;
 
-public class PyActorCreator extends ActorCreatorBase {
+public class PyActorCreator extends ActorCreatorBase<PyActorCreator> {
   private final PyActorClass pyActorClass;
   private final Object[] args;
 
@@ -14,7 +14,7 @@ public class PyActorCreator extends ActorCreatorBase {
   }
 
   @Override
-  public ActorCreatorBase setJvmOptions(String jvmOptions) {
+  public PyActorCreator setJvmOptions(String jvmOptions) {
     throw new UnsupportedOperationException("Python doesn't support jvm options");
   }
 

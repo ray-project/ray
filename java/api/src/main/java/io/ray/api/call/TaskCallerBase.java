@@ -8,7 +8,7 @@ public class TaskCallerBase<T extends TaskCallerBase<T>> {
   private Map<String, Double> resources = new HashMap<>();
 
   public T setResource(String key, Double value) {
-    this.resources .put(key, value);
+    this.resources.put(key, value);
     return self();
   }
 
