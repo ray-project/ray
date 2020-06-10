@@ -93,9 +93,9 @@ void GcsPlacementGroupScheduler::Schedule(
           auto decision = GetDecision();
           if (status.ok()) {
             decision[pos] = schedule_bundles[pos];
-            for (size_t i = 0; i < reply.resource_mapping_size(); i++) {
+            for (int i = 0; i < reply.resource_mapping_size(); i++) {
               std::string name = std::string(reply.resource_mapping(i).name());
-              for (size_t j = 0; j < reply.resource_mapping(i).resource_ids_size(); j++) {
+              for (int j = 0; j < reply.resource_mapping(i).resource_ids_size(); j++) {
                 int64_t index =
                     int64_t(reply.resource_mapping(i).resource_ids(j).index());
                 double quantity =
