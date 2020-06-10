@@ -82,7 +82,7 @@ void GcsPlacementGroupScheduler::Schedule(
   resource_lease_.resize(bundles.size());
   for (int pos = 0; pos < bundles.size(); pos++) {
     RAY_CHECK(node_to_bundles_when_leasing_[schedule_bundles[pos]]
-                  .emplace(bundles[pos].BundleID())
+                  .emplace(bundles[pos].BundleId())
                   .second);
 
     GetLeaseResourceQueue().push_back(std::make_tuple(
@@ -116,7 +116,7 @@ void GcsPlacementGroupScheduler::Schedule(
             }
             if (lease_success) {
               for (int i = 0; i < bundles.size(); i++) {
-                BundleID bundle_id = bundles[i].BundleID();
+                BundleID bundle_id = bundles[i].BundleId();
                 rpc::ScheduleData Data;
                 Data.set_client_id(decision[i].Binary());
                 RAY_CHECK_OK(gcs_table_storage_->BundleScheduleTable().Put(
@@ -163,7 +163,7 @@ void GcsPlacementGroupScheduler::LeaseResourceFromNode() {
 
     auto node_id = ClientID::FromBinary(node->node_id());
     RAY_LOG(INFO) << "Start leasing resource from node " << node_id << " for bundle "
-                  << bundle.BundleID();
+                  << bundle.BundleId();
 
     rpc::Address remote_address;
     remote_address.set_raylet_id(node->node_id());
@@ -186,7 +186,7 @@ void GcsPlacementGroupScheduler::LeaseResourceFromNode() {
             // If the node is still available, the actor must be still in the leasing map
             // as it is erased from leasing map only when `CancelOnNode` or the
             // `RequestWorkerLeaseReply` is received from the node, so try lease again.
-            auto bundle_iter = iter->second.find(bundle.BundleID());
+            auto bundle_iter = iter->second.find(bundle.BundleId());
             RAY_CHECK(bundle_iter != iter->second.end());
             if (status.ok()) {
               // Remove the actor from the leasing map as the reply is returned from the
@@ -196,7 +196,7 @@ void GcsPlacementGroupScheduler::LeaseResourceFromNode() {
                 node_to_bundles_when_leasing_.erase(iter);
               }
               RAY_LOG(INFO) << "Finished leasing resource from " << node_id
-                            << " for bundle " << bundle.BundleID();
+                            << " for bundle " << bundle.BundleId();
               callback(status, reply);
               // HandleResourceLeasedReply(bundle, reply);
 
@@ -221,7 +221,7 @@ void GcsPlacementGroupScheduler::RetureReourceForNode(
 
   auto node_id = ClientID::FromBinary(node->node_id());
   RAY_LOG(INFO) << "Start returning resource for node " << node_id << " for bundle "
-                << bundle_spec.BundleID();
+                << bundle_spec.BundleId();
 
   rpc::Address remote_address;
   remote_address.set_raylet_id(node->node_id());

@@ -30,7 +30,7 @@ const ResourceSet &BundleSpecification::GetRequiredResources() const {
   return *unit_resource_;
 }
 
-BundleID BundleSpecification::BundleID() const {
+BundleID BundleSpecification::BundleId() const {
   if (message_->bundle_id().empty() /* e.g., empty proto default */) {
     return BundleID::Nil();
   }

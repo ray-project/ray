@@ -1850,7 +1850,7 @@ void NodeManager::HandleRequestResourceLease(
     rpc::RequestResourceLeaseReply *reply, rpc::SendReplyCallback send_reply_callback) {
   // rpc::Bundle bundle_spec;
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "bundle lease request " << bundle_spec.BundleID();
+  RAY_LOG(DEBUG) << "bundle lease request " << bundle_spec.BundleId();
   bundle_spec.OnScheduleInstead(
       [reply, send_reply_callback](const ResourceIdSet &resource_ids) {
         for (const auto &mapping : resource_ids.AvailableResources()) {
@@ -1881,8 +1881,8 @@ void NodeManager::HandleRequestResourceReturn(
     const rpc::RequestResourceReturnRequest &request,
     rpc::RequestResourceReturnReply *reply, rpc::SendReplyCallback send_reply_callback) {
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "bundle return resource request " << bundle_spec.BundleID();
-  auto release_resources_id = BundleResourceIdSet.find(bundle_spec.BundleID());
+  RAY_LOG(DEBUG) << "bundle return resource request " << bundle_spec.BundleId();
+  auto release_resources_id = BundleResourceIdSet.find(bundle_spec.BundleId());
   if (release_resources_id != BundleResourceIdSet.end()) {
     excavated_resources_.Release(release_resources_id->second);
     local_available_resources_.Plus(release_resources_id->second);
@@ -2035,7 +2035,7 @@ void NodeManager::ScheduleBundle(
   // Invoke the scheduling policy.
   auto schedule_success =
       scheduling_policy_.ScheduleBundle(resource_map, self_node_id_, bundle_spec);
-  auto bundle_id = bundle_spec.BundleID();
+  auto bundle_id = bundle_spec.BundleId();
   if (schedule_success) {
     auto acquired_resources =
         local_available_resources_.Acquire(bundle_spec.GetRequiredResources());
@@ -2242,7 +2242,7 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
 }
 
 void NodeManager::LeaseBundle(const BundleSpecification &bundle_spec) {
-  BundleID bundle_id = bundle_spec.BundleID();
+  BundleID bundle_id = bundle_spec.BundleId();
   if (BundleResourceIdSet.find(bundle_id) != BundleResourceIdSet.end()) {
     RAY_LOG(WARNING) << "leased bundle " << bundle_id
                      << " is already mapped and will not be released ";

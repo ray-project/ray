@@ -51,7 +51,7 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
     ComputeResources();
   }
 
-  BundleID BundleID() const;
+  BundleID BundleId() const;
 
   /// Return the resources that are to be acquired by this bundle.
   ///
