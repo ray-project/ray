@@ -30,7 +30,7 @@ public class MaxPressureTest extends RayBenchmarkTest {
   @Override
   public ObjectRef<RemoteResult<Integer>> rayCall(ActorHandle rayActor) {
 
-    return Ray.call(MaxPressureTest::currentTime);
+    return Ray.task(MaxPressureTest::currentTime).remote();
   }
 
   @Override

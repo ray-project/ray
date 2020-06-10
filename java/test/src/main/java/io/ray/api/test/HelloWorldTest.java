@@ -24,9 +24,9 @@ public class HelloWorldTest extends BaseTest {
 
   @Test
   public void testHelloWorld() {
-    ObjectRef<String> hello = Ray.call(HelloWorldTest::hello);
-    ObjectRef<String> world = Ray.call(HelloWorldTest::world);
-    String helloWorld = Ray.call(HelloWorldTest::merge, hello, world).get();
+    ObjectRef<String> hello = Ray.task(HelloWorldTest::hello).remote();
+    ObjectRef<String> world = Ray.task(HelloWorldTest::world).remote();
+    String helloWorld = Ray.task(HelloWorldTest::merge, hello, world).remote().get();
     Assert.assertEquals("hello,world!", helloWorld);
   }
 

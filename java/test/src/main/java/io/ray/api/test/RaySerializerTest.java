@@ -12,8 +12,8 @@ public class RaySerializerTest extends BaseMultiLanguageTest {
 
   @Test
   public void testSerializePyActor() {
-    PyActorHandle pyActor = Ray.createActor(
-        new PyActorClass("test", "RaySerializerTest"));
+    PyActorHandle pyActor = Ray.actor(
+        new PyActorClass("test", "RaySerializerTest")).remote();
     NativeRayObject nativeRayObject = ObjectSerializer.serialize(pyActor);
     PyActorHandle result = (PyActorHandle) ObjectSerializer
         .deserialize(nativeRayObject, null, Object.class);

@@ -36,7 +36,7 @@ public class MicroBenchmarks {
     Ray.init();
     try {
       time(() -> {
-        Ray.call(MicroBenchmarks::simpleFunction);
+        Ray.task(MicroBenchmarks::simpleFunction).remote();
       }, numRepeats, "task submission");
     } finally {
       Ray.shutdown();

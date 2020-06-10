@@ -23,7 +23,7 @@ public class SingleLatencyTest extends RayBenchmarkTest {
 
   @Override
   public ObjectRef<RemoteResult<Integer>> rayCall(ActorHandle rayActor) {
-    return Ray.call(SingleLatencyTest::doFunc);
+    return Ray.task(SingleLatencyTest::doFunc).remote();
   }
 
   @Override

@@ -10,7 +10,7 @@ public class ActorPressTest extends RayBenchmarkTest {
   @Test
   public void singleLatencyTest() {
     int times = 10;
-    ActorHandle<Adder> adder = Ray.createActor(ActorPressTest.Adder::new);
+    ActorHandle<Adder> adder = Ray.actor(ActorPressTest.Adder::new).remote();
     super.singleLatencyTest(times, adder);
   }
 
@@ -18,7 +18,7 @@ public class ActorPressTest extends RayBenchmarkTest {
   public void maxTest() {
     int clientNum = 2;
     int totalNum = 20;
-    ActorHandle<Adder> adder = Ray.createActor(ActorPressTest.Adder::new);
+    ActorHandle<Adder> adder = Ray.actor(ActorPressTest.Adder::new).remote();
     PressureTestParameter pressureTestParameter = new PressureTestParameter();
     pressureTestParameter.setClientNum(clientNum);
     pressureTestParameter.setTotalNum(totalNum);
@@ -32,7 +32,7 @@ public class ActorPressTest extends RayBenchmarkTest {
     int clientNum = 2;
     int totalQps = 2;
     int duration = 3;
-    ActorHandle<Adder> adder = Ray.createActor(ActorPressTest.Adder::new);
+    ActorHandle<Adder> adder = Ray.actor(ActorPressTest.Adder::new).remote();
     PressureTestParameter pressureTestParameter = new PressureTestParameter();
     pressureTestParameter.setClientNum(clientNum);
     pressureTestParameter.setTotalQps(totalQps);
@@ -44,7 +44,7 @@ public class ActorPressTest extends RayBenchmarkTest {
 
   @Override
   public ObjectRef<RemoteResult<Integer>> rayCall(ActorHandle rayActor) {
-    return ((ActorHandle<Adder>) rayActor).call(Adder::add, 10);
+    return ((ActorHandle<Adder>) rayActor).task(Adder::add, 10).remote();
   }
 
   @Override

@@ -32,13 +32,13 @@ public class ActorConcurrentCallTest extends BaseTest {
   public void testConcurrentCall() {
     TestUtils.skipTestUnderSingleProcess();
 
-    ActorCreationOptions op = new ActorCreationOptions.Builder()
-        .setMaxConcurrency(3)
-        .createActorCreationOptions();
-    ActorHandle<ConcurrentActor> actor = Ray.createActor(ConcurrentActor::new, op);
-    ObjectRef<String> obj1 = actor.call(ConcurrentActor::countDown);
-    ObjectRef<String> obj2 = actor.call(ConcurrentActor::countDown);
-    ObjectRef<String> obj3 = actor.call(ConcurrentActor::countDown);
+    ActorHandle<ConcurrentActor> actor =
+        Ray.actor(ConcurrentActor::new)
+            .setMaxConcurrency(3)
+            .remote();
+    ObjectRef<String> obj1 = actor.task(ConcurrentActor::countDown).remote();
+    ObjectRef<String> obj2 = actor.task(ConcurrentActor::countDown).remote();
+    ObjectRef<String> obj3 = actor.task(ConcurrentActor::countDown).remote();
 
     List<Integer> expectedResult = ImmutableList.of(1, 2, 3);
     Assert.assertEquals(obj1.get(), "ok");

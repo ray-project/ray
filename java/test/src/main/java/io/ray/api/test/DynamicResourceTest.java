@@ -25,9 +25,9 @@ public class DynamicResourceTest extends BaseTest {
     // Call a task in advance to warm up the cluster to avoid being too slow to start workers.
     TestUtils.warmUpCluster();
 
-    CallOptions op1 =
-        new CallOptions.Builder().setResources(ImmutableMap.of("A", 10.0)).createCallOptions();
-    ObjectRef<String> obj = Ray.call(DynamicResourceTest::sayHi, op1);
+    ObjectRef<String> obj = Ray.task(DynamicResourceTest::sayHi)
+        .setResource("A", 10.0)
+        .remote();
     WaitResult<String> result = Ray.wait(ImmutableList.of(obj), 1, 1000);
     Assert.assertEquals(result.getReady().size(), 0);
 
