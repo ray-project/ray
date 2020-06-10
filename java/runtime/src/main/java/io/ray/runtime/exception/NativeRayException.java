@@ -173,6 +173,8 @@ public class NativeRayException extends RayException {
         .filter(se -> !se.getClassName().startsWith("com.sun.proxy") &&
             !se.getClassName().startsWith("sun.reflect") &&
             !se.getClassName().startsWith("java.lang.reflect") &&
+            !se.getClassName().startsWith("org.testng") &&
+            !se.getClassName().startsWith("com.intellij") &&
             (se.getClassName().startsWith("io.ray.api.test") ||
                 !se.getClassName().startsWith("io.ray")))
         .toArray(StackTraceElement[]::new);
