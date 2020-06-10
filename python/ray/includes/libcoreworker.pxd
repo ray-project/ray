@@ -31,6 +31,7 @@ from ray.includes.common cimport (
     CWorkerType,
     CLanguage,
     CGcsClientOptions,
+    CPlacementStrategy,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,

@@ -219,7 +219,7 @@ PlacementGroupID PlacementGroupID::GeneratePlacementGroupId(const std::string &p
   return ret;
 }
 
-BundleID BundleID::Of(const PlacementGroupID &placement_group_id, const BundleIDIndexType &index) {
+BundleID BundleID::Of(const PlacementGroupID &placement_group_id, const BundleIDIndexType index) {
   BundleID ret;
   std::memcpy(ret.id_, placement_group_id.Data(), PlacementGroupID::kLength);
   std::memcpy(ret.id_ + PlacementGroupID::kLength, &index, sizeof(index));

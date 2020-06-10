@@ -420,7 +420,7 @@ class BundleID : public BaseID<BundleID> {
   /// \param bundle_id The bundle index in the placement group. 
   ///
   /// \return The random `ActorID`.
-  static BundleID Of(const PlacementGroupID &placement_group_id, const BundleIDIndexType &index);
+  static BundleID Of(const PlacementGroupID &placement_group_id, const BundleIDIndexType index);
 
   MSGPACK_DEFINE(id_);
 
