@@ -60,6 +60,7 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
     default=ray_constants.LOGGER_FORMAT,
     type=str,
     help=ray_constants.LOGGER_FORMAT_HELP)
+@click.version_option()
 def cli(logging_level, logging_format):
     level = logging.getLevelName(logging_level.upper())
     ray.utils.setup_logger(level, logging_format)
