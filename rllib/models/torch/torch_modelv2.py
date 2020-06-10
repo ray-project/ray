@@ -6,7 +6,7 @@ _, nn = try_import_torch()
 
 
 @PublicAPI
-class TorchModelV2(ModelV2, nn.Module):
+class TorchModelV2(ModelV2):
     """Torch version of ModelV2.
 
     Note that this class by itself is not a valid model unless you
@@ -17,10 +17,11 @@ class TorchModelV2(ModelV2, nn.Module):
         """Initialize a TorchModelV2.
 
         Here is an example implementation for a subclass
-        ``MyModelClass(TorchModelV2)``::
+        ``MyModelClass(TorchModelV2, nn.Module)``::
 
             def __init__(self, *args, **kwargs):
                 TorchModelV2.__init__(self, *args, **kwargs)
+                nn.Module.__init__(self)
                 self._hidden_layers = nn.Sequential(...)
                 self._logits = ...
                 self._value_branch = ...
@@ -34,7 +35,6 @@ class TorchModelV2(ModelV2, nn.Module):
             model_config,
             name,
             framework="torch")
-        nn.Module.__init__(self)
 
     @override(ModelV2)
     def variables(self, as_dict=False):

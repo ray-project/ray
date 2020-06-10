@@ -111,13 +111,14 @@ class DeprecatedCustomLossModelV1(Model):
         }
 
 
-class TorchCustomLossModel(TorchModelV2):
+class TorchCustomLossModel(TorchModelV2, nn.Module):
     """PyTorch version of the CustomLossModel above."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name, input_files):
         super().__init__(obs_space, action_space, num_outputs, model_config,
                          name)
+        nn.Module.__init__(self)
 
         self.input_files = input_files
         self.fcnet = TorchFC(

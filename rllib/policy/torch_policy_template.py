@@ -1,6 +1,7 @@
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -119,9 +120,6 @@ def build_torch_policy(name,
                     **self.config["model"].get("custom_model_config", {}))
 
             # Make sure, we passed in a correct Model factory.
-            # NOTE: We have to do the import here due to an obscure sphinx
-            # meta-class error being thrown if imported at top of file.
-            from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
             assert isinstance(self.model, TorchModelV2), \
                 "ERROR: Generated Model must be a TorchModelV2 object!"
 

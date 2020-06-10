@@ -7,7 +7,7 @@ from ray.rllib.utils.framework import try_import_torch, get_activation_fn
 torch, nn = try_import_torch()
 
 
-class DDPGTorchModel(TorchModelV2):
+class DDPGTorchModel(TorchModelV2, nn.Module):
     """Extension of standard TorchModelV2 for DDPG.
 
     Data flow:
@@ -45,8 +45,9 @@ class DDPGTorchModel(TorchModelV2):
         only defines the layers for the output heads. Those layers for
         forward() should be defined in subclasses of DDPGTorchModel.
         """
-        super().__init__(obs_space, action_space,
-                         num_outputs, model_config, name)
+        nn.Module.__init__(self)
+        super(DDPGTorchModel, self).__init__(obs_space, action_space,
+                                             num_outputs, model_config, name)
 
         self.bounded = np.logical_and(action_space.bounded_above,
                                       action_space.bounded_below).any()
