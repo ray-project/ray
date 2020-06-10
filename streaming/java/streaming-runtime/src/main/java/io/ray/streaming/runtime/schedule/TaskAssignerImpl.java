@@ -67,13 +67,14 @@ public class TaskAssignerImpl implements TaskAssigner {
   private BaseActorHandle createWorker(JobVertex jobVertex) {
     switch (jobVertex.getLanguage()) {
       case PYTHON: {
-        PyActorHandle worker = Ray.createActor(
-            new PyActorClass("ray.streaming.runtime.worker", "JobWorker"));
+        PyActorHandle worker = Ray.actor(
+            new PyActorClass("ray.streaming.runtime.worker", "JobWorker"))
+            .remote();
         LOG.info("Created python worker {}", worker);
         return worker;
       }
       case JAVA: {
-        ActorHandle<JobWorker> worker = Ray.createActor(JobWorker::new);
+        ActorHandle<JobWorker> worker = Ray.actor(JobWorker::new).remote();
         LOG.info("Created java worker {}", worker);
         return worker;
       }

@@ -50,7 +50,7 @@ public class JobSchedulerImpl implements JobScheduler {
     if (hasPythonNode) {
       executionGraphPb = new GraphPbBuilder().buildExecutionGraphPb(executionGraph);
     }
-    List<ObjectRef<Object>> waits = new ArrayList<>();
+    List<ObjectRef<Boolean>> waits = new ArrayList<>();
     for (ExecutionNode executionNode : executionNodes) {
       List<ExecutionTask> executionTasks = executionNode.getExecutionTasks();
       for (ExecutionTask executionTask : executionTasks) {
@@ -59,14 +59,14 @@ public class JobSchedulerImpl implements JobScheduler {
         switch (executionNode.getLanguage()) {
           case JAVA:
             ActorHandle<JobWorker> jobWorker = (ActorHandle<JobWorker>) worker;
-            waits.add(jobWorker.call(JobWorker::init,
-                new WorkerContext(taskId, executionGraph, jobConfig)));
+            waits.add(jobWorker.task(JobWorker::init,
+                new WorkerContext(taskId, executionGraph, jobConfig)).remote());
             break;
           case PYTHON:
             byte[] workerContextBytes = buildPythonWorkerContext(
                 taskId, executionGraphPb, jobConfig);
-            waits.add(((PyActorHandle)worker).call(new PyActorMethod("init", Object.class),
-                workerContextBytes));
+            waits.add(((PyActorHandle)worker).task(new PyActorMethod("init", Object.class),
+                workerContextBytes).remote());
             break;
           default:
             throw new UnsupportedOperationException(
