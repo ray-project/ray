@@ -10,6 +10,8 @@ import time
 import urllib
 import urllib.parse
 
+import ray
+import psutil
 import ray.services as services
 from ray.autoscaler.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
@@ -505,10 +507,11 @@ def stop(force, verbose):
     """Stop Ray processes manually on the local machine."""
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
+    is_linux = sys.platform.startswith("linux")
     processes_to_kill = [
         # The first element is the substring to filter.
         # The second element, if True, is to filter ps results by command name
-        # (only the first 15 charactors of the executable name);
+        # (only the first 15 charactors of the executable name on Linux);
         # if False, is to filter ps results by command with all its arguments.
         # See STANDARD FORMAT SPECIFIERS section of
         # http://man7.org/linux/man-pages/man1/ps.1.html
@@ -522,7 +525,7 @@ def stop(force, verbose):
         ["monitor.py", False],
         ["redis-server", False],
         ["default_worker.py", False],  # Python worker.
-        ["ray::", True],  # Python worker.
+        ["ray::", True],  # Python worker. TODO(mehrdadn): Fix for Windows
         ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
         ["log_monitor.py", False],
         ["reporter.py", False],
@@ -530,32 +533,42 @@ def stop(force, verbose):
         ["ray_process_reaper.py", False],
     ]
 
-    for process in processes_to_kill:
-        keyword, filter_by_cmd = process
-        if filter_by_cmd:
-            ps_format = "pid,comm"
-            # According to https://superuser.com/questions/567648/ps-comm-format-always-cuts-the-process-name,  # noqa: E501
-            # comm only prints the first 15 characters of the executable name.
-            if len(keyword) > 15:
-                raise ValueError("The filter string should not be more than" +
-                                 " 15 characters. Actual length: " +
-                                 str(len(keyword)) + ". Filter: " + keyword)
-        else:
-            ps_format = "pid,args"
-
-        debug_operator = "| tee /dev/stderr" if verbose else ""
-
-        command = (
-            "kill -s {} $(ps ax -o {} | grep {} | grep -v grep {} |"
-            "awk '{{ print $1 }}') 2> /dev/null".format(
-                # ^^ This is how you escape braces in python format string.
-                "KILL" if force else "TERM",
-                ps_format,
-                keyword,
-                debug_operator))
-        if verbose:
-            logger.info("Calling '{}'".format(command))
-        subprocess.call([command], shell=True)
+    process_infos = []
+    for proc in psutil.process_iter(["name", "cmdline"]):
+        try:
+            process_infos.append((proc, proc.name(), proc.cmdline()))
+        except psutil.Error:
+            pass
+    for keyword, filter_by_cmd in processes_to_kill:
+        if filter_by_cmd and is_linux and len(keyword) > 15:
+            msg = ("The filter string should not be more than {} "
+                   "characters. Actual length: {}. Filter: {}").format(
+                       15, len(keyword), keyword)
+            raise ValueError(msg)
+        found = []
+        for candidate in process_infos:
+            proc, proc_cmd, proc_args = candidate
+            corpus = (proc_cmd
+                      if filter_by_cmd else subprocess.list2cmdline(proc_args))
+            if keyword in corpus:
+                found.append(candidate)
+        for proc, proc_cmd, proc_args in found:
+            if verbose:
+                operation = "Terminating" if force else "Killing"
+                logger.info("%s process %s: %s", operation, proc.pid,
+                            subprocess.list2cmdline(proc_args))
+            try:
+                if force:
+                    proc.kill()
+                else:
+                    # TODO(mehrdadn): On Windows, this is forceful termination.
+                    # We don't want CTRL_BREAK_EVENT, because that would
+                    # terminate the entire process group. What to do?
+                    proc.terminate()
+            except psutil.NoSuchProcess:
+                pass
+            except (psutil.Error, OSError) as ex:
+                logger.error("Error: %s", ex)
 
 
 @cli.command(hidden=True)

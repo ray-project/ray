@@ -1,9 +1,10 @@
 package io.ray.streaming.runtime.master.scheduler.controller;
 
-import io.ray.api.ActorHandle;
+import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.WaitResult;
+import io.ray.api.function.PyActorClass;
 import io.ray.api.id.ActorId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.streaming.api.Language;
@@ -41,17 +42,22 @@ public class WorkerLifecycleController {
    */
   private boolean createWorker(ExecutionVertex executionVertex) {
     LOG.info("Start to create worker actor for vertex: {} with resource: {}.",
-        executionVertex.getVertexName(), executionVertex.getResources());
+        executionVertex.getExecutionVertexName(), executionVertex.getResource());
 
     Language language = executionVertex.getLanguage();
 
     ActorCreationOptions options = new ActorCreationOptions.Builder()
-        .setResources(executionVertex.getResources())
+        .setResources(executionVertex.getResource())
         .setMaxRestarts(-1)
         .createActorCreationOptions();
 
-    ActorHandle<JobWorker> actor = null;
-    // TODO (datayjz): ray create actor
+    BaseActorHandle actor;
+    if (Language.JAVA == language) {
+      actor = Ray.createActor(JobWorker::new, options);
+    } else {
+      actor = Ray.createActor(
+          new PyActorClass("ray.streaming.runtime.worker", "JobWorker"));
+    }
 
     if (null == actor) {
       LOG.error("Create worker actor failed.");
@@ -61,7 +67,7 @@ public class WorkerLifecycleController {
     executionVertex.setWorkerActor(actor);
 
     LOG.info("Worker actor created, actor: {}, vertex: {}.",
-        executionVertex.getWorkerActorId(), executionVertex.getVertexName());
+        executionVertex.getWorkerActorId(), executionVertex.getExecutionVertexName());
     return true;
   }
 
@@ -139,15 +145,15 @@ public class WorkerLifecycleController {
   }
 
   private boolean destroyWorker(ExecutionVertex executionVertex) {
-    ActorHandle rayActor = executionVertex.getWorkerActor();
+    BaseActorHandle rayActor = executionVertex.getWorkerActor();
     LOG.info("Begin destroying worker[vertex={}, actor={}].",
-        executionVertex.getVertexName(), rayActor.getId());
+        executionVertex.getExecutionVertexName(), rayActor.getId());
 
     boolean destroyResult = RemoteCallWorker.shutdownWithoutReconstruction(rayActor);
 
     if (!destroyResult) {
       LOG.error("Failed to destroy JobWorker[{}]'s actor: {}.",
-          executionVertex.getVertexName(), rayActor);
+          executionVertex.getExecutionVertexName(), rayActor);
       return false;
     }
 

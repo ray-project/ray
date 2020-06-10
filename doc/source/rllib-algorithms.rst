@@ -22,7 +22,7 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 `MARWIL`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
 `PG`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
 `PPO`_, `APPO`_     tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
-`QMIX`_             torch      **Yes**                 No                 **Yes**     `+RNN`_
+`QMIX`_             torch      **Yes** `+parametric`_  No                 **Yes**     `+RNN`_
 `SAC`_              tf + torch **Yes**                 **Yes**            **Yes**
 ------------------- ---------- ----------------------- ------------------ ----------- ---------------------
 `AlphaZero`_        torch      **Yes** `+parametric`_  No                 No

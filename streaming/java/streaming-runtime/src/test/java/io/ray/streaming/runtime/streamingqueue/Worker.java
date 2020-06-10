@@ -4,6 +4,7 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.ActorHandle;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
+import io.ray.streaming.runtime.config.StreamingWorkerConfig;
 import io.ray.streaming.runtime.transfer.ChannelID;
 import io.ray.streaming.runtime.transfer.ChannelCreationParametersBuilder;
 import io.ray.streaming.runtime.transfer.DataMessage;
@@ -52,7 +53,7 @@ class ReaderWorker extends Worker {
 
   private String name = null;
   private List<String> inputQueueList = null;
-  Map<String, BaseActorHandle> fromActors = new HashMap<>();
+  Map<String, BaseActorHandle> inputActors = new HashMap<>();
   private DataReader dataReader = null;
   private long handler = 0;
   private ActorHandle<WriterWorker> peerActor = null;
@@ -87,19 +88,20 @@ class ReaderWorker extends Worker {
     LOGGER.info("java.library.path = {}", System.getProperty("java.library.path"));
 
     for (String queue : this.inputQueueList) {
-      fromActors.put(queue, this.peerActor);
+      inputActors.put(queue, this.peerActor);
       LOGGER.info("ReaderWorker actorId: {}", this.peerActor.getId());
     }
 
     Map<String, String> conf = new HashMap<>();
 
-    conf.put(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL);
+    conf.put(Config.CHANNEL_TYPE, "NATIVE_CHANNEL");
     conf.put(Config.CHANNEL_SIZE, "100000");
     conf.put(Config.STREAMING_JOB_NAME, "integrationTest1");
     ChannelCreationParametersBuilder.setJavaWriterFunctionDesc(
         new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessage", "([B)V"),
         new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessageSync", "([B)[B"));
-    dataReader = new DataReader(inputQueueList, fromActors, conf);
+    StreamingWorkerConfig workerConfig = new StreamingWorkerConfig(conf);
+    dataReader = new DataReader(inputQueueList, inputActors, workerConfig);
 
     // Should not GetBundle in RayCall thread
     Thread readThread = new Thread(Ray.wrapRunnable(new Runnable() {
@@ -171,7 +173,7 @@ class WriterWorker extends Worker {
 
   private String name = null;
   private List<String> outputQueueList = null;
-  Map<String, BaseActorHandle> toActors = new HashMap<>();
+  Map<String, BaseActorHandle> outputActors = new HashMap<>();
   DataWriter dataWriter = null;
   ActorHandle<ReaderWorker> peerActor = null;
   int msgCount = 0;
@@ -203,7 +205,7 @@ class WriterWorker extends Worker {
     LOGGER.info("WriterWorker init:");
 
     for (String queue : this.outputQueueList) {
-      toActors.put(queue, this.peerActor);
+      outputActors.put(queue, this.peerActor);
       LOGGER.info("WriterWorker actorId: {}", this.peerActor.getId());
     }
 
@@ -219,13 +221,14 @@ class WriterWorker extends Worker {
     }
     Map<String, String> conf = new HashMap<>();
 
-    conf.put(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL);
+    conf.put(Config.CHANNEL_TYPE, "NATIVE_CHANNEL");
     conf.put(Config.CHANNEL_SIZE, "100000");
     conf.put(Config.STREAMING_JOB_NAME, "integrationTest1");
     ChannelCreationParametersBuilder.setJavaReaderFunctionDesc(
         new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessage", "([B)V"),
         new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessageSync", "([B)[B"));
-    dataWriter = new DataWriter(this.outputQueueList, this.toActors, conf);
+    StreamingWorkerConfig workerConfig = new StreamingWorkerConfig(conf);
+    dataWriter = new DataWriter(outputQueueList, outputActors, workerConfig);
     Thread writerThread = new Thread(Ray.wrapRunnable(new Runnable() {
       @Override
       public void run() {

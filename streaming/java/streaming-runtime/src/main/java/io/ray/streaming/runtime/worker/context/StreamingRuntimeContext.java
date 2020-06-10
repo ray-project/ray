@@ -2,7 +2,7 @@ package io.ray.streaming.runtime.worker.context;
 
 import com.google.common.base.Preconditions;
 import io.ray.streaming.api.context.RuntimeContext;
-import io.ray.streaming.runtime.core.graph.ExecutionTask;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import io.ray.streaming.state.backend.AbstractKeyStateBackend;
 import io.ray.streaming.state.backend.KeyStateBackend;
 import io.ray.streaming.state.backend.OperatorStateBackend;
@@ -18,7 +18,7 @@ import java.util.Map;
 /**
  * Use Ray to implement RuntimeContext.
  */
-public class RayRuntimeContext implements RuntimeContext {
+public class StreamingRuntimeContext implements RuntimeContext {
   /**
    * Backend for keyed state. This might be empty if we're not on a keyed stream.
    */
@@ -33,11 +33,11 @@ public class RayRuntimeContext implements RuntimeContext {
   private Long checkpointId;
   private Map<String, String> config;
 
-  public RayRuntimeContext(ExecutionTask executionTask, Map<String, String> config,
+  public StreamingRuntimeContext(ExecutionVertex executionVertex, Map<String, String> config,
       int parallelism) {
-    this.taskId = executionTask.getTaskId();
+    this.taskId = executionVertex.getExecutionVertexId();
     this.config = config;
-    this.taskIndex = executionTask.getTaskIndex();
+    this.taskIndex = executionVertex.getExecutionVertexIndex();
     this.parallelism = parallelism;
   }
 
