@@ -11,7 +11,7 @@ from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 
 
-def pbt_function(config, checkpoint_path=None):
+def pbt_function(config, checkpoint=None):
     """Toy PBT problem for benchmarking adaptive learning rate.
 
     The goal is to optimize this trainable's accuracy. The accuracy increases
