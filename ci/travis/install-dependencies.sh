@@ -32,6 +32,8 @@ install_bazel() {
 install_base() {
   case "${OSTYPE}" in
     linux*)
+      # Expired apt key error: https://github.com/bazelbuild/bazel/issues/11470#issuecomment-633205152
+      curl -f -s -L -R https://bazel.build/bazel-release.pub.gpg | sudo apt-key add - || true
       sudo apt-get update -qq
       pkg_install_helper build-essential curl unzip libunwind-dev python3-pip python3-setuptools \
         tmux gdb
@@ -88,8 +90,7 @@ install_miniconda() {
         mkdir -p -- "${miniconda_dir}"
         # We're forced to pass -b for non-interactive mode.
         # Unfortunately it inhibits PATH modifications as a side effect.
-        "${miniconda_target}" -f -b -p "${miniconda_dir}" | grep --line-buffered -v \
-          '^\(reinstalling: \|installing: \|using -f (force) option\|installation finished\.\|$\)'
+        "${WORKSPACE_DIR}"/ci/suppress_output "${miniconda_target}" -f -b -p "${miniconda_dir}"
         conda="${miniconda_dir}/bin/conda"
         ;;
     esac
@@ -113,7 +114,7 @@ install_miniconda() {
     (
       set +x
       echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
-      conda install -q -y python="${PYTHON}"
+      "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
     )
   fi
 

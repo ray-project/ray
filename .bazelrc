@@ -7,6 +7,7 @@ build --enable_platform_specific_config
 build --action_env=PATH
 # For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
 build --compilation_mode=opt
+build --experimental_ui_deduplicate
 # This workaround is needed to prevent Bazel from compiling the same file twice (once PIC and once not).
 build:linux --force_pic
 build:macos --force_pic
@@ -36,8 +37,6 @@ build:iwyu --experimental_action_listener=//:iwyu_cpp
 build:windows --attempt_to_print_relative_paths
 # Save disk space by hardlinking cache hits instead of copying
 build:windows --experimental_repository_cache_hardlinks
-# Avoid duplicate noise in the build output
-build:windows --experimental_ui_deduplicate
 # Clean the environment before building, to make builds more deterministic
 build:windows --incompatible_strict_action_env
 # For colored output (seems necessary on Windows)

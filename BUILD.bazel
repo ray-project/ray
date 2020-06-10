@@ -295,10 +295,8 @@ cc_library(
         "@bazel_tools//src/conditions:windows": PROPAGATED_WINDOWS_DEFINES,
         "//conditions:default": [],
     }),
-    includes = [
-        "src",
-    ],
     linkopts = PLASMA_LINKOPTS,
+    strip_include_prefix = "src",
     deps = [
         ":common_fbs",
         ":plasma_fbs",
@@ -394,10 +392,8 @@ cc_library(
         "src/ray/thirdparty/dlmalloc.c",
     ],
     copts = PLASMA_COPTS,
-    includes = [
-        "src",
-    ],
     linkopts = PLASMA_LINKOPTS,
+    strip_include_prefix = "src",
     deps = [
         ":ae",
         ":plasma_client",
@@ -1277,6 +1273,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":platform_shims",
         ":sha256",
         "@boost//:asio",
         "@com_github_google_glog//:glog",
