@@ -1,5 +1,6 @@
 package io.ray.runtime.exception;
 
+import io.ray.api.exception.RayException;
 import io.ray.api.id.ObjectId;
 import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.runtime.RayRuntimeInternal;
@@ -8,30 +9,81 @@ import io.ray.runtime.generated.Common.ErrorType;
 import io.ray.runtime.generated.Common.Language;
 import io.ray.runtime.serializer.Serializer;
 import io.ray.runtime.util.SystemUtil;
+import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 
+import java.util.Arrays;
 import org.apache.commons.lang3.tuple.Pair;
 
-public class NativeRayException {
+public class NativeRayException extends RayException {
 
   private long nativeHandle;
+
+  /**
+   * Wrapper class for PrintStream and PrintWriter to enable a single implementation of
+   * printStackTrace.
+   */
+  private abstract static class PrintStreamOrWriter {
+
+    /**
+     * Returns the object to be locked when using this StreamOrWriter
+     */
+    abstract Object lock();
+
+    /**
+     * Prints the specified string as a line on this StreamOrWriter
+     */
+    abstract void println(Object o);
+  }
+
+  private static class WrappedPrintStream extends NativeRayException.PrintStreamOrWriter {
+
+    private final PrintStream printStream;
+
+    WrappedPrintStream(PrintStream printStream) {
+      this.printStream = printStream;
+    }
+
+    Object lock() {
+      return printStream;
+    }
+
+    void println(Object o) {
+      printStream.println(o);
+    }
+  }
+
+  private static class WrappedPrintWriter extends NativeRayException.PrintStreamOrWriter {
+
+    private final PrintWriter printWriter;
+
+    WrappedPrintWriter(PrintWriter printWriter) {
+      this.printWriter = printWriter;
+    }
+
+    Object lock() {
+      return printWriter;
+    }
+
+    void println(Object o) {
+      printWriter.println(o);
+    }
+  }
 
   public NativeRayException(RayRuntimeInternal runtime, ErrorType errorType, Throwable e,
       NativeRayException cause) {
     RuntimeContext runtimeContext = runtime.getRuntimeContext();
     WorkerContext workerContext = runtime.getWorkerContext();
-    StackTraceElement[] stackTrace = e.getStackTrace();
+    StackTraceElement[] stackTrace = filterTrace(e);
     String file = stackTrace[0].getFileName();
     int lineNo = stackTrace[0].getLineNumber();
     String function = stackTrace[0].getMethodName();
-    StringWriter errors = new StringWriter();
-    e.printStackTrace(new PrintWriter(errors));
-    String traceBack = errors.toString();
+    String traceBack = traceToString(stackTrace);
     Pair<byte[], Boolean> serialized = Serializer.encode(e);
     this.nativeHandle = nativeCreateRayException(
         errorType.getNumber(),
-        e.getMessage(),
+        cause == null ? e.getMessage() : "Get object failed because of deeper errors.",
         Language.JAVA_VALUE,
         runtimeContext.getCurrentJobId().getBytes(),
         workerContext.getCurrentWorkerId().getBytes(),
@@ -62,26 +114,46 @@ public class NativeRayException {
   }
 
   @Override
+  public void printStackTrace(PrintStream s) {
+    printStackTrace(new NativeRayException.WrappedPrintStream(s));
+  }
+
+  @Override
+  public void printStackTrace(PrintWriter s) {
+    printStackTrace(new NativeRayException.WrappedPrintWriter(s));
+  }
+
+  private void printStackTrace(NativeRayException.PrintStreamOrWriter s) {
+    synchronized (s.lock()) {
+      String stack = traceToString(filterTrace(this));
+      s.println(stack);
+      s.println("Caused by:");
+      s.println(this);
+    }
+  }
+
+  @Override
   public String toString() {
-    String currentException;
-    Throwable e = getJavaException();
-    if (e == null) {
-      currentException = nativeToString(this.nativeHandle);
-    } else {
-      StringWriter errors = new StringWriter();
-      e.printStackTrace(new PrintWriter(errors));
-      currentException = errors.toString();
+    return "\n" + nativeToString(this.nativeHandle);
+  }
+
+  @Override
+  protected void finalize() {
+    destroy();
+  }
+
+  @Override
+  public Throwable getCause() {
+    byte[] serializedCause = nativeCause(this.nativeHandle);
+    if (serializedCause.length > 0) {
+      return fromBytes(serializedCause);
     }
-    byte[] serialized = nativeCause(this.nativeHandle);
-    if (serialized.length > 0) {
-      return currentException + "\nCaused by:\n" + new NativeRayException(serialized).toString();
-    } else {
-      return currentException;
-    }
+    return null;
   }
 
   public void destroy() {
     nativeDestroy(this.nativeHandle);
+    this.nativeHandle = 0;
   }
 
   public Language getLanguage() {
@@ -94,6 +166,29 @@ public class NativeRayException {
       return Serializer.decode(serialized, Throwable.class);
     }
     return null;
+  }
+
+  private StackTraceElement[] filterTrace(Throwable e) {
+    StackTraceElement[] filteredStack = Arrays.stream(e.getStackTrace())
+        .filter(se -> !se.getClassName().startsWith("com.sun.proxy") &&
+            !se.getClassName().startsWith("sun.reflect") &&
+            !se.getClassName().startsWith("java.lang.reflect") &&
+            (se.getClassName().startsWith("io.ray.api.test") ||
+                !se.getClassName().startsWith("io.ray")))
+        .toArray(StackTraceElement[]::new);
+    if (filteredStack.length == 0) {
+      return e.getStackTrace();
+    }
+    return filteredStack;
+  }
+
+  private String traceToString(StackTraceElement[] trace) {
+    StringWriter errors = new StringWriter();
+    PrintWriter s = new PrintWriter(errors);
+    for (StackTraceElement traceElement : trace) {
+      s.println("\tat " + traceElement);
+    }
+    return errors.toString();
   }
 
   private static native long nativeCreateRayException(int errorType, String errorMessage,

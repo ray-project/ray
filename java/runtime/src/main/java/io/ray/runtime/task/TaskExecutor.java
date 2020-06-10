@@ -1,14 +1,15 @@
 package io.ray.runtime.task;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.exception.RayTaskException;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.exception.NativeRayException;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.runtime.functionmanager.RayFunction;
+import io.ray.runtime.generated.Common.ErrorType;
 import io.ray.runtime.generated.Common.TaskType;
 import io.ray.runtime.object.NativeRayObject;
 import io.ray.runtime.object.ObjectSerializer;
@@ -134,8 +135,15 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
         boolean hasReturn = rayFunction != null && rayFunction.hasReturn();
         boolean isCrossLanguage = functionDescriptor.signature.equals("");
         if (hasReturn || isCrossLanguage) {
-          returnObjects.add(ObjectSerializer
-              .serialize(new RayTaskException("Error executing task " + taskId, e)));
+          NativeRayException taskException = null;
+          if (e instanceof NativeRayException) {
+            taskException = new NativeRayException(runtime, ErrorType.TASK_EXECUTION_EXCEPTION, e,
+                (NativeRayException) e);
+          } else {
+            taskException = new NativeRayException(runtime, ErrorType.TASK_EXECUTION_EXCEPTION, e,
+                null);
+          }
+          returnObjects.add(ObjectSerializer.serialize(taskException));
         }
       } else {
         actorContext.actorCreationException = e;

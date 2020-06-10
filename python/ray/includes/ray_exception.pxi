@@ -1,7 +1,8 @@
 from ray.includes.ray_exception cimport CRayException, CErrorType
 from ray.core.generated.common_pb2 import ErrorType
 import os
-from traceback import format_exc
+from fnmatch import fnmatch
+from traceback import format_tb
 import ray
 import ray.cloudpickle as pickle
 import setproctitle
@@ -51,7 +52,10 @@ cdef class RayException(Exception):
             error_message = str(ex) if ex else ""
         if data is None:
             data = pickle.dumps(ex) if ex and isinstance(ex, BaseException) else b""
-        tb = exc_info[2]
+        tb = self._strip_traceback(exc_info[2])
+        if tb is not None:
+            while tb.tb_next is not None:
+                tb = tb.tb_next
         if file is None:
             file = tb.tb_frame.f_code.co_filename if tb else ""
         if lineno is None:
@@ -59,8 +63,7 @@ cdef class RayException(Exception):
         if function is None:
             function = tb.tb_frame.f_code.co_name if tb else ""
         if traceback is None:
-            traceback = ''.join(format_exc()) if tb else ""
-        traceback = self._strip_traceback(traceback)
+            traceback = "".join(format_tb(tb)) if tb else ""
 
         worker = ray.worker.global_worker
         try:
@@ -210,22 +213,32 @@ cdef class RayException(Exception):
             cause_ex.exception = cause
             return cause_ex
 
-    def _strip_traceback(self, traceback):
-        """Strip traceback stack, remove unused lines."""
-        lines = traceback.strip().split("\n")
-        out = []
-        in_worker = False
-        for line in lines:
-            if in_worker:
-                in_worker = False
-            elif "ray/worker.py" in line or "ray/function_manager.py" in line:
-                in_worker = True
+    def _strip_traceback(self, tb):
+        """Strip traceback stack, remove unused traceback."""
+
+        def _is_stripped(tb):
+            filename = tb.tb_frame.f_code.co_filename
+            if fnmatch(filename, "*/ray/tests/*"):
+                return False
+            return any(fnmatch(filename, p) for p in ("*/ray/*.py", "*/ray/*.pyx"))
+                
+        while tb:
+            if _is_stripped(tb):
+                tb = tb.tb_next
             else:
-                out.append(line)
-        return "\n".join(out)
+                tb2 = tb
+                while tb2.tb_next:
+                    if _is_stripped(tb2.tb_next):
+                        tb2.tb_next = tb2.tb_next.tb_next
+                    else:
+                        tb2 = tb2.tb_next
+                break
+
+        return tb
+
 
     def __str__(self):
-        return "Caused by:\n\n" + <str>self.exception.get().ToString()
+        return "\n\n" + <str>self.exception.get().ToString()
 
 
 class RayError(RayException):
@@ -235,7 +248,8 @@ class RayError(RayException):
 
 class RayConnectionError(RayError):
     """Raised when ray is not yet connected but needs to be."""
-    pass
+    def __init__(self, error_message=None):
+        super(RayConnectionError, self).__init__(error_message=error_message)
 
 
 class RayCancellationError(RayError):
@@ -281,18 +295,15 @@ class RayTaskError(RayError):
         if cause_ex:
             cause_cls = type(cause_ex)
 
-        if issubclass(RayTaskError, cause_cls):
-            return self  # already satisfied
+        if issubclass(cause_cls, RayTaskError):
+            cls = cause_cls
+        else:
+            class cls(RayTaskError, cause_cls):
+                pass
+            name = "RayTaskError({})".format(cause_cls.__name__)
+            cls.__name__ = name
+            cls.__qualname__ = name
 
-        if issubclass(cause_cls, RayError):
-            return self  # don't try to wrap ray internal errors
-
-        class cls(RayTaskError, cause_cls):
-            pass
-
-        name = "RayTaskError({})".format(cause_cls.__name__)
-        cls.__name__ = name
-        cls.__qualname__ = name
         cdef RayException current = self
         cdef RayException r = cls.__new__(cls)
         r.exception = current.exception
@@ -340,15 +351,17 @@ class ObjectStoreFullError(RayError):
     because the object store is full even after multiple retries.
     """
 
-    def __init__(self):
+    def __init__(self, error_message=None):
         e = list(sys.exc_info())
-        e[1] = ("The local object store is full of objects that are still in scope"
-                " and cannot be evicted. Try increasing the object store memory "
-                "available with ray.init(object_store_memory=<bytes>). "
-                "You can also try setting an option to fallback to LRU eviction "
-                "when the object store is full by calling "
-                "ray.init(lru_evict=True). See also: "
-                "https://docs.ray.io/en/latest/memory-management.html.")
+        e[1] = error_message + (
+            "\n"
+            "The local object store is full of objects that are still in scope"
+            " and cannot be evicted. Try increasing the object store memory "
+            "available with ray.init(object_store_memory=<bytes>). "
+            "You can also try setting an option to fallback to LRU eviction "
+            "when the object store is full by calling "
+            "ray.init(lru_evict=True). See also: "
+            "https://docs.ray.io/en/latest/memory-management.html.")
         super(ObjectStoreFullError, self).__init__(e, error_type=ErrorType.OBJECT_STORE_FULL);
 
 
@@ -370,16 +383,18 @@ class UnreconstructableError(RayError):
                 "memory available with ray.init(object_store_memory=<bytes>) "
                 "or setting object store limits with "
                 "ray.remote(object_store_memory=<bytes>). See also: {}".format(
-                    self.object_id.hex(),
+                    object_id.hex(),
                     "https://docs.ray.io/en/latest/memory-management.html"))
         super(UnreconstructableError, self).__init__(e, object_id=object_id, error_type=ErrorType.OBJECT_UNRECONSTRUCTABLE)
 
 
 class RayTimeoutError(RayError):
     """Indicates that a call to the worker timed out."""
-    pass
+    def __init__(self, error_message=None):
+        super(RayTimeoutError, self).__init__(error_message=error_message)
 
 
 class PlasmaObjectNotAvailable(RayError):
     """Called when an object was not available within the given timeout."""
-    pass
+    def __init__(self, error_message=None):
+        super(PlasmaObjectNotAvailable, self).__init__(error_message=error_message)

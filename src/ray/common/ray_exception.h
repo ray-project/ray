@@ -157,9 +157,9 @@ class RayException : public MessageWrapper<rpc::RayException> {
     if (!at.empty()) {
       result << " " << at;
     }
-    result << ":";
+    result << ":\n";
     if (!message_->error_message().empty()) {
-      result << "\n\n" << message_->error_message() << "\n";
+      result << "\n" << message_->error_message() << "\n";
     }
     if (!details.empty()) {
       result << "\n" << details;
@@ -168,7 +168,7 @@ class RayException : public MessageWrapper<rpc::RayException> {
       result << "\n" << message_->traceback();
     }
     if (message_->has_cause()) {
-      result << "\n\nCaused by:\n\n" << RayException(message_->cause()).ToString();
+      result << "\nCaused by:\n\n" << RayException(message_->cause()).ToString();
     }
     return result.str();
   }

@@ -6,6 +6,7 @@ import io.ray.api.WaitResult;
 import io.ray.api.exception.RayException;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.context.WorkerContext;
+import io.ray.runtime.exception.NativeRayException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -102,6 +103,8 @@ public abstract class ObjectStore {
         // If the object is a `RayException`, it means that an error occurred during task
         // execution.
         throw (RayException) object;
+      } else if (object instanceof NativeRayException) {
+        throw (NativeRayException) object;
       }
       results.add((T) object);
     }

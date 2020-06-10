@@ -13,6 +13,7 @@ import redis
 import ray
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
+from ray.exceptions import RayTaskError
 from ray.test_utils import (
     relevant_errors,
     wait_for_condition,
@@ -471,6 +472,25 @@ def test_put_error1(ray_start_object_store_memory):
 
     # Make sure we receive the correct error message.
     wait_for_errors(ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR, 1)
+
+
+def test_exception_chain(ray_start_regular):
+    @ray.remote
+    def bar():
+        return 1 / 0
+
+    @ray.remote
+    def foo():
+        return ray.get(bar.remote())
+
+    r = foo.remote()
+    try:
+        ray.get(r)
+    except ZeroDivisionError as ex:
+        assert isinstance(ex, RayTaskError)
+        assert ex.cause is not None
+        assert isinstance(ex.cause.python_exception(), ZeroDivisionError)
+        assert ex.cause.cause is None
 
 
 @pytest.mark.skip("This test does not work yet.")

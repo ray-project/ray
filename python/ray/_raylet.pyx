@@ -470,18 +470,13 @@ cdef execute_task(
         except Exception as error:
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 worker.mark_actor_init_failed(error)
-
-            backtrace = ray.utils.format_error_message(
-                "".join(traceback.format_tb(sys.exc_info()[2])), task_exception=task_exception)
             if isinstance(error, RayException):
                 failure_object = RayTaskError(cause=error,
                                               error_message="Get object failed because of deeper errors.",
                                               function=function_name,
-                                              traceback=backtrace,
                                               proctitle=title)
             else:
                 failure_object = RayTaskError(function=function_name,
-                                              traceback=backtrace,
                                               proctitle=title)
             errors = []
             for _ in range(c_return_ids.size()):
