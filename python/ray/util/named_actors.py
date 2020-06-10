@@ -77,7 +77,7 @@ def _register_actor(name, actor_handle):
         raise ValueError("An actor with name={} already exists".format(name))
 
     # Add the actor to Redis if it does not already exist.
-    _internal_kv_put(actor_name, pickle.dumps(actor_handle))
+    _internal_kv_put(actor_name, pickle.dumps(actor_handle), overwrite=True)
 
 
 def register_actor(name, actor_handle):
