@@ -27,6 +27,11 @@ class TorchModelV2(ModelV2):
                 self._value_branch = ...
         """
 
+        if not isinstance(self, nn.Module):
+            raise ValueError(
+                "Subclasses of TorchModelV2 must also inherit from "
+                "nn.Module, e.g., MyModel(TorchModelV2, nn.Module)")
+
         ModelV2.__init__(
             self,
             obs_space,
