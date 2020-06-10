@@ -108,14 +108,14 @@ void GcsPlacementGroupScheduler::Schedule(
           }
           if (finish_count == schedule_bundles.size()) {
             bool lease_success = true;
-            for (int i = 0; i < finish_count; i++) {
+            for (size_t i = 0; i < finish_count; i++) {
               if (decision[i] == ClientID::Nil()) {
                 lease_success = false;
                 break;
               }
             }
             if (lease_success) {
-              for (int i = 0; i < bundles.size(); i++) {
+              for (size_t i = 0; i < bundles.size(); i++) {
                 BundleID bundle_id = bundles[i].BundleId();
                 rpc::ScheduleData Data;
                 Data.set_client_id(decision[i].Binary());

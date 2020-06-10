@@ -146,16 +146,12 @@ message Bundle {
 message PlacementGroupSpec {
   // ID of the PlacementGroup.
   bytes placement_group_id = 1;
-  // The max number of times this placement group should be recontructed.
-  // If this number is 0 the placement group won't be restarted.
-  // If this number is -1 the placement group will be restarted indefinitely.
-  int64 max_placement_group_restart = 2;
   // The name of the placement group.
-  string name = 3;
+  string name = 2;
 
-  repeated Bundle bundles =  4;
+  repeated Bundle bundles =  3;
 
-  PlacementStrategy strategy = 5;
+  PlacementStrategy strategy = 4;
 }
 
 // Argument in the task.

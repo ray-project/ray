@@ -47,8 +47,6 @@ class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpe
 
   PlacementGroupID PlacementGroupId() const;
 
-  int64_t MaxActorRestarts() const;
-
   std::vector<BundleSpecification> GetBundles() const;
 
   Strategy GetStrategy() const;
@@ -72,10 +70,9 @@ class PlacementGroupSpecBuilder {
   ///
   /// \return Reference to the builder object itself.
   PlacementGroupSpecBuilder &SetPlacementGroupSpec(
-      const PlacementGroupID &placement_group_id, const int64_t restart, std::string name,
+      const PlacementGroupID &placement_group_id, std::string name,
       const std::vector<rpc::Bundle> &bundles, const rpc::PlacementStrategy strategy) {
     message_->set_placement_group_id(placement_group_id.Binary());
-    message_->set_max_placement_group_restart(restart);
     message_->set_name(name);
     message_->set_strategy(strategy);
     for (auto bundle : bundles) {

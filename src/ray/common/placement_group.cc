@@ -29,10 +29,6 @@ PlacementGroupID PlacementGroupSpecification::PlacementGroupId() const {
   }
 }
 
-int64_t PlacementGroupSpecification::MaxActorRestarts() const {
-  return int64_t(message_->max_placement_group_restart());
-}
-
 std::vector<BundleSpecification> PlacementGroupSpecification::GetBundles() const {
   return bundles;
 }

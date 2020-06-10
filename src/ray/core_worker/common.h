@@ -164,14 +164,10 @@ using Bundle = rpc::Bundle;
 
 struct PlacementGroupCreationOptions {
   PlacementGroupCreationOptions() {}
-  PlacementGroupCreationOptions(int64_t max_restarts, const std::string &name,
+  PlacementGroupCreationOptions(const std::string &name,
                                 PlacementStrategy strategy,
                                 const std::vector<Bundle> &bundles)
-      : max_restarts(max_restarts), name(name), strategy(strategy), bundles(bundles) {}
-  /// Maximum number of times that the placement group should be restarted if it alloc
-  /// failed unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
-  /// placement group won't be restarted.
-  const int64_t max_restarts = 0;
+      :  name(name), strategy(strategy), bundles(bundles) {}
 
   const PlacementStrategy strategy = rpc::PACK;
 

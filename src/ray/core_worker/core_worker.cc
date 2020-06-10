@@ -1171,7 +1171,7 @@ Status CoreWorker::CreatePlacementGroup(
   const PlacementGroupID placement_group_id = PlacementGroupID :: FromRandom();
   PlacementGroupSpecBuilder builder;
   builder.SetPlacementGroupSpec(
-      placement_group_id, placement_group_creation_options.max_restarts,
+      placement_group_id,
       placement_group_creation_options.name, placement_group_creation_options.bundles,
       placement_group_creation_options.strategy);
   PlacementGroupSpecification placement_group_spec = builder.Build();

@@ -201,7 +201,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   std::vector<ClientID> decision_;
 
   /// The count stores how many lease resource from node success;
-  int64_t finish_count = 0;
+  uint64_t finish_count = 0;
 
   /// Store the resource lease position
   // std::vector<std::vector<ResourceMapEntry>>resource_lease_;

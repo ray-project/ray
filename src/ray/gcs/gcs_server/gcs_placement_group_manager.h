@@ -49,8 +49,6 @@ class GcsPlacementGroup {
     const auto &placement_group_spec = request.placement_group_spec();
     placement_group_table_data_.set_placement_group_id(
         placement_group_spec.placement_group_id());
-    placement_group_table_data_.set_max_placement_group_restart(
-        placement_group_spec.max_placement_group_restart());
     placement_group_table_data_.set_num_restarts(0);
 
     placement_group_table_data_.set_state(rpc::PlacementGroupTableData::PENDING);
