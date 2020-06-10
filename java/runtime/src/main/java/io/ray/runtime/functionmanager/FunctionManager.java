@@ -1,7 +1,7 @@
 package io.ray.runtime.functionmanager;
 
 import com.google.common.base.Strings;
-import io.ray.api.function.RayJavaFunc;
+import io.ray.api.function.RayFunc;
 import io.ray.api.id.JobId;
 import io.ray.runtime.util.LambdaUtils;
 import java.io.File;
@@ -46,7 +46,7 @@ public class FunctionManager {
    */
   // If the cache is not thread local, we'll need a lock to protect it,
   // which means competition is highly possible.
-  private static final ThreadLocal<WeakHashMap<Class<? extends RayJavaFunc>, JavaFunctionDescriptor>>
+  private static final ThreadLocal<WeakHashMap<Class<? extends RayFunc>, JavaFunctionDescriptor>>
       RAY_FUNC_CACHE = ThreadLocal.withInitial(WeakHashMap::new);
 
   /**
@@ -76,7 +76,7 @@ public class FunctionManager {
    * @param func  The lambda.
    * @return A RayFunction object.
    */
-  public RayFunction getFunction(JobId jobId, RayJavaFunc func) {
+  public RayFunction getFunction(JobId jobId, RayFunc func) {
     JavaFunctionDescriptor functionDescriptor = RAY_FUNC_CACHE.get().get(func.getClass());
     if (functionDescriptor == null) {
       // It's OK to not lock here, because it's OK to have multiple JavaFunctionDescriptor instances

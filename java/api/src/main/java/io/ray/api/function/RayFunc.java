@@ -1,10 +1,9 @@
 package io.ray.api.function;
 
-/**
- * Interface of all Ray remote functions.
- *
- * @param <R> Type of function return value
- */
-public interface RayFunc<R> extends RayJavaFunc {
+import java.io.Serializable;
 
+/**
+ * Base interface of all Ray remote java functions.
+ */
+public interface RayFunc extends Serializable {
 }
