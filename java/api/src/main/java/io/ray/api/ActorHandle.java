@@ -1,5 +1,7 @@
 package io.ray.api;
 
+import io.ray.api.call.ActorCall;
+
 /**
  * A handle to a Java actor. <p>
  *

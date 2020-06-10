@@ -1,5 +1,7 @@
 package io.ray.api;
 
+import io.ray.api.call.PyActorCall;
+
 /**
  * Handle of a Python actor.
  */
