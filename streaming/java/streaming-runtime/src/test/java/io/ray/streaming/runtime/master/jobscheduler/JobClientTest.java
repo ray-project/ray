@@ -2,7 +2,7 @@ package io.ray.streaming.runtime.master.jobscheduler;
 
 import org.testng.annotations.Test;
 
-public class JobSchedulerTest {
+public class JobClientTest {
 
   @Test
   public void testSchedule() {
