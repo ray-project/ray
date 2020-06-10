@@ -35,8 +35,8 @@ def pbt_function(config, checkpoint=None):
     lr = config["lr"]
     accuracy = 0.0  # end = 1000
     start = 0
-    if checkpoint_path:
-        with open(checkpoint_path) as f:
+    if checkpoint:
+        with open(checkpoint) as f:
             state = json.loads(f.read())
             accuracy = state["acc"]
             start = state["step"]
@@ -93,7 +93,7 @@ if __name__ == "__main__":
         time_attr="training_iteration",
         metric="mean_accuracy",
         mode="max",
-        perturbation_interval=20,
+        perturbation_interval=4,
         hyperparam_mutations={
             # distribution for resampling
             "lr": lambda: random.uniform(0.0001, 0.02),
@@ -107,7 +107,7 @@ if __name__ == "__main__":
         scheduler=pbt,
         verbose=False,
         stop={
-            "training_iteration": 200,
+            "training_iteration": 30,
         },
         num_samples=8,
         fail_fast=True,
