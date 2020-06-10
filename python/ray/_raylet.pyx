@@ -503,7 +503,8 @@ cdef execute_task(
                 task_exception = True
                 try:
                     with ray.worker._changeproctitle(title, next_title):
-                        redirect_output = worker_stdout_path and worker_stderr_path
+                        redirect_output = (worker_stdout_path and
+                                           worker_stderr_path)
                         if redirect_output:
                             job_stdout_path, job_stderr_path = \
                                 worker.node.get_job_redirected_log_file(
