@@ -399,8 +399,8 @@ class ModelCatalog:
                 default_model or ModelCatalog._get_v2_model_class(
                     obs_space, model_config, framework=framework)
             if model_config.get("use_lstm"):
-                from ray.rllib.models.torch.recurrent_net import LSTMWrapper as \
-                    TorchLSTMWrapper
+                from ray.rllib.models.torch.recurrent_net import LSTMWrapper \
+                    as TorchLSTMWrapper
                 wrapped_cls = v2_class
                 forward = wrapped_cls.forward
                 v2_class = ModelCatalog._wrap_if_needed(

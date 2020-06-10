@@ -102,8 +102,7 @@ class LSTMWrapper(RecurrentNetwork):
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
 
-        super().__init__(obs_space, action_space, None,
-                         model_config, name)
+        super().__init__(obs_space, action_space, None, model_config, name)
 
         self.cell_size = model_config["lstm_cell_size"]
         self.lstm = nn.LSTM(self.num_outputs, self.cell_size, batch_first=True)
