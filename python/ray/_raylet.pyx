@@ -215,7 +215,6 @@ def setup_logging(stdout_name, stderr_name):
         flush_out()
         flush_err()
 
-
     stdout_fileno = stdout_fileno()
     stderr_fileno = stderr_fileno()
 
