@@ -1,5 +1,5 @@
 import logging
-import os
+import platform
 import ray
 from collections import deque
 
@@ -73,7 +73,7 @@ def drop_colocated(actors):
 
 
 def split_colocated(actors):
-    localhost = os.uname()[1]
+    localhost = platform.node()
     hosts = ray.get([a.get_host.remote() for a in actors])
     local = []
     non_local = []

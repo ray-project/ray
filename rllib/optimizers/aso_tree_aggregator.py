@@ -2,7 +2,7 @@
 
 import collections
 import logging
-import os
+import platform
 import time
 
 import ray
@@ -172,4 +172,4 @@ class AggregationWorker(AggregationWorkerBase):
         return result
 
     def get_host(self):
-        return os.uname()[1]
+        return platform.node()

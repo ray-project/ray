@@ -30,9 +30,9 @@ def batch_adder_v0(flask_requests: List):
 
 # __doc_deploy_begin__
 serve.init()
-serve.create_endpoint("adder", "/adder", methods=["GET"])
 serve.create_backend("adder:v0", batch_adder_v0, config={"max_batch_size": 4})
-serve.set_traffic("adder", {"adder:v0": 1})
+serve.create_endpoint(
+    "adder", backend="adder:v0", route="/adder", methods=["GET"])
 # __doc_deploy_end__
 
 

@@ -1,5 +1,5 @@
 import logging
-import os
+import platform
 from typing import List
 
 import ray
@@ -58,7 +58,7 @@ class Aggregator(ParallelIteratorWorker):
         super().__init__(generator, repeat=False)
 
     def get_host(self):
-        return os.uname()[1]
+        return platform.node()
 
     def set_weights(self, weights, global_vars):
         self.weights = weights

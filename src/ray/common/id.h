@@ -25,7 +25,6 @@
 #include <random>
 #include <string>
 
-#include "plasma/common.h"
 #include "ray/common/constants.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
@@ -273,16 +272,6 @@ class ObjectID : public BaseID<ObjectID> {
   static uint64_t MaxObjectIndex() { return kMaxObjectIndex; }
 
   static size_t Size() { return kLength; }
-
-  /// Generate ObjectID by the given binary string of a plasma id.
-  ///
-  /// \param from The binary string of the given plasma id.
-  /// \return The ObjectID converted from a binary string of the plasma id.
-  static ObjectID FromPlasmaIdBinary(const std::string &from);
-
-  plasma::ObjectID ToPlasmaId() const;
-
-  ObjectID(const plasma::UniqueID &from);
 
   /// Get the index of this object in the task that created it.
   ///

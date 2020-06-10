@@ -1,8 +1,8 @@
 package io.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
+import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.RayObject;
 import io.ray.api.TestUtils;
 import io.ray.api.WaitResult;
 import java.util.ArrayList;
@@ -29,13 +29,13 @@ public class WaitTest extends BaseTest {
     // Call a task in advance to warm up the cluster to avoid being too slow to start workers.
     TestUtils.warmUpCluster();
 
-    RayObject<String> obj1 = Ray.call(WaitTest::hi);
-    RayObject<String> obj2 = Ray.call(WaitTest::delayedHi);
+    ObjectRef<String> obj1 = Ray.call(WaitTest::hi);
+    ObjectRef<String> obj2 = Ray.call(WaitTest::delayedHi);
 
-    List<RayObject<String>> waitList = ImmutableList.of(obj1, obj2);
+    List<ObjectRef<String>> waitList = ImmutableList.of(obj1, obj2);
     WaitResult<String> waitResult = Ray.wait(waitList, 2, 2 * 1000);
 
-    List<RayObject<String>> readyList = waitResult.getReady();
+    List<ObjectRef<String>> readyList = waitResult.getReady();
 
     Assert.assertEquals(1, waitResult.getReady().size());
     Assert.assertEquals(1, waitResult.getUnready().size());
@@ -54,7 +54,7 @@ public class WaitTest extends BaseTest {
 
   @Test
   public void testWaitInWorker() {
-    RayObject<Object> res = Ray.call(WaitTest::waitInWorker);
+    ObjectRef<Object> res = Ray.call(WaitTest::waitInWorker);
     res.get();
   }
 

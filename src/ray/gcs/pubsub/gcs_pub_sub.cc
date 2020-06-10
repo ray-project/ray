@@ -44,52 +44,120 @@ Status GcsPubSub::SubscribeAll(const std::string &channel, const Callback &subsc
   return SubscribeInternal(channel, subscribe, done);
 }
 
-Status GcsPubSub::Unsubscribe(const std::string &channel, const std::string &id) {
-  std::string pattern = GenChannelPattern(channel, id);
-  {
-    absl::MutexLock lock(&mutex_);
-    auto it = subscribe_callback_index_.find(pattern);
-    RAY_CHECK(it != subscribe_callback_index_.end());
-    unsubscribe_callback_index_[pattern] = it->second;
-    subscribe_callback_index_.erase(it);
-  }
-  return redis_client_->GetPrimaryContext()->PUnsubscribeAsync(pattern);
+Status GcsPubSub::Unsubscribe(const std::string &channel_name, const std::string &id) {
+  std::string pattern = GenChannelPattern(channel_name, id);
+
+  absl::MutexLock lock(&mutex_);
+  // Add the UNSUBSCRIBE command to the queue.
+  auto channel = channels_.find(pattern);
+  RAY_CHECK(channel != channels_.end());
+  channel->second.command_queue.push_back(Command());
+
+  // Process the first command on the queue, if possible.
+  return ExecuteCommandIfPossible(channel->first, channel->second);
 }
 
-Status GcsPubSub::SubscribeInternal(const std::string &channel, const Callback &subscribe,
-                                    const StatusCallback &done,
+Status GcsPubSub::SubscribeInternal(const std::string &channel_name,
+                                    const Callback &subscribe, const StatusCallback &done,
                                     const boost::optional<std::string> &id) {
-  std::string pattern = GenChannelPattern(channel, id);
-  auto callback = [this, pattern, done, subscribe](std::shared_ptr<CallbackReply> reply) {
-    if (!reply->IsNil()) {
+  std::string pattern = GenChannelPattern(channel_name, id);
+
+  absl::MutexLock lock(&mutex_);
+  auto channel = channels_.find(pattern);
+  if (channel == channels_.end()) {
+    // There were no pending commands for this channel and we were not already
+    // subscribed.
+    channel = channels_.emplace(pattern, Channel()).first;
+  }
+
+  // Add the SUBSCRIBE command to the queue.
+  channel->second.command_queue.push_back(Command(subscribe, done));
+
+  // Process the first command on the queue, if possible.
+  return ExecuteCommandIfPossible(channel->first, channel->second);
+}
+
+Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
+                                           GcsPubSub::Channel &channel) {
+  // Process the first command on the queue, if possible.
+  Status status;
+  auto &command = channel.command_queue.front();
+  if (command.is_subscribe && channel.callback_index == -1) {
+    // The next command is SUBSCRIBE and we are currently unsubscribed, so we
+    // can execute the command.
+    int64_t callback_index =
+        ray::gcs::RedisCallbackManager::instance().AllocateCallbackIndex();
+    const auto &command_done_callback = command.done_callback;
+    const auto &command_subscribe_callback = command.subscribe_callback;
+    auto callback = [this, channel_key, command_done_callback, command_subscribe_callback,
+                     callback_index](std::shared_ptr<CallbackReply> reply) {
+      if (reply->IsNil()) {
+        return;
+      }
       if (reply->IsUnsubscribeCallback()) {
+        // Unset the callback index.
         absl::MutexLock lock(&mutex_);
-        ray::gcs::RedisCallbackManager::instance().remove(
-            unsubscribe_callback_index_[pattern]);
-        unsubscribe_callback_index_.erase(pattern);
+        auto channel = channels_.find(channel_key);
+        RAY_CHECK(channel != channels_.end());
+        ray::gcs::RedisCallbackManager::instance().RemoveCallback(
+            channel->second.callback_index);
+        channel->second.callback_index = -1;
+        channel->second.pending_reply = false;
+
+        if (channel->second.command_queue.empty()) {
+          // We are unsubscribed and there are no more commands to process.
+          // Delete the channel.
+          channels_.erase(channel);
+        } else {
+          // Process the next item in the queue.
+          RAY_CHECK(channel->second.command_queue.front().is_subscribe);
+          RAY_CHECK_OK(ExecuteCommandIfPossible(channel_key, channel->second));
+        }
       } else if (reply->IsSubscribeCallback()) {
-        if (done) {
-          done(Status::OK());
+        {
+          // Set the callback index.
+          absl::MutexLock lock(&mutex_);
+          auto channel = channels_.find(channel_key);
+          RAY_CHECK(channel != channels_.end());
+          channel->second.callback_index = callback_index;
+          channel->second.pending_reply = false;
+          // Process the next item in the queue, if any.
+          if (!channel->second.command_queue.empty()) {
+            RAY_CHECK(!channel->second.command_queue.front().is_subscribe);
+            RAY_CHECK_OK(ExecuteCommandIfPossible(channel_key, channel->second));
+          }
+        }
+
+        if (command_done_callback) {
+          command_done_callback(Status::OK());
         }
       } else {
         const auto reply_data = reply->ReadAsPubsubData();
         if (!reply_data.empty()) {
           rpc::PubSubMessage message;
           message.ParseFromString(reply_data);
-          subscribe(message.id(), message.data());
+          command_subscribe_callback(message.id(), message.data());
         }
       }
-    }
-  };
-
-  int64_t out_callback_index;
-  auto status = redis_client_->GetPrimaryContext()->PSubscribeAsync(pattern, callback,
-                                                                    &out_callback_index);
-  if (id) {
-    absl::MutexLock lock(&mutex_);
-    // If the same pattern has been subscribed more than once, the last subscription takes
-    // effect.
-    subscribe_callback_index_[pattern] = out_callback_index;
+    };
+    status = redis_client_->GetPrimaryContext()->PSubscribeAsync(channel_key, callback,
+                                                                 callback_index);
+    channel.pending_reply = true;
+    channel.command_queue.pop_front();
+  } else if (!command.is_subscribe && channel.callback_index != -1) {
+    // The next command is UNSUBSCRIBE and we are currently subscribed, so we
+    // can execute the command. The reply for will be received through the
+    // SUBSCRIBE command's callback.
+    status = redis_client_->GetPrimaryContext()->PUnsubscribeAsync(channel_key);
+    channel.pending_reply = true;
+    channel.command_queue.pop_front();
+  } else if (!channel.pending_reply) {
+    // There is no in-flight command, but the next command to execute is not
+    // runnable. The caller must have sent a command out-of-order.
+    // TODO(swang): This can cause a fatal error if the GCS server restarts and
+    // the client attempts to subscribe again.
+    RAY_LOG(FATAL) << "Caller attempted a duplicate subscribe or unsubscribe to channel "
+                   << channel_key;
   }
   return status;
 }

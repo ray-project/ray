@@ -42,10 +42,9 @@ def echo(_):
     return ["hi {}".format(i) for i in range(serve.context.batch_size)]
 
 
-serve.create_endpoint("echo", "/echo")
 config = {"num_replicas": 30, "max_batch_size": 16}
 serve.create_backend("echo:v1", echo, config=config)
-serve.set_traffic("echo", {"echo:v1": 1})
+serve.create_endpoint("echo", backend="echo:v1", route="/echo")
 
 print("Warming up")
 for _ in range(5):

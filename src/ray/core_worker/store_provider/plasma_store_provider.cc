@@ -92,7 +92,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
     std::shared_ptr<arrow::Buffer> arrow_buffer;
     {
       std::lock_guard<std::mutex> guard(store_client_mutex_);
-      plasma_status = store_client_.Create(object_id.ToPlasmaId(), data_size,
+      plasma_status = store_client_.Create(object_id, data_size,
                                            metadata ? metadata->Data() : nullptr,
                                            metadata ? metadata->Size() : 0, &arrow_buffer,
                                            /*device_num=*/0, evict_if_full);
@@ -136,19 +136,17 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
 }
 
 Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
-  auto plasma_id = object_id.ToPlasmaId();
   {
     std::lock_guard<std::mutex> guard(store_client_mutex_);
-    RAY_ARROW_RETURN_NOT_OK(store_client_.Seal(plasma_id));
+    RAY_ARROW_RETURN_NOT_OK(store_client_.Seal(object_id));
   }
   return Status::OK();
 }
 
 Status CoreWorkerPlasmaStoreProvider::Release(const ObjectID &object_id) {
-  auto plasma_id = object_id.ToPlasmaId();
   {
     std::lock_guard<std::mutex> guard(store_client_mutex_);
-    RAY_ARROW_RETURN_NOT_OK(store_client_.Release(plasma_id));
+    RAY_ARROW_RETURN_NOT_OK(store_client_.Release(object_id));
   }
   return Status::OK();
 }
@@ -161,16 +159,10 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
   RAY_RETURN_NOT_OK(raylet_client_->FetchOrReconstruct(
       batch_ids, fetch_only, /*mark_worker_blocked*/ !in_direct_call, task_id));
 
-  std::vector<plasma::ObjectID> plasma_batch_ids;
-  plasma_batch_ids.reserve(batch_ids.size());
-  for (size_t i = 0; i < batch_ids.size(); i++) {
-    plasma_batch_ids.push_back(batch_ids[i].ToPlasmaId());
-  }
   std::vector<plasma::ObjectBuffer> plasma_results;
   {
     std::lock_guard<std::mutex> guard(store_client_mutex_);
-    RAY_ARROW_RETURN_NOT_OK(
-        store_client_.Get(plasma_batch_ids, timeout_ms, &plasma_results));
+    RAY_ARROW_RETURN_NOT_OK(store_client_.Get(batch_ids, timeout_ms, &plasma_results));
   }
 
   // Add successfully retrieved objects to the result map and remove them from
@@ -319,7 +311,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
                                                bool *has_object) {
   std::lock_guard<std::mutex> guard(store_client_mutex_);
-  RAY_ARROW_RETURN_NOT_OK(store_client_.Contains(object_id.ToPlasmaId(), has_object));
+  RAY_ARROW_RETURN_NOT_OK(store_client_.Contains(object_id, has_object));
   return Status::OK();
 }
 
