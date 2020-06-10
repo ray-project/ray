@@ -104,10 +104,10 @@ class LSTMWrapper(RecurrentNetwork):
 
         super().__init__(obs_space, action_space, None, model_config, name)
 
+        self.num_outputs = num_outputs
+
         self.cell_size = model_config["lstm_cell_size"]
         self.lstm = nn.LSTM(self.num_outputs, self.cell_size, batch_first=True)
-
-        self.num_outputs = num_outputs
 
         # Postprocess LSTM output with another hidden layer and compute values.
         self._logits_branch = SlimFC(
