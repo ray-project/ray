@@ -170,9 +170,9 @@ public class RayCallGenerator extends BaseGenerator {
     // 2) Construct the `returnType` part.
     String returnType;
     if (forActorCreation) {
-      returnType = "RayActor<A>";
+      returnType = "ActorHandle<A>";
     } else {
-      returnType = hasReturn ? "RayObject<R>" : "void";
+      returnType = hasReturn ? "ObjectRef<R>" : "void";
     }
 
     // 3) Construct the `argsDeclaration` part.
@@ -222,7 +222,7 @@ public class RayCallGenerator extends BaseGenerator {
       // 5) Construct the third line.
       String callFuncArgs = "";
       if (forActor) {
-        callFuncArgs += "(RayActor) this, ";
+        callFuncArgs += "(ActorHandle) this, ";
       }
       callFuncArgs += "f, args, ";
       callFuncArgs += forActor ? "" : hasOptionsParam ? "options, " : "null, ";
@@ -297,7 +297,7 @@ public class RayCallGenerator extends BaseGenerator {
     }
 
     String genericType = forActorCreation ? "" : " <R>";
-    String returnType = !forActorCreation ? "RayObject<R>" : "RayPyActor";
+    String returnType = !forActorCreation ? "ObjectRef<R>" : "PyActorHandle";
     String funcName = forActorCreation ? "createActor" : "call";
     String internalCallFunc = forActorCreation ? "createActor" :
         forActor ? "callActor" : "call";
@@ -310,7 +310,7 @@ public class RayCallGenerator extends BaseGenerator {
     // Method body.
     newLine(2, String.format("Object[] args = new Object[]{%s};", argList));
     if (forActor) {
-      newLine(2, String.format("return Ray.internal().%s((RayPyActor)this, %s%s);",
+      newLine(2, String.format("return Ray.internal().%s((PyActorHandle)this, %s%s);",
           internalCallFunc, funcArgs, optionsArg));
     } else {
       newLine(2, String.format("return Ray.internal().%s(%s%s);",
@@ -333,7 +333,7 @@ public class RayCallGenerator extends BaseGenerator {
     }
     String nextParameter = String.format("T%d t%d, ", pos, pos);
     dfs(pos + 1, numParams, cur + nextParameter, res);
-    nextParameter = String.format("RayObject<T%d> t%d, ", pos, pos);
+    nextParameter = String.format("ObjectRef<T%d> t%d, ", pos, pos);
     dfs(pos + 1, numParams, cur + nextParameter, res);
   }
 

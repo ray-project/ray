@@ -6,9 +6,15 @@ import unittest
 from ray.rllib.utils.test_utils import framework_iterator
 
 
-def rollout_test(algo, env="CartPole-v0"):
+def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
+    extra_config = ""
+    if algo == "ARS":
+        extra_config = ",\"train_batch_size\": 10, \"noise_size\": 250000"
+    elif algo == "ES":
+        extra_config = ",\"episodes_per_batch\": 1,\"train_batch_size\": 10, "\
+                       "\"noise_size\": 250000"
 
-    for fw in framework_iterator(frameworks=("torch", "tf")):
+    for fw in framework_iterator(frameworks=("tf", "torch")):
         fw_ = ", \"framework\": \"{}\"".format(fw)
 
         tmp_dir = os.popen("mktemp -d").read()[:-1]
@@ -22,12 +28,12 @@ def rollout_test(algo, env="CartPole-v0"):
                                                  os.path.exists(rllib_dir)))
         os.system("python {}/train.py --local-dir={} --run={} "
                   "--checkpoint-freq=1 ".format(rllib_dir, tmp_dir, algo) +
-                  "--config='{" +
-                  "\"num_workers\": 0, \"num_gpus\": 0{}".format(fw_) +
-                  ", \"model\": {\"fcnet_hiddens\": [10]}"
-                  "}' --stop='{\"training_iteration\": 1, "
-                  "\"timesteps_per_iter\": 5, "
-                  "\"min_iter_time_s\": 0.1}'" + " --env={}".format(env))
+                  "--config='{" + "\"num_workers\": 1, \"num_gpus\": 0{}{}".
+                  format(fw_, extra_config) +
+                  ", \"timesteps_per_iteration\": 5,\"min_iter_time_s\": 0.1, "
+                  "\"model\": {\"fcnet_hiddens\": [10]}"
+                  "}' --stop='{\"training_iteration\": 1}'" +
+                  " --env={}".format(env))
 
         checkpoint_path = os.popen("ls {}/default/*/checkpoint_1/"
                                    "checkpoint-1".format(tmp_dir)).read()[:-1]
@@ -44,12 +50,13 @@ def rollout_test(algo, env="CartPole-v0"):
         print("rollout output (10 steps) exists!".format(checkpoint_path))
 
         # Test rolling out 1 episode.
-        os.popen("python {}/rollout.py --run={} \"{}\" --episodes=1 "
-                 "--out=\"{}/rollouts_1episode.pkl\" --no-render".format(
-                     rllib_dir, algo, checkpoint_path, tmp_dir)).read()
-        if not os.path.exists(tmp_dir + "/rollouts_1episode.pkl"):
-            sys.exit(1)
-        print("rollout output (1 ep) exists!".format(checkpoint_path))
+        if test_episode_rollout:
+            os.popen("python {}/rollout.py --run={} \"{}\" --episodes=1 "
+                     "--out=\"{}/rollouts_1episode.pkl\" --no-render".format(
+                         rllib_dir, algo, checkpoint_path, tmp_dir)).read()
+            if not os.path.exists(tmp_dir + "/rollouts_1episode.pkl"):
+                sys.exit(1)
+            print("rollout output (1 ep) exists!".format(checkpoint_path))
 
         # Cleanup.
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
@@ -72,13 +79,10 @@ class TestRollout(unittest.TestCase):
         rollout_test("ES")
 
     def test_impala(self):
-        rollout_test("IMPALA", env="Pong-ram-v4")
-
-    def test_pg(self):
-        rollout_test("PG")
+        rollout_test("IMPALA", env="CartPole-v0")
 
     def test_ppo(self):
-        rollout_test("PPO", env="Pendulum-v0")
+        rollout_test("PPO", env="CartPole-v0", test_episode_rollout=True)
 
     def test_sac(self):
         rollout_test("SAC", env="Pendulum-v0")

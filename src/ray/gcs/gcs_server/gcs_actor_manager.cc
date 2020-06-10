@@ -92,7 +92,7 @@ GcsActorManager::GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> sch
                                  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
                                  const rpc::ClientFactoryFn &worker_client_factory)
     : gcs_actor_scheduler_(std::move(scheduler)),
-      gcs_table_storage_(gcs_table_storage),
+      gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_pub_sub_(std::move(gcs_pub_sub)),
       worker_client_factory_(worker_client_factory) {}
 
@@ -657,11 +657,23 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
         }));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
+    // For detached actors, make sure to remove its name.
+    if (actor->IsDetached()) {
+      auto it = named_actors_.find(actor->GetName());
+      if (it != named_actors_.end()) {
+        RAY_CHECK(it->second == actor->GetActorID());
+        named_actors_.erase(it);
+      }
+    }
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, *mutable_actor_table_data,
-        [this, actor_id, mutable_actor_table_data](Status status) {
+        [this, actor, actor_id, mutable_actor_table_data](Status status) {
+          // if actor was an detached actor, make sure to destroy it.
+          // We need to do this because detached actors are not destroyed
+          // when its owners are dead because it doesn't have owners.
+          if (actor->IsDetached()) DestroyActor(actor_id);
           RAY_CHECK_OK(gcs_pub_sub_->Publish(
               ACTOR_CHANNEL, actor_id.Hex(),
               mutable_actor_table_data->SerializeAsString(), nullptr));
@@ -679,7 +691,7 @@ void GcsActorManager::OnActorCreationFailed(std::shared_ptr<GcsActor> actor) {
   pending_actors_.emplace_back(std::move(actor));
 }
 
-void GcsActorManager::OnActorCreationSuccess(std::shared_ptr<GcsActor> actor) {
+void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor) {
   auto actor_id = actor->GetActorID();
   RAY_CHECK(registered_actors_.count(actor_id) > 0);
   actor->UpdateState(rpc::ActorTableData::ALIVE);
@@ -719,6 +731,37 @@ void GcsActorManager::SchedulePendingActors() {
   for (auto &actor : actors) {
     gcs_actor_scheduler_->Schedule(std::move(actor));
   }
+}
+
+void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
+  RAY_LOG(INFO) << "Loading initial data.";
+  auto callback = [this,
+                   done](const std::unordered_map<ActorID, ActorTableData> &result) {
+    for (auto &item : result) {
+      if (item.second.state() != ray::rpc::ActorTableData::DEAD) {
+        auto actor = std::make_shared<GcsActor>(item.second);
+        registered_actors_.emplace(item.first, actor);
+
+        if (actor->IsDetached()) {
+          named_actors_.emplace(actor->GetName(), actor->GetActorID());
+        }
+
+        created_actors_[actor->GetNodeID()].emplace(actor->GetWorkerID(),
+                                                    actor->GetActorID());
+
+        auto &workers = owners_[actor->GetNodeID()];
+        auto it = workers.find(actor->GetWorkerID());
+        if (it == workers.end()) {
+          std::shared_ptr<rpc::CoreWorkerClientInterface> client =
+              worker_client_factory_(actor->GetOwnerAddress());
+          workers.emplace(actor->GetOwnerID(), Owner(std::move(client)));
+        }
+      }
+    }
+    RAY_LOG(INFO) << "Finished loading initial data.";
+    done();
+  };
+  RAY_CHECK_OK(gcs_table_storage_->ActorTable().GetAll(callback));
 }
 
 }  // namespace gcs

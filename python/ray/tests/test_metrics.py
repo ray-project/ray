@@ -405,11 +405,6 @@ def test_memory_dashboard(shutdown_only):
         """Wait until the new fresh memory table is ready."""
         global prev_memory_table
         memory_table = get_memory_table()
-        from pprint import pprint
-        print("Current")
-        pprint(memory_table)
-        print("Prev")
-        pprint(prev_memory_table)
         is_ready = memory_table["group"] != prev_memory_table
         prev_memory_table = memory_table["group"]
         return is_ready

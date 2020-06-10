@@ -1,9 +1,9 @@
 package io.ray.api.benchmark;
 
 import com.google.common.util.concurrent.RateLimiter;
+import io.ray.api.ActorHandle;
+import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
-import io.ray.api.RayObject;
 import io.ray.api.function.RayFunc1;
 import io.ray.api.test.BaseTest;
 import java.io.Serializable;
@@ -52,14 +52,14 @@ public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializab
         }
         RemoteResultWrapper temp = new RemoteResultWrapper();
         temp.setStartTime(System.nanoTime());
-        temp.setRayObject(rayBenchmarkTest.rayCall(pressureTestParameter.getRayActor()));
+        temp.setObjectRef(rayBenchmarkTest.rayCall(pressureTestParameter.getRayActor()));
         remoteResultWrappers[i++] = temp;
       }
 
       int j = 0;
       while (j < len) {
         RemoteResultWrapper temp = remoteResultWrappers[j++];
-        RemoteResult remoteResult = (RemoteResult) temp.getRayObject().get();
+        RemoteResult remoteResult = (RemoteResult) temp.getObjectRef().get();
         long endTime = remoteResult.getFinishTime();
         long costTime = endTime - temp.getStartTime();
         counterList.add(costTime / 1000);
@@ -74,13 +74,13 @@ public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializab
     }
   }
 
-  public void singleLatencyTest(int times, RayActor rayActor) {
+  public void singleLatencyTest(int times, ActorHandle rayActor) {
 
     List<Long> counterList = new ArrayList<>();
     for (int i = 0; i < times; i++) {
       long startTime = System.nanoTime();
-      RayObject<RemoteResult<T>> rayObject = rayCall(rayActor);
-      RemoteResult<T> remoteResult = rayObject.get();
+      ObjectRef<RemoteResult<T>> objectRef = rayCall(rayActor);
+      RemoteResult<T> remoteResult = objectRef.get();
       T t = remoteResult.getResult();
       long endTime = System.nanoTime();
       long costTime = endTime - startTime;
@@ -92,7 +92,7 @@ public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializab
     printList(counterList);
   }
 
-  public abstract RayObject<RemoteResult<T>> rayCall(RayActor rayActor);
+  public abstract ObjectRef<RemoteResult<T>> rayCall(ActorHandle rayActor);
 
   public abstract boolean checkResult(T t);
 
@@ -126,7 +126,7 @@ public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializab
 
     List<Long> counterList = new ArrayList<>();
     int clientNum = pressureTestParameter.getClientNum();
-    RayObject<List<Long>>[] rayObjects = new RayObject[clientNum];
+    ObjectRef<List<Long>>[] objectRefs = new ObjectRef[clientNum];
 
     for (int i = 0; i < clientNum; i++) {
       // Java compiler can't automatically infer the type of
@@ -135,10 +135,10 @@ public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializab
       // defect of the Java compiler.
       // TODO(hchen): Figure out how to avoid manually declaring `RayFunc` type in this case.
       RayFunc1<PressureTestParameter, List<Long>> func = RayBenchmarkTest::singleClient;
-      rayObjects[i] = Ray.call(func, pressureTestParameter);
+      objectRefs[i] = Ray.call(func, pressureTestParameter);
     }
     for (int i = 0; i < clientNum; i++) {
-      List<Long> subCounterList = rayObjects[i].get();
+      List<Long> subCounterList = objectRefs[i].get();
       Assert.assertNotNull(subCounterList);
       counterList.addAll(subCounterList);
     }

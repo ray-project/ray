@@ -5,7 +5,7 @@ import unittest
 
 import ray
 from ray.rllib.agents.registry import get_agent_class
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.test_utils import check, framework_iterator
 
 
 def get_mean_action(alg, obs):
@@ -63,45 +63,67 @@ CONFIGS = {
 }
 
 
-def ckpt_restore_test(use_object_store, alg_name, failures, framework="tf"):
-    cls = get_agent_class(alg_name)
+def ckpt_restore_test(alg_name, tfe=False):
     config = CONFIGS[alg_name]
-    config["framework"] = framework
-    if "DDPG" in alg_name or "SAC" in alg_name:
-        alg1 = cls(config=config, env="Pendulum-v0")
-        alg2 = cls(config=config, env="Pendulum-v0")
-    else:
-        alg1 = cls(config=config, env="CartPole-v0")
-        alg2 = cls(config=config, env="CartPole-v0")
+    frameworks = (["tfe"] if tfe else []) + ["torch", "tf"]
+    for fw in framework_iterator(config, frameworks=frameworks):
+        for use_object_store in [False, True]:
+            print("use_object_store={}".format(use_object_store))
+            cls = get_agent_class(alg_name)
+            if "DDPG" in alg_name or "SAC" in alg_name:
+                alg1 = cls(config=config, env="Pendulum-v0")
+                alg2 = cls(config=config, env="Pendulum-v0")
+            else:
+                alg1 = cls(config=config, env="CartPole-v0")
+                alg2 = cls(config=config, env="CartPole-v0")
 
-    policy1 = alg1.get_policy()
+            policy1 = alg1.get_policy()
 
-    for _ in range(1):
-        res = alg1.train()
-        print("current status: " + str(res))
+            for _ in range(1):
+                res = alg1.train()
+                print("current status: " + str(res))
 
-    # Sync the models
-    if use_object_store:
-        alg2.restore_from_object(alg1.save_to_object())
-    else:
-        alg2.restore(alg1.save())
+            # Check optimizer state as well.
+            optim_state = policy1.get_state().get("_optimizer_variables")
 
-    for _ in range(1):
-        if "DDPG" in alg_name or "SAC" in alg_name:
-            obs = np.clip(
-                np.random.uniform(size=3),
-                policy1.observation_space.low,
-                policy1.observation_space.high)
-        else:
-            obs = np.clip(
-                np.random.uniform(size=4),
-                policy1.observation_space.low,
-                policy1.observation_space.high)
-        a1 = get_mean_action(alg1, obs)
-        a2 = get_mean_action(alg2, obs)
-        print("Checking computed actions", alg1, obs, a1, a2)
-        if abs(a1 - a2) > .1:
-            failures.append((alg_name, [a1, a2]))
+            # Sync the models
+            if use_object_store:
+                alg2.restore_from_object(alg1.save_to_object())
+            else:
+                alg2.restore(alg1.save())
+
+            # Compare optimizer state with re-loaded one.
+            if optim_state:
+                s2 = alg2.get_policy().get_state().get("_optimizer_variables")
+                # Tf -> Compare states 1:1.
+                if fw in ["tf", "tfe"]:
+                    check(s2, optim_state)
+                # For torch, optimizers have state_dicts with keys=params,
+                # which are different for the two models (ignore these
+                # different keys, but compare all values nevertheless).
+                else:
+                    for i, s2_ in enumerate(s2):
+                        check(
+                            list(s2_["state"].values()),
+                            list(optim_state[i]["state"].values()))
+
+            for _ in range(1):
+                if "DDPG" in alg_name or "SAC" in alg_name:
+                    obs = np.clip(
+                        np.random.uniform(size=3),
+                        policy1.observation_space.low,
+                        policy1.observation_space.high)
+                else:
+                    obs = np.clip(
+                        np.random.uniform(size=4),
+                        policy1.observation_space.low,
+                        policy1.observation_space.high)
+                a1 = get_mean_action(alg1, obs)
+                a2 = get_mean_action(alg2, obs)
+                print("Checking computed actions", alg1, obs, a1, a2)
+                if abs(a1 - a2) > .1:
+                    raise AssertionError("algo={} [a1={} a2={}]".format(
+                        alg_name, a1, a2))
 
 
 class TestCheckpointRestore(unittest.TestCase):
@@ -113,21 +135,29 @@ class TestCheckpointRestore(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_checkpoint_restore(self):
-        failures = []
-        for fw in framework_iterator(frameworks=("tf", "torch")):
-            for use_object_store in [False, True]:
-                for name in [
-                        "A3C", "APEX_DDPG", "ARS", "DDPG", "DQN", "ES", "PPO",
-                        "SAC"
-                ]:
-                    print("Testing algo={} (use_object_store={})".format(
-                        name, use_object_store))
-                    ckpt_restore_test(
-                        use_object_store, name, failures, framework=fw)
+    def test_a3c_checkpoint_restore(self):
+        ckpt_restore_test("A3C")
 
-        assert not failures, failures
-        print("All checkpoint restore tests passed!")
+    def test_apex_ddpg_checkpoint_restore(self):
+        ckpt_restore_test("APEX_DDPG")
+
+    def test_ars_checkpoint_restore(self):
+        ckpt_restore_test("ARS")
+
+    def test_ddpg_checkpoint_restore(self):
+        ckpt_restore_test("DDPG")
+
+    def test_dqn_checkpoint_restore(self):
+        ckpt_restore_test("DQN")
+
+    def test_es_checkpoint_restore(self):
+        ckpt_restore_test("ES")
+
+    def test_ppo_checkpoint_restore(self):
+        ckpt_restore_test("PPO")
+
+    def test_sac_checkpoint_restore(self):
+        ckpt_restore_test("SAC")
 
 
 if __name__ == "__main__":

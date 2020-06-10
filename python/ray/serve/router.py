@@ -9,10 +9,11 @@ import blist
 import ray.cloudpickle as pickle
 from ray.exceptions import RayTaskError
 
+import ray
 from ray import serve
 from ray.serve.metric import MetricClient
 from ray.serve.policy import RandomEndpointPolicy
-from ray.serve.utils import logger, retry_actor_failures
+from ray.serve.utils import logger, chain_future
 
 
 class Query:
@@ -57,10 +58,6 @@ class Query:
     def __lt__(self, other):
         return self.request_slo_ms < other.request_slo_ms
 
-    def __repr__(self):
-        return "<Query args={} kwargs={}>".format(self.request_args,
-                                                  self.request_kwargs)
-
 
 def _make_future_unwrapper(client_futures: List[asyncio.Future],
                            host_future: asyncio.Future):
@@ -86,7 +83,7 @@ def _make_future_unwrapper(client_futures: List[asyncio.Future],
 class Router:
     """A router that routes request to available workers."""
 
-    async def __init__(self, cluster_name=None):
+    async def __init__(self, instance_name=None):
         # Note: Several queues are used in the router
         # - When a request come in, it's placed inside its corresponding
         #   endpoint_queue.
@@ -116,6 +113,8 @@ class Router:
         self.backend_info = dict()
         # replica tag -> worker_handle
         self.replicas = dict()
+        # replica_tag -> concurrent queries counter
+        self.queries_counter = defaultdict(lambda: 0)
 
         # -- Synchronization -- #
 
@@ -125,7 +124,7 @@ class Router:
         # an operation holding the only query and the other flush operation
         # holding the only idle replica. Additionally, allowing only one flush
         # operation at a time simplifies design overhead for custom queuing and
-        # batching polcies.
+        # batching policies.
         self.flush_lock = asyncio.Lock()
 
         # -- State Restoration -- #
@@ -133,28 +132,24 @@ class Router:
         # the master actor. We use a "pull-based" approach instead of pushing
         # them from the master so that the router can transparently recover
         # from failure.
-        serve.init(cluster_name=cluster_name)
+        serve.init(name=instance_name)
         master_actor = serve.api._get_master_actor()
 
-        traffic_policies = retry_actor_failures(
-            master_actor.get_traffic_policies)
+        traffic_policies = ray.get(master_actor.get_traffic_policies.remote())
         for endpoint, traffic_policy in traffic_policies.items():
             await self.set_traffic(endpoint, traffic_policy)
 
-        backend_dict = retry_actor_failures(
-            master_actor.get_all_worker_handles)
+        backend_dict = ray.get(master_actor.get_all_worker_handles.remote())
         for backend_tag, replica_dict in backend_dict.items():
             for replica_tag, worker in replica_dict.items():
                 await self.add_new_worker(backend_tag, replica_tag, worker)
 
-        backend_configs = retry_actor_failures(
-            master_actor.get_backend_configs)
+        backend_configs = ray.get(master_actor.get_backend_configs.remote())
         for backend, backend_config in backend_configs.items():
             await self.set_backend_config(backend, backend_config)
 
         # -- Metric Registration -- #
-        [metric_exporter] = retry_actor_failures(
-            master_actor.get_metric_exporter)
+        [metric_exporter] = ray.get(master_actor.get_metric_exporter.remote())
         self.metric_client = MetricClient(metric_exporter)
         self.num_router_requests = self.metric_client.new_counter(
             "num_router_requests",
@@ -218,11 +213,15 @@ class Router:
         await self.mark_worker_idle(backend_tag, backend_replica_tag)
 
     async def mark_worker_idle(self, backend_tag, backend_replica_tag):
+        logger.debug(
+            "Marking backend with tag {} as idle.".format(backend_replica_tag))
         if backend_replica_tag not in self.replicas:
             return
 
         async with self.flush_lock:
-            self.worker_queues[backend_tag].appendleft(backend_replica_tag)
+            # NOTE(simon): This is a O(n) operation where n=len(worker_queue)
+            if backend_replica_tag not in self.worker_queues[backend_tag]:
+                self.worker_queues[backend_tag].appendleft(backend_replica_tag)
             self.flush_backend_queues([backend_tag])
 
     async def remove_worker(self, backend_tag, replica_tag):
@@ -302,12 +301,11 @@ class Router:
                          "queue size {} and worker queue size {}".format(
                              backend, len(buffer_queue), len(worker_queue)))
 
-            max_batch_size = None
-            if backend in self.backend_info:
-                max_batch_size = self.backend_info[backend].max_batch_size
-
-            self._assign_query_to_worker(backend, buffer_queue, worker_queue,
-                                         max_batch_size)
+            self._assign_query_to_worker(
+                backend,
+                buffer_queue,
+                worker_queue,
+            )
 
     async def _do_query(self, backend, backend_replica_tag, req):
         # If the worker died, this will be a RayActorError. Just return it and
@@ -320,16 +318,13 @@ class Router:
         except RayTaskError as error:
             self.num_error_backend_request.labels(backend=backend).add()
             result = error
+        self.queries_counter[backend_replica_tag] -= 1
         await self.mark_worker_idle(backend, backend_replica_tag)
         logger.debug("Got result in {:.2f}s".format(time.time() - start))
         return result
 
-    def _assign_query_to_worker(self,
-                                backend,
-                                buffer_queue,
-                                worker_queue,
-                                max_batch_size=None):
-
+    def _assign_query_to_worker(self, backend, buffer_queue, worker_queue):
+        overloaded_replicas = set()
         while len(buffer_queue) and len(worker_queue):
             backend_replica_tag = worker_queue.pop()
 
@@ -337,27 +332,30 @@ class Router:
             if backend_replica_tag not in self.replicas:
                 continue
 
-            if max_batch_size is None:  # No batching
-                request = buffer_queue.pop(0)
-                future = asyncio.get_event_loop().create_task(
-                    self._do_query(backend, backend_replica_tag, request))
-                # chaining satisfies request.async_future with future result.
-                asyncio.futures._chain_future(future, request.async_future)
-            else:
-                real_batch_size = min(len(buffer_queue), max_batch_size)
-                requests = [
-                    buffer_queue.pop(0) for _ in range(real_batch_size)
-                ]
+            # We have reached the end of the worker queue where all replicas
+            # are overloaded.
+            if backend_replica_tag in overloaded_replicas:
+                break
 
-                # split requests by method type
-                requests_group = defaultdict(list)
-                for request in requests:
-                    requests_group[request.call_method].append(request)
+            # This replica has too many in flight and processing queries.
+            max_queries = 1
+            if backend in self.backend_info:
+                max_queries = self.backend_info[backend].max_concurrent_queries
+            curr_queries = self.queries_counter[backend_replica_tag]
+            if curr_queries >= max_queries:
+                # Put the worker back to the queue.
+                worker_queue.appendleft(backend_replica_tag)
+                overloaded_replicas.add(backend_replica_tag)
+                logger.debug(
+                    "Skipping backend {} because it has {} in flight "
+                    "requests which exceeded the concurrency limit.".format(
+                        backend, curr_queries))
+                continue
 
-                for group in requests_group.values():
-                    future = asyncio.get_event_loop().create_task(
-                        self._do_query(backend, backend_replica_tag, group))
-                    future.add_done_callback(
-                        _make_future_unwrapper(
-                            client_futures=[req.async_future for req in group],
-                            host_future=future))
+            request = buffer_queue.pop(0)
+            self.queries_counter[backend_replica_tag] += 1
+            future = asyncio.get_event_loop().create_task(
+                self._do_query(backend, backend_replica_tag, request))
+            chain_future(future, request.async_future)
+
+            worker_queue.appendleft(backend_replica_tag)
