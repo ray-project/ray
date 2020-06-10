@@ -503,13 +503,17 @@ cdef execute_task(
                 task_exception = True
                 try:
                     with ray.worker._changeproctitle(title, next_title):
-                        job_stdout_path, job_stderr_path = \
-                            worker.node.get_job_redirected_log_file(
-                                worker.worker_id, job_id.binary())
-                        setup_logging(job_stdout_path, job_stderr_path)
-                        outputs = function_executor(*args, **kwargs)
-                        setup_logging(worker_stdout_path, worker_stderr_path)
-                    task_exception = False
+                        redirect_output = worker_stdout_path and worker_stderr_path
+                        if redirect_output:
+                            job_stdout_path, job_stderr_path = \
+                                worker.node.get_job_redirected_log_file(
+                                    worker.worker_id, job_id.binary())
+                            setup_logging(job_stdout_path, job_stderr_path)
+                            outputs = function_executor(*args, **kwargs)
+                            setup_logging(worker_stdout_path, worker_stderr_path)
+                        else:
+                            outputs = function_executor(*args, **kwargs)
+                        task_exception = False
                 except KeyboardInterrupt as e:
                     raise RayCancellationError(
                             core_worker.get_current_task_id())
