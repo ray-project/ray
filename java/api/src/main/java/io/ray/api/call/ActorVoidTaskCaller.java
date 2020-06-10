@@ -4,12 +4,12 @@ import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.function.RayFuncVoid;
 
-public class VoidActorTaskCaller {
+public class ActorVoidTaskCaller {
   private final ActorHandle actor;
   private final RayFuncVoid func;
   private final Object[] args;
 
-  public VoidActorTaskCaller(ActorHandle actor, RayFuncVoid func, Object[] args) {
+  public ActorVoidTaskCaller(ActorHandle actor, RayFuncVoid func, Object[] args) {
     this.actor = actor;
     this.func = func;
     this.args = args;
