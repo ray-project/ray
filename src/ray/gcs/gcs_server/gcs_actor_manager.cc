@@ -213,6 +213,7 @@ void GcsActorManager::HandleRegisterActorInfo(
       RAY_LOG(ERROR) << "Failed to register actor info: " << status.ToString()
                      << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
     } else {
+      RAY_LOG(INFO) << "Publish actor, actor id = " << actor_id << ", state = " << actor_table_data.state();
       RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
                                          actor_table_data.SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished registering actor info, job id = " << actor_id.JobId()
@@ -241,6 +242,7 @@ void GcsActorManager::HandleUpdateActorInfo(const rpc::UpdateActorInfoRequest &r
       RAY_LOG(ERROR) << "Failed to update actor info: " << status.ToString()
                      << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
     } else {
+      RAY_LOG(INFO) << "Publish actor, actor id = " << actor_id << ", state = " << actor_table_data.state();
       RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
                                          actor_table_data.SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished updating actor info, job id = " << actor_id.JobId()
@@ -376,6 +378,7 @@ Status GcsActorManager::RegisterActor(
     // the request of actor creation task, so Driver/Worker will try again and again until
     // receiving the reply from GcsServer. If the actor has been created successfully then
     // just reply to the caller.
+    RAY_LOG(INFO) << "Reply 11111";
     callback(iter->second);
     return Status::OK();
   }
@@ -699,27 +702,29 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   auto actor_table_data = actor->GetActorTableData();
   // The backend storage is reliable in the future, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
-      actor_id, actor_table_data, [this, actor_id, actor_table_data](Status status) {
+      actor_id, actor_table_data, [this, actor_id, actor_table_data, actor](Status status) {
+        RAY_LOG(INFO) << "Publish actor, actor id = " << actor_id << ", state = " << actor_table_data.state();
         RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
                                            actor_table_data.SerializeAsString(),
                                            nullptr));
+
+        // Invoke all callbacks for all registration requests of this actor (duplicated
+        // requests are included) and remove all of them from actor_to_register_callbacks_.
+
+        auto iter = actor_to_register_callbacks_.find(actor_id);
+        if (iter != actor_to_register_callbacks_.end()) {
+          for (auto &callback : iter->second) {
+            callback(actor);
+          }
+          actor_to_register_callbacks_.erase(iter);
+        }
+
+        auto worker_id = actor->GetWorkerID();
+        auto node_id = actor->GetNodeID();
+        RAY_CHECK(!worker_id.IsNil());
+        RAY_CHECK(!node_id.IsNil());
+        RAY_CHECK(created_actors_[node_id].emplace(worker_id, actor_id).second);
       }));
-
-  // Invoke all callbacks for all registration requests of this actor (duplicated
-  // requests are included) and remove all of them from actor_to_register_callbacks_.
-  auto iter = actor_to_register_callbacks_.find(actor_id);
-  if (iter != actor_to_register_callbacks_.end()) {
-    for (auto &callback : iter->second) {
-      callback(actor);
-    }
-    actor_to_register_callbacks_.erase(iter);
-  }
-
-  auto worker_id = actor->GetWorkerID();
-  auto node_id = actor->GetNodeID();
-  RAY_CHECK(!worker_id.IsNil());
-  RAY_CHECK(!node_id.IsNil());
-  RAY_CHECK(created_actors_[node_id].emplace(worker_id, actor_id).second);
 }
 
 void GcsActorManager::SchedulePendingActors() {

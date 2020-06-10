@@ -138,6 +138,8 @@ message ActorTableData {
   double timestamp = 13;
   // The task specification of this actor's creation task.
   TaskSpec task_spec = 14;
+  // Resource mapping ids assigned to the worker executing the task.
+  repeated ResourceMapEntry resource_mapping = 15;
 }
 
 message ErrorTableData {

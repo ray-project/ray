@@ -198,6 +198,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   void CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
                            std::shared_ptr<GcsLeasedWorker> worker);
 
+  void CreateActorOnWorker(std::shared_ptr<GcsActor> actor);
+
   /// Retry creating the specified actor on the specified worker asynchoronously.
   /// Make it a virtual method so that the io_context_ could be mocked out.
   ///

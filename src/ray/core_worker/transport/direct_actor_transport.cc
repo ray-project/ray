@@ -278,6 +278,9 @@ void CoreWorkerDirectTaskReceiver::Init(
 void CoreWorkerDirectTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  auto task_id = TaskID::FromBinary(request.task_spec().task_id());
+  RAY_LOG(INFO) << "CoreWorkerDirectTaskReceiver HandlePushTask..., task id = " << task_id
+                << ", actor id = " << task_id.ActorId();
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
   std::vector<ObjectID> dependencies;
@@ -349,6 +352,10 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
       }
     }
     if (status.IsSystemExit()) {
+      if (task_spec.IsActorCreationTask()) {
+        RAY_LOG(INFO) << "Actor creation task finished 111, task_id: " << task_spec.TaskId()
+                      << ", actor_id: " << task_spec.ActorCreationId();
+      }
       // Don't allow the worker to be reused, even though the reply status is OK.
       // The worker will be shutting down shortly.
       reply->set_worker_exiting(true);
@@ -359,6 +366,10 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         send_reply_callback(status, nullptr, nullptr);
       }
     } else {
+      if (task_spec.IsActorCreationTask()) {
+        RAY_LOG(INFO) << "Actor creation task finished 222, task_id: " << task_spec.TaskId()
+                      << ", actor_id: " << task_spec.ActorCreationId();
+      }
       RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
       send_reply_callback(status, nullptr, nullptr);
     }

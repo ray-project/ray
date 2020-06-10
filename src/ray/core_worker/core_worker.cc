@@ -1719,7 +1719,9 @@ void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
 void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
                                 rpc::PushTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "CoreWorker HandlePushTask..., task id = " << request.task_spec().task_id();
+  auto task_id = TaskID::FromBinary(request.task_spec().task_id());
+  RAY_LOG(INFO) << "CoreWorker HandlePushTask..., task id = " << task_id
+    << ", actor id = " << task_id.ActorId();
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
     return;
@@ -1810,7 +1812,8 @@ void CoreWorker::HandleWaitForActorOutOfScope(
   if (it == actor_handles_.end()) {
     respond(actor_id);
   } else {
-    RAY_CHECK(actor_out_of_scope_callbacks_.emplace(actor_id, std::move(respond)).second);
+    actor_out_of_scope_callbacks_.emplace(actor_id, std::move(respond));
+//    RAY_CHECK(actor_out_of_scope_callbacks_.emplace(actor_id, std::move(respond)).second);
   }
 }
 
@@ -2035,7 +2038,7 @@ void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &re
 void CoreWorker::SetActorId(const ActorID &actor_id) {
   absl::MutexLock lock(&mutex_);
   if (!options_.is_local_mode) {
-    RAY_CHECK(actor_id_.IsNil());
+//    RAY_CHECK(actor_id_.IsNil());
   }
   actor_id_ = actor_id;
 }

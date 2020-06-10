@@ -40,6 +40,12 @@ GcsActorScheduler::GcsActorScheduler(
 }
 
 void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
+  if (actor->GetActorTableData().resource_mapping_size() != 0 || !actor->GetWorkerID().IsNil()) {
+    RAY_LOG(INFO) << "actor has resource_mapping, actor id = " << actor->GetActorID();
+    CreateActorOnWorker(actor);
+    return;
+  }
+
   auto node_id = actor->GetNodeID();
   if (!node_id.IsNil()) {
     if (auto node = gcs_node_manager_.GetNode(node_id)) {
@@ -71,21 +77,8 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   rpc::Address address;
   address.set_raylet_id(node->node_id());
   actor->UpdateAddress(address);
-  // The backend storage is reliable in the future, so the status must be ok.
-  RAY_CHECK_OK(gcs_actor_table_.Put(
-      actor->GetActorID(), actor->GetActorTableData(), [this, actor](Status status) {
-        RAY_CHECK_OK(status);
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor->GetActorID().Hex(),
-                                           actor->GetActorTableData().SerializeAsString(),
-                                           nullptr));
-        // There is no promise that the node the
-        // actor tied to is still alive as the
-        // flush is asynchronously, so just
-        // invoke `Schedule` which will lease
-        // worker directly if the node is still
-        // available or select a new one if not.
-        Schedule(actor);
-      }));
+
+  Schedule(actor);
 }
 
 std::vector<ActorID> GcsActorScheduler::CancelOnNode(const ClientID &node_id) {
@@ -161,6 +154,8 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
       actor->GetCreationTaskSpecification(),
       [this, node_id, actor, node](const Status &status,
                                    const rpc::RequestWorkerLeaseReply &reply) {
+        RAY_LOG(INFO) << "Finished leasing worker from 111 " << node_id << " for actor "
+                      << actor->GetActorID();
         // If the actor is still in the leasing map and the status is ok, remove the actor
         // from the leasing map and handle the reply. Otherwise, lease again, because it
         // may be a network exception.
@@ -226,20 +221,13 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
     // node, and then try again on the new node.
     RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
     actor->UpdateAddress(retry_at_raylet_address);
-    // The backend storage is reliable in the future, so the status must be ok.
-    RAY_CHECK_OK(gcs_actor_table_.Put(
-        actor->GetActorID(), actor->GetActorTableData(), [this, actor](Status status) {
-          RAY_CHECK_OK(status);
-          RAY_CHECK_OK(gcs_pub_sub_->Publish(
-              ACTOR_CHANNEL, actor->GetActorID().Hex(),
-              actor->GetActorTableData().SerializeAsString(), nullptr));
-          Schedule(actor);
-        }));
+    Schedule(actor);
   } else {
     // The worker is leased successfully from the specified node.
     std::vector<rpc::ResourceMapEntry> resources;
     for (auto &resource : reply.resource_mapping()) {
       resources.emplace_back(resource);
+      actor->GetMutableActorTableData()->add_resource_mapping()->CopyFrom(resource);
     }
     auto leased_worker = std::make_shared<GcsLeasedWorker>(
         worker_address, std::move(resources), actor->GetActorID());
@@ -248,8 +236,18 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
                   .emplace(leased_worker->GetWorkerID(), leased_worker)
                   .second);
     actor->UpdateAddress(leased_worker->GetAddress());
-    CreateActorOnWorker(actor, leased_worker);
+    RAY_CHECK_OK(gcs_actor_table_.Put(
+        actor->GetActorID(), actor->GetActorTableData(), [this, actor, leased_worker](Status status) {
+          RAY_CHECK_OK(status);
+          CreateActorOnWorker(actor, leased_worker);
+        }));
   }
+}
+
+void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor) {
+  auto leased_worker = std::make_shared<GcsLeasedWorker>(
+      actor->GetAddress(), VectorFromProtobuf(actor->GetMutableActorTableData()->resource_mapping()), actor->GetActorID());
+  CreateActorOnWorker(actor, leased_worker);
 }
 
 void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
@@ -279,6 +277,7 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
         // If the actor is not in the creating map, it means that the actor has been
         // cancelled as the worker or node is dead, just do nothing in this case because
         // the gcs_actor_manager will reconstruct it again.
+        RAY_LOG(INFO) << "PushNormalTask received, actor id = " << actor->GetActorID();
         auto iter = node_to_workers_when_creating_.find(actor->GetNodeID());
         if (iter != node_to_workers_when_creating_.end()) {
           auto worker_iter = iter->second.find(actor->GetWorkerID());
