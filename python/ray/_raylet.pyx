@@ -471,8 +471,9 @@ cdef execute_task(
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 worker.mark_actor_init_failed(error)
             if isinstance(error, RayException):
+                error_message = "Get object failed because of deeper errors."
                 failure_object = RayTaskError(cause=error,
-                                              error_message="Get object failed because of deeper errors.",
+                                              error_message=error_message,
                                               function=function_name,
                                               proctitle=title)
             else:

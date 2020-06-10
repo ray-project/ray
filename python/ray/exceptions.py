@@ -1,5 +1,4 @@
 from ray._raylet import (
-    PlasmaObjectNotAvailable,
     RayError,
     RayConnectionError,
     RayCancellationError,
@@ -14,7 +13,6 @@ from ray._raylet import (
 )
 
 RAY_EXCEPTION_TYPES = [
-    PlasmaObjectNotAvailable,
     RayError,
     RayConnectionError,
     RayCancellationError,

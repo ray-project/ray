@@ -1,4 +1,3 @@
-import traceback
 import inspect
 from collections.abc import Iterable
 
@@ -62,7 +61,7 @@ def wrap_to_ray_error(exception):
     try:
         # Raise and catch so we can access traceback.format_exc()
         raise exception
-    except Exception as e:
+    except Exception:
         return ray.exceptions.RayTaskError()
 
 

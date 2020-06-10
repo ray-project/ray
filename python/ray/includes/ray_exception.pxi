@@ -9,7 +9,7 @@ import setproctitle
 
 
 cdef class RayException(Exception):
-    cdef shared_ptr[CRayException] exception    
+    cdef shared_ptr[CRayException] exception
 
     def __init__(self,
                  exc_info=None,
@@ -35,24 +35,35 @@ cdef class RayException(Exception):
             CTaskID c_task_id = CTaskID.Nil()
             CActorID c_actor_id = CActorID.Nil()
             CObjectID c_object_id = CObjectID.Nil()
+            shared_ptr[CRayException] c_cause_exception
 
+        # Check error_type is valid.
         try:
             ErrorType.Name(error_type)
         except Exception:
-            raise Exception("Invalid error type {}, valid error types:\n{}".format(
-                error_type, "\n".join(str(e) for e in ErrorType.items())))
+            valid_error_types = "\n".join(str(e) for e in ErrorType.items())
+            raise Exception("Invalid error type {}, "
+                            "valid error types:\n{}".format(
+                                    error_type, valid_error_types))
 
         if isinstance(exc_info, BaseException):
+            # Extract exc_info from exception object.
             exc_info = (type(exc_info), exc_info, exc_info.__traceback__)
         elif not isinstance(exc_info, tuple):
+            # Get exc_info by sys.exc_info()
             exc_info = sys.exc_info()
 
+        # Exception object
         ex = exc_info[1]
         if error_message is None:
             error_message = str(ex) if ex else ""
         if data is None:
-            data = pickle.dumps(ex) if ex and isinstance(ex, BaseException) else b""
+            # pickle the exception object to data.
+            data = pickle.dumps(ex) if isinstance(ex, BaseException) else b""
+
+        # Traceback object
         tb = self._strip_traceback(exc_info[2])
+        # Find the inner most traceback object.
         if tb is not None:
             while tb.tb_next is not None:
                 tb = tb.tb_next
@@ -65,52 +76,63 @@ cdef class RayException(Exception):
         if traceback is None:
             traceback = "".join(format_tb(tb)) if tb else ""
 
+        # Get job id / worker id / task id / actor id / object id
         worker = ray.worker.global_worker
         try:
             job_id = job_id or worker.current_job_id
             c_job_id = job_id.native()
-        except:
+        except Exception:
             pass
         try:
             worker_id = worker_id or worker.worker_id
             c_worker_id = worker_id.native()
-        except:
+        except Exception:
             pass
         try:
             task_id = task_id or worker.current_task_id
             c_task_id = task_id.native()
-        except:
+        except Exception:
             pass
         try:
             actor_id = actor_id or worker.actor_id
             c_actor_id = actor_id.native()
-        except:
+        except Exception:
             pass
         if object_id is not None:
             c_object_id = object_id.native()
+
+        # Get ip address.
         if ip is None:
             ip = ray.services.get_node_ip_address()
+        # Get pid.
         if pid is None:
             pid = os.getpid()
+        # Get proc title.
         if proctitle is None:
             proctitle = setproctitle.getproctitle()
-        self.exception.reset(new CRayException(<CErrorType><int>error_type,
-                                               error_message,
-                                               LANGUAGE_PYTHON,
-                                               c_job_id,
-                                               c_worker_id,
-                                               c_task_id,
-                                               c_actor_id,
-                                               c_object_id,
-                                               ip,
-                                               pid,
-                                               proctitle,
-                                               file,
-                                               lineno,
-                                               function,
-                                               traceback,
-                                               data,
-                                               shared_ptr[CRayException]() if cause is None else cause.exception))
+        # Get cause.
+        if cause is None:
+            c_cause_exception = shared_ptr[CRayException]()
+        else:
+            c_cause_exception = cause.exception
+        self.exception.reset(new CRayException(
+                <CErrorType><int>error_type,
+                error_message,
+                LANGUAGE_PYTHON,
+                c_job_id,
+                c_worker_id,
+                c_task_id,
+                c_actor_id,
+                c_object_id,
+                ip,
+                pid,
+                proctitle,
+                file,
+                lineno,
+                function,
+                traceback,
+                data,
+                c_cause_exception))
 
     def python_exception(self):
         cdef bytes data
@@ -220,8 +242,9 @@ cdef class RayException(Exception):
             filename = tb.tb_frame.f_code.co_filename
             if fnmatch(filename, "*/ray/tests/*"):
                 return False
-            return any(fnmatch(filename, p) for p in ("*/ray/*.py", "*/ray/*.pyx"))
-                
+            return any(fnmatch(filename, p) for p in ("*/ray/*.py",
+                                                      "*/ray/*.pyx"))
+
         while tb:
             if _is_stripped(tb):
                 tb = tb.tb_next
@@ -235,7 +258,6 @@ cdef class RayException(Exception):
                 break
 
         return tb
-
 
     def __str__(self):
         return "\n\n" + <str>self.exception.get().ToString()
@@ -263,7 +285,8 @@ class RayCancellationError(RayError):
     def __init__(self, task_id=None):
         e = list(sys.exc_info())
         e[1] = "This task or its dependency was cancelled by"
-        super(RayCancellationError, self).__init__(e, error_type=ErrorType.TASK_CANCELLED, task_id=task_id)
+        super(RayCancellationError, self).__init__(
+            e, error_type=ErrorType.TASK_CANCELLED, task_id=task_id)
 
 
 class RayTaskError(RayError):
@@ -276,13 +299,15 @@ class RayTaskError(RayError):
     thrown propagating the error message.
 
     Attributes:
-        e (BaseException): The exception that failed and produced the RayTaskError.
+        e (BaseException): The exception that failed and produced
+                           the RayTaskError.
         cause (RayException): The cause exception.
     """
 
     def __init__(self, **kwargs):
         """Initialize a RayTaskError."""
-        super(RayTaskError, self).__init__(error_type=ErrorType.TASK_EXECUTION_EXCEPTION, **kwargs)
+        super(RayTaskError, self).__init__(
+            error_type=ErrorType.TASK_EXECUTION_EXCEPTION, **kwargs)
 
     def as_instanceof_cause(self):
         """Returns copy that is an instance of the cause's Python class.
@@ -316,7 +341,8 @@ class RayWorkerError(RayError):
     def __init__(self):
         e = list(sys.exc_info())
         e[1] = "The worker died unexpectedly while executing this task."
-        super(RayWorkerError, self).__init__(e, error_type=ErrorType.WORKER_DIED)
+        super(RayWorkerError, self).__init__(
+            e, error_type=ErrorType.WORKER_DIED)
 
 
 class RayActorError(RayError):
@@ -329,7 +355,8 @@ class RayActorError(RayError):
     def __init__(self):
         e = list(sys.exc_info())
         e[1] = "The actor died unexpectedly before finishing this task."
-        super(RayActorError, self).__init__(e, error_type=ErrorType.ACTOR_DIED)
+        super(RayActorError, self).__init__(
+            e, error_type=ErrorType.ACTOR_DIED)
 
 
 class RayletError(RayError):
@@ -362,7 +389,8 @@ class ObjectStoreFullError(RayError):
             "when the object store is full by calling "
             "ray.init(lru_evict=True). See also: "
             "https://docs.ray.io/en/latest/memory-management.html.")
-        super(ObjectStoreFullError, self).__init__(e, error_type=ErrorType.OBJECT_STORE_FULL);
+        super(ObjectStoreFullError, self).__init__(
+            e, error_type=ErrorType.OBJECT_STORE_FULL)
 
 
 class UnreconstructableError(RayError):
@@ -378,23 +406,27 @@ class UnreconstructableError(RayError):
 
     def __init__(self, object_id):
         e = list(sys.exc_info())
-        e[1] = ("Object {} is lost (either LRU evicted or deleted by user) and "
-                "cannot be reconstructed. Try increasing the object store "
+        e[1] = ("Object {} is lost (either LRU evicted or deleted by user) "
+                "and cannot be reconstructed. Try increasing the object store "
                 "memory available with ray.init(object_store_memory=<bytes>) "
                 "or setting object store limits with "
                 "ray.remote(object_store_memory=<bytes>). See also: {}".format(
                     object_id.hex(),
                     "https://docs.ray.io/en/latest/memory-management.html"))
-        super(UnreconstructableError, self).__init__(e, object_id=object_id, error_type=ErrorType.OBJECT_UNRECONSTRUCTABLE)
+        super(UnreconstructableError, self).__init__(
+            e, object_id=object_id,
+            error_type=ErrorType.OBJECT_UNRECONSTRUCTABLE)
 
 
 class RayTimeoutError(RayError):
     """Indicates that a call to the worker timed out."""
     def __init__(self, error_message=None):
-        super(RayTimeoutError, self).__init__(error_message=error_message)
+        super(RayTimeoutError, self).__init__(
+            error_message=error_message)
 
 
 class PlasmaObjectNotAvailable(RayError):
     """Called when an object was not available within the given timeout."""
     def __init__(self, error_message=None):
-        super(PlasmaObjectNotAvailable, self).__init__(error_message=error_message)
+        super(PlasmaObjectNotAvailable, self).__init__(
+            error_message=error_message)

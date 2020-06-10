@@ -14,11 +14,13 @@ from ray.includes.unique_ids cimport (
 cdef extern from "ray/common/ray_exception.h" nogil:
     cdef cppclass CRayException "ray::RayException":
         CRayException(CErrorType error_type, const c_string &error_message,
-            CLanguage language, CJobID job_id, CWorkerID worker_id, CTaskID task_id,
-            CActorID actor_id, CObjectID object_id, const c_string &ip, int32_t pid,
-            const c_string &proctitle, const c_string &file, uint64_t lineno,
-            const c_string &function, const c_string &traceback,
-            const c_string &data, shared_ptr[CRayException] cause)
+                      CLanguage language, CJobID job_id, CWorkerID worker_id,
+                      CTaskID task_id, CActorID actor_id, CObjectID object_id,
+                      const c_string &ip, int32_t pid,
+                      const c_string &proctitle, const c_string &file,
+                      uint64_t lineno, const c_string &function,
+                      const c_string &traceback, const c_string &data,
+                      shared_ptr[CRayException] cause)
         CRayException(const c_string &serialized_binary)
         CErrorType ErrorType() const
         c_string ErrorMessage() const
@@ -35,7 +37,7 @@ cdef extern from "ray/common/ray_exception.h" nogil:
         uint64_t LineNo() const
         c_string Function() const
         c_string Traceback() const
-        c_string Data() const 
+        c_string Data() const
         shared_ptr[CRayException] Cause() const
         c_string ToString() const
         c_string Serialize() const
