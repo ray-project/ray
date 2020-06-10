@@ -215,15 +215,15 @@ def setup_logging(stdout_name, stderr_name):
         flush_out()
         flush_err()
 
-    stdout_fileno = stdout_fileno()
-    stderr_fileno = stderr_fileno()
+    stdout_fileno = sys.stdout.fileno()
+    stderr_fileno = sys.stderr.fileno()
 
     # Redirect stdout/stderr at the file descriptor level. If we simply set
     # sys.stdout and sys.stderr, then logging from C++ can fail to be
     # redirected. Note that dup2 will automatically close the old file
     # descriptor before overriding it.
-    os.dup2(stdout_fileno, sys.stdout.fileno(), os.getpid())
-    os.dup2(stderr_fileno, sys.stderr.fileno(), os.getpid())
+    os.dup2(stdout_file.fileno(), stdout_fileno, os.getpid())
+    os.dup2(stderr_file.fileno(), stderr_fileno, os.getpid())
 
     # We must close the original file descriptor to avoid leaking file
     # descriptors.
