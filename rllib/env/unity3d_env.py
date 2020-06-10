@@ -194,21 +194,30 @@ class Unity3DEnv(MultiAgentEnv):
         # The RLlib server must know about the Spaces that the Client will be
         # using inside Unity3D, up-front.
         obs_spaces = {
+            # 3DBall.
+            "3DBall": Box(float("-inf"), float("inf"), (8, )),
             # SoccerStrikersVsGoalie.
+            "Goalie": Box(float("-inf"), float("inf"), (738, )),
             "Striker": Tuple([
                 Box(float("-inf"), float("inf"), (231, )),
                 Box(float("-inf"), float("inf"), (63, )),
             ]),
-            "Goalie": Box(float("-inf"), float("inf"), (738, )),
-            # 3DBall.
-            "Agent": Box(float("-inf"), float("inf"), (8, )),
+            # Tennis.
+            "Tennis": Box(float("-inf"), float("inf"), (9, 9, 9)),
+            # Walker.
+            "Walker": Box(float("-inf"), float("inf"), (212, )),
         }
         action_spaces = {
-            # SoccerStrikersVsGoalie.
-            "Striker": MultiDiscrete([3, 3, 3]),
-            "Goalie": MultiDiscrete([3, 3, 3]),
             # 3DBall.
-            "Agent": Box(float("-inf"), float("inf"), (2, ), dtype=np.float32),
+            "3DBall":
+                Box(float("-inf"), float("inf"), (2,), dtype=np.float32),
+            # SoccerStrikersVsGoalie.
+            "Goalie": MultiDiscrete([3, 3, 3]),
+            "Striker": MultiDiscrete([3, 3, 3]),
+            # Tennis.
+            "Tennis": Box(float("-inf"), float("inf"), (3, )),
+            # Walker.
+            "Walker": Box(float("-inf"), float("inf"), (39, )),
         }
 
         # Policies (Unity: "behaviors") and agent-to-policy mapping fns.
@@ -223,13 +232,13 @@ class Unity3DEnv(MultiAgentEnv):
             def policy_mapping_fn(agent_id):
                 return "Striker" if "Striker" in agent_id else "Goalie"
 
-        else:  # 3DBall
+        else:
             policies = {
-                "Agent": (None, obs_spaces["Agent"], action_spaces["Agent"],
-                          {})
+                game_name: (None, obs_spaces[game_name],
+                            action_spaces[game_name], {}),
             }
 
             def policy_mapping_fn(agent_id):
-                return "Agent"
+                return game_name
 
         return policies, policy_mapping_fn

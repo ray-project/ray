@@ -31,9 +31,9 @@ parser.add_argument(
     "--env",
     type=str,
     default="3DBall",
-    choices=["3DBall", "SoccerStrikersVsGoalie"],
-    help="The name of the Env to run in the Unity3D editor. Either `3DBall` "
-    "or `SoccerStrikersVsGoalie` (feel free to add more to this script!)")
+    choices=["3DBall", "SoccerStrikersVsGoalie", "Walker"],
+    help="The name of the Env to run in the Unity3D editor: `3DBall|"
+    "SoccerStrikersVsGoalie|Walker` (feel free to add more to this script!)")
 parser.add_argument(
     "--file-name",
     type=str,
