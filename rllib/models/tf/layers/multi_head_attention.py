@@ -47,6 +47,6 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         wmat = tf.nn.softmax(masked_score, axis=2)
 
         out = tf.einsum("bijh,bjhd->bihd", wmat, values)
-        shape = tf.concat(  [tf.shape(out)[:2], [H*D]] , axis=0)
+        shape = tf.concat([tf.shape(out)[:2], [H * D]], axis=0)
         out = tf.reshape(out, shape)
         return self._linear_layer(out)

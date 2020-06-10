@@ -5,7 +5,7 @@ from ray.rllib.utils.torch_ops import sequence_mask
 torch, nn = try_import_torch()
 
 
-class RelativeMultiHeadAttention(nn.Module):
+class TorchRelativeMultiHeadAttention(nn.Module):
     """A RelativeMultiHeadAttention layer as described in [3].
 
     Uses segment level recurrence with state reuse.
@@ -48,7 +48,9 @@ class RelativeMultiHeadAttention(nn.Module):
 
         # TODO (Tanay): keras TimeDistributed wrapper
         self._linear_layer = SlimFC(
-            in_size=num_heads*head_dim, out_size=out_dim, use_bias=False,
+            in_size=num_heads * head_dim,
+            out_size=out_dim,
+            use_bias=False,
             activation_fn=output_activation)
 
         self._pos_proj = SlimFC(
@@ -91,7 +93,6 @@ class RelativeMultiHeadAttention(nn.Module):
         keys = torch.reshape(keys, [-1, T + Tau, H, d])
         values = torch.reshape(values, [-1, T + Tau, H, d])
 
-
         R = self._pos_proj(self._rel_pos_encoder)
         R = torch.reshape(R, [T + Tau, H, d])
 
@@ -125,7 +126,7 @@ class RelativeMultiHeadAttention(nn.Module):
         # 44781ed21dbaec88b280f74d9ae2877f52b492a5/tf/model.py#L31
         x_size = list(torch.shape(x))
 
-        x = torch.nn.functional.pad(x, (0, 0, 1, 0, 0, 0, 0, 0 ))
+        x = torch.nn.functional.pad(x, (0, 0, 1, 0, 0, 0, 0, 0))
         x = torch.reshape(x, [x_size[0], x_size[2] + 1, x_size[1], x_size[3]])
         x = x[:, 1:, :, :]
         x = torch.reshape(x, x_size)
