@@ -693,6 +693,7 @@ void GcsActorManager::OnActorCreationFailed(std::shared_ptr<GcsActor> actor) {
 
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor) {
   auto actor_id = actor->GetActorID();
+  RAY_LOG(INFO) << "On actor creation success, actor id = " << actor_id;
   RAY_CHECK(registered_actors_.count(actor_id) > 0);
   actor->UpdateState(rpc::ActorTableData::ALIVE);
   auto actor_table_data = actor->GetActorTableData();
@@ -760,6 +761,7 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
     }
 
     RAY_LOG(INFO) << "registered actors num = " << registered_actors_.size();
+    RAY_LOG(INFO) << "created actors num = " << created_actors_.size();
     for (auto &item : registered_actors_) {
       auto &actor = item.second;
       if (actor->GetState() != ray::rpc::ActorTableData::ALIVE) {

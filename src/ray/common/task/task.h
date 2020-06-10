@@ -95,6 +95,10 @@ class Task {
   /// Returns the cancellation task callback, or nullptr.
   const CancelTaskCallback &OnCancellation() const { return on_cancellation_; }
 
+  void SetOnDispatch(const DispatchTaskCallback &on_dispatch);
+  void SetOnSpillback(const SpillbackTaskCallback &on_spillback);
+  void SetOnCancellation(const CancelTaskCallback &on_cancellation);
+
   std::string DebugString() const;
 
  private:

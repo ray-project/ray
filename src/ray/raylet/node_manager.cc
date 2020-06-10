@@ -972,7 +972,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
                                        const uint8_t *message_data) {
   auto registered_worker = worker_pool_.GetRegisteredWorker(client);
   auto message_type_value = static_cast<protocol::MessageType>(message_type);
-  RAY_LOG(WARNING) << "[Worker] Message "
+  RAY_LOG(DEBUG) << "[Worker] Message "
                  << protocol::EnumNameMessageType(message_type_value) << "("
                  << message_type << ") from worker with PID "
                  << (registered_worker
@@ -1818,7 +1818,9 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
             rid->set_quantity(id.second.ToDouble());
           }
         }
+        RAY_LOG(INFO) << "task OnDispatchInstead begining....";
         send_reply_callback(Status::OK(), nullptr, nullptr);
+        RAY_LOG(INFO) << "task OnDispatchInstead ending....";
         RAY_CHECK(leased_workers_.find(worker_id) == leased_workers_.end())
             << "Worker is already leased out " << worker_id;
 
@@ -2169,6 +2171,9 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
     RAY_LOG(WARNING) << "Submitted task " << task_id
                      << " is already queued and will not be restarted. This is most "
                         "likely due to spurious reconstruction.";
+    std::unordered_set<TaskID> task_ids;
+    task_ids.insert(task_id);
+    local_queues_.RemoveTasks(task_ids);
     return;
   }
 
@@ -2595,7 +2600,8 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
     }
   } else {
     // (See design_docs/task_states.rst for the state transition diagram.)
-    RAY_CHECK(local_queues_.RemoveTask(task_id, &task));
+    local_queues_.RemoveTask(task_id, &task);
+//    RAY_CHECK(local_queues_.RemoveTask(task_id, &task));
 
     // Release task's resources. The worker's lifetime resources are still held.
     auto const &task_resources = worker.GetTaskResourceIds();

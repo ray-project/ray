@@ -96,6 +96,17 @@ bool TaskQueue::HasTask(const TaskID &task_id) const {
   return task_map_.find(task_id) != task_map_.end();
 }
 
+void TaskQueue::UpdateTask(const TaskID &task_id, const Task &task) const {
+  auto task_found_iterator = task_map_.find(task_id);
+  if (task_found_iterator == task_map_.end()) {
+    return;
+  }
+  auto list_iterator = task_found_iterator->second;
+  list_iterator->SetOnDispatch(task.OnDispatch());
+  list_iterator->SetOnSpillback(task.OnSpillback());
+  list_iterator->SetOnCancellation(task.OnCancellation());
+}
+
 const std::list<Task> &TaskQueue::GetTasks() const { return task_list_; }
 
 const Task &TaskQueue::GetTask(const TaskID &task_id) const {
@@ -383,6 +394,15 @@ bool SchedulingQueue::HasTask(const TaskID &task_id) const {
     }
   }
   return false;
+}
+
+void SchedulingQueue::UpdateTask(const TaskID &task_id, const Task &task) {
+  for (const auto &task_queue : task_queues_) {
+    if (task_queue->HasTask(task_id)) {
+      task_queue->UpdateTask(task_id, task);
+      return;
+    }
+  }
 }
 
 std::unordered_set<TaskID> SchedulingQueue::GetTaskIdsForJob(const JobID &job_id) const {

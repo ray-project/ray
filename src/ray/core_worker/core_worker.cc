@@ -1480,6 +1480,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const std::shared_ptr<ResourceMappingType> &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *return_objects,
                                ReferenceCounter::ReferenceTableProto *borrowed_refs) {
+  RAY_LOG(DEBUG) << "Execute task, task info = " << task_spec.DebugString();
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 

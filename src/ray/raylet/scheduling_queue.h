@@ -95,6 +95,8 @@ class TaskQueue {
   /// \return Whether the task_id exists in this queue.
   bool HasTask(const TaskID &task_id) const;
 
+  void UpdateTask(const TaskID &task_id, const Task &task) const;
+
   /// \brief Return the task list of the queue.
   ///
   /// \return A list of tasks contained in this queue.
@@ -185,6 +187,8 @@ class SchedulingQueue {
   /// \param task_id The task ID for the task.
   /// \return Whether the task_id exists in the queue.
   bool HasTask(const TaskID &task_id) const;
+
+  void UpdateTask(const TaskID &task_id, const Task &task);
 
   /// \brief Get all tasks in the given state.
   ///
