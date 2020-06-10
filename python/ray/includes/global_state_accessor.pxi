@@ -1,5 +1,6 @@
 from ray.includes.unique_ids cimport (
     CActorID,
+    CClientID,
     CObjectID,
 )
 
@@ -53,3 +54,6 @@ cdef class GlobalStateAccessor:
         if actor_info:
             return c_string(actor_info.get().data(), actor_info.get().size())
         return None
+
+    def get_node_resource_info(self, node_id):
+        return self.inner.get().GetNodeResourceInfo(CClientID.FromBinary(node_id.binary()))

@@ -18,7 +18,7 @@ from ray.tune.error import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.resources import Resources
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.syncer import Syncer
+from ray.tune.syncer import CloudSyncer
 from ray.tune.trainable import TrainableUtil
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
@@ -521,7 +521,7 @@ def test_cluster_down_full(start_connected_cluster, tmpdir, trainable_id):
 
     mock_get_client = "ray.tune.trial_runner.get_cloud_syncer"
     with patch(mock_get_client) as mock_get_cloud_syncer:
-        mock_syncer = Syncer(local_dir, upload_dir, mock_storage_client())
+        mock_syncer = CloudSyncer(local_dir, upload_dir, mock_storage_client())
         mock_get_cloud_syncer.return_value = mock_syncer
 
         tune.run_experiments(all_experiments, raise_on_failed_trial=False)

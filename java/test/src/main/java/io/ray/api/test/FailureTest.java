@@ -1,8 +1,8 @@
 package io.ray.api.test;
 
+import io.ray.api.ActorHandle;
+import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
-import io.ray.api.RayObject;
 import io.ray.api.TestUtils;
 import io.ray.api.exception.RayActorException;
 import io.ray.api.exception.RayException;
@@ -71,9 +71,9 @@ public class FailureTest extends BaseTest {
     }
   }
 
-  private static void assertTaskFailedWithRayTaskException(RayObject<?> rayObject) {
+  private static void assertTaskFailedWithRayTaskException(ObjectRef<?> objectRef) {
     try {
-      rayObject.get();
+      objectRef.get();
       Assert.fail("Task didn't fail.");
     } catch (RayTaskException e) {
       Throwable rootCause = e.getCause();
@@ -94,14 +94,14 @@ public class FailureTest extends BaseTest {
   @Test
   public void testActorCreationFailure() {
     TestUtils.skipTestUnderSingleProcess();
-    RayActor<BadActor> actor = Ray.createActor(BadActor::new, true);
+    ActorHandle<BadActor> actor = Ray.createActor(BadActor::new, true);
     assertTaskFailedWithRayTaskException(actor.call(BadActor::badMethod));
   }
 
   @Test
   public void testActorTaskFailure() {
     TestUtils.skipTestUnderSingleProcess();
-    RayActor<BadActor> actor = Ray.createActor(BadActor::new, false);
+    ActorHandle<BadActor> actor = Ray.createActor(BadActor::new, false);
     assertTaskFailedWithRayTaskException(actor.call(BadActor::badMethod));
   }
 
@@ -120,7 +120,7 @@ public class FailureTest extends BaseTest {
   @Test
   public void testActorProcessDying() {
     TestUtils.skipTestUnderSingleProcess();
-    RayActor<BadActor> actor = Ray.createActor(BadActor::new, false);
+    ActorHandle<BadActor> actor = Ray.createActor(BadActor::new, false);
     try {
       actor.call(BadActor::badMethod2).get();
       Assert.fail("This line shouldn't be reached.");
@@ -144,8 +144,8 @@ public class FailureTest extends BaseTest {
         FailureTest::badFunc2);
     TestUtils.warmUpCluster();
     for (RayFunc0<Integer> badFunc : badFunctions) {
-      RayObject<Integer> obj1 = Ray.call(badFunc);
-      RayObject<Integer> obj2 = Ray.call(FailureTest::slowFunc);
+      ObjectRef<Integer> obj1 = Ray.call(badFunc);
+      ObjectRef<Integer> obj2 = Ray.call(FailureTest::slowFunc);
       Instant start = Instant.now();
       try {
         Ray.get(Arrays.asList(obj1, obj2));

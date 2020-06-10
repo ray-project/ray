@@ -1,6 +1,5 @@
 package io.ray.streaming.api.stream;
 
-
 import io.ray.streaming.api.Language;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.function.impl.FilterFunction;
@@ -17,9 +16,13 @@ import io.ray.streaming.operator.impl.KeyByOperator;
 import io.ray.streaming.operator.impl.MapOperator;
 import io.ray.streaming.operator.impl.SinkOperator;
 import io.ray.streaming.python.stream.PythonDataStream;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Represents a stream of data.
+ *
  * <p>This class defines all the streaming operations.
  *
  * @param <T> Type of data in the stream.
@@ -81,13 +84,36 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
   }
 
   /**
-   * Apply a union transformation to this stream, with another stream.
+   * Apply union transformations to this stream by merging {@link DataStream} outputs of
+   * the same type with each other.
    *
-   * @param other Another stream.
+   * @param stream The DataStream to union output with.
+   * @param others The other DataStreams to union output with.
    * @return A new UnionStream.
    */
-  public UnionStream<T> union(DataStream<T> other) {
-    return new UnionStream<>(this, null, other);
+  @SafeVarargs
+  public final DataStream<T> union(DataStream<T> stream, DataStream<T>... others) {
+    List<DataStream<T>> streams = new ArrayList<>();
+    streams.add(stream);
+    streams.addAll(Arrays.asList(others));
+    return union(streams);
+  }
+
+  /**
+   * Apply union transformations to this stream by merging {@link DataStream} outputs of
+   * the same type with each other.
+   *
+   * @param streams The DataStreams to union output with.
+   * @return A new UnionStream.
+   */
+  public final DataStream<T> union(List<DataStream<T>> streams) {
+    if (this instanceof UnionStream) {
+      UnionStream<T> unionStream = (UnionStream<T>) this;
+      streams.forEach(unionStream::addStream);
+      return unionStream;
+    } else {
+      return new UnionStream<>(this, streams);
+    }
   }
 
   /**

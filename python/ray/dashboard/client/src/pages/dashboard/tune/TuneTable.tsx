@@ -21,6 +21,7 @@ import React from "react";
 import { connect } from "react-redux";
 import { TuneTrial } from "../../../api";
 import DialogWithTitle from "../../../common/DialogWithTitle";
+import { formatValue } from "../../../common/formatUtils";
 import NumberedLines from "../../../common/NumberedLines";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
@@ -387,7 +388,9 @@ class TuneTable extends React.Component<
                       </TableCell>
                       {viewableParams.map((value, index) => (
                         <TableCell className={classes.cell} key={index}>
-                          {trial["params"][value]}
+                          {typeof trial["params"][value] === "number"
+                            ? formatValue(Number(trial["params"][value]))
+                            : trial["params"][value]}
                         </TableCell>
                       ))}
                       <TableCell className={classes.cell}>
@@ -396,7 +399,9 @@ class TuneTable extends React.Component<
                       {trial["metrics"] &&
                         viewableMetrics.map((value, index) => (
                           <TableCell className={classes.cell} key={index}>
-                            {trial["metrics"][value]}
+                            {typeof trial["metrics"][value] === "number"
+                              ? formatValue(Number(trial["metrics"][value]))
+                              : trial["metrics"][value]}
                           </TableCell>
                         ))}
                       <TableCell className={classes.cell}>

@@ -171,7 +171,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
 
   RAY_CHECK_OK(object_manager_.SubscribeObjAdded(
       [this](const object_manager::protocol::ObjectInfoT &object_info) {
-        ObjectID object_id = ObjectID::FromPlasmaIdBinary(object_info.object_id);
+        ObjectID object_id = ObjectID::FromBinary(object_info.object_id);
         HandleObjectLocal(object_id);
       }));
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
@@ -2086,9 +2086,9 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
     num_returns -= 1;
   }
   // Determine which IDs should be marked as failed.
-  std::vector<plasma::ObjectID> objects_to_fail;
+  std::vector<ObjectID> objects_to_fail;
   for (int64_t i = 0; i < num_returns; i++) {
-    objects_to_fail.push_back(spec.ReturnId(i).ToPlasmaId());
+    objects_to_fail.push_back(spec.ReturnId(i));
   }
   const JobID job_id = task.GetTaskSpecification().JobId();
   MarkObjectsAsFailed(error_type, objects_to_fail, job_id);
@@ -2102,7 +2102,7 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
 }
 
 void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
-                                      const std::vector<plasma::ObjectID> objects_to_fail,
+                                      const std::vector<ObjectID> objects_to_fail,
                                       const JobID &job_id) {
   const std::string meta = std::to_string(static_cast<int>(error_type));
   for (const auto &object_id : objects_to_fail) {
@@ -2887,8 +2887,8 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
               << "by the redis LRU configuration. Consider increasing the memory "
                  "allocation via "
               << "ray.init(redis_max_memory=<max_memory_bytes>).";
-          MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
-                              {required_object_id.ToPlasmaId()}, JobID::Nil());
+          MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
+                              JobID::Nil());
         }
       }));
 }
@@ -2925,8 +2925,7 @@ void NodeManager::ResubmitTask(const Task &task, const ObjectID &required_object
         gcs::CreateErrorTableData(type, error_message.str(), current_time_ms(),
                                   task.GetTaskSpecification().JobId());
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
-    MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
-                        {required_object_id.ToPlasmaId()},
+    MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
                         task.GetTaskSpecification().JobId());
     return;
   }
@@ -3286,7 +3285,7 @@ void NodeManager::ProcessSubscribePlasmaReady(
 ray::Status NodeManager::SetupPlasmaSubscription() {
   return object_manager_.SubscribeObjAdded(
       [this](const object_manager::protocol::ObjectInfoT &object_info) {
-        ObjectID object_id = ObjectID::FromPlasmaIdBinary(object_info.object_id);
+        ObjectID object_id = ObjectID::FromBinary(object_info.object_id);
         auto waiting_workers = absl::flat_hash_set<std::shared_ptr<Worker>>();
         {
           absl::MutexLock guard(&plasma_object_notification_lock_);
@@ -3379,10 +3378,6 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
 void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
                                      rpc::PinObjectIDsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  if (!object_pinning_enabled_) {
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-    return;
-  }
   WorkerID worker_id = WorkerID::FromBinary(request.owner_address().worker_id());
   auto it = worker_rpc_clients_.find(worker_id);
   if (it == worker_rpc_clients_.end()) {
@@ -3395,51 +3390,55 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
              .first;
   }
 
-  // Pin the objects in plasma by getting them and holding a reference to
-  // the returned buffer.
-  // NOTE: the caller must ensure that the objects already exist in plamsa before
-  // sending a PinObjectIDs request.
-  std::vector<plasma::ObjectID> plasma_ids;
-  plasma_ids.reserve(request.object_ids_size());
-  for (const auto &object_id_binary : request.object_ids()) {
-    plasma_ids.push_back(plasma::ObjectID::from_binary(object_id_binary));
-  }
-  std::vector<plasma::ObjectBuffer> plasma_results;
-  // TODO(swang): This `Get` has a timeout of 0, so the plasma store will not
-  // block when serving the request. However, if the plasma store is under
-  // heavy load, then this request can still block the NodeManager event loop
-  // since we must wait for the plasma store's reply. We should consider using
-  // an `AsyncGet` instead.
-  if (!store_client_.Get(plasma_ids, /*timeout_ms=*/0, &plasma_results).ok()) {
-    RAY_LOG(WARNING) << "Failed to get objects to be pinned from object store.";
-    send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
-    return;
-  }
-
-  // Pin the requested objects until the owner notifies us that the objects can be
-  // unpinned by responding to the WaitForObjectEviction message.
-  // TODO(edoakes): we should be batching these requests instead of sending one per
-  // pinned object.
-  size_t i = 0;
-  for (const auto &object_id_binary : request.object_ids()) {
-    ObjectID object_id = ObjectID::FromBinary(object_id_binary);
-
-    if (plasma_results[i].data == nullptr) {
-      RAY_LOG(ERROR) << "Plasma object " << object_id
-                     << " was evicted before the raylet could pin it.";
-      continue;
+  if (object_pinning_enabled_) {
+    // Pin the objects in plasma by getting them and holding a reference to
+    // the returned buffer.
+    // NOTE: the caller must ensure that the objects already exist in plasma before
+    // sending a PinObjectIDs request.
+    std::vector<ObjectID> object_ids;
+    object_ids.reserve(request.object_ids_size());
+    for (const auto &object_id_binary : request.object_ids()) {
+      object_ids.push_back(ObjectID::FromBinary(object_id_binary));
+    }
+    std::vector<plasma::ObjectBuffer> plasma_results;
+    // TODO(swang): This `Get` has a timeout of 0, so the plasma store will not
+    // block when serving the request. However, if the plasma store is under
+    // heavy load, then this request can still block the NodeManager event loop
+    // since we must wait for the plasma store's reply. We should consider using
+    // an `AsyncGet` instead.
+    if (!store_client_.Get(object_ids, /*timeout_ms=*/0, &plasma_results).ok()) {
+      RAY_LOG(WARNING) << "Failed to get objects to be pinned from object store.";
+      send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
+      return;
     }
 
-    RAY_LOG(DEBUG) << "Pinning object " << object_id;
-    RAY_CHECK(
-        pinned_objects_
-            .emplace(object_id,
-                     std::unique_ptr<RayObject>(new RayObject(
-                         std::make_shared<PlasmaBuffer>(plasma_results[i].data),
-                         std::make_shared<PlasmaBuffer>(plasma_results[i].metadata), {})))
-            .second);
-    i++;
+    // Pin the requested objects until the owner notifies us that the objects can be
+    // unpinned by responding to the WaitForObjectEviction message.
+    // TODO(edoakes): we should be batching these requests instead of sending one per
+    // pinned object.
+    for (int64_t i = 0; i < request.object_ids().size(); i++) {
+      ObjectID object_id = ObjectID::FromBinary(request.object_ids(i));
 
+      if (plasma_results[i].data == nullptr) {
+        RAY_LOG(ERROR) << "Plasma object " << object_id
+                       << " was evicted before the raylet could pin it.";
+        continue;
+      }
+
+      RAY_LOG(DEBUG) << "Pinning object " << object_id;
+      RAY_CHECK(
+          pinned_objects_
+              .emplace(
+                  object_id,
+                  std::unique_ptr<RayObject>(new RayObject(
+                      std::make_shared<PlasmaBuffer>(plasma_results[i].data),
+                      std::make_shared<PlasmaBuffer>(plasma_results[i].metadata), {})))
+              .second);
+    }
+  }
+
+  for (const auto &object_id_binary : request.object_ids()) {
+    ObjectID object_id = ObjectID::FromBinary(object_id_binary);
     // Send a long-running RPC request to the owner for each object. When we get a
     // response or the RPC fails (due to the owner crashing), unpin the object.
     rpc::WaitForObjectEvictionRequest wait_request;
