@@ -13,14 +13,13 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-class FullyConnectedNetwork(TorchModelV2, nn.Module):
+class FullyConnectedNetwork(TorchModelV2):
     """Generic fully connected network."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
-        nn.Module.__init__(self)
 
         activation = get_activation_fn(
             model_config.get("fcnet_activation"), framework="torch")

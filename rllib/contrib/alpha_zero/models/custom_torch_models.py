@@ -16,12 +16,11 @@ def convert_to_tensor(arr):
     return tensor
 
 
-class ActorCriticModel(TorchModelV2, nn.Module, ABC):
+class ActorCriticModel(TorchModelV2, ABC):
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
-        nn.Module.__init__(self)
 
         self.preprocessor = get_preprocessor(obs_space.original_space)(
             obs_space.original_space)

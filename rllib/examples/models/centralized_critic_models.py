@@ -96,14 +96,13 @@ class YetAnotherCentralizedCriticModel(TFModelV2):
         return tf.reshape(self._value_out, [-1])
 
 
-class TorchCentralizedCriticModel(TorchModelV2, nn.Module):
+class TorchCentralizedCriticModel(TorchModelV2):
     """Multi-agent model that implements a centralized VF."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
-        nn.Module.__init__(self)
 
         # Base of the model
         self.model = TorchFC(obs_space, action_space, num_outputs,
@@ -133,7 +132,7 @@ class TorchCentralizedCriticModel(TorchModelV2, nn.Module):
         return self.model.value_function()  # not used
 
 
-class YetAnotherTorchCentralizedCriticModel(TorchModelV2, nn.Module):
+class YetAnotherTorchCentralizedCriticModel(TorchModelV2):
     """Multi-agent model that implements a centralized value function.
 
     It assumes the observation is a dict with 'own_obs' and 'opponent_obs', the
@@ -150,7 +149,6 @@ class YetAnotherTorchCentralizedCriticModel(TorchModelV2, nn.Module):
                  name):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
-        nn.Module.__init__(self)
 
         self.action_model = TorchFC(
             Box(low=0, high=1, shape=(6, )),  # one-hot encoded Discrete(6)

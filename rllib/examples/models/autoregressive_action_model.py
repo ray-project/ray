@@ -86,14 +86,13 @@ class AutoregressiveActionModel(TFModelV2):
         return tf.reshape(self._value_out, [-1])
 
 
-class TorchAutoregressiveActionModel(TorchModelV2, nn.Module):
+class TorchAutoregressiveActionModel(TorchModelV2):
     """PyTorch version of the AutoregressiveActionModel above."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
-        nn.Module.__init__(self)
 
         if action_space != Tuple([Discrete(2), Discrete(2)]):
             raise ValueError(
