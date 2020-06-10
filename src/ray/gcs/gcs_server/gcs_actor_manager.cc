@@ -764,6 +764,8 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
     RAY_LOG(INFO) << "created actors num = " << created_actors_.size();
     for (auto &item : registered_actors_) {
       auto &actor = item.second;
+      RAY_LOG(INFO) << "registered actor, actor id = " << actor->GetActorID()
+                    << ", actor state = " << actor->GetState();
       if (actor->GetState() != ray::rpc::ActorTableData::ALIVE) {
         gcs_actor_scheduler_->Schedule(actor);
       }

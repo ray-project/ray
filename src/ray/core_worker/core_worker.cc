@@ -1719,6 +1719,7 @@ void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
 void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
                                 rpc::PushTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "CoreWorker HandlePushTask..., task id = " << request.task_spec().task_id();
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
     return;

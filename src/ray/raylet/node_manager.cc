@@ -2174,7 +2174,6 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
     std::unordered_set<TaskID> task_ids;
     task_ids.insert(task_id);
     local_queues_.RemoveTasks(task_ids);
-    return;
   }
 
   if (spec.IsActorTask()) {
