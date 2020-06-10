@@ -69,7 +69,7 @@ struct Mocker {
       const std::vector<rpc::Bundle> &bundles, rpc::PlacementStrategy strategy) {
     PlacementGroupSpecBuilder builder;
 
-    auto placement_group_id = PlacementGroupID::Of(job_id, RandomTaskId(), 0);
+    auto placement_group_id = PlacementGroupID::FromsRandom();
     builder.SetPlacementGroupSpec(placement_group_id, max_restarts, name, bundles,
                                   strategy);
     return builder.Build();
