@@ -63,8 +63,11 @@ class BatchQueue:
             # If the timeout is nonzero, wait for either the timeout to occur
             # or the max batch size to be ready.
             else:
-                asyncio.wait(
-                    [self.full_batch_event.wait()], timeout=curr_timeout)
+                try:
+                    await asyncio.wait_for(self.full_batch_event.wait(),
+                                           curr_timeout)
+                except asyncio.TimeoutError:
+                    pass
 
             # Pull up to the max_batch_size requests off the queue.
             while len(batch) < self.max_batch_size and not self.queue.empty():
