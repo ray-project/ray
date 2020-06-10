@@ -511,7 +511,8 @@ cdef execute_task(
                                     worker.worker_id, job_id.binary())
                             setup_logging(job_stdout_path, job_stderr_path)
                             outputs = function_executor(*args, **kwargs)
-                            setup_logging(worker_stdout_path, worker_stderr_path)
+                            setup_logging(worker_stdout_path,
+                                          worker_stderr_path)
                         else:
                             outputs = function_executor(*args, **kwargs)
                         task_exception = False
