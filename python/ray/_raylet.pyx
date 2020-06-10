@@ -215,9 +215,9 @@ def setup_logging(stdout_name, stderr_name):
         flush_out()
         flush_err()
 
-    # Don't leak file descriptors
-    sys.stdout.close()
-    sys.stderr.close()
+    # # Don't leak file descriptors
+    # sys.stdout.close()
+    # sys.stderr.close()
 
     # Redirect stdout/stderr at the file descriptor level. If we simply
     # set sys.stdout and sys.stderr, then logging from C++ can fail to
@@ -225,9 +225,9 @@ def setup_logging(stdout_name, stderr_name):
     os.dup2(stdout_file.fileno(), sys.stdout.fileno(), os.getpid())
     os.dup2(stderr_file.fileno(), sys.stderr.fileno(), os.getpid())
 
-    # Don't leak file descriptors
-    stdout_file.close()
-    stderr_file.close()
+    # TODO: Don't leak file descriptors
+    # stdout_file.close()
+    # stderr_file.close()
 
     # We also manually set sys.stdout and sys.stderr because that seems
     # to have an affect on the output buffering. Without doing this,
