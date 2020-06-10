@@ -1,8 +1,14 @@
-#include "plasma/store.h"
 #include <getopt.h>
 #include <stdio.h>
 
-int main(int argc, char* argv[]) {
+#include "ray/object_manager/plasma/store.h"
+// TODO(pcm): Convert getopt and sscanf in the store to use more idiomatic C++
+// and get rid of the next three lines:
+#ifndef __STDC_FORMAT_MACROS
+#define __STDC_FORMAT_MACROS
+#endif
+
+int main(int argc, char *argv[]) {
   std::string socket_name;
   // Directory where plasma memory mapped files are stored.
   std::string plasma_directory;
@@ -35,8 +41,8 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  plasma::PlasmaStoreRunner runner(
-    socket_name, system_memory, hugepages_enabled, plasma_directory, external_store_endpoint);
+  plasma::PlasmaStoreRunner runner(socket_name, system_memory, hugepages_enabled,
+                                   plasma_directory, external_store_endpoint);
   runner.Start();
   return 0;
 }

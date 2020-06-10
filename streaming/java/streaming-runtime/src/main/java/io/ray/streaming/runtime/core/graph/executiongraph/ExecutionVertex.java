@@ -1,7 +1,7 @@
 package io.ray.streaming.runtime.core.graph.executiongraph;
 
 import com.google.common.base.MoreObjects;
-import io.ray.api.RayActor;
+import io.ray.api.ActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.jobgraph.VertexType;
@@ -49,7 +49,7 @@ public class ExecutionVertex implements Serializable {
 
   private ExecutionVertexState state = ExecutionVertexState.TO_ADD;
   private ContainerID containerId;
-  private RayActor<JobWorker> workerActor;
+  private ActorHandle<JobWorker> workerActor;
   private List<ExecutionEdge> inputEdges = new ArrayList<>();
   private List<ExecutionEdge> outputEdges = new ArrayList<>();
 
@@ -124,7 +124,7 @@ public class ExecutionVertex implements Serializable {
     return state == ExecutionVertexState.TO_DEL;
   }
 
-  public RayActor<JobWorker> getWorkerActor() {
+  public ActorHandle<JobWorker> getWorkerActor() {
     return workerActor;
   }
 
@@ -132,7 +132,7 @@ public class ExecutionVertex implements Serializable {
     return workerActor.getId();
   }
 
-  public void setWorkerActor(RayActor<JobWorker> workerActor) {
+  public void setWorkerActor(ActorHandle<JobWorker> workerActor) {
     this.workerActor = workerActor;
   }
 

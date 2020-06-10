@@ -1,8 +1,8 @@
 package io.ray.streaming.runtime.master.scheduler.controller;
 
+import io.ray.api.ActorHandle;
+import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
-import io.ray.api.RayObject;
 import io.ray.api.WaitResult;
 import io.ray.api.id.ActorId;
 import io.ray.api.options.ActorCreationOptions;
@@ -50,7 +50,7 @@ public class WorkerLifecycleController {
         .setMaxRestarts(-1)
         .createActorCreationOptions();
 
-    RayActor<JobWorker> actor = null;
+    ActorHandle<JobWorker> actor = null;
     // TODO (datayjz): ray create actor
 
     if (null == actor) {
@@ -77,18 +77,18 @@ public class WorkerLifecycleController {
     LOG.info("Begin initiating workers: {}.", vertexToContextMap);
     long startTime = System.currentTimeMillis();
 
-    Map<RayObject<Boolean>, ActorId> rayObjects = new HashMap<>();
+    Map<ObjectRef<Boolean>, ActorId> rayObjects = new HashMap<>();
     vertexToContextMap.entrySet().forEach((entry -> {
       ExecutionVertex vertex = entry.getKey();
       rayObjects.put(RemoteCallWorker.initWorker(vertex.getWorkerActor(), entry.getValue()),
           vertex.getWorkerActorId());
     }));
 
-    List<RayObject<Boolean>> rayObjectList = new ArrayList<>(rayObjects.keySet());
+    List<ObjectRef<Boolean>> objectRefList = new ArrayList<>(rayObjects.keySet());
 
     LOG.info("Waiting for workers' initialization.");
-    WaitResult<Boolean> result = Ray.wait(rayObjectList, rayObjectList.size(), timeout);
-    if (result.getReady().size() != rayObjectList.size()) {
+    WaitResult<Boolean> result = Ray.wait(objectRefList, objectRefList.size(), timeout);
+    if (result.getReady().size() != objectRefList.size()) {
       LOG.error("Initializing workers timeout[{} ms].", timeout);
       return false;
     }
@@ -108,18 +108,18 @@ public class WorkerLifecycleController {
   public boolean startWorkers(ExecutionGraph executionGraph, int timeout) {
     LOG.info("Begin starting workers.");
     long startTime = System.currentTimeMillis();
-    List<RayObject<Boolean>> rayObjects = new ArrayList<>();
+    List<ObjectRef<Boolean>> objectRefs = new ArrayList<>();
 
     // start source actors 1st
     executionGraph.getSourceActors()
-        .forEach(actor -> rayObjects.add(RemoteCallWorker.startWorker(actor)));
+        .forEach(actor -> objectRefs.add(RemoteCallWorker.startWorker(actor)));
 
     // then start non-source actors
     executionGraph.getNonSourceActors()
-        .forEach(actor -> rayObjects.add(RemoteCallWorker.startWorker(actor)));
+        .forEach(actor -> objectRefs.add(RemoteCallWorker.startWorker(actor)));
 
-    WaitResult<Boolean> result = Ray.wait(rayObjects, rayObjects.size(), timeout);
-    if (result.getReady().size() != rayObjects.size()) {
+    WaitResult<Boolean> result = Ray.wait(objectRefs, objectRefs.size(), timeout);
+    if (result.getReady().size() != objectRefs.size()) {
       LOG.error("Starting workers timeout[{} ms].", timeout);
       return false;
     }
@@ -139,7 +139,7 @@ public class WorkerLifecycleController {
   }
 
   private boolean destroyWorker(ExecutionVertex executionVertex) {
-    RayActor rayActor = executionVertex.getWorkerActor();
+    ActorHandle rayActor = executionVertex.getWorkerActor();
     LOG.info("Begin destroying worker[vertex={}, actor={}].",
         executionVertex.getVertexName(), rayActor.getId());
 

@@ -17,7 +17,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class WordCountTest extends BaseUnitTest implements Serializable {
@@ -28,7 +27,7 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
   //   results in this in-memory map.
   static Map<String, Integer> wordCount = new ConcurrentHashMap<>();
 
-  @Test
+  @Test(timeOut = 60000)
   public void testWordCount() {
     Ray.shutdown();
     StreamingContext streamingContext = StreamingContext.buildContext();
@@ -54,15 +53,14 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
 
     streamingContext.execute("testWordCount");
 
-    // Sleep until the count for every word is computed.
-    while (wordCount.size() < 2) {
+    ImmutableMap<String, Integer> expected = ImmutableMap.of("eagle", 3, "hello", 1);
+    while (!wordCount.equals(expected)) {
       try {
-        Thread.sleep(100);
+        Thread.sleep(1000);
       } catch (InterruptedException e) {
         LOGGER.warn("Got an exception while sleeping.", e);
       }
     }
-    Assert.assertEquals(wordCount, ImmutableMap.of("eagle", 3, "hello", 1));
     streamingContext.stop();
   }
 

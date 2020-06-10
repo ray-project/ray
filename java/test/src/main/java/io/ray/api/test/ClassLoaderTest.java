@@ -1,9 +1,9 @@
 package io.ray.api.test;
 
-import io.ray.api.BaseActor;
+import io.ray.api.ActorHandle;
+import io.ray.api.BaseActorHandle;
+import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
-import io.ray.api.RayObject;
 import io.ray.api.TestUtils;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.runtime.AbstractRayRuntime;
@@ -93,18 +93,20 @@ public class ClassLoaderTest extends BaseTest {
 
     // Compile the java file.
     JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-    int result = compiler.run(null, null, null, "-d", jobResourcePath, javaFilePath);
+    int result = compiler.run(null, null, null, "-d",
+        jobResourcePath, javaFilePath);
     if (result != 0) {
       throw new RuntimeException("Couldn't compile ClassLoaderTester.java.");
     }
 
-    FunctionDescriptor constructor = new JavaFunctionDescriptor("ClassLoaderTester", "<init>",
-        "()V");
-    RayActor<?> actor1 = createActor(constructor);
-    FunctionDescriptor getPid = new JavaFunctionDescriptor("ClassLoaderTester", "getPid", "()I");
+    FunctionDescriptor constructor = new JavaFunctionDescriptor(
+        "ClassLoaderTester", "<init>", "()V");
+    ActorHandle<?> actor1 = createActor(constructor);
+    FunctionDescriptor getPid = new JavaFunctionDescriptor(
+        "ClassLoaderTester", "getPid", "()I");
     int pid = this.<Integer>callActorFunction(actor1, getPid, new Object[0],
         Optional.of(Integer.class)).get();
-    RayActor<?> actor2;
+    ActorHandle<?> actor2;
     while (true) {
       // Create another actor which share the same process of actor 1.
       actor2 = createActor(constructor);
@@ -115,40 +117,42 @@ public class ClassLoaderTest extends BaseTest {
       }
     }
 
-    FunctionDescriptor getClassLoaderHashCode = new JavaFunctionDescriptor("ClassLoaderTester",
-        "getClassLoaderHashCode",
-        "()I");
-    RayObject<Integer> hashCode1 = callActorFunction(actor1, getClassLoaderHashCode, new Object[0],
+    FunctionDescriptor getClassLoaderHashCode = new JavaFunctionDescriptor(
+        "ClassLoaderTester", "getClassLoaderHashCode", "()I");
+    ObjectRef<Integer> hashCode1 = callActorFunction(actor1, getClassLoaderHashCode, new Object[0],
         Optional.of(Integer.class));
-    RayObject<Integer> hashCode2 = callActorFunction(actor2, getClassLoaderHashCode, new Object[0],
+    ObjectRef<Integer> hashCode2 = callActorFunction(actor2, getClassLoaderHashCode, new Object[0],
         Optional.of(Integer.class));
     Assert.assertEquals(hashCode1.get(), hashCode2.get());
 
-    FunctionDescriptor increase = new JavaFunctionDescriptor("ClassLoaderTester", "increase",
-        "()I");
-    RayObject<Integer> value1 = callActorFunction(actor1, increase, new Object[0],
+    FunctionDescriptor increase = new JavaFunctionDescriptor(
+        "ClassLoaderTester", "increase", "()I");
+    ObjectRef<Integer> value1 = callActorFunction(actor1, increase, new Object[0],
         Optional.of(Integer.class));
-    RayObject<Integer> value2 = callActorFunction(actor2, increase, new Object[0],
+    ObjectRef<Integer> value2 = callActorFunction(actor2, increase, new Object[0],
         Optional.of(Integer.class));
     Assert.assertNotEquals(value1.get(), value2.get());
   }
 
-  private RayActor<?> createActor(FunctionDescriptor functionDescriptor)
+  private ActorHandle<?> createActor(FunctionDescriptor functionDescriptor)
       throws Exception {
     Method createActorMethod = AbstractRayRuntime.class.getDeclaredMethod("createActorImpl",
         FunctionDescriptor.class, Object[].class, ActorCreationOptions.class);
     createActorMethod.setAccessible(true);
-    return (RayActor<?>) createActorMethod
+    return (ActorHandle<?>) createActorMethod
         .invoke(TestUtils.getUnderlyingRuntime(), functionDescriptor, new Object[0], null);
   }
 
-  private <T> RayObject<T> callActorFunction(RayActor<?> rayActor,
-      FunctionDescriptor functionDescriptor, Object[] args, Optional<Class<?>> returnType)
+  private <T> ObjectRef<T> callActorFunction(
+      ActorHandle<?> rayActor,
+      FunctionDescriptor functionDescriptor,
+      Object[] args,
+      Optional<Class<?>> returnType)
       throws Exception {
     Method callActorFunctionMethod = AbstractRayRuntime.class.getDeclaredMethod("callActorFunction",
-        BaseActor.class, FunctionDescriptor.class, Object[].class, Optional.class);
+        BaseActorHandle.class, FunctionDescriptor.class, Object[].class, Optional.class);
     callActorFunctionMethod.setAccessible(true);
-    return (RayObject<T>) callActorFunctionMethod
+    return (ObjectRef<T>) callActorFunctionMethod
         .invoke(TestUtils.getUnderlyingRuntime(), rayActor, functionDescriptor, args, returnType);
   }
 }

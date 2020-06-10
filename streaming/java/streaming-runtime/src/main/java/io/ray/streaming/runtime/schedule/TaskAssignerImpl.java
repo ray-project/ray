@@ -1,9 +1,9 @@
 package io.ray.streaming.runtime.schedule;
 
-import io.ray.api.BaseActor;
+import io.ray.api.ActorHandle;
+import io.ray.api.BaseActorHandle;
+import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
-import io.ray.api.RayPyActor;
 import io.ray.api.function.PyActorClass;
 import io.ray.streaming.jobgraph.JobEdge;
 import io.ray.streaming.jobgraph.JobGraph;
@@ -64,16 +64,16 @@ public class TaskAssignerImpl implements TaskAssigner {
     return new ExecutionGraph(executionNodes);
   }
 
-  private BaseActor createWorker(JobVertex jobVertex) {
+  private BaseActorHandle createWorker(JobVertex jobVertex) {
     switch (jobVertex.getLanguage()) {
       case PYTHON: {
-        RayPyActor worker = Ray.createActor(
+        PyActorHandle worker = Ray.createActor(
             new PyActorClass("ray.streaming.runtime.worker", "JobWorker"));
         LOG.info("Created python worker {}", worker);
         return worker;
       }
       case JAVA: {
-        RayActor<JobWorker> worker = Ray.createActor(JobWorker::new);
+        ActorHandle<JobWorker> worker = Ray.createActor(JobWorker::new);
         LOG.info("Created java worker {}", worker);
         return worker;
       }
