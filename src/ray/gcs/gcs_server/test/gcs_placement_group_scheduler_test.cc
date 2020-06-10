@@ -26,10 +26,11 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
     worker_client_ = std::make_shared<GcsServerMocker::MockWorkerClient>();
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
+    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
-        io_service_, node_info_accessor_, error_info_accessor_, gcs_pub_sub_);
+        io_service_, error_info_accessor_, gcs_pub_sub_, gcs_table_storage_);
     gcs_placement_group_scheduler_ = std::make_shared<GcsServerMocker::MockedGcsPlacementGroupScheduler>(
-        io_service_, placement_group_info_accessor_, *gcs_node_manager_, gcs_pub_sub_,
+        io_service_, gcs_table_storage_, *gcs_node_manager_, gcs_pub_sub_,
         [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
           failure_placement_groups_.emplace_back(std::move(placement_group));
         },
@@ -56,6 +57,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
   std::shared_ptr<GcsServerMocker::MockWorkerClient> worker_client_;
+  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 };
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestScheduleFailedWithZeroNode) {

@@ -42,6 +42,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         [this](std::shared_ptr<gcs::GcsActor> actor) {
           success_actors_.emplace_back(std::move(actor));
         },
+        *gcs_placement_group_manager_,
         /*lease_client_factory=*/
         [this](const rpc::Address &address) { return raylet_client_; },
         /*client_factory=*/
@@ -58,6 +59,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
   std::shared_ptr<GcsServerMocker::MockWorkerClient> worker_client_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
+  std::shared_ptr<gcs::GcsPlacementGroupManager> gcs_placement_group_manager_;
   std::shared_ptr<GcsServerMocker::MockedGcsActorScheduler> gcs_actor_scheduler_;
   std::vector<std::shared_ptr<gcs::GcsActor>> success_actors_;
   std::vector<std::shared_ptr<gcs::GcsActor>> failure_actors_;
