@@ -188,16 +188,13 @@ The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or `
 Composing Multiple Models
 =========================
 In many cases, you need to use multiple models to perform a prediction. It 
-could that you are connecting a preprocess model with a inference model; or
+could be that you are connecting a preprocessing model with an inference model or
 using multiple models to perform stacking or ensembles. Ray Serve has built in
-support for composing models together.
+support for composing models together in this way.
 
-To define a higher-level composed model, you can define a Ray Serve backend and
-connect to an endpoint normally. With the following differences:
+To define a higher-level composed model, you can define a Ray Serve backend that will send requests to other endpoints containing the individual models and combine their results.
 
-- You can retrieve a "handle" to your physical models and call it with Python 
-  arguments via ``serve.get_handle("endpoint-name")``
-- You should make your backend implementation async python function with ``async def``.
+In order to make calls to the underlying models, you can retrieve a "handle" to their endpoints and call them with Python using ``serve.get_handle("endpoint")``. Additionally, in order to avoid blocking the composed model while waiting for requests, it should be made an async function using ``async def``.
 
 That's it. Let's take a look at an example:
 
