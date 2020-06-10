@@ -193,13 +193,37 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
   return h;
 }
 
-PlacementGroupID PlacementGroupID::Of(const JobID &job_id, const TaskID &parent_task_id,
-                                      const size_t parent_task_counter) {
-  auto data = GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter,
-                                  PlacementGroupID::kUniqueBytesLength);
-  std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
-  RAY_CHECK(data.size() == kLength);
-  return PlacementGroupID::FromBinary(data);
+PlacementGroupID PlacementGroupID::FromRandom() {
+  PlacementGroupIDFlagsType flags = 0x0000;
+    SetCreatedByTaskFlag(false, &flags);
+  // No need to set transport type for a random object id.
+  // No need to assign put_index/return_index bytes.
+  std::vector<uint8_t> task_id_bytes(TaskID::kLength, 0x0);
+  FillRandom(&task_id_bytes);
+
+  return GeneratePlacementGroupId(
+      std::string(reinterpret_cast<const char *>(task_id_bytes.data()),
+                  task_id_bytes.size()),
+      flags);
+}
+
+PlacementGroupID PlacementGroupID::GeneratePlacementGroupId(const std::string &placement_group_id_binary,
+                                    PlacementGroupIDFlagsType flags,
+                                    PlacementGroupIDIndexType placement_group_index) {
+  RAY_CHECK(placement_group_id_binary.size() == PlacementGroupID::Size());
+  PlacementGroupID ret;
+  std::memcpy(ret.id_, placement_group_id_binary.c_str(), TaskID::kLength);
+  std::memcpy(ret.id_ + TaskID::kLength, &flags, sizeof(flags));
+  std::memcpy(ret.id_ + TaskID::kLength + kFlagsBytesLength, &placement_group_index,
+              sizeof(placement_group_index));
+  return ret;
+}
+
+BundleID BundleID::Of(const PlacementGroupID &placement_group_id, const BundleIDIndexType &index) {
+  BundleID ret;
+  std::memcpy(ret.id_, placement_group_id.Data(), PlacementGroupID::kLength);
+  std::memcpy(ret.id_ + PlacementGroupID::kLength, &index, sizeof(index));
+  return ret;
 }
 
 ActorID ActorID::Of(const JobID &job_id, const TaskID &parent_task_id,

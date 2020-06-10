@@ -1168,9 +1168,7 @@ Status CoreWorker::CreatePlacementGroup(
     const RayFunction &function,
     const PlacementGroupCreationOptions &placement_group_creation_options,
     PlacementGroupID *return_placement_group_id) {
-  const PlacementGroupID placement_group_id = PlacementGroupID ::Of(
-      worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
-      worker_context_.GetNextTaskIndex());
+  const PlacementGroupID placement_group_id = PlacementGroupID :: FromRandom();
   PlacementGroupSpecBuilder builder;
   builder.SetPlacementGroupSpec(
       placement_group_id, placement_group_creation_options.max_restarts,

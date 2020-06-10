@@ -58,10 +58,10 @@ void GcsPlacementGroupScheduler::Schedule(
   if (strategy == rpc::SPREAD) {
     // This is a algorithm to select node.
     auto iter = alive_nodes.begin();
-    int index = 0;
-    int alive_nodes_size = alive_nodes.size();
+    size_t index = 0;
+    size_t alive_nodes_size = alive_nodes.size();
     for (; iter != alive_nodes.end(); iter++, index++) {
-      for (int base = 0;; base++) {
+      for (size_t base = 0;; base++) {
         if (index + base * alive_nodes_size >= bundles.size()) {
           break;
         } else {
@@ -72,7 +72,7 @@ void GcsPlacementGroupScheduler::Schedule(
     }
   } else if (strategy == rpc::PACK) {
     // This is another algorithm to select node.
-    for (int pos = 0; pos < bundles.size(); pos++) {
+    for (size_t pos = 0; pos < bundles.size(); pos++) {
       schedule_bundles[pos] =
           ClientID::FromBinary(alive_nodes.begin()->second->node_id());
     }
@@ -80,7 +80,7 @@ void GcsPlacementGroupScheduler::Schedule(
   auto decision = GetDecision();
   decision.resize(bundles.size());
   resource_lease_.resize(bundles.size());
-  for (int pos = 0; pos < bundles.size(); pos++) {
+  for (size_t pos = 0; pos < bundles.size(); pos++) {
     RAY_CHECK(node_to_bundles_when_leasing_[schedule_bundles[pos]]
                   .emplace(bundles[pos].BundleId())
                   .second);
