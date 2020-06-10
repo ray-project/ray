@@ -11,16 +11,17 @@ torch, nn = try_import_torch()
 
 
 @DeveloperAPI
-class RecurrentNetwork(TorchModelV2, nn.Module):
+class RecurrentNetwork(TorchModelV2):
     """Helper class to simplify implementing RNN models with TorchModelV2.
 
     Instead of implementing forward(), you can implement forward_rnn() which
     takes batches with the time dimension added already.
 
     Here is an example implementation for a subclass
-    ``MyRNNClass(RecurrentNetwork)``::
+    ``MyRNNClass(RecurrentNetwork, nn.Module)``::
 
         def __init__(self, obs_space, num_outputs):
+            nn.Module.__init__(self)
             super().__init__(obs_space, action_space, num_outputs,
                              model_config, name)
             self.obs_size = _get_size(obs_space)
@@ -53,12 +54,6 @@ class RecurrentNetwork(TorchModelV2, nn.Module):
             self._cur_value = self.value_branch(h).squeeze(1)
             return q, [h]
     """
-
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
-                              model_config, name)
-        nn.Module.__init__(self)
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
@@ -95,19 +90,20 @@ class RecurrentNetwork(TorchModelV2, nn.Module):
         raise NotImplementedError("You must implement this for an RNN model")
 
 
-class LSTMWrapper(RecurrentNetwork):
+class LSTMWrapper(RecurrentNetwork, nn.Module):
     """An LSTM wrapper serving as an interface for ModelV2s that set use_lstm.
     """
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
 
+        nn.Module.__init__(self)
         super().__init__(obs_space, action_space, None, model_config, name)
-
-        self.num_outputs = num_outputs
 
         self.cell_size = model_config["lstm_cell_size"]
         self.lstm = nn.LSTM(self.num_outputs, self.cell_size, batch_first=True)
+
+        self.num_outputs = num_outputs
 
         # Postprocess LSTM output with another hidden layer and compute values.
         self._logits_branch = SlimFC(
