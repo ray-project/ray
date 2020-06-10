@@ -103,7 +103,7 @@ def create(project_name, cluster_yaml, requirements):
         try:
             repo = subprocess.check_output(
                 "git remote get-url origin".split(" ")).strip()
-            logger.info("Setting repo URL to %s", repo)
+            logger.info("Setting repo URL to %s", repo.decode('UTF-8'))
         except subprocess.CalledProcessError:
             pass
 
