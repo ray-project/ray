@@ -25,11 +25,11 @@ namespace ray {
 namespace rpc {
 
 /// This implementation class of `JobInfoHandler`.
-class DefaultJobInfoHandler : public rpc::JobInfoHandler {
+class GcsJobInfoHandler : public rpc::JobInfoHandler {
  public:
-  explicit DefaultJobInfoHandler(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                                 gcs::GcsObjectManager &gcs_object_manager,
-                                 std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub)
+  explicit GcsJobInfoHandler(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                             gcs::GcsObjectManager &gcs_object_manager,
+                             std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub)
       : gcs_table_storage_(std::move(gcs_table_storage)),
         gcs_object_manager_(gcs_object_manager),
         gcs_pub_sub_(std::move(gcs_pub_sub)) {}

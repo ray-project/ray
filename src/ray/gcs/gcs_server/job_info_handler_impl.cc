@@ -18,9 +18,9 @@
 namespace ray {
 namespace rpc {
 
-void DefaultJobInfoHandler::HandleAddJob(const rpc::AddJobRequest &request,
-                                         rpc::AddJobReply *reply,
-                                         rpc::SendReplyCallback send_reply_callback) {
+void GcsJobInfoHandler::HandleAddJob(const rpc::AddJobRequest &request,
+                                     rpc::AddJobReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
   JobID job_id = JobID::FromBinary(request.data().job_id());
   RAY_LOG(INFO) << "Adding job, job id = " << job_id
                 << ", driver pid = " << request.data().driver_pid();
@@ -41,7 +41,7 @@ void DefaultJobInfoHandler::HandleAddJob(const rpc::AddJobRequest &request,
   }
 }
 
-void DefaultJobInfoHandler::HandleMarkJobFinished(
+void GcsJobInfoHandler::HandleMarkJobFinished(
     const rpc::MarkJobFinishedRequest &request, rpc::MarkJobFinishedReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   JobID job_id = JobID::FromBinary(request.job_id());
@@ -67,7 +67,7 @@ void DefaultJobInfoHandler::HandleMarkJobFinished(
   }
 }
 
-void DefaultJobInfoHandler::ClearJobInfos(const JobID &job_id) {
+void GcsJobInfoHandler::ClearJobInfos(const JobID &job_id) {
   // Actor related
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().DeleteByJobId(job_id, nullptr));
   auto on_done = [this](
@@ -99,9 +99,9 @@ void DefaultJobInfoHandler::ClearJobInfos(const JobID &job_id) {
   RAY_CHECK_OK(gcs_table_storage_->ObjectTable().DeleteByJobId(job_id, nullptr));
 }
 
-void DefaultJobInfoHandler::HandleGetAllJobInfo(
-    const rpc::GetAllJobInfoRequest &request, rpc::GetAllJobInfoReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void GcsJobInfoHandler::HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest &request,
+                                            rpc::GetAllJobInfoReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "Getting all job info.";
   auto on_done = [reply, send_reply_callback](
                      const std::unordered_map<JobID, JobTableData> &result) {

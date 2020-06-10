@@ -199,8 +199,8 @@ void GcsServer::InitGcsActorManager() {
 }
 
 std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
-  return std::unique_ptr<rpc::DefaultJobInfoHandler>(new rpc::DefaultJobInfoHandler(
-      gcs_table_storage_, *gcs_object_manager_, gcs_pub_sub_));
+  return std::unique_ptr<rpc::GcsJobInfoHandler>(
+      new rpc::GcsJobInfoHandler(gcs_table_storage_, *gcs_object_manager_, gcs_pub_sub_));
 }
 
 std::unique_ptr<GcsObjectManager> GcsServer::InitObjectManager() {
