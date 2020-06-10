@@ -94,7 +94,7 @@ from ray.exceptions import (
     RayTimeoutError,
     RayCancellationError
 )
-from ray.utils import decode, open_worker_log
+from ray.utils import decode, open_worker_log, open_log
 import gc
 import msgpack
 
@@ -215,26 +215,28 @@ def setup_logging(stdout_name, stderr_name):
         flush_out()
         flush_err()
 
-    # # Don't leak file descriptors
-    # sys.stdout.close()
-    # sys.stderr.close()
 
-    # Redirect stdout/stderr at the file descriptor level. If we simply
-    # set sys.stdout and sys.stderr, then logging from C++ can fail to
-    # be redirected.
-    os.dup2(stdout_file.fileno(), sys.stdout.fileno(), os.getpid())
-    os.dup2(stderr_file.fileno(), sys.stderr.fileno(), os.getpid())
+    stdout_fileno = stdout_fileno()
+    stderr_fileno = stderr_fileno()
 
-    # TODO: Don't leak file descriptors
-    # stdout_file.close()
-    # stderr_file.close()
+    # Redirect stdout/stderr at the file descriptor level. If we simply set
+    # sys.stdout and sys.stderr, then logging from C++ can fail to be
+    # redirected. Note that dup2 will automatically close the old file
+    # descriptor before overriding it.
+    os.dup2(stdout_fileno, sys.stdout.fileno(), os.getpid())
+    os.dup2(stderr_fileno, sys.stderr.fileno(), os.getpid())
+
+    # We must close the original file descriptor to avoid leaking file
+    # descriptors.
+    stdout_file.close()
+    stderr_file.close()
 
     # We also manually set sys.stdout and sys.stderr because that seems
     # to have an affect on the output buffering. Without doing this,
     # stdout and stderr are heavily buffered resulting in seemingly
     # lost logging statements.
-    sys.stdout = stdout_file
-    sys.stderr = stderr_file
+    sys.stdout = open_log(stdout_fileno)
+    sys.stderr = open_log(stderr_fileno)
 
     stdout_path = os.path.abspath(stdout_file.name)
     stderr_path = os.path.abspath(stderr_file.name)
