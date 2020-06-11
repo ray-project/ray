@@ -11,10 +11,12 @@ import {
   checkProfilingStatus,
   CheckProfilingStatusResponse,
   getProfilingResultURL,
+  InvalidStateType,
   launchKillActor,
   launchProfiling,
   RayletActorInfo,
 } from "../../../api";
+import ActorDetailsPane from "./ActorDetailsPane";
 import Actors from "./Actors";
 
 const styles = (theme: Theme) =>
@@ -43,14 +45,7 @@ const styles = (theme: Theme) =>
     invalidStateTypePendingActor: {
       color: theme.palette.secondary.main,
     },
-    information: {
-      fontSize: "0.875rem",
-    },
-    datum: {
-      "&:not(:first-child)": {
-        marginLeft: theme.spacing(2),
-      },
-    },
+
     webuiDisplay: {
       fontSize: "0.875rem",
     },
@@ -59,6 +54,17 @@ const styles = (theme: Theme) =>
       display: "inline",
     },
   });
+
+const actorStateRepr = (state: 0 | 1 | 2): string => {
+  switch (state) {
+    case 0:
+      return "Creating";
+    case 1:
+      return "Alive";
+    case 2:
+      return "Restarting";
+  }
+};
 
 type Props = {
   actor: RayletActorInfo;
@@ -132,12 +138,8 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
       actor.state !== -1
         ? [
             {
-              label: "ActorTitle",
-              value: actor.actorTitle,
-            },
-            {
               label: "State",
-              value: actor.state.toLocaleString(),
+              value: actorStateRepr(actor.state),
             },
             {
               label: "Resources",
@@ -149,24 +151,39 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                   .join(", "),
             },
             {
-              label: "Pending",
+              label: "Number of Pending Tasks",
               value: actor.taskQueueLength.toLocaleString(),
+              tooltip:
+                "The number of tasks that are currently pending to execute on this actor. If this number " +
+                "remains consistently high, it can indicate that this actor is a bottle-neck in your program.",
             },
             {
-              label: "Executed",
+              label: "Number of Executed Tasks",
               value: actor.numExecutedTasks.toLocaleString(),
+              tooltip:
+                "The number of tasks this actor has executed throughout its lifetimes.",
             },
             {
-              label: "NumObjectIdsInScope",
+              label: "Number of Object IDs in Scope",
               value: actor.numObjectIdsInScope.toLocaleString(),
+              tooltip:
+                "The number of objects ids that this actor is keeping in scope via its internal state. " +
+                "This does not imply that the objects are in active use or colocated on the node with the actor " +
+                "currently. This can be useful for debugging memory leaks.",
             },
             {
-              label: "NumLocalObjects",
+              label: "Number of Local Objects",
               value: actor.numLocalObjects.toLocaleString(),
+              tooltip:
+                "The number of objects that this actor has stored in memory on the node. This can be useful for " +
+                "debugging memory leaks.",
             },
             {
-              label: "UsedLocalObjectMemory",
+              label: "Object Store Memory Used (MB)",
               value: actor.usedObjectStoreMemory.toLocaleString(),
+              tooltip:
+                "The total amount of memory that this actor is occupying in the Ray object store. " +
+                "If this number is increasing without bounds, you might have a memory leak.",
             },
             // {
             //   label: "Task",
@@ -175,17 +192,19 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
           ]
         : [
             {
-              label: "ID",
+              label: "Actor ID",
               value: actor.actorId,
+              tooltip: "",
             },
             {
-              label: "Required resources",
+              label: "Required Resources",
               value:
                 Object.entries(actor.requiredResources).length > 0 &&
                 Object.entries(actor.requiredResources)
                   .sort((a, b) => a[0].localeCompare(b[0]))
                   .map(([key, value]) => `${value.toLocaleString()} ${key}`)
                   .join(", "),
+              tooltip: "",
             },
           ];
 
@@ -289,8 +308,8 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             </React.Fragment>
           ) : actor.invalidStateType === "infeasibleActor" ? (
             <span className={classes.invalidStateTypeInfeasible}>
-              {actor.actorTitle} is infeasible. (This actor cannot be created
-              because the Ray cluster cannot satisfy its resource requirements.)
+              {actor.actorTitle} cannot be created because the Ray cluster
+              cannot satisfy its resource requirements.)
             </span>
           ) : (
             <span className={classes.invalidStateTypePendingActor}>
@@ -298,19 +317,10 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             </span>
           )}
         </Typography>
-        <Typography className={classes.information}>
-          {information.map(
-            ({ label, value }) =>
-              value &&
-              value.length > 0 && (
-                <React.Fragment key={label}>
-                  <span className={classes.datum}>
-                    {label}: {value}
-                  </span>{" "}
-                </React.Fragment>
-              ),
-          )}
-        </Typography>
+        <ActorDetailsPane
+          actorDetails={information}
+          actorTitle={actor.actorTitle}
+        />
         {actor.state !== -1 && (
           <React.Fragment>
             {actorCustomDisplay.length > 0 && (

@@ -138,9 +138,10 @@ export type RayletActorInfo =
       actorTitle: string;
       requiredResources: { [key: string]: number };
       state: -1;
-      invalidStateType?: "infeasibleActor" | "pendingActor";
+      invalidStateType?: InvalidStateType;
     };
 
+export type InvalidStateType = "infeasibleActor" | "pendingActor";
 export type RayletInfoResponse = {
   nodes: {
     [ip: string]: {
