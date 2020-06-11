@@ -4,6 +4,11 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.function.PyRemoteFunction;
 
+/**
+ * A helper to call python remote function.
+ *
+ * @param <R> The type of the python function return value
+ */
 public class PyTaskCaller<R> extends BaseTaskCaller<PyTaskCaller<R>> {
   private final PyRemoteFunction<R> func;
   private final Object[] args;
@@ -13,6 +18,12 @@ public class PyTaskCaller<R> extends BaseTaskCaller<PyTaskCaller<R>> {
     this.args = args;
   }
 
+  /**
+   * Execute a python function remotely and return an object reference to method execution result
+   * in the object store.
+   *
+   * @return an object reference to an object in the object store.
+   */
   @SuppressWarnings("unchecked")
   public ObjectRef<R> remote() {
     return Ray.internal().call(func, args, buildOptions());

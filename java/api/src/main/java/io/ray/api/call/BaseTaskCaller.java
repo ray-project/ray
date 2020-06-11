@@ -3,6 +3,11 @@ package io.ray.api.call;
 import io.ray.api.options.CallOptions;
 import java.util.Map;
 
+/**
+ * Base helper to call remote function.
+ *
+ * @param <T> The type of the concrete task caller
+ */
 public class BaseTaskCaller<T extends BaseTaskCaller<T>> {
   private CallOptions.Builder builder = new CallOptions.Builder();
 

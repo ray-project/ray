@@ -3,6 +3,11 @@ package io.ray.api.call;
 import io.ray.api.options.ActorCreationOptions;
 import java.util.Map;
 
+/**
+ * Base helper to create actor.
+ *
+ * @param <T> The type of the concrete actor creator
+ */
 public class BaseActorCreator<T extends BaseActorCreator> {
   private ActorCreationOptions.Builder builder = new ActorCreationOptions.Builder();
 
