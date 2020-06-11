@@ -200,6 +200,10 @@ def setup_logging(stdout_name, stderr_name):
     stderr_path = ""
     worker_pid = os.getpid()
 
+    cdef extern from "ray/util/util.h":
+        void flush_out();
+        void flush_err();
+
     if stdout_name:
         # Line-buffer the output (mode 1).
         stdout_file = open_worker_log(stdout_name, worker_pid)
@@ -210,8 +214,7 @@ def setup_logging(stdout_name, stderr_name):
         sys.stdout.flush()
 
         # Flush the c/c++ userspace buffers
-        cdef extern from "ray/util/util.h":
-            flush_out()
+        flush_out()
 
         stdout_fileno = sys.stdout.fileno()
 
@@ -245,8 +248,7 @@ def setup_logging(stdout_name, stderr_name):
         sys.stderr.flush()
 
         # Flush the c/c++ userspace buffers
-        cdef extern from "ray/util/util.h":
-            flush_err()
+        flush_err()
 
         stderr_fileno = sys.stderr.fileno()
 
