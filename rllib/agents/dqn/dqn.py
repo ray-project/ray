@@ -228,7 +228,7 @@ def validate_config(config):
         if config["multiagent"]["replay_mode"] == "lockstep":
             raise ValueError("Prioritized replay is not supported when "
                              "replay_mode=lockstep.")
-        elif config["multiagent"]["replay_sequence_length"] > 1:
+        elif config["replay_sequence_length"] > 1:
             raise ValueError("Prioritized replay is not supported when "
                              "replay_sequence_length > 1.")
 
