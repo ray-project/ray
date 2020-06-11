@@ -38,12 +38,12 @@ public class ActorCreationOptions extends BaseTaskOptions {
      *
      * <p>By using custom resource, the user can implement virtually any actor placement policy.
      *
-     * @param name resource name
-     * @param value resource capacity
+     * @param resourceName resource name
+     * @param resourceQuantity resource quantity
      * @return self
      */
-    public Builder setResource(String name, Double value) {
-      this.resources.put(name, value);
+    public Builder setResource(String resourceName, Double resourceQuantity) {
+      this.resources.put(resourceName, resourceQuantity);
       return this;
     }
 

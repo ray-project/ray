@@ -9,8 +9,8 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   /**
    * @see ActorCreationOptions.Builder#setResource(java.lang.String, java.lang.Double)
    */
-  public T setResource(String key, Double value) {
-    builder.setResource(key, value);
+  public T setResource(String resourceName, Double resourceQuantity) {
+    builder.setResource(resourceName, resourceQuantity);
     return self();
   }
 
