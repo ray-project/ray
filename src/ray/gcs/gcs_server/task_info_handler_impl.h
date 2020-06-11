@@ -49,6 +49,8 @@ class DefaultTaskInfoHandler : public rpc::TaskInfoHandler {
                                        AttemptTaskReconstructionReply *reply,
                                        SendReplyCallback send_reply_callback) override;
 
+  void OnJobFinished(const JobID &job_id) override;
+
  private:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub_;

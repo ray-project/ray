@@ -223,6 +223,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param done Callback that will be called when load is complete.
   void LoadInitialData(const EmptyCallback &done);
 
+  void OnJobFinished(const JobID &job_id);
+
  private:
   /// A data structure representing an actor's owner.
   struct Owner {

@@ -60,8 +60,7 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   /// \param done Callback that will be called when load is complete.
   void LoadInitialData(const EmptyCallback &done);
 
-  /// Remove all cached object locations for given job id.
-  void RemoveAllObjectLocationsInCacheByJobId(const JobID &job_id);
+  void OnJobFinished(const JobID &job_id);
 
  protected:
   typedef absl::flat_hash_set<ClientID> LocationSet;
@@ -99,6 +98,9 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   /// \param node_id The location that will be removed.
   void RemoveObjectLocationInCache(const ObjectID &object_id, const ClientID &node_id)
       LOCKS_EXCLUDED(mutex_);
+
+  /// Remove all cached object locations for given job id.
+  void RemoveAllObjectLocationsInCacheByJobId(const JobID &job_id);
 
  private:
   typedef absl::flat_hash_set<ObjectID> ObjectSet;

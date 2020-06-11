@@ -64,6 +64,9 @@ class JobInfoGcsServiceHandler {
   virtual void HandleGetAllJobInfo(const GetAllJobInfoRequest &request,
                                    GetAllJobInfoReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
+
+  virtual void AddJobFinishedListener(
+      std::function<void(std::shared_ptr<JobID>)> listener) = 0;
 };
 
 /// The `GrpcService` for `JobInfoGcsService`.
@@ -309,6 +312,8 @@ class TaskInfoGcsServiceHandler {
   virtual void HandleAttemptTaskReconstruction(
       const AttemptTaskReconstructionRequest &request,
       AttemptTaskReconstructionReply *reply, SendReplyCallback send_reply_callback) = 0;
+
+  virtual void OnJobFinished(const JobID &job_id) = 0;
 };
 
 /// The `GrpcService` for `TaskInfoGcsService`.

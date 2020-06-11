@@ -68,35 +68,19 @@ void GcsJobInfoHandler::HandleMarkJobFinished(
 }
 
 void GcsJobInfoHandler::ClearJobInfos(const JobID &job_id) {
-  // Actor related
-  RAY_CHECK_OK(gcs_table_storage_->ActorTable().DeleteByJobId(job_id, nullptr));
-  auto on_done = [this](
-                     const std::unordered_map<ActorID, ActorCheckpointIdData> &result) {
-    if (!result.empty()) {
-      std::vector<ActorCheckpointID> ids;
-      for (auto &item : result) {
-        for (auto &id : item.second.checkpoint_ids()) {
-          ids.push_back(ActorCheckpointID::FromBinary(id));
-        }
-      }
-      RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointTable().BatchDelete(ids, nullptr));
-    }
-  };
-  // Get checkpoint id first from checkpoint id table and delete all checkpoints related
-  // to this job
-  RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointIdTable().GetByJobId(job_id, on_done));
-  RAY_CHECK_OK(
-      gcs_table_storage_->ActorCheckpointIdTable().DeleteByJobId(job_id, nullptr));
+  // Notify all listeners.
+  for (auto &listener : job_finished_listeners_) {
+    listener(std::make_shared<JobID>(job_id));
+  }
+}
 
-  // Task related
-  RAY_CHECK_OK(gcs_table_storage_->TaskTable().DeleteByJobId(job_id, nullptr));
-  RAY_CHECK_OK(gcs_table_storage_->TaskLeaseTable().DeleteByJobId(job_id, nullptr));
-  RAY_CHECK_OK(
-      gcs_table_storage_->TaskReconstructionTable().DeleteByJobId(job_id, nullptr));
-
-  // Object related. Remove caches in object manager first, then items in object table.
-  gcs_object_manager_.RemoveAllObjectLocationsInCacheByJobId(job_id);
-  RAY_CHECK_OK(gcs_table_storage_->ObjectTable().DeleteByJobId(job_id, nullptr));
+/// Add listener to monitor the add action of nodes.
+///
+/// \param listener The handler which process the add of nodes.
+void GcsJobInfoHandler::AddJobFinishedListener(
+    std::function<void(std::shared_ptr<JobID>)> listener) {
+  RAY_CHECK(listener);
+  job_finished_listeners_.emplace_back(std::move(listener));
 }
 
 void GcsJobInfoHandler::HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest &request,

@@ -764,5 +764,26 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().GetAll(callback));
 }
 
+void GcsActorManager::OnJobFinished(const JobID &job_id) {
+  RAY_CHECK_OK(gcs_table_storage_->ActorTable().DeleteByJobId(job_id, nullptr));
+  auto on_done = [this](
+                     const std::unordered_map<ActorID, ActorCheckpointIdData> &result) {
+    if (!result.empty()) {
+      std::vector<ActorCheckpointID> ids;
+      for (auto &item : result) {
+        for (auto &id : item.second.checkpoint_ids()) {
+          ids.push_back(ActorCheckpointID::FromBinary(id));
+        }
+      }
+      RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointTable().BatchDelete(ids, nullptr));
+    }
+  };
+  // Get checkpoint id first from checkpoint id table and delete all checkpoints related
+  // to this job
+  RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointIdTable().GetByJobId(job_id, on_done));
+  RAY_CHECK_OK(
+      gcs_table_storage_->ActorCheckpointIdTable().DeleteByJobId(job_id, nullptr));
+}
+
 }  // namespace gcs
 }  // namespace ray
