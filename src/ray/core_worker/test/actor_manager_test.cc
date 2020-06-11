@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/task_manager.h"
+#include "ray/core_worker/actor_manager.h"
 
-#include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
-#include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/reference_count.h"
-#include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/task_manager.h"
+#include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_gcs_client.h"
 
@@ -49,8 +49,9 @@ class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
   MockActorInfoAccessor(gcs::RedisGcsClient *client)
       : gcs::RedisActorInfoAccessor(client) {}
 
-  MOCK_METHOD2(AsyncRegister, ray::Status(const std::shared_ptr<gcs::ActorTableData> &data_ptr,
-                                                      const gcs::StatusCallback &callback));
+  MOCK_METHOD2(AsyncRegister,
+               ray::Status(const std::shared_ptr<gcs::ActorTableData> &data_ptr,
+                           const gcs::StatusCallback &callback));
 
   ~MockActorInfoAccessor() {}
 };
@@ -67,52 +68,53 @@ class MockGcsClient : public gcs::RedisGcsClient {
 };
 
 class MockDirectActorSubmitter : public CoreWorkerDirectActorTaskSubmitterInterface {
-  public:
-   MockDirectActorSubmitter() : CoreWorkerDirectActorTaskSubmitterInterface() {}
+ public:
+  MockDirectActorSubmitter() : CoreWorkerDirectActorTaskSubmitterInterface() {}
 
-   MOCK_METHOD1(AddActorQueueIfNotExists, void(const ActorID &actor_id));
-   MOCK_METHOD2(ConnectActor, void(const ActorID &actor_id, const rpc::Address &address));
-   MOCK_METHOD2(DisconnectActor, void(const ActorID &actor_id, bool dead));
+  MOCK_METHOD1(AddActorQueueIfNotExists, void(const ActorID &actor_id));
+  MOCK_METHOD2(ConnectActor, void(const ActorID &actor_id, const rpc::Address &address));
+  MOCK_METHOD2(DisconnectActor, void(const ActorID &actor_id, bool dead));
 
-   virtual ~MockDirectActorSubmitter() {}
+  virtual ~MockDirectActorSubmitter() {}
 };
 
-class MockReferenceCounter: public ReferenceCounterInterface {
-  public:
-   MockReferenceCounter() : ReferenceCounterInterface() {}
+class MockReferenceCounter : public ReferenceCounterInterface {
+ public:
+  MockReferenceCounter() : ReferenceCounterInterface() {}
 
-   MOCK_METHOD2(AddLocalReference, void(const ObjectID &object_id, const std::string &call_sit));
-   MOCK_METHOD4(AddBorrowedObject, bool(const ObjectID &object_id, const ObjectID &outer_id,
-                                        const TaskID &owner_id, const rpc::Address &owner_address));
-   MOCK_METHOD8(AddOwnedObject, void(const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
-                                     const TaskID &owner_id, const rpc::Address &owner_address,
-                                     const std::string &call_site, const int64_t object_size, bool is_reconstructable,
-                                     const absl::optional<ClientID> &pinned_at_raylet_id));
-   MOCK_METHOD2(SetDeleteCallback, bool(const ObjectID &object_id,
-                                        const std::function<void(const ObjectID &)> callback));
-   virtual ~MockReferenceCounter() {}
+  MOCK_METHOD2(AddLocalReference,
+               void(const ObjectID &object_id, const std::string &call_sit));
+  MOCK_METHOD4(AddBorrowedObject,
+               bool(const ObjectID &object_id, const ObjectID &outer_id,
+                    const TaskID &owner_id, const rpc::Address &owner_address));
+  MOCK_METHOD8(AddOwnedObject,
+               void(const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
+                    const TaskID &owner_id, const rpc::Address &owner_address,
+                    const std::string &call_site, const int64_t object_size,
+                    bool is_reconstructable,
+                    const absl::optional<ClientID> &pinned_at_raylet_id));
+  MOCK_METHOD2(SetDeleteCallback,
+               bool(const ObjectID &object_id,
+                    const std::function<void(const ObjectID &)> callback));
+  virtual ~MockReferenceCounter() {}
 };
 
 class ActorManagerTest : public ::testing::Test {
  public:
   ActorManagerTest()
-    : options_("", 1, ""),
-      gcs_client_mock_(new MockGcsClient(options_)),
-      actor_info_accessor_(new MockActorInfoAccessor(gcs_client_mock_.get())),
-      direct_actor_submitter_(new MockDirectActorSubmitter()),
-      reference_counter_(new MockReferenceCounter()) {
+      : options_("", 1, ""),
+        gcs_client_mock_(new MockGcsClient(options_)),
+        actor_info_accessor_(new MockActorInfoAccessor(gcs_client_mock_.get())),
+        direct_actor_submitter_(new MockDirectActorSubmitter()),
+        reference_counter_(new MockReferenceCounter()) {
     gcs_client_mock_->Init(actor_info_accessor_);
   }
 
   ~ActorManagerTest() {}
 
-  void SetUp() {
-    actor_reporter_ = std::make_shared<ActorReporter>(gcs_client_mock_);
-  }
+  void SetUp() { actor_reporter_ = std::make_shared<ActorReporter>(gcs_client_mock_); }
 
-  void TearDown() {
-    actor_reporter_.reset();
-  }
+  void TearDown() { actor_reporter_.reset(); }
 
   gcs::GcsClientOptions options_;
   std::shared_ptr<MockGcsClient> gcs_client_mock_;
@@ -135,40 +137,44 @@ TEST_F(ActorManagerTest, TestPublishTerminatedActor) {
 
 // TEST_F(ActorManagerTest, AddAndGetActorHandle) {
 //   JobID job_id = JobID::FromRandom();
-//   std::shared_ptr<ActorHandle> actor_handle = std::make_shared<ActorHandle>(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
-//                            TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
-//                            function.GetLanguage(), function.GetFunctionDescriptor(), "",
-//                            0);
+//   std::shared_ptr<ActorHandle> actor_handle =
+//   std::make_shared<ActorHandle>(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
+//                            TaskID::Nil(), rpc::Address(), job_id,
+//                            ObjectID::FromRandom(), function.GetLanguage(),
+//                            function.GetFunctionDescriptor(), "", 0);
 //   // Expect actor subscription
 //   // Expect deletion callback set
 // }
 
 // TEST_F(ActorManagerTest, AddCopiedHandle) {
 //   JobID job_id = JobID::FromRandom();
-//   std::shared_ptr<ActorHandle> actor_handle = std::make_shared<ActorHandle>(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
-//                            TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
-//                            function.GetLanguage(), function.GetFunctionDescriptor(), "",
-//                            0);
+//   std::shared_ptr<ActorHandle> actor_handle =
+//   std::make_shared<ActorHandle>(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
+//                            TaskID::Nil(), rpc::Address(), job_id,
+//                            ObjectID::FromRandom(), function.GetLanguage(),
+//                            function.GetFunctionDescriptor(), "", 0);
 //   // Expect actor subscription
 //   // Expect deletion callback set
 // }
 
 // TEST_F(ActorManagerTest, GetHandleThatDoesntExist) {
 //   JobID job_id = JobID::FromRandom();
-//   std::shared_ptr<ActorHandle> actor_handle = std::make_shared<ActorHandle>(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
-//                            TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
-//                            function.GetLanguage(), function.GetFunctionDescriptor(), "",
-//                            0);
+//   std::shared_ptr<ActorHandle> actor_handle =
+//   std::make_shared<ActorHandle>(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
+//                            TaskID::Nil(), rpc::Address(), job_id,
+//                            ObjectID::FromRandom(), function.GetLanguage(),
+//                            function.GetFunctionDescriptor(), "", 0);
 //   // Expect actor subscription
 //   // Expect deletion callback set
 // }
 
 // TEST_F(ActorManagerTest, SerializeAndDeserializeActorHandle) {
 //   JobID job_id = JobID::FromRandom();
-//   std::shared_ptr<ActorHandle> actor_handle = std::make_shared<ActorHandle>(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
-//                            TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
-//                            function.GetLanguage(), function.GetFunctionDescriptor(), "",
-//                            0);
+//   std::shared_ptr<ActorHandle> actor_handle =
+//   std::make_shared<ActorHandle>(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
+//                            TaskID::Nil(), rpc::Address(), job_id,
+//                            ObjectID::FromRandom(), function.GetLanguage(),
+//                            function.GetFunctionDescriptor(), "", 0);
 //   // Expect actor subscription
 //   // Expect deletion callback set
 // }
