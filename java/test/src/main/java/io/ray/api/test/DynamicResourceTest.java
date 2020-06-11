@@ -1,12 +1,10 @@
 package io.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.TestUtils;
 import io.ray.api.WaitResult;
-import io.ray.api.options.CallOptions;
 import io.ray.api.runtimecontext.NodeInfo;
 import java.util.List;
 import org.testng.Assert;

@@ -5,12 +5,10 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.TestUtils;
-import io.ray.api.options.ActorCreationOptions;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-
 
 @Test
 public class ActorConcurrentCallTest extends BaseTest {

@@ -3,7 +3,6 @@
 package io.ray.api.call;
 
 import io.ray.api.PyActorHandle;
-import io.ray.api.call.PyActorTaskCaller;
 import io.ray.api.function.PyActorMethod;
 
 /**

@@ -7,7 +7,6 @@ import io.ray.api.TestUtils;
 import io.ray.api.exception.RayActorException;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.UniqueId;
-import io.ray.api.options.ActorCreationOptions;
 import io.ray.runtime.util.SystemUtil;
 import java.io.IOException;
 import java.util.List;

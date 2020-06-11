@@ -1,11 +1,11 @@
 package io.ray.streaming.runtime.streamingqueue;
 
+import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
-import io.ray.api.ActorHandle;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
-import io.ray.streaming.runtime.transfer.ChannelID;
 import io.ray.streaming.runtime.transfer.ChannelCreationParametersBuilder;
+import io.ray.streaming.runtime.transfer.ChannelID;
 import io.ray.streaming.runtime.transfer.DataMessage;
 import io.ray.streaming.runtime.transfer.DataReader;
 import io.ray.streaming.runtime.transfer.DataWriter;

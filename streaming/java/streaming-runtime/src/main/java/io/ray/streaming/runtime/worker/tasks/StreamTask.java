@@ -16,12 +16,10 @@ import io.ray.streaming.runtime.transfer.DataWriter;
 import io.ray.streaming.runtime.worker.JobWorker;
 import io.ray.streaming.runtime.worker.context.RayRuntimeContext;
 import io.ray.streaming.util.Config;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

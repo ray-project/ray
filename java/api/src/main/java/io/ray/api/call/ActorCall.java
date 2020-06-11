@@ -4,8 +4,6 @@ package io.ray.api.call;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
-import io.ray.api.call.ActorTaskCaller;
-import io.ray.api.call.ActorVoidTaskCaller;
 import io.ray.api.function.RayFunc1;
 import io.ray.api.function.RayFunc2;
 import io.ray.api.function.RayFunc3;

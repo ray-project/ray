@@ -3,11 +3,6 @@
 package io.ray.api.call;
 
 import io.ray.api.ObjectRef;
-import io.ray.api.call.ActorCreator;
-import io.ray.api.call.PyActorCreator;
-import io.ray.api.call.PyTaskCaller;
-import io.ray.api.call.TaskCaller;
-import io.ray.api.call.VoidTaskCaller;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyRemoteFunction;
 import io.ray.api.function.RayFunc0;

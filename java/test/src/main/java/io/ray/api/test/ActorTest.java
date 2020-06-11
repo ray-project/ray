@@ -54,7 +54,8 @@ public class ActorTest extends BaseTest {
     // Test calling an actor
     Assert.assertEquals(Integer.valueOf(1), actor.task(Counter::getValue).remote().get());
     actor.task(Counter::increase, 1).remote();
-    Assert.assertEquals(Integer.valueOf(3), actor.task(Counter::increaseAndGet, 1).remote().get());
+    Assert.assertEquals(Integer.valueOf(3),
+        actor.task(Counter::increaseAndGet, 1).remote().get());
   }
 
   /**
@@ -113,8 +114,8 @@ public class ActorTest extends BaseTest {
     Assert.assertEquals(Integer.valueOf(11),
         Ray.task(ActorTest::testActorAsSecondParameter, 10, actor).remote().get());
     Assert.assertEquals(Integer.valueOf(111),
-        Ray.task(ActorTest::testActorAsFieldOfParameter, Collections.singletonList(actor), 100).remote()
-            .get());
+        Ray.task(ActorTest::testActorAsFieldOfParameter,
+            Collections.singletonList(actor), 100).remote().get());
   }
 
   // TODO(qwang): Will re-enable this test case once ref counting is supported in Java.

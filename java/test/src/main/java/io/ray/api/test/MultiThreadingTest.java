@@ -303,7 +303,8 @@ public class MultiThreadingTest extends BaseTest {
   }
 
   public void testGetAsyncContextAndSetAsyncContextInWorker() {
-    ObjectRef<Boolean> obj = Ray.task(MultiThreadingTest::testGetAsyncContextAndSetAsyncContext).remote();
+    ObjectRef<Boolean> obj = Ray.task(
+        MultiThreadingTest::testGetAsyncContextAndSetAsyncContext).remote();
     Assert.assertTrue(obj.get());
   }
 

@@ -1,7 +1,6 @@
 package io.ray.api.call;
 
 import io.ray.api.options.CallOptions;
-import java.util.HashMap;
 import java.util.Map;
 
 public class TaskCallerBase<T extends TaskCallerBase<T>> {

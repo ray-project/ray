@@ -6,7 +6,6 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.TestUtils;
 import io.ray.api.exception.RayActorException;
-import io.ray.api.options.ActorCreationOptions;
 import java.util.function.BiConsumer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -63,7 +62,8 @@ public class KillActorTest extends BaseTest {
         .remote();
     ObjectRef<Boolean> result = actor.task(HangActor::hang).remote();
     // The actor will hang in this task.
-    Assert.assertEquals(0, Ray.wait(ImmutableList.of(result), 1, 500).getReady().size());
+    Assert.assertEquals(0,
+        Ray.wait(ImmutableList.of(result), 1, 500).getReady().size());
 
     // Kill the actor
     kill.accept(actor, noRestart);
@@ -80,7 +80,8 @@ public class KillActorTest extends BaseTest {
 
     if (noRestart) {
       // The actor should not be restarted.
-      Assert.expectThrows(RayActorException.class, () -> actor.task(HangActor::hang).remote().get());
+      Assert.expectThrows(RayActorException.class,
+          () -> actor.task(HangActor::hang).remote().get());
     } else {
       Assert.assertEquals(actor.task(HangActor::ping).remote().get(), "pong");
     }

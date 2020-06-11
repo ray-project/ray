@@ -130,8 +130,8 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
 
   @Test
   public void testPythonCallJavaFunction() {
-    ObjectRef<String> res = Ray.task(
-        new PyRemoteFunction<>(PYTHON_MODULE, "py_func_call_java_function", String.class)).remote();
+    ObjectRef<String> res = Ray.task(new PyRemoteFunction<>(
+        PYTHON_MODULE, "py_func_call_java_function", String.class)).remote();
     Assert.assertEquals(res.get(), "success");
   }
 
@@ -158,8 +158,8 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
   public void testPassActorHandleFromPythonToJava() {
     // Call a python function which creates a python actor
     // and pass the actor handle to callPythonActorHandle.
-    ObjectRef<byte[]> res = Ray.task(
-        new PyRemoteFunction<>(PYTHON_MODULE, "py_func_pass_python_actor_handle", byte[].class)).remote();
+    ObjectRef<byte[]> res = Ray.task(new PyRemoteFunction<>(
+        PYTHON_MODULE, "py_func_pass_python_actor_handle", byte[].class)).remote();
     Assert.assertEquals(res.get(), "3".getBytes());
   }
 
