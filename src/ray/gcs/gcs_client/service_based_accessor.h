@@ -23,7 +23,8 @@
 namespace ray {
 namespace gcs {
 
-using SubscribeOperation = std::function<Status(const StatusCallback &done)>;
+using SubscribeOperation =
+    std::function<Status(const StatusCallback &done, bool is_pubsub_server_restarted)>;
 
 using FetchDataOperation = std::function<void(const StatusCallback &done)>;
 
