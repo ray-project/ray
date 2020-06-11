@@ -632,7 +632,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &address) {
     const auto owner_node_id =
         WorkerID::FromBinary(worker->GetOwnerAddress().raylet_id());
     RAY_LOG(DEBUG) << "Lease " << worker->WorkerId() << " owned by " << owner_worker_id;
-    RAY_CHECK(!owner_worker_id.IsNil() && !owner_node_id.IsNil());
+//    RAY_CHECK(!owner_worker_id.IsNil() && !owner_node_id.IsNil());
     if (!worker->IsDetachedActor()) {
       if (!worker_id.IsNil()) {
         // If the failed worker was a leased worker's owner, then kill the leased worker.

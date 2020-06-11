@@ -528,8 +528,9 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
                                      [actor_id](const std::shared_ptr<GcsActor> &actor) {
                                        return actor->GetActorID() == actor_id;
                                      });
-      RAY_CHECK(pending_it != pending_actors_.end());
-      pending_actors_.erase(pending_it);
+      if (pending_it != pending_actors_.end()) {
+        pending_actors_.erase(pending_it);
+      }
     }
   }
 
