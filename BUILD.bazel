@@ -1199,7 +1199,7 @@ cc_library(
         ":gcs",
         ":object_manager_fbs",
         ":object_manager_rpc",
-        ":plasma_client",
+        ":plasma_store_server_lib",
         ":ray_common",
         ":ray_util",
         "@boost//:asio",
