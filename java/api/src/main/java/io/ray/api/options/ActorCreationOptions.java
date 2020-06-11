@@ -31,8 +31,13 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private String jvmOptions = null;
     private int maxConcurrency = 1;
 
+    public Builder setResource(String key, Double value) {
+      this.resources.put(key, value);
+      return this;
+    }
+
     public Builder setResources(Map<String, Double> resources) {
-      this.resources = resources;
+      this.resources.putAll(resources);
       return this;
     }
 
@@ -46,10 +51,13 @@ public class ActorCreationOptions extends BaseTaskOptions {
       return this;
     }
 
-    // The max number of concurrent calls to allow for this actor.
-    //
-    // The max concurrency defaults to 1 for threaded execution.
-    // Note that the execution order is not guaranteed when max_concurrency > 1.
+    /**
+     * The max concurrency defaults to 1 for threaded execution.
+     * Note that the execution order is not guaranteed when max_concurrency > 1.
+     *
+     * @param maxConcurrency The max number of concurrent calls to allow for this actor.
+     * @return self
+     */
     public Builder setMaxConcurrency(int maxConcurrency) {
       if (maxConcurrency <= 0) {
         throw new IllegalArgumentException("maxConcurrency must be greater than 0.");

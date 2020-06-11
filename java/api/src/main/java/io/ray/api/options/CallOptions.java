@@ -19,8 +19,13 @@ public class CallOptions extends BaseTaskOptions {
 
     private Map<String, Double> resources = new HashMap<>();
 
+    public Builder setResource(String key, Double value) {
+      this.resources.put(key, value);
+      return this;
+    }
+
     public Builder setResources(Map<String, Double> resources) {
-      this.resources = resources;
+      this.resources.putAll(resources);
       return this;
     }
 

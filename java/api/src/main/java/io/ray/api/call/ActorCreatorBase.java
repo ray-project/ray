@@ -1,47 +1,36 @@
 package io.ray.api.call;
 
 import io.ray.api.options.ActorCreationOptions;
-import java.util.HashMap;
 import java.util.Map;
 
 public class ActorCreatorBase<T extends ActorCreatorBase> {
-  private Map<String, Double> resources = new HashMap<>();
-  private int maxRestarts = 0;
-  private String jvmOptions = null;
-  private int maxConcurrency = 1;
+  private ActorCreationOptions.Builder builder = new ActorCreationOptions.Builder();
 
   public T setResource(String key, Double value) {
-    this.resources.put(key, value);
+    builder.setResource(key, value);
     return self();
   }
 
   public T setResources(Map<String, Double> resources) {
-    this.resources = resources;
+    builder.setResources(resources);
     return self();
   }
 
   public T setMaxRestarts(int maxRestarts) {
-    this.maxRestarts = maxRestarts;
+    builder.setMaxRestarts(maxRestarts);
     return self();
   }
 
   public T setJvmOptions(String jvmOptions) {
-    this.jvmOptions = jvmOptions;
+    builder.setJvmOptions(jvmOptions);
     return self();
   }
 
   /**
-   * The max concurrency defaults to 1 for threaded execution.
-   * Note that the execution order is not guaranteed when max_concurrency > 1.
-   *
-   * @param maxConcurrency The max number of concurrent calls to allow for this actor.
-   * @return self
+   * See also {@link ActorCreationOptions.Builder#setMaxConcurrency(int)}
    */
   public T setMaxConcurrency(int maxConcurrency) {
-    if (maxConcurrency <= 0) {
-      throw new IllegalArgumentException("maxConcurrency must be greater than 0.");
-    }
-    this.maxConcurrency = maxConcurrency;
+    builder.setMaxConcurrency(maxConcurrency);
     return self();
   }
 
@@ -51,11 +40,7 @@ public class ActorCreatorBase<T extends ActorCreatorBase> {
   }
 
   protected ActorCreationOptions createActorCreationOptions() {
-    return new ActorCreationOptions.Builder()
-        .setResources(resources)
-        .setMaxRestarts(maxRestarts)
-        .setJvmOptions(jvmOptions)
-        .setMaxConcurrency(maxConcurrency)
-        .createActorCreationOptions();
+    return builder.createActorCreationOptions();
   }
+
 }

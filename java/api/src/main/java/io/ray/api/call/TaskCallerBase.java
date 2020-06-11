@@ -5,15 +5,15 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class TaskCallerBase<T extends TaskCallerBase<T>> {
-  private Map<String, Double> resources = new HashMap<>();
+  private CallOptions.Builder builder = new CallOptions.Builder();
 
   public T setResource(String key, Double value) {
-    this.resources.put(key, value);
+    builder.setResource(key, value);
     return self();
   }
 
   public T setResources(Map<String, Double> resources) {
-    this.resources.putAll(resources);
+    builder.setResources(resources);
     return self();
   }
 
@@ -23,9 +23,7 @@ public class TaskCallerBase<T extends TaskCallerBase<T>> {
   }
 
   protected CallOptions createCallOptions() {
-    return new CallOptions.Builder()
-        .setResources(resources)
-        .createCallOptions();
+    return builder.createCallOptions();
   }
 
 }
