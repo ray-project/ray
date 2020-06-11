@@ -958,24 +958,18 @@ class Trainer(Trainable):
     @staticmethod
     def _validate_config(config: dict):
         if "policy_graphs" in config["multiagent"]:
-            logger.warning(
-                "The `policy_graphs` config has been renamed to `policies`.")
-            # Backwards compatibility
-            config["multiagent"]["policies"] = config["multiagent"][
-                "policy_graphs"]
-            del config["multiagent"]["policy_graphs"]
+            deprecation_warning("policy_graphs", "policies")
+            # Backwards compatibility.
+            config["multiagent"]["policies"] = config["multiagent"].pop(
+                "policy_graphs")
         if "gpu" in config:
-            raise ValueError(
-                "The `gpu` config is deprecated, please use `num_gpus=0|1` "
-                "instead.")
+            deprecation_warning("gpu", "num_gpus=0|1", error=True)
         if "gpu_fraction" in config:
-            raise ValueError(
-                "The `gpu_fraction` config is deprecated, please use "
-                "`num_gpus=<fraction>` instead.")
+            deprecation_warning(
+                "gpu_fraction", "num_gpus=<fraction>", error=True)
         if "use_gpu_for_workers" in config:
-            raise ValueError(
-                "The `use_gpu_for_workers` config is deprecated, please use "
-                "`num_gpus_per_worker=1` instead.")
+            deprecation_warning(
+                "use_gpu_for_workers", "num_gpus_per_worker=1", error=True)
         if type(config["input_evaluation"]) != list:
             raise ValueError(
                 "`input_evaluation` must be a list of strings, got {}".format(

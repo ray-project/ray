@@ -158,7 +158,12 @@ def test_batching(serve_instance):
 
     # set the max batch size
     serve.create_backend(
-        "counter:v11", BatchingExample, config={"max_batch_size": 5})
+        "counter:v11",
+        BatchingExample,
+        config={
+            "max_batch_size": 5,
+            "batch_wait_timeout": 1
+        })
     serve.create_endpoint(
         "counter1", backend="counter:v11", route="/increment2")
 
