@@ -64,7 +64,7 @@ struct ObjectManagerConfig {
   /// Send and receive request in these threads
   int rpc_service_threads_number;
   /// Initial memory allocation for store.
-  int64_t object_store_memory;
+  int64_t object_store_memory = -1;
   /// The directory for shared memory files.
   std::string plasma_directory;
   /// Enable huge pages.
