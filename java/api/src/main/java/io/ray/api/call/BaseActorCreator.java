@@ -9,7 +9,7 @@ import java.util.Map;
  * @param <T> The type of the concrete actor creator
  */
 public class BaseActorCreator<T extends BaseActorCreator> {
-  private ActorCreationOptions.Builder builder = new ActorCreationOptions.Builder();
+  protected ActorCreationOptions.Builder builder = new ActorCreationOptions.Builder();
 
   /**
    * @see ActorCreationOptions.Builder#setResource(java.lang.String, java.lang.Double)
@@ -32,14 +32,6 @@ public class BaseActorCreator<T extends BaseActorCreator> {
    */
   public T setMaxRestarts(int maxRestarts) {
     builder.setMaxRestarts(maxRestarts);
-    return self();
-  }
-
-  /**
-   * @see ActorCreationOptions.Builder#setJvmOptions(java.lang.String)
-   */
-  public T setJvmOptions(String jvmOptions) {
-    builder.setJvmOptions(jvmOptions);
     return self();
   }
 
