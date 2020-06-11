@@ -201,8 +201,8 @@ def setup_logging(stdout_name, stderr_name):
     worker_pid = os.getpid()
 
     cdef extern from "ray/util/util.h":
-        void flush_out();
-        void flush_err();
+        void flush_out()
+        void flush_err()
 
     if stdout_name:
         # Line-buffer the output (mode 1).
