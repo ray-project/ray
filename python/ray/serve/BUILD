@@ -5,20 +5,100 @@ py_library(
     srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
 )
 
-# This test aggregates all serve tests and run them in a single session
-# similar to `pytest .`
-# Serve tests need to run in a single session because starting and stopping
-# serve cluster take a large chunk of time. All serve tests use a shared
-# cluster.
+serve_tests_srcs = glob(["tests/*.py"],
+     exclude=["tests/test_nonblocking.py",
+              "tests/test_master_crashes.py",
+              "tests/test_serve.py",
+             ])
+
 py_test(
-    name = "test_serve",
+    name = "test_api",
     size = "medium",
-    srcs = glob(["tests/*.py"],
-                exclude=["tests/test_nonblocking.py",
-                         "tests/test_master_crashes.py"]),
+    srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
 )
+
+py_test(
+    name = "test_backend_worker",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+
+py_test(
+    name = "test_config",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+
+py_test(
+    name = "test_failure",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+
+py_test(
+    name = "test_handle",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+
+py_test(
+    name = "test_kv_store",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+
+py_test(
+    name = "test_metric",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+
+py_test(
+    name = "test_persistence",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+
+py_test(
+    name = "test_router",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+
+py_test(
+    name = "test_util",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
 
 # Runs test_api and test_failure with injected failures in the master actor.
 # TODO(edoakes): reenable this once we're using GCS actor fault tolerance.
@@ -91,6 +171,14 @@ py_test(
 
 py_test(
     name = "tutorial_batch",
+    size = "small",
+    srcs = glob(["examples/doc/*.py"]),
+    tags = ["exclusive"],
+    deps = [":serve_lib"]
+)
+
+py_test(
+    name = "snippet_model_composition",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
     tags = ["exclusive"],

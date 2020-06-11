@@ -7,6 +7,8 @@ import ray
 from ray.serve.router import Router
 from ray.serve.request_params import RequestMetadata
 from ray.serve.utils import get_random_letters
+from ray.test_utils import SignalActor
+from ray.serve.config import BackendConfig
 
 pytestmark = pytest.mark.asyncio
 
@@ -172,3 +174,68 @@ async def test_shard_key(serve_instance, task_runner_mock_actor):
         calls = await runner.get_all_calls.remote()
         for call in calls:
             assert call.request_args[0] in runner_shard_keys[i]
+
+
+async def test_router_use_max_concurrency(serve_instance):
+    signal = SignalActor.remote()
+
+    @ray.remote
+    class MockWorker:
+        async def handle_request(self, request):
+            await signal.wait.remote()
+            return "DONE"
+
+        def ready(self):
+            pass
+
+    class VisibleRouter(Router):
+        def get_queues(self):
+            return self.queries_counter, self.backend_queues
+
+    worker = MockWorker.remote()
+    q = ray.remote(VisibleRouter).remote()
+    BACKEND_NAME = "max-concurrent-test"
+    config = BackendConfig({"max_concurrent_queries": 1})
+    await q.set_traffic.remote("svc", {BACKEND_NAME: 1.0})
+    await q.add_new_worker.remote(BACKEND_NAME, "replica-tag", worker)
+    await q.set_backend_config.remote(BACKEND_NAME, config)
+
+    # We send over two queries
+    first_query = q.enqueue_request.remote(RequestMetadata("svc", None), 1)
+    second_query = q.enqueue_request.remote(RequestMetadata("svc", None), 1)
+
+    # Neither queries should be available
+    with pytest.raises(ray.exceptions.RayTimeoutError):
+        ray.get([first_query, second_query], timeout=0.2)
+
+    # Let's retrieve the router internal state
+    queries_counter, backend_queues = await q.get_queues.remote()
+    # There should be just one inflight request
+    assert queries_counter["max-concurrent-test:replica-tag"] == 1
+    # The second query is buffered
+    assert len(backend_queues["max-concurrent-test"]) == 1
+
+    # Let's unblock the first query
+    await signal.send.remote(clear=True)
+    assert await first_query == "DONE"
+
+    # The internal state of router should have changed.
+    queries_counter, backend_queues = await q.get_queues.remote()
+    # There should still be one inflight request
+    assert queries_counter["max-concurrent-test:replica-tag"] == 1
+    # But there shouldn't be any queries in the queue
+    assert len(backend_queues["max-concurrent-test"]) == 0
+
+    # Unblocking the second query
+    await signal.send.remote(clear=True)
+    assert await second_query == "DONE"
+
+    # Checking the internal state of the router one more time
+    queries_counter, backend_queues = await q.get_queues.remote()
+    assert queries_counter["max-concurrent-test:replica-tag"] == 0
+    assert len(backend_queues["max-concurrent-test"]) == 0
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

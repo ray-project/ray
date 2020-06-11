@@ -33,3 +33,9 @@ serve.create_endpoint("driver", backend="driver", route="/driver")
     assert ray.get(handle.remote()) == "OK!"
 
     os.remove(path)
+
+
+if __name__ == "__main__":
+    import sys
+    import pytest
+    sys.exit(pytest.main(["-v", "-s", __file__]))

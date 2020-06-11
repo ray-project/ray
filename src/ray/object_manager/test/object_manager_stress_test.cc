@@ -150,8 +150,8 @@ class TestObjectManagerBase : public ::testing::Test {
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<arrow::Buffer> data;
     RAY_ARROW_CHECK_OK(
-        client.Create(object_id.ToPlasmaId(), data_size, metadata, metadata_size, &data));
-    RAY_ARROW_CHECK_OK(client.Seal(object_id.ToPlasmaId()));
+        client.Create(object_id, data_size, metadata, metadata_size, &data));
+    RAY_ARROW_CHECK_OK(client.Seal(object_id));
     return object_id;
   }
 
@@ -270,7 +270,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
 
   plasma::ObjectBuffer GetObject(plasma::PlasmaClient &client, ObjectID &object_id) {
     plasma::ObjectBuffer object_buffer;
-    plasma::ObjectID plasma_id = object_id.ToPlasmaId();
+    plasma::ObjectID plasma_id = object_id;
     RAY_ARROW_CHECK_OK(client.Get(&plasma_id, 1, 0, &object_buffer));
     return object_buffer;
   }
@@ -278,7 +278,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
   static unsigned char *GetDigest(plasma::PlasmaClient &client, ObjectID &object_id) {
     const int64_t size = sizeof(uint64_t);
     static unsigned char digest_1[size];
-    RAY_ARROW_CHECK_OK(client.Hash(object_id.ToPlasmaId(), &digest_1[0]));
+    RAY_ARROW_CHECK_OK(client.Hash(object_id, &digest_1[0]));
     return digest_1;
   }
 

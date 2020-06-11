@@ -1,8 +1,7 @@
 import logging
 import numpy as np
 
-from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
-    get_auto_framework
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 tf = try_import_tf()
 if tf:
@@ -29,7 +28,7 @@ def framework_iterator(config=None,
         config (Optional[dict]): An optional config dict to alter in place
             depending on the iteration.
         frameworks (Tuple[str]): A list/tuple of the frameworks to be tested.
-            Allowed are: "tf", "tfe", "torch", and "auto".
+            Allowed are: "tf", "tfe", and "torch".
         session (bool): If True, enter a tf.Session() and yield that as
             well in the tf-case (otherwise, yield (fw, None)).
 
@@ -43,9 +42,6 @@ def framework_iterator(config=None,
     frameworks = [frameworks] if isinstance(frameworks, str) else frameworks
 
     for fw in frameworks:
-        if fw == "auto":
-            fw = get_auto_framework()
-
         # Skip non-installed frameworks.
         if fw == "torch" and not torch:
             logger.warning(
