@@ -723,7 +723,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
         auto node_id = actor->GetNodeID();
         RAY_CHECK(!worker_id.IsNil());
         RAY_CHECK(!node_id.IsNil());
-        RAY_CHECK(created_actors_[node_id].emplace(worker_id, actor_id).second);
+        created_actors_[node_id].emplace(worker_id, actor_id);
       }));
 }
 
