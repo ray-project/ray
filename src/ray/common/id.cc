@@ -108,32 +108,12 @@ WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
       std::string(reinterpret_cast<const char *>(data.data()), data.size()));
 }
 
-ObjectID ObjectID::FromPlasmaIdBinary(const std::string &from) {
-  RAY_CHECK(from.size() == kPlasmaIdSize);
-  return ObjectID::FromBinary(from.substr(0, ObjectID::kLength));
-}
-
-plasma::UniqueID ObjectID::ToPlasmaId() const {
-  static_assert(ObjectID::kLength <= kPlasmaIdSize,
-                "Currently length of ObjectID must be shorter than plasma's.");
-
-  plasma::UniqueID result;
-  std::memcpy(result.mutable_data(), Data(), ObjectID::Size());
-  std::fill_n(result.mutable_data() + ObjectID::Size(), kPlasmaIdSize - ObjectID::kLength,
-              0xFF);
-  return result;
-}
-
-ObjectID::ObjectID(const plasma::UniqueID &from) {
-  RAY_CHECK(from.size() <= static_cast<int64_t>(ObjectID::Size())) << "Out of size.";
-  std::memcpy(this->MutableData(), from.data(), ObjectID::Size());
-}
-
 ObjectIDFlagsType ObjectID::GetFlags() const {
   ObjectIDFlagsType flags;
   std::memcpy(&flags, id_ + TaskID::kLength, sizeof(flags));
   return flags;
 }
+
 bool ObjectID::CreatedByTask() const { return ::ray::CreatedByTask(this->GetFlags()); }
 
 bool ObjectID::IsPutObject() const {

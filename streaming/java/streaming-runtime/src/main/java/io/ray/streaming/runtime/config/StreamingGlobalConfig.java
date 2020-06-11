@@ -2,6 +2,7 @@ package io.ray.streaming.runtime.config;
 
 import com.google.common.base.Preconditions;
 import io.ray.streaming.runtime.config.global.CommonConfig;
+import io.ray.streaming.runtime.config.global.TransferConfig;
 import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.util.HashMap;
@@ -20,6 +21,7 @@ public class StreamingGlobalConfig implements Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(StreamingGlobalConfig.class);
 
   public final CommonConfig commonConfig;
+  public final TransferConfig transferConfig;
 
   public final Map<String, String> configMap;
 
@@ -27,6 +29,7 @@ public class StreamingGlobalConfig implements Serializable {
     configMap = new HashMap<>(conf);
 
     commonConfig = ConfigFactory.create(CommonConfig.class, conf);
+    transferConfig = ConfigFactory.create(TransferConfig.class, conf);
     globalConfig2Map();
   }
 
@@ -38,6 +41,7 @@ public class StreamingGlobalConfig implements Serializable {
   private void globalConfig2Map() {
     try {
       configMap.putAll(config2Map(this.commonConfig));
+      configMap.putAll(config2Map(this.transferConfig));
     } catch (Exception e) {
       LOG.error("Couldn't convert global config to a map.", e);
     }

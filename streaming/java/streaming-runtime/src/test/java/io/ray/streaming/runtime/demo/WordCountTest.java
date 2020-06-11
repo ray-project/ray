@@ -21,18 +21,17 @@ import org.testng.annotations.Test;
 
 public class WordCountTest extends BaseUnitTest implements Serializable {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(WordCountTest.class);
+  private static final Logger LOG = LoggerFactory.getLogger(WordCountTest.class);
 
-  // TODO(zhenxuanpan): this test only works in single-process mode, because we put
-  //   results in this in-memory map.
   static Map<String, Integer> wordCount = new ConcurrentHashMap<>();
 
   @Test(timeOut = 60000)
   public void testWordCount() {
     Ray.shutdown();
+
     StreamingContext streamingContext = StreamingContext.buildContext();
     Map<String, String> config = new HashMap<>();
-    config.put(Config.CHANNEL_TYPE, Config.MEMORY_CHANNEL);
+    config.put(Config.CHANNEL_TYPE, "MEMORY_CHANNEL");
     streamingContext.withConfig(config);
     List<String> text = new ArrayList<>();
     text.add("hello world eagle eagle eagle");
@@ -58,7 +57,7 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
       try {
         Thread.sleep(1000);
       } catch (InterruptedException e) {
-        LOGGER.warn("Got an exception while sleeping.", e);
+        LOG.warn("Got an exception while sleeping.", e);
       }
     }
     streamingContext.stop();
