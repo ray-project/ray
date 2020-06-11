@@ -34,7 +34,6 @@ parser.add_argument("-f", type=str, default=None)
 parser.add_argument("--config", type=str, default=None)
 parser.add_argument("--env", type=str, default=None)
 
-
 if __name__ == "__main__":
     run = None
 
@@ -44,7 +43,8 @@ if __name__ == "__main__":
     if args.f:
         with open(args.f, "r") as fp:
             experiment_config = yaml.load(fp)
-            experiment_config = experiment_config[next(iter(experiment_config))]
+            experiment_config = experiment_config[next(
+                iter(experiment_config))]
             config = experiment_config.get("config", {})
             config["env"] = experiment_config.get("env")
             run = experiment_config.pop("run")
