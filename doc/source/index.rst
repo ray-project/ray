@@ -42,10 +42,10 @@ Ray uses Tasks (functions) and Actors (Classes) to allow you to parallelize your
 The Ray Community
 -----------------
 
-Ray is more than a framework for distributed applications but also an active community of developers, 
-researchers, and folks that love machine learning. 
+Ray is more than a framework for distributed applications but also an active community of developers,
+researchers, and folks that love machine learning.
 
-You can join (and Star!) us on `on GitHub`_. 
+You can join (and Star!) us on `on GitHub`_.
 You can also join `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray! The community is extremely active in helping people succeed in building their ray applications.
 
 You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.

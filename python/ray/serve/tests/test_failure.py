@@ -241,3 +241,9 @@ def test_worker_replica_failure(serve_instance):
                 break
             except TimeoutError:
                 time.sleep(0.1)
+
+
+if __name__ == "__main__":
+    import sys
+    import pytest
+    sys.exit(pytest.main(["-v", "-s", __file__]))
