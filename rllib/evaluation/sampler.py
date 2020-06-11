@@ -869,7 +869,7 @@ def _process_policy_eval_results(*, to_eval, eval_results, active_episodes,
     for policy_id, eval_data in to_eval.items():
         rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
 
-        actions = clipped_actions = eval_results[policy_id][0]
+        actions = eval_results[policy_id][0]
         rnn_out_cols = eval_results[policy_id][1]
         pi_info_cols = eval_results[policy_id][2]
 
@@ -888,15 +888,18 @@ def _process_policy_eval_results(*, to_eval, eval_results, active_episodes,
             pi_info_cols["state_out_{}".format(f_i)] = column
 
         policy = _get_or_raise(policies, policy_id)
-        # Clip if necessary (while action components are still batched).
-        if clip_actions:
-            clipped_actions = clip_action(actions, policy.action_space_struct)
         # Split action-component batches into single action rows.
         actions = unbatch(actions)
         for i, action in enumerate(actions):
             env_id = eval_data[i].env_id
             agent_id = eval_data[i].agent_id
-            actions_to_send[env_id][agent_id] = clipped_actions[i]
+            # Clip if necessary.
+            if clip_actions:
+                clipped_action = clip_action(action,
+                                             policy.action_space_struct)
+            else:
+                clipped_action = action
+            actions_to_send[env_id][agent_id] = clipped_action
             episode = active_episodes[env_id]
             episode._set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
             episode._set_last_pi_info(
