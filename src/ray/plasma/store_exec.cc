@@ -3,7 +3,6 @@
 
 #include <chrono>
 #include <thread>
-#include <iostream>
 
 #include "ray/object_manager/plasma/store.h"
 // TODO(pcm): Convert getopt and sscanf in the store to use more idiomatic C++
@@ -55,9 +54,10 @@ int main(int argc, char *argv[]) {
                                      plasma_directory, external_store_endpoint);
     runner.Start();
   } else {
-    printf("The Plasma Store is started with the '-z' flag, and it will run idle as a placeholder.");
+    printf("The Plasma Store is started with the '-z' flag, "
+           "and it will run idle as a placeholder.");
     while (true) {
-        std::this_thread::sleep_for(std::chrono::hours(1000));
+      std::this_thread::sleep_for(std::chrono::hours(1000));
     }
   }
 

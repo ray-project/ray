@@ -28,8 +28,9 @@ namespace ray {
 
 ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config) {
   if (config.object_store_memory > 0) {
-    plasma_store_.reset(new plasma::PlasmaStoreRunner(config.store_socket_name, config.object_store_memory,
-                        config.huge_pages, config.plasma_directory, ""));
+    plasma_store_.reset(new plasma::PlasmaStoreRunner(
+        config.store_socket_name, config.object_store_memory, config.huge_pages,
+        config.plasma_directory, ""));
     // Initialize object store.
     store_thread_ = std::thread(&plasma::PlasmaStoreRunner::Start, plasma_store_.get());
     // Sleep for sometime until the store is working. This can suppress some
