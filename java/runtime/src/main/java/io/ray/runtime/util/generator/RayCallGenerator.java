@@ -81,7 +81,7 @@ public class RayCallGenerator extends BaseGenerator {
     newLine("package io.ray.api;");
     newLine("");
     newLine("import io.ray.api.call.ActorTaskCaller;");
-    newLine("import io.ray.api.call.ActorVoidTaskCaller;");
+    newLine("import io.ray.api.call.VoidActorTaskCaller;");
     for (int i = 1; i <= MAX_PARAMETERS; i++) {
       newLine("import io.ray.api.function.RayFunc" + i + ";");
     }
@@ -171,7 +171,7 @@ public class RayCallGenerator extends BaseGenerator {
       returnType = "ActorCreator<A>";
     } else {
       if (forActor) {
-        returnType = hasReturn ? "ActorTaskCaller<R>" : "ActorVoidTaskCaller";
+        returnType = hasReturn ? "ActorTaskCaller<R>" : "VoidActorTaskCaller";
       } else {
         returnType = hasReturn ? "TaskCaller<R>" : "VoidTaskCaller";
       }
@@ -197,7 +197,7 @@ public class RayCallGenerator extends BaseGenerator {
       caller = "ActorCreator<>";
     } else {
       if (forActor) {
-        caller = hasReturn ? "ActorTaskCaller<>" : "ActorVoidTaskCaller";
+        caller = hasReturn ? "ActorTaskCaller<>" : "VoidActorTaskCaller";
       } else {
         caller = hasReturn ? "TaskCaller<>" : "VoidTaskCaller";
       }

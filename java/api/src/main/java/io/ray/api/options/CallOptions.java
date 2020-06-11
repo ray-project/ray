@@ -29,7 +29,7 @@ public class CallOptions extends BaseTaskOptions {
       return this;
     }
 
-    public CallOptions createCallOptions() {
+    public CallOptions build() {
       return new CallOptions(resources);
     }
   }

@@ -7,7 +7,6 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.TestUtils;
 import io.ray.api.WaitResult;
-import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -63,7 +62,7 @@ public class ResourcesManagementTest extends BaseTest {
 
     try {
       CallOptions callOptions3 =
-          new CallOptions.Builder().setResources(ImmutableMap.of("CPU", 0.0)).createCallOptions();
+          new CallOptions.Builder().setResources(ImmutableMap.of("CPU", 0.0)).build();
       Assert.fail();
     } catch (RuntimeException e) {
       // We should receive a RuntimeException indicates that we should not
@@ -75,8 +74,6 @@ public class ResourcesManagementTest extends BaseTest {
   public void testActors() {
     TestUtils.skipTestUnderSingleProcess();
 
-    ActorCreationOptions actorCreationOptions1 = new ActorCreationOptions.Builder()
-        .setResources(ImmutableMap.of("CPU", 2.0)).createActorCreationOptions();
     // This is a case that can satisfy required resources.
     // The static resources for test are "CPU:4,RES-A:4".
     ActorHandle<Echo> echo1 = Ray.actor(Echo::new)

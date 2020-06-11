@@ -67,7 +67,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
       return this;
     }
 
-    public ActorCreationOptions createActorCreationOptions() {
+    public ActorCreationOptions build() {
       return new ActorCreationOptions(
           resources, maxRestarts, jvmOptions, maxConcurrency);
     }

@@ -39,8 +39,8 @@ public class BaseActorCreator<T extends BaseActorCreator> {
     return (T) this;
   }
 
-  protected ActorCreationOptions createActorCreationOptions() {
-    return builder.createActorCreationOptions();
+  protected ActorCreationOptions buildOptions() {
+    return builder.build();
   }
 
 }

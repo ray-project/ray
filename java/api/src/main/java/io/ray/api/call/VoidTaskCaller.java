@@ -13,7 +13,7 @@ public class VoidTaskCaller extends BaseTaskCaller<VoidTaskCaller> {
   }
 
   public void remote() {
-    Ray.internal().call(func, args, createCallOptions());
+    Ray.internal().call(func, args, buildOptions());
   }
 
 }
