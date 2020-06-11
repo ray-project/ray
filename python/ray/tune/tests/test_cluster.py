@@ -406,15 +406,15 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
 
     trainable_util = "ray.tune.ray_trial_executor.TrainableUtil"
     _find_ckpt = trainable_util + ".find_checkpoint_dir"
+    find_func = TrainableUtil.find_checkpoint_dir
     _pickle_ckpt = trainable_util + ".pickle_checkpoint"
+    pickle_func = TrainableUtil.pickle_checkpoint
 
     with patch(_find_ckpt) as mock_find, patch(_pickle_ckpt) as mock_pkl_ckpt:
         # __fake_remote trainables save to a separate "remote" directory.
         # TrainableUtil will not check this path unless we mock it.
-        mock_find.side_effect = hide_remote_path(
-            TrainableUtil.find_checkpoint_dir)
-        mock_pkl_ckpt.side_effect = hide_remote_path(
-            TrainableUtil.pickle_checkpoint)
+        mock_find.side_effect = hide_remote_path(find_func)
+        mock_pkl_ckpt.side_effect = hide_remote_path(pickle_func)
         with patch("ray.tune.logger.get_node_syncer") as mock_get_node_syncer:
 
             def mock_get_syncer_fn(local_dir, remote_dir, sync_function):
