@@ -3,7 +3,7 @@ package io.ray.api.call;
 import io.ray.api.options.CallOptions;
 import java.util.Map;
 
-public class TaskCallerBase<T extends TaskCallerBase<T>> {
+public class BaseTaskCaller<T extends BaseTaskCaller<T>> {
   private CallOptions.Builder builder = new CallOptions.Builder();
 
   public T setResource(String key, Double value) {

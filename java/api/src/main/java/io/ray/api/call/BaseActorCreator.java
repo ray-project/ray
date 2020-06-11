@@ -3,7 +3,7 @@ package io.ray.api.call;
 import io.ray.api.options.ActorCreationOptions;
 import java.util.Map;
 
-public class ActorCreatorBase<T extends ActorCreatorBase> {
+public class BaseActorCreator<T extends BaseActorCreator> {
   private ActorCreationOptions.Builder builder = new ActorCreationOptions.Builder();
 
   public T setResource(String key, Double value) {

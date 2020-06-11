@@ -4,7 +4,7 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.function.PyRemoteFunction;
 
-public class PyTaskCaller<R> extends TaskCallerBase<PyTaskCaller<R>> {
+public class PyTaskCaller<R> extends BaseTaskCaller<PyTaskCaller<R>> {
   private final PyRemoteFunction<R> func;
   private final Object[] args;
 

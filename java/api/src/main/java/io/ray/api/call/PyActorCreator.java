@@ -4,7 +4,7 @@ import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.function.PyActorClass;
 
-public class PyActorCreator extends ActorCreatorBase<PyActorCreator> {
+public class PyActorCreator extends BaseActorCreator<PyActorCreator> {
   private final PyActorClass pyActorClass;
   private final Object[] args;
 
