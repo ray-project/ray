@@ -89,9 +89,18 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
 
 void ServiceBasedJobInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(INFO) << "Reestablishing subscription for job info.";
-  // If the pub-sub server has restarted, we need to resubscribe to the pub-sub server.
-  if (subscribe_operation_ != nullptr && is_pubsub_server_restarted) {
-    RAY_CHECK_OK(subscribe_operation_(nullptr));
+  // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
+  // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
+  // server first, then fetch data from the GCS server.
+  if (is_pubsub_server_restarted) {
+    if (subscribe_operation_ != nullptr) {
+      RAY_CHECK_OK(subscribe_operation_(
+          [this](const Status &status) { fetch_all_data_operation_(nullptr); }));
+    }
+  } else {
+    if (fetch_all_data_operation_ != nullptr) {
+      fetch_all_data_operation_(nullptr);
+    }
   }
 }
 
@@ -665,7 +674,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
     return client_impl_->GetGcsPubSub().SubscribeAll(NODE_RESOURCE_CHANNEL, on_subscribe,
                                                      done);
   };
-  return subscribe_resource_operation_(done);
+  return subscribe_resource_operation_(done, true);
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
@@ -713,7 +722,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
     return client_impl_->GetGcsPubSub().Subscribe(HEARTBEAT_BATCH_CHANNEL, "",
                                                   on_subscribe, done);
   };
-  return subscribe_batch_heartbeat_operation_(done);
+  return subscribe_batch_heartbeat_operation_(done, true);
 }
 
 void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
@@ -1307,7 +1316,7 @@ Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
     };
     return client_impl_->GetGcsPubSub().SubscribeAll(WORKER_CHANNEL, on_subscribe, done);
   };
-  return subscribe_operation_(done);
+  return subscribe_operation_(done, true);
 }
 
 void ServiceBasedWorkerInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
