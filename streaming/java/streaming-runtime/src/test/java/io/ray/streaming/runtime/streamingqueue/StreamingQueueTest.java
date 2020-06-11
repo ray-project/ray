@@ -1,8 +1,8 @@
 package io.ray.streaming.runtime.streamingqueue;
 
 import com.google.common.collect.ImmutableMap;
-import io.ray.api.Ray;
 import io.ray.api.ActorHandle;
+import io.ray.api.Ray;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.ActorCreationOptions.Builder;
 import io.ray.runtime.config.RayConfig;
