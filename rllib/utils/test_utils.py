@@ -302,5 +302,5 @@ def check_compute_single_action(trainer_or_policy,
             if not action_space.contains(action):
                 raise ValueError(
                     "Returned action ({}) of trainer/policy {} not in Env's "
-                    "action_space ({})!".format(
-                        action, trainer_or_policy, action_space))
+                    "action_space ({})!".format(action, trainer_or_policy,
+                                                action_space))
