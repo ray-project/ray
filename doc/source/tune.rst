@@ -11,9 +11,8 @@ Tune is a Python library for experiment execution and hyperparameter tuning at a
 
   * Launch a multi-node :ref:`distributed hyperparameter sweep <tune-distributed>` in less than 10 lines of code.
   * Supports any machine learning framework, :ref:`including PyTorch, XGBoost, MXNet, and Keras<tune-guides-overview>`.
-  * Natively :ref:`integrates with optimization libraries <tune-search-alg>` such as `HyperOpt <https://github.com/hyperopt/hyperopt>`_, `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_, and `Facebook Ax <http://ax.dev>`_.
-  * Choose among :ref:`scalable algorithms <tune-schedulers>` such as :ref:`Population Based Training (PBT) <tune-scheduler-pbt>`, :ref:`Vizier's Median Stopping Rule <tune-scheduler-msr>`, :ref:`HyperBand/ASHA <tune-scheduler-hyperband>`.
-  * Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__.
+  * Automatically manages ref:`checkpoints <tune-checkpoint>`_ and logging to `TensorBoard <tune-logging>`__.
+  * Choose among state of the art algorithms such as :ref:`Population Based Training (PBT) <tune-scheduler-pbt>`, :ref:`BayesOptSearch <bayesopt>`, :ref:`HyperBand/ASHA <tune-scheduler-hyperband>`.
   * Move your models from training to serving on the same infrastructure with `Ray Serve`_.
 
 .. _`Ray Serve`: rayserve/overview.html
@@ -52,8 +51,15 @@ If using TF2 and TensorBoard, Tune will also automatically generate TensorBoard 
 
 .. tip:: Join the `Ray community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray Tune (and other Ray libraries)!
 
-Guides/Materials
+Why choose Tune?
 ----------------
+
+There are many other hyperparameter optimization libraries out there. If you're new to Tune, you're probably wondering, "what makes Tune different?"
+
+.. include:: tune/why_tune.rst
+
+Reference Materials
+-------------------
 
 Here are some reference materials for Tune:
 
@@ -68,18 +74,6 @@ Below are some blog posts and talks about Tune:
  - [slides] `Talk given at RISECamp 2019 <https://docs.google.com/presentation/d/1v3IldXWrFNMK-vuONlSdEuM82fuGTrNUDuwtfx4axsQ/edit?usp=sharing>`_
  - [video] `Talk given at RISECamp 2018 <https://www.youtube.com/watch?v=38Yd_dXW51Q>`_
  - [video] `A Guide to Modern Hyperparameter Optimization (PyData LA 2019) <https://www.youtube.com/watch?v=10uz5U3Gy6E>`_ (`slides <https://speakerdeck.com/richardliaw/a-modern-guide-to-hyperparameter-optimization>`_)
-
-Open Source Projects using Tune
--------------------------------
-
-Here are some of the popular open source repositories and research projects that leverage Tune. Feel free to submit a pull-request adding (or requesting a removal!) of a listed project.
-
- - `Softlearning <https://github.com/rail-berkeley/softlearning>`_: Softlearning is a reinforcement learning framework for training maximum entropy policies in continuous domains. Includes the official implementation of the Soft Actor-Critic algorithm.
- - `Flambe <https://github.com/asappresearch/flambe>`_: An ML framework to accelerate research and its path to production. See `flambe.ai <https://flambe.ai>`_.
- - `Population Based Augmentation <https://github.com/arcelien/pba>`_: Population Based Augmentation (PBA) is a algorithm that quickly and efficiently learns data augmentation functions for neural network training. PBA matches state-of-the-art results on CIFAR with one thousand times less compute.
- - `Fast AutoAugment by Kakao <https://github.com/kakaobrain/fast-autoaugment>`_: Fast AutoAugment (Accepted at NeurIPS 2019) learns augmentation policies using a more efficient search strategy based on density matching.
- - `Allentune <https://github.com/allenai/allentune>`_: Hyperparameter Search for AllenNLP from AllenAI.
- - `machinable <https://github.com/frthjf/machinable>`_: A modular configuration system for machine learning research. See `machinable.org <https://machinable.org>`_.
 
 Citing Tune
 -----------
