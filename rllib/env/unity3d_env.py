@@ -206,6 +206,8 @@ class Unity3DEnv(MultiAgentEnv):
             ]),
             # Tennis.
             "Tennis": Box(float("-inf"), float("inf"), (27, )),
+            # VisualHallway.
+            "VisualHallway": Box(float("-inf"), float("inf"), (84, 84, 3)),
             # Walker.
             "Walker": Box(float("-inf"), float("inf"), (212, )),
         }
@@ -221,6 +223,8 @@ class Unity3DEnv(MultiAgentEnv):
             "Striker": MultiDiscrete([3, 3, 3]),
             # Tennis.
             "Tennis": Box(float("-inf"), float("inf"), (3, )),
+            # VisualHallway.
+            "VisualHallway": MultiDiscrete([5]),
             # Walker.
             "Walker": Box(float("-inf"), float("inf"), (39, )),
         }
