@@ -19,7 +19,7 @@ public class TaskCaller<R> extends BaseTaskCaller<TaskCaller<R>> {
   }
 
   /**
-   * Execute a function remotely and return an object reference to method execution result in the
+   * Execute a java function remotely and return an object reference to the result object in the
    * object store.
    *
    * @return an object reference to an object in the object store.

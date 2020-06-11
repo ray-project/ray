@@ -5,7 +5,7 @@ import io.ray.api.Ray;
 import io.ray.api.function.PyActorClass;
 
 /**
- * A helper to create python actor
+ * A helper to create python actor.
  */
 public class PyActorCreator extends BaseActorCreator<PyActorCreator> {
   private final PyActorClass pyActorClass;
@@ -16,11 +16,11 @@ public class PyActorCreator extends BaseActorCreator<PyActorCreator> {
     this.args = args;
   }
 
-  @Override
-  public PyActorCreator setJvmOptions(String jvmOptions) {
-    throw new UnsupportedOperationException("Python doesn't support jvm options");
-  }
-
+  /**
+   * Create a python actor remotely and return a handle to the created actor.
+   *
+   * @return a handle to the created python actor.
+   */
   public PyActorHandle remote() {
     return Ray.internal().createActor(pyActorClass, args, buildOptions());
   }

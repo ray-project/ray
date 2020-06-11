@@ -36,8 +36,6 @@ public class ActorCreationOptions extends BaseTaskOptions {
      * This method can be called multiple times. If the same resource is set multiple times,
      * the latest quantity will be used.
      *
-     * <p>By using custom resource, the user can implement virtually any actor placement policy.
-     *
      * @param resourceName resource name
      * @param resourceQuantity resource quantity
      * @return self
@@ -52,8 +50,6 @@ public class ActorCreationOptions extends BaseTaskOptions {
      * This method can be called multiple times. If the same resource is set multiple times,
      * the latest quantity will be used.
      *
-     * <p>By using custom resources, the user can implement virtually any actor placement policy.
-     *
      * @param resources requirements for multiple resources.
      * @return self
      */
@@ -63,7 +59,9 @@ public class ActorCreationOptions extends BaseTaskOptions {
     }
 
     /**
-     * Set max number of actor restarts when actor failed.
+     * This specifies the maximum number of times that the actor should be restarted when it dies
+     * unexpectedly. The minimum valid value is 0 (default), which indicates that the actor doesn't
+     * need to be restarted. A value of -1 indicates that an actor should be restarted indefinitely.
      *
      * @param maxRestarts max number of actor restarts
      * @return self
@@ -74,9 +72,11 @@ public class ActorCreationOptions extends BaseTaskOptions {
     }
 
     /**
-     * Set java worker jvm start options
+     * Set the JVM options for the Java worker that this actor is running in.
      *
-     * @param jvmOptions java worker jvm start options
+     * Note, if this is set, this actor won't share Java worker with other actors or tasks.
+     *
+     * @param jvmOptions JVM options for the Java worker that this actor is running in.
      * @return self
      */
     public Builder setJvmOptions(String jvmOptions) {

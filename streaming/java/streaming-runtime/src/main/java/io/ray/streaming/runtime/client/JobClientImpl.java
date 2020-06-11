@@ -3,7 +3,6 @@ package io.ray.streaming.runtime.client;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.options.ActorCreationOptions;
 import io.ray.streaming.client.JobClient;
 import io.ray.streaming.jobgraph.JobGraph;
 import io.ray.streaming.runtime.config.global.CommonConfig;
@@ -27,10 +26,6 @@ public class JobClientImpl implements JobClient {
     LOG.info("Submitting job [{}] with job graph [{}] and job config [{}].",
         jobGraph.getJobName(), jobGraph, jobConfig);
     Map<String, Double> resources = new HashMap<>();
-    ActorCreationOptions options = new ActorCreationOptions.Builder()
-        .setResources(resources)
-        .setMaxRestarts(-1)
-        .build();
 
     // set job name and id at start
     jobConfig.put(CommonConfig.JOB_ID, Ray.getRuntimeContext().getCurrentJobId().toString());

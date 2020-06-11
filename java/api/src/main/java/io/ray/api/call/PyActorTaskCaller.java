@@ -22,8 +22,8 @@ public class PyActorTaskCaller<R> {
   }
 
   /**
-   * Execute a python actor method remotely and return an object reference to method execution
-   * result in the object store.
+   * Execute a python actor method remotely and return an object reference to the result object in
+   * the object store.
    *
    * @return an object reference to an object in the object store.
    */

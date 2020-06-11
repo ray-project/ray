@@ -22,7 +22,7 @@ public class ActorTaskCaller<R> {
   }
 
   /**
-   * Execute a actor method remotely and return an object reference to method execution result in
+   * Execute an java actor method remotely and return an object reference to the result object in
    * the object store.
    *
    * @return an object reference to an object in the object store.

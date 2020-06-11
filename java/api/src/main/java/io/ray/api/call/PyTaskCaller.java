@@ -19,8 +19,8 @@ public class PyTaskCaller<R> extends BaseTaskCaller<PyTaskCaller<R>> {
   }
 
   /**
-   * Execute a python function remotely and return an object reference to method execution result
-   * in the object store.
+   * Execute a python function remotely and return an object reference to the result object in the
+   * object store.
    *
    * @return an object reference to an object in the object store.
    */

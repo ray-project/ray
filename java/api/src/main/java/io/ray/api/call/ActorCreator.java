@@ -28,9 +28,9 @@ public class ActorCreator<A> extends BaseActorCreator<ActorCreator<A>> {
   }
 
   /**
-   * Create a java actor remotely and return a handle to the created java actor
+   * Create a java actor remotely and return a handle to the created actor.
    *
-   * @return a handle to the created java actor
+   * @return a handle to the created java actor.
    */
   public ActorHandle<A> remote() {
     return Ray.internal().createActor(func, args, buildOptions());
