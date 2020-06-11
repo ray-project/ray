@@ -120,17 +120,17 @@ void GcsActorManager::HandleGetActorInfo(const rpc::GetActorInfoRequest &request
                                          rpc::GetActorInfoReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
-  RAY_LOG(DEBUG) << "Getting actor info"
-                 << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
+//  RAY_LOG(DEBUG) << "Getting actor info"
+//                 << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
 
-  auto on_done = [actor_id, reply, send_reply_callback](
+  auto on_done = [reply, send_reply_callback](
                      const Status &status,
                      const boost::optional<ActorTableData> &result) {
     if (result) {
       reply->mutable_actor_table_data()->CopyFrom(*result);
     }
-    RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
-                   << ", actor id = " << actor_id << ", status = " << status;
+//    RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
+//                   << ", actor id = " << actor_id << ", status = " << status;
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
 

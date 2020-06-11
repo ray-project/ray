@@ -2599,8 +2599,10 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
     }
   } else {
     // (See design_docs/task_states.rst for the state transition diagram.)
-    local_queues_.RemoveTask(task_id, &task);
-//    RAY_CHECK(local_queues_.RemoveTask(task_id, &task));
+//    local_queues_.RemoveTask(task_id, &task);
+    if (!local_queues_.RemoveTask(task_id, &task)) {
+      RAY_LOG(DEBUG) << "local_queues_ miss task, task id = " << task_id;
+    }
 
     // Release task's resources. The worker's lifetime resources are still held.
     auto const &task_resources = worker.GetTaskResourceIds();

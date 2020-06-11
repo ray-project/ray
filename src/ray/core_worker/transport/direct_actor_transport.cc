@@ -281,6 +281,13 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   auto task_id = TaskID::FromBinary(request.task_spec().task_id());
   RAY_LOG(INFO) << "CoreWorkerDirectTaskReceiver HandlePushTask..., task id = " << task_id
                 << ", actor id = " << task_id.ActorId();
+  if (finished_task_ids_.count(task_id)) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    RAY_LOG(INFO) << "Task is repeated, reply directly, task id = " << task_id
+                  << ", actor id = " << task_id.ActorId();
+    return;
+  }
+
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
   std::vector<ObjectID> dependencies;
@@ -379,6 +386,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   // through a scheduling queue.
   if (task_spec.IsActorCreationTask()) {
     accept_callback();
+    finished_task_ids_.insert(task_id);
     return;
   }
 
