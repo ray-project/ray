@@ -9,12 +9,19 @@ DEFAULT_CONFIG = with_common_config({
     "train_batch_size": 512,
     "rollout_fragment_length": 10,
     "exploration_config": {"type": "Random"},
-    # Ratio of train set size over validation set size for dynamics learning.
-    # Will be used to decide, which collected batches will be stored in
-    # which replay buffer (2 per worker: train and validation). Training of
-    # a dynamics model over some epochs (over the entire training set) stops
-    # when the validation performance starts to decrease again.
-    "train_vs_validation_ratio": 3.0,
+    # Fraction of the entire data that should be used for training the dynamics
+    # model. The validation fraction is 1.0 - `training_set_ratio`. Training of
+    # a dynamics model over n some epochs (1 epoch = entire training set) stops
+    # when the validation set's performance starts to decrease.
+    "training_set_ratio": 0.8,
+    # Whether the dynamics model shouldo predict the reward, given obs(t)+a(t).
+    "predict_rewards": False,
+    # Whether to predict `obs(t+1) - obs(t)` instead of `obs(t+1)` directly.
+    # NOTE: This only works for 1D Box observation spaces, e.g. Box(5,).
+    "predict_obs_delta": True,
+    # TODO: loss function types: neg_log_llh, etc..?
+    "loss_function": "l2",
+    # Config for the dynamics learning model architecture.
     "dynamics_model": {
         "fcnet_hiddens": [512, 512],
     },

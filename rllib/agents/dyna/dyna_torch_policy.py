@@ -18,9 +18,12 @@ def make_model_and_dist(policy, obs_space, action_space, config):
     # Get the output distribution class for predicting rewards and next-obs.
     distr_cls_next_obs = ModelCatalog.get_action_dist(
         obs_space, config, dist_type="deterministic")
-    # distr_cls_rewards = ModelCatalog.get_action_dist(gym.spaces.Box(
-    #    float("-inf"), float("inf"), ()
-    # ), config, dist_type="")
+    if config["predict_reward"]:
+        # TODO
+        _ = ModelCatalog.get_action_dist(gym.spaces.Box(
+            float("-inf"), float("inf"), ()
+        ), config, dist_type="")
+    num_outputs = 50
 
     # Build one dynamics model if we are a Worker.
     # If we are the main MAML learner, build n (num_workers) dynamics Models
