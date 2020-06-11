@@ -160,20 +160,24 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         idxes = self._sample_proportional(num_items)
 
         weights = []
+        batch_indexes = []
         p_min = self._it_min.min() / self._it_sum.sum()
         max_weight = (p_min * len(self._storage))**(-beta)
 
         for idx in idxes:
             p_sample = self._it_sum[idx] / self._it_sum.sum()
             weight = (p_sample * len(self._storage))**(-beta)
-            weights.append(weight / max_weight)
-        weights = np.array(weights)
+            count = self._storage[idx].count
+            weights.extend([weight / max_weight] * count)
+            batch_indexes.extend([idx] * count)
         batch = self._encode_sample(idxes)
 
         # Note: prioritization is not supported in lockstep replay mode.
         if isinstance(batch, SampleBatch):
+            assert len(weights) == batch.count
+            assert len(batch_indexes) == batch.count
             batch["weights"] = np.array(weights)
-            batch["batch_indexes"] = np.array(idxes)
+            batch["batch_indexes"] = np.array(batch_indexes)
 
         return batch
 

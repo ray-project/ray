@@ -224,10 +224,13 @@ def validate_config(config):
                               config.get("n_step", 1))
     config["rollout_fragment_length"] = adjusted_batch_size
 
-    if (config.get("prioritized_replay")
-            and config["multiagent"]["replay_mode"] == "lockstep"):
-        raise ValueError(
-            "Prioritized replay is not supported when replay_mode=lockstep")
+    if config.get("prioritized_replay"):
+        if config["multiagent"]["replay_mode"] == "lockstep":
+            raise ValueError("Prioritized replay is not supported when "
+                             "replay_mode=lockstep.")
+        elif config["multiagent"]["replay_sequence_length"] > 1:
+            raise ValueError("Prioritized replay is not supported when "
+                             "replay_sequence_length > 1.")
 
 
 def execution_plan(workers, config):
