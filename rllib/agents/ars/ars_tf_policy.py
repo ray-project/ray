@@ -54,7 +54,11 @@ class ARSTFPolicy:
             for _, variable in self.variables.variables.items())
         self.sess.run(tf.global_variables_initializer())
 
-    def compute_actions(self, observation, add_noise=False, update=True):
+    def compute_actions(self,
+                        observation,
+                        add_noise=False,
+                        update=True,
+                        **kwargs):
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
         action = self.sess.run(

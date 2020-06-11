@@ -286,7 +286,7 @@ def check_compute_single_action(trainer_or_policy,
             reward_in = 1.0 if include_prev_action_reward else None
             action = method_to_test(
                 obs,
-                state=state_in,
+                state_in,
                 prev_action=action_in,
                 prev_reward=reward_in,
                 explore=explore,
