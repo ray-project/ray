@@ -18,9 +18,8 @@
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
+#include "ray/core_worker/actor_reporter.h"
 #include "ray/core_worker/reference_count.h"
-#include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/task_manager.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_gcs_client.h"
@@ -74,6 +73,8 @@ class MockDirectActorSubmitter : public CoreWorkerDirectActorTaskSubmitterInterf
   MOCK_METHOD1(AddActorQueueIfNotExists, void(const ActorID &actor_id));
   MOCK_METHOD2(ConnectActor, void(const ActorID &actor_id, const rpc::Address &address));
   MOCK_METHOD2(DisconnectActor, void(const ActorID &actor_id, bool dead));
+  MOCK_METHOD3(KillActor,
+               void(const ActorID &actor_id, bool force_kill, bool no_restart));
 
   virtual ~MockDirectActorSubmitter() {}
 };
@@ -96,6 +97,7 @@ class MockReferenceCounter : public ReferenceCounterInterface {
   MOCK_METHOD2(SetDeleteCallback,
                bool(const ObjectID &object_id,
                     const std::function<void(const ObjectID &)> callback));
+
   virtual ~MockReferenceCounter() {}
 };
 
@@ -112,39 +114,30 @@ class ActorManagerTest : public ::testing::Test {
 
   ~ActorManagerTest() {}
 
-  void SetUp() { actor_reporter_ = std::make_shared<ActorReporter>(gcs_client_mock_); }
+  void SetUp() {
+    actor_manager_ = std::make_shared<ActorManager>(
+        gcs_client_mock_, direct_actor_submitter_, reference_counter_);
+  }
 
-  void TearDown() { actor_reporter_.reset(); }
+  void TearDown() { actor_manager_.reset(); }
 
   gcs::GcsClientOptions options_;
   std::shared_ptr<MockGcsClient> gcs_client_mock_;
   MockActorInfoAccessor *actor_info_accessor_;
   std::shared_ptr<MockDirectActorSubmitter> direct_actor_submitter_;
   std::shared_ptr<MockReferenceCounter> reference_counter_;
-  std::shared_ptr<ActorReporter> actor_reporter_;
+  std::shared_ptr<ActorManager> actor_manager_;
 };
 
-TEST_F(ActorManagerTest, TestPublishTerminatedActor) {
-  TaskID current_task_id = TaskID::Nil();
-  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  WorkerID worker_id = WorkerID::FromRandom();
-  TaskID caller_id =
-      TaskID::ForActorTask(JobID::FromInt(0), current_task_id, 0, actor_id);
-  auto creation_task_spec = CreateActorTaskHelper(actor_id, worker_id, 0, caller_id);
-  EXPECT_CALL(*actor_info_accessor_, AsyncRegister(_, _));
-  actor_reporter_->PublishTerminatedActor(creation_task_spec);
+TEST_F(ActorManagerTest, AddAndGetActorHandle) {
+  JobID job_id = JobID::FromRandom();
+  std::unique_ptr<ActorHandle> actor_handle =
+    absl::make_unique<ActorHandle>(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
+                                  TaskID::Nil(), rpc::Address(), job_id,
+                                  ObjectID::FromRandom(), function.GetLanguage(),
+                                  function.GetFunctionDescriptor(), "", 0);
+  actor_manager_->AddActorHandle(actor_handle, )
 }
-
-// TEST_F(ActorManagerTest, AddAndGetActorHandle) {
-//   JobID job_id = JobID::FromRandom();
-//   std::shared_ptr<ActorHandle> actor_handle =
-//   std::make_shared<ActorHandle>(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
-//                            TaskID::Nil(), rpc::Address(), job_id,
-//                            ObjectID::FromRandom(), function.GetLanguage(),
-//                            function.GetFunctionDescriptor(), "", 0);
-//   // Expect actor subscription
-//   // Expect deletion callback set
-// }
 
 // TEST_F(ActorManagerTest, AddCopiedHandle) {
 //   JobID job_id = JobID::FromRandom();

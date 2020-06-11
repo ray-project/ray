@@ -17,33 +17,11 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/core_worker/actor_handle.h"
-#include "ray/gcs/redis_gcs_client.h"
-// #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
-
-// Interface for testing.
-class ActorReporterInterface {
- public:
-  virtual void PublishTerminatedActor(const TaskSpecification &actor_creation_task) = 0;
-
-  virtual ~ActorReporterInterface() {}
-};
-
-class ActorReporter : public ActorReporterInterface {
- public:
-  ActorReporter(std::shared_ptr<gcs::GcsClient> gcs_client) : gcs_client_(gcs_client) {}
-
-  ~ActorReporter() {}
-
-  /// Called when an actor that we own can no longer be restarted.
-  void PublishTerminatedActor(const TaskSpecification &actor_creation_task) override;
-
- private:
-  /// GCS client
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
-};
 
 /// Class to manage lifetimes of actors that we create (actor children).
 /// Currently this class is only used to publish actor DEAD event
@@ -51,12 +29,12 @@ class ActorReporter : public ActorReporterInterface {
 /// by raylet.
 class ActorManager {
  public:
-  ActorManager(std::shared_ptr<gcs::GcsClient> gcs_client,
-               //    std::shared_ptr<CoreWorkerDirectActorTaskSubmitterInterface>
-               //    direct_actor_submitter,
-               std::shared_ptr<ReferenceCounterInterface> reference_counter)
+  ActorManager(
+      std::shared_ptr<gcs::GcsClient> gcs_client,
+      std::shared_ptr<CoreWorkerDirectActorTaskSubmitterInterface> direct_actor_submitter,
+      std::shared_ptr<ReferenceCounterInterface> reference_counter)
       : gcs_client_(gcs_client),
-        // direct_actor_submitter_(direct_actor_submitter),
+        direct_actor_submitter_(direct_actor_submitter),
         reference_counter_(reference_counter) {}
 
   ~ActorManager() {}
@@ -70,9 +48,14 @@ class ActorManager {
   /// \param[in] serialized The serialized actor handle.
   /// \param[in] outer_object_id The object ID that contained the serialized
   /// actor handle, if any.
+  /// \param[in] caller_id The caller's task ID
+  /// \param[in] call_site The caller's site.
   /// \return The ActorID of the deserialized handle.
   ActorID DeserializeAndRegisterActorHandle(const std::string &serialized,
-                                            const ObjectID &outer_object_id);
+                                            const ObjectID &outer_object_id,
+                                            const TaskID &caller_id,
+                                            const std::string &call_site,
+                                            const rpc::Address &caller_address);
 
   /// Serialize an actor handle.
   ///
@@ -99,8 +82,12 @@ class ActorManager {
   ///
   /// \param[in] name The name of the actor whose handle to get.
   /// \param[out] actor_handle A handle to the requested actor.
+  /// \param[in] caller_id The caller's task ID
+  /// \param[in] call_site The caller's site.
   /// \return Status::NotFound if an actor with the specified name wasn't found.
-  Status GetNamedActorHandle(const std::string &name, ActorHandle **actor_handle);
+  Status GetNamedActorHandle(const std::string &name, ActorHandle **actor_handle,
+                             const TaskID &caller_id, const std::string &call_site,
+                             const rpc::Address &caller_address);
 
   /// Give this worker a handle to an actor.
   ///
@@ -113,17 +100,38 @@ class ActorManager {
   /// \param is_owner_handle Whether this is the owner's handle to the actor.
   /// The owner is the creator of the actor and is responsible for telling the
   /// actor to disconnect once all handles are out of scope.
+  /// \param[in] caller_id The caller's task ID
+  /// \param[in] call_site The caller's site.
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
-  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle);
+  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle,
+                      const TaskID &caller_id, const std::string &call_site,
+                      const rpc::Address &caller_address);
+
+  /// Add a callback that is called when an actor goes out of scope.
+  ///
+  /// \param actor_id The actor id that owns the callback.
+  /// \param actor_out_of_scope_callbacks The callback function that will be called when
+  /// an actor_id goes out of scope. \return True if callback successfully registered.
+  /// False otherwise.
+  bool AddActorOutOfScopeCallback(
+      ActorID &actor_id,
+      std::function<void(const ActorID &)> actor_out_of_scope_callbacks);
+
+  /// Tell an actor to exit immediately, without completing outstanding work.
+  ///
+  /// \param[in] actor_id ID of the actor to kill.
+  /// \param[in] no_restart If set to true, the killed actor will not be
+  /// restarted anymore.
+  /// \param[out] Status
+  Status KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
 
  private:
   /// GCS client
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   // Interface to submit tasks directly to other actors.
-  //   std::shared_ptr<CoreWorkerDirectActorTaskSubmitterInterface>
-  //   direct_actor_submitter_;
+  std::shared_ptr<CoreWorkerDirectActorTaskSubmitterInterface> direct_actor_submitter_;
 
   // Keeps track of object ID reference counts.
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;

@@ -53,6 +53,7 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
   virtual void AddActorQueueIfNotExists(const ActorID &actor_id) = 0;
   virtual void ConnectActor(const ActorID &actor_id, const rpc::Address &address) = 0;
   virtual void DisconnectActor(const ActorID &actor_id, bool dead = false) = 0;
+  virtual void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) = 0;
 
   virtual ~CoreWorkerDirectActorTaskSubmitterInterface() {}
 };
