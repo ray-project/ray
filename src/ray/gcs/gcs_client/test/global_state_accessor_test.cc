@@ -35,16 +35,16 @@ class GlobalStateAccessorTest : public ::testing::Test {
     config.redis_address = "127.0.0.1";
     config.is_test = true;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
-    gcs_server_.reset(new gcs::GcsServer(config));
+
     io_service_.reset(new boost::asio::io_service());
+    gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
+    gcs_server_->Start();
 
     thread_io_service_.reset(new std::thread([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(*io_service_));
       io_service_->run();
     }));
-
-    thread_gcs_server_.reset(new std::thread([this] { gcs_server_->Start(); }));
 
     // Wait until server starts listening.
     while (!gcs_server_->IsStarted()) {
@@ -67,8 +67,9 @@ class GlobalStateAccessorTest : public ::testing::Test {
   void TearDown() override {
     gcs_server_->Stop();
     io_service_->stop();
+    gcs_server_.reset();
     thread_io_service_->join();
-    thread_gcs_server_->join();
+
     gcs_client_->Disconnect();
     global_state_->Disconnect();
     global_state_.reset();
@@ -84,7 +85,6 @@ class GlobalStateAccessorTest : public ::testing::Test {
   gcs::GcsServerConfig config;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
-  std::unique_ptr<std::thread> thread_gcs_server_;
   std::unique_ptr<boost::asio::io_service> io_service_;
 
   // GCS client.
@@ -129,6 +129,42 @@ TEST_F(GlobalStateAccessorTest, TestNodeTable) {
     node_data.ParseFromString(node_table[index]);
     ASSERT_EQ(node_data.node_manager_address(),
               std::string("127.0.0.") + std::to_string(node_data.node_manager_port()));
+  }
+}
+
+TEST_F(GlobalStateAccessorTest, TestNodeResourceTable) {
+  int node_count = 100;
+  ASSERT_EQ(global_state_->GetAllNodeInfo().size(), 0);
+  for (int index = 0; index < node_count; ++index) {
+    auto node_table_data =
+        Mocker::GenNodeInfo(index, std::string("127.0.0.") + std::to_string(index));
+    auto node_id = ClientID::FromBinary(node_table_data->node_id());
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
+        *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+    WaitReady(promise.get_future(), timeout_ms_);
+    ray::gcs::NodeInfoAccessor::ResourceMap resources;
+    rpc::ResourceTableData resource_table_data;
+    resource_table_data.set_resource_capacity(static_cast<double>(index + 1) + 0.1);
+    resources[std::to_string(index)] =
+        std::make_shared<rpc::ResourceTableData>(resource_table_data);
+    RAY_IGNORE_EXPR(gcs_client_->Nodes().AsyncUpdateResources(
+        node_id, resources, [](Status status) { RAY_CHECK(status.ok()); }));
+  }
+  auto node_table = global_state_->GetAllNodeInfo();
+  ASSERT_EQ(node_table.size(), node_count);
+  for (int index = 0; index < node_count; ++index) {
+    rpc::GcsNodeInfo node_data;
+    node_data.ParseFromString(node_table[index]);
+    auto resource_map_str =
+        global_state_->GetNodeResourceInfo(ClientID::FromBinary(node_data.node_id()));
+    rpc::ResourceMap resource_map;
+    resource_map.ParseFromString(resource_map_str);
+    ASSERT_EQ(
+        static_cast<uint32_t>(
+            (*resource_map.mutable_items())[std::to_string(node_data.node_manager_port())]
+                .resource_capacity()),
+        node_data.node_manager_port() + 1);
   }
 }
 

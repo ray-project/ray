@@ -5,8 +5,11 @@ import io.ray.streaming.api.stream.DataStream;
 import io.ray.streaming.api.stream.Stream;
 import io.ray.streaming.api.stream.StreamSink;
 import io.ray.streaming.api.stream.StreamSource;
+import io.ray.streaming.api.stream.UnionStream;
 import io.ray.streaming.operator.StreamOperator;
 import io.ray.streaming.python.stream.PythonDataStream;
+import io.ray.streaming.python.stream.PythonUnionStream;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +47,7 @@ public class JobGraphBuilder {
     return this.jobGraph;
   }
 
+  @SuppressWarnings("unchecked")
   private void processStream(Stream stream) {
     while (stream.isProxyStream()) {
       // Proxy stream and original stream are the same logical stream, both refer to the
@@ -74,6 +78,20 @@ public class JobGraphBuilder {
       JobEdge jobEdge = new JobEdge(inputVertexId, vertexId, parentStream.getPartition());
       this.jobGraph.addEdge(jobEdge);
       processStream(parentStream);
+
+      // process union stream
+      List<Stream> streams = new ArrayList<>();
+      if (stream instanceof UnionStream) {
+        streams.addAll(((UnionStream) stream).getUnionStreams());
+      }
+      if (stream instanceof PythonUnionStream) {
+        streams.addAll(((PythonUnionStream) stream).getUnionStreams());
+      }
+      for (Stream otherStream : streams) {
+        JobEdge otherEdge = new JobEdge(otherStream.getId(), vertexId, otherStream.getPartition());
+        this.jobGraph.addEdge(otherEdge);
+        processStream(otherStream);
+      }
     } else {
       throw new UnsupportedOperationException("Unsupported stream: " + stream);
     }

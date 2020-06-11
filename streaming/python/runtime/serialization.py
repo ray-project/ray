@@ -41,7 +41,7 @@ class CrossLangSerializer(Serializer):
         return msgpack.packb(fields, use_bin_type=True)
 
     def deserialize(self, data):
-        fields = msgpack.unpackb(data, raw=False)
+        fields = msgpack.unpackb(data, raw=False, strict_map_key=False)
         if fields[0] == _RECORD_TYPE_ID:
             stream, value = fields[1:]
             record = message.Record(value)

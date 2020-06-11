@@ -28,11 +28,13 @@
 namespace ray {
 namespace gcs {
 
-GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config)
+GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
+                     boost::asio::io_service &main_service)
     : config_(config),
+      main_service_(main_service),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
                   config.grpc_server_thread_num),
-      client_call_manager_(main_service_) {}
+      client_call_manager_(main_service) {}
 
 GcsServer::~GcsServer() { Stop(); }
 
@@ -71,9 +73,9 @@ void GcsServer::Start() {
       new rpc::NodeInfoGrpcService(main_service_, *gcs_node_manager_));
   rpc_server_.RegisterService(*node_info_service_);
 
-  object_info_handler_ = InitObjectInfoHandler();
+  gcs_object_manager_ = InitObjectManager();
   object_info_service_.reset(
-      new rpc::ObjectInfoGrpcService(main_service_, *object_info_handler_));
+      new rpc::ObjectInfoGrpcService(main_service_, *gcs_object_manager_));
   rpc_server_.RegisterService(*object_info_service_);
 
   task_info_handler_ = InitTaskInfoHandler();
@@ -95,30 +97,34 @@ void GcsServer::Start() {
       new rpc::WorkerInfoGrpcService(main_service_, *worker_info_handler_));
   rpc_server_.RegisterService(*worker_info_service_);
 
-  // Run rpc server.
-  rpc_server_.Run();
+  auto load_completed_count = std::make_shared<int>(0);
+  int load_count = 3;
+  auto on_done = [this, load_count, load_completed_count]() {
+    ++(*load_completed_count);
 
-  // Store gcs rpc server address in redis.
-  StoreGcsServerAddressInRedis();
-  is_started_ = true;
+    if (*load_completed_count == load_count) {
+      // Start RPC server when all tables have finished loading initial data.
+      rpc_server_.Run();
 
-  // Run the event loop.
-  // Using boost::asio::io_context::work to avoid ending the event loop when
-  // there are no events to handle.
-  boost::asio::io_context::work worker(main_service_);
-  main_service_.run();
+      // Store gcs rpc server address in redis.
+      StoreGcsServerAddressInRedis();
+      is_started_ = true;
+    }
+  };
+  gcs_actor_manager_->LoadInitialData(on_done);
+  gcs_object_manager_->LoadInitialData(on_done);
+  gcs_node_manager_->LoadInitialData(on_done);
 }
 
 void GcsServer::Stop() {
-  RAY_LOG(INFO) << "Stopping gcs server.";
-  // Shutdown the rpc server
-  rpc_server_.Shutdown();
+  if (!is_stopped_) {
+    RAY_LOG(INFO) << "Stopping GCS server.";
+    // Shutdown the rpc server
+    rpc_server_.Shutdown();
 
-  // Stop the event loop.
-  main_service_.stop();
-
-  is_stopped_ = true;
-  RAY_LOG(INFO) << "Finished stopping gcs server.";
+    is_stopped_ = true;
+    RAY_LOG(INFO) << "GCS server stopped.";
+  }
 }
 
 void GcsServer::InitBackendClient() {
@@ -132,8 +138,7 @@ void GcsServer::InitBackendClient() {
 void GcsServer::InitGcsNodeManager() {
   RAY_CHECK(redis_gcs_client_ != nullptr);
   gcs_node_manager_ = std::make_shared<GcsNodeManager>(
-      main_service_, redis_gcs_client_->Nodes(), redis_gcs_client_->Errors(),
-      gcs_pub_sub_, gcs_table_storage_);
+      main_service_, redis_gcs_client_->Errors(), gcs_pub_sub_, gcs_table_storage_);
 }
 
 void GcsServer::InitGcsActorManager() {
@@ -198,7 +203,7 @@ std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
       new rpc::DefaultJobInfoHandler(gcs_table_storage_, gcs_pub_sub_));
 }
 
-std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
+std::unique_ptr<GcsObjectManager> GcsServer::InitObjectManager() {
   return std::unique_ptr<GcsObjectManager>(
       new GcsObjectManager(gcs_table_storage_, gcs_pub_sub_, *gcs_node_manager_));
 }

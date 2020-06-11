@@ -34,7 +34,7 @@ class OnlineLinearRegression(nn.Module):
     def partial_fit(self, x, y):
         # TODO: Handle batch of data rather than individual points
         self._check_inputs(x, y)
-        x = x.squeeze()
+        x = x.squeeze(0)
         y = y.item()
         self.time += 1
         self.delta_f += y * x
