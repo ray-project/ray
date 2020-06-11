@@ -20,6 +20,7 @@
 #include <boost/bind.hpp>
 #include <boost/date_time/posix_time/posix_time_types.hpp>
 #include <boost/system/error_code.hpp>
+
 #include "constants.h"
 
 using boost::asio::deadline_timer;
@@ -123,4 +124,5 @@ std::string GetValidLocalIp(int port, int64_t timeout_ms);
 /// \return Whether target rpc server is valid.
 bool Ping(const std::string &ip, int port, int64_t timeout_ms);
 
+bool CheckFree(int port);
 #endif  // RAY_COMMON_NETWORK_UTIL_H
