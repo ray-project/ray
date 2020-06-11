@@ -106,6 +106,7 @@ class WaitUntilTimestepsElapsed:
         return ts > self.target_num_timesteps
 
 
+# TODO(ekl) deprecate this in favor of the replay_sequence_length option.
 class SimpleReplayBuffer:
     """Simple replay buffer that operates over batches."""
 

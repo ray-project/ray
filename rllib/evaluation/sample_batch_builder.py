@@ -54,11 +54,12 @@ class SampleBatchBuilder:
         batch = SampleBatch(
             {k: to_float_array(v)
              for k, v in self.buffers.items()})
-        batch.data[SampleBatch.UNROLL_ID] = np.repeat(self.unroll_id,
-                                                      batch.count)
+        if SampleBatch.UNROLL_ID not in batch.data:
+            batch.data[SampleBatch.UNROLL_ID] = np.repeat(
+                self.unroll_id, batch.count)
+            self.unroll_id += 1
         self.buffers.clear()
         self.count = 0
-        self.unroll_id += 1
         return batch
 
 
@@ -132,6 +133,11 @@ class MultiAgentSampleBatchBuilder:
         if agent_id not in self.agent_builders:
             self.agent_builders[agent_id] = SampleBatchBuilder()
             self.agent_to_policy[agent_id] = policy_id
+
+        # Include the current agent id for multi-agent algorithms.
+        if agent_id != DUMMY_AGENT_ID:
+            values["agent_id"] = agent_id
+
         self.agent_builders[agent_id].add_values(**values)
 
     def postprocess_batch_so_far(self, episode=None):
