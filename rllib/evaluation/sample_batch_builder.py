@@ -5,6 +5,7 @@ import numpy as np
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.debug import summarize
+from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -135,7 +136,7 @@ class MultiAgentSampleBatchBuilder:
             self.agent_to_policy[agent_id] = policy_id
 
         # Include the current agent id for multi-agent algorithms.
-        if agent_id != DUMMY_AGENT_ID:
+        if agent_id != _DUMMY_AGENT_ID:
             values["agent_id"] = agent_id
 
         self.agent_builders[agent_id].add_values(**values)

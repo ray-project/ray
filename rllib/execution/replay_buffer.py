@@ -8,8 +8,8 @@ from typing import List
 import ray
 from ray.rllib.execution.common import SampleBatchType
 from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
-from ray.rllib.policy.common import DEFAULT_POLICY_ID
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, \
+    DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.util.iter import ParallelIteratorWorker
 from ray.rllib.utils.timer import TimerStat
