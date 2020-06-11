@@ -234,7 +234,6 @@ def setup_logging(stdout_name, stderr_name):
 
         stdout_path = os.path.abspath(stdout_file.name)
 
-
     # The stderr case should be analogous to the stdout case
     if stderr_name:
         # Line-buffer the errput (mode 1).
