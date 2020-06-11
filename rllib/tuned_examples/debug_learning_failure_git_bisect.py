@@ -12,6 +12,12 @@ $ python debug_learning_failure_git_bisect.py --config '{...}'
 With a yaml file:
 $ python debug_learning_failure_git_bisect.py -f [yaml file] --stop-reward=180
     --stop-iters=100
+
+Within git bisect:
+$ git bisect start
+$ git bisect bad
+$ git bisect good [some previous commit we know was good]
+$ git bisect run python debug_learning_failure_git_bisect.py [... options]
 """
 import argparse
 import json
