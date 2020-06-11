@@ -15,7 +15,7 @@ class LinearDiscreteEnv(gym.Env):
     """Samples data from linearly parameterized arms.
 
       The reward for context X and arm i is given by X^T * theta_i, for some
-      latent set of parameters {theta_i : i = 1, ..., k}. The betas are sampled
+      latent set of parameters {theta_i : i = 1, ..., k}. The thetas are sampled
       uniformly at random, the contexts are Gaussian, and Gaussian noise is
       added to the rewards.
 
