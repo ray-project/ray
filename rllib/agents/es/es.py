@@ -169,6 +169,11 @@ def get_policy_class(config):
     return policy_cls
 
 
+def validate_config(config):
+    if config["num_workers"] <= 0:
+        raise ValueError("`num_workers` must be > 0 for ES!")
+
+
 class ESTrainer(Trainer):
     """Large-scale implementation of Evolution Strategies in Ray."""
 
@@ -177,6 +182,7 @@ class ESTrainer(Trainer):
 
     @override(Trainer)
     def _init(self, config, env_creator):
+        validate_config(config)
         env_context = EnvContext(config["env_config"] or {}, worker_index=0)
         env = env_creator(env_context)
         policy_cls = get_policy_class(config)

@@ -147,9 +147,9 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     values = model.value_function()
 
     if policy.is_recurrent():
-        max_seq_len = torch.max(train_batch["seq_lens"]) - 1
-        mask = sequence_mask(train_batch["seq_lens"], max_seq_len)
-        mask = torch.reshape(mask, [-1])
+        max_seq_len = torch.max(train_batch["seq_lens"])
+        mask_orig = sequence_mask(train_batch["seq_lens"], max_seq_len)
+        mask = torch.reshape(mask_orig, [-1])
     else:
         mask = torch.ones_like(rewards)
 

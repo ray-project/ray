@@ -235,8 +235,7 @@ With the cluster now running, we can run a simple script to start Ray Serve and 
         return "hello world"
 
     serve.create_backend("hello_backend", hello)
-    serve.create_endpoint("hello_endpoint", route="/hello")
-    serve.set_traffic("hello_endpoint", {"hello_backend": 1.0})
+    serve.create_endpoint("hello_endpoint", backend="hello_backend", route="/hello")
 
 Save this script locally as ``deploy.py`` and run it on the head node using ``ray submit``:
 
@@ -283,19 +282,17 @@ You can run multiple serve instances on the same Ray cluster by providing a ``na
 
 .. code-block:: python
 
-  # Create a first instance whose HTTP server listens on 8000.
-  serve.init(name="instance1", http_port=8000)
-  serve.create_endpoint("counter1", "/increment")
+  # Create a first cluster whose HTTP server listens on 8000.
+  serve.init(name="cluster1", http_port=8000)
 
-  # Create a second instance whose HTTP server listens on 8001.
-  serve.init(name="instance2", http_port=8001)
-  serve.create_endpoint("counter1", "/increment")
+  # Create a second cluster whose HTTP server listens on 8001.
+  serve.init(name="cluster2", http_port=8001)
 
-  # Create a backend that will be served on the second instance.
-  serve.create_backend("counter1", function)
-  serve.set_traffic("counter1", {"counter1": 1.0})
+  # Create a backend that will be served on the second cluster.
+  serve.create_backend("backend2", function)
+  serve.create_endpoint("endpoint2", backend="backend2", route="/increment")
 
-  # Switch back the the first instance and create the same backend on it.
-  serve.init(name="instance1")
-  serve.create_backend("counter1", function)
-  serve.set_traffic("counter1", {"counter1": 1.0})
+  # Switch back the the first cluster and create the same backend on it.
+  serve.init(name="cluster1")
+  serve.create_backend("backend1", function)
+  serve.create_endpoint("endpoint1", backend="backend1", route="/increment")

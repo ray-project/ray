@@ -144,8 +144,8 @@ async def test_system_metric_endpoints(serve_instance):
     def test_error_counter(flask_request):
         1 / 0
 
-    serve.create_endpoint("test_metrics", "/measure")
     serve.create_backend("m:v1", test_error_counter)
+    serve.create_endpoint("test_metrics", backend="m:v1", route="/measure")
     serve.set_traffic("test_metrics", {"m:v1": 1})
 
     # Check metrics are exposed under http endpoint
@@ -195,3 +195,8 @@ async def test_system_metric_endpoints(serve_instance):
             print("Metric not correct, retrying...")
     if not success:
         test_metric_endpoint()
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

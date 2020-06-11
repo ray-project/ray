@@ -79,6 +79,7 @@ Models, Preprocessors, and Action Distributions
 *  `Custom Action Distributions <rllib-models.html#custom-action-distributions>`__
 *  `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
 *  `Self-Supervised Model Losses <rllib-models.html#self-supervised-model-losses>`__
+*  `Variable-length / Complex Observation Spaces <rllib-models.html#variable-length-complex-observation-spaces>`__
 *  `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
 *  `Autoregressive Action Distributions <rllib-models.html#autoregressive-action-distributions>`__
 

@@ -26,8 +26,9 @@ class TestIMPALA(unittest.TestCase):
             local_cfg = config.copy()
             for env in ["Pendulum-v0", "CartPole-v0"]:
                 print("Env={}".format(env))
-                print("w/ LSTM")
+                print("w/o LSTM")
                 # Test w/o LSTM.
+                local_cfg["model"]["use_lstm"] = False
                 local_cfg["num_aggregation_workers"] = 0
                 trainer = impala.ImpalaTrainer(config=local_cfg, env=env)
                 for i in range(num_iterations):
@@ -36,13 +37,13 @@ class TestIMPALA(unittest.TestCase):
                 trainer.stop()
 
                 # Test w/ LSTM.
-                print("w/o LSTM")
+                print("w/ LSTM")
                 local_cfg["model"]["use_lstm"] = True
                 local_cfg["num_aggregation_workers"] = 2
                 trainer = impala.ImpalaTrainer(config=local_cfg, env=env)
                 for i in range(num_iterations):
                     print(trainer.train())
-                check_compute_action(trainer)
+                check_compute_action(trainer, include_state=True)
                 trainer.stop()
 
 
