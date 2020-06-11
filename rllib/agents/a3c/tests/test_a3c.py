@@ -2,7 +2,8 @@ import unittest
 
 import ray
 import ray.rllib.agents.a3c as a3c
-from ray.rllib.utils.test_utils import check_compute_action, framework_iterator
+from ray.rllib.utils.test_utils import check_compute_single_action, \
+    framework_iterator
 
 
 class TestA3C(unittest.TestCase):
@@ -30,7 +31,8 @@ class TestA3C(unittest.TestCase):
                 for i in range(num_iterations):
                     results = trainer.train()
                     print(results)
-                check_compute_action(trainer)
+                check_compute_single_action(trainer)
+                check_compute_single_action(trainer.get_policy())
 
 
 if __name__ == "__main__":

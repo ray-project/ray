@@ -2,7 +2,8 @@ import unittest
 
 import ray
 import ray.rllib.agents.es as es
-from ray.rllib.utils.test_utils import framework_iterator, check_compute_action
+from ray.rllib.utils.test_utils import check_compute_single_action, \
+    framework_iterator
 
 
 class TestES(unittest.TestCase):
@@ -24,7 +25,8 @@ class TestES(unittest.TestCase):
                 results = trainer.train()
                 print(results)
 
-            check_compute_action(trainer)
+            check_compute_single_action(trainer)
+            check_compute_single_action(trainer.policy)
 
 
 if __name__ == "__main__":
