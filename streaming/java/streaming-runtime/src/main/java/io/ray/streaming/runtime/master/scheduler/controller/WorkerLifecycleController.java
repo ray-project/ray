@@ -49,14 +49,14 @@ public class WorkerLifecycleController {
     ActorCreationOptions options = new ActorCreationOptions.Builder()
         .setResources(executionVertex.getResource())
         .setMaxRestarts(-1)
-        .createActorCreationOptions();
+        .build();
 
     BaseActorHandle actor;
     if (Language.JAVA == language) {
-      actor = Ray.createActor(JobWorker::new, options);
+      actor = Ray.actor(JobWorker::new).remote();
     } else {
-      actor = Ray.createActor(
-          new PyActorClass("ray.streaming.runtime.worker", "JobWorker"));
+      actor = Ray.actor(new PyActorClass(
+              "ray.streaming.runtime.worker", "JobWorker")).remote();
     }
 
     if (null == actor) {

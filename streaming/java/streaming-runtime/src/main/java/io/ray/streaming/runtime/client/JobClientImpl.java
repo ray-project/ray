@@ -30,7 +30,7 @@ public class JobClientImpl implements JobClient {
     ActorCreationOptions options = new ActorCreationOptions.Builder()
         .setResources(resources)
         .setMaxRestarts(-1)
-        .createActorCreationOptions();
+        .build();
 
     // set job name and id at start
     jobConfig.put(CommonConfig.JOB_ID, Ray.getRuntimeContext().getCurrentJobId().toString());
@@ -39,11 +39,14 @@ public class JobClientImpl implements JobClient {
     jobGraph.getJobConfig().putAll(jobConfig);
 
     // create job master actor
-    this.jobMasterActor = Ray.createActor(JobMaster::new, jobConfig, options);
+    this.jobMasterActor = Ray.actor(JobMaster::new, jobConfig)
+        .setResources(resources)
+        .setMaxRestarts(-1)
+        .remote();
 
     try {
-      ObjectRef<Boolean> submitResult = jobMasterActor.call(JobMaster::submitJob,
-          jobMasterActor, jobGraph);
+      ObjectRef<Boolean> submitResult = jobMasterActor.task(JobMaster::submitJob,
+          jobMasterActor, jobGraph).remote();
 
       if (submitResult.get()) {
         LOG.info("Finish submitting job: {}.", jobGraph.getJobName());
