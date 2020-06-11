@@ -3,7 +3,7 @@ Tune offers cutting-edge optimization algorithms.
 
 As a user, you're probably looking into hyperparameter optimization because you want to quickly increase your model performance.
 
-Tune enables you to leverage a variety of these cutting edge optimization algorithms, reducing the cost of tuning by `aggressively terminating bad hyperparameter evaluations <tune-scheduler-hyperband>`_, intelligently :ref:`choosing better parameters to evaluate <tune-search-alg>`, or even :ref:`changing the hyperparameters during training <tune-scheduler-pbt>` to optimize hyperparameter *schedules*.
+Tune enables you to leverage a variety of these cutting edge optimization algorithms, reducing the cost of tuning by `aggressively terminating bad hyperparameter evaluations <tune-scheduler-hyperband>`_, intelligently :ref:`choosing better parameters to evaluate <tune-search-alg>`, or even :ref:`changing the hyperparameters during training <tune-scheduler-pbt>` to optimize hyperparameter schedules.
 
 Tune simplifies your workflow.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
