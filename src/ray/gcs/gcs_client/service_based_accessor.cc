@@ -73,7 +73,7 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeToFinishedJobs(
     };
     return client_impl_->GetGcsPubSub().SubscribeAll(JOB_CHANNEL, on_subscribe, done);
   };
-  return subscribe_operation_(done);
+  return subscribe_operation_(done, true);
 }
 
 void ServiceBasedJobInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
@@ -654,7 +654,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
     return client_impl_->GetGcsPubSub().SubscribeAll(NODE_RESOURCE_CHANNEL, on_subscribe,
                                                      done);
   };
-  return subscribe_resource_operation_(done);
+  return subscribe_resource_operation_(done, true);
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
@@ -702,7 +702,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
     return client_impl_->GetGcsPubSub().Subscribe(HEARTBEAT_BATCH_CHANNEL, "",
                                                   on_subscribe, done);
   };
-  return subscribe_batch_heartbeat_operation_(done);
+  return subscribe_batch_heartbeat_operation_(done, true);
 }
 
 void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
@@ -1264,7 +1264,7 @@ Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
     return client_impl_->GetGcsPubSub().SubscribeAll(WORKER_FAILURE_CHANNEL, on_subscribe,
                                                      done);
   };
-  return subscribe_operation_(done);
+  return subscribe_operation_(done, true);
 }
 
 void ServiceBasedWorkerInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
