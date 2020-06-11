@@ -657,6 +657,15 @@ class Node:
             (tuple) The stdout and stderr file names that the job should be
         redirected to.
         """
+        redirect_output = self._ray_params.redirect_output
+
+        if redirect_output is None:
+            # Make the default behavior match that of glog.
+            redirect_output = os.getenv("GLOG_logtostderr") != "1"
+
+        if not redirect_output:
+            return None, None
+
         worker_stdout_file, worker_stderr_file = (self.get_log_file_names(
             "worker-{}-{}".format(
                 ray.utils.binary_to_hex(worker_id),

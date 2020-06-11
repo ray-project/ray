@@ -196,49 +196,79 @@ def setup_logging(stdout_name, stderr_name):
         (tuple) The absolute paths of the files that stdout and stderr will be
     written to.
     """
-    assert stdout_name is not None
-    assert stderr_name is not None
-
-    # Line-buffer the output (mode 1).
+    stdout_path = ""
+    stderr_path = ""
     worker_pid = os.getpid()
-    stdout_file = open_worker_log(stdout_name, worker_pid)
-    stderr_file = open_worker_log(stderr_name, worker_pid)
 
-    # Before redirecting stdout/stderr we need to make sure userspace buffers
-    # are all flushed.
-    # Flush python's userspace buffers
-    sys.stdout.flush()
-    sys.stderr.flush()
+    if stdout_name:
+        # Line-buffer the output (mode 1).
+        stdout_file = open_worker_log(stdout_name, worker_pid)
 
-    # Flush the c/c++ userspace buffers
-    cdef extern from "ray/util/util.h":
-        flush_out()
-        flush_err()
+        # Before redirecting stdout we need to make sure userspace buffers
+        # are all flushed.
+        # Flush python's userspace buffers
+        sys.stdout.flush()
 
-    stdout_fileno = sys.stdout.fileno()
-    stderr_fileno = sys.stderr.fileno()
+        # Flush the c/c++ userspace buffers
+        cdef extern from "ray/util/util.h":
+            flush_out()
 
-    # Redirect stdout/stderr at the file descriptor level. If we simply set
-    # sys.stdout and sys.stderr, then logging from C++ can fail to be
-    # redirected. Note that dup2 will automatically close the old file
-    # descriptor before overriding it.
-    os.dup2(stdout_file.fileno(), stdout_fileno, os.getpid())
-    os.dup2(stderr_file.fileno(), stderr_fileno, os.getpid())
+        stdout_fileno = sys.stdout.fileno()
 
-    # We must close the original file descriptor to avoid leaking file
-    # descriptors.
-    stdout_file.close()
-    stderr_file.close()
+        # Redirect stdout at the file descriptor level. If we simply set
+        # sys.stdout, then logging from C++ can fail to be
+        # redirected. Note that dup2 will automatically close the old file
+        # descriptor before overriding it.
+        os.dup2(stdout_file.fileno(), stdout_fileno)
 
-    # We also manually set sys.stdout and sys.stderr because that seems
-    # to have an affect on the output buffering. Without doing this,
-    # stdout and stderr are heavily buffered resulting in seemingly
-    # lost logging statements.
-    sys.stdout = open_log(stdout_fileno)
-    sys.stderr = open_log(stderr_fileno)
+        # We must close the original file descriptor to avoid leaking file
+        # descriptors.
+        stdout_file.close()
 
-    stdout_path = os.path.abspath(stdout_file.name)
-    stderr_path = os.path.abspath(stderr_file.name)
+        # We also manually set sys.stdout and sys.stderr because that seems to
+        # have an affect on the output buffering. Without doing this, stdout
+        # and stderr are heavily buffered resulting in seemingly lost logging
+        # statements. We never want to the stdout file descriptor, dup2 will
+        # close it when necessary and we don't want python's GC to close it.
+        sys.stdout = open_log(stdout_fileno, closefd=False)
+
+        stdout_path = os.path.abspath(stdout_file.name)
+
+
+    # The stderr case should be analogous to the stdout case
+    if stderr_name:
+        # Line-buffer the errput (mode 1).
+        stderr_file = open_worker_log(stderr_name, worker_pid)
+
+        # Before redirecting stderr we need to make sure userspace buffers
+        # are all flushed.
+        # Flush python's userspace buffers
+        sys.stderr.flush()
+
+        # Flush the c/c++ userspace buffers
+        cdef extern from "ray/util/util.h":
+            flush_err()
+
+        stderr_fileno = sys.stderr.fileno()
+
+        # Redirect stderr at the file descriptor level. If we simply set
+        # sys.stderr, then logging from C++ can fail to be
+        # redirected. Note that dup2 will automatically close the old file
+        # descriptor before overriding it.
+        os.dup2(stderr_file.fileno(), stderr_fileno)
+
+        # We must close the original file descriptor to avoid leaking file
+        # descriptors.
+        stderr_file.close()
+
+        # We also manually set sys.stderr and sys.stderr because that seems to
+        # have an affect on the errput buffering. Witherr doing this, stderr
+        # and stderr are heavily buffered resulting in seemingly lost logging
+        # statements. We never want to the stderr file descriptor, dup2 will
+        # close it when necessary and we don't want python's GC to close it.
+        sys.stderr = open_log(stderr_fileno, closefd=False)
+
+        stderr_path = os.path.abspath(stderr_file.name)
 
     return stdout_path, stderr_path
 

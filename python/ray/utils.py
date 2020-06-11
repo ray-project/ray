@@ -390,8 +390,10 @@ def setup_logger(logging_level, logging_format):
     logger.propagate = False
 
 
-def open_log(path):
-    return open(path, "a", buffering=1)
+def open_log(path, **kwargs):
+    kwargs.setdefault("buffering", 1)
+    kwargs.setdefault("mode", "a")
+    return open(path, **kwargs)
 
 
 def open_worker_log(path, worker_pid):
@@ -406,7 +408,7 @@ def open_worker_log(path, worker_pid):
     """
     # TODO (Alex): We should eventually be able to replace this with
     # named-pipes.
-    f = open(path, "a", buffering=1)
+    f = open_log(path)
     # Check to see if we're creating this file. No one else should ever write
     # to this file, so we don't have to worry about TOCTOU.
     if f.tell() == 0:
