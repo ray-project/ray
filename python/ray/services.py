@@ -1190,7 +1190,6 @@ def start_gcs_server(redis_address,
     """
     gcs_ip_address, gcs_port = redis_address.split(":")
     redis_password = redis_password or ""
-    config = config or {}
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
     command = [
         GCS_SERVER_EXECUTABLE,
@@ -1275,7 +1274,6 @@ def start_raylet(redis_address,
     # The caller must provide a node manager port so that we can correctly
     # populate the command to start a worker.
     assert node_manager_port is not None and node_manager_port != 0
-    config = config or {}
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
 
     if use_valgrind and use_profiler:
@@ -1737,7 +1735,6 @@ def start_raylet_monitor(redis_address,
     """
     gcs_ip_address, gcs_port = redis_address.split(":")
     redis_password = redis_password or ""
-    config = config or {}
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
     command = [
         RAYLET_MONITOR_EXECUTABLE,

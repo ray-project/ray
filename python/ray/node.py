@@ -107,7 +107,7 @@ class Node:
         self._localhost = socket.gethostbyname("localhost")
         self._ray_params = ray_params
         self._redis_address = ray_params.redis_address
-        self._config = ray_params._internal_config
+        self._config = ray_params._internal_config or {}
 
         # Enable Plasma Store as a thread by default.
         if "plasma_store_as_thread" not in self._config:
