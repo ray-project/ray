@@ -1,6 +1,5 @@
 package io.ray.api;
 
-import io.ray.api.call.RayCall;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.runtime.RayRuntime;
