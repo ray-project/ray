@@ -1,3 +1,4 @@
+import json
 import os
 import unittest
 
@@ -34,6 +35,33 @@ class FunctionApiTest(unittest.TestCase):
         result = new_trainable2.train()
         self.assertEquals(result[TRAINING_ITERATION], 1)
         checkpoint = new_trainable2.save()
+        new_trainable2.stop()
+
+    def testFunctionRecurringSave(self):
+        """This tests that save and restore are commutative."""
+
+        def train(config, checkpoint=None):
+            for step in range(10):
+                if step % 3 == 0:
+                    checkpoint_dir = tune.make_checkpoint_dir(step=step)
+                    path = os.path.join(checkpoint_dir, "checkpoint")
+                    with open(path, "w") as f:
+                        f.write(json.dumps({"step": step}))
+                    tune.save_checkpoint(path)
+                tune.report(test=step)
+
+        wrapped = wrap_function(train)
+
+        new_trainable = wrapped()
+        new_trainable.train()
+        checkpoint_obj = new_trainable.save_to_object()
+        new_trainable.restore_from_object(checkpoint_obj)
+        checkpoint = new_trainable.save()
+        new_trainable.stop()
+
+        new_trainable2 = wrapped()
+        new_trainable2.restore(checkpoint)
+        new_trainable2.train()
         new_trainable2.stop()
 
     def testCheckpointFunctionAtEnd(self):

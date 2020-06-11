@@ -1,11 +1,12 @@
 import logging
+import os
+import io
 import time
 import inspect
 import shutil
-import tempfile
 import threading
 import traceback
-import io
+
 from six.moves import queue
 
 from ray.tune import TuneError, session
@@ -188,6 +189,7 @@ class FunctionRunner(Trainable):
         session.init(self._status_reporter)
         self._runner = None
         self._restore_tmpdir = None
+        self.default_checkpoint_dir = None
 
     def _trainable_func(self):
         """Subclasses can override this to set the trainable func."""
@@ -277,6 +279,11 @@ class FunctionRunner(Trainable):
             result[SHOULD_CHECKPOINT] = True
         return result
 
+    def create_default_checkpoint_dir(self):
+        self.default_checkpoint_dir = TrainableUtil.make_checkpoint_dir(
+            self.logdir, index="default")
+        return self.default_checkpoint_dir
+
     def save(self, checkpoint_path=None):
         if checkpoint_path:
             raise ValueError(
@@ -287,8 +294,7 @@ class FunctionRunner(Trainable):
 
         if not checkpoint:
             state.update(iteration=0, timesteps_total=0, episodes_total=0)
-            parent_dir = TrainableUtil.make_checkpoint_dir(
-                self.logdir, index="default")
+            parent_dir = self.create_default_checkpoint_dir()
         elif isinstance(checkpoint, dict):
             parent_dir = TrainableUtil.make_checkpoint_dir(
                 self.logdir, index=self.training_iteration)
@@ -314,10 +320,15 @@ class FunctionRunner(Trainable):
         self._status_reporter.save_checkpoint(checkpoint)
 
     def restore_from_object(self, obj):
-        tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
-        checkpoint_path = TrainableUtil.create_from_pickle(obj, tmpdir)
+        if self.default_checkpoint_dir is not None and os.exists(
+                self.default_checkpoint_dir):
+            shutil.rmtree(self.default_checkpoint_dir)
+            logger.debug("Clearing default checkpoint: %s",
+                         self.default_checkpoint_dir)
+
+        checkpoint_dir = self.create_default_checkpoint_dir()
+        checkpoint_path = TrainableUtil.create_from_pickle(obj, checkpoint_dir)
         self.restore(checkpoint_path)
-        self._restore_tmpdir = tmpdir
 
     def _stop(self):
         # If everything stayed in synch properly, this should never happen.
@@ -328,8 +339,6 @@ class FunctionRunner(Trainable):
 
         # Check for any errors that might have been missed.
         self._report_thread_runner_error()
-        if self._restore_tmpdir:
-            shutil.rmtree(self._restore_tmpdir)
         session.shutdown()
 
     def _report_thread_runner_error(self, block=False):
