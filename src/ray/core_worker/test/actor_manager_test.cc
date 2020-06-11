@@ -131,11 +131,10 @@ class ActorManagerTest : public ::testing::Test {
 
 TEST_F(ActorManagerTest, AddAndGetActorHandle) {
   JobID job_id = JobID::FromRandom();
-  std::unique_ptr<ActorHandle> actor_handle =
-    absl::make_unique<ActorHandle>(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
-                                  TaskID::Nil(), rpc::Address(), job_id,
-                                  ObjectID::FromRandom(), function.GetLanguage(),
-                                  function.GetFunctionDescriptor(), "", 0);
+  std::unique_ptr<ActorHandle> actor_handle = absl::make_unique<ActorHandle>(
+      ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1), TaskID::Nil(),
+      rpc::Address(), job_id, ObjectID::FromRandom(), function.GetLanguage(),
+      function.GetFunctionDescriptor(), "", 0);
   actor_manager_->AddActorHandle(actor_handle, )
 }
 

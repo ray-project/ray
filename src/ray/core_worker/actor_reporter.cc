@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/core_worker/actor_reporter.h"
+
 #include "ray/gcs/pb_util.h"
 #include "ray/gcs/redis_accessor.h"
 
