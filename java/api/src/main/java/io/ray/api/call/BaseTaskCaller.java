@@ -9,8 +9,8 @@ public class BaseTaskCaller<T extends BaseTaskCaller<T>> {
   /**
    * @see CallOptions.Builder#setResource(java.lang.String, java.lang.Double)
    */
-  public T setResource(String key, Double value) {
-    builder.setResource(key, value);
+  public T setResource(String name, Double value) {
+    builder.setResource(name, value);
     return self();
   }
 

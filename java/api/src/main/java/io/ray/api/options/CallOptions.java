@@ -19,11 +19,32 @@ public class CallOptions extends BaseTaskOptions {
 
     private Map<String, Double> resources = new HashMap<>();
 
-    public Builder setResource(String key, Double value) {
-      this.resources.put(key, value);
+    /**
+     * Set a custom resource requirement for resource {@code name}.
+     * This method can be called multiple times. If the same resource is set multiple times,
+     * the latest quantity will be used.
+     *
+     * <p>By using custom resource, the user can implement virtually any task scheduling policy.
+     *
+     * @param name resource name
+     * @param value resource capacity
+     * @return self
+     */
+    public Builder setResource(String name, Double value) {
+      this.resources.put(name, value);
       return this;
     }
 
+    /**
+     * Set custom requirements for multiple resources.
+     * This method can be called multiple times. If the same resource is set multiple times,
+     * the latest quantity will be used.
+     *
+     * <p>By using custom resource, the user can implement virtually any task scheduling policy.
+     *
+     * @param resources requirements for multiple resources.
+     * @return self
+     */
     public Builder setResources(Map<String, Double> resources) {
       this.resources.putAll(resources);
       return this;

@@ -31,27 +31,62 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private String jvmOptions = null;
     private int maxConcurrency = 1;
 
-    public Builder setResource(String key, Double value) {
-      this.resources.put(key, value);
+    /**
+     * Set a custom resource requirement to reserve for the lifetime of this actor.
+     * This method can be called multiple times. If the same resource is set multiple times,
+     * the latest quantity will be used.
+     *
+     * <p>By using custom resource, the user can implement virtually any actor placement policy.
+     *
+     * @param name resource name
+     * @param value resource capacity
+     * @return self
+     */
+    public Builder setResource(String name, Double value) {
+      this.resources.put(name, value);
       return this;
     }
 
+    /**
+     * Set custom resource requirements to reserve for the lifetime of this actor.
+     * This method can be called multiple times. If the same resource is set multiple times,
+     * the latest quantity will be used.
+     *
+     * <p>By using custom resources, the user can implement virtually any actor placement policy.
+     *
+     * @param resources requirements for multiple resources.
+     * @return self
+     */
     public Builder setResources(Map<String, Double> resources) {
       this.resources.putAll(resources);
       return this;
     }
 
+    /**
+     * Set max number of actor restarts when actor failed.
+     *
+     * @param maxRestarts max number of actor restarts
+     * @return self
+     */
     public Builder setMaxRestarts(int maxRestarts) {
       this.maxRestarts = maxRestarts;
       return this;
     }
 
+    /**
+     * Set java worker jvm start options
+     *
+     * @param jvmOptions java worker jvm start options
+     * @return self
+     */
     public Builder setJvmOptions(String jvmOptions) {
       this.jvmOptions = jvmOptions;
       return this;
     }
 
     /**
+     * Set the max number of concurrent calls to allow for this actor.
+     *
      * The max concurrency defaults to 1 for threaded execution.
      * Note that the execution order is not guaranteed when max_concurrency > 1.
      *

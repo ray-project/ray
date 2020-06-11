@@ -6,28 +6,40 @@ import java.util.Map;
 public class BaseActorCreator<T extends BaseActorCreator> {
   private ActorCreationOptions.Builder builder = new ActorCreationOptions.Builder();
 
+  /**
+   * @see ActorCreationOptions.Builder#setResource(java.lang.String, java.lang.Double)
+   */
   public T setResource(String key, Double value) {
     builder.setResource(key, value);
     return self();
   }
 
+  /**
+   * @see BaseActorCreator#setResources(java.util.Map)
+   */
   public T setResources(Map<String, Double> resources) {
     builder.setResources(resources);
     return self();
   }
 
+  /**
+   * @see ActorCreationOptions.Builder#setMaxRestarts(int)
+   */
   public T setMaxRestarts(int maxRestarts) {
     builder.setMaxRestarts(maxRestarts);
     return self();
   }
 
+  /**
+   * @see ActorCreationOptions.Builder#setJvmOptions(java.lang.String)
+   */
   public T setJvmOptions(String jvmOptions) {
     builder.setJvmOptions(jvmOptions);
     return self();
   }
 
   /**
-   * See also {@link ActorCreationOptions.Builder#setMaxConcurrency(int)}
+   * See {@link ActorCreationOptions.Builder#setMaxConcurrency(int)}
    */
   public T setMaxConcurrency(int maxConcurrency) {
     builder.setMaxConcurrency(maxConcurrency);
