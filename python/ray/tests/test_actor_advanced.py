@@ -712,6 +712,8 @@ def test_detached_actor_cleanup(ray_start_regular):
         detached_actor = DetachedActor.options(name=actor_name).remote()
         # Wait for detached actor creation.
         assert ray.get(detached_actor.ping.remote()) == "pong"
+        del detached_actor
+        detached_actor = ray.get_actor(dup_actor_name)
         ray.kill(detached_actor)
         # Wait until actor dies.
         actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())

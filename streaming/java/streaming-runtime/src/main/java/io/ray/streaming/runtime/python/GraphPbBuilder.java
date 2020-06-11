@@ -8,70 +8,98 @@ import io.ray.streaming.operator.Operator;
 import io.ray.streaming.python.PythonFunction;
 import io.ray.streaming.python.PythonOperator;
 import io.ray.streaming.python.PythonPartition;
-import io.ray.streaming.runtime.core.graph.ExecutionEdge;
-import io.ray.streaming.runtime.core.graph.ExecutionGraph;
-import io.ray.streaming.runtime.core.graph.ExecutionNode;
-import io.ray.streaming.runtime.core.graph.ExecutionTask;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionEdge;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import io.ray.streaming.runtime.generated.RemoteCall;
 import io.ray.streaming.runtime.generated.Streaming;
 import io.ray.streaming.runtime.serialization.MsgPackSerializer;
 import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class GraphPbBuilder {
 
   private MsgPackSerializer serializer = new MsgPackSerializer();
 
-  /**
-   * For simple scenario, a single ExecutionNode is enough. But some cases may need
-   * sub-graph information, so we serialize entire graph.
-   */
-  public RemoteCall.ExecutionGraph buildExecutionGraphPb(ExecutionGraph graph) {
-    RemoteCall.ExecutionGraph.Builder builder = RemoteCall.ExecutionGraph.newBuilder();
-    builder.setBuildTime(graph.getBuildTime());
-    for (ExecutionNode node : graph.getExecutionNodeList()) {
-      RemoteCall.ExecutionGraph.ExecutionNode.Builder nodeBuilder =
-          RemoteCall.ExecutionGraph.ExecutionNode.newBuilder();
-      nodeBuilder.setNodeId(node.getNodeId());
-      nodeBuilder.setParallelism(node.getParallelism());
-      nodeBuilder.setNodeType(
-          Streaming.NodeType.valueOf(node.getNodeType().name()));
-      nodeBuilder.setLanguage(Streaming.Language.valueOf(node.getLanguage().name()));
-      byte[] operatorBytes = serializeOperator(node.getStreamOperator());
-      nodeBuilder.setOperator(ByteString.copyFrom(operatorBytes));
+  public RemoteCall.ExecutionVertexContext buildExecutionVertexContext(
+      ExecutionVertex executionVertex) {
+    RemoteCall.ExecutionVertexContext.Builder builder =
+        RemoteCall.ExecutionVertexContext.newBuilder();
 
-      // build tasks
-      for (ExecutionTask task : node.getExecutionTasks()) {
-        RemoteCall.ExecutionGraph.ExecutionTask.Builder taskBuilder =
-            RemoteCall.ExecutionGraph.ExecutionTask.newBuilder();
-        byte[] serializedActorHandle = ((NativeActorHandle) task.getWorker()).toBytes();
-        taskBuilder
-            .setTaskId(task.getTaskId())
-            .setTaskIndex(task.getTaskIndex())
-            .setWorkerActor(ByteString.copyFrom(serializedActorHandle));
-        nodeBuilder.addExecutionTasks(taskBuilder.build());
-      }
+    // build vertex
+    builder.setCurrentExecutionVertex(buildVertex(executionVertex));
 
-      // build edges
-      for (ExecutionEdge edge : node.getInputsEdges()) {
-        nodeBuilder.addInputEdges(buildEdgePb(edge));
-      }
-      for (ExecutionEdge edge : node.getOutputEdges()) {
-        nodeBuilder.addOutputEdges(buildEdgePb(edge));
-      }
+    // build upstream vertices
+    List<ExecutionVertex> upstreamVertices = executionVertex.getInputVertices();
+    List<RemoteCall.ExecutionVertexContext.ExecutionVertex> upstreamVertexPbs =
+        upstreamVertices.stream()
+        .map(this::buildVertex)
+        .collect(Collectors.toList());
+    builder.addAllUpstreamExecutionVertices(upstreamVertexPbs);
 
-      builder.addExecutionNodes(nodeBuilder.build());
-    }
+    // build downstream vertices
+    List<ExecutionVertex> downstreamVertices = executionVertex.getOutputVertices();
+    List<RemoteCall.ExecutionVertexContext.ExecutionVertex> downstreamVertexPbs =
+        downstreamVertices.stream()
+            .map(this::buildVertex)
+            .collect(Collectors.toList());
+    builder.addAllDownstreamExecutionVertices(downstreamVertexPbs);
+
+    // build input edges
+    List<ExecutionEdge> inputEdges = executionVertex.getInputEdges();
+    List<RemoteCall.ExecutionVertexContext.ExecutionEdge> inputEdgesPbs =
+        inputEdges.stream()
+            .map(this::buildEdge)
+            .collect(Collectors.toList());
+    builder.addAllInputExecutionEdges(inputEdgesPbs);
+
+    // build output edges
+    List<ExecutionEdge> outputEdges = executionVertex.getOutputEdges();
+    List<RemoteCall.ExecutionVertexContext.ExecutionEdge> outputEdgesPbs =
+        outputEdges.stream()
+            .map(this::buildEdge)
+            .collect(Collectors.toList());
+    builder.addAllOutputExecutionEdges(outputEdgesPbs);
 
     return builder.build();
   }
 
-  private RemoteCall.ExecutionGraph.ExecutionEdge buildEdgePb(ExecutionEdge edge) {
-    RemoteCall.ExecutionGraph.ExecutionEdge.Builder edgeBuilder =
-        RemoteCall.ExecutionGraph.ExecutionEdge.newBuilder();
-    edgeBuilder.setSrcNodeId(edge.getSrcNodeId());
-    edgeBuilder.setTargetNodeId(edge.getTargetNodeId());
-    edgeBuilder.setPartition(ByteString.copyFrom(serializePartition(edge.getPartition())));
-    return edgeBuilder.build();
+  private RemoteCall.ExecutionVertexContext.ExecutionVertex buildVertex(
+      ExecutionVertex executionVertex) {
+    // build vertex infos
+    RemoteCall.ExecutionVertexContext.ExecutionVertex.Builder executionVertexBuilder =
+        RemoteCall.ExecutionVertexContext.ExecutionVertex.newBuilder();
+    executionVertexBuilder.setExecutionVertexId(executionVertex.getExecutionVertexId());
+    executionVertexBuilder.setExecutionJobVertexId(executionVertex.getExecutionJobVertexId());
+    executionVertexBuilder.setExecutionJobVertexName(executionVertex.getExecutionJobVertexName());
+    executionVertexBuilder.setExecutionVertexIndex(executionVertex.getExecutionVertexIndex());
+    executionVertexBuilder.setParallelism(executionVertex.getParallelism());
+    executionVertexBuilder.setOperator(
+        ByteString.copyFrom(
+            serializeOperator(executionVertex.getStreamOperator())));
+    executionVertexBuilder.setWorkerActor(
+        ByteString.copyFrom(
+            ((NativeActorHandle) (executionVertex.getWorkerActor())).toBytes()));
+    executionVertexBuilder.setContainerId(executionVertex.getContainerId().toString());
+    executionVertexBuilder.setBuildTime(executionVertex.getBuildTime());
+    executionVertexBuilder.setLanguage(
+        Streaming.Language.valueOf(executionVertex.getLanguage().name()));
+    executionVertexBuilder.putAllConfig(executionVertex.getWorkerConfig());
+    executionVertexBuilder.putAllResource(executionVertex.getResource());
+
+    return executionVertexBuilder.build();
+  }
+
+  private RemoteCall.ExecutionVertexContext.ExecutionEdge buildEdge(ExecutionEdge executionEdge) {
+    // build edge infos
+    RemoteCall.ExecutionVertexContext.ExecutionEdge.Builder executionEdgeBuilder =
+        RemoteCall.ExecutionVertexContext.ExecutionEdge.newBuilder();
+    executionEdgeBuilder.setSourceExecutionVertexId(executionEdge.getSourceVertexId());
+    executionEdgeBuilder.setTargetExecutionVertexId(executionEdge.getTargetVertexId());
+    executionEdgeBuilder.setPartition(
+        ByteString.copyFrom(serializePartition(executionEdge.getPartition())));
+
+    return executionEdgeBuilder.build();
   }
 
   private byte[] serializeOperator(Operator operator) {

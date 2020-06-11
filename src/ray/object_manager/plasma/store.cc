@@ -221,7 +221,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID& object_id, bool evict_if_f
                                       int64_t data_size, int64_t metadata_size,
                                       int device_num, Client* client,
                                       PlasmaObject* result) {
-  ARROW_LOG(DEBUG) << "creating object " << object_id.hex();
+  ARROW_LOG(DEBUG) << "creating object " << object_id.Hex();
 
   auto entry = GetObjectTableEntry(&store_info_, object_id);
   if (entry != nullptr) {
@@ -240,7 +240,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID& object_id, bool evict_if_f
     pointer =
         AllocateMemory(total_size, evict_if_full, &fd, &map_size, &offset, client, true);
     if (!pointer) {
-      ARROW_LOG(ERROR) << "Not enough memory to create the object " << object_id.hex()
+      ARROW_LOG(ERROR) << "Not enough memory to create the object " << object_id.Hex()
                        << ", data_size=" << data_size
                        << ", metadata_size=" << metadata_size
                        << ", will send a reply of PlasmaError::OutOfMemory";
@@ -603,7 +603,7 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID>& object_ids,
     // Set object construction duration.
     entry->construct_duration = std::time(nullptr) - entry->create_time;
 
-    object_info.object_id = object_ids[i].binary();
+    object_info.object_id = object_ids[i].Binary();
     object_info.data_size = entry->data_size;
     object_info.metadata_size = entry->metadata_size;
     object_info.digest = digests[i];
@@ -663,7 +663,7 @@ PlasmaError PlasmaStore::DeleteObject(ObjectID& object_id) {
   EraseFromObjectTable(object_id);
   // Inform all subscribers that the object has been deleted.
   fb::ObjectInfoT notification;
-  notification.object_id = object_id.binary();
+  notification.object_id = object_id.Binary();
   notification.is_deletion = true;
   PushNotification(&notification);
 
@@ -678,7 +678,7 @@ void PlasmaStore::EvictObjects(const std::vector<ObjectID>& object_ids) {
   std::vector<std::shared_ptr<arrow::Buffer>> evicted_object_data;
   std::vector<ObjectTableEntry*> evicted_entries;
   for (const auto& object_id : object_ids) {
-    ARROW_LOG(DEBUG) << "evicting object " << object_id.hex();
+    ARROW_LOG(DEBUG) << "evicting object " << object_id.Hex();
     auto entry = GetObjectTableEntry(&store_info_, object_id);
     // TODO(rkn): This should probably not fail, but should instead throw an
     // error. Maybe we should also support deleting objects that have been
@@ -702,7 +702,7 @@ void PlasmaStore::EvictObjects(const std::vector<ObjectID>& object_ids) {
       EraseFromObjectTable(object_id);
       // Inform all subscribers that the object has been deleted.
       fb::ObjectInfoT notification;
-      notification.object_id = object_id.binary();
+      notification.object_id = object_id.Binary();
       notification.is_deletion = true;
       PushNotification(&notification);
     }
@@ -910,7 +910,7 @@ void PlasmaStore::SubscribeToUpdates(Client* client) {
   for (const auto& entry : store_info_.objects) {
     if (entry.second->state == ObjectState::PLASMA_SEALED) {
       ObjectInfoT info;
-      info.object_id = entry.first.binary();
+      info.object_id = entry.first.Binary();
       info.data_size = entry.second->data_size;
       info.metadata_size = entry.second->metadata_size;
       info.digest =

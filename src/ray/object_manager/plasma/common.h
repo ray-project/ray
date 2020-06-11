@@ -24,6 +24,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "ray/common/id.h"
 #include "ray/object_manager/plasma/compat.h"
 
 #include "arrow/status.h"
@@ -32,6 +33,8 @@
 #endif
 
 namespace plasma {
+
+using ray::ObjectID;
 
 enum class ObjectLocation : int32_t { Local, Remote, Nonexistent };
 
@@ -51,27 +54,6 @@ ARROW_EXPORT bool IsPlasmaObjectNonexistent(const arrow::Status& status);
 ARROW_EXPORT bool IsPlasmaObjectAlreadySealed(const arrow::Status& status);
 /// Return true iff the status indicates the Plasma store reached its capacity limit.
 ARROW_EXPORT bool IsPlasmaStoreFull(const arrow::Status& status);
-
-constexpr int64_t kUniqueIDSize = 20;
-
-class ARROW_EXPORT UniqueID {
- public:
-  static UniqueID from_binary(const std::string& binary);
-  bool operator==(const UniqueID& rhs) const;
-  const uint8_t* data() const;
-  uint8_t* mutable_data();
-  std::string binary() const;
-  std::string hex() const;
-  size_t hash() const;
-  static int64_t size() { return kUniqueIDSize; }
-
- private:
-  uint8_t id_[kUniqueIDSize];
-};
-
-static_assert(std::is_pod<UniqueID>::value, "UniqueID must be plain old data");
-
-typedef UniqueID ObjectID;
 
 /// Size of object hash digests.
 constexpr int64_t kDigestSize = sizeof(uint64_t);
@@ -141,12 +123,5 @@ typedef std::unordered_map<ObjectID, std::unique_ptr<ObjectTableEntry>> ObjectTa
 struct PlasmaStoreInfo;
 extern const PlasmaStoreInfo* plasma_config;
 }  // namespace plasma
-
-namespace std {
-template <>
-struct hash<::plasma::UniqueID> {
-  size_t operator()(const ::plasma::UniqueID& id) const { return id.hash(); }
-};
-}  // namespace std
 
 #endif  // PLASMA_COMMON_H
