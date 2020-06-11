@@ -58,11 +58,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
  public:
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
-              std::shared_ptr<ActorManagerInterface> actor_manager,
+              std::shared_ptr<ActorReporterInterface> actor_reporter,
               RetryTaskCallback retry_task_callback)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
-        actor_manager_(actor_manager),
+        actor_reporter_(actor_reporter),
         retry_task_callback_(retry_task_callback) {
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
@@ -233,7 +233,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   std::shared_ptr<ReferenceCounter> reference_counter_;
 
   // Interface for publishing actor creation.
-  std::shared_ptr<ActorManagerInterface> actor_manager_;
+  std::shared_ptr<ActorReporterInterface> actor_reporter_;
 
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;

@@ -13,28 +13,29 @@
 // limitations under the License.
 
 #include "ray/core_worker/actor_manager.h"
+
 #include "ray/gcs/pb_util.h"
 #include "ray/gcs/redis_accessor.h"
 
 namespace ray {
 
-void ActorManager::PublishTerminatedActor(const TaskSpecification &actor_creation_task) {
-  // auto actor_id = actor_creation_task.ActorCreationId();
-  // auto data = gcs::CreateActorTableData(actor_creation_task, rpc::Address(),
-  //                                       rpc::ActorTableData::DEAD, 0);
+void ActorReporter::PublishTerminatedActor(const TaskSpecification &actor_creation_task) {
+  auto actor_id = actor_creation_task.ActorCreationId();
+  auto data = gcs::CreateActorTableData(actor_creation_task, rpc::Address(),
+                                        rpc::ActorTableData::DEAD, 0);
 
-  // auto update_callback = [actor_id](Status status) {
-  //   if (!status.ok()) {
-  //     // Only one node at a time should succeed at creating or updating the actor.
-  //     RAY_LOG(ERROR) << "Failed to update state to DEAD for actor " << actor_id
-  //                    << ", error: " << status.ToString();
-  //   }
-  // };
-  // RAY_CHECK_OK(actor_accessor_.AsyncRegister(data, update_callback));
+  auto update_callback = [actor_id](Status status) {
+    if (!status.ok()) {
+      // Only one node at a time should succeed at creating or updating the actor.
+      RAY_LOG(ERROR) << "Failed to update state to DEAD for actor " << actor_id
+                     << ", error: " << status.ToString();
+    }
+  };
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncRegister(data, update_callback));
 }
 
 ActorID ActorManager::DeserializeAndRegisterActorHandle(const std::string &serialized,
-                                                      const ObjectID &outer_object_id) {
+                                                        const ObjectID &outer_object_id) {
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(serialized));
   const auto actor_id = actor_handle->GetActorID();
   // const auto owner_id = actor_handle->GetOwnerId();
@@ -50,7 +51,7 @@ ActorID ActorManager::DeserializeAndRegisterActorHandle(const std::string &seria
 }
 
 Status ActorManager::SerializeActorHandle(const ActorID &actor_id, std::string *output,
-                                        ObjectID *actor_handle_id) const {
+                                          ObjectID *actor_handle_id) const {
   ActorHandle *actor_handle = nullptr;
   auto status = GetActorHandle(actor_id, &actor_handle);
   if (status.ok()) {
@@ -61,7 +62,7 @@ Status ActorManager::SerializeActorHandle(const ActorID &actor_id, std::string *
 }
 
 Status ActorManager::GetActorHandle(const ActorID &actor_id,
-                                  ActorHandle **actor_handle) const {
+                                    ActorHandle **actor_handle) const {
   absl::MutexLock lock(&mutex_);
   auto it = actor_handles_.find(actor_id);
   if (it == actor_handles_.end()) {
@@ -72,7 +73,7 @@ Status ActorManager::GetActorHandle(const ActorID &actor_id,
 }
 
 Status ActorManager::GetNamedActorHandle(const std::string &name,
-                                       ActorHandle **actor_handle) {
+                                         ActorHandle **actor_handle) {
   // RAY_CHECK(RayConfig::instance().gcs_service_enabled());
   // RAY_CHECK(RayConfig::instance().gcs_actor_service_enabled());
   // RAY_CHECK(!name.empty());
@@ -121,7 +122,8 @@ Status ActorManager::GetNamedActorHandle(const std::string &name,
   //   std::stringstream stream;
   //   stream
   //       << "Failed to look up actor with name '" << name
-  //       << "'. It is either you look up the named actor you didn't create or the named "
+  //       << "'. It is either you look up the named actor you didn't create or the named
+  //       "
   //          "actor hasn't been created because named actor creation is asynchronous.";
   //   status = Status::NotFound(stream.str());
   // } else {
@@ -132,7 +134,7 @@ Status ActorManager::GetNamedActorHandle(const std::string &name,
 }
 
 bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                bool is_owner_handle) {
+                                  bool is_owner_handle) {
   return true;
   // const auto &actor_id = actor_handle->GetActorID();
   // const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
@@ -169,8 +171,9 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   //       direct_actor_submitter_->ConnectActor(actor_id, actor_data.address());
   //     }
 
-  //     const auto &actor_state = gcs::ActorTableData::ActorState_Name(actor_data.state());
-  //     RAY_LOG(INFO) << "received notification on actor, state: " << actor_state
+  //     const auto &actor_state =
+  //     gcs::ActorTableData::ActorState_Name(actor_data.state()); RAY_LOG(INFO) <<
+  //     "received notification on actor, state: " << actor_state
   //                   << ", actor_id: " << actor_id
   //                   << ", ip address: " << actor_data.address().ip_address()
   //                   << ", port: " << actor_data.address().port() << ", worker_id: "

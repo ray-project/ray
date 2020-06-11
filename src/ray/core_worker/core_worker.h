@@ -997,10 +997,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<TaskManager> task_manager_;
 
   // Interface for publishing actor death event for actor creation failure.
-  std::shared_ptr<ActorManager> actor_manager_;
+  std::shared_ptr<ActorReporter> actor_reporter_;
 
   // Interface to submit tasks directly to other actors.
-  std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
+  std::shared_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;

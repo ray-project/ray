@@ -34,7 +34,7 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
   return task;
 }
 
-class MockActorManager : public ActorManagerInterface {
+class MockActorManager : public ActorReporterInterface {
   void PublishTerminatedActor(const TaskSpecification &actor_creation_task) override {
     num_terminations += 1;
   }
@@ -49,8 +49,8 @@ class TaskManagerTest : public ::testing::Test {
         reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
             rpc::Address(),
             /*distributed_ref_counting_enabled=*/true, lineage_pinning_enabled))),
-        actor_manager_(std::shared_ptr<ActorManagerInterface>(new MockActorManager())),
-        manager_(store_, reference_counter_, actor_manager_,
+        actor_reporter_(std::shared_ptr<ActorReporterInterface>(new MockActorManager())),
+        manager_(store_, reference_counter_, actor_reporter_,
                  [this](const TaskSpecification &spec, bool delay) {
                    num_retries_++;
                    return Status::OK();
@@ -58,7 +58,7 @@ class TaskManagerTest : public ::testing::Test {
 
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
-  std::shared_ptr<ActorManagerInterface> actor_manager_;
+  std::shared_ptr<ActorReporterInterface> actor_reporter_;
   TaskManager manager_;
   int num_retries_ = 0;
 };

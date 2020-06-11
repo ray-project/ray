@@ -336,8 +336,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   };
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
 
-  actor_manager_ = std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->Actors()));
-
   // Initialize profiler.
   profiler_ = std::make_shared<worker::Profiler>(
       worker_context_, options_.node_ip_address, io_service_, gcs_client_);
@@ -360,6 +358,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
   internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));
 
+  actor_reporter_ = std::unique_ptr<ActorReporter>(new ActorReporter(gcs_client_));
+
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket, local_raylet_client_, options_.check_signals,
       /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
@@ -374,7 +374,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       options_.check_signals));
 
   task_manager_.reset(new TaskManager(
-      memory_store_, reference_counter_, actor_manager_,
+      memory_store_, reference_counter_, actor_reporter_,
       [this](const TaskSpecification &spec, bool delay) {
         if (delay) {
           // Retry after a delay to emulate the existing Raylet reconstruction
@@ -431,7 +431,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     };
   }
 
-  direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
+  direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_,
                                              task_manager_));
 
@@ -1339,6 +1339,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
           // actor.
           // TODO(ekl) we can't unsubscribe to actor notifications here due to
           // https://github.com/ray-project/ray/pull/6885
+          // SANG-TODO actor_manager_->extract_actor_out_of_scope_callback
           auto callback = actor_out_of_scope_callbacks_.extract(actor_id);
           if (callback) {
             callback.mapped()(actor_id);

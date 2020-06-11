@@ -18,30 +18,49 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/gcs/redis_gcs_client.h"
+// #include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/core_worker/reference_count.h"
 
 namespace ray {
 
 // Interface for testing.
-class ActorManagerInterface {
+class ActorReporterInterface {
  public:
   virtual void PublishTerminatedActor(const TaskSpecification &actor_creation_task) = 0;
 
-  virtual ~ActorManagerInterface() {}
+  virtual ~ActorReporterInterface() {}
+};
+
+class ActorReporter : public ActorReporterInterface {
+ public:
+  ActorReporter(std::shared_ptr<gcs::GcsClient> gcs_client) : gcs_client_(gcs_client) {}
+
+  ~ActorReporter() {}
+
+  /// Called when an actor that we own can no longer be restarted.
+  void PublishTerminatedActor(const TaskSpecification &actor_creation_task) override;
+
+ private:
+  /// GCS client
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
 };
 
 /// Class to manage lifetimes of actors that we create (actor children).
 /// Currently this class is only used to publish actor DEAD event
 /// for actor creation task failures. All other cases are managed
 /// by raylet.
-class ActorManager : public ActorManagerInterface {
+class ActorManager {
  public:
-  ActorManager(gcs::ActorInfoAccessor &actor_accessor)
-      : actor_accessor_(actor_accessor) {}
+  ActorManager(std::shared_ptr<gcs::GcsClient> gcs_client,
+               //    std::shared_ptr<CoreWorkerDirectActorTaskSubmitterInterface>
+               //    direct_actor_submitter,
+               std::shared_ptr<ReferenceCounterInterface> reference_counter)
+      : gcs_client_(gcs_client),
+        // direct_actor_submitter_(direct_actor_submitter),
+        reference_counter_(reference_counter) {}
 
-  /// Called when an actor that we own can no longer be restarted.
-  void PublishTerminatedActor(const TaskSpecification &actor_creation_task) override;
+  ~ActorManager() {}
 
-  // SANG-TODO Move it to actor manager
   /// Add an actor handle from a serialized string.
   ///
   /// This should be called when an actor handle is given to us by another task
@@ -55,7 +74,6 @@ class ActorManager : public ActorManagerInterface {
   ActorID DeserializeAndRegisterActorHandle(const std::string &serialized,
                                             const ObjectID &outer_object_id);
 
-  // SANG-TODO Move it to actor manager
   /// Serialize an actor handle.
   ///
   /// This should be called when passing an actor handle to another task or
@@ -70,7 +88,6 @@ class ActorManager : public ActorManagerInterface {
   Status SerializeActorHandle(const ActorID &actor_id, std::string *output,
                               ObjectID *actor_handle_id) const;
 
-  // SANG-TODO Move it to actor manager
   /// Get a handle to an actor.
   ///
   /// \param[in] actor_id The actor handle to get.
@@ -78,7 +95,6 @@ class ActorManager : public ActorManagerInterface {
   /// \return Status::Invalid if we don't have this actor handle.
   Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
 
-  // SANG-TODO Move it to actor manager
   /// Get a handle to a named actor.
   ///
   /// \param[in] name The name of the actor whose handle to get.
@@ -86,7 +102,6 @@ class ActorManager : public ActorManagerInterface {
   /// \return Status::NotFound if an actor with the specified name wasn't found.
   Status GetNamedActorHandle(const std::string &name, ActorHandle **actor_handle);
 
-  // SANG-TODO Move it to actor manager
   /// Give this worker a handle to an actor.
   ///
   /// This handle will remain as long as the current actor or task is
@@ -103,22 +118,26 @@ class ActorManager : public ActorManagerInterface {
   bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle);
 
  private:
-  /// Global database of actors.
-  gcs::ActorInfoAccessor &actor_accessor_;
+  /// GCS client
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
 
-  // SANG-TODO Move it to actor manager
+  // Interface to submit tasks directly to other actors.
+  //   std::shared_ptr<CoreWorkerDirectActorTaskSubmitterInterface>
+  //   direct_actor_submitter_;
+
+  // Keeps track of object ID reference counts.
+  std::shared_ptr<ReferenceCounterInterface> reference_counter_;
+
   // TODO(swang): Refactor to merge actor_handles_mutex_ and all fields that it
   // protects into the ActorManager.
   /// The `actor_handles_` field could be mutated concurrently due to multi-threading, we
   /// need a mutex to protect it.
   mutable absl::Mutex mutex_;
 
-  // SANG-TODO Move it to actor manager
   /// Map from actor ID to a handle to that actor.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(mutex_);
 
-  // SANG-TODO Move it to actor manager
   /// Map from actor ID to a callback to call when all local handles to that
   /// actor have gone out of scpoe.
   absl::flat_hash_map<ActorID, std::function<void(const ActorID &)>>
