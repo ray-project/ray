@@ -47,13 +47,13 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   };
   std::pair<std::string, int> address = get_server_address();
 
-  auto re_subscribe = [this]() {
-    RAY_CHECK_OK(job_accessor_->AsyncReSubscribe());
-    RAY_CHECK_OK(actor_accessor_->AsyncReSubscribe());
-    RAY_CHECK_OK(node_accessor_->AsyncReSubscribe());
-    RAY_CHECK_OK(task_accessor_->AsyncReSubscribe());
-    RAY_CHECK_OK(object_accessor_->AsyncReSubscribe());
-    RAY_CHECK_OK(worker_accessor_->AsyncReSubscribe());
+  auto re_subscribe = [this](bool is_pubsub_server_restarted) {
+    RAY_CHECK_OK(job_accessor_->AsyncReSubscribe(is_pubsub_server_restarted));
+    RAY_CHECK_OK(actor_accessor_->AsyncReSubscribe(is_pubsub_server_restarted));
+    RAY_CHECK_OK(node_accessor_->AsyncReSubscribe(is_pubsub_server_restarted));
+    RAY_CHECK_OK(task_accessor_->AsyncReSubscribe(is_pubsub_server_restarted));
+    RAY_CHECK_OK(object_accessor_->AsyncReSubscribe(is_pubsub_server_restarted));
+    RAY_CHECK_OK(worker_accessor_->AsyncReSubscribe(is_pubsub_server_restarted));
   };
 
   // Connect to gcs service.

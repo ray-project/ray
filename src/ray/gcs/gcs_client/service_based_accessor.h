@@ -23,7 +23,8 @@
 namespace ray {
 namespace gcs {
 
-using SubscribeOperation = std::function<Status(const StatusCallback &done)>;
+using SubscribeOperation =
+    std::function<Status(const StatusCallback &done, bool is_pubsub_server_restarted)>;
 
 class ServiceBasedGcsClient;
 
@@ -47,7 +48,7 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
 
   Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) override;
 
-  Status AsyncReSubscribe() override;
+  Status AsyncReSubscribe(bool is_pubsub_server_restarted) override;
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when GCS
@@ -108,7 +109,7 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const ActorID &actor_id,
       const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override;
 
-  Status AsyncReSubscribe() override;
+  Status AsyncReSubscribe(bool is_pubsub_server_restarted) override;
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when GCS
@@ -185,7 +186,7 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
       const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncReSubscribe() override;
+  Status AsyncReSubscribe(bool is_pubsub_server_restarted) override;
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when GCS
@@ -257,7 +258,7 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
       const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
       const StatusCallback &callback) override;
 
-  Status AsyncReSubscribe() override;
+  Status AsyncReSubscribe(bool is_pubsub_server_restarted) override;
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when GCS
@@ -296,7 +297,7 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
 
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
 
-  Status AsyncReSubscribe() override;
+  Status AsyncReSubscribe(bool is_pubsub_server_restarted) override;
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when GCS
@@ -363,7 +364,7 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
       const std::unordered_map<std::string, std::string> &worker_info,
       const StatusCallback &callback) override;
 
-  Status AsyncReSubscribe() override;
+  Status AsyncReSubscribe(bool is_pubsub_server_restarted) override;
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when GCS

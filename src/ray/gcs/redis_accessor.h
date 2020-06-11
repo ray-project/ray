@@ -83,7 +83,9 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
       const ActorID &actor_id,
       const OptionalItemCallback<ActorCheckpointIdData> &callback) override;
 
-  Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
+  Status AsyncReSubscribe(bool is_pubsub_server_restarted) override {
+    return Status::NotImplemented("");
+  }
 
  protected:
   virtual std::vector<ActorID> GetAllActorID() const;
@@ -183,7 +185,7 @@ class RedisJobInfoAccessor : public JobInfoAccessor {
     return Status::NotImplemented("AsyncGetAll not implemented");
   }
 
-  Status AsyncReSubscribe() override {
+  Status AsyncReSubscribe(bool is_pubsub_server_restarted) override {
     return Status::NotImplemented("AsyncReSubscribe not implemented");
   }
 
@@ -243,7 +245,7 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
       const std::shared_ptr<TaskReconstructionData> &data_ptr,
       const StatusCallback &callback) override;
 
-  Status AsyncReSubscribe() override {
+  Status AsyncReSubscribe(bool is_pubsub_server_restarted) override {
     return Status::NotImplemented("AsyncReSubscribe not implemented");
   }
 
@@ -296,7 +298,9 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
 
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
 
-  Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
+  Status AsyncReSubscribe(bool is_pubsub_server_restarted) override {
+    return Status::NotImplemented("");
+  }
 
  private:
   RedisGcsClient *client_impl_{nullptr};
@@ -377,7 +381,7 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
       const ItemCallback<HeartbeatBatchTableData> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncReSubscribe() override {
+  Status AsyncReSubscribe(bool is_pubsub_server_restarted) override {
     return Status::NotImplemented("AsyncReSubscribe not implemented");
   }
 
@@ -454,7 +458,9 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
       const std::unordered_map<std::string, std::string> &worker_info,
       const StatusCallback &callback) override;
 
-  Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
+  Status AsyncReSubscribe(bool is_pubsub_server_restarted) override {
+    return Status::NotImplemented("");
+  }
 
  private:
   RedisGcsClient *client_impl_{nullptr};

@@ -154,8 +154,9 @@ class ActorInfoAccessor {
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   ///
+  /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   /// \return Status
-  virtual Status AsyncReSubscribe() = 0;
+  virtual Status AsyncReSubscribe(bool is_pubsub_server_restarted) = 0;
 
  protected:
   ActorInfoAccessor() = default;
@@ -204,8 +205,9 @@ class JobInfoAccessor {
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   ///
+  /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   /// \return Status
-  virtual Status AsyncReSubscribe() = 0;
+  virtual Status AsyncReSubscribe(bool is_pubsub_server_restarted) = 0;
 
  protected:
   JobInfoAccessor() = default;
@@ -312,8 +314,9 @@ class TaskInfoAccessor {
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   ///
+  /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   /// \return Status
-  virtual Status AsyncReSubscribe() = 0;
+  virtual Status AsyncReSubscribe(bool is_pubsub_server_restarted) = 0;
 
  protected:
   TaskInfoAccessor() = default;
@@ -381,8 +384,9 @@ class ObjectInfoAccessor {
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   ///
+  /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   /// \return Status
-  virtual Status AsyncReSubscribe() = 0;
+  virtual Status AsyncReSubscribe(bool is_pubsub_server_restarted) = 0;
 
  protected:
   ObjectInfoAccessor() = default;
@@ -557,8 +561,9 @@ class NodeInfoAccessor {
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   ///
+  /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   /// \return Status
-  virtual Status AsyncReSubscribe() = 0;
+  virtual Status AsyncReSubscribe(bool is_pubsub_server_restarted) = 0;
 
  protected:
   NodeInfoAccessor() = default;
@@ -659,8 +664,9 @@ class WorkerInfoAccessor {
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   ///
+  /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   /// \return Status
-  virtual Status AsyncReSubscribe() = 0;
+  virtual Status AsyncReSubscribe(bool is_pubsub_server_restarted) = 0;
 
  protected:
   WorkerInfoAccessor() = default;
