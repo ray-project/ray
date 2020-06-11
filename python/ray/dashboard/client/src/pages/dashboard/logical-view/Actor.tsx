@@ -55,17 +55,6 @@ const styles = (theme: Theme) =>
     },
   });
 
-const actorStateRepr = (state: 0 | 1 | 2): string => {
-  switch (state) {
-    case 0:
-      return "Creating";
-    case 1:
-      return "Alive";
-    case 2:
-      return "Restarting";
-  }
-};
-
 type Props = {
   actor: RayletActorInfo;
 };
@@ -137,10 +126,6 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
     const information =
       actor.state !== -1
         ? [
-            {
-              label: "State",
-              value: actorStateRepr(actor.state),
-            },
             {
               label: "Resources",
               value:
@@ -320,6 +305,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         <ActorDetailsPane
           actorDetails={information}
           actorTitle={actor.actorTitle}
+          actorState={actor.state}
         />
         {actor.state !== -1 && (
           <React.Fragment>
