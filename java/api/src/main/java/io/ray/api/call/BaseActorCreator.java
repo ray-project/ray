@@ -63,7 +63,7 @@ public class BaseActorCreator<T extends BaseActorCreator> {
    *
    * @param maxConcurrency The max number of concurrent calls to allow for this actor.
    * @return self
-   * See {@link ActorCreationOptions.Builder#setMaxConcurrency(int)}
+   * @see ActorCreationOptions.Builder#setMaxConcurrency(int)
    */
   public T setMaxConcurrency(int maxConcurrency) {
     builder.setMaxConcurrency(maxConcurrency);
