@@ -73,19 +73,28 @@ def report(**kwargs):
 def make_checkpoint_dir(step=None):
     """Gets the next checkpoint dir.
 
+    .. versionadded:: 0.8.6
+
     .. code-block:: python
 
         import time
         from ray import tune
 
-        def run_me(config, checkpoint=None):
-            for iter in range(checkpoint, 100):
+        def func(config, checkpoint=None):
+            start = 0
+            if checkpoint:
+                with open(checkpoint) as f:
+                    state = json.loads(f.read())
+                    start = state["step"] + 1
+
+            for iter in range(start, 100):
                 time.sleep(1)
 
-                checkpoint_dir = tune.make_checkpoint_dir()
-                with open(checkpoint_dir + "/checkpoint", "wb") as f:
-                    f.write(iter)
-                tune.save_checkpoint(checkpoint_dir)
+                checkpoint_dir = tune.make_checkpoint_dir(step=step)
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(json.dumps({"step": start}))
+                tune.save_checkpoint(path)
 
                 tune.report(hello="world", ray="tune")
     """
@@ -96,32 +105,31 @@ def make_checkpoint_dir(step=None):
 def save_checkpoint(checkpoint):
     """Register the given checkpoint.
 
-    .. code-block:: python
-
-        import time
-        from ray import tune
-
-        def run_me(config, checkpoint=0):
-            for iter in range(checkpoint, 100):
-                time.sleep(1)
-                tune.save_checkpoint(iter)
-                tune.report(hello="world", ray="tune")
-
-        analysis = tune.run(run_me)
+    .. versionadded:: 0.8.6
 
     .. code-block:: python
 
+        import os
+        import json
         import time
         from ray import tune
 
-        def run_me(config, checkpoint=None):
-            for iter in range(checkpoint, 100):
+        def func(config, checkpoint=None):
+            start = 0
+            if checkpoint:
+                with open(checkpoint) as f:
+                    state = json.loads(f.read())
+                    accuracy = state["acc"]
+                    start = state["step"] + 1
+
+            for iter in range(start, 10):
                 time.sleep(1)
 
-                checkpoint_dir = tune.make_checkpoint_dir()
-                with open(checkpoint_dir + "/checkpoint", "wb") as f:
-                    f.write(iter)
-                tune.save_checkpoint(checkpoint_dir)
+                checkpoint_dir = tune.make_checkpoint_dir(step=iter)
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(json.dumps({"step": start}))
+                tune.save_checkpoint(path)
 
                 tune.report(hello="world", ray="tune")
 
