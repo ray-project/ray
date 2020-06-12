@@ -43,7 +43,20 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   if (!actor->GetWorkerID().IsNil()) {
     RAY_LOG(INFO) << "Actor " << actor->GetActorID()
                   << " owners a leased worker. Create actor directly on worker.";
-    CreateActorOnWorker(actor);
+    auto leased_worker = std::make_shared<GcsLeasedWorker>(
+        actor->GetAddress(),
+        VectorFromProtobuf(actor->GetMutableActorTableData()->resource_mapping()),
+        actor->GetActorID());
+    auto iter_node = node_to_workers_when_creating_.find(actor->GetNodeID());
+    if (iter_node != node_to_workers_when_creating_.end()) {
+      if (0 == iter_node->second.count(leased_worker->GetWorkerID())) {
+        iter_node->second.emplace(leased_worker->GetWorkerID(), leased_worker);
+      }
+    } else {
+      node_to_workers_when_creating_[actor->GetNodeID()].emplace(
+          leased_worker->GetWorkerID(), leased_worker);
+    }
+    CreateActorOnWorker(actor, leased_worker);
     return;
   }
 
@@ -241,24 +254,6 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
                                         CreateActorOnWorker(actor, leased_worker);
                                       }));
   }
-}
-
-void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor) {
-  auto leased_worker = std::make_shared<GcsLeasedWorker>(
-      actor->GetAddress(),
-      VectorFromProtobuf(actor->GetMutableActorTableData()->resource_mapping()),
-      actor->GetActorID());
-  auto iter_node = node_to_workers_when_creating_.find(actor->GetNodeID());
-  if (iter_node != node_to_workers_when_creating_.end()) {
-    if (0 == iter_node->second.count(leased_worker->GetWorkerID())) {
-      iter_node->second.emplace(leased_worker->GetWorkerID(), leased_worker);
-    }
-  } else {
-    node_to_workers_when_creating_[actor->GetNodeID()].emplace(
-        leased_worker->GetWorkerID(), leased_worker);
-  }
-
-  CreateActorOnWorker(actor, leased_worker);
 }
 
 void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
