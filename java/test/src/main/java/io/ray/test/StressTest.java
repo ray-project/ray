@@ -24,7 +24,7 @@ public class StressTest extends BaseTest {
       for (int i = 0; i < numIterations; i++) {
         List<ObjectId> resultIds = new ArrayList<>();
         for (int j = 0; j < numTasks; j++) {
-          resultIds.add(Ray.call(StressTest::echo, 1).getId());
+          resultIds.add(Ray.task(StressTest::echo, 1).remote().getId());
         }
 
         for (Integer result : Ray.<Integer>get(resultIds, Integer.class)) {
@@ -37,9 +37,9 @@ public class StressTest extends BaseTest {
   @Test
   public void testDependency() {
     TestUtils.skipTestUnderSingleProcess();
-    ObjectRef<Integer> x = Ray.call(StressTest::echo, 1);
+    ObjectRef<Integer> x = Ray.task(StressTest::echo, 1).remote();
     for (int i = 0; i < 1000; i++) {
-      x = Ray.call(StressTest::echo, x);
+      x = Ray.task(StressTest::echo, x).remote();
     }
 
     Assert.assertEquals(x.get(), Integer.valueOf(1));
@@ -63,7 +63,7 @@ public class StressTest extends BaseTest {
     public int ping(int n) {
       List<ObjectId> objectIds = new ArrayList<>();
       for (int i = 0; i < n; i++) {
-        objectIds.add(actor.call(Actor::ping).getId());
+        objectIds.add(actor.task(Actor::ping).remote().getId());
       }
       int sum = 0;
       for (Integer result : Ray.<Integer>get(objectIds, Integer.class)) {
@@ -76,11 +76,11 @@ public class StressTest extends BaseTest {
   @Test
   public void testSubmittingManyTasksToOneActor() throws Exception {
     TestUtils.skipTestUnderSingleProcess();
-    ActorHandle<Actor> actor = Ray.createActor(Actor::new);
+    ActorHandle<Actor> actor = Ray.actor(Actor::new).remote();
     List<ObjectId> objectIds = new ArrayList<>();
     for (int i = 0; i < 10; i++) {
-      ActorHandle<Worker> worker = Ray.createActor(Worker::new, actor);
-      objectIds.add(worker.call(Worker::ping, 100).getId());
+      ActorHandle<Worker> worker = Ray.actor(Worker::new, actor).remote();
+      objectIds.add(worker.task(Worker::ping, 100).remote().getId());
     }
 
     for (Integer result : Ray.<Integer>get(objectIds, Integer.class)) {

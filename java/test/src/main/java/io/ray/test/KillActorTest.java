@@ -5,7 +5,6 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.exception.RayActorException;
-import io.ray.api.options.ActorCreationOptions;
 import java.util.function.BiConsumer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -50,19 +49,20 @@ public class KillActorTest extends BaseTest {
   }
 
   private static void remoteKill(ActorHandle<?> actor, boolean noRestart) {
-    ActorHandle<KillerActor> killer = Ray.createActor(KillerActor::new);
-    killer.call(KillerActor::kill, actor, noRestart);
+    ActorHandle<KillerActor> killer = Ray.actor(KillerActor::new).remote();
+    killer.task(KillerActor::kill, actor, noRestart).remote();
   }
 
   private void testKillActor(BiConsumer<ActorHandle<?>, Boolean> kill, boolean noRestart) {
     TestUtils.skipTestUnderSingleProcess();
 
-    ActorCreationOptions options =
-        new ActorCreationOptions.Builder().setMaxRestarts(1).createActorCreationOptions();
-    ActorHandle<HangActor> actor = Ray.createActor(HangActor::new, options);
-    ObjectRef<Boolean> result = actor.call(HangActor::hang);
+    ActorHandle<HangActor> actor = Ray.actor(HangActor::new)
+        .setMaxRestarts(1)
+        .remote();
+    ObjectRef<Boolean> result = actor.task(HangActor::hang).remote();
     // The actor will hang in this task.
-    Assert.assertEquals(0, Ray.wait(ImmutableList.of(result), 1, 500).getReady().size());
+    Assert.assertEquals(0,
+        Ray.wait(ImmutableList.of(result), 1, 500).getReady().size());
 
     // Kill the actor
     kill.accept(actor, noRestart);
@@ -79,9 +79,10 @@ public class KillActorTest extends BaseTest {
 
     if (noRestart) {
       // The actor should not be restarted.
-      Assert.expectThrows(RayActorException.class, () -> actor.call(HangActor::hang).get());
+      Assert.expectThrows(RayActorException.class,
+          () -> actor.task(HangActor::hang).remote().get());
     } else {
-      Assert.assertEquals(actor.call(HangActor::ping).get(), "pong");
+      Assert.assertEquals(actor.task(HangActor::ping).remote().get(), "pong");
     }
   }
 

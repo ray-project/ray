@@ -14,7 +14,7 @@ public class Exercise03 {
   public static String sayHelloWithWorld() {
     String ret = "hello";
     System.out.println(ret);
-    ObjectRef<String> world = Ray.call(Exercise03::sayWorld);
+    ObjectRef<String> world = Ray.task(Exercise03::sayWorld).remote();
     return ret + "," + world.get();
   }
 
@@ -30,7 +30,7 @@ public class Exercise03 {
   public static void main(String[] args) throws Exception {
     try {
       Ray.init();
-      String helloWithWorld = Ray.call(Exercise03::sayHelloWithWorld).get();
+      String helloWithWorld = Ray.task(Exercise03::sayHelloWithWorld).remote().get();
       System.out.println(helloWithWorld);
     } catch (Throwable t) {
       t.printStackTrace();

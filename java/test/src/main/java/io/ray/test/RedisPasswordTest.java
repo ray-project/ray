@@ -27,7 +27,7 @@ public class RedisPasswordTest extends BaseTest {
 
   @Test
   public void testRedisPassword() {
-    ObjectRef<String> obj = Ray.call(RedisPasswordTest::echo, "hello");
+    ObjectRef<String> obj = Ray.task(RedisPasswordTest::echo, "hello").remote();
     Assert.assertEquals("hello", obj.get());
   }
 

@@ -16,7 +16,7 @@ public class PlasmaFreeTest extends BaseTest {
 
   @Test
   public void testDeleteObjects() {
-    ObjectRef<String> helloId = Ray.call(PlasmaFreeTest::hello);
+    ObjectRef<String> helloId = Ray.task(PlasmaFreeTest::hello).remote();
     String helloString = helloId.get();
     Assert.assertEquals("hello", helloString);
     Ray.internal().free(ImmutableList.of(helloId.getId()), true, false);
@@ -35,7 +35,7 @@ public class PlasmaFreeTest extends BaseTest {
   @Test
   public void testDeleteCreatingTasks() {
     TestUtils.skipTestUnderSingleProcess();
-    ObjectRef<String> helloId = Ray.call(PlasmaFreeTest::hello);
+    ObjectRef<String> helloId = Ray.task(PlasmaFreeTest::hello).remote();
     Assert.assertEquals("hello", helloId.get());
     Ray.internal().free(ImmutableList.of(helloId.getId()), true, true);
 

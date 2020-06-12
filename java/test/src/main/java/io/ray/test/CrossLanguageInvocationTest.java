@@ -69,24 +69,24 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
         1.234,  // Double
         "example binary".getBytes()};  // byte[]
     for (Object o : inputs) {
-      ObjectRef res = Ray.call(
+      ObjectRef res = Ray.task(
           new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", o.getClass()),
-          o);
+          o).remote();
       Assert.assertEquals(res.get(), o);
     }
     // null
     {
       Object input = null;
-      ObjectRef<Object> res = Ray.call(
-          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", Object.class), input);
+      ObjectRef<Object> res = Ray.task(
+          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", Object.class), input).remote();
       Object r = res.get();
       Assert.assertEquals(r, input);
     }
     // array
     {
       int[] input = new int[]{1, 2};
-      ObjectRef<int[]> res = Ray.call(
-          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", int[].class), input);
+      ObjectRef<int[]> res = Ray.task(
+          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", int[].class), input).remote();
       int[] r = res.get();
       Assert.assertEquals(r, input);
     }
@@ -94,8 +94,8 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     {
       Object[] input = new Object[]{1, 2.3f, 4.56, "789", "10".getBytes(), null, true,
           new int[]{1, 2}};
-      ObjectRef<Object[]> res = Ray.call(
-          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", Object[].class), input);
+      ObjectRef<Object[]> res = Ray.task(
+          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", Object[].class), input).remote();
       Object[] r = res.get();
       // If we tell the value type is Object, then all numbers will be Number type.
       Assert.assertEquals(((Number) r[0]).intValue(), input[0]);
@@ -119,9 +119,9 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     {
       Assert.expectThrows(Exception.class, () -> {
         List<Integer> input = Arrays.asList(1, 2);
-        ObjectRef<List<Integer>> res = Ray.call(
+        ObjectRef<List<Integer>> res = Ray.task(
             new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input",
-                (Class<List<Integer>>) input.getClass()), input);
+                (Class<List<Integer>>) input.getClass()), input).remote();
         List<Integer> r = res.get();
         Assert.assertEquals(r, input);
       });
@@ -130,26 +130,26 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
 
   @Test
   public void testPythonCallJavaFunction() {
-    ObjectRef<String> res = Ray.call(
-        new PyRemoteFunction<>(PYTHON_MODULE, "py_func_call_java_function", String.class));
+    ObjectRef<String> res = Ray.task(new PyRemoteFunction<>(
+        PYTHON_MODULE, "py_func_call_java_function", String.class)).remote();
     Assert.assertEquals(res.get(), "success");
   }
 
   @Test
   public void testCallingPythonActor() {
-    PyActorHandle actor = Ray.createActor(
-        new PyActorClass(PYTHON_MODULE, "Counter"), "1".getBytes());
-    ObjectRef<byte[]> res = actor.call(
+    PyActorHandle actor = Ray.actor(
+        new PyActorClass(PYTHON_MODULE, "Counter"), "1".getBytes()).remote();
+    ObjectRef<byte[]> res = actor.task(
         new PyActorMethod<>("increase", byte[].class),
-        "1".getBytes());
+        "1".getBytes()).remote();
     Assert.assertEquals(res.get(), "2".getBytes());
   }
 
   @Test
   public void testPythonCallJavaActor() {
-    ObjectRef<byte[]> res = Ray.call(
+    ObjectRef<byte[]> res = Ray.task(
         new PyRemoteFunction<>(PYTHON_MODULE, "py_func_call_java_actor", byte[].class),
-        "1".getBytes());
+        "1".getBytes()).remote();
     Assert.assertEquals(res.get(), "Counter1".getBytes());
 
   }
@@ -158,33 +158,33 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
   public void testPassActorHandleFromPythonToJava() {
     // Call a python function which creates a python actor
     // and pass the actor handle to callPythonActorHandle.
-    ObjectRef<byte[]> res = Ray.call(
-        new PyRemoteFunction<>(PYTHON_MODULE, "py_func_pass_python_actor_handle", byte[].class));
+    ObjectRef<byte[]> res = Ray.task(new PyRemoteFunction<>(
+        PYTHON_MODULE, "py_func_pass_python_actor_handle", byte[].class)).remote();
     Assert.assertEquals(res.get(), "3".getBytes());
   }
 
   @Test
   public void testPassActorHandleFromJavaToPython() {
     // Create a java actor, and pass actor handle to python.
-    ActorHandle<TestActor> javaActor = Ray.createActor(TestActor::new, "1".getBytes());
+    ActorHandle<TestActor> javaActor = Ray.actor(TestActor::new, "1".getBytes()).remote();
     Preconditions.checkState(javaActor instanceof NativeActorHandle);
     byte[] actorHandleBytes = ((NativeActorHandle) javaActor).toBytes();
-    ObjectRef<byte[]> res = Ray.call(
+    ObjectRef<byte[]> res = Ray.task(
         new PyRemoteFunction<>(PYTHON_MODULE,
             "py_func_call_java_actor_from_handle",
             byte[].class),
-        actorHandleBytes);
+        actorHandleBytes).remote();
     Assert.assertEquals(res.get(), "12".getBytes());
     // Create a python actor, and pass actor handle to python.
-    PyActorHandle pyActor = Ray.createActor(
-        new PyActorClass(PYTHON_MODULE, "Counter"), "1".getBytes());
+    PyActorHandle pyActor = Ray.actor(
+        new PyActorClass(PYTHON_MODULE, "Counter"), "1".getBytes()).remote();
     Preconditions.checkState(pyActor instanceof NativeActorHandle);
     actorHandleBytes = ((NativeActorHandle) pyActor).toBytes();
-    res = Ray.call(
+    res = Ray.task(
         new PyRemoteFunction<>(PYTHON_MODULE,
             "py_func_call_python_actor_from_handle",
             byte[].class),
-        actorHandleBytes);
+        actorHandleBytes).remote();
     Assert.assertEquals(res.get(), "3".getBytes());
   }
 
@@ -220,9 +220,9 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
   public static byte[] callPythonActorHandle(byte[] value) {
     // This function will be called from test_cross_language_invocation.py
     NativePyActorHandle actor = (NativePyActorHandle) NativeActorHandle.fromBytes(value);
-    ObjectRef<byte[]> res = actor.call(
+    ObjectRef<byte[]> res = actor.task(
         new PyActorMethod<>("increase", byte[].class),
-        "1".getBytes());
+        "1".getBytes()).remote();
     Assert.assertEquals(res.get(), "3".getBytes());
     return (byte[]) res.get();
   }
