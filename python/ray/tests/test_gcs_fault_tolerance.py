@@ -54,6 +54,7 @@ def test_gcs_server_re_schedule_actor():
     ready, unready = ray.wait(ids, 100, 240)
     print("Ready objects is {}.".format(ready))
     print("Unready objects is {}.".format(unready))
+    assert len(unready) == 0
 
     ray.shutdown()
 
