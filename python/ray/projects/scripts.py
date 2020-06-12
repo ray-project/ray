@@ -121,7 +121,7 @@ def create(project_name, cluster_yaml, requirements):
                 r"{{repo_string}}", "# repo: {}".format("..."))
         else:
             project_template = project_template.replace(
-                r"{{repo_string}}", "repo: {}".format(repo))
+                r"{{repo_string}}", "repo: {}".format(repo.decode('utf-8')))
     with open(PROJECT_YAML, "w") as f:
         f.write(project_template)
 
