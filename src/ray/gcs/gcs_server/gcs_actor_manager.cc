@@ -371,7 +371,7 @@ Status GcsActorManager::RegisterActor(
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
 
   auto iter = registered_actors_.find(actor_id);
-  if (iter != registered_actors_.end()) {
+  if (iter != registered_actors_.end() && iter->second->GetState() == rpc::ActorTableData::ALIVE) {
     // When the network fails, Driver/Worker is not sure whether GcsServer has received
     // the request of actor creation task, so Driver/Worker will try again and again until
     // receiving the reply from GcsServer. If the actor has been created successfully then
@@ -524,9 +524,8 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
                                      [actor_id](const std::shared_ptr<GcsActor> &actor) {
                                        return actor->GetActorID() == actor_id;
                                      });
-      if (pending_it != pending_actors_.end()) {
-        pending_actors_.erase(pending_it);
-      }
+      RAY_CHECK(pending_it != pending_actors_.end());
+      pending_actors_.erase(pending_it);
     }
   }
 
@@ -719,7 +718,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
         auto node_id = actor->GetNodeID();
         RAY_CHECK(!worker_id.IsNil());
         RAY_CHECK(!node_id.IsNil());
-        created_actors_[node_id].emplace(worker_id, actor_id);
+        RAY_CHECK(created_actors_[node_id].emplace(worker_id, actor_id).second);
       }));
 }
 
