@@ -371,7 +371,8 @@ Status GcsActorManager::RegisterActor(
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
 
   auto iter = registered_actors_.find(actor_id);
-  if (iter != registered_actors_.end() && iter->second->GetState() == rpc::ActorTableData::ALIVE) {
+  if (iter != registered_actors_.end() &&
+      iter->second->GetState() == rpc::ActorTableData::ALIVE) {
     // When the network fails, Driver/Worker is not sure whether GcsServer has received
     // the request of actor creation task, so Driver/Worker will try again and again until
     // receiving the reply from GcsServer. If the actor has been created successfully then
@@ -578,7 +579,7 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
 
   if (!actor_id.IsNil()) {
     RAY_LOG(WARNING) << "Worker " << worker_id << " on node " << node_id
-                  << " failed, restarting actor " << actor_id;
+                     << " failed, restarting actor " << actor_id;
     // Reconstruct the actor.
     ReconstructActor(actor_id, /*need_reschedule=*/!intentional_exit);
   }
@@ -698,13 +699,15 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   auto actor_table_data = actor->GetActorTableData();
   // The backend storage is reliable in the future, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
-      actor_id, actor_table_data, [this, actor_id, actor_table_data, actor](Status status) {
+      actor_id, actor_table_data,
+      [this, actor_id, actor_table_data, actor](Status status) {
         RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
                                            actor_table_data.SerializeAsString(),
                                            nullptr));
 
         // Invoke all callbacks for all registration requests of this actor (duplicated
-        // requests are included) and remove all of them from actor_to_register_callbacks_.
+        // requests are included) and remove all of them from
+        // actor_to_register_callbacks_.
 
         auto iter = actor_to_register_callbacks_.find(actor_id);
         if (iter != actor_to_register_callbacks_.end()) {
@@ -761,11 +764,12 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
     }
 
     RAY_LOG(INFO) << "The number of registered actors is " << registered_actors_.size()
-      << ", and the number of created actors is " << created_actors_.size();
+                  << ", and the number of created actors is " << created_actors_.size();
     for (auto &item : registered_actors_) {
       auto &actor = item.second;
       if (actor->GetState() != ray::rpc::ActorTableData::ALIVE) {
-        RAY_LOG(DEBUG) << "Reschedule the registered actor, actor id = " << actor->GetActorID();
+        RAY_LOG(DEBUG) << "Reschedule the registered actor, actor id = "
+                       << actor->GetActorID();
         gcs_actor_scheduler_->Schedule(actor);
       }
     }
