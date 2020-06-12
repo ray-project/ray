@@ -7,10 +7,10 @@ import {
   Tooltip,
 } from "@material-ui/core";
 import React from "react";
-import { InvalidStateType } from "../../../api";
+import { ActorState, InvalidStateType } from "../../../api";
 
 type ActorStateReprProps = {
-  state: -1 | 0 | 1 | 2;
+  state: ActorState;
   ist?: InvalidStateType;
 };
 
@@ -34,33 +34,39 @@ const actorStateReprStyles = makeStyles((theme: Theme) =>
     restarting: {
       color: theme.palette.warning.light,
     },
+    dead: {
+      color: "#cccccc",
+    },
   }),
 );
 
 const ActorStateRepr = ({ state, ist }: ActorStateReprProps) => {
   const classes = actorStateReprStyles();
+  const { Alive, Dead, Creating, Restarting, Invalid } = ActorState;
   switch (state) {
-    case -1:
+    case Invalid:
       if (ist === "infeasibleActor") {
-        return <span className={classes.infeasible}>Infeasible</span>;
+        return <div className={classes.infeasible}>Infeasible</div>;
       }
       if (ist === "pendingActor") {
-        return <span className={classes.pending}>Pending</span>;
+        return <div className={classes.pending}>Pending Resources</div>;
       }
-      return <span className={classes.unknown}>Unknown</span>;
-    case 0:
-      return <span className={classes.creating}>Creating</span>;
-    case 1:
-      return <span className={classes.alive}>Alive</span>;
-    case 2:
-      return <span className={classes.restarting}>Restarting</span>;
+      return <div className={classes.unknown}>Unknown</div>;
+    case Creating:
+      return <div className={classes.creating}>Creating</div>;
+    case Alive:
+      return <div className={classes.alive}>Alive</div>;
+    case Restarting:
+      return <div className={classes.restarting}>Restarting</div>;
+    case Dead:
+      return <div className={classes.dead}>Dead</div>;
   }
 };
 
 type ActorDetailsPaneProps = {
   actorTitle: string;
   invalidStateType?: InvalidStateType;
-  actorState: -1 | 0 | 1 | 2;
+  actorState: ActorState;
   actorDetails: {
     label: string;
     value: any;
@@ -127,10 +133,10 @@ const ActorDetailsPane = ({
   const classes = useStyles();
   return (
     <React.Fragment>
-      <span className={classes.actorTitleWrapper}>
-        <span className={classes.actorTitle}>{actorTitle}</span>
+      <div className={classes.actorTitleWrapper}>
+        <div className={classes.actorTitle}>{actorTitle}</div>
         <ActorStateRepr ist={invalidStateType} state={actorState} />
-      </span>
+      </div>
       <Divider className={classes.divider} />
       <Grid container className={classes.detailsPane}>
         {actorDetails.map(

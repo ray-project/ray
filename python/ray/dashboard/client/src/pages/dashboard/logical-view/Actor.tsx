@@ -8,6 +8,7 @@ import {
 } from "@material-ui/core";
 import React from "react";
 import {
+  ActorState,
   checkProfilingStatus,
   CheckProfilingStatusResponse,
   getProfilingResultURL,
@@ -80,7 +81,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
 
   handleProfilingClick = (duration: number) => async () => {
     const actor = this.props.actor;
-    if (actor.state !== -1) {
+    if (actor.state !== ActorState.Invalid) {
       const profilingId = await launchProfiling(
         actor.nodeId,
         actor.pid,
@@ -113,7 +114,10 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
 
   killActor = () => {
     const actor = this.props.actor;
-    if (actor.state === 0) {
+    if (
+      actor.state === ActorState.Creating ||
+      actor.state === ActorState.Alive
+    ) {
       launchKillActor(actor.actorId, actor.ipAddress, actor.port);
     }
   };
@@ -123,7 +127,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
     const { expanded, profiling } = this.state;
 
     const information =
-      actor.state !== -1
+      actor.state !== ActorState.Invalid
         ? [
             {
               label: "Resources",
@@ -194,7 +198,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
 
     // Construct the custom message from the actor.
     let actorCustomDisplay: JSX.Element[] = [];
-    if (actor.state !== -1 && actor.webuiDisplay) {
+    if (actor.state !== ActorState.Invalid && actor.webuiDisplay) {
       actorCustomDisplay = Object.keys(actor.webuiDisplay)
         .sort()
         .map((key, _, __) => {
@@ -231,7 +235,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
     return (
       <div className={classes.root}>
         <Typography className={classes.title}>
-          {actor.state !== -1 ? (
+          {actor.state !== ActorState.Invalid ? (
             <React.Fragment>
               Actor {actor.actorId}{" "}
               {Object.entries(actor.children).length > 0 && (
@@ -306,7 +310,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
           actorTitle={actor.actorTitle}
           actorState={actor.state}
         />
-        {actor.state !== -1 && (
+        {actor.state !== ActorState.Invalid && (
           <React.Fragment>
             {actorCustomDisplay.length > 0 && (
               <React.Fragment>{actorCustomDisplay}</React.Fragment>
