@@ -75,7 +75,7 @@ class RNNModel(RecurrentNetwork):
         return tf.reshape(self._value_out, [-1])
 
 
-class TorchRNNModel(TorchRNN):
+class TorchRNNModel(TorchRNN, nn.Module):
     def __init__(self,
                  obs_space,
                  action_space,
@@ -84,6 +84,7 @@ class TorchRNNModel(TorchRNN):
                  name,
                  fc_size=64,
                  lstm_state_size=256):
+        nn.Module.__init__(self)
         super().__init__(obs_space, action_space, num_outputs, model_config,
                          name)
 

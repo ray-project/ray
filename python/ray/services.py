@@ -1190,7 +1190,6 @@ def start_gcs_server(redis_address,
     """
     gcs_ip_address, gcs_port = redis_address.split(":")
     redis_password = redis_password or ""
-    config = config or {}
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
     command = [
         GCS_SERVER_EXECUTABLE,
@@ -1230,6 +1229,8 @@ def start_raylet(redis_address,
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
+                 plasma_directory=None,
+                 huge_pages=False,
                  fate_share=None,
                  socket_to_use=None):
     """Start a raylet, which is a combined local scheduler and object manager.
@@ -1273,7 +1274,6 @@ def start_raylet(redis_address,
     # The caller must provide a node manager port so that we can correctly
     # populate the command to start a worker.
     assert node_manager_port is not None and node_manager_port != 0
-    config = config or {}
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
 
     if use_valgrind and use_profiler:
@@ -1362,6 +1362,16 @@ def start_raylet(redis_address,
         "--temp_dir={}".format(temp_dir),
         "--session_dir={}".format(session_dir),
     ]
+    if config.get("plasma_store_as_thread"):
+        # command related to the plasma store
+        plasma_directory, object_store_memory = determine_plasma_store_config(
+            resource_spec.object_store_memory, plasma_directory, huge_pages)
+        command += [
+            "--object_store_memory={}".format(object_store_memory),
+            "--plasma_directory={}".format(plasma_directory),
+        ]
+        if huge_pages:
+            command.append("--huge_pages")
     if socket_to_use:
         socket_to_use.close()
     process_info = start_ray_process(
@@ -1554,6 +1564,7 @@ def start_plasma_store(resource_spec,
                        stdout_file=None,
                        stderr_file=None,
                        plasma_directory=None,
+                       keep_idle=False,
                        huge_pages=False,
                        fate_share=None,
                        use_valgrind=False):
@@ -1571,6 +1582,7 @@ def start_plasma_store(resource_spec,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
+        keep_idle: If True, run the plasma store as an idle placeholder.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1594,6 +1606,8 @@ def start_plasma_store(resource_spec,
         command += ["-d", plasma_directory]
     if huge_pages:
         command += ["-h"]
+    if keep_idle:
+        command.append("-z")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_PLASMA_STORE,
@@ -1721,7 +1735,6 @@ def start_raylet_monitor(redis_address,
     """
     gcs_ip_address, gcs_port = redis_address.split(":")
     redis_password = redis_password or ""
-    config = config or {}
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
     command = [
         RAYLET_MONITOR_EXECUTABLE,

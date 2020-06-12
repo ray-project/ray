@@ -153,29 +153,28 @@ public class JobSchedulerImpl implements JobScheduler {
    */
   protected Map<ExecutionVertex, JobWorkerContext> buildWorkersContext(
       ExecutionGraph executionGraph) {
-    ActorHandle masterActor = jobMaster.getJobMasterActor();
+    ActorHandle<JobMaster> masterActor = jobMaster.getJobMasterActor();
 
     // build workers' context
-    Map<ExecutionVertex, JobWorkerContext> needRegistryVertexToContextMap = new HashMap<>();
+    Map<ExecutionVertex, JobWorkerContext> vertexToContextMap = new HashMap<>();
     executionGraph.getAllExecutionVertices().forEach(vertex -> {
-      JobWorkerContext ctx = buildJobWorkerContext(vertex, masterActor);
-      needRegistryVertexToContextMap.put(vertex, ctx);
+      JobWorkerContext context = buildJobWorkerContext(vertex, masterActor);
+      vertexToContextMap.put(vertex, context);
     });
-    return needRegistryVertexToContextMap;
+    return vertexToContextMap;
   }
 
   private JobWorkerContext buildJobWorkerContext(
       ExecutionVertex executionVertex,
       ActorHandle<JobMaster> masterActor) {
 
-    // create worker context
-    JobWorkerContext ctx = new JobWorkerContext(
-        executionVertex.getWorkerActorId(),
+    // create java worker context
+    JobWorkerContext context = new JobWorkerContext(
         masterActor,
         executionVertex
     );
 
-    return ctx;
+    return context;
   }
 
   /**

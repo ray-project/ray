@@ -185,6 +185,28 @@ The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or `
   handle = serve.get_handle("api_endpoint")
   handler.options(shard_key=session_id).remote(args)
 
+Composing Multiple Models
+=========================
+Ray Serve supports composing individually scalable models into a single model 
+out of the box. For instance, you can combine multiple models to perform 
+stacking or ensembles.
+
+To define a higher-level composed model you need to do three things:
+
+1. Define your underlying models (the ones that you will compose together) as 
+   Ray Serve backends
+2. Define your composed model, using the handles of the underlying models 
+   (see the example below).
+3. Define an endpoint representing this composed model and query it!
+
+In order to avoid synchronous execution in the composed model (e.g., it's very
+slow to make calls to the composed model), you'll need to make the function
+asynchronous by using an ``async def``. You'll see this in the example below.
+
+That's it. Let's take a look at an example:
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_model_composition.py
+
 
 .. _serve-faq:
 
