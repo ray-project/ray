@@ -458,7 +458,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     direct_task_receiver_->Init(client_factory, rpc_address_, local_raylet_client_);
   }
 
-  actor_manager_ = std::unique_ptr<ActorManager>(new ActorManager(gcs_client_, direct_actor_submitter_, reference_counter_));
+  actor_manager_ = std::unique_ptr<ActorManager>(
+      new ActorManager(gcs_client_, direct_actor_submitter_, reference_counter_));
 
   auto object_lookup_fn = [this](const ObjectID &object_id,
                                  const ObjectLookupCallback &callback) {
@@ -1159,7 +1160,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.max_task_retries));
   RAY_CHECK(actor_manager_->AddActorHandle(
       std::move(actor_handle), !actor_creation_options.is_detached, GetCallerId(),
-      CurrentCallSite(), rpc_address_)) << "Actor " << actor_id << " already exists";
+      CurrentCallSite(), rpc_address_))
+      << "Actor " << actor_id << " already exists";
 
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
@@ -1289,90 +1291,91 @@ Status CoreWorker::SerializeActorHandle(const ActorID &actor_id, std::string *ou
 // bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
 //                                 bool is_owner_handle) {
 //   return actor_manager_->AddActorHandle(move(actor_handle), is_owner_handle,
-//                                         GetCallerId(), CurrentCallSite(), rpc_address_);
-  // const auto &actor_id = actor_handle->GetActorID();
-  // const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
-  // if (is_owner_handle) {
-  //   reference_counter_->AddOwnedObject(actor_creation_return_id,
-  //                                      /*inner_ids=*/{}, GetCallerId(), rpc_address_,
-  //                                      CurrentCallSite(), -1,
-  //                                      /*is_reconstructable=*/true);
-  // }
+//                                         GetCallerId(), CurrentCallSite(),
+//                                         rpc_address_);
+// const auto &actor_id = actor_handle->GetActorID();
+// const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
+// if (is_owner_handle) {
+//   reference_counter_->AddOwnedObject(actor_creation_return_id,
+//                                      /*inner_ids=*/{}, GetCallerId(), rpc_address_,
+//                                      CurrentCallSite(), -1,
+//                                      /*is_reconstructable=*/true);
+// }
 
-  // reference_counter_->AddLocalReference(actor_creation_return_id, CurrentCallSite());
-  // direct_actor_submitter_->AddActorQueueIfNotExists(actor_id);
+// reference_counter_->AddLocalReference(actor_creation_return_id, CurrentCallSite());
+// direct_actor_submitter_->AddActorQueueIfNotExists(actor_id);
 
-  // bool inserted;
-  // {
-  //   absl::MutexLock lock(&actor_handles_mutex_);
-  //   inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
-  // }
+// bool inserted;
+// {
+//   absl::MutexLock lock(&actor_handles_mutex_);
+//   inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
+// }
 
-  // if (inserted) {
-  //   // Register a callback to handle actor notifications.
-  //   auto actor_notification_callback = [this](const ActorID &actor_id,
-  //                                             const gcs::ActorTableData &actor_data) {
-  //     if (actor_data.state() == gcs::ActorTableData::PENDING) {
-  //       // The actor is being created and not yet ready, just ignore!
-  //     } else if (actor_data.state() == gcs::ActorTableData::RESTARTING) {
-  //       direct_actor_submitter_->DisconnectActor(actor_id, false);
-  //     } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
-  //       direct_actor_submitter_->DisconnectActor(actor_id, true);
-  //       // We cannot erase the actor handle here because clients can still
-  //       // submit tasks to dead actors. This also means we defer unsubscription,
-  //       // otherwise we crash when bulk unsubscribing all actor handles.
-  //     } else {
-  //       direct_actor_submitter_->ConnectActor(actor_id, actor_data.address());
-  //     }
+// if (inserted) {
+//   // Register a callback to handle actor notifications.
+//   auto actor_notification_callback = [this](const ActorID &actor_id,
+//                                             const gcs::ActorTableData &actor_data) {
+//     if (actor_data.state() == gcs::ActorTableData::PENDING) {
+//       // The actor is being created and not yet ready, just ignore!
+//     } else if (actor_data.state() == gcs::ActorTableData::RESTARTING) {
+//       direct_actor_submitter_->DisconnectActor(actor_id, false);
+//     } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
+//       direct_actor_submitter_->DisconnectActor(actor_id, true);
+//       // We cannot erase the actor handle here because clients can still
+//       // submit tasks to dead actors. This also means we defer unsubscription,
+//       // otherwise we crash when bulk unsubscribing all actor handles.
+//     } else {
+//       direct_actor_submitter_->ConnectActor(actor_id, actor_data.address());
+//     }
 
-  //     const auto &actor_state =
-  //     gcs::ActorTableData::ActorState_Name(actor_data.state()); RAY_LOG(INFO) <<
-  //     "received notification on actor, state: " << actor_state
-  //                   << ", actor_id: " << actor_id
-  //                   << ", ip address: " << actor_data.address().ip_address()
-  //                   << ", port: " << actor_data.address().port() << ", worker_id: "
-  //                   << WorkerID::FromBinary(actor_data.address().worker_id())
-  //                   << ", raylet_id: "
-  //                   << ClientID::FromBinary(actor_data.address().raylet_id());
-  //   };
+//     const auto &actor_state =
+//     gcs::ActorTableData::ActorState_Name(actor_data.state()); RAY_LOG(INFO) <<
+//     "received notification on actor, state: " << actor_state
+//                   << ", actor_id: " << actor_id
+//                   << ", ip address: " << actor_data.address().ip_address()
+//                   << ", port: " << actor_data.address().port() << ", worker_id: "
+//                   << WorkerID::FromBinary(actor_data.address().worker_id())
+//                   << ", raylet_id: "
+//                   << ClientID::FromBinary(actor_data.address().raylet_id());
+//   };
 
-  //   RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
-  //       actor_id, actor_notification_callback, nullptr));
+//   RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+//       actor_id, actor_notification_callback, nullptr));
 
-  //   RAY_CHECK(reference_counter_->SetDeleteCallback(
-  //       actor_creation_return_id,
-  //       [this, actor_id, is_owner_handle](const ObjectID &object_id) {
-  //         if (is_owner_handle) {
-  //           // If we own the actor and the actor handle is no longer in scope,
-  //           // terminate the actor. We do not do this if the GCS service is
-  //           // enabled since then the GCS will terminate the actor for us.
-  //           if (!(RayConfig::instance().gcs_service_enabled() &&
-  //                 RayConfig::instance().gcs_actor_service_enabled())) {
-  //             RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id
-  //                           << " has gone out of scope, sending message to actor "
-  //                           << actor_id << " to do a clean exit.";
-  //             RAY_CHECK_OK(
-  //                 KillActor(actor_id, /*force_kill=*/false, /*no_restart=*/false));
-  //           }
-  //         }
+//   RAY_CHECK(reference_counter_->SetDeleteCallback(
+//       actor_creation_return_id,
+//       [this, actor_id, is_owner_handle](const ObjectID &object_id) {
+//         if (is_owner_handle) {
+//           // If we own the actor and the actor handle is no longer in scope,
+//           // terminate the actor. We do not do this if the GCS service is
+//           // enabled since then the GCS will terminate the actor for us.
+//           if (!(RayConfig::instance().gcs_service_enabled() &&
+//                 RayConfig::instance().gcs_actor_service_enabled())) {
+//             RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id
+//                           << " has gone out of scope, sending message to actor "
+//                           << actor_id << " to do a clean exit.";
+//             RAY_CHECK_OK(
+//                 KillActor(actor_id, /*force_kill=*/false, /*no_restart=*/false));
+//           }
+//         }
 
-  //         absl::MutexLock lock(&actor_handles_mutex_);
-  //         // TODO(swang): Erase the actor handle once all refs to the actor
-  //         // have gone out of scope. We cannot erase it here in case the
-  //         // language frontend receives another ref to the same actor. In this
-  //         // case, we must remember the last task counter that we sent to the
-  //         // actor.
-  //         // TODO(ekl) we can't unsubscribe to actor notifications here due to
-  //         // https://github.com/ray-project/ray/pull/6885
-  //         // SANG-TODO actor_manager_->extract_actor_out_of_scope_callback
-  //         auto callback = actor_out_of_scope_callbacks_.extract(actor_id);
-  //         if (callback) {
-  //           callback.mapped()(actor_id);
-  //         }
-  //       }));
-  // }
+//         absl::MutexLock lock(&actor_handles_mutex_);
+//         // TODO(swang): Erase the actor handle once all refs to the actor
+//         // have gone out of scope. We cannot erase it here in case the
+//         // language frontend receives another ref to the same actor. In this
+//         // case, we must remember the last task counter that we sent to the
+//         // actor.
+//         // TODO(ekl) we can't unsubscribe to actor notifications here due to
+//         // https://github.com/ray-project/ray/pull/6885
+//         // SANG-TODO actor_manager_->extract_actor_out_of_scope_callback
+//         auto callback = actor_out_of_scope_callbacks_.extract(actor_id);
+//         if (callback) {
+//           callback.mapped()(actor_id);
+//         }
+//       }));
+// }
 
-  // return inserted;
+// return inserted;
 // }
 
 Status CoreWorker::GetActorHandle(const ActorID &actor_id,
