@@ -416,7 +416,6 @@ def open_worker_log(path, worker_pid):
         # stdout and stderr log files. The string "Ray worker pid:" is
         # parsed in the log monitor process.
         print("Ray worker pid: {}".format(worker_pid), file=f)
-        f.flush()
     return f
 
 

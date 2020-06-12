@@ -7,10 +7,11 @@
 #endif
 
 #include <algorithm>
-#include <boost/asio/generic/stream_protocol.hpp>
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include <boost/asio/generic/stream_protocol.hpp>
 #ifndef _WIN32
 #include <boost/asio/local/stream_protocol.hpp>
 #endif
@@ -321,22 +322,4 @@ std::string CreateCommandLine(const std::vector<std::string> &args,
     break;
   }
   return result;
-}
-
-void flush_out() {
-  // Flush c++ buffer
-  std::cout << std::flush;
-  // Flush c streaming buffer
-  // TODO(alex): If we don't actually use the C streaming api then we may not
-  // need this line at all
-  fflush(stdout);
-}
-
-void flush_err() {
-  // Flush c++ buffer
-  std::cerr << std::flush;
-  // Flush c streaming buffer
-  // TODO(alex): If we don't actually use the C streaming api then we may not
-  // need this line at all
-  fflush(stderr);
 }

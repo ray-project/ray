@@ -424,8 +424,6 @@ cdef execute_task(
         JobID job_id = core_worker.get_current_job_id()
         TaskID task_id = core_worker.get_current_task_id()
         CFiberEvent task_done_event
-        c_string worker_stdout_path = core_worker.get_stdout_file()
-        c_string worker_stderr_path = core_worker.get_stderr_file()
 
     # Automatically restrict the GPUs available to this task.
     ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
@@ -546,7 +544,7 @@ cdef execute_task(
                 try:
                     with ray.worker._changeproctitle(title, next_title):
                         outputs = function_executor(*args, **kwargs)
-                        task_exception = False
+                    task_exception = False
                 except KeyboardInterrupt as e:
                     raise RayCancellationError(
                             core_worker.get_current_task_id())
@@ -801,12 +799,6 @@ cdef class CoreWorker:
     def get_actor_id(self):
         return ActorID(
             CCoreWorkerProcess.GetCoreWorker().GetActorId().Binary())
-
-    def get_stdout_file(self):
-        return CCoreWorkerProcess.GetCoreWorker().GetStdoutFile()
-
-    def get_stderr_file(self):
-        return CCoreWorkerProcess.GetCoreWorker().GetStderrFile()
 
     def set_webui_display(self, key, message):
         CCoreWorkerProcess.GetCoreWorker().SetWebuiDisplay(key, message)
