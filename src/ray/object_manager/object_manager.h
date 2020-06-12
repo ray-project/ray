@@ -37,7 +37,7 @@
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/object_store_notification_manager.h"
 #include "ray/object_manager/plasma/client.h"
-#include "ray/object_manager/plasma/store.h"
+#include "ray/object_manager/plasma/store_runner.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
 
@@ -85,7 +85,6 @@ class ObjectStoreRunner {
   ~ObjectStoreRunner();
 
  private:
-  std::unique_ptr<plasma::PlasmaStoreRunner> plasma_store_;
   std::thread store_thread_;
 };
 
