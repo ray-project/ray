@@ -59,8 +59,8 @@ def build_sac_model(policy, obs_space, action_space, config):
     # Everything should be configured using SAC's "Q_model" and "policy_model"
     # settings.
     policy.model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
+        obs_space=obs_space,
+        action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
         framework=config["framework"],
@@ -76,8 +76,8 @@ def build_sac_model(policy, obs_space, action_space, config):
         target_entropy=config["target_entropy"])
 
     policy.target_model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
+        obs_space=obs_space,
+        action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
         framework=config["framework"],

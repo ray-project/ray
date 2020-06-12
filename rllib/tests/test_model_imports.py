@@ -67,13 +67,14 @@ class MyKerasModel(TFModelV2):
         self.base_model.load_weights(import_file)
 
 
-class MyTorchModel(TorchModelV2):
+class MyTorchModel(TorchModelV2, nn.Module):
     """Generic vision network."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
+        nn.Module.__init__(self)
 
         self.device = torch.device("cuda"
                                    if torch.cuda.is_available() else "cpu")

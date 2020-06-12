@@ -48,13 +48,14 @@ class FastModel(TFModelV2):
         return tf.reshape(self._value_out, [-1])
 
 
-class TorchFastModel(TorchModelV2):
+class TorchFastModel(TorchModelV2, nn.Module):
     """Torch version of FastModel (tf)."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
+        nn.Module.__init__(self)
 
         self.bias = torch.tensor(
             [0.0], dtype=torch.float32, requires_grad=True)

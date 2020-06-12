@@ -10,17 +10,18 @@ class TorchModelV2(ModelV2):
     """Torch version of ModelV2.
 
     Note that this class by itself is not a valid model unless you
-    inherit from it and implement forward() in a subclass."""
+    inherit from nn.Module and implement forward() in a subclass."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         """Initialize a TorchModelV2.
 
         Here is an example implementation for a subclass
-        ``MyModelClass(TorchModelV2)``::
+        ``MyModelClass(TorchModelV2, nn.Module)``::
 
             def __init__(self, *args, **kwargs):
                 TorchModelV2.__init__(self, *args, **kwargs)
+                nn.Module.__init__(self)
                 self._hidden_layers = nn.Sequential(...)
                 self._logits = ...
                 self._value_branch = ...

@@ -104,16 +104,16 @@ class ModelCatalogTest(unittest.TestCase):
 
         with tf.variable_scope("test1"):
             p1 = ModelCatalog.get_model_v2(
-                Box(0, 1, shape=(3, ), dtype=np.float32),
-                Discrete(5),
+                obs_space=Box(0, 1, shape=(3, ), dtype=np.float32),
+                action_space=Discrete(5),
                 num_outputs=5,
                 model_config={})
             self.assertEqual(type(p1), FullyConnectedNetwork)
 
         with tf.variable_scope("test2"):
             p2 = ModelCatalog.get_model_v2(
-                Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
-                Discrete(5),
+                obs_space=Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
+                action_space=Discrete(5),
                 num_outputs=5,
                 model_config={})
             self.assertEqual(type(p2), VisionNetwork)
@@ -122,8 +122,8 @@ class ModelCatalogTest(unittest.TestCase):
         ray.init(object_store_memory=1000 * 1024 * 1024)
         ModelCatalog.register_custom_model("foo", CustomModel)
         p1 = ModelCatalog.get_model_v2(
-            Box(0, 1, shape=(3, ), dtype=np.float32),
-            Discrete(5),
+            obs_space=Box(0, 1, shape=(3, ), dtype=np.float32),
+            action_space=Discrete(5),
             num_outputs=5,
             model_config={"custom_model": "foo"})
         self.assertEqual(str(type(p1)), str(CustomModel))

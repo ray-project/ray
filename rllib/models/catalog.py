@@ -126,7 +126,7 @@ class ModelCatalog:
             action_space (Space): Action space of the target gym env.
             config (Optional[dict]): Optional model config.
             dist_type (Optional[str]): Identifier of the action distribution
-                interpreted as a hint. One of "deterministic",
+                interpreted as a hint.
             framework (str): One of "tf", "tfe", or "torch".
             kwargs (dict): Optional kwargs to pass on to the Distribution's
                 constructor.
@@ -261,8 +261,8 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_model_v2(input_space,
-                     output_space,
+    def get_model_v2(input_space=None,
+                     output_space=None,
                      *,
                      num_outputs,
                      model_config,

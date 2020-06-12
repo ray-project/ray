@@ -79,13 +79,14 @@ class CustomModel(TFModelV2):
         return self.model.value_function()
 
 
-class TorchCustomModel(TorchModelV2):
+class TorchCustomModel(TorchModelV2, nn.Module):
     """Example of a PyTorch custom model that just delegates to a fc-net."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
+        nn.Module.__init__(self)
 
         self.torch_sub_model = TorchFC(obs_space, action_space, num_outputs,
                                        model_config, name)

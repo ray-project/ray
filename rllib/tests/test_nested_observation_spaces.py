@@ -161,13 +161,14 @@ class InvalidModel2(TFModelV2):
         return tf.constant(0), tf.constant(0)
 
 
-class TorchSpyModel(TorchModelV2):
+class TorchSpyModel(TorchModelV2, nn.Module):
     capture_index = 0
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
+        nn.Module.__init__(self)
         self.fc = FullyConnectedNetwork(
             obs_space.original_space.spaces["sensors"].spaces["position"],
             action_space, num_outputs, model_config, name)
@@ -189,13 +190,14 @@ class TorchSpyModel(TorchModelV2):
         return self.fc.value_function()
 
 
-class TorchRepeatedSpyModel(TorchModelV2):
+class TorchRepeatedSpyModel(TorchModelV2, nn.Module):
     capture_index = 0
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
+        nn.Module.__init__(self)
         self.fc = FullyConnectedNetwork(
             obs_space.original_space.child_space["location"], action_space,
             num_outputs, model_config, name)

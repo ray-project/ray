@@ -1,6 +1,6 @@
 from ray.rllib.models.tf.tf_action_dist import Categorical, ActionDistribution
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
-    TorchDistribution
+    TorchDistributionWrapper
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 tf = try_import_tf()
@@ -77,7 +77,7 @@ class BinaryAutoregressiveDistribution(ActionDistribution):
         return 16  # controls model output feature vector size
 
 
-class TorchBinaryAutoregressiveDistribution(TorchDistribution):
+class TorchBinaryAutoregressiveDistribution(TorchDistributionWrapper):
     """Action distribution P(a1, a2) = P(a1) * P(a2 | a1)"""
 
     def deterministic_sample(self):
