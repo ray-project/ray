@@ -17,7 +17,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
 from ray.autoscaler.log_timer import LogTimer
-from ray.autoscaler.docker import get_docker_check
+from ray.autoscaler.docker import check_docker_running_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -317,8 +317,8 @@ class DockerCommandRunner(SSHCommandRunner):
             with_output=False)
 
     def check_container_status(self):
-        no_exist = "not present"
-        cmd = get_docker_check(self.docker_name) + " ".join(
+        no_exist = "not_present"
+        cmd = check_docker_running_cmd(self.docker_name) + " ".join(
             ["||", "echo", quote(no_exist)])
         output = self.ssh_command_runner.run(
             cmd, with_output=True).decode("utf-8").strip()

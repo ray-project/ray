@@ -80,7 +80,7 @@ def aptwait_cmd():
             "do echo 'Waiting for release of dpkg/apt locks'; sleep 5; done")
 
 
-def get_docker_check(cname):
+def check_docker_running_cmd(cname):
     return " ".join(["docker", "inspect", "-f", "'{{.State.Running}}'", cname])
 
 
@@ -103,7 +103,7 @@ def docker_start_cmds(user, image, mount, cname, user_options):
 
     user_options_str = " ".join(user_options)
     # docker run command
-    docker_check = get_docker_check(cname) + " || "
+    docker_check = check_docker_running_cmd(cname) + " || "
     docker_run = [
         "docker", "run", "--rm", "--name {}".format(cname), "-d", "-it",
         port_flags, mount_flags, env_flags, user_options_str, "--net=host",
