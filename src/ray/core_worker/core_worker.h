@@ -20,6 +20,7 @@
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/actor_manager.h"
+#include "ray/core_worker/actor_reporter.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/future_resolver.h"
@@ -585,13 +586,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                          const TaskOptions &task_options,
                          std::vector<ObjectID> *return_ids);
 
-  /// Tell an actor to exit immediately, without completing outstanding work.
-  ///
-  /// \param[in] actor_id ID of the actor to kill.
-  /// \param[in] no_restart If set to true, the killed actor will not be
-  /// restarted anymore.
-  /// \param[out] Status
-  Status KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
+  // SANG-TODO delete this.
+  // /// Tell an actor to exit immediately, without completing outstanding work.
+  // ///
+  // /// \param[in] actor_id ID of the actor to kill.
+  // /// \param[in] no_restart If set to true, the killed actor will not be
+  // /// restarted anymore.
+  // /// \param[out] Status
+  // Status KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
 
   /// Stops the task associated with the given Object ID.
   ///
@@ -818,21 +820,21 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     reference_counter_->AddLocalReference(object_id, call_site);
   }
 
-  // SANG-TODO Move it to actor manager
-  /// Give this worker a handle to an actor.
-  ///
-  /// This handle will remain as long as the current actor or task is
-  /// executing, even if the Python handle goes out of scope. Tasks submitted
-  /// through this handle are guaranteed to execute in the same order in which
-  /// they are submitted.
-  ///
-  /// \param actor_handle The handle to the actor.
-  /// \param is_owner_handle Whether this is the owner's handle to the actor.
-  /// The owner is the creator of the actor and is responsible for telling the
-  /// actor to disconnect once all handles are out of scope.
-  /// \return True if the handle was added and False if we already had a handle
-  /// to the same actor.
-  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle);
+  // // SANG-TODO Move it to actor manager
+  // /// Give this worker a handle to an actor.
+  // ///
+  // /// This handle will remain as long as the current actor or task is
+  // /// executing, even if the Python handle goes out of scope. Tasks submitted
+  // /// through this handle are guaranteed to execute in the same order in which
+  // /// they are submitted.
+  // ///
+  // /// \param actor_handle The handle to the actor.
+  // /// \param is_owner_handle Whether this is the owner's handle to the actor.
+  // /// The owner is the creator of the actor and is responsible for telling the
+  // /// actor to disconnect once all handles are out of scope.
+  // /// \return True if the handle was added and False if we already had a handle
+  // /// to the same actor.
+  // bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle);
 
   ///
   /// Private methods related to task execution. Should not be used by driver processes.
@@ -1008,23 +1010,31 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Manages recovery of objects stored in remote plasma nodes.
   std::unique_ptr<ObjectRecoveryManager> object_recovery_manager_;
 
-  // SANG-TODO Move it to actor manager
-  // TODO(swang): Refactor to merge actor_handles_mutex_ and all fields that it
-  // protects into the ActorManager.
-  /// The `actor_handles_` field could be mutated concurrently due to multi-threading, we
-  /// need a mutex to protect it.
-  mutable absl::Mutex actor_handles_mutex_;
+  ///
+  /// Fields related to actor handles.
+  ///
 
-  // SANG-TODO Move it to actor manager
-  /// Map from actor ID to a handle to that actor.
-  absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
-      GUARDED_BY(actor_handles_mutex_);
+  /// Interface to manage actor handles.
+  std::unique_ptr<ActorManager> actor_manager_;
 
-  // SANG-TODO Move it to actor manager
-  /// Map from actor ID to a callback to call when all local handles to that
-  /// actor have gone out of scpoe.
-  absl::flat_hash_map<ActorID, std::function<void(const ActorID &)>>
-      actor_out_of_scope_callbacks_ GUARDED_BY(actor_handles_mutex_);
+  // // SANG-TODO Move it to actor manager
+  // // TODO(swang): Refactor to merge actor_handles_mutex_ and all fields that it
+  // // protects into the ActorManager.
+  // /// The `actor_handles_` field could be mutated concurrently due to multi-threading,
+  // we
+  // /// need a mutex to protect it.
+  // mutable absl::Mutex actor_handles_mutex_;
+
+  // // SANG-TODO Move it to actor manager
+  // /// Map from actor ID to a handle to that actor.
+  // absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
+  //     GUARDED_BY(actor_handles_mutex_);
+
+  // // SANG-TODO Move it to actor manager
+  // /// Map from actor ID to a callback to call when all local handles to that
+  // /// actor have gone out of scpoe.
+  // absl::flat_hash_map<ActorID, std::function<void(const ActorID &)>>
+  //     actor_out_of_scope_callbacks_ GUARDED_BY(actor_handles_mutex_);
 
   ///
   /// Fields related to task execution.

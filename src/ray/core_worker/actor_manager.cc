@@ -120,10 +120,9 @@ Status ActorManager::GetNamedActorHandle(const std::string &name,
     status = GetActorHandle(actor_id, actor_handle);
   }
   return status;
-  return Status::OK();
 }
 
-bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+bool ActorManager::AddActorHandle(std::shared_ptr<ActorHandle> actor_handle,
                                   bool is_owner_handle, const TaskID &caller_id,
                                   const std::string &call_site,
                                   const rpc::Address &caller_address) {
@@ -138,39 +137,16 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
 
   reference_counter_->AddLocalReference(actor_creation_return_id, call_site);
   direct_actor_submitter_->AddActorQueueIfNotExists(actor_id);
-
   bool inserted;
   {
     absl::MutexLock lock(&mutex_);
     inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
   }
-
   if (inserted) {
     // Register a callback to handle actor notifications.
-    auto actor_notification_callback = [this](const ActorID &actor_id,
-                                              const gcs::ActorTableData &actor_data) {
-      if (actor_data.state() == gcs::ActorTableData::PENDING) {
-        // The actor is being created and not yet ready, just ignore!
-      } else if (actor_data.state() == gcs::ActorTableData::RESTARTING) {
-        direct_actor_submitter_->DisconnectActor(actor_id, false);
-      } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
-        direct_actor_submitter_->DisconnectActor(actor_id, true);
-        // We cannot erase the actor handle here because clients can still
-        // submit tasks to dead actors. This also means we defer unsubscription,
-        // otherwise we crash when bulk unsubscribing all actor handles.
-      } else {
-        direct_actor_submitter_->ConnectActor(actor_id, actor_data.address());
-      }
-
-      const auto &actor_state = gcs::ActorTableData::ActorState_Name(actor_data.state());
-      RAY_LOG(INFO) << "received notification on actor, state: " << actor_state
-                    << ", actor_id: " << actor_id
-                    << ", ip address: " << actor_data.address().ip_address()
-                    << ", port: " << actor_data.address().port() << ", worker_id: "
-                    << WorkerID::FromBinary(actor_data.address().worker_id())
-                    << ", raylet_id: "
-                    << ClientID::FromBinary(actor_data.address().raylet_id());
-    };
+    auto actor_notification_callback =
+        std::bind(&ActorManager::HandleActorStateNotification, this,
+                  std::placeholders::_1, std::placeholders::_2);
 
     RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
         actor_id, actor_notification_callback, nullptr));
@@ -210,13 +186,18 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   return inserted;
 }
 
-bool ActorManager::AddActorOutOfScopeCallback(
-    ActorID &actor_id,
+void ActorManager::AddActorOutOfScopeCallback(
+    const ActorID &actor_id,
     std::function<void(const ActorID &)> actor_out_of_scope_callbacks) {
   absl::MutexLock lock(&mutex_);
-  // Question: Emplace with pass by reference key is fine?
-  return actor_out_of_scope_callbacks_.emplace(actor_id, actor_out_of_scope_callbacks)
-      .second;
+  auto it = actor_handles_.find(actor_id);
+  if (it == actor_handles_.end()) {
+    actor_out_of_scope_callbacks(actor_id);
+  } else {
+    RAY_CHECK(actor_out_of_scope_callbacks_
+                  .emplace(actor_id, std::move(actor_out_of_scope_callbacks))
+                  .second);
+  }
 }
 
 Status ActorManager::KillActor(const ActorID &actor_id, bool force_kill,
@@ -225,6 +206,42 @@ Status ActorManager::KillActor(const ActorID &actor_id, bool force_kill,
   RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
   direct_actor_submitter_->KillActor(actor_id, force_kill, no_restart);
   return Status::OK();
+}
+
+void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
+                                                const gcs::ActorTableData &actor_data) {
+  if (actor_data.state() == gcs::ActorTableData::PENDING) {
+    // The actor is being created and not yet ready, just ignore!
+  } else if (actor_data.state() == gcs::ActorTableData::RESTARTING) {
+    direct_actor_submitter_->DisconnectActor(actor_id, false);
+  } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
+    direct_actor_submitter_->DisconnectActor(actor_id, true);
+    // We cannot erase the actor handle here because clients can still
+    // submit tasks to dead actors. This also means we defer unsubscription,
+    // otherwise we crash when bulk unsubscribing all actor handles.
+  } else {
+    direct_actor_submitter_->ConnectActor(actor_id, actor_data.address());
+  }
+
+  const auto &actor_state = gcs::ActorTableData::ActorState_Name(actor_data.state());
+  RAY_LOG(INFO) << "received notification on actor, state: " << actor_state
+                << ", actor_id: " << actor_id
+                << ", ip address: " << actor_data.address().ip_address()
+                << ", port: " << actor_data.address().port() << ", worker_id: "
+                << WorkerID::FromBinary(actor_data.address().worker_id())
+                << ", raylet_id: "
+                << ClientID::FromBinary(actor_data.address().raylet_id());
+}
+
+std::vector<ObjectID> ActorManager::GetActorHandleIDsFromHandles() {
+  absl::MutexLock lock(&mutex_);
+  std::vector<ObjectID> actor_handle_ids;
+  for (const auto &handle : actor_handles_) {
+    auto actor_id = handle.first;
+    auto actor_handle_id = ObjectID::ForActorHandle(actor_id);
+    actor_handle_ids.push_back(actor_handle_id);
+  }
+  return actor_handle_ids;
 }
 
 }  // namespace ray

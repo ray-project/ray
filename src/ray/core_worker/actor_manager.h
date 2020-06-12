@@ -104,7 +104,7 @@ class ActorManager {
   /// \param[in] call_site The caller's site.
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
-  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle,
+  bool AddActorHandle(std::shared_ptr<ActorHandle> actor_handle, bool is_owner_handle,
                       const TaskID &caller_id, const std::string &call_site,
                       const rpc::Address &caller_address);
 
@@ -112,10 +112,9 @@ class ActorManager {
   ///
   /// \param actor_id The actor id that owns the callback.
   /// \param actor_out_of_scope_callbacks The callback function that will be called when
-  /// an actor_id goes out of scope. \return True if callback successfully registered.
-  /// False otherwise.
-  bool AddActorOutOfScopeCallback(
-      ActorID &actor_id,
+  /// an actor_id goes out of scope.
+  void AddActorOutOfScopeCallback(
+      const ActorID &actor_id,
       std::function<void(const ActorID &)> actor_out_of_scope_callbacks);
 
   /// Tell an actor to exit immediately, without completing outstanding work.
@@ -125,6 +124,17 @@ class ActorManager {
   /// restarted anymore.
   /// \param[out] Status
   Status KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
+
+  /// Handle actor state notification published from GCS.
+  ///
+  /// \param[in] actor_id The actor id of this notification.
+  /// \param[in] actor_data The GCS actor data.
+  void HandleActorStateNotification(const ActorID &actor_id,
+                                    const gcs::ActorTableData &actor_data);
+
+  /// Get a list of actor_ids from existing actor handles.
+  /// This is used for debugging purpose.
+  std::vector<ObjectID> GetActorHandleIDsFromHandles();
 
  private:
   /// GCS client
@@ -143,7 +153,7 @@ class ActorManager {
   mutable absl::Mutex mutex_;
 
   /// Map from actor ID to a handle to that actor.
-  absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
+  absl::flat_hash_map<ActorID, std::shared_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(mutex_);
 
   /// Map from actor ID to a callback to call when all local handles to that

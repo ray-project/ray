@@ -74,8 +74,10 @@ ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
 
   // Create an actor.
   ActorID actor_id;
+  RAY_LOG(ERROR) << "Sang create";
   RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().CreateActor(
       func, args, actor_options, /*extension_data*/ "", &actor_id));
+  RAY_LOG(ERROR) << "Sang create done";
   return actor_id;
 }
 
