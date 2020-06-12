@@ -93,7 +93,9 @@ message TaskReconstructionData {
   bytes node_manager_id = 3;
 }
 
-message TaskTableData { Task task = 1; }
+message TaskTableData {
+  Task task = 1;
+}
 
 message ActorTableData {
   // State of an actor.
@@ -233,7 +235,9 @@ message HeartbeatTableData {
   bool should_global_gc = 9;
 }
 
-message HeartbeatBatchTableData { repeated HeartbeatTableData batch = 1; }
+message HeartbeatBatchTableData {
+  repeated HeartbeatTableData batch = 1;
+}
 
 // Data for a lease on task execution.
 message TaskLeaseData {
@@ -303,14 +307,18 @@ message WorkerFailureData {
   bool intentional_disconnect = 4;
 }
 
-message ResourceMap { map<string, ResourceTableData> items = 1; }
+message ResourceMap {
+  map<string, ResourceTableData> items = 1;
+}
 
 message StoredConfig {
   // Generic String -> String mapping
   map<string, string> config = 1;
 }
 
-message ObjectTableDataList { repeated ObjectTableData items = 1; }
+message ObjectTableDataList {
+  repeated ObjectTableData items = 1;
+}
 
 message ObjectLocationInfo {
   bytes object_id = 1;
