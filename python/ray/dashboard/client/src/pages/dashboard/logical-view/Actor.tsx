@@ -11,7 +11,6 @@ import {
   checkProfilingStatus,
   CheckProfilingStatusResponse,
   getProfilingResultURL,
-  InvalidStateType,
   launchKillActor,
   launchProfiling,
   RayletActorInfo,
