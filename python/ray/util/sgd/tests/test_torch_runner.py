@@ -198,8 +198,10 @@ class TestLocalDistributedRunner(unittest.TestCase):
         self.assertEquals(len(env_set_device), 1)
 
         if preset_devices:
-            self.assertIn(env_set_device, preset_devices.split(","))
-            self.assertEquals(local_device, "0")
+            visible_devices = preset_devices.split(",")
+            self.assertIn(env_set_device, visible_devices)
+            device_int = int(local_device)
+            self.assertLess(device_int, len(visible_devices))
         else:
             self.assertEquals(local_device, env_set_device)
 
@@ -220,29 +222,26 @@ class TestLocalDistributedRunner(unittest.TestCase):
             init_mock.return_value = True
             self._testWithInitialized(init_mock)
 
-    def _testNotInitialized(self, init_mock):
-        mock_runner = MagicMock()
-        mock_runner._set_cuda_device = MagicMock()
-        LocalDistributedRunner._try_reserve_and_set_cuda(mock_runner)
-        mock_runner._set_cuda_device.assert_called_with("0")
-        self.assertEquals(len(os.environ["CUDA_VISIBLE_DEVICES"]), 1)
-
-    def testNoVisibleNotInitialized(self):
-        with patch("torch.cuda.is_initialized") as init_mock:
-            init_mock.return_value = False
-            self._testNotInitialized(init_mock)
-
     def test2VisibleNotInitialized(self):
         os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
         with patch("torch.cuda.is_initialized") as init_mock:
             init_mock.return_value = False
-            self._testNotInitialized(init_mock)
+            mock_runner = MagicMock()
+            mock_runner._set_cuda_device = MagicMock()
+            LocalDistributedRunner._try_reserve_and_set_cuda(mock_runner)
+            args, _ = mock_runner._set_cuda_device.call_args
+            self.assertTrue(("1" in args) or "0" in args)
+            self.assertEquals(len(os.environ["CUDA_VISIBLE_DEVICES"]), 1)
 
     def test1VisibleNotInitialized(self):
         os.environ["CUDA_VISIBLE_DEVICES"] = "0"
         with patch("torch.cuda.is_initialized") as init_mock:
             init_mock.return_value = False
-            self._testNotInitialized(init_mock)
+            mock_runner = MagicMock()
+            mock_runner._set_cuda_device = MagicMock()
+            LocalDistributedRunner._try_reserve_and_set_cuda(mock_runner)
+            mock_runner._set_cuda_device.assert_called_with("0")
+            self.assertEquals(len(os.environ["CUDA_VISIBLE_DEVICES"]), 1)
 
     @patch("torch.cuda.set_device")
     def testSetDevice(self, set_mock):

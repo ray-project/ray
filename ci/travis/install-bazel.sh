@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-version="1.1.0"
+version="3.2.0"
 achitecture="${HOSTTYPE}"
 platform="unknown"
 case "${OSTYPE}" in

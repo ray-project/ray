@@ -1,5 +1,4 @@
 import sys
-import time
 
 import ray
 
@@ -22,11 +21,6 @@ def test_gcs_server_restart():
 
     ray.worker._global_node.kill_gcs_server()
     ray.worker._global_node.start_gcs_server()
-
-    # TODO(ffbin): After gcs server restarts, if an RPC request is sent to
-    # gcs server immediately, gcs server cannot receive the request,
-    # but the request will return success. We will fix this in the next pr.
-    time.sleep(1)
 
     result = ray.get(actor1.method.remote(7))
     assert result == 9

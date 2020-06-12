@@ -75,6 +75,11 @@ def get_async(object_id):
             # Result from direct call.
             assert isinstance(result, AsyncGetResponse), result
             if result.plasma_fallback_id is None:
+                # If this future has result set already, we just need to
+                # skip the set result/exception procedure.
+                if user_future.done():
+                    return
+
                 if isinstance(result.result, ray.exceptions.RayTaskError):
                     ray.worker.last_task_error_raise_time = time.time()
                     user_future.set_exception(

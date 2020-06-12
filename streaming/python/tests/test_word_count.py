@@ -56,5 +56,5 @@ def test_simple_word_count():
 
 
 if __name__ == "__main__":
-    # test_word_count()
+    test_word_count()
     test_simple_word_count()

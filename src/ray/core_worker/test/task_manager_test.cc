@@ -54,11 +54,17 @@ class TaskManagerTest : public ::testing::Test {
                  [this](const TaskSpecification &spec, bool delay) {
                    num_retries_++;
                    return Status::OK();
+                 },
+                 [this](const ClientID &node_id) { return all_nodes_alive_; },
+                 [this](const ObjectID &object_id) {
+                   objects_to_recover_.push_back(object_id);
                  }) {}
 
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
   std::shared_ptr<ActorManagerInterface> actor_manager_;
+  bool all_nodes_alive_ = true;
+  std::vector<ObjectID> objects_to_recover_;
   TaskManager manager_;
   int num_retries_ = 0;
 };
@@ -140,6 +146,33 @@ TEST_F(TaskManagerTest, TestTaskFailure) {
   reference_counter_->RemoveLocalReference(return_id, &removed);
   ASSERT_EQ(removed[0], return_id);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+}
+
+TEST_F(TaskManagerTest, TestPlasmaConcurrentFailure) {
+  TaskID caller_id = TaskID::Nil();
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+  manager_.AddPendingTask(caller_id, caller_address, spec, "");
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  auto return_id = spec.ReturnId(0);
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+
+  ASSERT_TRUE(objects_to_recover_.empty());
+  all_nodes_alive_ = false;
+
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  return_object->set_object_id(return_id.Binary());
+  return_object->set_in_plasma(true);
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+
+  std::vector<std::shared_ptr<RayObject>> results;
+  ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
+  ASSERT_EQ(objects_to_recover_.size(), 1);
+  ASSERT_EQ(objects_to_recover_[0], return_id);
 }
 
 TEST_F(TaskManagerTest, TestTaskReconstruction) {

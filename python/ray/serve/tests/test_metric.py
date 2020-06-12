@@ -195,3 +195,8 @@ async def test_system_metric_endpoints(serve_instance):
             print("Metric not correct, retrying...")
     if not success:
         test_metric_endpoint()
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))
