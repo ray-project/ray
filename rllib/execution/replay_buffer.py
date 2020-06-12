@@ -300,14 +300,13 @@ class LocalReplayBuffer(ParallelIteratorWorker):
                 for s in batch.timeslices(self.replay_sequence_length):
                     self.replay_buffers[_ALL_POLICIES].add(s, weight=None)
             else:
-                for policy_id, s in batch.policy_batches.items():
-                    for batch in s.timeslices(self.replay_sequence_length):
-                        if "weights" in batch:
-                            weight = np.mean(batch["weights"])
+                for policy_id, b in batch.policy_batches.items():
+                    for s in b.timeslices(self.replay_sequence_length):
+                        if "weights" in s:
+                            weight = np.mean(s["weights"])
                         else:
                             weight = None
-                        self.replay_buffers[policy_id].add(
-                            batch, weight=weight)
+                        self.replay_buffers[policy_id].add(s, weight=weight)
         self.num_added += batch.count
 
     def replay(self):
