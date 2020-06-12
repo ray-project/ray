@@ -16,14 +16,13 @@ logger = logging.getLogger(__name__)
 
 def make_model_and_dist(policy, obs_space, action_space, config):
     # Get the output distribution class for predicting rewards and next-obs.
-    distr_cls_next_obs = ModelCatalog.get_action_dist(
+    policy.distr_cls_next_obs, num_outputs = ModelCatalog.get_action_dist(
         obs_space, config, dist_type="deterministic")
     if config["predict_reward"]:
-        # TODO
+        # TODO: (sven) implement reward prediction.
         _ = ModelCatalog.get_action_dist(gym.spaces.Box(
             float("-inf"), float("inf"), ()
         ), config, dist_type="")
-    num_outputs = 50
 
     # Build one dynamics model if we are a Worker.
     # If we are the main MAML learner, build n (num_workers) dynamics Models
@@ -37,11 +36,14 @@ def make_model_and_dist(policy, obs_space, action_space, config):
         name="dynamics_model",
     )
 
+    action_dist, num_outputs = ModelCatalog.get_action_dist(
+        obs_space, config, dist_type="deterministic")
     # Create the pi-model and register it with the Policy.
     policy.pi = ModelCatalog.get_model_v2(
         input_space=obs_space,
         output_space=action_space,
         model_config=config["model"],
+        num_outputs,
         framework="torch",
         name="policy_model",
     )

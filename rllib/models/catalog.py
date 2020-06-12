@@ -132,8 +132,11 @@ class ModelCatalog:
                 constructor.
 
         Returns:
-            dist_class (ActionDistribution): Python class of the distribution.
-            dist_dim (int): The size of the input vector to the distribution.
+            Tuple:
+                - dist_class (ActionDistribution): Python class of the
+                    distribution.
+                - dist_dim (int): The size of the input vector to the
+                    distribution.
         """
 
         dist = None
@@ -261,8 +264,8 @@ class ModelCatalog:
     def get_model_v2(input_space,
                      output_space,
                      *,
-                     num_outputs,
                      model_config,
+                     num_outputs=None,
                      framework="tf",
                      name="default_model",
                      model_interface=None,
@@ -271,11 +274,15 @@ class ModelCatalog:
         """Returns a suitable model compatible with given spaces and output.
 
         Args:
-            input_space (Space): Observation space of the target gym env. This
+            input_space (Space): Input space of the model. This
                 may have an `original_space` attribute that specifies how to
                 unflatten the tensor into a ragged tensor.
-            output_space (Space): Action space of the target gym env.
-            num_outputs (int): The size of the output vector of the model.
+            output_space (Space): Output space of the model.
+            model_config (dict): Config dict of the model to build. Usually
+                the content under the "model" key in a Policy/Trainer config.
+            num_outputs (Optional[int]): The size of the output vector of the
+                model. If None, try to infer it automatically from
+                output_space.
             framework (str): One of "tf", "tfe", or "torch".
             name (str): Name (scope) for the model.
             model_interface (cls): Interface required for the model
@@ -293,6 +300,9 @@ class ModelCatalog:
         if "action_space" in model_kwargs:
             deprecation_warning("action_space", "output_space", error=False)
             output_space = model_kwargs.pop("action_space")
+        # Auto-infer num_outputs from `output_space`.
+        if not num_outputs:
+            
 
         if model_config.get("custom_model"):
 
@@ -553,6 +563,22 @@ class ModelCatalog:
         # Default Conv2D net.
         else:
             return VisionNet
+
+    @staticmethod
+    def _get_num_outputs_from_space(space):
+        """
+        Returns a proper `num_outputs` for a given Space.
+        E.g. 2 for Discrete(2).
+
+        Args:
+            space (Space): The Space to calculate the number of outputs for.
+
+        Returns:
+            int: Default `num_outputs` for the given Space.
+        """
+        if isinstance(space, gym.spaces.Discrete):
+            return space.n
+        
 
     # -------------------
     # DEPRECATED METHODS.
