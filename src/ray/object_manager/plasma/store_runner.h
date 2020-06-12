@@ -26,6 +26,11 @@ class PlasmaStoreRunner {
   std::unique_ptr<PlasmaStore> store_;
 };
 
+// We use a global variable for Plasma Store instance here because:
+// 1) There is only one plasma store thread in Raylet or the Plasma Store process.
+// 2) The thirdparty dlmalloc library cannot be contained in a local variable,
+//    so even we use a local variable for plasma store, it does not provide
+//    better isolation.
 extern std::unique_ptr<PlasmaStoreRunner> plasma_store_runner;
 
 }  // namespace plasma
