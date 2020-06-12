@@ -15,7 +15,7 @@ torch, nn = try_import_torch()
 tree = try_import_tree()
 
 
-class TorchDistributionWrapper(ActionDistribution):
+class TorchDistribution(ActionDistribution):
     """Wrapper class for torch.distributions."""
 
     @override(ActionDistribution)
@@ -49,7 +49,7 @@ class TorchDistributionWrapper(ActionDistribution):
         return self.logp(self.last_sample)
 
 
-class TorchCategorical(TorchDistributionWrapper):
+class TorchCategorical(TorchDistribution):
     """Wrapper class for PyTorch Categorical distribution."""
 
     @override(ActionDistribution)
@@ -73,10 +73,10 @@ class TorchCategorical(TorchDistributionWrapper):
         return action_space.n
 
 
-class TorchMultiCategorical(TorchDistributionWrapper):
+class TorchMultiCategorical(TorchDistribution):
     """MultiCategorical distribution for MultiDiscrete action spaces."""
 
-    @override(TorchDistributionWrapper)
+    @override(TorchDistribution)
     def __init__(self, inputs, model, input_lens):
         super().__init__(inputs, model)
         # If input_lens is np.ndarray or list, force-make it a tuple.
@@ -86,7 +86,7 @@ class TorchMultiCategorical(TorchDistributionWrapper):
             for input_ in inputs_split
         ]
 
-    @override(TorchDistributionWrapper)
+    @override(TorchDistribution)
     def sample(self):
         arr = [cat.sample() for cat in self.cats]
         self.last_sample = torch.stack(arr, dim=1)
@@ -98,7 +98,7 @@ class TorchMultiCategorical(TorchDistributionWrapper):
         self.last_sample = torch.stack(arr, dim=1)
         return self.last_sample
 
-    @override(TorchDistributionWrapper)
+    @override(TorchDistribution)
     def logp(self, actions):
         # # If tensor is provided, unstack it into list.
         if isinstance(actions, torch.Tensor):
@@ -111,7 +111,7 @@ class TorchMultiCategorical(TorchDistributionWrapper):
     def multi_entropy(self):
         return torch.stack([cat.entropy() for cat in self.cats], dim=1)
 
-    @override(TorchDistributionWrapper)
+    @override(TorchDistribution)
     def entropy(self):
         return torch.sum(self.multi_entropy(), dim=1)
 
@@ -125,7 +125,7 @@ class TorchMultiCategorical(TorchDistributionWrapper):
             dim=1,
         )
 
-    @override(TorchDistributionWrapper)
+    @override(TorchDistribution)
     def kl(self, other):
         return torch.sum(self.multi_kl(other), dim=1)
 
@@ -135,7 +135,7 @@ class TorchMultiCategorical(TorchDistributionWrapper):
         return np.sum(action_space.nvec)
 
 
-class TorchDiagGaussian(TorchDistributionWrapper):
+class TorchDiagGaussian(TorchDistribution):
     """Wrapper class for PyTorch Normal distribution."""
 
     @override(ActionDistribution)
@@ -149,15 +149,15 @@ class TorchDiagGaussian(TorchDistributionWrapper):
         self.last_sample = self.dist.mean
         return self.last_sample
 
-    @override(TorchDistributionWrapper)
+    @override(TorchDistribution)
     def logp(self, actions):
         return super().logp(actions).sum(-1)
 
-    @override(TorchDistributionWrapper)
+    @override(TorchDistribution)
     def entropy(self):
         return super().entropy().sum(-1)
 
-    @override(TorchDistributionWrapper)
+    @override(TorchDistribution)
     def kl(self, other):
         return super().kl(other).sum(-1)
 
@@ -167,7 +167,7 @@ class TorchDiagGaussian(TorchDistributionWrapper):
         return np.prod(action_space.shape) * 2
 
 
-class TorchSquashedGaussian(TorchDistributionWrapper):
+class TorchSquashedGaussian(TorchDistribution):
     """A tanh-squashed Gaussian distribution defined by: mean, std, low, high.
 
     The distribution will never return low or high exactly, but
@@ -199,7 +199,7 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
         self.last_sample = self._squash(self.dist.mean)
         return self.last_sample
 
-    @override(TorchDistributionWrapper)
+    @override(TorchDistribution)
     def sample(self):
         # Use the reparameterization version of `dist.sample` to allow for
         # the results to be backprop'able e.g. in a loss term.
@@ -243,7 +243,7 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
         return np.prod(action_space.shape) * 2
 
 
-class TorchBeta(TorchDistributionWrapper):
+class TorchBeta(TorchDistribution):
     """
     A Beta distribution is defined on the interval [0, 1] and parameterized by
     shape parameters alpha and beta (also called concentration parameters).
@@ -271,7 +271,7 @@ class TorchBeta(TorchDistributionWrapper):
         self.last_sample = self._squash(self.dist.mean)
         return self.last_sample
 
-    @override(TorchDistributionWrapper)
+    @override(TorchDistribution)
     def sample(self):
         # Use the reparameterization version of `dist.sample` to allow for
         # the results to be backprop'able e.g. in a loss term.
@@ -296,7 +296,7 @@ class TorchBeta(TorchDistributionWrapper):
         return np.prod(action_space.shape) * 2
 
 
-class TorchDeterministic(TorchDistributionWrapper):
+class TorchDeterministic(TorchDistribution):
     """Action distribution that returns the input values directly.
 
     This is similar to DiagGaussian with standard deviation zero (thus only
@@ -307,11 +307,11 @@ class TorchDeterministic(TorchDistributionWrapper):
     def deterministic_sample(self):
         return self.inputs
 
-    @override(TorchDistributionWrapper)
+    @override(TorchDistribution)
     def sampled_action_logp(self):
         return 0.0
 
-    @override(TorchDistributionWrapper)
+    @override(TorchDistribution)
     def sample(self):
         return self.deterministic_sample()
 
@@ -321,7 +321,7 @@ class TorchDeterministic(TorchDistributionWrapper):
         return np.prod(action_space.shape)
 
 
-class TorchMultiActionDistribution(TorchDistributionWrapper):
+class TorchMultiActionDistribution(TorchDistribution):
     """Action distribution that operates on multiple, possibly nested actions.
     """
 
@@ -412,7 +412,7 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
         return tree.map_structure(lambda s: s.deterministic_sample(),
                                   child_distributions)
 
-    @override(TorchDistributionWrapper)
+    @override(TorchDistribution)
     def sampled_action_logp(self):
         p = self.flat_child_distributions[0].sampled_action_logp()
         for c in self.flat_child_distributions[1:]:

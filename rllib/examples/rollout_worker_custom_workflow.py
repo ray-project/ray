@@ -63,7 +63,7 @@ class CustomPolicy(Policy):
 
 
 def training_workflow(config, reporter):
-    # Setup policy and policy evaluation actors
+    # Setup policy and policy evaluation actors.
     env = gym.make("CartPole-v0")
     policy = CustomPolicy(env.observation_space, env.action_space, {})
     workers = [
@@ -73,28 +73,29 @@ def training_workflow(config, reporter):
     ]
 
     for _ in range(config["num_iters"]):
-        # Broadcast weights to the policy evaluation workers
+        # Broadcast weights to the policy evaluation workers.
         weights = ray.put({"default_policy": policy.get_weights()})
         for w in workers:
             w.set_weights.remote(weights)
 
-        # Gather a batch of samples
+        # Gather a batch of samples.
         T1 = SampleBatch.concat_samples(
             ray.get([w.sample.remote() for w in workers]))
 
-        # Update the remote policy replicas and gather another batch of samples
+        # Update the remote policy replicas and gather another batch of
+        # samples.
         new_value = policy.w * 2.0
         for w in workers:
             w.for_policy.remote(lambda p: p.update_some_value(new_value))
 
-        # Gather another batch of samples
+        # Gather another batch of samples.
         T2 = SampleBatch.concat_samples(
             ray.get([w.sample.remote() for w in workers]))
 
-        # Improve the policy using the T1 batch
+        # Improve the policy using the T1 batch.
         policy.learn_on_batch(T1)
 
-        # Do some arbitrary updates based on the T2 batch
+        # Do some arbitrary updates based on the T2 batch.
         policy.update_some_value(sum(T2["rewards"]))
 
         reporter(**collect_metrics(remote_workers=workers))

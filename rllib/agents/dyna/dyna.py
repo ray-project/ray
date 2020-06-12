@@ -26,7 +26,7 @@ DEFAULT_CONFIG = with_common_config({
     # model. The validation fraction is 1.0 - `training_set_ratio`. Training of
     # a dynamics model over n some epochs (1 epoch = entire training set) stops
     # when the validation set's performance starts to decrease.
-    "training_set_ratio": 0.8,
+    "train_set_ratio": 0.8,
 
     # The exploration strategy to apply on top of the (acting) policy.
     # TODO: (sven) Use random for testing purposes for now.
@@ -69,9 +69,9 @@ DEFAULT_CONFIG = with_common_config({
 
 
 def validate_config(config):
-    if config["training_set_ratio"] <= 0.0 or \
-            config["training_set_ratio"] >= 1.0:
-        raise ValueError("`training_set_ratio` must be within (0.0, 1.0)!")
+    if config["train_set_ratio"] <= 0.0 or \
+            config["train_set_ratio"] >= 1.0:
+        raise ValueError("`train_set_ratio` must be within (0.0, 1.0)!")
     if config["predict_action"] or config["predict_reward"]:
         raise ValueError(
             "`predict_action`=True or `predict_reward`=True not supported "
