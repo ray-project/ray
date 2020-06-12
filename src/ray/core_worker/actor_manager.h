@@ -162,8 +162,7 @@ class ActorManager {
   /// This means that these actor information hasn't been persisted to GCS.
   /// It happens only when the actor is not created yet because local dependencies
   /// for actor creation task hasn't been resolved.
-  absl::flat_hash_set<ActorID> actors_pending_location_resolution_
-      GUARDED_BY(mutex_);
+  absl::flat_hash_set<ActorID> actors_pending_location_resolution_ GUARDED_BY(mutex_);
 
   mutable absl::Mutex mutex_;
 };

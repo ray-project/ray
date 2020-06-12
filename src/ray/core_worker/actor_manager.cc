@@ -307,7 +307,7 @@ void ActorManager::ResolveActorsLocationNotPersistedToGCS() {
                       ActorHandle *actor_handle = nullptr;
                       RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
                       if (!actor_handle->IsPersistedToGCS()) {
-                        direct_actor_submitter_->DisconnectActor(actor_id, /*dead*/true);
+                        direct_actor_submitter_->DisconnectActor(actor_id, /*dead*/ true);
                         absl::MutexLock lock(&mutex_);
                         actors_pending_location_resolution_.erase(actor_id);
                       }
