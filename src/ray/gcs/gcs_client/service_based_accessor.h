@@ -190,7 +190,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   Status SetInternalConfig(std::unordered_map<std::string, std::string> config) override;
 
-  Status AsyncGetInternalConfig(const MapCallback<std::string, std::string> &callback) override;
+  Status AsyncGetInternalConfig(
+      const MapCallback<std::string, std::string> &callback) override;
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when GCS
