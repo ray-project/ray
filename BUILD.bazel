@@ -381,6 +381,7 @@ cc_library(
         "src/ray/object_manager/plasma/plasma_allocator.cc",
         "src/ray/object_manager/plasma/quota_aware_policy.cc",
         "src/ray/object_manager/plasma/store.cc",
+        "src/ray/object_manager/plasma/store_runner.cc",
     ],
     hdrs = [
         "src/ray/object_manager/plasma/events.h",
@@ -389,6 +390,7 @@ cc_library(
         "src/ray/object_manager/plasma/plasma_allocator.h",
         "src/ray/object_manager/plasma/quota_aware_policy.h",
         "src/ray/object_manager/plasma/store.h",
+        "src/ray/object_manager/plasma/store_runner.h",
         "src/ray/thirdparty/dlmalloc.c",
     ],
     copts = PLASMA_COPTS,
