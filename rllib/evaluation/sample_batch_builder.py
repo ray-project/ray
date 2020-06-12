@@ -26,11 +26,12 @@ class SampleBatchBuilder:
     However, it is useful to add data one row (dict) at a time.
     """
 
+    _next_unroll_id = 0  # disambiguates unrolls within a single episode
+
     @PublicAPI
     def __init__(self):
         self.buffers = collections.defaultdict(list)
         self.count = 0
-        self.unroll_id = 0  # disambiguates unrolls within a single episode
 
     @PublicAPI
     def add_values(self, **values):
@@ -57,8 +58,8 @@ class SampleBatchBuilder:
              for k, v in self.buffers.items()})
         if SampleBatch.UNROLL_ID not in batch.data:
             batch.data[SampleBatch.UNROLL_ID] = np.repeat(
-                self.unroll_id, batch.count)
-            self.unroll_id += 1
+                SampleBatchBuilder._next_unroll_id, batch.count)
+            SampleBatchBuilder._next_unroll_id += 1
         self.buffers.clear()
         self.count = 0
         return batch
