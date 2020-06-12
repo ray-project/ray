@@ -593,7 +593,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // /// \param[in] no_restart If set to true, the killed actor will not be
   // /// restarted anymore.
   // /// \param[out] Status
-  // Status KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
+  Status KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
 
   /// Stops the task associated with the given Object ID.
   ///

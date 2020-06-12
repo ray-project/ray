@@ -1244,14 +1244,13 @@ Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill) {
   return Status::OK();
 }
 
-// SANG-TODO delete this.
-// Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_restart)
-// {
-//   ActorHandle *actor_handle = nullptr;
-//   RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
-//   direct_actor_submitter_->KillActor(actor_id, force_kill, no_restart);
-//   return Status::OK();
-// }
+Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) {
+  return actor_manager_->KillActor(actor_id, force_kill, no_restart);
+  // ActorHandle *actor_handle = nullptr;
+  // RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
+  // direct_actor_submitter_->KillActor(actor_id, force_kill, no_restart);
+  // return Status::OK();
+}
 
 void CoreWorker::RemoveActorHandleReference(const ActorID &actor_id) {
   ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
