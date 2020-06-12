@@ -250,7 +250,6 @@ class ClientCallManager {
         if (ok && !main_service_.stopped() && !shutdown_) {
           // Post the callback to the main event loop.
           main_service_.post([tag]() {
-            RAY_LOG(ERROR) << "In Main service post: ";
             tag->GetCall()->OnReplyReceived();
             // The call is finished, and we can delete this tag now.
             delete tag;

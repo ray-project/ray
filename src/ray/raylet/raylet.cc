@@ -59,7 +59,7 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                int redis_port, const std::string &redis_password,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
-               std::shared_ptr<gcs::GcsClient> gcs_client)
+               std::shared_ptr<gcs::GcsClient> gcs_client, bool set_internal_config)
     : self_node_id_(ClientID::FromRandom()),
       gcs_client_(gcs_client),
       object_directory_(std::make_shared<ObjectDirectory>(main_service, gcs_client_)),
@@ -78,7 +78,10 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
   self_node_info_.set_object_manager_port(object_manager_.GetServerPort());
   self_node_info_.set_node_manager_port(node_manager_.GetServerPort());
   self_node_info_.set_node_manager_hostname(boost::asio::ip::host_name());
-  RAY_CHECK_OK(gcs_client_->Nodes().SetInternalConfig(node_manager_config.raylet_config));
+  if (set_internal_config) {
+    RAY_CHECK_OK(
+        gcs_client_->Nodes().SetInternalConfig(node_manager_config.raylet_config));
+  }
 }
 
 Raylet::~Raylet() {}
