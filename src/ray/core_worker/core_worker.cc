@@ -1809,7 +1809,7 @@ void CoreWorker::HandleWaitForActorOutOfScope(
   if (it == actor_handles_.end()) {
     respond(actor_id);
   } else {
-    actor_out_of_scope_callbacks_.emplace(actor_id, std::move(respond));
+    RAY_CHECK(actor_out_of_scope_callbacks_.emplace(actor_id, std::move(respond)).second);
   }
 }
 
@@ -2034,7 +2034,7 @@ void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &re
 void CoreWorker::SetActorId(const ActorID &actor_id) {
   absl::MutexLock lock(&mutex_);
   if (!options_.is_local_mode) {
-//    RAY_CHECK(actor_id_.IsNil());
+    RAY_CHECK(actor_id_.IsNil());
   }
   actor_id_ = actor_id;
 }
