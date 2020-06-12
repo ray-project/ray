@@ -103,8 +103,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   explicit GcsPlacementGroupManager(
       boost::asio::io_context &io_context,
       std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
-      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub);
+      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
   ~GcsPlacementGroupManager() = default;
 
   /// Register placement_group asynchronously.
@@ -171,9 +170,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
       gcs_placement_group_scheduler_;
   /// Used to update placement group information upon creation, deletion, etc.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// A publisher for publishing gcs messages.
-  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
-
   /// If a placement group is creating
   bool is_creating_ = false;
 

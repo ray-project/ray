@@ -54,12 +54,6 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
     const auto &spec = t.GetTaskSpecification();
     const auto &resource_demand = spec.GetRequiredPlacementResources();
     const TaskID &task_id = spec.TaskId();
-    // If the task is actor creation task and have bundle which is released before,
-    // return local_client_id directly.
-    if (spec.IsActorCreationTask() && spec.BundleId() != BundleID::Nil()) {
-      decision[task_id] = local_client_id;
-      continue;
-    }
 
     // TODO(atumanov): try to place tasks locally first.
     // Construct a set of viable node candidates and randomly pick between them.

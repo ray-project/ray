@@ -141,8 +141,6 @@ message ActorTableData {
   double timestamp = 13;
   // The task specification of this actor's creation task.
   TaskSpec task_spec = 14;
-  // Bundle ID to actor. Only populated if the actor in a placement group.
-  bytes bundle_id = 15;
 }
 
 message PlacementGroupTableData {

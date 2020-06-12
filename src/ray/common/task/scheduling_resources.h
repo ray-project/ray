@@ -529,9 +529,14 @@ class SchedulingResources {
 
   /// \brief Update total, available and load resources with the ResourceIds.
   /// Create if not exists.
-
+  /// \param resource_name: Name of the resource to be modified
+  /// \param resource_set: New resource_set of the resource.
   void UpdateBundleResource(const std::string &bundle_id,const ResourceSet &resource_set);
-
+  
+  /// \brief delete total, available and load resources with the ResourceIds.
+  /// Create if not exists.
+  /// \param resource_name: Name of the resource to be deleted
+  /// \param resource_set:  resource_set of the resource.
   void ReturnBundleResource(const std::string &bundle_id, const ResourceSet &resource_set);
 
   /// \brief Delete resource from total, available and load resources.

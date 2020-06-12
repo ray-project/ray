@@ -68,7 +68,6 @@ class GcsActor {
 
     actor_table_data_.mutable_address()->set_raylet_id(ClientID::Nil().Binary());
     actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
-    actor_table_data_.set_bundle_id(actor_creation_task_spec.bundle_id());
   }
 
   /// Get the node id on which this actor is created.
@@ -105,9 +104,6 @@ class GcsActor {
   const rpc::ActorTableData &GetActorTableData() const;
   /// Get the mutable ActorTableData of this actor.
   rpc::ActorTableData *GetMutableActorTableData();
-  /// IF the actor in a placement group, return the BundleID
-  /// ElSE return Nil()
-  BundleID GetBundleID() const;
 
  private:
   /// The actor meta data which contains the task specification as well as the state of

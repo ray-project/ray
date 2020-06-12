@@ -23,14 +23,12 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     boost::asio::io_context &io_context,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     const gcs::GcsNodeManager &gcs_node_manager,
-    std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_failure_handler,
     std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_success_handler,
     LeaseResourceClientFactoryFn lease_client_factory)
     : io_context_(io_context),
       gcs_table_storage_(gcs_table_storage),
       gcs_node_manager_(gcs_node_manager),
-      gcs_pub_sub_(std::move(gcs_pub_sub)),
       schedule_failure_handler_(std::move(schedule_failure_handler)),
       schedule_success_handler_(std::move(schedule_success_handler)),
       lease_client_factory_(std::move(lease_client_factory)) {
@@ -47,7 +45,6 @@ std::unordered_map<BundleID, ClientID> GcsPackStrategy::Schedule(std::vector<ray
         ClientID::FromBinary(alive_nodes.begin()->second->node_id());
   }
   return schedule_map;
-
 }
 
 std::unordered_map<BundleID, ClientID> GcsSpreadStrategy::Schedule(std::vector<ray::BundleSpecification>&bundles, const GcsNodeManager &node_manager){
@@ -68,7 +65,6 @@ std::unordered_map<BundleID, ClientID> GcsSpreadStrategy::Schedule(std::vector<r
     return schedule_map;
 }
 
-// map<BundleID,ClientID> Scheduler
 void GcsPlacementGroupScheduler::Schedule(
     std::shared_ptr<GcsPlacementGroup> placement_group) {
   auto bundles = placement_group->GetBundles();

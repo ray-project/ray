@@ -218,11 +218,6 @@ ActorID TaskSpecification::ActorId() const {
   return ActorID::FromBinary(message_->actor_task_spec().actor_id());
 }
 
-BundleID TaskSpecification::BundleId() const {
-  RAY_CHECK(IsActorCreationTask());
-  return BundleID::FromBinary(message_->actor_creation_task_spec().bundle_id());
-}
-
 uint64_t TaskSpecification::ActorCounter() const {
   RAY_CHECK(IsActorTask());
   return message_->actor_task_spec().actor_counter();

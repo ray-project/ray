@@ -59,11 +59,9 @@ const rpc::PlacementGroupTableData &GcsPlacementGroup::GetPlacementGroupTableDat
 GcsPlacementGroupManager::GcsPlacementGroupManager(
     boost::asio::io_context &io_context,
     std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub)
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
     : gcs_placement_group_scheduler_(std::move(scheduler)),
       gcs_table_storage_(gcs_table_storage),
-      gcs_pub_sub_(std::move(gcs_pub_sub)),
       reschedule_timer_(io_context) {}
 
 Status GcsPlacementGroupManager::RegisterPlacementGroup(
@@ -73,26 +71,6 @@ Status GcsPlacementGroupManager::RegisterPlacementGroup(
   const auto &placement_group_spec = request.placement_group_spec();
   auto placement_group_id =
       PlacementGroupID::FromBinary(placement_group_spec.placement_group_id());
-
-  auto iter = registered_placement_groups_.find(placement_group_id);
-  if (iter != registered_placement_groups_.end() &&
-      iter->second->GetState() == rpc::PlacementGroupTableData::ALIVE) {
-    // When the network fails, Driver/Worker is not sure whether GcsServer has received
-    // the request of placement_group creation task, so Driver/Worker will try again and
-    // again until receiving the reply from GcsServer. If the placement_group has been
-    // created successfully then just reply to the caller.
-    callback(iter->second);
-    return Status::OK();
-  }
-
-  auto pending_register_iter =
-      placement_group_to_register_callbacks_.find(placement_group_id);
-  if (pending_register_iter != placement_group_to_register_callbacks_.end()) {
-    // It is a duplicate message, just mark the callback as pending and invoke it after
-    // the placement_group has been successfully created.
-    pending_register_iter->second.emplace_back(std::move(callback));
-    return Status::OK();
-  }
 
   auto placement_group = std::make_shared<GcsPlacementGroup>(request);
 

@@ -160,7 +160,6 @@ void GcsServer::InitGcsActorManager() {
       [this](std::shared_ptr<GcsActor> actor) {
         gcs_actor_manager_->OnActorCreationSuccess(std::move(actor));
       },
-      *gcs_placement_group_manager_,
       /*lease_client_factory=*/
       [this](const rpc::Address &address) {
         auto node_manager_worker_client = rpc::NodeManagerWorkerClient::make(
@@ -205,7 +204,7 @@ void GcsServer::InitGcsActorManager() {
 void GcsServer::InitGcsPlacementGroupManager() {
   RAY_CHECK(gcs_table_storage_ != nullptr && gcs_node_manager_ != nullptr);
   auto scheduler = std::make_shared<GcsPlacementGroupScheduler>(
-      main_service_, gcs_table_storage_, *gcs_node_manager_, gcs_pub_sub_,
+      main_service_, gcs_table_storage_, *gcs_node_manager_,
       /*schedule_failure_handler=*/
       [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
         gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
@@ -225,7 +224,7 @@ void GcsServer::InitGcsPlacementGroupManager() {
       });
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
-      main_service_, scheduler, gcs_table_storage_, gcs_pub_sub_);
+      main_service_, scheduler, gcs_table_storage_);
 }
 
 std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {

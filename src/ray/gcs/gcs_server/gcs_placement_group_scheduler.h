@@ -81,7 +81,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   explicit GcsPlacementGroupScheduler(
       boost::asio::io_context &io_context,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      const GcsNodeManager &gcs_node_manager, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+      const GcsNodeManager &gcs_node_manager, 
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_failure_handler,
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_success_handler,
       LeaseResourceClientFactoryFn lease_client_factory = nullptr);
@@ -130,16 +130,10 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
-  /// A publisher for publishing gcs messages.
-  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// The handler to handle the scheduling failures.
   std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_failure_handler_;
   /// The handler to handle the successful scheduling.
   std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_success_handler_;
-  /// Fplacement_groupy for producing new clients to request leases from remote nodes.
-  LeaseResourceClientFactoryFn lease_client_fplacement_groupy_;
-  /// Fplacement_groupy for producing new core worker clients.
-  rpc::ClientFactoryFn client_fplacement_groupy_;
   /// The cached node clients which are used to communicate with raylet to lease workers.
   absl::flat_hash_map<ClientID, std::shared_ptr<ResourceLeaseInterface>>
       remote_lease_clients_;

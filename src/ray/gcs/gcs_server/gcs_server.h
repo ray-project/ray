@@ -125,8 +125,6 @@ class GcsServer {
   rpc::ClientCallManager client_call_manager_;
   /// The gcs node manager.
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
-  // /// The gcs placement group manager.
-  // std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
   /// The gcs redis failure detector.
   std::shared_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
   /// The gcs actor manager

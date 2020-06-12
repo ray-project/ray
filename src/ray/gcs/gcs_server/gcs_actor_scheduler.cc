@@ -27,7 +27,6 @@ GcsActorScheduler::GcsActorScheduler(
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
     std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
-    const gcs::GcsPlacementGroupManager &placement_group_manager,
     LeaseClientFactoryFn lease_client_factory, rpc::ClientFactoryFn client_factory)
     : io_context_(io_context),
       gcs_actor_table_(gcs_actor_table),
@@ -35,7 +34,6 @@ GcsActorScheduler::GcsActorScheduler(
       gcs_pub_sub_(std::move(gcs_pub_sub)),
       schedule_failure_handler_(std::move(schedule_failure_handler)),
       schedule_success_handler_(std::move(schedule_success_handler)),
-      gcs_placement_group_manager_(placement_group_manager),
       lease_client_factory_(std::move(lease_client_factory)),
       client_factory_(std::move(client_factory)) {
   RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
@@ -58,19 +56,6 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
     // The actor is already tied to a node which is unavailable now, so we should reset
     // the address.
     actor->UpdateAddress(rpc::Address());
-  }
-
-  if (actor->GetBundleID() != BundleID::Nil()) {
-    auto node_id =
-        gcs_placement_group_manager_.GetBundleScheduleNode(actor->GetBundleID());
-    if (!node_id.IsNil()) {
-      if (auto node = gcs_node_manager_.GetNode(node_id)) {
-        RAY_CHECK(
-            node_to_actors_when_leasing_[node_id].emplace(actor->GetActorID()).second);
-        LeaseWorkerFromNode(actor, node);
-        return;
-      }
-    }
   }
 
   // Select a node to lease worker for the actor.
