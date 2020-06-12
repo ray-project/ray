@@ -182,6 +182,12 @@ class Node:
             redis_client.set("session_name", self.session_name)
             redis_client.set("session_dir", self._session_dir)
             redis_client.set("temp_dir", self._temp_dir)
+        else:
+            if (self._config != "{}"):
+                logger.error(
+                    "Internal Config paramaters can only be set on the head node."
+                )
+                self._config == dict()
 
         if not connect_only:
             self.start_ray_processes()
