@@ -87,28 +87,28 @@ public class FailureTest extends BaseTest {
   @Test
   public void testNormalTaskFailure() {
     TestUtils.skipTestUnderSingleProcess();
-    assertTaskFailedWithRayTaskException(Ray.call(FailureTest::badFunc));
+    assertTaskFailedWithRayTaskException(Ray.task(FailureTest::badFunc).remote());
   }
 
   @Test
   public void testActorCreationFailure() {
     TestUtils.skipTestUnderSingleProcess();
-    ActorHandle<BadActor> actor = Ray.createActor(BadActor::new, true);
-    assertTaskFailedWithRayTaskException(actor.call(BadActor::badMethod));
+    ActorHandle<BadActor> actor = Ray.actor(BadActor::new, true).remote();
+    assertTaskFailedWithRayTaskException(actor.task(BadActor::badMethod).remote());
   }
 
   @Test
   public void testActorTaskFailure() {
     TestUtils.skipTestUnderSingleProcess();
-    ActorHandle<BadActor> actor = Ray.createActor(BadActor::new, false);
-    assertTaskFailedWithRayTaskException(actor.call(BadActor::badMethod));
+    ActorHandle<BadActor> actor = Ray.actor(BadActor::new, false).remote();
+    assertTaskFailedWithRayTaskException(actor.task(BadActor::badMethod).remote());
   }
 
   @Test
   public void testWorkerProcessDying() {
     TestUtils.skipTestUnderSingleProcess();
     try {
-      Ray.call(FailureTest::badFunc2).get();
+      Ray.task(FailureTest::badFunc2).remote().get();
       Assert.fail("This line shouldn't be reached.");
     } catch (RayWorkerException e) {
       // When the worker process dies while executing a task, we should receive an
@@ -119,16 +119,16 @@ public class FailureTest extends BaseTest {
   @Test
   public void testActorProcessDying() {
     TestUtils.skipTestUnderSingleProcess();
-    ActorHandle<BadActor> actor = Ray.createActor(BadActor::new, false);
+    ActorHandle<BadActor> actor = Ray.actor(BadActor::new, false).remote();
     try {
-      actor.call(BadActor::badMethod2).get();
+      actor.task(BadActor::badMethod2).remote().get();
       Assert.fail("This line shouldn't be reached.");
     } catch (RayActorException e) {
       // When the actor process dies while executing a task, we should receive an
       // RayActorException.
     }
     try {
-      actor.call(BadActor::badMethod).get();
+      actor.task(BadActor::badMethod).remote().get();
       Assert.fail("This line shouldn't be reached.");
     } catch (RayActorException e) {
       // When a actor task is submitted to a dead actor, we should also receive an
@@ -143,8 +143,8 @@ public class FailureTest extends BaseTest {
         FailureTest::badFunc2);
     TestUtils.warmUpCluster();
     for (RayFunc0<Integer> badFunc : badFunctions) {
-      ObjectRef<Integer> obj1 = Ray.call(badFunc);
-      ObjectRef<Integer> obj2 = Ray.call(FailureTest::slowFunc);
+      ObjectRef<Integer> obj1 = Ray.task(badFunc).remote();
+      ObjectRef<Integer> obj2 = Ray.task(FailureTest::slowFunc).remote();
       Instant start = Instant.now();
       try {
         Ray.get(Arrays.asList(obj1, obj2));

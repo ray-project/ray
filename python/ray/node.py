@@ -107,7 +107,11 @@ class Node:
         self._localhost = socket.gethostbyname("localhost")
         self._ray_params = ray_params
         self._redis_address = ray_params.redis_address
-        self._config = ray_params._internal_config
+        self._config = ray_params._internal_config or {}
+
+        # Enable Plasma Store as a thread by default.
+        if "plasma_store_as_thread" not in self._config:
+            self._config["plasma_store_as_thread"] = True
 
         if head:
             redis_client = None
@@ -571,6 +575,7 @@ class Node:
             stderr_file=stderr_file,
             plasma_directory=self._ray_params.plasma_directory,
             huge_pages=self._ray_params.huge_pages,
+            keep_idle=bool(self._config.get("plasma_store_as_thread")),
             fate_share=self.kernel_fate_share)
         assert (
             ray_constants.PROCESS_TYPE_PLASMA_STORE not in self.all_processes)
@@ -627,6 +632,8 @@ class Node:
             include_java=self._ray_params.include_java,
             java_worker_options=self._ray_params.java_worker_options,
             load_code_from_local=self._ray_params.load_code_from_local,
+            plasma_directory=self._ray_params.plasma_directory,
+            huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=self.socket)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes

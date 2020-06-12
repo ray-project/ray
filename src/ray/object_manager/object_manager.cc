@@ -14,6 +14,8 @@
 
 #include "ray/object_manager/object_manager.h"
 
+#include <chrono>
+
 #include "ray/common/common_protocol.h"
 #include "ray/stats/stats.h"
 #include "ray/util/util.h"
@@ -24,12 +26,34 @@ namespace object_manager_protocol = ray::object_manager::protocol;
 
 namespace ray {
 
+ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config) {
+  if (config.object_store_memory > 0) {
+    plasma_store_.reset(new plasma::PlasmaStoreRunner(
+        config.store_socket_name, config.object_store_memory, config.huge_pages,
+        config.plasma_directory, ""));
+    // Initialize object store.
+    store_thread_ = std::thread(&plasma::PlasmaStoreRunner::Start, plasma_store_.get());
+    // Sleep for sometime until the store is working. This can suppress some
+    // connection warnings.
+    std::this_thread::sleep_for(std::chrono::microseconds(500));
+  }
+}
+
+ObjectStoreRunner::~ObjectStoreRunner() {
+  if (plasma_store_ != nullptr) {
+    plasma_store_->Stop();
+    store_thread_.join();
+    plasma_store_.reset();
+  }
+}
+
 ObjectManager::ObjectManager(asio::io_service &main_service, const ClientID &self_node_id,
                              const ObjectManagerConfig &config,
                              std::shared_ptr<ObjectDirectoryInterface> object_directory)
     : self_node_id_(self_node_id),
       config_(config),
       object_directory_(std::move(object_directory)),
+      object_store_internal_(config),
       store_notification_(main_service, config_.store_socket_name),
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       rpc_work_(rpc_service_),
