@@ -299,7 +299,7 @@ class NestedSpacesTest(unittest.TestCase):
         ModelCatalog.register_custom_model("invalid", InvalidModel)
         self.assertRaisesRegexp(
             ValueError,
-            "optimizer got an empty parameter list",
+            "Subclasses of TorchModelV2 must also inherit from nn.Module",
             lambda: PGTrainer(
                 env="CartPole-v0",
                 config={

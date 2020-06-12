@@ -6,7 +6,7 @@ _, nn = try_import_torch()
 
 
 @PublicAPI
-class TorchModelV2(ModelV2, nn.Module):
+class TorchModelV2(ModelV2):
     """Torch version of ModelV2.
 
     Note that this class by itself is not a valid model unless you
@@ -27,6 +27,11 @@ class TorchModelV2(ModelV2, nn.Module):
                 self._value_branch = ...
         """
 
+        if not isinstance(self, nn.Module):
+            raise ValueError(
+                "Subclasses of TorchModelV2 must also inherit from "
+                "nn.Module, e.g., MyModel(TorchModelV2, nn.Module)")
+
         ModelV2.__init__(
             self,
             obs_space,
@@ -35,7 +40,6 @@ class TorchModelV2(ModelV2, nn.Module):
             model_config,
             name,
             framework="torch")
-        nn.Module.__init__(self)
 
     @override(ModelV2)
     def variables(self, as_dict=False):
