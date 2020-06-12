@@ -108,7 +108,6 @@ int main(int argc, char *argv[]) {
   boost::asio::io_service::work main_work(main_service);
 
   // Initialize gcs client
-  // Must be before config_list...
   ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
 
@@ -119,6 +118,7 @@ int main(int argc, char *argv[]) {
   }
   RAY_CHECK_OK(gcs_client->Connect(main_service));
 
+  // Keep server reference outside of the callback
   std::unique_ptr<ray::raylet::Raylet> server(nullptr);
 
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig([&](const std::unordered_map<
@@ -214,6 +214,7 @@ int main(int argc, char *argv[]) {
                    << object_manager_config.rpc_service_threads_number
                    << ", object_chunk_size = " << object_manager_config.object_chunk_size;
 
+    // Initialize the node manager.
     server.reset(new ray::raylet::Raylet(
         main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
         redis_password, node_manager_config, object_manager_config, gcs_client,

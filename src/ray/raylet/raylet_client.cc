@@ -68,8 +68,7 @@ raylet::RayletConnection::RayletConnection(boost::asio::io_service &io_service,
     if (num_attempts > 0) {
       RAY_LOG(ERROR) << "Retrying to connect to socket for pathname " << raylet_socket
                      << " (num_attempts = " << num_attempts
-                     << ", num_retries = " << num_retries << ")"
-                     << "Error: " << ec.message();
+                     << ", num_retries = " << num_retries << ")";
     }
     // Sleep for timeout milliseconds.
     usleep(timeout * 1000);

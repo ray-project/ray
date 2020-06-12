@@ -16,10 +16,9 @@
 #define RAY_RPC_CLIENT_CALL_H
 
 #include <grpcpp/grpcpp.h>
-
 #include <boost/asio.hpp>
-
 #include "absl/synchronization/mutex.h"
+
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
 
