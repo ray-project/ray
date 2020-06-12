@@ -289,7 +289,6 @@ void GcsNodeManager::HandleSetInternalConfig(const rpc::SetInternalConfigRequest
   auto on_done = [reply, send_reply_callback](const Status status) {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
-  RAY_LOG(ERROR) << "Inserting Config: " << request.config().DebugString();
   RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(UniqueID::Nil(),
                                                              request.config(), on_done));
 }
@@ -303,8 +302,6 @@ void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest
     if (config.has_value()) {
       reply->mutable_config()->CopyFrom(config.get());
     }
-    RAY_LOG(ERROR) << "Status from HandleGetInternalConfig: " << status.message();
-    RAY_LOG(ERROR) << "Config: " << config.has_value();
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
   RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Get(UniqueID::Nil(),
@@ -328,8 +325,7 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
     alive_nodes_.emplace(node_id, node);
     // Add an empty resources for this node.
     RAY_CHECK(cluster_resources_.emplace(node_id, rpc::ResourceMap()).second);
-    // Register this node to the `node_failure_detector_` which will start monitoring
-    // it.
+    // Register this node to the `node_failure_detector_` which will start monitoring it.
     node_failure_detector_->AddNode(node_id);
     // Notify all listeners.
     for (auto &listener : node_added_listeners_) {

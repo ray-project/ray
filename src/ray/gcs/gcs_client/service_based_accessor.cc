@@ -424,6 +424,7 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
           done_callback();
         });
   };
+
   sequencer_.Post(node_id, operation);
   return Status::OK();
 }

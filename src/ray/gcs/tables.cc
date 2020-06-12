@@ -876,7 +876,6 @@ template class Table<ActorCheckpointID, ActorCheckpointData>;
 template class Table<ActorID, ActorCheckpointIdData>;
 template class Table<WorkerID, WorkerFailureData>;
 template class Table<ActorID, ActorTableData>;
-// template class Table<std::string, std::string>;
 
 template class Log<ClientID, ResourceTableData>;
 template class Hash<ClientID, ResourceTableData>;

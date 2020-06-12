@@ -569,7 +569,8 @@ class NodeInfoAccessor {
 
   /// Get the Internal Config string from GCS.
   ///
-  /// \return Map of config options
+  /// \param callback Processes a map of config options
+  /// \return Status
   virtual Status AsyncGetInternalConfig(
       const MapCallback<std::string, std::string> &callback) = 0;
 

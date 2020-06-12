@@ -47,8 +47,8 @@ using rpc::WorkerFailureData;
 ///
 /// GcsTable is the storage interface for all GCS tables whose data do not belong to
 /// specific jobs. This class is not meant to be used directly. All gcs table classes
-/// without job id should derive from this class and override the table_name_ member
-/// with a unique value for that table.
+/// without job id should derive from this class and override the table_name_ member with
+/// a unique value for that table.
 template <typename Key, typename Data>
 class GcsTable {
  public:

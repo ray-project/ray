@@ -185,9 +185,9 @@ class Node:
         else:
             if (self._config != "{}"):
                 logger.error(
-                    "Internal Config paramaters can only be set on the head node."
-                )
-                self._config == dict()
+                    "Internal Config parameters can only be set on the head "
+                    "node. NOTE, this include lru_evict.")
+                self._config == str(dict())
 
         if not connect_only:
             self.start_ray_processes()
