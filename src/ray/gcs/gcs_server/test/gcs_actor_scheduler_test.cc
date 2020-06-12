@@ -42,7 +42,6 @@ class GcsActorSchedulerTest : public ::testing::Test {
         [this](std::shared_ptr<gcs::GcsActor> actor) {
           success_actors_.emplace_back(std::move(actor));
         },
-        *gcs_placement_group_manager_,
         /*lease_client_factory=*/
         [this](const rpc::Address &address) { return raylet_client_; },
         /*client_factory=*/
