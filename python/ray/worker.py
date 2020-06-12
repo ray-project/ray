@@ -1165,6 +1165,7 @@ def connect(node,
             log_stdout_file_name, log_stderr_file_name = \
                 ray._raylet.setup_logging(log_stdout_file,
                                           log_stderr_file)
+            worker.current_logging_job = None
     elif not LOCAL_MODE:
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")

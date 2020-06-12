@@ -213,8 +213,8 @@ def setup_logging(stdout_name, stderr_name):
         # Flush python's userspace buffers
         sys.stdout.flush()
 
-        # Flush the c/c++ userspace buffers
-        flush_out()
+        # TODO (Alex): Flush the c/c++ userspasce buffers if necessary.
+        # `fflush(stdout); cout.flush();`
 
         stdout_fileno = sys.stdout.fileno()
 
@@ -247,8 +247,8 @@ def setup_logging(stdout_name, stderr_name):
         # Flush python's userspace buffers
         sys.stderr.flush()
 
-        # Flush the c/c++ userspace buffers
-        flush_err()
+        # TODO (Alex): Flush the c/c++ userspasce buffers if necessary.
+        # `fflush(stderr); cerr.flush();`
 
         stderr_fileno = sys.stderr.fileno()
 
@@ -395,6 +395,14 @@ cdef prepare_args(
                     CTaskArg.PassByReference((CObjectID.FromBinary(
                         core_worker.put_serialized_object(serialized_arg)))))
 
+def switch_worker_log(worker, next_job_id):
+    if worker.current_logging_job != next_job_id:
+        job_stdout_path, job_stderr_path = (
+            worker.node.get_job_redirected_log_file(
+                worker.worker_id, next_job_id.binary())
+        )
+        setup_logging(job_stdout_path, job_stderr_path)
+        worker.current_logging_job = next_job_id
 
 cdef execute_task(
         CTaskType task_type,
@@ -535,20 +543,7 @@ cdef execute_task(
                 task_exception = True
                 try:
                     with ray.worker._changeproctitle(title, next_title):
-                        redirect_output = (len(worker_stdout_path) > 0 and
-                                           len(worker_stderr_path) > 0)
-
-                        if redirect_output:
-                            job_stdout_path, job_stderr_path = (
-                                worker.node.get_job_redirected_log_file(
-                                    worker.worker_id, job_id.binary())
-                            )
-                            setup_logging(job_stdout_path, job_stderr_path)
-                            outputs = function_executor(*args, **kwargs)
-                            setup_logging(worker_stdout_path,
-                                          worker_stderr_path)
-                        else:
-                            outputs = function_executor(*args, **kwargs)
+                        outputs = function_executor(*args, **kwargs)
                         task_exception = False
                 except KeyboardInterrupt as e:
                     raise RayCancellationError(
