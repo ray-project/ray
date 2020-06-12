@@ -33,3 +33,9 @@ def test_handle_in_endpoint(serve_instance):
         methods=["GET", "POST"])
 
     assert requests.get("http://127.0.0.1:8000/endpoint2").text == "hello"
+
+
+if __name__ == "__main__":
+    import sys
+    import pytest
+    sys.exit(pytest.main(["-v", "-s", __file__]))

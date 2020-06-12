@@ -1069,7 +1069,7 @@ Status PlasmaClient::Impl::DecodeNotifications(const uint8_t* buffer,
 
   for (size_t i = 0; i < object_info->object_info()->size(); ++i) {
     auto info = object_info->object_info()->Get(i);
-    ObjectID id = ObjectID::from_binary(info->object_id()->str());
+    ObjectID id = ObjectID::FromBinary(info->object_id()->str());
     object_ids->push_back(id);
     if (info->is_deletion()) {
       data_sizes->push_back(-1);

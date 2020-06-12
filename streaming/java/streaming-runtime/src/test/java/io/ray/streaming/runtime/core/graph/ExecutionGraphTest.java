@@ -35,6 +35,8 @@ public class ExecutionGraphTest extends BaseUnitTest {
     StreamingConfig streamingConfig = new StreamingConfig(jobConf);
     GraphManager graphManager = new GraphManagerImpl(new JobRuntimeContext(streamingConfig));
     JobGraph jobGraph = buildJobGraph();
+    jobGraph.getJobConfig().put("streaming.task.resource.cpu.limitation.enable", "true");
+
     ExecutionGraph executionGraph = buildExecutionGraph(graphManager, jobGraph);
     List<ExecutionJobVertex> executionJobVertices = executionGraph.getExecutionJobVertexList();
 
@@ -48,24 +50,24 @@ public class ExecutionGraphTest extends BaseUnitTest {
 
     executionGraph.getAllExecutionVertices().forEach(vertex -> {
         Assert.assertNotNull(vertex.getStreamOperator());
-        Assert.assertNotNull(vertex.getJobVertexName());
+        Assert.assertNotNull(vertex.getExecutionJobVertexName());
         Assert.assertNotNull(vertex.getVertexType());
         Assert.assertNotNull(vertex.getLanguage());
-        Assert.assertEquals(vertex.getVertexName(),
-          vertex.getJobVertexId() + "-" + vertex.getJobVertexName() + "-" + vertex.getVertexIndex());
+        Assert.assertEquals(vertex.getExecutionVertexName(),
+          vertex.getExecutionJobVertexName() + "-" + vertex.getExecutionVertexIndex());
     });
 
     int startIndex = 0;
     ExecutionJobVertex upStream = executionJobVertices.get(startIndex);
     ExecutionJobVertex downStream = executionJobVertices.get(startIndex + 1);
-    Assert.assertEquals(upStream.getOutputEdges().get(0).getTargetVertex(), downStream);
+    Assert.assertEquals(upStream.getOutputEdges().get(0).getTargetExecutionJobVertex(), downStream);
 
     List<ExecutionVertex> upStreamVertices = upStream.getExecutionVertices();
     List<ExecutionVertex> downStreamVertices = downStream.getExecutionVertices();
     upStreamVertices.forEach(vertex -> {
-        Assert.assertEquals(vertex.getResources().get(ResourceType.CPU.name()), 2.0);
+        Assert.assertEquals(vertex.getResource().get(ResourceType.CPU.name()), 2.0);
         vertex.getOutputEdges().stream().forEach(upStreamOutPutEdge -> {
-            Assert.assertTrue(downStreamVertices.contains(upStreamOutPutEdge.getTargetVertex()));
+            Assert.assertTrue(downStreamVertices.contains(upStreamOutPutEdge.getTargetExecutionVertex()));
         });
     });
   }

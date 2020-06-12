@@ -373,6 +373,16 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       options_.ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
       options_.check_signals));
 
+  auto check_node_alive_fn = [this](const ClientID &node_id) {
+    auto node = gcs_client_->Nodes().Get(node_id);
+    RAY_CHECK(node.has_value());
+    return node->state() == rpc::GcsNodeInfo::ALIVE;
+  };
+  auto reconstruct_object_callback = [this](const ObjectID &object_id) {
+    io_service_.post([this, object_id]() {
+      RAY_CHECK_OK(object_recovery_manager_->RecoverObject(object_id));
+    });
+  };
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_, actor_manager_,
       [this](const TaskSpecification &spec, bool delay) {
@@ -387,7 +397,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         } else {
           RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
         }
-      }));
+      },
+      check_node_alive_fn, reconstruct_object_callback));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors

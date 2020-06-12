@@ -11,6 +11,7 @@ To follow along, you'll need to make the necessary imports.
   from ray import serve
   serve.init() # Initializes Ray and Ray Serve.
 
+.. _`serve-backend`:
 
 Backends
 ========
