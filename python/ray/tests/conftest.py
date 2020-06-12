@@ -199,8 +199,7 @@ def two_node_cluster():
     cluster = ray.cluster_utils.Cluster(
         head_node_args={"_internal_config": internal_config})
     for _ in range(2):
-        remote_node = cluster.add_node(
-            num_cpus=1, _internal_config=internal_config)
+        remote_node = cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
     yield cluster, remote_node
 

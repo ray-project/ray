@@ -236,6 +236,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 5
     num_gpus_per_raylet = 5
+    config = 
     for i in range(num_nodes):
         cluster.add_node(
             num_cpus=10 * num_gpus_per_raylet,
