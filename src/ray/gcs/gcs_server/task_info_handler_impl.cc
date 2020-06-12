@@ -173,12 +173,5 @@ void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
   }
 }
 
-void DefaultTaskInfoHandler::OnJobFinished(const JobID &job_id) {
-  RAY_CHECK_OK(gcs_table_storage_->TaskTable().DeleteByJobId(job_id, nullptr));
-  RAY_CHECK_OK(gcs_table_storage_->TaskLeaseTable().DeleteByJobId(job_id, nullptr));
-  RAY_CHECK_OK(
-      gcs_table_storage_->TaskReconstructionTable().DeleteByJobId(job_id, nullptr));
-}
-
 }  // namespace rpc
 }  // namespace ray

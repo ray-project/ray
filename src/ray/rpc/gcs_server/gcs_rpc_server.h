@@ -312,8 +312,6 @@ class TaskInfoGcsServiceHandler {
   virtual void HandleAttemptTaskReconstruction(
       const AttemptTaskReconstructionRequest &request,
       AttemptTaskReconstructionReply *reply, SendReplyCallback send_reply_callback) = 0;
-
-  virtual void OnJobFinished(const JobID &job_id) = 0;
 };
 
 /// The `GrpcService` for `TaskInfoGcsService`.

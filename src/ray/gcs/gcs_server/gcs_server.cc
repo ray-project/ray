@@ -205,9 +205,6 @@ void GcsServer::InitJobInfoHandler() {
     gcs_actor_manager_->OnJobFinished(*job_id);
   });
   job_info_handler_->AddJobFinishedListener([this](std::shared_ptr<JobID> job_id) {
-    task_info_handler_->OnJobFinished(*job_id);
-  });
-  job_info_handler_->AddJobFinishedListener([this](std::shared_ptr<JobID> job_id) {
     gcs_object_manager_->OnJobFinished(*job_id);
   });
 }

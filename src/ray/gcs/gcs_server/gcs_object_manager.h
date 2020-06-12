@@ -60,6 +60,9 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   /// \param done Callback that will be called when load is complete.
   void LoadInitialData(const EmptyCallback &done);
 
+  /// Clear related object information once the job it belongs finished.
+  ///
+  /// \param job_id The id of finished job.
   void OnJobFinished(const JobID &job_id);
 
  protected:

@@ -240,6 +240,7 @@ void GcsObjectManager::RemoveAllObjectLocationsInCacheByJobId(const JobID &job_i
     object_to_locations_.erase(key);
   }
 
+  /// Remove objects from nodes. Remove nodes which holds no object after that.
   std::unordered_set<ClientID> idle_nodes;
   for (auto &kv : node_to_objects_) {
     for (auto &value : matched_object_ids) {

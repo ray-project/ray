@@ -223,6 +223,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param done Callback that will be called when load is complete.
   void LoadInitialData(const EmptyCallback &done);
 
+  /// Clear related actor information once the job it belongs finished.
+  ///
+  /// \param job_id The id of finished job.
   void OnJobFinished(const JobID &job_id);
 
   void ClearActorStates(std::vector<ActorID> actor_ids);
