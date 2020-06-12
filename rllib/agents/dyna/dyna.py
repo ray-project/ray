@@ -20,6 +20,8 @@ DEFAULT_CONFIG = with_common_config({
     "train_batch_size": 10000,
     "sgd_minibatch_size": 500,
     "rollout_fragment_length": 200,
+    # Learning rate for the dynamics optimizer.
+    "lr": 0.0003,
 
     # Fraction of the entire data that should be used for training the dynamics
     # model. The validation fraction is 1.0 - `training_set_ratio`. Training of
@@ -57,6 +59,7 @@ DEFAULT_CONFIG = with_common_config({
     # Config for the dynamics learning model architecture.
     "dynamics_model": {
         "fcnet_hiddens": [512, 512],
+        "fcnet_activation": "relu",
     },
 
     # TODO: (sven) allow for having a default model config over many

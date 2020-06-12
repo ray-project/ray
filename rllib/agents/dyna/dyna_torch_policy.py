@@ -2,6 +2,7 @@ import gym
 import logging
 
 import ray
+from ray.rllib.agents.dyna.dyna_torch_model import DYNATorchModel
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
@@ -28,12 +29,19 @@ def make_model_and_dist(policy, obs_space, action_space, config):
     # for being able to create checkpoints for the current state of training.
     policy.dynamics_model = ModelCatalog.get_model_v2(
         input_space=obs_space,
-        output_space=obs_space,
+        output_space=action_space,
         num_outputs=num_outputs,
         model_config=config["dynamics_model"],
         framework="torch",
         name="dynamics_model",
+        model_interface=DYNATorchModel,
     )
+
+    # policy.dynamics_model = ModelCatalog.get_model_v3(
+    #     input_space = Dict({"obs": obs_space, "action": action_space}),
+    #     output_space = obs_space,
+    #     num_outputs = num_outputs
+    # )
 
     action_dist, num_outputs = ModelCatalog.get_action_dist(
         action_space, config, dist_type="deterministic", framework="torch")
@@ -53,8 +61,9 @@ def make_model_and_dist(policy, obs_space, action_space, config):
 def dyna_torch_loss(policy, model, dist_class, train_batch):
     # Split batch into train and validation sets according to
     # `train_set_ratio`.
-    predicted_next_state_deltas, _ = policy.dynamics_model.from_batch(
-        train_batch)
+    predicted_next_state_deltas = \
+        policy.dynamics_model.get_next_observation(
+            train_batch[SampleBatch.CUR_OBS], train_batch[SampleBatch.ACTIONS])
     labels = train_batch[SampleBatch.NEXT_OBS] - train_batch[SampleBatch.
                                                              CUR_OBS]
     loss = torch.pow(
@@ -77,7 +86,6 @@ def stats_fn(policy, train_batch):
 
 
 def torch_optimizer(policy, config):
-    print()
     return torch.optim.Adam(
         policy.dynamics_model.parameters(), lr=config["lr"])
 
