@@ -23,7 +23,7 @@ ActorID ActorManager::DeserializeAndRegisterActorHandle(
     const std::string &serialized, const ObjectID &outer_object_id,
     const TaskID &caller_id, const std::string &call_site,
     const rpc::Address &caller_address) {
-  std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(serialized));
+  std::shared_ptr<ActorHandle> actor_handle(new ActorHandle(serialized));
   const auto actor_id = actor_handle->GetActorID();
   const auto owner_id = actor_handle->GetOwnerId();
   const auto owner_address = actor_handle->GetOwnerAddress();
@@ -84,7 +84,7 @@ Status ActorManager::GetNamedActorHandle(const std::string &name,
       name, [this, &actor_id, name, ready, m, cv, caller_id, call_site, caller_address](
                 Status status, const boost::optional<gcs::ActorTableData> &result) {
         if (status.ok() && result) {
-          auto actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(*result));
+          auto actor_handle = std::shared_ptr<ActorHandle>(new ActorHandle(*result));
           actor_id = actor_handle->GetActorID();
           AddActorHandle(std::move(actor_handle), /*is_owner_handle=*/false, caller_id,
                          call_site, caller_address);

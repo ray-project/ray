@@ -140,16 +140,12 @@ class ActorManager {
   /// GCS client
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
-  // Interface to submit tasks directly to other actors.
+  /// Interface to submit tasks directly to other actors.
   std::shared_ptr<CoreWorkerDirectActorTaskSubmitterInterface> direct_actor_submitter_;
 
-  // Keeps track of object ID reference counts.
+  /// Keeps track of object ID reference counts.
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
 
-  // TODO(swang): Refactor to merge actor_handles_mutex_ and all fields that it
-  // protects into the ActorManager.
-  /// The `actor_handles_` field could be mutated concurrently due to multi-threading, we
-  /// need a mutex to protect it.
   mutable absl::Mutex mutex_;
 
   /// Map from actor ID to a handle to that actor.
