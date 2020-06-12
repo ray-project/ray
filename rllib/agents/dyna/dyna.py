@@ -5,7 +5,6 @@ from ray.rllib.agents.trainer_template import build_trainer
 
 logger = logging.getLogger(__name__)
 
-
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
@@ -21,7 +20,7 @@ DEFAULT_CONFIG = with_common_config({
     "train_batch_size": 10000,
     "sgd_minibatch_size": 500,
     "rollout_fragment_length": 200,
-    
+
     # Fraction of the entire data that should be used for training the dynamics
     # model. The validation fraction is 1.0 - `training_set_ratio`. Training of
     # a dynamics model over n some epochs (1 epoch = entire training set) stops

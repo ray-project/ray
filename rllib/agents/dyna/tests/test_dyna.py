@@ -49,6 +49,7 @@ class TestDYNA(unittest.TestCase):
                 if done:
                     obs = test_env.reset()
 
+
 if __name__ == "__main__":
     import pytest
     import sys

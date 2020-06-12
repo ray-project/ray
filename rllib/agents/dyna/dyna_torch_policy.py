@@ -18,9 +18,10 @@ def make_model_and_dist(policy, obs_space, action_space, config):
         obs_space, config, dist_type="deterministic", framework="torch")
     if config["predict_reward"]:
         # TODO: (sven) implement reward prediction.
-        _ = ModelCatalog.get_action_dist(gym.spaces.Box(
-            float("-inf"), float("inf"), ()
-        ), config, dist_type="")
+        _ = ModelCatalog.get_action_dist(
+            gym.spaces.Box(float("-inf"), float("inf"), ()),
+            config,
+            dist_type="")
 
     # Build one dynamics model if we are a Worker.
     # If we are the main MAML learner, build n (num_workers) dynamics Models
@@ -56,8 +57,9 @@ def dyna_torch_loss(policy, model, dist_class, train_batch):
         train_batch)
     labels = train_batch[SampleBatch.NEXT_OBS] - train_batch[SampleBatch.
                                                              CUR_OBS]
-    loss = torch.pow(torch.sum(torch.pow(
-        labels - predicted_next_state_deltas, 2.0), dim=-1), 0.5)
+    loss = torch.pow(
+        torch.sum(
+            torch.pow(labels - predicted_next_state_deltas, 2.0), dim=-1), 0.5)
     batch_size = int(loss.shape[0])
     train_set_size = int(batch_size * policy.config["train_set_ratio"])
     train_loss, validation_loss = \
