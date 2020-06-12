@@ -558,7 +558,7 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   // TODO(swang): If we receive a notification for our own death, clean up and
   // exit immediately.
   const ClientID node_id = ClientID::FromBinary(node_info.node_id());
-  RAY_LOG(INFO) << "[NodeRemoved] Received callback from client id " << node_id;
+  RAY_LOG(DEBUG) << "[NodeRemoved] Received callback from client id " << node_id;
 
   RAY_CHECK(node_id != self_node_id_)
       << "Exiting because this node manager has mistakenly been marked dead by the "
@@ -632,7 +632,6 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &address) {
     const auto owner_node_id =
         WorkerID::FromBinary(worker->GetOwnerAddress().raylet_id());
     RAY_LOG(DEBUG) << "Lease " << worker->WorkerId() << " owned by " << owner_worker_id;
-//    RAY_CHECK(!owner_worker_id.IsNil() && !owner_node_id.IsNil());
     if (!worker->IsDetachedActor()) {
       if (!worker_id.IsNil()) {
         // If the failed worker was a leased worker's owner, then kill the leased worker.
@@ -1818,9 +1817,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
             rid->set_quantity(id.second.ToDouble());
           }
         }
-        RAY_LOG(INFO) << "task OnDispatchInstead begining....";
         send_reply_callback(Status::OK(), nullptr, nullptr);
-        RAY_LOG(INFO) << "task OnDispatchInstead ending....";
         RAY_CHECK(leased_workers_.find(worker_id) == leased_workers_.end())
             << "Worker is already leased out " << worker_id;
 
@@ -2599,10 +2596,7 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
     }
   } else {
     // (See design_docs/task_states.rst for the state transition diagram.)
-//    local_queues_.RemoveTask(task_id, &task);
-    if (!local_queues_.RemoveTask(task_id, &task)) {
-      RAY_LOG(DEBUG) << "local_queues_ miss task, task id = " << task_id;
-    }
+    RAY_CHECK(local_queues_.RemoveTask(task_id, &task));
 
     // Release task's resources. The worker's lifetime resources are still held.
     auto const &task_resources = worker.GetTaskResourceIds();

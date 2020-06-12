@@ -359,10 +359,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
       }
     }
     if (status.IsSystemExit()) {
-      if (task_spec.IsActorCreationTask()) {
-        RAY_LOG(INFO) << "Actor creation task finished 111, task_id: " << task_spec.TaskId()
-                      << ", actor_id: " << task_spec.ActorCreationId();
-      }
       // Don't allow the worker to be reused, even though the reply status is OK.
       // The worker will be shutting down shortly.
       reply->set_worker_exiting(true);
@@ -373,10 +369,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         send_reply_callback(status, nullptr, nullptr);
       }
     } else {
-      if (task_spec.IsActorCreationTask()) {
-        RAY_LOG(INFO) << "Actor creation task finished 222, task_id: " << task_spec.TaskId()
-                      << ", actor_id: " << task_spec.ActorCreationId();
-      }
       RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
       send_reply_callback(status, nullptr, nullptr);
     }

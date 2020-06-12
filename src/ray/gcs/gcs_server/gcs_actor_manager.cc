@@ -213,7 +213,6 @@ void GcsActorManager::HandleRegisterActorInfo(
       RAY_LOG(ERROR) << "Failed to register actor info: " << status.ToString()
                      << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
     } else {
-      RAY_LOG(INFO) << "Publish actor, actor id = " << actor_id << ", state = " << actor_table_data.state();
       RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
                                          actor_table_data.SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished registering actor info, job id = " << actor_id.JobId()
@@ -242,7 +241,6 @@ void GcsActorManager::HandleUpdateActorInfo(const rpc::UpdateActorInfoRequest &r
       RAY_LOG(ERROR) << "Failed to update actor info: " << status.ToString()
                      << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
     } else {
-      RAY_LOG(INFO) << "Publish actor, actor id = " << actor_id << ", state = " << actor_table_data.state();
       RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
                                          actor_table_data.SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished updating actor info, job id = " << actor_id.JobId()
@@ -378,7 +376,6 @@ Status GcsActorManager::RegisterActor(
     // the request of actor creation task, so Driver/Worker will try again and again until
     // receiving the reply from GcsServer. If the actor has been created successfully then
     // just reply to the caller.
-    RAY_LOG(INFO) << "Reply 11111";
     callback(iter->second);
     return Status::OK();
   }
@@ -452,7 +449,6 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
           RAY_LOG(INFO) << "Worker " << owner_id << " failed, destroying actor child";
         }
 
-        RAY_LOG(INFO) << "Destroy actor, actor id = " << actor_id;
         auto node_it = owners_.find(owner_node_id);
         if (node_it != owners_.end() && node_it->second.count(owner_id)) {
           // Only destroy the actor if its owner is still alive. The actor may
@@ -697,14 +693,13 @@ void GcsActorManager::OnActorCreationFailed(std::shared_ptr<GcsActor> actor) {
 
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor) {
   auto actor_id = actor->GetActorID();
-  RAY_LOG(INFO) << "On actor creation success, actor id = " << actor_id;
+  RAY_LOG(DEBUG) << "Actor created successfully, actor id = " << actor_id;
   RAY_CHECK(registered_actors_.count(actor_id) > 0);
   actor->UpdateState(rpc::ActorTableData::ALIVE);
   auto actor_table_data = actor->GetActorTableData();
   // The backend storage is reliable in the future, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor_id, actor_table_data, [this, actor_id, actor_table_data, actor](Status status) {
-        RAY_LOG(INFO) << "Publish actor, actor id = " << actor_id << ", state = " << actor_table_data.state();
         RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
                                            actor_table_data.SerializeAsString(),
                                            nullptr));
@@ -766,13 +761,12 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
       }
     }
 
-    RAY_LOG(INFO) << "registered actors num = " << registered_actors_.size();
-    RAY_LOG(INFO) << "created actors num = " << created_actors_.size();
+    RAY_LOG(INFO) << "The number of registered actors is " << registered_actors_.size()
+      << ", and the number of created actors is " << created_actors_.size();
     for (auto &item : registered_actors_) {
       auto &actor = item.second;
-      RAY_LOG(INFO) << "registered actor, actor id = " << actor->GetActorID()
-                    << ", actor state = " << actor->GetState();
       if (actor->GetState() != ray::rpc::ActorTableData::ALIVE) {
+        RAY_LOG(DEBUG) << "Reschedule the registered actor, actor id = " << actor->GetActorID();
         gcs_actor_scheduler_->Schedule(actor);
       }
     }

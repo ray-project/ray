@@ -26,14 +26,5 @@ std::string Task::DebugString() const {
          << task_execution_spec_.DebugString() << "}";
   return stream.str();
 }
-void Task::SetOnDispatch(const DispatchTaskCallback &on_dispatch) {
-  on_dispatch_ = on_dispatch;
-}
-void Task::SetOnSpillback(const SpillbackTaskCallback &on_spillback) {
-  on_spillback_ = on_spillback;
-}
-void Task::SetOnCancellation(const CancelTaskCallback &on_cancellation) {
-  on_cancellation_ = on_cancellation;
-}
 
 }  // namespace ray

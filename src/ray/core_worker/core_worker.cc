@@ -1719,9 +1719,6 @@ void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
 void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
                                 rpc::PushTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
-  auto task_id = TaskID::FromBinary(request.task_spec().task_id());
-  RAY_LOG(INFO) << "CoreWorker HandlePushTask..., task id = " << task_id
-    << ", actor id = " << task_id.ActorId();
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
     return;
@@ -1813,7 +1810,6 @@ void CoreWorker::HandleWaitForActorOutOfScope(
     respond(actor_id);
   } else {
     actor_out_of_scope_callbacks_.emplace(actor_id, std::move(respond));
-//    RAY_CHECK(actor_out_of_scope_callbacks_.emplace(actor_id, std::move(respond)).second);
   }
 }
 

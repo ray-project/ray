@@ -111,7 +111,6 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
       node_failure_detector_(new NodeFailureDetector(
           io_service, gcs_table_storage, gcs_pub_sub,
           [this](const ClientID &node_id) {
-            RAY_LOG(INFO) << "NodeFailureDetector, node id = " << node_id;
             if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
               node->set_state(rpc::GcsNodeInfo::DEAD);
               RAY_CHECK(dead_nodes_.emplace(node_id, node).second);
@@ -175,7 +174,6 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
 void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &request,
                                           rpc::GetAllNodeInfoReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-//  RAY_LOG(DEBUG) << "Getting all nodes info.";
   for (const auto &entry : alive_nodes_) {
     reply->add_node_info_list()->CopyFrom(*entry.second);
   }
@@ -183,7 +181,6 @@ void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &requ
     reply->add_node_info_list()->CopyFrom(*entry.second);
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-//  RAY_LOG(DEBUG) << "Finished getting all node info.";
 }
 
 void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &request,
@@ -202,7 +199,6 @@ void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,
                                         rpc::GetResourcesReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_id());
-//  RAY_LOG(DEBUG) << "Getting node resources, node id = " << node_id;
   auto iter = cluster_resources_.find(node_id);
   if (iter != cluster_resources_.end()) {
     for (auto &resource : iter->second.items()) {
@@ -210,7 +206,6 @@ void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,
     }
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-//  RAY_LOG(DEBUG) << "Finished getting node resources, node id = " << node_id;
 }
 
 void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &request,
@@ -311,7 +306,7 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
 
 std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     const ray::ClientID &node_id, bool is_intended /*= false*/) {
-  RAY_LOG(INFO) << "Remove node, node id = " << node_id;
+  RAY_LOG(INFO) << "Removing node, node id = " << node_id;
   std::shared_ptr<rpc::GcsNodeInfo> removed_node;
   auto iter = alive_nodes_.find(node_id);
   if (iter != alive_nodes_.end()) {

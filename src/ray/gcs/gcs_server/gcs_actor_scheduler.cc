@@ -41,7 +41,7 @@ GcsActorScheduler::GcsActorScheduler(
 
 void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   if (actor->GetActorTableData().resource_mapping_size() != 0 || !actor->GetWorkerID().IsNil()) {
-    RAY_LOG(INFO) << "actor has resource_mapping, actor id = " << actor->GetActorID();
+    RAY_LOG(INFO) << "Actor " << actor->GetActorID() << " owners a leased worker. Create actor directly on worker.";
     CreateActorOnWorker(actor);
     return;
   }
@@ -154,8 +154,6 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
       actor->GetCreationTaskSpecification(),
       [this, node_id, actor, node](const Status &status,
                                    const rpc::RequestWorkerLeaseReply &reply) {
-        RAY_LOG(INFO) << "Finished leasing worker from 111 " << node_id << " for actor "
-                      << actor->GetActorID();
         // If the actor is still in the leasing map and the status is ok, remove the actor
         // from the leasing map and handle the reply. Otherwise, lease again, because it
         // may be a network exception.
@@ -287,7 +285,6 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
         // If the actor is not in the creating map, it means that the actor has been
         // cancelled as the worker or node is dead, just do nothing in this case because
         // the gcs_actor_manager will reconstruct it again.
-        RAY_LOG(INFO) << "PushNormalTask received, actor id = " << actor->GetActorID();
         auto iter = node_to_workers_when_creating_.find(actor->GetNodeID());
         if (iter != node_to_workers_when_creating_.end()) {
           auto worker_iter = iter->second.find(actor->GetWorkerID());
@@ -309,8 +306,6 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
               RetryCreatingActorOnWorker(actor, worker);
             }
           }
-        } else {
-          RAY_LOG(INFO) << "PushNormalTask received 2222, actor id = " << actor->GetActorID();
         }
       });
   if (!status.ok()) {
