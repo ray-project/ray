@@ -395,6 +395,7 @@ cdef prepare_args(
                     CTaskArg.PassByReference((CObjectID.FromBinary(
                         core_worker.put_serialized_object(serialized_arg)))))
 
+
 def switch_worker_log(worker, next_job_id):
     if worker.current_logging_job != next_job_id:
         job_stdout_path, job_stderr_path = (
@@ -403,6 +404,7 @@ def switch_worker_log(worker, next_job_id):
         )
         setup_logging(job_stdout_path, job_stderr_path)
         worker.current_logging_job = next_job_id
+
 
 cdef execute_task(
         CTaskType task_type,
