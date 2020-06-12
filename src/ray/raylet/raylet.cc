@@ -78,6 +78,7 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
   self_node_info_.set_object_manager_port(object_manager_.GetServerPort());
   self_node_info_.set_node_manager_port(node_manager_.GetServerPort());
   self_node_info_.set_node_manager_hostname(boost::asio::ip::host_name());
+  RAY_CHECK_OK(gcs_client_->Nodes().SetInternalConfig(node_manager_config.raylet_config));
 }
 
 Raylet::~Raylet() {}

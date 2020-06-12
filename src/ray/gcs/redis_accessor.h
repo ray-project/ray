@@ -16,6 +16,7 @@
 #define RAY_GCS_REDIS_ACCESSOR_H
 
 #include <ray/common/task/task_spec.h>
+
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/callback.h"
@@ -379,6 +380,15 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   Status AsyncReSubscribe() override {
     return Status::NotImplemented("AsyncReSubscribe not implemented");
+  }
+
+  Status SetInternalConfig(std::unordered_map<std::string, std::string> config) override {
+    return Status::NotImplemented("Set Internal Config Not Implemented");
+  }
+
+  Status AsyncGetInternalConfig(
+      const MapCallback<std::string, std::string> &callback) override {
+    return Status::NotImplemented("Get Internal Config Not Implemented");
   }
 
  private:

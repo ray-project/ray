@@ -766,6 +766,16 @@ class WorkerFailureTable : public Table<WorkerID, WorkerFailureData> {
   virtual ~WorkerFailureTable() {}
 };
 
+// class InternalConfigTable : public Table<std::string, std::string> {
+//  public:
+//   InternalConfigTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+//                       RedisGcsClient *client)
+//       : Table(contexts, client) {
+//     prefix_ = TablePrefix::INTERNAL_CONFIG;
+//   }
+//   virtual ~InternalConfigTable() {}
+// };
+
 class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
  public:
   TaskReconstructionLog(const std::vector<std::shared_ptr<RedisContext>> &contexts,

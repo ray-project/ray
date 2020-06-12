@@ -15,6 +15,7 @@
 #include "ray/gcs/redis_gcs_client.h"
 
 #include <unistd.h>
+
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_context.h"
@@ -68,6 +69,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts, this));
   actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts, this));
   resource_table_.reset(new DynamicResourceTable({primary_context}, this));
+  // internal_config_table_.reset(new InternalConfigTable({primary_context}, this));
   worker_failure_table_.reset(new WorkerFailureTable(shard_contexts, this));
 
   if (RayConfig::instance().gcs_service_enabled()) {
@@ -156,6 +158,10 @@ ActorCheckpointIdTable &RedisGcsClient::actor_checkpoint_id_table() {
 }
 
 DynamicResourceTable &RedisGcsClient::resource_table() { return *resource_table_; }
+
+// InternalConfigTable &RedisGcsClient::internal_config_table() {
+//   return *internal_config_table_;
+// }
 
 }  // namespace gcs
 

@@ -37,6 +37,7 @@ using rpc::ObjectTableDataList;
 using rpc::ProfileTableData;
 using rpc::ResourceMap;
 using rpc::ResourceTableData;
+using rpc::StoredConfig;
 using rpc::TaskLeaseData;
 using rpc::TaskReconstructionData;
 using rpc::TaskTableData;
@@ -46,8 +47,8 @@ using rpc::WorkerFailureData;
 ///
 /// GcsTable is the storage interface for all GCS tables whose data do not belong to
 /// specific jobs. This class is not meant to be used directly. All gcs table classes
-/// without job id should derive from this class and override the table_name_ member with
-/// a unique value for that table.
+/// without job id should derive from this class and override the table_name_ member
+/// with a unique value for that table.
 template <typename Key, typename Data>
 class GcsTable {
  public:
@@ -274,6 +275,14 @@ class GcsWorkerFailureTable : public GcsTable<WorkerID, WorkerFailureData> {
   }
 };
 
+class GcsInternalConfigTable : public GcsTable<UniqueID, StoredConfig> {
+ public:
+  explicit GcsInternalConfigTable(std::shared_ptr<StoreClient> &store_client)
+      : GcsTable(store_client) {
+    table_name_ = TablePrefix_Name(TablePrefix::INTERNAL_CONFIG);
+  }
+};
+
 /// \class GcsTableStorage
 ///
 /// This class is not meant to be used directly. All gcs table storage classes should
@@ -355,6 +364,11 @@ class GcsTableStorage {
     return *worker_failure_table_;
   }
 
+  GcsInternalConfigTable &InternalConfigTable() {
+    RAY_CHECK(internal_config_table_ != nullptr);
+    return *internal_config_table_;
+  }
+
  protected:
   std::shared_ptr<StoreClient> store_client_;
   std::unique_ptr<GcsJobTable> job_table_;
@@ -372,6 +386,7 @@ class GcsTableStorage {
   std::unique_ptr<GcsErrorInfoTable> error_info_table_;
   std::unique_ptr<GcsProfileTable> profile_table_;
   std::unique_ptr<GcsWorkerFailureTable> worker_failure_table_;
+  std::unique_ptr<GcsInternalConfigTable> internal_config_table_;
 };
 
 /// \class RedisGcsTableStorage
@@ -396,6 +411,7 @@ class RedisGcsTableStorage : public GcsTableStorage {
     error_info_table_.reset(new GcsErrorInfoTable(store_client_));
     profile_table_.reset(new GcsProfileTable(store_client_));
     worker_failure_table_.reset(new GcsWorkerFailureTable(store_client_));
+    internal_config_table_.reset(new GcsInternalConfigTable(store_client_));
   }
 };
 
@@ -421,6 +437,7 @@ class InMemoryGcsTableStorage : public GcsTableStorage {
     error_info_table_.reset(new GcsErrorInfoTable(store_client_));
     profile_table_.reset(new GcsProfileTable(store_client_));
     worker_failure_table_.reset(new GcsWorkerFailureTable(store_client_));
+    internal_config_table_.reset(new GcsInternalConfigTable(store_client_));
   }
 };
 

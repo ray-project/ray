@@ -15,7 +15,6 @@
 #include "ray/gcs/tables.h"
 
 #include "absl/time/clock.h"
-
 #include "ray/common/common_protocol.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
@@ -877,6 +876,7 @@ template class Table<ActorCheckpointID, ActorCheckpointData>;
 template class Table<ActorID, ActorCheckpointIdData>;
 template class Table<WorkerID, WorkerFailureData>;
 template class Table<ActorID, ActorTableData>;
+// template class Table<std::string, std::string>;
 
 template class Log<ClientID, ResourceTableData>;
 template class Hash<ClientID, ResourceTableData>;

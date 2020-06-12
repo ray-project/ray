@@ -327,6 +327,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   }
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs();
+  // RAY_LOG(ERROR) << "CoreWorker Internal Config before";
+  // RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetInternalConfig(
+  //     [](const std::unordered_map<std::string, std::string> map) {
+  //       RAY_LOG(ERROR) << "CoreWorker Internal Config :Size of given map: " <<
+  //       map.size();
+  //     }));
+  // RAY_LOG(ERROR) << "CoreWorker Internal Config after";
 
   // Register a callback to monitor removed nodes.
   auto on_node_change = [this](const ClientID &node_id, const rpc::GcsNodeInfo &data) {

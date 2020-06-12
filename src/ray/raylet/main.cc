@@ -19,10 +19,9 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_common.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
-
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 DEFINE_string(raylet_socket_name, "", "The socket name of raylet.");
 DEFINE_string(store_socket_name, "", "The socket name of object store.");
@@ -94,6 +93,43 @@ int main(int argc, char *argv[]) {
   ray::raylet::NodeManagerConfig node_manager_config;
   std::unordered_map<std::string, double> static_resource_conf;
   std::unordered_map<std::string, std::string> raylet_config;
+
+  // IO Service for node manager.
+  boost::asio::io_service main_service;
+
+  // Initialize gcs client
+  // Must be before config_list...
+  ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
+  std::shared_ptr<ray::gcs::GcsClient> gcs_client;
+
+  if (RayConfig::instance().gcs_service_enabled()) {
+    gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
+  } else {
+    gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);
+  }
+  RAY_CHECK_OK(gcs_client->Connect(main_service));
+
+  RAY_LOG(ERROR) << "Before checking it";
+  RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
+      [&](const std::unordered_map<std::string, std::string> map) {
+        RAY_LOG(ERROR) << "Size of given map MAIN.CC1: " << map.size();
+      }));
+  // main_service.run_for(boost::asio::chrono::milliseconds(250)); <<-- I break everything
+
+  // secondary.run();
+
+  //   main_service.post([&]() {
+  //     RAY_LOG(ERROR) << "In main service";
+  //     RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
+  //         [&](const std::unordered_map<std::string, std::string> map) {
+  //           RAY_LOG(ERROR) << "Size of given map: " << map.size();
+  //           // BEGIN FULL INIT
+
+  //           // END FULL INIT
+  //         }));
+  //   });
+
+  RAY_LOG(ERROR) << "After checking: ";
 
   // Parse the configuration list.
   std::istringstream config_string(config_list);
@@ -178,44 +214,85 @@ int main(int argc, char *argv[]) {
                  << object_manager_config.rpc_service_threads_number
                  << ", object_chunk_size = " << object_manager_config.object_chunk_size;
 
-  // Initialize the node manager.
-  boost::asio::io_service main_service;
+  /*
+   // // IO Service for node manager.
+   // boost::asio::io_service main_service;
 
-  // Initialize gcs client
-  ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
-  std::shared_ptr<ray::gcs::GcsClient> gcs_client;
+   // // Initialize gcs client
+   // // Must be before config_list...
+   // ray::gcs::GcsClientOptions client_options(redis_address, redis_port,
+   // redis_password);
+   // std::shared_ptr<ray::gcs::GcsClient> gcs_client;
 
-  if (RayConfig::instance().gcs_service_enabled()) {
-    gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
-  } else {
-    gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);
-  }
-  RAY_CHECK_OK(gcs_client->Connect(main_service));
+   // if (RayConfig::instance().gcs_service_enabled()) {
+   //   gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
+   // } else {
+   //   gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);
+   // }
+   // RAY_CHECK_OK(gcs_client->Connect(main_service));
+ */
+  RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
+      [&](const std::unordered_map<std::string, std::string> map) {
+        RAY_LOG(ERROR) << "Just before Raylet GET internal config;";
+        std::unique_ptr<ray::raylet::Raylet> server(new ray::raylet::Raylet(
+            main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
+            redis_password, node_manager_config, object_manager_config, gcs_client));
+        server->Start();
+      }));
+  // std::unique_ptr<ray::raylet::Raylet> server(new ray::raylet::Raylet(
+  //     main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
+  //     redis_password, node_manager_config, object_manager_config, gcs_client));
+  // server->Start();
 
-  std::unique_ptr<ray::raylet::Raylet> server(new ray::raylet::Raylet(
-      main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
-      redis_password, node_manager_config, object_manager_config, gcs_client));
-  server->Start();
+  //   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
+  //   // guaranteed to be valid since this function will run the event loop
+  //   // instead of returning immediately.
+  //   // We should stop the service and remove the local socket file.
+  //   auto handler = [&main_service, &raylet_socket_name, &server, &gcs_client](
+  //                      const boost::system::error_code &error, int signal_number) {
+  //     RAY_LOG(INFO) << "Raylet received SIGTERM, shutting down...";
+  //     server->Stop();
+  //     gcs_client->Disconnect();
+  //     main_service.stop();
+  //     remove(raylet_socket_name.c_str());
+  //   };
+  //   boost::asio::signal_set signals(main_service);
+  // #ifdef _WIN32
+  //   signals.add(SIGBREAK);
+  // #else
+  //   signals.add(SIGTERM);
+  // #endif
+  //   signals.async_wait(handler);
 
-  // Destroy the Raylet on a SIGTERM. The pointer to main_service is
-  // guaranteed to be valid since this function will run the event loop
-  // instead of returning immediately.
-  // We should stop the service and remove the local socket file.
-  auto handler = [&main_service, &raylet_socket_name, &server, &gcs_client](
-                     const boost::system::error_code &error, int signal_number) {
-    RAY_LOG(INFO) << "Raylet received SIGTERM, shutting down...";
-    server->Stop();
-    gcs_client->Disconnect();
-    main_service.stop();
-    remove(raylet_socket_name.c_str());
-  };
-  boost::asio::signal_set signals(main_service);
-#ifdef _WIN32
-  signals.add(SIGBREAK);
-#else
-  signals.add(SIGTERM);
-#endif
-  signals.async_wait(handler);
+  main_service.post([&]() {
+    RAY_LOG(ERROR) << "In main service";
+    RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
+        [&](const std::unordered_map<std::string, std::string> map) {
+          RAY_LOG(ERROR) << "Size of given map MAIN.CC: " << map.size();
+        }));
+  });
+
+  ray::gcs::GcsClientOptions client_options_temp(redis_address, redis_port,
+                                                 redis_password);
+  std::shared_ptr<ray::gcs::GcsClient> gcs_client_temp;
+  RAY_CHECK(RayConfig::instance().gcs_service_enabled());
+  gcs_client_temp =
+      std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options_temp);
+  boost::asio::io_service secondary;
+  RAY_CHECK_OK(gcs_client_temp->Connect(secondary));
+  secondary.post([&]() {
+    RAY_LOG(ERROR) << " Secondary IO LOOP";
+    auto donezo = [&](const std::unordered_map<std::string, std::string> map) {
+      RAY_LOG(ERROR) << "Size of given status ALTERNATE GCS: ";
+      int *x = nullptr;
+      *x += 1;
+      secondary.stop();
+    };
+    RAY_CHECK_OK(gcs_client_temp->Nodes().AsyncGetInternalConfig(donezo));
+  });
+
+  auto secondary_thread = std::thread([&]() { secondary.run(); });
+  // secondary.run();
 
   main_service.run();
 }

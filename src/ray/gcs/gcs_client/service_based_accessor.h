@@ -16,6 +16,7 @@
 #define RAY_GCS_SERVICE_BASED_ACCESSOR_H
 
 #include <ray/common/task/task_spec.h>
+
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/util/sequencer.h"
@@ -186,6 +187,10 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
       const StatusCallback &done) override;
 
   Status AsyncReSubscribe() override;
+
+  Status SetInternalConfig(std::unordered_map<std::string, std::string> config) override;
+
+  Status AsyncGetInternalConfig(const MapCallback<std::string, std::string> &callback) override;
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when GCS

@@ -424,7 +424,6 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
           done_callback();
         });
   };
-
   sequencer_.Post(node_id, operation);
   return Status::OK();
 }
@@ -763,6 +762,47 @@ Status ServiceBasedNodeInfoAccessor::AsyncReSubscribe() {
   if (subscribe_batch_heartbeat_operation_ != nullptr) {
     return subscribe_batch_heartbeat_operation_(nullptr);
   }
+  return Status::OK();
+}
+
+Status ServiceBasedNodeInfoAccessor::SetInternalConfig(
+    std::unordered_map<std::string, std::string> config) {
+  rpc::SetInternalConfigRequest request;
+  rpc::StoredConfig cfg;
+  RAY_LOG(ERROR) << "CONFIG SIZE: " << config.size();
+  for (auto &pair : config) {
+    (*cfg.mutable_config())[pair.first] = pair.second;
+    RAY_LOG(ERROR) << "Inserting p1: " << pair.first << " and p2: " << pair.second;
+  }
+  request.mutable_config()->CopyFrom(cfg);
+  client_impl_->GetGcsRpcClient().SetInternalConfig(
+      request, [](const Status &status, const rpc::SetInternalConfigReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Problem setting Internal Config: " << status.message();
+        }
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedNodeInfoAccessor::AsyncGetInternalConfig(
+    const MapCallback<std::string, std::string> &callback) {
+  rpc::GetInternalConfigRequest request;
+  std::unordered_map<std::string, std::string> result1;
+  client_impl_->GetGcsRpcClient().GetInternalConfig(
+      request,
+      [callback](const Status &status, const rpc::GetInternalConfigReply &reply) {
+        std::unordered_map<std::string, std::string> result;
+        if (status.ok() && reply.has_config()) {
+          RAY_LOG(ERROR) << "Size is: " << reply.config().config_size();
+          RAY_LOG(ERROR) << "Config str: " << reply.config().DebugString();
+          for (auto &pair : reply.config().config()) {
+            result[pair.first] = pair.second;
+          }
+        } else {
+          RAY_LOG(ERROR) << "NO CONFIG: " << status.message();
+        }
+        callback(result);
+      });
   return Status::OK();
 }
 

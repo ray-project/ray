@@ -759,6 +759,23 @@ Status RedisNodeInfoAccessor::AsyncSubscribeToResources(
   return resource_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), on_subscribe, done);
 }
 
+// Status RedisNodeInfoAccessor::SetInternalConfig(
+//     std::unordered_map<std::string, std::string> config) {
+//   for (auto pair : config) {
+//     RAY_RETURN_NOT_OK(client_impl_->internal_config_table().Append(
+//         JobID::Nil(), pair.first, pair.second, nullptr));
+//   }
+//   return Status::OK();
+// }
+
+// std::unordered_map<std::string, std::string> RedisNodeInfoAccessor::GetInternalConfig()
+// {
+//   std::unordered_map<std::string, std::string> result;
+//   // client_impl_->internal_config_table().
+//   // TODO(ilr) fix this by adding a get all method
+//   return result;
+// }
+
 RedisErrorInfoAccessor::RedisErrorInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl) {}
 

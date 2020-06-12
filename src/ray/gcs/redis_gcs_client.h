@@ -98,6 +98,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   HeartbeatTable &heartbeat_table();
   HeartbeatBatchTable &heartbeat_batch_table();
   DynamicResourceTable &resource_table();
+  // InternalConfigTable &internal_config_table();
   /// Implements the Tasks() interface.
   virtual raylet::TaskTable &raylet_task_table();
   TaskLeaseTable &task_lease_table();
@@ -131,6 +132,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   std::unique_ptr<ActorCheckpointTable> actor_checkpoint_table_;
   std::unique_ptr<ActorCheckpointIdTable> actor_checkpoint_id_table_;
   std::unique_ptr<DynamicResourceTable> resource_table_;
+  // std::unique_ptr<InternalConfigTable> internal_config_table_;
   std::unique_ptr<WorkerFailureTable> worker_failure_table_;
   std::unique_ptr<JobTable> job_table_;
 };

@@ -560,6 +560,19 @@ class NodeInfoAccessor {
   /// \return Status
   virtual Status AsyncReSubscribe() = 0;
 
+  /// Set the Intrenal Config string from the first node.
+  ///
+  /// \param config Map of config options
+  /// \return Status
+  virtual Status SetInternalConfig(
+      std::unordered_map<std::string, std::string> config) = 0;
+
+  /// Get the Internal Config string from GCS.
+  ///
+  /// \return Map of config options
+  virtual Status AsyncGetInternalConfig(
+      const MapCallback<std::string, std::string> &callback) = 0;
+
  protected:
   NodeInfoAccessor() = default;
 };
