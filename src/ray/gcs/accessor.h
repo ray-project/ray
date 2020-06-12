@@ -676,8 +676,7 @@ class PlacementGroupInfoAccessor {
   /// \param callback Callback that will be called after the placement group info is
   /// written to GCS. \return Status
   virtual Status AsyncCreatePlacementGroup(
-      const PlacementGroupSpecification &placement_group_spec,
-      const StatusCallback &callback) = 0;
+      const PlacementGroupSpecification &placement_group_spec) = 0;
 
   /// Update dynamic states of placement group in GCS asynchronously.
   ///

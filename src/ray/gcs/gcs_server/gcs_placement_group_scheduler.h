@@ -50,6 +50,21 @@ class GcsPlacementGroupSchedulerInterface {
   virtual ~GcsPlacementGroupSchedulerInterface() {}
 };
 
+class GcsScheduleStrategy {
+ public:
+  virtual std::unordered_map<BundleID, ClientID> Schedule(std::vector<ray::BundleSpecification> &bundles, const GcsNodeManager &node_manager) = 0;
+};
+
+class GcsPackStrategy : public GcsScheduleStrategy{
+ public:
+  std::unordered_map<BundleID, ClientID> Schedule(std::vector<ray::BundleSpecification> &bundles, const GcsNodeManager &node_manager) override;
+};
+
+class GcsSpreadStrategy : public GcsScheduleStrategy {
+ public:
+  std::unordered_map<BundleID, ClientID> Schedule(std::vector<ray::BundleSpecification> &bundles, const  GcsNodeManager &node_manager) override;
+};
+
 /// GcsPlacementGroupScheduler is responsible for scheduling placement_groups registered
 /// to GcsPlacementGroupManager. This class is not thread-safe.
 class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
@@ -85,60 +100,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   GetLeaseResourceQueue() {
     return lease_resource_queue_;
   }
-
-  const std::vector<ClientID> &GetDecision() const { return decision_; }
-
-  void SetDecision(std::vector<ClientID> decision) { decision_ = decision; }
-
- protected:
-  /// The GcsLeasedWorker is kind of abstraction of remote leased worker inside raylet. It
-  /// contains the address of remote leased worker as well as the leased resources and the
-  /// ID of the placement_group associated with this worker. Through this class, we can
-  /// easily get the WorkerID, Endpoint, NodeID and the associated PlacementGroupID of the
-  /// remote worker.
-  class GcsLeasedWorker {
-   public:
-    /// Create a GcsLeasedWorker
-    ///
-    /// \param address the Address of the remote leased worker.
-    /// \param resources the resources that leased from the remote node(raylet).
-    /// \param placement_group_id ID of the placement_group associated with this leased
-    /// worker.
-    explicit GcsLeasedWorker(rpc::Address address,
-                             std::vector<rpc::ResourceMapEntry> resources,
-                             const PlacementGroupID &placement_group_id)
-        : address_(std::move(address)),
-          resources_(std::move(resources)),
-          assigned_placement_group_id_(placement_group_id) {}
-    virtual ~GcsLeasedWorker() = default;
-
-    /// Get the Address of this leased worker.
-    const rpc::Address &GetAddress() const { return address_; }
-
-    /// Get the ip address of this leased worker.
-    const std::string &GetIpAddress() const { return address_.ip_address(); }
-
-    /// Get the listening port of the leased worker at remote side.
-    uint16_t GetPort() const { return address_.port(); }
-
-    /// Get the id of the placement_group which is assigned to this leased worker.
-    PlacementGroupID GetAssignedPlacementGroupID() const {
-      return assigned_placement_group_id_;
-    }
-
-    /// Get the leased resources.
-    const std::vector<rpc::ResourceMapEntry> &GetLeasedResources() const {
-      return resources_;
-    }
-
-   private:
-    /// The address of the remote leased worker.
-    rpc::Address address_;
-    /// The resources leased from remote node.
-    std::vector<rpc::ResourceMapEntry> resources_;
-    /// Id of the placement_group assigned to this worker.
-    PlacementGroupID assigned_placement_group_id_;
-  };
 
   /// Lease resource from the specified node for the specified bundle.
   void LeaseResourceFromNode();
@@ -196,16 +157,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
                         LeaseResourceCallback>>
       lease_resource_queue_;
 
-  /// To store the decison which the bundle belong to.
-  /// if lease resource failed, decision[i] = ClientID::Nil()
-  std::vector<ClientID> decision_;
-
-  /// The count stores how many lease resource from node success;
-  uint64_t finish_count = 0;
-
-  /// Store the resource lease position
-  // std::vector<std::vector<ResourceMapEntry>>resource_lease_;
-  std::vector<std::vector<std::tuple<std::string, int64_t, double>>> resource_lease_;
+  std::vector<std::shared_ptr<GcsScheduleStrategy>>scheduler;
 };
 
 }  // namespace gcs

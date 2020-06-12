@@ -27,7 +27,6 @@ namespace gcs {
 using rpc::ActorCheckpointData;
 using rpc::ActorCheckpointIdData;
 using rpc::ActorTableData;
-using rpc::BundleResourceMap;
 using rpc::ErrorTableData;
 using rpc::GcsNodeInfo;
 using rpc::HeartbeatBatchTableData;
@@ -256,19 +255,11 @@ class GcsNodeResourceTable : public GcsTable<ClientID, ResourceMap> {
   }
 };
 
-class GcsBundleResourceTable : public GcsTable<BundleID, BundleResourceMap> {
+class GcsPlacementGroupScheduleTable : public GcsTable<PlacementGroupID, ScheduleData> {
  public:
-  explicit GcsBundleResourceTable(std::shared_ptr<StoreClient> &store_client)
+  explicit GcsPlacementGroupScheduleTable(std::shared_ptr<StoreClient> &store_client)
       : GcsTable(store_client) {
-    table_name_ = TablePrefix_Name(TablePrefix::BUNDLE_RESOURCE);
-  }
-};
-
-class GcsBundleScheduleTable : public GcsTable<BundleID, ScheduleData> {
- public:
-  explicit GcsBundleScheduleTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
-    table_name_ = TablePrefix_Name(TablePrefix::BUNDLE_SCHEDULE);
+    table_name_ = TablePrefix_Name(TablePrefix::PLACEMENT_GROUP_SCHEDULE);
   }
 };
 
@@ -378,14 +369,9 @@ class GcsTableStorage {
     return *node_resource_table_;
   }
 
-  GcsBundleResourceTable &BundleResourceTable() {
-    RAY_CHECK(bundle_resource_table_ != nullptr);
-    return *bundle_resource_table_;
-  }
-
-  GcsBundleScheduleTable &BundleScheduleTable() {
-    RAY_CHECK(bundle_schedule_table_ != nullptr);
-    return *bundle_schedule_table_;
+  GcsPlacementGroupScheduleTable &PlacementGroupScheduleTable() {
+    RAY_CHECK(placement_group_schedule_table_ != nullptr);
+    return *placement_group_schedule_table_;
   }
 
   GcsHeartbeatTable &HeartbeatTable() {
@@ -427,8 +413,7 @@ class GcsTableStorage {
   std::unique_ptr<GcsObjectTable> object_table_;
   std::unique_ptr<GcsNodeTable> node_table_;
   std::unique_ptr<GcsNodeResourceTable> node_resource_table_;
-  std::unique_ptr<GcsBundleResourceTable> bundle_resource_table_;
-  std::unique_ptr<GcsBundleScheduleTable> bundle_schedule_table_;
+  std::unique_ptr<GcsPlacementGroupScheduleTable> placement_group_schedule_table_;
   std::unique_ptr<GcsHeartbeatTable> heartbeat_table_;
   std::unique_ptr<GcsHeartbeatBatchTable> heartbeat_batch_table_;
   std::unique_ptr<GcsErrorInfoTable> error_info_table_;
@@ -455,8 +440,7 @@ class RedisGcsTableStorage : public GcsTableStorage {
     object_table_.reset(new GcsObjectTable(store_client_));
     node_table_.reset(new GcsNodeTable(store_client_));
     node_resource_table_.reset(new GcsNodeResourceTable(store_client_));
-    bundle_resource_table_.reset(new GcsBundleResourceTable(store_client_));
-    bundle_schedule_table_.reset(new GcsBundleScheduleTable(store_client_));
+    placement_group_schedule_table_.reset(new GcsPlacementGroupScheduleTable(store_client_));
     heartbeat_table_.reset(new GcsHeartbeatTable(store_client_));
     heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(store_client_));
     error_info_table_.reset(new GcsErrorInfoTable(store_client_));
@@ -484,8 +468,7 @@ class InMemoryGcsTableStorage : public GcsTableStorage {
     object_table_.reset(new GcsObjectTable(store_client_));
     node_table_.reset(new GcsNodeTable(store_client_));
     node_resource_table_.reset(new GcsNodeResourceTable(store_client_));
-    bundle_resource_table_.reset(new GcsBundleResourceTable(store_client_));
-    bundle_schedule_table_.reset(new GcsBundleScheduleTable(store_client_));
+    placement_group_schedule_table_.reset(new GcsPlacementGroupScheduleTable(store_client_));
     heartbeat_table_.reset(new GcsHeartbeatTable(store_client_));
     heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(store_client_));
     error_info_table_.reset(new GcsErrorInfoTable(store_client_));

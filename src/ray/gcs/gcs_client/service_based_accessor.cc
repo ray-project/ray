@@ -1288,18 +1288,19 @@ Status ServiceBasedWorkerInfoAccessor::AsyncRegisterWorker(
 }
 
 Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
-    const ray::PlacementGroupSpecification &placement_group_spec,
-    const ray::gcs::StatusCallback &callback) {
-  RAY_CHECK(callback);
+    const ray::PlacementGroupSpecification &placement_group_spec) {
   rpc::CreatePlacementGroupRequest request;
   request.mutable_placement_group_spec()->CopyFrom(placement_group_spec.GetMessage());
   client_impl_->GetGcsRpcClient().CreatePlacementGroup(
-      request, [callback](const Status &, const rpc::CreatePlacementGroupReply &reply) {
+      request, [placement_group_spec](const Status &, const rpc::CreatePlacementGroupReply &reply) {
         auto status =
             reply.status().code() == (int)StatusCode::OK
                 ? Status()
                 : Status(StatusCode(reply.status().code()), reply.status().message());
-        callback(status);
+        if(status.ok()) {
+          RAY_LOG(DEBUG) << "Finished registering placement group. placement group id = " 
+                         << placement_group_spec.PlacementGroupId();
+        }
       });
   return Status::OK();
 }

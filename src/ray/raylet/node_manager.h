@@ -251,10 +251,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                   bool forwarded = false);
-  /// Handle spcecified bundle lease to the local node manager.
-  ///
-  /// \param bunndle_spec The bundle being lease.
-  void LeaseBundle(const BundleSpecification &bundle_spce);
   /// Assign a task to a worker. The task is assumed to not be queued in local_queues_.
   ///
   /// \param[in] worker The worker to assign the task to.
@@ -312,8 +308,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// resources available to that node manager. Scheduling decisions will only
   /// consider the local node manager and the node managers in the keys of the
   /// resource_map argument.
-  /// \return Void.
-  void ScheduleBundle(std::unordered_map<ClientID, SchedulingResources> &resource_map,
+  /// \return ResourceIdSet.
+  ResourceIdSet ScheduleBundle(std::unordered_map<ClientID, SchedulingResources> &resource_map,
                       const BundleSpecification &bundle_spec);
   /// Handle a task whose return value(s) must be reconstructed.
   ///
@@ -620,10 +616,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleCancelResourceLease(const rpc::CancelResourceLeaseRequest &request,
-                                 rpc::CancelResourceLeaseReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle a `ForwardTask` request.
   void HandleForwardTask(const rpc::ForwardTaskRequest &request,
                          rpc::ForwardTaskReply *reply,
@@ -720,12 +712,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The resources (and specific resource IDs) that are currently available.
   ResourceIdSet local_available_resources_;
   std::unordered_map<ClientID, SchedulingResources> cluster_resource_map_;
-
-  // The resource which be excavated.
-  ResourceIdSet excavated_resources_;
-  // TODO(AlisaWu): add tot excavated resources and change excavated_resources_ to
-  // excavated_avi_resources_ A map connect Bundle with the resource belong to it.
-  std::unordered_map<BundleID, ResourceIdSet> BundleResourceIdSet;
   /// A pool of workers.
   WorkerPool worker_pool_;
   /// A set of queues to maintain tasks.

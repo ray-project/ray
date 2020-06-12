@@ -56,17 +56,6 @@ message RequestResourceReturnRequest {
 
 message RequestResourceReturnReply {
 }
-
-// Request a worker from the raylet with the specified resources.
-message CancelResourceLeaseRequest {
-  // Bundle containing the requested resources.
-  repeated ResourceMapEntry resource_mapping = 1;
-}
-
-message CancelResourceLeaseReply {
-  
-}
-
 // Release a worker back to its raylet.
 message ReturnWorkerRequest {
   // Port of the leased worker that we are now returning.
@@ -168,8 +157,6 @@ service NodeManagerService {
   // Cancel a pending lease request. This only returns success if the
   // lease request was not yet granted.
   rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
-  // lease request was not yet granted.
-  rpc CancelResourceLease(CancelResourceLeaseRequest) returns (CancelResourceLeaseReply);
   // Forward a task and its uncommitted lineage to the remote node manager.
   rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
   // Pin the provided object IDs.

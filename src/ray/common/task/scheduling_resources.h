@@ -404,6 +404,17 @@ class ResourceIdSet {
   /// \param capacity capacity of the resource being added
   void AddOrUpdateResource(const std::string &resource_name, int64_t capacity);
 
+  /// \brief  Add a Bundle resource in the ResourceIdSet.
+  ///
+  /// \param resource_name the name of the resource to create/update
+  /// \param resource_ids resource_ids of the resource being added
+  void AddBundleResource(const std::string &resource_name, ResourceIds &resource_ids);
+
+  /// \brief  remove a Bundle resource in the ResourceIdSet.
+  ///
+  /// \param resource_name the name of the resource to remove.
+  void ReturnBundleReousce(const std::string &resource_name);
+
   /// \brief Deletes a resource in the ResourceIdSet. This does not raise an exception,
   /// just deletes the resource. Tasks with acquired resources keep running.
   ///
@@ -515,6 +526,13 @@ class SchedulingResources {
   /// \param capacity: New capacity of the resource.
   /// \return Void.
   void UpdateResourceCapacity(const std::string &resource_name, int64_t capacity);
+
+  /// \brief Update total, available and load resources with the ResourceIds.
+  /// Create if not exists.
+
+  void UpdateBundleResource(const std::string &bundle_id,const ResourceSet &resource_set);
+
+  void ReturnBundleResource(const std::string &bundle_id, const ResourceSet &resource_set);
 
   /// \brief Delete resource from total, available and load resources.
   ///

@@ -338,8 +338,7 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
   virtual ~ServiceBasedPlacementGroupInfoAccessor() = default;
 
   Status AsyncCreatePlacementGroup(
-      const PlacementGroupSpecification &placement_group_spec,
-      const StatusCallback &callback) override;
+      const PlacementGroupSpecification &placement_group_spec) override;
 
  private:
   ServiceBasedGcsClient *client_impl_;

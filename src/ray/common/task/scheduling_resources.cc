@@ -639,6 +639,26 @@ void ResourceIdSet::AddOrUpdateResource(const std::string &resource_name,
   }
 }
 
+void ResourceIdSet::AddBundleResource(const std::string &resource_name,
+                                      ResourceIds &resource_ids) {
+    available_resources_[resource_name] = resource_ids;
+}
+
+void ResourceIdSet::ReturnBundleReousce(const std::string &resource_name) {
+  std::string origin_resource_name = resource_name.substr(resource_name.find("_"));
+  auto iter_orig = available_resources_.find(origin_resource_name);
+  auto iter_bundle = available_resources_.find(resource_name);
+  if(iter_bundle == available_resources_.end()) {
+    return;
+  } else {
+    if(iter_orig == available_resources_.end()) {
+      available_resources_[origin_resource_name] = iter_bundle->second;
+    } else {
+          iter_orig->second.Release(iter_bundle->second);
+    }
+    available_resources_.erase(iter_bundle);
+  }
+}
 void ResourceIdSet::DeleteResource(const std::string &resource_name) {
   available_resources_.erase(resource_name);
 }
@@ -785,6 +805,14 @@ void SchedulingResources::UpdateResourceCapacity(const std::string &resource_nam
     resources_total_.AddOrUpdateResource(resource_name, new_capacity);
     resources_available_.AddOrUpdateResource(resource_name, new_capacity);
   }
+}
+
+void SchedulingResources::UpdateBundleResource(const std::string &bundle_id, const ResourceSet &resource_set) {
+  // TODO(AlisaWu): update resource.
+}
+
+void SchedulingResources::ReturnBundleResource(const std::string &bundle_id, const ResourceSet &resource_set) {
+  // TODO(AlisaWu): return resource.
 }
 
 void SchedulingResources::DeleteResource(const std::string &resource_name) {

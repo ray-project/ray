@@ -152,9 +152,9 @@ cdef extern from "ray/protobuf/common.pb.h" nogil:
         void ParseFromString(const c_string &serialized)
     cdef cppclass CBundle "ray::rpc::Bundle":
         CBundle()
-        const CBundleID BundleId()
+        const c_string &SerializeAsString()
+        void ParseFromString(const c_string &serialized)
         
-
 
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
@@ -251,11 +251,11 @@ cdef extern from "ray/core_worker/common.h" nogil:
 
     cdef cppclass CPlacementCreationOptions "ray:PlacementGroupOptions":
         CPlacementCreationOptions()
-        # CPlacementCreationOptions(
-        #    const std::string &name,
-        #    PlacementStrategy strategy,
-        #    const std::vector<Bundle> &bundles
-        #)
+        CPlacementCreationOptions(
+            const c_string &name,
+            CPlacementStrategy strategy,
+            const c_vector[CBundle] &bundles
+        )
 
 cdef extern from "ray/gcs/gcs_client.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":

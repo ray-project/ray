@@ -136,12 +136,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
   auto placement_group_table_data = placement_group->GetPlacementGroupTableData();
   // The backend storage is reliable in the future, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
-      placement_group_id, placement_group_table_data,
-      [this, placement_group_id, placement_group_table_data](Status status) {
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(
-            PLACEMENT_CROUP_CHANNEL, placement_group_id.Hex(),
-            placement_group_table_data.SerializeAsString(), nullptr));
-      }));
+      placement_group_id, placement_group_table_data,[](Status status) {}));
 
   // Invoke all callbacks for all registration requests of this placement_group
   // (duplicated requests are included) and remove all of them from
@@ -187,6 +182,12 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Failed to create placement group: " << status.ToString();
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  } else {
+        auto placement_group = std::make_shared<GcsPlacementGroup>(request);
+        placement_group->UpdateState(rpc::PlacementGroupTableData::PENDING);
+        auto placement_group_table_data = placement_group->GetPlacementGroupTableData();
+        RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
+        placement_group_id, placement_group_table_data,[](Status status) {}));
   }
 }
 

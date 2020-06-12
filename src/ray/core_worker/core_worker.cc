@@ -1179,35 +1179,15 @@ Status CoreWorker::CreatePlacementGroup(
 
   // TODO(AlisaWu): write a function to pack the code below.
 
-  std::function<Status(const PlacementGroupSpecification &, const gcs::StatusCallback &)>
-      placement_group_create_callback = nullptr;
-
   if (RayConfig::instance().gcs_service_enabled() &&
       RayConfig::instance().gcs_placement_group_service_enabled()) {
-    placement_group_create_callback =
-        [this](const PlacementGroupSpecification &placement_group_spec,
-               const gcs::StatusCallback &callback) {
-          return gcs_client_->PlacementGroups().AsyncCreatePlacementGroup(
-              placement_group_spec, callback);
-        };
-  }
-
-  if (placement_group_create_callback) {
-    RAY_LOG(INFO) << "Submitting Placement Group creation to GCS: "
+        RAY_LOG(INFO) << "Submitting Placement Group creation to GCS: "
                   << placement_group_id.Binary();
-    RAY_CHECK_OK(placement_group_create_callback(
-        placement_group_spec, [placement_group_id](Status status) {
-          if (status.ok()) {
-            RAY_LOG(INFO) << "Placement Group creation submitted to GCS: "
-                          << placement_group_id.Binary();
-          } else {
-            RAY_LOG(ERROR) << "Failed to create Placement Group "
-                           << placement_group_id.Binary()
-                           << " with: " << status.ToString();
-          }
-        }));
+        RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncCreatePlacementGroup(
+              placement_group_spec));
+         
   }
-
+  
   return Status::OK();
 }
 

@@ -5,4 +5,6 @@ __all__ = [
     "get",
     "wait",
     "set_resource",
+    "placement_group",
+    "PlacementStrategy",
 ]

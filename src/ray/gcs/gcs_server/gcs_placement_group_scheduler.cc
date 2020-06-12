@@ -35,29 +35,25 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
       schedule_success_handler_(std::move(schedule_success_handler)),
       lease_client_factory_(std::move(lease_client_factory)) {
   RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
+  scheduler.push_back(std::make_shared<GcsPackStrategy>());
+  scheduler.push_back(std::make_shared<GcsSpreadStrategy>());
 }
 
-void GcsPlacementGroupScheduler::Schedule(
-    std::shared_ptr<GcsPlacementGroup> placement_group) {
-  auto bundles = placement_group->GetBundles();
-  auto strategy = placement_group->GetStrategy();
-  auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
-
-  if (bundles.size() == 0) {
-    schedule_success_handler_(placement_group);
-    return;
+std::unordered_map<BundleID, ClientID> GcsPackStrategy::Schedule(std::vector<ray::BundleSpecification>&bundles, const GcsNodeManager &node_manager){
+  std::unordered_map<BundleID, ClientID>schedule_map;
+  auto &alive_nodes = node_manager.GetAllAliveNodes();
+  for (size_t pos = 0; pos < bundles.size(); pos++) {
+    schedule_map[bundles[pos].BundleId()] =
+        ClientID::FromBinary(alive_nodes.begin()->second->node_id());
   }
+  return schedule_map;
 
-  if (alive_nodes.empty()) {
-    schedule_failure_handler_(placement_group);
-    return;
-  }
+}
 
-  std::vector<ClientID> schedule_bundles(bundles.size());
-  // TODO(AlisaWu): add function to schedule the node.
-  if (strategy == rpc::SPREAD) {
-    // This is a algorithm to select node.
-    auto iter = alive_nodes.begin();
+std::unordered_map<BundleID, ClientID> GcsSpreadStrategy::Schedule(std::vector<ray::BundleSpecification>&bundles, const GcsNodeManager &node_manager){
+  std::unordered_map<BundleID, ClientID>schedule_map;
+  auto &alive_nodes = node_manager.GetAllAliveNodes();
+  auto iter = alive_nodes.begin();
     size_t index = 0;
     size_t alive_nodes_size = alive_nodes.size();
     for (; iter != alive_nodes.end(); iter++, index++) {
@@ -65,48 +61,42 @@ void GcsPlacementGroupScheduler::Schedule(
         if (index + base * alive_nodes_size >= bundles.size()) {
           break;
         } else {
-          schedule_bundles[index + base * alive_nodes_size] =
-              ClientID::FromBinary(iter->second->node_id());
+          schedule_map[bundles[index + base * alive_nodes_size].BundleId()] =  ClientID::FromBinary(iter->second->node_id());
         }
       }
     }
-  } else if (strategy == rpc::PACK) {
-    // This is another algorithm to select node.
-    for (size_t pos = 0; pos < bundles.size(); pos++) {
-      schedule_bundles[pos] =
-          ClientID::FromBinary(alive_nodes.begin()->second->node_id());
-    }
+    return schedule_map;
+}
+
+// map<BundleID,ClientID> Scheduler
+void GcsPlacementGroupScheduler::Schedule(
+    std::shared_ptr<GcsPlacementGroup> placement_group) {
+  auto bundles = placement_group->GetBundles();
+  auto strategy = placement_group->GetStrategy();
+  if (bundles.size() == 0) {
+    schedule_success_handler_(placement_group);
+    return;
   }
-  auto decision = GetDecision();
+  auto schedule_map = scheduler[strategy]->Schedule(bundles, gcs_node_manager_);
+  std::vector<ClientID> decision;
   decision.resize(bundles.size());
-  resource_lease_.resize(bundles.size());
+  int finish_count = 0;
   for (size_t pos = 0; pos < bundles.size(); pos++) {
-    RAY_CHECK(node_to_bundles_when_leasing_[schedule_bundles[pos]]
+    RAY_CHECK(node_to_bundles_when_leasing_[schedule_map.at(bundles[pos].BundleId())]
                   .emplace(bundles[pos].BundleId())
                   .second);
 
     GetLeaseResourceQueue().push_back(std::make_tuple(
-        bundles[pos], gcs_node_manager_.GetNode(schedule_bundles[pos]),
-        [this, pos, bundles, schedule_bundles, placement_group](
+        bundles[pos], gcs_node_manager_.GetNode(schedule_map.at(bundles[pos].BundleId())),
+        [this, pos, bundles, schedule_map, placement_group, &decision, &finish_count](
             const Status &status, const rpc::RequestResourceLeaseReply &reply) {
           finish_count++;
-          auto decision = GetDecision();
           if (status.ok()) {
-            decision[pos] = schedule_bundles[pos];
-            for (int i = 0; i < reply.resource_mapping_size(); i++) {
-              std::string name = std::string(reply.resource_mapping(i).name());
-              for (int j = 0; j < reply.resource_mapping(i).resource_ids_size(); j++) {
-                int64_t index =
-                    int64_t(reply.resource_mapping(i).resource_ids(j).index());
-                double quantity =
-                    double(reply.resource_mapping(i).resource_ids(j).quantity());
-                resource_lease_[pos].push_back(std::make_tuple(name, index, quantity));
-              }
-            }
+            decision[pos] = schedule_map.at(bundles[pos].BundleId());
           } else {
             decision[pos] = ClientID::Nil();
           }
-          if (finish_count == schedule_bundles.size()) {
+          if (finish_count == bundles.size()) {
             bool lease_success = true;
             for (size_t i = 0; i < finish_count; i++) {
               if (decision[i] == ClientID::Nil()) {
@@ -115,31 +105,20 @@ void GcsPlacementGroupScheduler::Schedule(
               }
             }
             if (lease_success) {
-              for (size_t i = 0; i < bundles.size(); i++) {
-                BundleID bundle_id = bundles[i].BundleId();
-                rpc::ScheduleData Data;
-                Data.set_client_id(decision[i].Binary());
-                RAY_CHECK_OK(gcs_table_storage_->BundleScheduleTable().Put(
-                    bundle_id, Data, [](Status status) {}));
-
-                rpc::BundleResourceMap resource_map;
-                for (size_t j = 0; j < resource_lease_[i].size(); j++) {
-                  auto resource = resource_map.add_resource();
-                  resource->set_name(std::get<0>(resource_lease_[i][j]));
-                  resource->set_index(std::get<1>(resource_lease_[i][j]));
-                  resource->set_quantity(std::get<2>(resource_lease_[i][j]));
-                }
-
-                RAY_CHECK_OK(gcs_table_storage_->BundleResourceTable().Put(
-                    bundle_id, resource_map, [](Status status) {}));
+              rpc::ScheduleData data;
+              for(size_t i = 0; i < bundles.size(); i ++) {
+                auto schedule_plan = data.add_schedule_plan();
+                schedule_plan->set_client_id(schedule_map.at(bundles[i].BundleId()).Binary());
+                schedule_plan->set_bundle_id(bundles[i].BundleId().Binary());
               }
+              RAY_CHECK_OK(gcs_table_storage_->PlacementGroupScheduleTable().Put(
+                  placement_group->GetPlacementGroupID(), data, [](Status status) {}));
               schedule_success_handler_(placement_group);
             } else {
               for (size_t i = 0; i < finish_count; i++) {
                 if (decision[i] != ClientID::Nil()) {
                   RetureReourceForNode(bundles[i],
-                                       gcs_node_manager_.GetNode(schedule_bundles[pos]));
-                  resource_lease_[i].clear();
+                                       gcs_node_manager_.GetNode(schedule_map.at(bundles[pos].BundleId())));
                 }
               }
               schedule_failure_handler_(placement_group);
@@ -198,19 +177,14 @@ void GcsPlacementGroupScheduler::LeaseResourceFromNode() {
               RAY_LOG(INFO) << "Finished leasing resource from " << node_id
                             << " for bundle " << bundle.BundleId();
               callback(status, reply);
-              // HandleResourceLeasedReply(bundle, reply);
-
             } else {
               callback(Status::OutOfMemory("bundle lease resource failed"), reply);
-              // TODO(AlisaWu): try to return a fail to the manager
-              // Status::OutOfMemory("Lease resource for placement group");
             }
           }
         });
     if (!status.ok()) {
       rpc::RequestResourceLeaseReply reply;
       callback(Status::OutOfMemory("bundle lease resource failed"), reply);
-      // TODO(AlisaWu): try to return a fail to the manager
     }
   }
 }

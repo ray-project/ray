@@ -43,10 +43,9 @@ enum TablePrefix {
   DIRECT_ACTOR = 18;
   WORKER_FAILURE = 19;
   TABLE_PREFIX_MAX = 20;
-  BUNDLE_RESOURCE = 21;
-  PLACEMENT_GROUP = 22;
-  BUNDLE_SCHEDULE = 23;
-  PLACEMENT_GROUP_NAME = 24;
+  PLACEMENT_GROUP = 21;
+  PLACEMENT_GROUP_SCHEDULE = 22;
+  PLACEMENT_GROUP_NAME = 23;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -180,7 +179,11 @@ message PlacementGroupName {
 }
 
 message ScheduleData {
-  bytes client_id = 1;
+  message BundleSchedule{
+    bytes bundle_id = 1;
+    bytes client_id = 2;
+  }
+  repeated BundleSchedule schedule_plan = 1; 
 }
 message ErrorTableData {
   // The ID of the job that the error is for.

@@ -315,11 +315,7 @@ struct GcsServerMocker {
   class MockedPlacementGroupInfoAccessor : public gcs::PlacementGroupInfoAccessor {
    public:
     Status AsyncCreatePlacementGroup(
-        const PlacementGroupSpecification &placement_group_spec,
-        const gcs::StatusCallback &callback) override {
-      if (callback) {
-        callback(Status::OK());
-      }
+        const PlacementGroupSpecification &placement_group_spec) override {
       return Status::OK();
     };
 

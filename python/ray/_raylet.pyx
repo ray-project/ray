@@ -44,12 +44,14 @@ from cython.operator import dereference, postincrement
 from ray.includes.common cimport (
     CBuffer,
     CAddress,
+    CBundle,
     CLanguage,
     CRayObject,
     CRayStatus,
     CGcsClientOptions,
     CTaskArg,
     CTaskType,
+    CPlacementStrategy,
     CRayFunction,
     LocalMemoryBuffer,
     move,
@@ -62,12 +64,16 @@ from ray.includes.common cimport (
     TASK_TYPE_ACTOR_TASK,
     WORKER_TYPE_WORKER,
     WORKER_TYPE_DRIVER,
+    PLACEMENT_STRATEGY_PACK,
+    PLACEMENT_STRATEGY_SPREAD,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
     CActorCheckpointID,
     CObjectID,
     CClientID,
+    CBundleID,
+    CPlacementGroupID,
 )
 from ray.includes.libcoreworker cimport (
     CActorCreationOptions,
@@ -230,6 +236,34 @@ cdef class Language:
     PYTHON = Language.from_native(LANGUAGE_PYTHON)
     CPP = Language.from_native(LANGUAGE_CPP)
     JAVA = Language.from_native(LANGUAGE_JAVA)
+
+@cython.auto_pickle(False)
+cdef class PlacementStrategy:
+    cdef CPlacementStrategy strategy
+
+    def __cinit__(self, int32_t strategy):
+        self.strategy = <CPlacementStrategy>strategy
+
+    def __eq__(self, other):
+        return (isinstance(other, PlacementStrategy) and
+                (<int32_t>self.strategy) == (<int32_t>(<PlacementStrategy>other).strategy))
+
+    def __repr__(self):
+        if <int32_t>self.strategy == <int32_t>PLACEMENT_STRATEGY_PACK:
+            return "PACK"
+        elif <int32_t>self.strategy == <int32_t>PLACEMENT_STRATEGY_SPREAD:
+            return "SPREAD"
+        else:
+            raise Exception("Unexpected error")
+
+    def __reduce__(self):
+        return PlacementStrategy, (<int32_t>self.strategy,)
+    
+@cython.auto_pickle(False)
+cdef class Bundle:
+    cdef CBundle bundle
+
+
 
 
 cdef int prepare_resources(
@@ -926,6 +960,14 @@ cdef class CoreWorker:
                     &c_actor_id))
 
             return ActorID(c_actor_id.Binary())
+
+    # def create_placement_group(self,
+    #                           c_string name,
+    #                           PlacementStrategy strategy,
+    #                           c_vector[Bundle] &bundle):
+    #    return name
+
+
 
     def submit_actor_task(self,
                           Language language,
