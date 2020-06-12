@@ -6,7 +6,6 @@ import requests
 
 import ray
 from ray import serve
-from ray.serve.utils import retry_actor_failures
 from ray.cluster_utils import Cluster
 
 num_redis_shards = 1
@@ -31,7 +30,7 @@ ray.init(
     include_webui=True,
     webui_host="0.0.0.0",
     log_to_driver=False)
-serve.init(blocking=True)
+serve.init()
 
 
 @ray.remote
@@ -42,11 +41,10 @@ class RandomKiller:
 
     def _get_all_serve_actors(self):
         master = serve.api._get_master_actor()
-        [router] = retry_actor_failures(master.get_router)
-        [http_proxy] = retry_actor_failures(master.get_http_proxy)
+        [router] = ray.get(master.get_router.remote())
+        [http_proxy] = ray.get(master.get_http_proxy.remote())
         all_handles = [master, router, http_proxy]
-        worker_handle_dict = retry_actor_failures(
-            master.get_all_worker_handles)
+        worker_handle_dict = ray.get(master.get_all_worker_handles.remote())
         for _, replica_dict in worker_handle_dict.items():
             all_handles.extend(list(replica_dict.values()))
 
@@ -82,8 +80,8 @@ class RandomTest:
             return new_endpoint
 
         serve.create_backend(new_endpoint, handler)
-        serve.create_endpoint(new_endpoint, "/" + new_endpoint)
-        serve.set_traffic(new_endpoint, {new_endpoint: 1.0})
+        serve.create_endpoint(
+            new_endpoint, backend=new_endpoint, route="/" + new_endpoint)
 
         self.endpoints.append(new_endpoint)
 

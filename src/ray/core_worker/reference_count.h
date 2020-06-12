@@ -15,6 +15,8 @@
 #ifndef RAY_CORE_WORKER_REF_COUNT_H
 #define RAY_CORE_WORKER_REF_COUNT_H
 
+#include <boost/bind.hpp>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -25,13 +27,33 @@
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/logging.h"
 
-#include <boost/bind.hpp>
-
 namespace ray {
+
+// Interface for mocking.
+class ReferenceCounterInterface {
+ public:
+  virtual void AddLocalReference(const ObjectID &object_id,
+                                 const std::string &call_site) = 0;
+  virtual bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
+                                 const TaskID &owner_id,
+                                 const rpc::Address &owner_address) = 0;
+  virtual void AddOwnedObject(const ObjectID &object_id,
+                              const std::vector<ObjectID> &contained_ids,
+                              const TaskID &owner_id, const rpc::Address &owner_address,
+                              const std::string &call_site, const int64_t object_size,
+                              bool is_reconstructable,
+                              const absl::optional<ClientID> &pinned_at_raylet_id =
+                                  absl::optional<ClientID>()) = 0;
+  virtual bool SetDeleteCallback(
+      const ObjectID &object_id,
+      const std::function<void(const ObjectID &)> callback) = 0;
+
+  virtual ~ReferenceCounterInterface() {}
+};
 
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
 /// collection. This class is thread safe.
-class ReferenceCounter {
+class ReferenceCounter : public ReferenceCounterInterface {
  public:
   using ReferenceTableProto =
       ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;

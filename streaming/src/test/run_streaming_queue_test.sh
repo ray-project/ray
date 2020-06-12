@@ -35,7 +35,7 @@ if [ -z "$RAY_ROOT" ] ; then
   exit 1
 fi
 
-bazel build "//:core_worker_test" "//:mock_worker"  "//:raylet" "//:gcs_server" "//:libray_redis_module.so" "@plasma//:plasma_store_server" "//:redis-server" "//:redis-cli"
+bazel build "//:core_worker_test" "//:mock_worker"  "//:raylet" "//:gcs_server" "//:libray_redis_module.so" "//:plasma_store_server" "//:redis-server" "//:redis-cli"
 bazel build //streaming:streaming_test_worker
 bazel build //streaming:streaming_queue_tests
 
@@ -47,7 +47,7 @@ fi
 
 REDIS_MODULE="./bazel-bin/libray_redis_module.so"
 REDIS_SERVER_EXEC="./bazel-bin/redis-server"
-STORE_EXEC="./bazel-bin/external/plasma/plasma_store_server"
+STORE_EXEC="./bazel-bin/plasma_store_server"
 REDIS_CLIENT_EXEC="./bazel-bin/redis-cli"
 RAYLET_EXEC="./bazel-bin/raylet"
 STREAMING_TEST_WORKER_EXEC="./bazel-bin/streaming/streaming_test_worker"

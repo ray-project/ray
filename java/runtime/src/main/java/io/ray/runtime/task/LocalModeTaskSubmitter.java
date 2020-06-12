@@ -3,7 +3,7 @@ package io.ray.runtime.task;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
-import io.ray.api.BaseActor;
+import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.TaskId;
@@ -11,7 +11,7 @@ import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.runtime.RayRuntimeInternal;
-import io.ray.runtime.actor.LocalModeRayActor;
+import io.ray.runtime.actor.LocalModeActorHandle;
 import io.ray.runtime.context.LocalModeWorkerContext;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
@@ -149,8 +149,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   @Override
-  public BaseActor createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
-                              ActorCreationOptions options) {
+  public BaseActorHandle createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
+                                     ActorCreationOptions options) {
     ActorId actorId = ActorId.fromRandom();
     TaskSpec taskSpec = getTaskSpecBuilder(TaskType.ACTOR_CREATION_TASK, functionDescriptor, args)
         .setNumReturns(1)
@@ -159,12 +159,12 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
             .build())
         .build();
     submitTaskSpec(taskSpec);
-    return new LocalModeRayActor(actorId, getReturnIds(taskSpec).get(0));
+    return new LocalModeActorHandle(actorId, getReturnIds(taskSpec).get(0));
   }
 
   @Override
   public List<ObjectId> submitActorTask(
-      BaseActor actor, FunctionDescriptor functionDescriptor,
+      BaseActorHandle actor, FunctionDescriptor functionDescriptor,
       List<FunctionArg> args, int numReturns, CallOptions options) {
     Preconditions.checkState(numReturns <= 1);
     TaskSpec.Builder builder = getTaskSpecBuilder(TaskType.ACTOR_TASK, functionDescriptor, args);
@@ -175,7 +175,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         .setActorTaskSpec(
             ActorTaskSpec.newBuilder().setActorId(ByteString.copyFrom(actor.getId().getBytes()))
                 .setPreviousActorTaskDummyObjectId(ByteString.copyFrom(
-                    ((LocalModeRayActor) actor)
+                    ((LocalModeActorHandle) actor)
                         .exchangePreviousActorTaskDummyObjectId(returnIds.get(returnIds.size() - 1))
                         .getBytes()))
                 .build())

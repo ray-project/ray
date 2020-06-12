@@ -1,8 +1,8 @@
 package io.ray.streaming.runtime.streamingqueue;
 
 import com.google.common.collect.ImmutableMap;
+import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.ActorCreationOptions.Builder;
 import io.ray.runtime.config.RayConfig;
@@ -37,6 +37,7 @@ import org.testng.annotations.Test;
 public class StreamingQueueTest extends BaseUnitTest implements Serializable {
 
   private static Logger LOGGER = LoggerFactory.getLogger(StreamingQueueTest.class);
+
   static {
     EnvUtil.loadNativeLibraries();
   }
@@ -54,10 +55,6 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
   @org.testng.annotations.AfterSuite
   public void suiteTearDown() throws Exception {
     LOGGER.warn("Do tear down");
-  }
-
-  @BeforeClass
-  public void setUp() {
   }
 
   @BeforeMethod
@@ -79,7 +76,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     System.clearProperty("ray.run-mode");
   }
 
-  @Test(timeOut = 3000000)
+  @Test(timeOut = 300000)
   public void testReaderWriter() {
     LOGGER.info("StreamingQueueTest.testReaderWriter run-mode: {}",
         System.getProperty("ray.run-mode"));
@@ -94,9 +91,9 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
 
     ActorCreationOptions.Builder builder = new Builder();
 
-    RayActor<WriterWorker> writerActor = Ray.createActor(WriterWorker::new, "writer",
+    ActorHandle<WriterWorker> writerActor = Ray.createActor(WriterWorker::new, "writer",
         builder.createActorCreationOptions());
-    RayActor<ReaderWorker> readerActor = Ray.createActor(ReaderWorker::new, "reader",
+    ActorHandle<ReaderWorker> readerActor = Ray.createActor(ReaderWorker::new, "reader",
         builder.createActorCreationOptions());
 
     LOGGER.info("call getName on writerActor: {}",
@@ -120,7 +117,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     readerActor.call(ReaderWorker::init, inputQueueList, writerActor, msgCount);
     try {
       Thread.sleep(1000);
-    } catch (InterruptedException e) {
+    } catch (Exception e) {
       e.printStackTrace();
     }
     writerActor.call(WriterWorker::init, outputQueueList, readerActor, msgCount);
@@ -160,7 +157,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     Map<String, Integer> wordCount = new ConcurrentHashMap<>();
     StreamingContext streamingContext = StreamingContext.buildContext();
     Map<String, String> config = new HashMap<>();
-    config.put(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL);
+    config.put(Config.CHANNEL_TYPE, "NATIVE_CHANNEL");
     config.put(Config.CHANNEL_SIZE, "100000");
     streamingContext.withConfig(config);
     List<String> text = new ArrayList<>();

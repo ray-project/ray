@@ -1,7 +1,7 @@
 package io.ray.runtime.task;
 
+import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.RayObject;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.generated.Common.Language;
@@ -36,8 +36,8 @@ public class ArgumentsBuilder {
     for (Object arg : args) {
       ObjectId id = null;
       NativeRayObject value = null;
-      if (arg instanceof RayObject) {
-        id = ((RayObject) arg).getId();
+      if (arg instanceof ObjectRef) {
+        id = ((ObjectRef) arg).getId();
       } else {
         value = ObjectSerializer.serialize(arg);
         if (language != Language.JAVA) {

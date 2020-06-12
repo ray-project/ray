@@ -17,12 +17,12 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "plasma/client.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
+#include "ray/object_manager/plasma/client.h"
 #include "ray/raylet/raylet_client.h"
 
 namespace ray {

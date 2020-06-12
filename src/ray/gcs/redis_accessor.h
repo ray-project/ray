@@ -297,6 +297,8 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
 
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
 
+  Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
+
  private:
   RedisGcsClient *client_impl_{nullptr};
 

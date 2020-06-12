@@ -26,7 +26,7 @@ class TestDQN(unittest.TestCase):
         num_iterations = 1
 
         for fw in framework_iterator(config):
-            # double-dueling DQN.
+            # Double-dueling DQN.
             plain_config = config.copy()
             trainer = dqn.DQNTrainer(config=plain_config, env="CartPole-v0")
             for i in range(num_iterations):

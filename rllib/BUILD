@@ -283,6 +283,26 @@ py_test(
     args = ["--torch", "--yaml-dir=tuned_examples/ppo"]
 )
 
+py_test(
+    name = "run_regression_tests_repeat_after_me_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf"],
+    size = "medium",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/repeatafterme-ppo-lstm.yaml"],
+    args = ["--yaml-dir=tuned_examples/ppo"]
+)
+
+py_test(
+    name = "run_regression_tests_repeat_after_me_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf"],
+    size = "medium",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/repeatafterme-ppo-lstm.yaml"],
+    args = ["--torch", "--yaml-dir=tuned_examples/ppo"]
+)
+
 # SAC
 py_test(
     name = "run_regression_tests_cartpole_sac_tf",
@@ -717,7 +737,8 @@ py_test(
 
 py_test(
     name = "test_impala_cartpole_v0_buffers_2_lstm",
-    main = "train.py", srcs = ["train.py"],
+    main = "train.py",
+    srcs = ["train.py"],
     tags = ["quick_train"],
     args = [
         "--env", "CartPole-v0",
@@ -730,12 +751,14 @@ py_test(
 
 py_test(
     name = "test_impala_pong_deterministic_v4_40k_ts_1G_obj_store",
-    main = "train.py", srcs = ["train.py"],
+    main = "train.py",
+    srcs = ["train.py"],
     tags = ["quick_train"],
+    size = "medium",
     args = [
         "--env", "PongDeterministic-v4",
         "--run", "IMPALA",
-        "--stop", "'{\"timesteps_total\": 40000}'",
+        "--stop", "'{\"timesteps_total\": 30000}'",
         "--ray-object-store-memory=1000000000",
         "--config", "'{\"framework\": \"tf\", \"num_workers\": 1, \"num_gpus\": 0, \"num_envs_per_worker\": 32, \"rollout_fragment_length\": 50, \"train_batch_size\": 50, \"learner_queue_size\": 1}'"
         ]
@@ -981,6 +1004,29 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# Env tests
+# rllib/env/
+#
+# Tag: env
+# --------------------------------------------------------------------
+
+sh_test(
+    name = "env/tests/test_local_inference",
+    tags = ["env"],
+    size = "medium",
+    srcs = ["env/tests/test_local_inference.sh"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "env/tests/test_remote_inference",
+    tags = ["env"],
+    size = "medium",
+    srcs = ["env/tests/test_remote_inference.sh"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+# --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
 #
@@ -990,7 +1036,7 @@ py_test(
 py_test(
     name = "test_distributions",
     tags = ["models"],
-    size = "small",
+    size = "medium",
     srcs = ["models/tests/test_distributions.py"]
 )
 
@@ -1094,7 +1140,7 @@ py_test(
 py_test(
     name = "tests/test_avail_actions_qmix",
     tags = ["tests_dir", "tests_dir_A"],
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_avail_actions_qmix.py"]
 )
 
@@ -1149,6 +1195,20 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_exec_api",
+    tags = ["tests_dir", "tests_dir_E"],
+    size = "medium",
+    srcs = ["tests/test_exec_api.py"]
+)
+
+py_test(
+    name = "tests/test_execution",
+    tags = ["tests_dir", "tests_dir_E"],
+    size = "medium",
+    srcs = ["tests/test_execution.py"]
+)
+
+py_test(
     name = "tests/test_export",
     tags = ["tests_dir", "tests_dir_E"],
     size = "medium",
@@ -1191,13 +1251,6 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_execution",
-    tags = ["tests_dir", "tests_dir_E"],
-    size = "medium",
-    srcs = ["tests/test_execution.py"]
-)
-
-py_test(
     name = "tests/test_local",
     tags = ["tests_dir", "tests_dir_L"],
     size = "medium",
@@ -1222,7 +1275,7 @@ py_test(
 py_test(
     name = "tests/test_multi_agent_env",
     tags = ["tests_dir", "tests_dir_M"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_multi_agent_env.py"]
 )
 
@@ -1242,16 +1295,9 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_exec_api",
-    tags = ["tests_dir", "tests_dir_E"],
-    size = "medium",
-    srcs = ["tests/test_exec_api.py"]
-)
-
-py_test(
     name = "tests/test_reproducibility",
     tags = ["tests_dir", "tests_dir_R"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_reproducibility.py"]
 )
 
@@ -1259,7 +1305,7 @@ py_test(
     name = "test_rollout",
     main = "tests/test_rollout.py",
     tags = ["tests_dir", "tests_dir_R"],
-    size = "enormous",
+    size = "large",
     data = ["train.py", "rollout.py"],
     srcs = ["tests/test_rollout.py"]
 )
@@ -1267,7 +1313,7 @@ py_test(
 py_test(
     name = "tests/test_rollout_worker",
     tags = ["tests_dir", "tests_dir_R"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_rollout_worker.py"]
 )
 
@@ -1281,7 +1327,7 @@ py_test(
 py_test(
     name = "tests/test_supported_spaces",
     tags = ["tests_dir", "tests_dir_S"],
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_supported_spaces.py"]
 )
 
@@ -1391,7 +1437,7 @@ py_test(
     name = "examples/cartpole_lstm_impala_tf",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--run=IMPALA", "--stop-reward=40", "--num-cpus=4"]
 )
@@ -1400,7 +1446,7 @@ py_test(
     name = "examples/cartpole_lstm_impala_torch",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--torch", "--run=IMPALA", "--stop-reward=40", "--num-cpus=4"]
 )
@@ -1409,7 +1455,7 @@ py_test(
     name = "examples/cartpole_lstm_ppo_tf",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
 )
@@ -1418,7 +1464,7 @@ py_test(
     name = "examples/cartpole_lstm_ppo_torch",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--torch", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
 )
@@ -1427,7 +1473,7 @@ py_test(
     name = "examples/cartpole_lstm_ppo_tf_with_prev_a_and_r",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--run=PPO", "--stop-reward=40", "--use-prev-action-reward", "--num-cpus=4"]
 )
@@ -1436,7 +1482,7 @@ py_test(
     name = "examples/centralized_critic_tf",
     main = "examples/centralized_critic.py",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/centralized_critic.py"],
     args = ["--as-test", "--stop-reward=7.2"]
 )
@@ -1445,7 +1491,7 @@ py_test(
     name = "examples/centralized_critic_torch",
     main = "examples/centralized_critic.py",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/centralized_critic.py"],
     args = ["--as-test", "--torch", "--stop-reward=7.2"]
 )
@@ -1520,6 +1566,30 @@ py_test(
     size = "small",
     srcs = ["examples/custom_fast_model.py"],
     args = ["--torch", "--stop-iters=1", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/complex_struct_space_tf", main = "examples/complex_struct_space.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/complex_struct_space.py"],
+    args = ["--framework=tf"],
+)
+
+py_test(
+    name = "examples/complex_struct_space_tf_eager", main = "examples/complex_struct_space.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/complex_struct_space.py"],
+    args = ["--framework=tfe"],
+)
+
+py_test(
+    name = "examples/complex_struct_space_torch", main = "examples/complex_struct_space.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/complex_struct_space.py"],
+    args = ["--framework=torch"],
 )
 
 py_test(
@@ -1689,7 +1759,7 @@ py_test(
     name = "examples/multi_agent_cartpole_torch",
     main = "examples/multi_agent_cartpole.py",
     tags = ["examples", "examples_M"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_cartpole.py"],
     args = ["--as-test", "--torch", "--stop-reward=70.0", "--num-cpus=4"]
 )
@@ -1817,22 +1887,6 @@ py_test(
     size = "medium",
     srcs = ["examples/rock_paper_scissors_multiagent.py"],
     args = ["--as-test", "--torch"],
-)
-
-sh_test(
-    name = "examples/serving/test_local_inference",
-    tags = ["examples", "examples_S", "exclusive"],
-    size = "medium",
-    srcs = ["examples/serving/test_local_inference.sh"],
-    data = glob(["examples/serving/*.py"]),
-)
-
-sh_test(
-    name = "examples/serving/test_remote_inference",
-    tags = ["examples", "examples_S", "exclusive"],
-    size = "medium",
-    srcs = ["examples/serving/test_remote_inference.sh"],
-    data = glob(["examples/serving/*.py"]),
 )
 
 py_test(

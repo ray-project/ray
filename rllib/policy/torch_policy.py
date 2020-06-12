@@ -232,7 +232,7 @@ class TorchPolicy(Policy):
         loss_out = force_list(
             self._loss(self, self.model, self.dist_class, train_batch))
         assert len(loss_out) == len(self._optimizers)
-        # assert not any(np.isnan(l.detach().numpy()) for l in loss_out)
+        # assert not any(torch.isnan(l) for l in loss_out)
 
         # Loop through all optimizers.
         grad_info = {"allreduce_latency": 0.0}
@@ -322,6 +322,26 @@ class TorchPolicy(Policy):
     def set_weights(self, weights):
         weights = convert_to_torch_tensor(weights, device=self.device)
         self.model.load_state_dict(weights)
+
+    @override(Policy)
+    def get_state(self):
+        state = super().get_state()
+        state["_optimizer_variables"] = []
+        for i, o in enumerate(self._optimizers):
+            state["_optimizer_variables"].append(o.state_dict())
+        return state
+
+    @override(Policy)
+    def set_state(self, state):
+        state = state.copy()  # shallow copy
+        # Set optimizer vars first.
+        optimizer_vars = state.pop("_optimizer_variables", None)
+        if optimizer_vars:
+            assert len(optimizer_vars) == len(self._optimizers)
+            for o, s in zip(self._optimizers, optimizer_vars):
+                o.load_state_dict(s)
+        # Then the Policy's (NN) weights.
+        super().set_state(state)
 
     @override(Policy)
     def is_recurrent(self):

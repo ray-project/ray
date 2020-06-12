@@ -378,6 +378,12 @@ class ObjectInfoAccessor {
   /// \return Status
   virtual Status AsyncUnsubscribeToLocations(const ObjectID &object_id) = 0;
 
+  /// Reestablish subscription.
+  /// This should be called when GCS server restarts from a failure.
+  ///
+  /// \return Status
+  virtual Status AsyncReSubscribe() = 0;
+
  protected:
   ObjectInfoAccessor() = default;
 };
@@ -658,7 +664,7 @@ class WorkerInfoAccessor {
 
   /// Get worker failure specification from GCS asynchronously.
   ///
-  /// \param actor_id The ID of worker to look up in the GCS.
+  /// \param worker_id The ID of worker to look up in the GCS.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   virtual Status AsyncGetWorkerFailure(

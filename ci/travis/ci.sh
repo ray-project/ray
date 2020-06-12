@@ -168,7 +168,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      sphinx-build -q -W -E -T -b html source _build/html
+      sphinx-build -q -E -T -b html source _build/html
     fi
   )
 }
@@ -248,7 +248,7 @@ build_wheels() {
           local existing_version
           existing_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
           if [ "${pyversion}" != "${existing_version}" ]; then
-            suppress_xtrace conda install python="${pyversion}"
+            suppress_output conda install python="${pyversion}"
           fi
           install_ray
           (cd "${WORKSPACE_DIR}"/python && python setup.py --quiet bdist_wheel)

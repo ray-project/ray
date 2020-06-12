@@ -83,8 +83,10 @@ class ActorHandle {
   /// only.
   // TODO: Save this state in the core worker.
   ObjectID actor_cursor_ GUARDED_BY(mutex_);
+
   // Number of tasks that have been submitted on this handle.
   uint64_t task_counter_ GUARDED_BY(mutex_) = 0;
+
   // False if actor handle is not persisted to GCS yet.
   // This value will become true when the actor
   // information is reported from GCS through pub/sub.

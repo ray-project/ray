@@ -438,7 +438,7 @@ message GetWorkerFailureRequest {
 
 message GetWorkerFailureReply {
   GcsStatus status = 1;
-  // Data of worker
+  // Failure Data of workers
   WorkerFailureData worker_failure_data = 2;
 }
 
