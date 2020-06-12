@@ -20,4 +20,7 @@ public interface Operator extends Serializable {
   Language getLanguage();
 
   OperatorType getOpType();
+
+  ChainStrategy getChainStrategy();
+
 }

@@ -61,18 +61,20 @@ public class JobGraphBuilder {
         "Reference stream should be skipped.");
     int vertexId = stream.getId();
     int parallelism = stream.getParallelism();
+    Map<String, String> config = stream.getConfig();
     JobVertex jobVertex;
     if (stream instanceof StreamSink) {
-      jobVertex = new JobVertex(vertexId, parallelism, VertexType.SINK, streamOperator);
+      jobVertex = new JobVertex(vertexId, parallelism, VertexType.SINK, streamOperator, config);
       Stream parentStream = stream.getInputStream();
       int inputVertexId = parentStream.getId();
       JobEdge jobEdge = new JobEdge(inputVertexId, vertexId, parentStream.getPartition());
       this.jobGraph.addEdge(jobEdge);
       processStream(parentStream);
     } else if (stream instanceof StreamSource) {
-      jobVertex = new JobVertex(vertexId, parallelism, VertexType.SOURCE, streamOperator);
+      jobVertex = new JobVertex(vertexId, parallelism, VertexType.SOURCE, streamOperator, config);
     } else if (stream instanceof DataStream || stream instanceof PythonDataStream) {
-      jobVertex = new JobVertex(vertexId, parallelism, VertexType.TRANSFORMATION, streamOperator);
+      jobVertex = new JobVertex(
+          vertexId, parallelism, VertexType.TRANSFORMATION, streamOperator, config);
       Stream parentStream = stream.getInputStream();
       int inputVertexId = parentStream.getId();
       JobEdge jobEdge = new JobEdge(inputVertexId, vertexId, parentStream.getPartition());
@@ -92,10 +94,11 @@ public class JobGraphBuilder {
         this.jobGraph.addEdge(otherEdge);
         processStream(otherStream);
       }
+
+      // TODO(chaokunyang) add two input stream support, ex join
     } else {
       throw new UnsupportedOperationException("Unsupported stream: " + stream);
     }
-    jobVertex.setConfig(stream.getConfig());
     this.jobGraph.addVertex(jobVertex);
   }
 

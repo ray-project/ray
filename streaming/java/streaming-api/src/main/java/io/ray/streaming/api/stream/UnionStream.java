@@ -16,6 +16,8 @@ public class UnionStream<T> extends DataStream<T> {
   private List<DataStream<T>> unionStreams;
 
   public UnionStream(DataStream<T> input, List<DataStream<T>> streams) {
+    // Union stream does not create a physical operation, so we don't have to set partition
+    // function for it.
     super(input, new UnionOperator());
     this.unionStreams = new ArrayList<>();
     streams.forEach(this::addStream);
