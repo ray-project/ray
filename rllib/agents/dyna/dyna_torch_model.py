@@ -36,22 +36,22 @@ class DYNATorchModel(TorchModelV2, nn.Module):
                                              num_outputs, model_config, name)
 
     def get_next_observation(self, observations, actions):
-        """Return the Q estimates for the most recent forward pass.
+        """Returns a next obs prediction given current observation and action.
 
-        This implements Q(s, a).
+        This implements p^(s'|s, a). With p being the environment dynamics.
 
         Arguments:
-            model_out (Tensor): obs embeddings from the model layers, of shape
-                [BATCH_SIZE, num_outputs].
-            actions (Optional[Tensor]): Actions to return the Q-values for.
-                Shape: [BATCH_SIZE, action_dim]. If None (discrete action
-                case), return Q-values for all actions.
+            observations (Tensor): The current observation Tensor.
+            actions (Tensor): The actions taken in `observations`.
 
         Returns:
-            tensor of shape [BATCH_SIZE].
+            TensorType: The predicted next observations.
         """
+
+        # One-hot the actions.
         actions_flat = nn.functional.one_hot(
             actions, num_classes=self.action_space.n).float()
+        # Push through our underlying Model.
         next_obs, _ = self.forward({
             "obs_flat": torch.cat([observations, actions_flat], -1)
         }, [], None)
