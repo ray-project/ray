@@ -32,7 +32,6 @@ class TestA3C(unittest.TestCase):
                     results = trainer.train()
                     print(results)
                 check_compute_single_action(trainer)
-                check_compute_single_action(trainer.get_policy())
 
 
 if __name__ == "__main__":

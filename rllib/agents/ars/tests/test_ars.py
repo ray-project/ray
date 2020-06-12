@@ -25,7 +25,6 @@ class TestARS(unittest.TestCase):
                 print(results)
 
             check_compute_single_action(trainer)
-            check_compute_single_action(trainer.policy)
 
 
 if __name__ == "__main__":

@@ -34,7 +34,6 @@ class TestDQN(unittest.TestCase):
                 print(results)
 
             check_compute_single_action(trainer)
-            check_compute_single_action(trainer.get_policy())
 
             # Rainbow.
             # TODO(sven): Add torch once DQN-torch supports distributional-Q.
@@ -52,7 +51,6 @@ class TestDQN(unittest.TestCase):
                 print(results)
 
             check_compute_single_action(trainer)
-            check_compute_single_action(trainer.get_policy())
 
     def test_dqn_exploration_and_soft_q_config(self):
         """Tests, whether a DQN Agent outputs exploration/softmaxed actions."""

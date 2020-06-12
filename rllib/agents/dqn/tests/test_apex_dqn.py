@@ -46,7 +46,6 @@ class TestApexDQN(unittest.TestCase):
             check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
             check_compute_single_action(trainer)
-            check_compute_single_action(trainer.get_policy())
 
             # TODO(ekl) fix iterator metrics bugs w/multiple trainers.
             #            for i in range(1):

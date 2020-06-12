@@ -35,7 +35,6 @@ class TestIMPALA(unittest.TestCase):
                 for i in range(num_iterations):
                     print(trainer.train())
                 check_compute_single_action(trainer)
-                check_compute_single_action(trainer.get_policy())
                 trainer.stop()
 
                 # Test w/ LSTM.
@@ -46,7 +45,6 @@ class TestIMPALA(unittest.TestCase):
                 for i in range(num_iterations):
                     print(trainer.train())
                 check_compute_single_action(trainer, include_state=True)
-                check_compute_single_action(trainer.get_policy())
                 trainer.stop()
 
 

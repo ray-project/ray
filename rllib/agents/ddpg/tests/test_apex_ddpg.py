@@ -42,7 +42,6 @@ class TestApexDDPG(unittest.TestCase):
             for _ in range(num_iterations):
                 print(trainer.train())
             check_compute_single_action(trainer)
-            check_compute_single_action(trainer.get_policy())
 
             # Test again per-worker scale distribution
             # (should not have changed).

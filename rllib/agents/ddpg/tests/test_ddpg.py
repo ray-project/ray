@@ -45,7 +45,6 @@ class TestDDPG(unittest.TestCase):
                 results = trainer.train()
                 print(results)
             check_compute_single_action(trainer)
-            check_compute_single_action(trainer.get_policy())
 
     def test_ddpg_exploration_and_with_random_prerun(self):
         """Tests DDPG's Exploration (w/ random actions for n timesteps)."""

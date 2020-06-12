@@ -23,7 +23,6 @@ class TestTD3(unittest.TestCase):
                 results = trainer.train()
                 print(results)
             check_compute_single_action(trainer)
-            check_compute_single_action(trainer.get_policy())
 
     def test_td3_exploration_and_with_random_prerun(self):
         """Tests TD3's Exploration (w/ random actions for n timesteps)."""

@@ -244,63 +244,62 @@ def check_learning_achieved(tune_results, min_reward):
     print("ok")
 
 
-def check_compute_single_action(trainer_or_policy,
+def check_compute_single_action(trainer,
                                 include_state=False,
                                 include_prev_action_reward=False):
     """Tests different combinations of arguments for trainer.compute_action.
 
     Args:
-        trainer_or_policy (Union[Trainer,Policy]): The trainer or policy object
-            to test.
+        trainer (Trainer): The Trainer object to test.
         include_prev_action_reward (bool): Whether to include the prev-action
             and -reward in the `compute_action` call.
 
     Throws:
         ValueError: If anything unexpected happens.
     """
-    from ray.rllib.agents.trainer import Trainer
-    is_trainer = False
-    if isinstance(trainer_or_policy, Trainer):
-        is_trainer = True
-        try:
-            pol = trainer_or_policy.get_policy()
-        except AttributeError:
-            pol = trainer_or_policy.policy
-        method_to_test = trainer_or_policy.compute_action
-    else:
-        pol = trainer_or_policy
-        method_to_test = pol.compute_single_action
+    try:
+        pol = trainer.get_policy()
+    except AttributeError:
+        pol = trainer.policy
 
     obs_space = pol.observation_space
     action_space = pol.action_space
 
-    for explore in [True, False]:
-        for full_fetch in ([True, False] if is_trainer else [False]):
-            call_kwargs = {"full_fetch": full_fetch} if is_trainer else {}
-            obs = np.clip(obs_space.sample(), -1.0, 1.0)
-            state_in = None
-            if include_state:
-                state_in = pol.model.get_initial_state()
-            action_in = action_space.sample() \
-                if include_prev_action_reward else None
-            reward_in = 1.0 if include_prev_action_reward else None
-            action = method_to_test(
-                obs,
-                state_in,
-                prev_action=action_in,
-                prev_reward=reward_in,
-                explore=explore,
-                **call_kwargs)
+    for what in [trainer, pol]:
 
-            state_out = None
-            if state_in or full_fetch or not is_trainer:
-                action, state_out, _ = action
-            if state_out:
-                for si, so in zip(state_in, state_out):
-                    check(list(si.shape), so.shape)
+        method_to_test = trainer.compute_action if what is trainer else \
+            pol.compute_single_action
 
-            if not action_space.contains(action):
-                raise ValueError(
-                    "Returned action ({}) of trainer/policy {} not in Env's "
-                    "action_space ({})!".format(action, trainer_or_policy,
-                                                action_space))
+        for explore in [True, False]:
+            for full_fetch in ([True, False] if what is trainer else [False]):
+                call_kwargs = {}
+                if what is trainer:
+                    call_kwargs["full_fetch"] = full_fetch
+
+                obs = np.clip(obs_space.sample(), -1.0, 1.0)
+                state_in = None
+                if include_state:
+                    state_in = pol.model.get_initial_state()
+                action_in = action_space.sample() \
+                    if include_prev_action_reward else None
+                reward_in = 1.0 if include_prev_action_reward else None
+                action = method_to_test(
+                    obs,
+                    state_in,
+                    prev_action=action_in,
+                    prev_reward=reward_in,
+                    explore=explore,
+                    **call_kwargs)
+
+                state_out = None
+                if state_in or full_fetch or what is pol:
+                    action, state_out, _ = action
+                if state_out:
+                    for si, so in zip(state_in, state_out):
+                        check(list(si.shape), so.shape)
+    
+                if not action_space.contains(action):
+                    raise ValueError(
+                        "Returned action ({}) of trainer/policy {} not in "
+                        "Env's action_space "
+                        "({})!".format(action, what, action_space))

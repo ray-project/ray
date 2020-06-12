@@ -30,8 +30,6 @@ class TestPG(unittest.TestCase):
                 trainer.train()
             check_compute_single_action(
                 trainer, include_prev_action_reward=True)
-            check_compute_single_action(
-                trainer.get_policy(), include_prev_action_reward=True)
 
     def test_pg_loss_functions(self):
         """Tests the PG loss function math."""

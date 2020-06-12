@@ -28,7 +28,6 @@ class TestSimpleQ(unittest.TestCase):
                 print(results)
 
             check_compute_single_action(trainer)
-            check_compute_single_action(trainer.get_policy())
 
     def test_simple_q_loss_function(self):
         """Tests the Simple-Q loss function results on all frameworks."""

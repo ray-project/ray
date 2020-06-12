@@ -30,7 +30,6 @@ class TestAPPO(unittest.TestCase):
             for i in range(num_iterations):
                 print(trainer.train())
             check_compute_single_action(trainer)
-            check_compute_single_action(trainer.get_policy())
 
             _config = config.copy()
             _config["vtrace"] = True
@@ -38,7 +37,6 @@ class TestAPPO(unittest.TestCase):
             for i in range(num_iterations):
                 print(trainer.train())
             check_compute_single_action(trainer)
-            check_compute_single_action(trainer.get_policy())
 
 
 if __name__ == "__main__":
