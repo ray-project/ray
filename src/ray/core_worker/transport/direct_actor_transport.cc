@@ -279,9 +279,10 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto task_id = TaskID::FromBinary(request.task_spec().task_id());
-  RAY_LOG(INFO) << "CoreWorkerDirectTaskReceiver HandlePushTask..., task id = " << task_id
-                << ", actor id = " << task_id.ActorId();
-  if (finished_task_ids_.count(task_id)) {
+  // If GCS server is restarted after sending create actor task to the core worker, the
+  // restarted GCS server will send the same create actor task to the core worker again.
+  // We just need to ignore it and reply ok.
+  if (completed_task_ids_.count(task_id)) {
     send_reply_callback(Status::OK(), nullptr, nullptr);
     RAY_LOG(INFO) << "Task is repeated, reply directly, task id = " << task_id
                   << ", actor id = " << task_id.ActorId();
@@ -378,7 +379,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   // through a scheduling queue.
   if (task_spec.IsActorCreationTask()) {
     accept_callback();
-    finished_task_ids_.insert(task_id);
+    completed_task_ids_.insert(task_id);
     return;
   }
 

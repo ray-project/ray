@@ -500,7 +500,8 @@ class CoreWorkerDirectTaskReceiver {
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
   std::unordered_map<WorkerID, SchedulingQueue> scheduling_queue_;
-  absl::flat_hash_set<TaskID> finished_task_ids_;
+  /// Save the ID of the completed tasks.
+  absl::flat_hash_set<TaskID> completed_task_ids_;
 };
 
 }  // namespace ray
