@@ -261,9 +261,8 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_model_v2(input_space=None,
-                     output_space=None,
-                     *,
+    def get_model_v2(obs_space,
+                     action_space,
                      num_outputs,
                      model_config,
                      framework="tf",
@@ -274,12 +273,10 @@ class ModelCatalog:
         """Returns a suitable model compatible with given spaces and output.
 
         Args:
-            input_space (Space): Input space of the model. This
+            obs_space (Space): Observation space of the target gym env. This
                 may have an `original_space` attribute that specifies how to
                 unflatten the tensor into a ragged tensor.
-            output_space (Space): Output space of the model.
-            model_config (dict): Config dict of the model to build. Usually
-                the content under the "model" key in a Policy/Trainer config.
+            action_space (Space): Action space of the target gym env.
             num_outputs (int): The size of the output vector of the model.
             framework (str): One of "tf", "tfe", or "torch".
             name (str): Name (scope) for the model.
@@ -291,13 +288,6 @@ class ModelCatalog:
         Returns:
             model (ModelV2): Model to use for the policy.
         """
-
-        if "obs_space" in model_kwargs:
-            deprecation_warning("obs_space", "input_space", error=False)
-            input_space = model_kwargs.pop("obs_space")
-        if "action_space" in model_kwargs:
-            deprecation_warning("action_space", "output_space", error=False)
-            output_space = model_kwargs.pop("action_space")
 
         if model_config.get("custom_model"):
 
@@ -337,7 +327,7 @@ class ModelCatalog:
                         # accept these as kwargs, not get them from
                         # config["custom_model_config"] anymore).
                         try:
-                            instance = model_cls(input_space, output_space,
+                            instance = model_cls(obs_space, action_space,
                                                  num_outputs, model_config,
                                                  name, **model_kwargs)
                         except TypeError as e:
@@ -347,7 +337,7 @@ class ModelCatalog:
                                     "Custom ModelV2 should accept all custom "
                                     "options as **kwargs, instead of expecting"
                                     " them in config['custom_model_config']!")
-                                instance = model_cls(input_space, output_space,
+                                instance = model_cls(obs_space, action_space,
                                                      num_outputs, model_config,
                                                      name)
                             # Other error -> re-raise.
@@ -370,9 +360,8 @@ class ModelCatalog:
                     # PyTorch automatically tracks nn.Modules inside the parent
                     # nn.Module's constructor.
                     # TODO(sven): Do this for TF as well.
-                    instance = model_cls(input_space, output_space,
-                                         num_outputs, model_config, name,
-                                         **model_kwargs)
+                    instance = model_cls(obs_space, action_space, num_outputs,
+                                         model_config, name, **model_kwargs)
                 return instance
             # TODO(sven): Hard-deprecate Model(V1). This check will be
             #   superflous then.
@@ -387,7 +376,7 @@ class ModelCatalog:
             # Try to get a default v2 model.
             if not model_config.get("custom_model"):
                 v2_class = default_model or ModelCatalog._get_v2_model_class(
-                    input_space, model_config, framework=framework)
+                    obs_space, model_config, framework=framework)
 
             if model_config.get("use_lstm"):
                 wrapped_cls = v2_class
@@ -403,16 +392,16 @@ class ModelCatalog:
                         "Eager execution requires a TFModelV2 model to be "
                         "used, however there is no default V2 model for this "
                         "observation space: {}, use_lstm={}".format(
-                            input_space, model_config.get("use_lstm")))
+                            obs_space, model_config.get("use_lstm")))
                 v2_class = make_v1_wrapper(ModelCatalog.get_model)
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
-            return wrapper(input_space, output_space, num_outputs,
-                           model_config, name, **model_kwargs)
+            return wrapper(obs_space, action_space, num_outputs, model_config,
+                           name, **model_kwargs)
         elif framework == "torch":
             v2_class = \
                 default_model or ModelCatalog._get_v2_model_class(
-                    input_space, model_config, framework=framework)
+                    obs_space, model_config, framework=framework)
             if model_config.get("use_lstm"):
                 from ray.rllib.models.torch.recurrent_net import LSTMWrapper \
                     as TorchLSTMWrapper
@@ -423,8 +412,8 @@ class ModelCatalog:
                 v2_class._wrapped_forward = forward
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
-            return wrapper(input_space, output_space, num_outputs,
-                           model_config, name, **model_kwargs)
+            return wrapper(obs_space, action_space, num_outputs, model_config,
+                           name, **model_kwargs)
         else:
             raise NotImplementedError(
                 "Framework must be 'tf' or 'torch': {}".format(framework))

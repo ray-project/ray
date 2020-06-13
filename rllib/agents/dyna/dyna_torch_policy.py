@@ -37,12 +37,6 @@ def make_model_and_dist(policy, obs_space, action_space, config):
         model_interface=DYNATorchModel,
     )
 
-    # policy.dynamics_model = ModelCatalog.get_model_v3(
-    #     input_space = Dict({"obs": obs_space, "action": action_space}),
-    #     output_space = obs_space,
-    #     num_outputs = num_outputs
-    # )
-
     action_dist, num_outputs = ModelCatalog.get_action_dist(
         action_space, config, dist_type="deterministic", framework="torch")
     # Create the pi-model and register it with the Policy.

@@ -139,8 +139,8 @@ def build_q_model(policy, obs_space, action_space, config):
         num_outputs = action_space.n
 
     policy.q_model = ModelCatalog.get_model_v2(
-        input_space=obs_space,
-        output_space=action_space,
+        obs_space=obs_space,
+        action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
         framework="tf",
@@ -160,8 +160,8 @@ def build_q_model(policy, obs_space, action_space, config):
         or config["exploration_config"]["type"] == "ParameterNoise")
 
     policy.target_q_model = ModelCatalog.get_model_v2(
-        input_space=obs_space,
-        output_space=action_space,
+        obs_space=obs_space,
+        action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
         framework="tf",
