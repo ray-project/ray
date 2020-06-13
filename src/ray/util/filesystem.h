@@ -40,13 +40,6 @@ std::string GetExeSuffix();
 /// Equivalent to Python's os.path.basename() for file system paths.
 std::string GetFileName(const std::string &path);
 
-/// Equivalent to Python's os.path.dirname() for file system paths.
-std::string GetParentPath(const std::string &path);
-
-/// \return The prefix of this path that constitutes the root of the path.
-///         On Windows, this can be multiple characters (e.g. C:\ for C:\Windows).
-std::string GetRootPath(const std::string &path);
-
 size_t GetRootPathLength(const std::string &path);
 
 /// \return A non-volatile temporary directory in which Ray can stores its files.
@@ -80,10 +73,6 @@ std::string JoinPaths(std::string base, Paths... components) {
   }
   return base;
 }
-
-/// \return The equivalent path with all directory separators removed from the end.
-std::string TrimDirSep(const std::string &path);
-
 }  // namespace ray
 
 #endif  // RAY_UTIL_UTIL_H

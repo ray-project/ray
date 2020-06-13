@@ -26,21 +26,6 @@ std::string GetFileName(const std::string &path) {
   return path.substr(j);
 }
 
-std::string GetParentPath(const std::string &path) {
-  size_t i = GetRootPathLength(path), j = path.size();
-  while (j > i && !IsDirSep(path[j - 1])) {
-    --j;
-  }
-  while (j > i && IsDirSep(path[j - 1])) {
-    --j;
-  }
-  return path.substr(0, j);
-}
-
-std::string GetRootPath(const std::string &path) {
-  return path.substr(0, GetRootPathLength(path));
-}
-
 size_t GetRootPathLength(const std::string &path) {
   size_t i = 0;
 #ifdef _WIN32
@@ -98,14 +83,6 @@ std::string GetUserTempDir() {
   }
   RAY_CHECK(!result.empty());
   return result;
-}
-
-std::string TrimDirSep(const std::string &path) {
-  size_t i = GetRootPathLength(path), j = path.size();
-  while (j > i && IsDirSep(path[j - 1])) {
-    --j;
-  }
-  return path.substr(0, j);
 }
 
 }  // namespace ray

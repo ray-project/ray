@@ -5,31 +5,6 @@
 namespace ray {
 
 TEST(FileSystemTest, PathParseTest) {
-#ifdef _WIN32
-  ASSERT_EQ(GetRootPath("C:"), "C:");
-  ASSERT_EQ(GetRootPath("C:\\"), "C:\\");
-  ASSERT_EQ(GetRootPath("C:\\foo"), "C:\\");
-  ASSERT_EQ(GetRootPath("./"), "");
-  ASSERT_EQ(GetRootPath("foo"), "");
-  ASSERT_EQ(GetRootPath("\\"), "\\");
-  ASSERT_EQ(GetRootPath("\\/"), "\\/");
-  ASSERT_EQ(GetRootPath("//"), "//");
-  ASSERT_EQ(GetRootPath("\\\\a\\b\\c"), "\\\\a\\b\\");
-  ASSERT_EQ(GetRootPath("\\\\a\\b\\"), "\\\\a\\b\\");
-  ASSERT_EQ(GetRootPath("\\\\a\\b"), "\\\\a\\b");
-  ASSERT_EQ(GetRootPath("\\\\a\\"), "\\\\a\\");
-#endif
-
-  ASSERT_EQ(TrimDirSep("/"), "/");
-  ASSERT_EQ(TrimDirSep("///"), "///");
-  ASSERT_EQ(TrimDirSep("/foo/"), "/foo");
-  ASSERT_EQ(TrimDirSep("///foo/"), "///foo");
-  ASSERT_EQ(TrimDirSep("foo/"), "foo");
-#ifdef _WIN32
-  ASSERT_EQ(TrimDirSep("C:\\/"), "C:\\/");
-  ASSERT_EQ(TrimDirSep("C:\\foo/"), "C:\\foo");
-#endif
-
   ASSERT_EQ(GetFileName("."), ".");
   ASSERT_EQ(GetFileName(".."), "..");
   ASSERT_EQ(GetFileName("foo/bar"), "bar");
@@ -40,22 +15,6 @@ TEST(FileSystemTest, PathParseTest) {
   ASSERT_EQ(GetFileName("C::"), ":");  // just to match Python behavior
   ASSERT_EQ(GetFileName("CC::"), "CC::");
   ASSERT_EQ(GetFileName("C:\\"), "");
-#endif
-
-  ASSERT_EQ(GetParentPath("foo/bar"), "foo");
-  ASSERT_EQ(GetParentPath("foo/"), "foo");
-  ASSERT_EQ(GetParentPath("foo"), "");
-  ASSERT_EQ(GetParentPath("./"), ".");
-  ASSERT_EQ(GetParentPath("."), "");
-  ASSERT_EQ(GetParentPath("/"), "/");
-  ASSERT_EQ(GetParentPath("///"), "///");
-  ASSERT_EQ(GetParentPath("///foo"), "///");
-  ASSERT_EQ(GetParentPath("///foo/"), "///foo");
-#ifdef _WIN32
-  ASSERT_EQ(GetParentPath("C:"), "C:");
-  ASSERT_EQ(GetParentPath("C::"), "C:");  // just to match Python behavior
-  ASSERT_EQ(GetParentPath("C:\\/"), "C:\\/");
-  ASSERT_EQ(GetParentPath("C:\\foo/bar"), "C:\\foo");
 #endif
 }
 
