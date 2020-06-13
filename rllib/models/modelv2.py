@@ -1,4 +1,3 @@
-from abc import ABCMeta, abstractmethod
 from collections import OrderedDict
 import gym
 
@@ -15,7 +14,7 @@ torch, _ = try_import_torch()
 
 
 @PublicAPI
-class ModelV2(metaclass=ABCMeta):
+class ModelV2():
     """Defines a Keras-style abstract network model for use with RLlib.
 
     Custom models should extend either TFModelV2 or TorchModelV2 instead of
@@ -67,7 +66,6 @@ class ModelV2(metaclass=ABCMeta):
         """
         return []
 
-    @abstractmethod
     def forward(self, input_dict, state, seq_lens):
         """Call the model with the given input tensors and state.
 
@@ -102,7 +100,6 @@ class ModelV2(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @abstractmethod
     def value_function(self):
         """Returns the value function output for the most recent forward pass.
 
@@ -248,7 +245,6 @@ class ModelV2(metaclass=ABCMeta):
         """Returns a contextmanager for the current forward pass."""
         return NullContextManager()
 
-    @abstractmethod
     def variables(self, as_dict=False):
         """Returns the list (or a dict) of variables for this model.
 
@@ -262,7 +258,6 @@ class ModelV2(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @abstractmethod
     def trainable_variables(self, as_dict=False):
         """Returns the list of trainable variables for this model.
 
