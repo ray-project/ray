@@ -213,6 +213,9 @@ class PlasmaStore {
   Status FreeCudaMemory(int device_num, int64_t size, uint8_t* out_pointer);
 #endif
 
+  // An empty timer loop. Used for stopping the event loop in time.
+  void IdleTimerLoop();
+
   /// Event loop of the plasma store.
   EventLoop* loop_;
   /// The plasma store information, including the object tables, that is exposed

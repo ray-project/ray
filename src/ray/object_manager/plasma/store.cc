@@ -102,6 +102,8 @@ PlasmaStore::PlasmaStore(EventLoop* loop, std::string directory, bool hugepages_
       external_store_(external_store) {
   store_info_.directory = directory;
   store_info_.hugepages_enabled = hugepages_enabled;
+  // Setup an empty timer loop. So the event loop can catch the stop flag in time.
+  IdleTimerLoop();
 #ifdef PLASMA_CUDA
   auto maybe_manager = CudaDeviceManager::Instance();
   DCHECK_OK(maybe_manager.status());
@@ -1120,6 +1122,13 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       ARROW_CHECK(0);
   }
   return Status::OK();
+}
+
+void PlasmaStore::IdleTimerLoop() {
+  (void)loop_->AddTimer(15000, [this](int64_t timer_id) {
+    IdleTimerLoop();
+    return kEventLoopTimerDone;
+  });
 }
 
 }  // namespace plasma
