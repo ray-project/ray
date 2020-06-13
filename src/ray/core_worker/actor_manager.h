@@ -104,7 +104,7 @@ class ActorManager {
   /// \param[in] call_site The caller's site.
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
-  bool AddActorHandle(std::shared_ptr<ActorHandle> actor_handle, bool is_owner_handle,
+  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle,
                       const TaskID &caller_id, const std::string &call_site,
                       const rpc::Address &caller_address);
 
@@ -149,7 +149,7 @@ class ActorManager {
   mutable absl::Mutex mutex_;
 
   /// Map from actor ID to a handle to that actor.
-  absl::flat_hash_map<ActorID, std::shared_ptr<ActorHandle>> actor_handles_
+  absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(mutex_);
 
   /// Map from actor ID to a callback to call when all local handles to that
