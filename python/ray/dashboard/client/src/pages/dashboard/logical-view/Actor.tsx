@@ -139,20 +139,20 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                   .join(", "),
             },
             {
-              label: "Number of Pending Tasks",
+              label: "Number of pending tasks",
               value: actor.taskQueueLength.toLocaleString(),
               tooltip:
                 "The number of tasks that are currently pending to execute on this actor. If this number " +
                 "remains consistently high, it can indicate that this actor is a bottle-neck in your program.",
             },
             {
-              label: "Number of Executed Tasks",
+              label: "Number of executed tasks",
               value: actor.numExecutedTasks.toLocaleString(),
               tooltip:
                 "The number of tasks this actor has executed throughout its lifetimes.",
             },
             {
-              label: "Number of Object IDs in Scope",
+              label: "Number of object IDs in scope",
               value: actor.numObjectIdsInScope.toLocaleString(),
               tooltip:
                 "The number of objects ids that this actor is keeping in scope via its internal state. " +
@@ -160,23 +160,19 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 "currently. This can be useful for debugging memory leaks.",
             },
             {
-              label: "Number of Local Objects",
+              label: "Number of local objects",
               value: actor.numLocalObjects.toLocaleString(),
               tooltip:
                 "The number of objects that this actor has stored in memory on the node. This can be useful for " +
                 "debugging memory leaks.",
             },
             {
-              label: "Object Store Memory Used (MB)",
+              label: "Object store memory used (MB)",
               value: actor.usedObjectStoreMemory.toLocaleString(),
               tooltip:
                 "The total amount of memory that this actor is occupying in the Ray object store. " +
                 "If this number is increasing without bounds, you might have a memory leak.",
             },
-            // {
-            //   label: "Task",
-            //   value: actor.currentTaskFuncDesc.join(".")
-            // }
           ]
         : [
             {
@@ -185,7 +181,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
               tooltip: "",
             },
             {
-              label: "Required Resources",
+              label: "Required resources",
               value:
                 Object.entries(actor.requiredResources).length > 0 &&
                 Object.entries(actor.requiredResources)

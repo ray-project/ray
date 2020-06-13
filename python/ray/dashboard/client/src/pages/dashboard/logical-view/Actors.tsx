@@ -18,10 +18,9 @@ const Actors = (props: ActorProps) => {
         return 0;
       } else if (actor2.state === ActorState.Dead) {
         return -1;
-      } else if (actor1.state === ActorState.Dead) {
+      } else {
         return 1;
       }
-      return 0;
     })
     .map((actor) => <Actor actor={actor} key={actor.actorId} />);
   return <Fragment>{actorChildren}</Fragment>;

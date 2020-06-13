@@ -53,7 +53,7 @@ type LogicalViewProps = {
   rayletInfo: RayletInfoResponse | null;
 } & ReturnType<typeof mapStateToProps>;
 
-const LogicalView = ({ rayletInfo }: LogicalViewProps) => {
+const LogicalView: React.FC<LogicalViewProps> = ({ rayletInfo }) => {
   const [nameFilter, setNameFilter] = useState("");
 
   if (rayletInfo === null) {

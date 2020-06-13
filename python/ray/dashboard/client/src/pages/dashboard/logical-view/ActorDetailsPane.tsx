@@ -9,6 +9,41 @@ import {
 import React from "react";
 import { ActorState, InvalidStateType } from "../../../api";
 
+type LabeledDatumProps = {
+  label: string;
+  datum: any;
+  tooltip?: string;
+};
+
+const useLabeledDatumStyles = makeStyles({
+  label: {
+    textDecorationLine: "underline",
+    textDecorationColor: "#a6c3e3",
+    textDecorationThickness: "1px",
+    textDecorationStyle: "dotted",
+    cursor: "help",
+  },
+});
+
+const LabeledDatum: React.FC<LabeledDatumProps> = ({
+  label,
+  datum,
+  tooltip,
+}) => {
+  const classes = useLabeledDatumStyles();
+  const innerHtml = (
+    <Grid container item xs={6}>
+      <Grid item xs={6}>
+        <span className={classes.label}>{label}</span>
+      </Grid>
+      <Grid item xs={6}>
+        <span>{datum}</span>
+      </Grid>
+    </Grid>
+  );
+  return tooltip ? <Tooltip title={tooltip}>{innerHtml}</Tooltip> : innerHtml;
+};
+
 type ActorStateReprProps = {
   state: ActorState;
   ist?: InvalidStateType;
@@ -40,7 +75,7 @@ const actorStateReprStyles = makeStyles((theme: Theme) =>
   }),
 );
 
-const ActorStateRepr = ({ state, ist }: ActorStateReprProps) => {
+const ActorStateRepr: React.FC<ActorStateReprProps> = ({ state, ist }) => {
   const classes = actorStateReprStyles();
   const { Alive, Dead, Creating, Restarting, Invalid } = ActorState;
   switch (state) {
@@ -80,61 +115,27 @@ const useStyles = makeStyles((theme: Theme) => ({
     margin: "0 auto",
   },
   actorTitleWrapper: {
-    marginTop: ".50em",
-    marginBottom: ".50em",
+    marginTop: theme.spacing(1),
+    marginBottom: theme.spacing(1),
     fontWeight: "bold",
     fontSize: "130%",
   },
-  actorTitle: {
-    marginRight: "1em",
-  },
   detailsPane: {
-    margin: ".5em",
+    margin: theme.spacing(1),
   },
 }));
 
-type LabeledDatumProps = {
-  label: string;
-  datum: any;
-  tooltip?: string;
-};
-
-const labeledDatumStyles = makeStyles({
-  label: {
-    textDecorationLine: "underline",
-    textDecorationColor: "#a6c3e3",
-    textDecorationThickness: "1px",
-    textDecorationStyle: "dotted",
-    cursor: "help",
-  },
-});
-
-const LabeledDatum = ({ label, datum, tooltip }: LabeledDatumProps) => {
-  const classes = labeledDatumStyles();
-  const innerHtml = (
-    <Grid container item xs={6}>
-      <Grid item xs={6}>
-        <span className={classes.label}>{label}</span>
-      </Grid>
-      <Grid item xs={6}>
-        <span>{datum}</span>
-      </Grid>
-    </Grid>
-  );
-  return tooltip ? <Tooltip title={tooltip}>{innerHtml}</Tooltip> : innerHtml;
-};
-
-const ActorDetailsPane = ({
+const ActorDetailsPane: React.FC<ActorDetailsPaneProps> = ({
   actorTitle,
   actorDetails,
   actorState,
   invalidStateType,
-}: ActorDetailsPaneProps) => {
+}) => {
   const classes = useStyles();
   return (
     <React.Fragment>
       <div className={classes.actorTitleWrapper}>
-        <div className={classes.actorTitle}>{actorTitle}</div>
+        <div>{actorTitle}</div>
         <ActorStateRepr ist={invalidStateType} state={actorState} />
       </div>
       <Divider className={classes.divider} />
