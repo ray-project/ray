@@ -1,6 +1,5 @@
 package io.ray.runtime.serializer;
 
-import io.ray.runtime.serializer.Serializer;
 import java.util.ArrayList;
 import org.apache.commons.lang3.tuple.Pair;
 import org.testng.Assert;

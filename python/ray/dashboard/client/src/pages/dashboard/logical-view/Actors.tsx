@@ -8,7 +8,6 @@ type ActorProps = {
 
 const Actors = (props: ActorProps) => {
   const { actors } = props;
-
   const actorChildren = Object.values(actors)
     .sort((actor1, actor2) => {
       if (
