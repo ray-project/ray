@@ -54,7 +54,14 @@ class ARSTFPolicy:
             for _, variable in self.variables.variables.items())
         self.sess.run(tf.global_variables_initializer())
 
-    def compute_actions(self, observation, add_noise=False, update=True):
+    def compute_actions(self,
+                        observation,
+                        add_noise=False,
+                        update=True,
+                        **kwargs):
+        # Batch is given as list of one.
+        if isinstance(observation, list) and len(observation) == 1:
+            observation = observation[0]
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
         action = self.sess.run(
@@ -63,6 +70,15 @@ class ARSTFPolicy:
         if add_noise and isinstance(self.action_space, gym.spaces.Box):
             action += np.random.randn(*action.shape) * self.action_noise_std
         return action
+
+    def compute_single_action(self,
+                              observation,
+                              add_noise=False,
+                              update=True,
+                              **kwargs):
+        action = self.compute_actions(
+            [observation], add_noise=add_noise, update=update, **kwargs)
+        return action[0], [], {}
 
     def get_state(self):
         return {"state": self.get_flat_weights()}
