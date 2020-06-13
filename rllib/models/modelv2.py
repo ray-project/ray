@@ -84,7 +84,8 @@ class ModelV2(metaclass=ABCMeta):
 
         Args:
             input_dict (dict): dictionary of input tensors, including "obs",
-                "obs_flat", "prev_action", "prev_reward", "is_training"
+                "obs_flat", "prev_action", "prev_reward", "is_training",
+                "eps_id", "agent_id", "infos", and "t".
             state (list): list of state tensors with sizes matching those
                 returned by get_initial_state + the batch dimension
             seq_lens (Tensor): 1d tensor holding input sequence lengths

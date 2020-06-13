@@ -347,7 +347,18 @@ COMMON_CONFIG = {
         # observations to include more state.
         # See rllib/evaluation/observation_function.py for more info.
         "observation_fn": None,
+        # When replay_mode=lockstep, RLlib will replay all the agent
+        # transitions at a particular timestep together in a batch. This allows
+        # the policy to implement differentiable shared computations between
+        # agents it controls at that timestep. When replay_mode=independent,
+        # transitions are replayed independently per policy.
+        "replay_mode": "independent",
     },
+
+    # === Replay Settings ===
+    # The number of contiguous environment steps to replay at once. This may
+    # be set to greater than 1 to support recurrent models.
+    "replay_sequence_length": 1,
 
     # Deprecated keys:
     "use_pytorch": DEPRECATED_VALUE,  # Replaced by `framework=torch`.

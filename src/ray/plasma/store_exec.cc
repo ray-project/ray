@@ -4,7 +4,7 @@
 #include <chrono>
 #include <thread>
 
-#include "ray/object_manager/plasma/store.h"
+#include "ray/object_manager/plasma/store_runner.h"
 // TODO(pcm): Convert getopt and sscanf in the store to use more idiomatic C++
 // and get rid of the next three lines:
 #ifndef __STDC_FORMAT_MACROS
@@ -50,9 +50,11 @@ int main(int argc, char *argv[]) {
   }
 
   if (!keep_idle) {
-    plasma::PlasmaStoreRunner runner(socket_name, system_memory, hugepages_enabled,
-                                     plasma_directory, external_store_endpoint);
-    runner.Start();
+    plasma::plasma_store_runner.reset(
+        new plasma::PlasmaStoreRunner(socket_name, system_memory, hugepages_enabled,
+                                      plasma_directory, external_store_endpoint));
+    plasma::plasma_store_runner->Start();
+    plasma::plasma_store_runner.reset();
   } else {
     printf(
         "The Plasma Store is started with the '-z' flag, "

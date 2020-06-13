@@ -106,16 +106,48 @@ upload_wheels() {
   fi
 }
 
+test_core() {
+  bazel test --config=ci --build_tests_only -- //:all -rllib/...
+}
 
 test_python() {
   if [ "${OSTYPE}" = msys ]; then
-    # Increased timeout from default of timeout=300 due to test_basic
-    bazel test -k --config=ci --test_timeout=600 --build_tests_only -- \
-      python/ray/tests:test_actor \
-      python/ray/tests:test_basic \
-      python/ray/tests:test_debug_tools \
-      python/ray/tests:test_mini \
-      ;
+    local args=(python/ray/tests/...)
+    args+=(
+      -python/ray/tests:test_actor_advanced
+      -python/ray/tests:test_actor_failures
+      -python/ray/tests:test_advanced_2
+      -python/ray/tests:test_advanced_3
+      -python/ray/tests:test_array
+      -python/ray/tests:test_asyncio
+      -python/ray/tests:test_autoscaler_aws
+      -python/ray/tests:test_autoscaler_yaml
+      -python/ray/tests:test_cancel
+      -python/ray/tests:test_component_failures
+      -python/ray/tests:test_cython
+      -python/ray/tests:test_dynres
+      -python/ray/tests:test_failure
+      -python/ray/tests:test_global_gc
+      -python/ray/tests:test_global_state
+      -python/ray/tests:test_iter
+      -python/ray/tests:test_memory_scheduling
+      -python/ray/tests:test_memstat
+      -python/ray/tests:test_metrics
+      -python/ray/tests:test_multi_node
+      -python/ray/tests:test_multi_node_2
+      -python/ray/tests:test_multinode_failures_2
+      -python/ray/tests:test_multiprocessing
+      -python/ray/tests:test_node_manager
+      -python/ray/tests:test_object_manager
+      -python/ray/tests:test_projects
+      -python/ray/tests:test_queue
+      -python/ray/tests:test_ray_init
+      -python/ray/tests:test_reconstruction
+      -python/ray/tests:test_stress
+      -python/ray/tests:test_stress_sharded
+      -python/ray/tests:test_webui
+    )
+    bazel test -k --config=ci --test_timeout=600 --build_tests_only -- "${args[@]}";
   fi
 }
 

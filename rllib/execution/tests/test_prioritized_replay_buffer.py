@@ -3,6 +3,7 @@ import numpy as np
 import unittest
 
 from ray.rllib.execution.replay_buffer import PrioritizedReplayBuffer
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check
 
 
@@ -17,13 +18,13 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
     max_priority = 1.0
 
     def _generate_data(self):
-        return (
-            np.random.random((4, )),  # obs_t
-            np.random.choice([0, 1]),  # action
-            np.random.rand(),  # reward
-            np.random.random((4, )),  # obs_tp1
-            np.random.choice([False, True]),  # done
-        )
+        return SampleBatch({
+            "obs_t": [np.random.random((4, ))],
+            "action": [np.random.choice([0, 1])],
+            "reward": [np.random.rand()],
+            "obs_tp1": [np.random.random((4, ))],
+            "done": [np.random.choice([False, True])],
+        })
 
     def test_add(self):
         memory = PrioritizedReplayBuffer(
@@ -37,19 +38,19 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
 
         # Insert single record.
         data = self._generate_data()
-        memory.add(*data, weight=0.5)
+        memory.add(data, weight=0.5)
         self.assertTrue(len(memory) == 1)
         self.assertTrue(memory._next_idx == 1)
 
         # Insert single record.
         data = self._generate_data()
-        memory.add(*data, weight=0.1)
+        memory.add(data, weight=0.1)
         self.assertTrue(len(memory) == 2)
         self.assertTrue(memory._next_idx == 0)
 
         # Insert over capacity.
         data = self._generate_data()
-        memory.add(*data, weight=1.0)
+        memory.add(data, weight=1.0)
         self.assertTrue(len(memory) == 2)
         self.assertTrue(memory._next_idx == 1)
 
@@ -60,13 +61,14 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         num_records = 5
         for i in range(num_records):
             data = self._generate_data()
-            memory.add(*data, weight=1.0)
+            memory.add(data, weight=1.0)
             self.assertTrue(len(memory) == i + 1)
             self.assertTrue(memory._next_idx == i + 1)
 
         # Fetch records, their indices and weights.
-        _, _, _, _, _, weights, indices = \
-            memory.sample(3, beta=self.beta)
+        batch = memory.sample(3, beta=self.beta)
+        weights = batch["weights"]
+        indices = batch["batch_indexes"]
         check(weights, np.ones(shape=(3, )))
         self.assertEqual(3, len(indices))
         self.assertTrue(len(memory) == num_records)
@@ -78,8 +80,8 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         # Expect to sample almost only index 1
         # (which still has a weight of 1.0).
         for _ in range(10):
-            _, _, _, _, _, weights, indices = memory.sample(
-                1000, beta=self.beta)
+            batch = memory.sample(1000, beta=self.beta)
+            indices = batch["batch_indexes"]
             self.assertTrue(970 < np.sum(indices) < 1100)
 
         # Update weight of indices 0 and 1 to >> 0.01.
@@ -87,7 +89,8 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         for _ in range(10):
             rand = np.random.random() + 0.2
             memory.update_priorities(np.array([0, 1]), np.array([rand, rand]))
-            _, _, _, _, _, _, indices = memory.sample(1000, beta=self.beta)
+            batch = memory.sample(1000, beta=self.beta)
+            indices = batch["batch_indexes"]
             # Expect biased to higher values due to some 2s, 3s, and 4s.
             # print(np.sum(indices))
             self.assertTrue(400 < np.sum(indices) < 800)
@@ -99,7 +102,8 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
             rand = np.random.random() + 0.2
             memory.update_priorities(
                 np.array([0, 1]), np.array([rand, rand * 2]))
-            _, _, _, _, _, _, indices = memory.sample(1000, beta=self.beta)
+            batch = memory.sample(1000, beta=self.beta)
+            indices = batch["batch_indexes"]
             # print(np.sum(indices))
             self.assertTrue(600 < np.sum(indices) < 850)
 
@@ -110,7 +114,8 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
             rand = np.random.random() + 0.2
             memory.update_priorities(
                 np.array([0, 1]), np.array([rand, rand * 4]))
-            _, _, _, _, _, _, indices = memory.sample(1000, beta=self.beta)
+            batch = memory.sample(1000, beta=self.beta)
+            indices = batch["batch_indexes"]
             # print(np.sum(indices))
             self.assertTrue(750 < np.sum(indices) < 950)
 
@@ -121,7 +126,8 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
             rand = np.random.random() + 0.2
             memory.update_priorities(
                 np.array([0, 1]), np.array([rand, rand * 9]))
-            _, _, _, _, _, _, indices = memory.sample(1000, beta=self.beta)
+            batch = memory.sample(1000, beta=self.beta)
+            indices = batch["batch_indexes"]
             # print(np.sum(indices))
             self.assertTrue(850 < np.sum(indices) < 1100)
 
@@ -129,7 +135,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         num_records = 5
         for i in range(num_records):
             data = self._generate_data()
-            memory.add(*data, weight=1.0)
+            memory.add(data, weight=1.0)
             self.assertTrue(len(memory) == i + 6)
             self.assertTrue(memory._next_idx == (i + 6) % self.capacity)
 
@@ -139,8 +145,8 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
             np.array([0.001, 0.1, 2., 8., 16., 32., 64., 128., 256., 512.]))
         counts = Counter()
         for _ in range(10):
-            _, _, _, _, _, _, indices = memory.sample(
-                np.random.randint(100, 600), beta=self.beta)
+            batch = memory.sample(np.random.randint(100, 600), beta=self.beta)
+            indices = batch["batch_indexes"]
             for i in indices:
                 counts[i] += 1
         print(counts)
@@ -158,13 +164,13 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         num_records = 5
         for i in range(num_records):
             data = self._generate_data()
-            memory.add(*data, weight=np.random.rand())
+            memory.add(data, weight=np.random.rand())
             self.assertTrue(len(memory) == i + 1)
             self.assertTrue(memory._next_idx == i + 1)
 
         # Fetch records, their indices and weights.
-        _, _, _, _, _, weights, indices = \
-            memory.sample(1000, beta=self.beta)
+        batch = memory.sample(1000, beta=self.beta)
+        indices = batch["batch_indexes"]
         counts = Counter()
         for i in indices:
             counts[i] += 1
