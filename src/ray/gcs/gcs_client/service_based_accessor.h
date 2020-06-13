@@ -23,8 +23,9 @@
 namespace ray {
 namespace gcs {
 
-using SubscribeOperation =
-    std::function<Status(const StatusCallback &done, bool is_pubsub_server_restarted)>;
+using SubscribeOperation = std::function<Status(const StatusCallback &done)>;
+
+using FetchDataOperation = std::function<void(const StatusCallback &done)>;
 
 class ServiceBasedGcsClient;
 
@@ -48,11 +49,11 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
 
   Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) override;
 
-  Status AsyncReSubscribe(bool is_pubsub_server_restarted) override;
+  void AsyncReSubscribe(bool is_pubsub_server_restarted) override;
 
  private:
-  /// Save the subscribe operation in this function, so we can call it again when GCS
-  /// restarts from a failure.
+  /// Save the subscribe operation in this function, so we can call it again when PubSub
+  /// server restarts from a failure.
   SubscribeOperation subscribe_operation_;
 
   ServiceBasedGcsClient *client_impl_;
@@ -109,14 +110,22 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const ActorID &actor_id,
       const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override;
 
-  Status AsyncReSubscribe(bool is_pubsub_server_restarted) override;
+  void AsyncReSubscribe(bool is_pubsub_server_restarted) override;
 
  private:
-  /// Save the subscribe operation in this function, so we can call it again when GCS
-  /// restarts from a failure.
+  /// Save the subscribe operation in this function, so we can call it again when PubSub
+  /// server restarts from a failure.
   SubscribeOperation subscribe_all_operation_;
+
+  /// Save the fetch data operation in this function, so we can call it again when GCS
+  /// server restarts from a failure.
+  FetchDataOperation fetch_all_data_operation_;
+
   /// Save the subscribe operation of actors.
   std::unordered_map<ActorID, SubscribeOperation> subscribe_operations_;
+
+  /// Save the fetch data operation of actors.
+  std::unordered_map<ActorID, FetchDataOperation> fetch_data_operations_;
 
   ServiceBasedGcsClient *client_impl_;
 
@@ -186,14 +195,18 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
       const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncReSubscribe(bool is_pubsub_server_restarted) override;
+  void AsyncReSubscribe(bool is_pubsub_server_restarted) override;
 
  private:
-  /// Save the subscribe operation in this function, so we can call it again when GCS
-  /// restarts from a failure.
+  /// Save the subscribe operation in this function, so we can call it again when PubSub
+  /// server restarts from a failure.
   SubscribeOperation subscribe_node_operation_;
   SubscribeOperation subscribe_resource_operation_;
   SubscribeOperation subscribe_batch_heartbeat_operation_;
+
+  /// Save the fetch data operation in this function, so we can call it again when GCS
+  /// server restarts from a failure.
+  FetchDataOperation fetch_node_data_operation_;
 
   void HandleNotification(const GcsNodeInfo &node_info);
 
@@ -258,13 +271,18 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
       const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
       const StatusCallback &callback) override;
 
-  Status AsyncReSubscribe(bool is_pubsub_server_restarted) override;
+  void AsyncReSubscribe(bool is_pubsub_server_restarted) override;
 
  private:
-  /// Save the subscribe operation in this function, so we can call it again when GCS
-  /// restarts from a failure.
+  /// Save the subscribe operation in this function, so we can call it again when PubSub
+  /// server restarts from a failure.
   std::unordered_map<TaskID, SubscribeOperation> subscribe_task_operations_;
   std::unordered_map<TaskID, SubscribeOperation> subscribe_task_lease_operations_;
+
+  /// Save the fetch data operation in this function, so we can call it again when GCS
+  /// server restarts from a failure.
+  std::unordered_map<TaskID, FetchDataOperation> fetch_task_data_operations_;
+  std::unordered_map<TaskID, FetchDataOperation> fetch_task_lease_data_operations_;
 
   ServiceBasedGcsClient *client_impl_;
 };
@@ -297,12 +315,16 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
 
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
 
-  Status AsyncReSubscribe(bool is_pubsub_server_restarted) override;
+  void AsyncReSubscribe(bool is_pubsub_server_restarted) override;
 
  private:
-  /// Save the subscribe operation in this function, so we can call it again when GCS
-  /// restarts from a failure.
+  /// Save the subscribe operation in this function, so we can call it again when PubSub
+  /// server restarts from a failure.
   std::unordered_map<ObjectID, SubscribeOperation> subscribe_object_operations_;
+
+  /// Save the fetch data operation in this function, so we can call it again when GCS
+  /// server restarts from a failure.
+  std::unordered_map<ObjectID, FetchDataOperation> fetch_object_data_operations_;
 
   ServiceBasedGcsClient *client_impl_;
 
@@ -364,7 +386,7 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
       const std::unordered_map<std::string, std::string> &worker_info,
       const StatusCallback &callback) override;
 
-  Status AsyncReSubscribe(bool is_pubsub_server_restarted) override;
+  void AsyncReSubscribe(bool is_pubsub_server_restarted) override;
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when GCS
