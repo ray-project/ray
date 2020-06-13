@@ -6,7 +6,6 @@ import io.ray.api.Ray;
 import io.ray.api.exception.RayActorException;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.UniqueId;
-import io.ray.api.options.ActorCreationOptions;
 import io.ray.runtime.util.SystemUtil;
 import java.io.IOException;
 import java.util.List;
@@ -43,35 +42,33 @@ public class ActorRestartTest extends BaseTest {
 
   public void testActorRestart() throws InterruptedException, IOException {
     TestUtils.skipTestUnderSingleProcess();
-    ActorCreationOptions options =
-        new ActorCreationOptions.Builder().setMaxRestarts(1).createActorCreationOptions();
-    ActorHandle<Counter> actor = Ray.createActor(Counter::new, options);
+    ActorHandle<Counter> actor = Ray.actor(Counter::new).setMaxRestarts(1).remote();
     // Call increase 3 times.
     for (int i = 0; i < 3; i++) {
-      actor.call(Counter::increase).get();
+      actor.task(Counter::increase).remote().get();
     }
 
-    Assert.assertFalse(actor.call(Counter::wasCurrentActorRestarted).get());
+    Assert.assertFalse(actor.task(Counter::wasCurrentActorRestarted).remote().get());
 
     // Kill the actor process.
-    int pid = actor.call(Counter::getPid).get();
+    int pid = actor.task(Counter::getPid).remote().get();
     Runtime.getRuntime().exec("kill -9 " + pid);
     // Wait for the actor to be killed.
     TimeUnit.SECONDS.sleep(1);
 
-    int value = actor.call(Counter::increase).get();
+    int value = actor.task(Counter::increase).remote().get();
     Assert.assertEquals(value, 1);
 
-    Assert.assertTrue(actor.call(Counter::wasCurrentActorRestarted).get());
+    Assert.assertTrue(actor.task(Counter::wasCurrentActorRestarted).remote().get());
 
     // Kill the actor process again.
-    pid = actor.call(Counter::getPid).get();
+    pid = actor.task(Counter::getPid).remote().get();
     Runtime.getRuntime().exec("kill -9 " + pid);
     TimeUnit.SECONDS.sleep(1);
 
     // Try calling increase on this actor again and this should fail.
     try {
-      actor.call(Counter::increase).get();
+      actor.task(Counter::increase).remote().get();
       Assert.fail("The above task didn't fail.");
     } catch (RayActorException e) {
       // We should receive a RayActorException because the actor is dead.
@@ -122,25 +119,24 @@ public class ActorRestartTest extends BaseTest {
 
   public void testActorCheckpointing() throws IOException, InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
-    ActorCreationOptions options =
-        new ActorCreationOptions.Builder().setMaxRestarts(1).createActorCreationOptions();
-    ActorHandle<CheckpointableCounter> actor = Ray.createActor(CheckpointableCounter::new, options);
+    ActorHandle<CheckpointableCounter> actor = Ray.actor(CheckpointableCounter::new)
+        .setMaxRestarts(1).remote();
     // Call increase 3 times.
     for (int i = 0; i < 3; i++) {
-      actor.call(CheckpointableCounter::increase).get();
+      actor.task(CheckpointableCounter::increase).remote().get();
     }
     // Assert that the actor wasn't resumed from a checkpoint.
-    Assert.assertFalse(actor.call(CheckpointableCounter::wasResumedFromCheckpoint).get());
-    int pid = actor.call(CheckpointableCounter::getPid).get();
+    Assert.assertFalse(actor.task(CheckpointableCounter::wasResumedFromCheckpoint).remote().get());
+    int pid = actor.task(CheckpointableCounter::getPid).remote().get();
     Runtime.getRuntime().exec("kill -9 " + pid);
     // Wait for the actor to be killed.
     TimeUnit.SECONDS.sleep(1);
 
     // Try calling increase on this actor again and check the value is now 4.
-    int value = actor.call(CheckpointableCounter::increase).get();
+    int value = actor.task(CheckpointableCounter::increase).remote().get();
     Assert.assertEquals(value, 4);
     // Assert that the actor was resumed from a checkpoint.
-    Assert.assertTrue(actor.call(CheckpointableCounter::wasResumedFromCheckpoint).get());
+    Assert.assertTrue(actor.task(CheckpointableCounter::wasResumedFromCheckpoint).remote().get());
   }
 }
 

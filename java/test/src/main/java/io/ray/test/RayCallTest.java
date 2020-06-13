@@ -68,26 +68,26 @@ public class RayCallTest extends BaseTest {
    */
   @Test
   public void testType() {
-    Assert.assertEquals(1, (int) Ray.call(RayCallTest::testInt, 1).get());
-    Assert.assertEquals(1, (byte) Ray.call(RayCallTest::testByte, (byte) 1).get());
-    Assert.assertEquals(1, (short) Ray.call(RayCallTest::testShort, (short) 1).get());
-    Assert.assertEquals(1, (long) Ray.call(RayCallTest::testLong, 1L).get());
-    Assert.assertEquals(1.0, Ray.call(RayCallTest::testDouble, 1.0).get(), 0.0);
-    Assert.assertEquals(1.0f, Ray.call(RayCallTest::testFloat, 1.0f).get(), 0.0);
-    Assert.assertTrue(Ray.call(RayCallTest::testBool, true).get());
-    Assert.assertEquals("foo", Ray.call(RayCallTest::testString, "foo").get());
+    Assert.assertEquals(1, (int) Ray.task(RayCallTest::testInt, 1).remote().get());
+    Assert.assertEquals(1, (byte) Ray.task(RayCallTest::testByte, (byte) 1).remote().get());
+    Assert.assertEquals(1, (short) Ray.task(RayCallTest::testShort, (short) 1).remote().get());
+    Assert.assertEquals(1, (long) Ray.task(RayCallTest::testLong, 1L).remote().get());
+    Assert.assertEquals(1.0, Ray.task(RayCallTest::testDouble, 1.0).remote().get(), 0.0);
+    Assert.assertEquals(1.0f, Ray.task(RayCallTest::testFloat, 1.0f).remote().get(), 0.0);
+    Assert.assertTrue(Ray.task(RayCallTest::testBool, true).remote().get());
+    Assert.assertEquals("foo", Ray.task(RayCallTest::testString, "foo").remote().get());
     List<Integer> list = ImmutableList.of(1, 2, 3);
-    Assert.assertEquals(list, Ray.call(RayCallTest::testList, list).get());
+    Assert.assertEquals(list, Ray.task(RayCallTest::testList, list).remote().get());
     Map<String, Integer> map = ImmutableMap.of("1", 1, "2", 2);
-    Assert.assertEquals(map, Ray.call(RayCallTest::testMap, map).get());
+    Assert.assertEquals(map, Ray.task(RayCallTest::testMap, map).remote().get());
     TestUtils.LargeObject largeObject = new TestUtils.LargeObject();
-    Assert.assertNotNull(Ray.call(RayCallTest::testLargeObject, largeObject).get());
+    Assert.assertNotNull(Ray.task(RayCallTest::testLargeObject, largeObject).remote().get());
 
     // TODO(edoakes): this test doesn't work now that we've switched to direct call
     // mode. To make it work, we need to implement the same protocol for resolving
     // passed ObjectIDs that we have in Python.
     // ObjectId randomObjectId = ObjectId.fromRandom();
-    // Ray.call(RayCallTest::testNoReturn, randomObjectId);
+    // Ray.task(RayCallTest::testNoReturn, randomObjectId).remote();
     // Assert.assertEquals(((int) Ray.get(randomObjectId, Integer.class)), 1);
   }
 
@@ -121,13 +121,18 @@ public class RayCallTest extends BaseTest {
 
   @Test
   public void testNumberOfParameters() {
-    Assert.assertEquals(0, (int) Ray.call(RayCallTest::testNoParam).get());
-    Assert.assertEquals(1, (int) Ray.call(RayCallTest::testOneParam, 1).get());
-    Assert.assertEquals(2, (int) Ray.call(RayCallTest::testTwoParams, 1, 1).get());
-    Assert.assertEquals(3, (int) Ray.call(RayCallTest::testThreeParams, 1, 1, 1).get());
-    Assert.assertEquals(4, (int) Ray.call(RayCallTest::testFourParams, 1, 1, 1, 1).get());
-    Assert.assertEquals(5, (int) Ray.call(RayCallTest::testFiveParams, 1, 1, 1, 1, 1).get());
-    Assert.assertEquals(6, (int) Ray.call(RayCallTest::testSixParams, 1, 1, 1, 1, 1, 1).get());
+    Assert.assertEquals(0, (int) Ray.task(RayCallTest::testNoParam).remote().get());
+    Assert.assertEquals(1, (int) Ray.task(RayCallTest::testOneParam, 1).remote().get());
+    Assert.assertEquals(2, (int) Ray.task(
+        RayCallTest::testTwoParams, 1, 1).remote().get());
+    Assert.assertEquals(3, (int) Ray.task(
+        RayCallTest::testThreeParams, 1, 1, 1).remote().get());
+    Assert.assertEquals(4, (int) Ray.task(
+        RayCallTest::testFourParams, 1, 1, 1, 1).remote().get());
+    Assert.assertEquals(5, (int) Ray.task(
+        RayCallTest::testFiveParams, 1, 1, 1, 1, 1).remote().get());
+    Assert.assertEquals(6, (int) Ray.task(
+        RayCallTest::testSixParams, 1, 1, 1, 1, 1, 1).remote().get());
   }
 
 }

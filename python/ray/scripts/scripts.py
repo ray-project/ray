@@ -847,8 +847,9 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     if start:
         create_or_update_cluster(cluster_config_file, None, None, False, False,
                                  True, cluster_name)
-
-    target = os.path.join("~", os.path.basename(script))
+    target = os.path.basename(script)
+    if not docker:
+        target = os.path.join("~", target)
     rsync(cluster_config_file, script, target, cluster_name, down=False)
 
     command_parts = ["python", target]

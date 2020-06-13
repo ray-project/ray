@@ -3,8 +3,6 @@ package io.ray.streaming.runtime.streamingqueue;
 import com.google.common.collect.ImmutableMap;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
-import io.ray.api.options.ActorCreationOptions;
-import io.ray.api.options.ActorCreationOptions.Builder;
 import io.ray.runtime.config.RayConfig;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.function.impl.FlatMapFunction;
@@ -30,7 +28,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -89,19 +86,15 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     // ray init
     Ray.init();
 
-    ActorCreationOptions.Builder builder = new Builder();
-
-    ActorHandle<WriterWorker> writerActor = Ray.createActor(WriterWorker::new, "writer",
-        builder.createActorCreationOptions());
-    ActorHandle<ReaderWorker> readerActor = Ray.createActor(ReaderWorker::new, "reader",
-        builder.createActorCreationOptions());
+    ActorHandle<WriterWorker> writerActor = Ray.actor(WriterWorker::new, "writer").remote();
+    ActorHandle<ReaderWorker> readerActor = Ray.actor(ReaderWorker::new, "reader").remote();
 
     LOGGER.info("call getName on writerActor: {}",
-        writerActor.call(WriterWorker::getName).get());
+        writerActor.task(WriterWorker::getName).remote().get());
     LOGGER.info("call getName on readerActor: {}",
-        readerActor.call(ReaderWorker::getName).get());
+        readerActor.task(ReaderWorker::getName).remote().get());
 
-    // LOGGER.info(writerActor.call(WriterWorker::testCallReader, readerActor).get());
+    // LOGGER.info(writerActor.task(WriterWorker::testCallReader, readerActor).remote().get());
     List<String> outputQueueList = new ArrayList<>();
     List<String> inputQueueList = new ArrayList<>();
     int queueNum = 2;
@@ -114,17 +107,17 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     }
 
     final int msgCount = 100;
-    readerActor.call(ReaderWorker::init, inputQueueList, writerActor, msgCount);
+    readerActor.task(ReaderWorker::init, inputQueueList, writerActor, msgCount).remote();
     try {
       Thread.sleep(1000);
     } catch (Exception e) {
       e.printStackTrace();
     }
-    writerActor.call(WriterWorker::init, outputQueueList, readerActor, msgCount);
+    writerActor.task(WriterWorker::init, outputQueueList, readerActor, msgCount).remote();
 
     long time = 0;
     while (time < 20000 &&
-        readerActor.call(ReaderWorker::getTotalMsg).get() < msgCount * queueNum) {
+        readerActor.task(ReaderWorker::getTotalMsg).remote().get() < msgCount * queueNum) {
       try {
         Thread.sleep(1000);
         time += 1000;
@@ -134,7 +127,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     }
 
     Assert.assertEquals(
-        readerActor.call(ReaderWorker::getTotalMsg).get().intValue(),
+        readerActor.task(ReaderWorker::getTotalMsg).remote().get().intValue(),
         msgCount * queueNum);
   }
 
