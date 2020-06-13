@@ -109,6 +109,7 @@ include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
 
+OPTIMIZE = __OPTIMIZE__
 
 logger = logging.getLogger(__name__)
 
