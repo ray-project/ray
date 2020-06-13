@@ -146,16 +146,18 @@ class VisionNetwork(TorchModelV2, nn.Module):
     def forward(self, input_dict, state, seq_lens):
         self._features = input_dict["obs"].float().permute(0, 3, 1, 2)
         conv_out = self._convs(self._features)
+        # Store features to save forward pass when getting value_function out.
         if not self._value_branch_separate:
             self._features = conv_out
 
         if not self.last_layer_is_flattened:
-            logits = self._logits(conv_out)
-            logits = logits.squeeze(3)
+            if self._logits:
+                conv_out = self._logits(conv_out)
+            logits = conv_out.squeeze(3)
             logits = logits.squeeze(2)
             return logits, state
-
-        return conv_out, state
+        else:
+            return conv_out, state
 
     @override(TorchModelV2)
     def value_function(self):

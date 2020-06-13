@@ -88,14 +88,14 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
                         assert isinstance(a.get_policy().model, FCNetV2)
             if train:
                 a.train()
-                try:
-                    a.stop()
-                except Exception as e:
-                    print("Ignoring error stopping agent", e)
-                    pass
+            try:
+                a.stop()
+            except Exception as e:
+                print("Ignoring error stopping agent", e)
+                pass
         print(stat)
 
-    frameworks = ("tf", "torch")
+    frameworks = ("torch", "tf")
     if tfe:
         frameworks += ("tfe", )
     for _ in framework_iterator(config, frameworks=frameworks):
