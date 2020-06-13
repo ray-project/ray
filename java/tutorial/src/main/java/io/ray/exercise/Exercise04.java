@@ -39,9 +39,9 @@ public class Exercise04 {
     try {
       Ray.init();
       List<ObjectRef<String>> waitList = ImmutableList.of(
-          Ray.call(Exercise04::f1),
-          Ray.call(Exercise04::f2),
-          Ray.call(Exercise04::f3)
+          Ray.task(Exercise04::f1).remote(),
+          Ray.task(Exercise04::f2).remote(),
+          Ray.task(Exercise04::f3).remote()
       );
       // Ray.wait will block until specified number of results are ready
       // or specified timeout have passed.

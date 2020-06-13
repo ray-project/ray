@@ -32,7 +32,7 @@ public class RateLimiterPressureTest extends RayBenchmarkTest {
   @Override
   public ObjectRef<RemoteResult<Integer>> rayCall(ActorHandle rayActor) {
 
-    return Ray.call(RateLimiterPressureTest::currentTime);
+    return Ray.task(RateLimiterPressureTest::currentTime).remote();
   }
 
   @Override
