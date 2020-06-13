@@ -514,10 +514,9 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
   RAY_CHECK(node_change_callback_ == nullptr);
   node_change_callback_ = subscribe;
 
-  fetch_node_data_operation_ = [this, subscribe](const StatusCallback &done) {
-    auto callback = [this, subscribe, done](
-                        const Status &status,
-                        const std::vector<GcsNodeInfo> &node_info_list) {
+  fetch_node_data_operation_ = [this](const StatusCallback &done) {
+    auto callback = [this, done](const Status &status,
+                                 const std::vector<GcsNodeInfo> &node_info_list) {
       for (auto &node_info : node_info_list) {
         HandleNotification(node_info);
       }
@@ -528,7 +527,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
     RAY_CHECK_OK(AsyncGetAll(callback));
   };
 
-  subscribe_node_operation_ = [this, subscribe](const StatusCallback &done) {
+  subscribe_node_operation_ = [this](const StatusCallback &done) {
     auto on_subscribe = [this](const std::string &id, const std::string &data) {
       GcsNodeInfo node_info;
       node_info.ParseFromString(data);

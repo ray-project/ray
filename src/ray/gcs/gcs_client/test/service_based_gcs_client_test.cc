@@ -968,8 +968,6 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableReSubscribe) {
       };
   ASSERT_TRUE(SubscribeBatchHeartbeat(batch_heartbeat_subscribe));
 
-  RestartGcsServer();
-
   auto node_info = Mocker::GenNodeInfo(1);
   ASSERT_TRUE(RegisterNode(*node_info));
   ClientID node_id = ClientID::FromBinary(node_info->node_id());
@@ -978,10 +976,20 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableReSubscribe) {
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat->set_client_id(node_info->node_id());
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
-
-  WaitPendingDone(node_change_count, 1);
-  WaitPendingDone(resource_change_count, 1);
   WaitPendingDone(batch_heartbeat_count, 1);
+
+  RestartGcsServer();
+
+  node_info = Mocker::GenNodeInfo(1);
+  ASSERT_TRUE(RegisterNode(*node_info));
+  node_id = ClientID::FromBinary(node_info->node_id());
+  ASSERT_TRUE(UpdateResources(node_id, key));
+  heartbeat->set_client_id(node_info->node_id());
+  ASSERT_TRUE(ReportHeartbeat(heartbeat));
+
+  WaitPendingDone(node_change_count, 2);
+  WaitPendingDone(resource_change_count, 2);
+  WaitPendingDone(batch_heartbeat_count, 2);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestTaskTableReSubscribe) {
