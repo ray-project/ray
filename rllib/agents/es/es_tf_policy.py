@@ -105,6 +105,9 @@ class ESTFPolicy:
                         add_noise=False,
                         update=True,
                         **kwargs):
+        # Batch is given as list of one.
+        if isinstance(observation, list) and len(observation) == 1:
+            observation = observation[0]
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
         # `actions` is a list of (component) batches.
@@ -117,6 +120,15 @@ class ESTFPolicy:
         # (list of single actions).
         actions = unbatch(actions)
         return actions
+
+    def compute_single_action(self,
+                              observation,
+                              add_noise=False,
+                              update=True,
+                              **kwargs):
+        action = self.compute_actions(
+            [observation], add_noise=add_noise, update=update, **kwargs)
+        return action[0], [], {}
 
     def _add_noise(self, single_action, single_action_space):
         if isinstance(single_action_space, gym.spaces.Box):

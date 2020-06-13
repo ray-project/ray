@@ -12,7 +12,7 @@ tf = try_import_tf()
 class TestIMPALA(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -23,7 +23,7 @@ class TestIMPALA(unittest.TestCase):
         config = impala.DEFAULT_CONFIG.copy()
         num_iterations = 1
 
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
             local_cfg = config.copy()
             for env in ["Pendulum-v0", "CartPole-v0"]:
                 print("Env={}".format(env))

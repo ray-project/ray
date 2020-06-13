@@ -28,9 +28,9 @@ def framework_iterator(config=None,
         config (Optional[dict]): An optional config dict to alter in place
             depending on the iteration.
         frameworks (Tuple[str]): A list/tuple of the frameworks to be tested.
-            Allowed are: "tf", "tfe", and "torch".
-        session (bool): If True, enter a tf.Session() and yield that as
-            well in the tf-case (otherwise, yield (fw, None)).
+            Allowed are: "tf", "tfe", "torch", and None.
+        session (bool): If True and only in the tf-case: Enter a tf.Session()
+            and yield that as second return value (otherwise yield (fw, None)).
 
     Yields:
         str: If enter_session is False:
@@ -95,7 +95,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         x (any): The value to be compared (to the expectation: `y`). This
             may be a Tensor.
         y (any): The expected value to be compared to `x`. This must not
-            be a Tensor.
+            be a tf-Tensor, but may be a tfe/torch-Tensor.
         decimals (int): The number of digits after the floating point up to
             which all numeric values have to match.
         atol (float): Absolute tolerance of the difference between x and y
@@ -265,13 +265,15 @@ def check_compute_single_action(trainer,
     obs_space = pol.observation_space
     action_space = pol.action_space
 
-    for what in [trainer, pol]:
-
+    for what in [pol, trainer]:
+        print("what={}".format(what))
         method_to_test = trainer.compute_action if what is trainer else \
             pol.compute_single_action
 
         for explore in [True, False]:
-            for full_fetch in ([True, False] if what is trainer else [False]):
+            print("explore={}".format(explore))
+            for full_fetch in ([False, True] if what is trainer else [False]):
+                print("full-fetch={}".format(full_fetch))
                 call_kwargs = {}
                 if what is trainer:
                     call_kwargs["full_fetch"] = full_fetch
@@ -297,7 +299,7 @@ def check_compute_single_action(trainer,
                 if state_out:
                     for si, so in zip(state_in, state_out):
                         check(list(si.shape), so.shape)
-    
+
                 if not action_space.contains(action):
                     raise ValueError(
                         "Returned action ({}) of trainer/policy {} not in "
