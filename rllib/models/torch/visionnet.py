@@ -28,6 +28,8 @@ class VisionNetwork(TorchModelV2, nn.Module):
         no_final_linear = model_config.get("no_final_linear")
         vf_share_layers = model_config.get("vf_share_layers")
 
+        # Whether the last layer is the output of a Flattened (rather than
+        # a n x (1,1) Conv2D).
         self.last_layer_is_flattened = False
         self._logits = None
 
@@ -72,6 +74,8 @@ class VisionNetwork(TorchModelV2, nn.Module):
                     None,  # padding=valid
                     activation_fn=activation))
 
+            # num_outputs defined. Use that to create an exact
+            # `num_output`-sized (1,1)-Conv2D.
             if num_outputs:
                 in_size = [
                     np.ceil((in_size[0] - kernel[0]) / stride),
@@ -84,6 +88,8 @@ class VisionNetwork(TorchModelV2, nn.Module):
                     1,
                     padding,
                     activation_fn=None)
+            # num_outputs not known -> Flatten, then set self.num_outputs
+            # to the resulting number of nodes.
             else:
                 self.last_layer_is_flattened = True
                 layers.append(nn.Flatten())
