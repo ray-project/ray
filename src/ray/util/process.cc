@@ -356,7 +356,18 @@ int Process::Wait() const {
         status = -1;
       }
 #else
+      // There are 3 possible cases:
+      // - The process is a child whose death we await via waitpid().
+      //   This is the usual case, when we have a child whose SIGCHLD we handle.
+      // - The process shares a pipe with us whose closure we use to detect its death.
+      //   This is used to track a non-owned process, like a grandchild.
+      // - The process has no relationship with us, in which case we simply fail,
+      //   since we have no need for this (and there's no good way to do it).
+      // Why don't we just poll the PID? Because it's better not to:
+      // - It would be prone to a race condition (we won't know when the PID is recycled).
+      // - It would incur high latency and/or high CPU usage for the caller.
       if (fd != -1) {
+        // We have a pipe, so wait for its other end to close, to detect process death.
         unsigned char buf[1 << 8];
         ptrdiff_t r;
         while ((r = read(fd, buf, sizeof(buf))) > 0) {
@@ -364,6 +375,8 @@ int Process::Wait() const {
         }
         status = r == -1 ? -1 : 0;
       } else if (waitpid(pid, &status, 0) == -1) {
+        // Just the normal waitpid() case.
+        // (We can only do this once, only if we own the process. It fails otherwise.)
         error = std::error_code(errno, std::system_category());
       }
 #endif
