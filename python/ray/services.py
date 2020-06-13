@@ -99,14 +99,16 @@ class ConsolePopen(subprocess.Popen):
             # CREATE_NEW_PROCESS_GROUP is used to send Ctrl+C on Windows:
             # https://docs.python.org/3/library/subprocess.html#subprocess.Popen.send_signal
             new_pgroup = subprocess.CREATE_NEW_PROCESS_GROUP
-            flags = 0
+            flags_to_add = 0
             if ray.utils.detect_fate_sharing_support():
                 # If we don't have kernel-mode fate-sharing, then don't do this
                 # because our children need to be in out process group for
                 # the process reaper to properly terminate them.
-                flags = new_pgroup
-            kwargs.setdefault("creationflags", flags)
-            self._use_signals = (kwargs["creationflags"] & new_pgroup)
+                flags_to_add = new_pgroup
+            flags_key = "creationflags"
+            if flags_to_add:
+                kwargs[flags_key] = (kwargs.get(flags_key) or 0) | flags_to_add
+            self._use_signals = (kwargs[flags_key] & new_pgroup)
             super(ConsolePopen, self).__init__(*args, **kwargs)
 
 
@@ -503,6 +505,14 @@ def start_ray_process(command,
         if fate_share and sys.platform.startswith("linux"):
             ray.utils.set_kill_on_parent_death_linux()
 
+    win32_fate_sharing = fate_share and sys.platform == "win32"
+    # With Windows fate-sharing, we need special care:
+    # The process must be added to the job before it is allowed to execute.
+    # Otherwise, there's a race condition: the process might spawn children
+    # before the process itself is assigned to the job.
+    # After that point, its children will not be added to the job anymore.
+    CREATE_SUSPENDED = 0x00000004  # from Windows headers
+
     process = ConsolePopen(
         command,
         env=modified_env,
@@ -510,10 +520,16 @@ def start_ray_process(command,
         stdout=stdout_file,
         stderr=stderr_file,
         stdin=subprocess.PIPE if pipe_stdin else None,
-        preexec_fn=preexec_fn if sys.platform != "win32" else None)
+        preexec_fn=preexec_fn if sys.platform != "win32" else None,
+        creationflags=CREATE_SUSPENDED if win32_fate_sharing else 0)
 
-    if fate_share and sys.platform == "win32":
-        ray.utils.set_kill_child_on_death_win32(process)
+    if win32_fate_sharing:
+        try:
+            ray.utils.set_kill_child_on_death_win32(process)
+            psutil.Process(process.pid).resume()
+        except (psutil.Error, OSError):
+            process.kill()
+            raise
 
     return ProcessInfo(
         process=process,
