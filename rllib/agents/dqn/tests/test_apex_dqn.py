@@ -17,6 +17,7 @@ class TestApexDQN(unittest.TestCase):
     def test_apex_zero_workers(self):
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 0
+        config["learning_starts"] = 1000
         config["prioritized_replay"] = True
         config["timesteps_per_iteration"] = 100
         config["min_iter_time_s"] = 1
@@ -30,6 +31,7 @@ class TestApexDQN(unittest.TestCase):
         """Test whether an APEX-DQNTrainer can be built on all frameworks."""
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 3
+        config["learning_starts"] = 1000
         config["prioritized_replay"] = True
         config["timesteps_per_iteration"] = 100
         config["min_iter_time_s"] = 1

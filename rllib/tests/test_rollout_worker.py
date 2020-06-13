@@ -161,7 +161,9 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_batch_ids(self):
         ev = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v0"), policy=MockPolicy)
+            env_creator=lambda _: gym.make("CartPole-v0"),
+            policy=MockPolicy,
+            rollout_fragment_length=1)
         batch1 = ev.sample()
         batch2 = ev.sample()
         self.assertEqual(len(set(batch1["unroll_id"])), 1)
