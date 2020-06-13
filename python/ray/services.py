@@ -1,6 +1,5 @@
 import collections
 import errno
-import io
 import json
 import logging
 import multiprocessing
@@ -86,17 +85,15 @@ ProcessInfo = collections.namedtuple("ProcessInfo", [
 
 
 class ConsolePopen(subprocess.Popen):
-    if sys.platform == "win32":
+    """A console-mode (non-GUI) subprocess."""
 
-        def terminate(self):
-            if isinstance(self.stdin, io.IOBase):
-                self.stdin.close()
-            if self._use_signals:
-                self.send_signal(signal.CTRL_BREAK_EVENT)
-            else:
-                super(ConsolePopen, self).terminate()
-
-        def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
+        self._termination_signal = None
+        if sys.platform != "win32":
+            pass  # Nothing to do
+        elif kwargs.get("stdin") == subprocess.PIPE:
+            self._termination_signal = False
+        else:
             # CREATE_NEW_PROCESS_GROUP is used to send Ctrl+C on Windows:
             # https://docs.python.org/3/library/subprocess.html#subprocess.Popen.send_signal
             new_pgroup = subprocess.CREATE_NEW_PROCESS_GROUP
@@ -109,8 +106,17 @@ class ConsolePopen(subprocess.Popen):
             flags_key = "creationflags"
             if flags_to_add:
                 kwargs[flags_key] = (kwargs.get(flags_key) or 0) | flags_to_add
-            self._use_signals = (kwargs[flags_key] & new_pgroup)
+            if kwargs["creationflags"] & new_pgroup:
+                self._termination_signal = signal.CTRL_BREAK_EVENT
             super(ConsolePopen, self).__init__(*args, **kwargs)
+
+    def terminate(self):
+        if self._termination_signal is None:
+            super(ConsolePopen, self).terminate()
+        elif self._termination_signal is not False:
+            self.send_signal(self._termination_signal)
+        else:
+            self.stdin.close()
 
 
 def address(ip_address, port):
@@ -378,9 +384,8 @@ def start_ray_process(command,
                       use_perftools_profiler=False,
                       use_tmux=False,
                       stdout_file=None,
-                      stderr_file=None,
-                      pipe_stdin=False):
-    """Start one of the Ray processes.
+                      stderr_file=None):
+    """Start one of the Ray processes. Their stdin is redirected to a pipe.
 
     TODO(rkn): We need to figure out how these commands interact. For example,
     it may only make sense to start a process in gdb if we also start it in
@@ -523,7 +528,7 @@ def start_ray_process(command,
         cwd=cwd,
         stdout=stdout_file,
         stderr=stderr_file,
-        stdin=subprocess.PIPE if pipe_stdin else None,
+        stdin=subprocess.PIPE,
         preexec_fn=preexec_fn if sys.platform != "win32" else None,
         creationflags=CREATE_SUSPENDED if win32_fate_sharing else 0)
 
@@ -677,10 +682,7 @@ def start_reaper(fate_share=None):
         os.path.dirname(os.path.abspath(__file__)), "ray_process_reaper.py")
     command = [sys.executable, "-u", reaper_filepath]
     process_info = start_ray_process(
-        command,
-        ray_constants.PROCESS_TYPE_REAPER,
-        pipe_stdin=True,
-        fate_share=fate_share)
+        command, ray_constants.PROCESS_TYPE_REAPER, fate_share=fate_share)
     return process_info
 
 

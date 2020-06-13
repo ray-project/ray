@@ -367,7 +367,7 @@ class Worker:
             shutdown(True)
             sys.exit(1)
 
-        ray.utils.set_sigterm_handler(sigterm_handler)
+        ray.utils.set_sigterm_handler(sigterm_handler, True)
         self.core_worker.run_task_loop()
         sys.exit(0)
 
@@ -805,6 +805,8 @@ def init(address=None,
         driver_object_store_memory=driver_object_store_memory,
         job_id=job_id)
 
+    register_sigterm_handlers(driver_mode)
+
     for hook in _post_init_hooks:
         hook()
 
@@ -812,6 +814,7 @@ def init(address=None,
 
 
 # Functions to run as callback after a successful ray init.
+# TODO: We should have need corresponding shutdown hooks.
 _post_init_hooks = []
 
 
@@ -869,11 +872,15 @@ def sigterm_handler(signum, frame):
     sys.exit(signum)
 
 
-try:
-    ray.utils.set_sigterm_handler(sigterm_handler)
-except ValueError:
-    logger.warning("Failed to set SIGTERM handler, processes might"
-                   "not be cleaned up properly on exit.")
+def register_sigterm_handlers(mode):
+    assert mode is not None
+    try:
+        ray.utils.set_sigterm_handler(sigterm_handler,
+                                      mode not in [SCRIPT_MODE, LOCAL_MODE])
+    except ValueError:
+        logger.warning("Failed to set SIGTERM handler, processes might"
+                       "not be cleaned up properly on exit.")
+
 
 # Define a custom excepthook so that if the driver exits with an exception, we
 # can push that exception to Redis.

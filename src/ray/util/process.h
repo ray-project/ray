@@ -63,9 +63,13 @@ class Process {
                    bool decouple = false);
   /// Convenience function to run the given command line and wait for it to finish.
   static std::error_code Call(const std::vector<std::string> &args);
+  /// Closes the standard input pipe (if any) for the process.
+  /// \return True if the pipe was previously open, or false otherwise.
+  bool CloseStdIn();
   static Process CreateNewDummy();
   static Process FromPid(pid_t pid);
   pid_t GetId() const;
+  int GetStdIn() const;
   /// Returns an opaque pointer or handle to the underlying process object.
   /// Implementation detail, used only for identity testing. Do not dereference.
   const void *Get() const;

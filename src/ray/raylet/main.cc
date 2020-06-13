@@ -22,6 +22,7 @@
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
+#include "ray/util/util.h"
 
 DEFINE_string(raylet_socket_name, "", "The socket name of raylet.");
 DEFINE_string(store_socket_name, "", "The socket name of object store.");
@@ -245,7 +246,8 @@ int main(int argc, char *argv[]) {
   };
   boost::asio::signal_set signals(main_service);
 #ifdef _WIN32
-  signals.add(SIGBREAK);
+  // TODO(mehrdadn): Do this on all platforms, not just Windows.
+  AwaitPipeClose(main_service, 0, handler, 1000 / 60);
 #else
   signals.add(SIGTERM);
 #endif

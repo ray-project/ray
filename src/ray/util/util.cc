@@ -2,20 +2,33 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#ifndef _WIN32
+
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include <process.h>
+#include <signal.h>
+#include <tchar.h>
+#else
 #include <sys/un.h>
 #endif
 
 #include <algorithm>
-#include <sstream>
-#include <string>
-#include <vector>
-
+#include <boost/asio/deadline_timer.hpp>
 #include <boost/asio/generic/stream_protocol.hpp>
 #ifndef _WIN32
 #include <boost/asio/local/stream_protocol.hpp>
 #endif
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/post.hpp>
+#ifdef _WIN32
+#include <boost/asio/windows/object_handle.hpp>
+#include <boost/asio/windows/stream_handle.hpp>
+#endif
+#include <boost/asio/write.hpp>
+#include <sstream>
+#include <string>
+#include <vector>
 
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
@@ -322,4 +335,105 @@ std::string CreateCommandLine(const std::vector<std::string> &args,
     break;
   }
   return result;
+}
+
+#ifdef _WIN32
+static BOOL CreatePipeEx(HANDLE (&handles)[2], DWORD rflags, DWORD wflags, DWORD rbufsize,
+                         DWORD wbufsize, BOOL inheritable) {
+  static LONG pipe_id = 0;
+  TCHAR path[128];
+  _stprintf(path, _T("\\\\.\\Pipe\\AnonymousPipe.%d.%d"),
+            static_cast<int>(GetCurrentProcessId()),
+            static_cast<int>(InterlockedIncrement(&pipe_id)));
+  SECURITY_ATTRIBUTES sa = {sizeof(sa), NULL, inheritable};
+  DWORD openmode = PIPE_ACCESS_INBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE | rflags,
+        pipemode = PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT;
+  DWORD count = 1;
+  HANDLE server, client = INVALID_HANDLE_VALUE;
+  server = CreateNamedPipe(path, openmode, pipemode, count, rbufsize, wbufsize,
+                           120 * 1000, &sa);
+  if (server != INVALID_HANDLE_VALUE) {
+    DWORD filemode = FILE_ATTRIBUTE_NORMAL | wflags;
+    client = CreateFile(path, GENERIC_WRITE, 0, &sa, OPEN_EXISTING, filemode, NULL);
+  }
+  BOOL success = server != INVALID_HANDLE_VALUE && client != INVALID_HANDLE_VALUE;
+  if (success) {
+    handles[0] = server;
+    handles[1] = client;
+  } else {
+    if (server != INVALID_HANDLE_VALUE) {
+      CloseHandle(server);
+    }
+    if (client != INVALID_HANDLE_VALUE) {
+      CloseHandle(client);
+    }
+  }
+  return success;
+}
+#endif
+
+void AwaitPipeClose(boost::asio::io_service &io_service, int rfd,
+                    std::function<void(const boost::system::error_code &, int)> callback,
+                    long poll_msec) {
+#ifdef _WIN32
+  RAY_CHECK(GetFileType(reinterpret_cast<HANDLE>(_get_osfhandle(rfd))) == FILE_TYPE_PIPE);
+  int backup_rfd = _dup(rfd);
+  RAY_CHECK(backup_rfd != -1) << "Error duplicating pipe FD: " << rfd;
+  // TODO(mehrdadn): Check if we can assume stdin is empty and simplify as appropriate
+  HANDLE handle = INVALID_HANDLE_VALUE;
+  RAY_CHECK(
+      DuplicateHandle(GetCurrentProcess(), reinterpret_cast<HANDLE>(_get_osfhandle(rfd)),
+                      GetCurrentProcess(), &handle, 0, FALSE, DUPLICATE_SAME_ACCESS))
+      << "Error cloning pipe: " << rfd;
+  auto stream = std::make_shared<boost::asio::windows::object_handle>(io_service, handle);
+  HANDLE pipe[2] = {INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE};
+  unsigned int bufsize = 1 << 13;
+  // Create a pipe with synchronous read (like stdin), but asynchronous write
+  RAY_CHECK(CreatePipeEx(pipe, 0, FILE_FLAG_OVERLAPPED, bufsize, bufsize, FALSE))
+      << "Error creating pipe: " << GetLastError();
+  int rpipefd = _open_osfhandle(reinterpret_cast<intptr_t>(pipe[0]), _O_BINARY);
+  RAY_CHECK(rpipefd != -1) << "Error opening pipe as FD: " << pipe[0];
+  auto wpipe = std::make_shared<boost::asio::windows::stream_handle>(io_service, pipe[1]);
+  boost::asio::post(io_service, [=, &io_service]() {
+    using namespace boost::system;
+    auto timer = std::make_shared<boost::asio::deadline_timer>(io_service);
+    auto do_read = std::make_shared<std::function<void(const error_code &)>>();
+    *do_read = [=, &io_service](const error_code &read_error) mutable {
+      RAY_CHECK(!read_error);
+      DWORD pending;
+      if (PeekNamedPipe(stream->native_handle(), NULL, 0, NULL, &pending, NULL)) {
+        if (pending) {
+          DWORD size;
+          void *data = operator new(pending);
+          RAY_CHECK(ReadFile(stream->native_handle(), data, pending, &size, NULL));
+          std::function<void(const error_code &, size_t)> do_write =
+              [=](const error_code &write_error, size_t) mutable {
+                RAY_CHECK(!write_error) << "Error writing to pipe: " << write_error;
+                operator delete(data);
+                stream->async_wait(*do_read);
+              };
+          boost::asio::async_write(*wpipe, boost::asio::buffer(data, size), do_write);
+          RAY_CHECK(!read_error) << "Error reading from pipe: " << read_error;
+        } else {
+          timer->expires_from_now(boost::posix_time::milliseconds(poll_msec));
+          timer->async_wait(*do_read);
+        }
+      } else {
+        RAY_CHECK(GetLastError() == ERROR_BROKEN_PIPE);
+        boost::asio::post(io_service, [=, &io_service]() {
+          // Restore file descriptor
+          RAY_CHECK(_dup2(backup_rfd, rfd) != -1) << "Failed to restore FD " << rfd;
+          _close(backup_rfd);
+          callback(boost::asio::error::broken_pipe, SIGTERM);
+        });
+      }
+    };
+    // Replace file descriptor
+    RAY_CHECK(_dup2(rpipefd, rfd) != -1) << "Failed to replace FD " << rfd;
+    _close(rpipefd);
+    stream->async_wait(*do_read);
+  });
+#else
+  RAY_LOG(FATAL) << "Not implemented";
+#endif
 }

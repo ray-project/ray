@@ -14,7 +14,25 @@
 
 #pragma once
 
+namespace boost {
+
+namespace asio {
+
+class io_context;
+typedef io_context io_service;
+
+}  // namespace asio
+
+namespace system {
+
+class error_code;
+
+}  // namespace system
+
+}  // namespace boost
+
 #include <chrono>
+#include <functional>
 #include <iterator>
 #include <mutex>
 #include <random>
@@ -165,3 +183,14 @@ void FillRandom(T *data) {
     (*data)[i] = static_cast<uint8_t>(dist(generator));
   }
 }
+
+/// Waits for the read end of the given pipe to close.
+/// Intended for use on stdin, but only when stdin is a pipe (not a physical file).
+/// Note that the file descriptor may be swapped (e.g. via dup2()) during the wait.
+/// This is to ensure that data can continue to be piped to any existing readers.
+/// \param rfd The file descriptor for the read end of the pipe.
+/// \param poll_msec The polling period for platforms that cannot wait for closure.
+void AwaitPipeClose(boost::asio::io_service &io_service, int rfd,
+                    std::function<void(const boost::system::error_code &, int)> callback,
+                    long poll_msec);
+

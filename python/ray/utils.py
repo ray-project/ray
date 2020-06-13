@@ -2,6 +2,7 @@ import binascii
 import errno
 import hashlib
 import inspect
+import io
 import logging
 import numpy as np
 import os
@@ -12,6 +13,7 @@ import tempfile
 import threading
 import time
 import uuid
+import _thread
 
 import ray
 import ray.gcs_utils
@@ -19,6 +21,8 @@ import ray.ray_constants as ray_constants
 import psutil
 
 logger = logging.getLogger(__name__)
+
+stdin_waiter = None
 
 # Linux can bind child processes' lifetimes to that of their parents via prctl.
 # prctl support is detected dynamically once, and assumed thereafter.
@@ -678,15 +682,74 @@ def set_kill_child_on_death_win32(child_proc):
         assert False, "AssignProcessToJobObject used despite being unavailable"
 
 
-def set_sigterm_handler(sigterm_handler):
-    """Registers a handler for SIGTERM in a platform-compatible manner."""
-    if sys.platform == "win32":
-        # Note that these signal handlers only work for console applications.
-        # TODO(mehrdadn): implement graceful process termination mechanism
-        # SIGINT is Ctrl+C, SIGBREAK is Ctrl+Break.
-        signal.signal(signal.SIGBREAK, sigterm_handler)
+def _copy_fd(srcfd, dstfd, block_size):
+    """Copies all data from the source file descriptor to the destination."""
+    total = 0
+    while True:
+        buf = os.read(srcfd, block_size)
+        if not buf:
+            break
+        while buf:
+            n = os.write(dstfd, buf)
+            total += n
+            buf = buf[n:]
+    return total
+
+
+def _stdin_await_close(signum):
+    """This function pipes stdin through another pipe so that it can
+    observe when stdin is closed.
+    Once this occurs, it raises signum for the current process.
+    """
+    rfd = 0
+    (pipe_rfd, pipe_wfd) = os.pipe()
+    try:
+        backup_rfd = os.dup(rfd)
+        try:
+            os.dup2(pipe_rfd, rfd)
+            try:
+                _copy_fd(backup_rfd, pipe_wfd, io.DEFAULT_BUFFER_SIZE)
+            finally:
+                os.dup2(backup_rfd, rfd)
+        finally:
+            os.close(backup_rfd)
+    finally:
+        os.close(pipe_wfd)
+        os.close(pipe_rfd)
+    if sys.version_info[:2] >= (3, 8):
+        signal.raise_signal(signum)
+    elif sys.platform == "win32":
+        from ctypes import CDLL, WINFUNCTYPE, c_int
+        WINFUNCTYPE(c_int, c_int)(("raise", CDLL("ucrtbase")))(signum)
     else:
-        signal.signal(signal.SIGTERM, sigterm_handler)
+        from ctypes import CDLL, CFUNCTYPE, c_int
+        CFUNCTYPE(c_int, c_int)(("raise", CDLL(None)))(signum)
+
+
+def set_sigterm_handler(sigterm_handler, is_subordinate_process):
+    """Registers a handler for SIGTERM in a cross-platform manner.
+
+    Args:
+        is_subordinate_process: False if this process is user-spawned, such
+            as for a driver. True otherwise (e.g. for other workers).
+            True implies, for example, that we can safely make some assumptions
+            about this process's global state and interface, such as its
+            stdio connections (or lack thereof) and signal handlers.
+            This is something we cannot safely do for user-spawned processes.
+    """
+    is_windows = sys.platform == "win32"
+    signum = signal.SIGTERM
+    global stdin_waiter
+    # Windows doesn't quite have interprocess "signals" that behave the same
+    # way as POSIX, but it does have a similar signaling mechanism within a
+    # single process, so we introduce a different termination mechanism here.
+    # We assume termination is signaled to us by our parent closing our stdin.
+    # Of course this only makes sense assuming stdin is kept open otherwise;
+    # it doesn't make sense for user-launched processes (like the driver).
+    # TODO(mehrdadn): Do this on all platforms, not just Windows.
+    if is_windows and stdin_waiter is None and is_subordinate_process:
+        stdin_waiter = _thread.start_new_thread(_stdin_await_close, (signum, ))
+    signal.signal(signum, sigterm_handler)
 
 
 def try_make_directory_shared(directory_path):

@@ -215,7 +215,7 @@ class Node:
             self.kill_all_processes(check_alive=False, allow_graceful=True)
             sys.exit(1)
 
-        ray.utils.set_sigterm_handler(sigterm_handler)
+        ray.utils.set_sigterm_handler(sigterm_handler, False)
 
     def _init_temp(self, redis_client):
         # Create an dictionary to store temp file index.
@@ -797,7 +797,11 @@ class Node:
                    exit code.
         """
         process_infos = self.all_processes[process_type]
-        if process_type != ray_constants.PROCESS_TYPE_REDIS_SERVER:
+        if process_type == ray_constants.PROCESS_TYPE_REDIS_SERVER:
+            # TODO(mehrdadn): Do this on all platforms, not just Windows.
+            if sys.platform == "win32":
+                self.create_redis_client().shutdown()
+        else:
             assert len(process_infos) == 1
         for process_info in process_infos:
             process = process_info.process

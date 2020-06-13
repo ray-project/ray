@@ -14,6 +14,7 @@
 
 #include "ray/util/process.h"
 
+#include <fcntl.h>
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN 1
@@ -33,6 +34,7 @@
 #include <algorithm>
 #include <atomic>
 #include <fstream>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -42,14 +44,128 @@
 
 namespace ray {
 
+// TL;DR: This mutex MUST be synchronized with by all fork() calls in this process.
+// This includes out-of-band calls that may occur in third-party code/libraries.
+// However, when you do this, be careful not to re-release the lock in the subprocess!
+//
+// Long explanation:
+// It is unsafe to spawn processes from multiple threads on all platforms by default,
+// due to race conditions when duplicating handles/FDs.
+// In particular, the problem is due to the following facts:
+// - All platforms make it difficult to avoid inheriting handles.
+// - Inheritance of some handles is at least necessary for I/O redirection.
+// In addition, the problem is exacerbated by the following facts:
+// - Standard POSIX syscalls do not set FD_CLOEXEC. (c.f. dup() vs. dup3().)
+// - Attempting to set FD_CLOEXEC after an FD's creation is not race-free.
+// The race condition here can cause various hard-to-diagnose problems, including:
+// - Deadlocks: Two children may end up with handles to each others' files.
+//   If the parent or children wait for pipes/sockets to be closed, they may deadlock.
+// - Security issues: These can occur if a descendant crosses a security boundary.
+//   In such a scenario, the same descriptor is shared across security boundaries.
+// We disregard the security issues for now, as we don't cross security boundaries.
+// However, we still need to address correctness issues, which can cause e.g. hangs.
+//
+// The simplest solution here is a global mutex, which we have below.
+// If all fork() calls across all threads synchronize with this mutex, there's no problem.
+// However, this requires knowledge of all external code; it will not work in the face of
+// out-of-band spawns.
+// This fact, however, can be impossible to ensure for third-party libraries.
+//
+// A robust solution here, is not easy. In fact, it's close-to-impossible on some systems.
+// Should we need to address this in the future, we'd need e.g. the following approach:
+// - Linux: Go through /proc/self/fd and close every file descriptor after forking,
+//          except any one(s) that we intend to inherit (like stdin/stdout/stderr).
+//          This assumes /proc is mounted, but it is on most systems.
+// - Mac: Use posix_spawnp() with POSIX_SPAWN_CLOEXEC_DEFAULT to avoid copying FDs,
+//        and explicitly provide a list of all inheritable FDs (like stdin/stdout/stderr).
+// - Windows: Use PROC_THREAD_ATTRIBUTE_HANDLE_LIST to specify the handles that are to
+//            be inherited explicitly (like stdin/stdout/stderr).
+//            Note: This still requires our handles to be inheritable; it therefore CANNOT
+//            prevent our handles from being duplicated by out-of-band spawns that set
+//            bInheritHandle = True.
+//            To address that, a cooperating thread in the child process would need to
+//            receive handles from the parent out-of-band (e.g. via DuplicateHandle())
+//            and manually set things up, such as by calling SetStdHandle().
+// We'll leave the above for the future, when it becomes necessary.
+// In the meantime, though, we need to be careful with duplicating the mutex itself.
+std::mutex spawn_mutex;
+
+class FileFD {
+  int value_;
+
+ public:
+  ~FileFD();
+  FileFD();
+  explicit FileFD(int value);
+  FileFD(const FileFD &other);
+  FileFD(FileFD &&other);
+  FileFD &operator=(FileFD other);
+  /// Creates a non-inheritable pipe FD. To make it inheritable, use fcntl() or dup().
+  static void CreatePipe(FileFD &read_, FileFD &write_);
+  int Get() const;
+  bool IsValid() const;
+};
+
+FileFD::~FileFD() {
+  if (value_ != -1) {
+#ifdef _WIN32
+    _close(value_);
+#else
+    close(value_);
+#endif
+  }
+}
+
+FileFD::FileFD() : value_(-1) {}
+
+FileFD::FileFD(int value) : value_(value) {}
+
+FileFD::FileFD(const FileFD &other) : value_(-1) {
+  if (other.value_ != -1) {
+    value_ = dup(other.value_);
+    RAY_CHECK(value_ != -1);
+  }
+}
+
+FileFD::FileFD(FileFD &&other) : value_(std::move(other.value_)) { other.value_ = -1; }
+
+FileFD &FileFD::operator=(FileFD other) {
+  using std::swap;
+  swap(value_, other.value_);
+  return *this;
+}
+
+void FileFD::CreatePipe(FileFD &read_, FileFD &write_) {
+  int fds[2] = {-1, -1};
+#ifdef _WIN32
+  RAY_CHECK(_pipe(fds, 0, _O_NOINHERIT) == 0);
+#elif defined(__linux__)
+  RAY_CHECK(pipe2(fds, O_CLOEXEC) == 0);
+#else
+  RAY_CHECK(pipe(fds) == 0);
+  for (size_t i = 0; i < sizeof(fds) / sizeof(*fds); ++i) {
+    // Note that this has a race condition with exec(), but there's no atomic API
+    RAY_CHECK(fcntl(fds[i], F_SETFD, fcntl(fds[i], F_GETFD, 0) | FD_CLOEXEC) != -1);
+  }
+#endif
+  read_ = FileFD(fds[0]);
+  write_ = FileFD(fds[1]);
+}
+
+int FileFD::Get() const { return value_; }
+
+bool FileFD::IsValid() const { return Get() != -1; }
+
 class ProcessFD {
   pid_t pid_;
   intptr_t fd_;
+  FileFD stdin_;
+  // If you add fields here, make sure to add them to operator=() as well
 
  public:
   ~ProcessFD();
   ProcessFD();
-  ProcessFD(pid_t pid, intptr_t fd = -1);
+  ProcessFD(pid_t pid, intptr_t fd = -1, FileFD stdin_ = FileFD());
   ProcessFD(const ProcessFD &other);
   ProcessFD(ProcessFD &&other);
   ProcessFD &operator=(const ProcessFD &other);
@@ -58,12 +174,21 @@ class ProcessFD {
   void CloseFD();
   intptr_t GetFD() const;
   pid_t GetId() const;
+  FileFD &GetStdIn();
+  FileFD const &GetStdIn() const;
 
   // Fork + exec combo. Returns -1 for the PID on failure.
-  static ProcessFD spawnvp(const char *argv[], std::error_code &ec, bool decouple) {
+  // This function must NEVER be called simultaneously on multiple threads!
+  static ProcessFD spawnvp(const char *argv[], bool pipe_stdin, std::error_code &ec,
+                           bool decouple) {
+    std::unique_lock<std::mutex> guard(spawn_mutex);
     ec = std::error_code();
     intptr_t fd;
     pid_t pid;
+    FileFD stdin_read, stdin_write;
+    if (pipe_stdin) {
+      FileFD::CreatePipe(stdin_read, stdin_write);
+    }
 #ifdef _WIN32
     (void)decouple;  // Windows doesn't require anything particular for decoupling.
     std::vector<std::string> args;
@@ -78,21 +203,31 @@ class ProcessFD {
       args_direct_call[0] += ".";
       cmds[0] = CreateCommandLine(args_direct_call);
     }
-    bool succeeded = false;
+    DWORD hflag = HANDLE_FLAG_INHERIT;
+    HANDLE stdin_pipe = stdin_read.IsValid()
+                            ? reinterpret_cast<HANDLE>(_get_osfhandle(stdin_read.Get()))
+                            : NULL;
     PROCESS_INFORMATION pi = {};
-    for (int attempt = 0; attempt < sizeof(cmds) / sizeof(*cmds); ++attempt) {
-      std::string &cmd = cmds[attempt];
-      if (!cmd.empty()) {
-        (void)cmd.c_str();  // We'll need this to be null-terminated (but mutable) below
-        TCHAR *cmdline = &*cmd.begin();
-        STARTUPINFO si = {sizeof(si)};
-        if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
-          succeeded = true;
-          break;
+    if (!stdin_read.IsValid() || SetHandleInformation(stdin_pipe, hflag, hflag)) {
+      for (int attempt = 0; attempt < sizeof(cmds) / sizeof(*cmds); ++attempt) {
+        std::string &cmd = cmds[attempt];
+        if (!cmd.empty()) {
+          (void)cmd.c_str();  // We'll need this to be null-terminated (but mutable) below
+          TCHAR *cmdline = &*cmd.begin();
+          STARTUPINFO si = {sizeof(si)};
+          si.dwFlags |= STARTF_USESTDHANDLES;
+          si.hStdInput =
+              stdin_read.IsValid() ? stdin_pipe : GetStdHandle(STD_INPUT_HANDLE);
+          si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+          si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+          if (CreateProcessA(NULL, cmdline, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+            break;
+          }
+          fd = -1;
         }
       }
     }
-    if (succeeded) {
+    if (pi.hProcess) {
       CloseHandle(pi.hThread);
       fd = reinterpret_cast<intptr_t>(pi.hProcess);
       pid = pi.dwProcessId;
@@ -102,8 +237,6 @@ class ProcessFD {
       pid = -1;
     }
 #else
-    // TODO(mehrdadn): Use clone() on Linux or posix_spawnp() on Mac to avoid duplicating
-    // file descriptors into the child process, as that can be problematic.
     int pipefds[2];  // Create pipe to get PID & track lifetime
     if (pipe(pipefds) == -1) {
       pipefds[0] = pipefds[1] = -1;
@@ -118,8 +251,17 @@ class ProcessFD {
       pipefds[1] = -1;
     }
     if (pid == 0) {
-      // Child process case. Reset the SIGCHLD handler.
+      // Child process case.
+      // The child process should not hold the mutex lock.
+      guard.release();
+      // Reset the SIGCHLD handler for the worker.
       signal(SIGCHLD, SIG_DFL);
+      if (pid != -1 && stdin_read.IsValid() &&
+          dup2(stdin_read.Get(), STDIN_FILENO) != 0) {
+        pid = -1;
+      }
+      stdin_read = FileFD();   // ensure closed before continuing
+      stdin_write = FileFD();  // ensure closed before continuing
       // If process needs to be decoupled, double-fork to avoid zombies.
       if (pid_t pid2 = decouple ? fork() : 0) {
         _exit(pid2 == -1 ? errno : 0);  // Parent of grandchild; must exit
@@ -146,7 +288,7 @@ class ProcessFD {
       ec = std::error_code(errno, std::system_category());
     }
 #endif
-    return ProcessFD(pid, fd);
+    return ProcessFD(pid, fd, std::move(stdin_write));
   }
 };
 
@@ -164,7 +306,8 @@ ProcessFD::~ProcessFD() {
 
 ProcessFD::ProcessFD() : pid_(-1), fd_(-1) {}
 
-ProcessFD::ProcessFD(pid_t pid, intptr_t fd) : pid_(pid), fd_(fd) {
+ProcessFD::ProcessFD(pid_t pid, intptr_t fd, FileFD stdin_)
+    : pid_(pid), fd_(fd), stdin_(std::move(stdin_)) {
   if (pid != -1) {
     bool process_does_not_exist = false;
     std::error_code error;
@@ -228,6 +371,7 @@ ProcessFD &ProcessFD::operator=(ProcessFD &&other) {
     using std::swap;
     swap(pid_, other.pid_);
     swap(fd_, other.fd_);
+    swap(stdin_, other.stdin_);
   }
   return *this;
 }
@@ -259,6 +403,10 @@ intptr_t ProcessFD::GetFD() const { return fd_; }
 
 pid_t ProcessFD::GetId() const { return pid_; }
 
+FileFD &ProcessFD::GetStdIn() { return stdin_; }
+
+const FileFD &ProcessFD::GetStdIn() const { return stdin_; }
+
 Process::~Process() {}
 
 Process::Process() {}
@@ -277,7 +425,7 @@ Process::Process(pid_t pid) { p_ = std::make_shared<ProcessFD>(pid); }
 Process::Process(const char *argv[], void *io_service, std::error_code &ec,
                  bool decouple) {
   (void)io_service;
-  ProcessFD procfd = ProcessFD::spawnvp(argv, ec, decouple);
+  ProcessFD procfd = ProcessFD::spawnvp(argv, true, ec, decouple);
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }
@@ -312,9 +460,21 @@ Process Process::FromPid(pid_t pid) {
   return result;
 }
 
+bool Process::CloseStdIn() {
+  bool result = false;
+  if (p_) {
+    FileFD *p = &p_->GetStdIn();
+    result = p->IsValid();
+    *p = FileFD();
+  }
+  return result;
+}
+
 const void *Process::Get() const { return p_ ? &*p_ : NULL; }
 
 pid_t Process::GetId() const { return p_ ? p_->GetId() : -1; }
+
+int Process::GetStdIn() const { return p_ ? p_->GetStdIn().Get() : -1; }
 
 bool Process::IsNull() const { return !p_; }
 
