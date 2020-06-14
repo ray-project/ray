@@ -150,3 +150,8 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
     def value_function(self):
         assert self._features is not None, "must call forward() first"
         return torch.reshape(self._value_branch(self._features), [-1])
+
+    @override(ModelV2)
+    def get_view_requirements(self):
+        #TODO
+        pass
