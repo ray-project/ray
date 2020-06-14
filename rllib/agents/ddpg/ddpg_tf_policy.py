@@ -330,11 +330,11 @@ def gradients_fn(policy, optimizer, loss):
             var_list=policy.model.q_variables(),
             clip_val=policy.config["grad_norm_clipping"])
     else:
-        actor_grads_and_vars = policy._actor_optimizer.compute_gradients(
-            policy.actor_loss, var_list=policy.model.policy_variables())
-        critic_grads_and_vars = policy._critic_optimizer.compute_gradients(
-            policy.critic_loss, var_list=policy.model.q_variables())
-    # Save these for later use in build_apply_op.
+        actor_grads_and_vars = optimizer.compute_gradients(
+                policy.actor_loss, var_list=policy.model.policy_variables())
+        critic_grads_and_vars = optimizer.compute_gradients(
+                policy.critic_loss, var_list=policy.model.q_variables())
+    
     policy._actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
                                     if g is not None]
     policy._critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
