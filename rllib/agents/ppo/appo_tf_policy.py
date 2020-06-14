@@ -19,8 +19,7 @@ from ray.rllib.policy.tf_policy import LearningRateSchedule, TFPolicy
 from ray.rllib.agents.ppo.ppo_tf_policy import KLCoeffMixin, ValueNetworkMixin
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.explained_variance import explained_variance
-from ray.rllib.utils.tf_ops import make_tf_callable
+from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
 
 tf = try_import_tf()
 
