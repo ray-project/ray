@@ -23,7 +23,7 @@ changes you make to files in the Ray directory will not have any effect.
 
 If you run into **Permission Denied** errors when running ``pip install``,
 you can try adding ``--user``. You may also need to run something like ``sudo
-chown -R $USER $HOME/anaconda3`` (substituting in the appropriate path).
+chown -R "$USER" ~/anaconda3`` (substituting in the appropriate path).
 
 If you make changes to the C++ or Python files, you will need to run the
 build so C++ code is recompiled and/or Python files are redeployed in
@@ -37,6 +37,38 @@ the following:
 
 This command is not enough to recompile all C++ unit tests. To do so, see
 `Testing locally`_.
+
+Optimized & Debug Builds
+----------------------------
+
+The default build configuration may skip performing compile-time optimizations.
+This is to ensure that compilation remain as fast as possible,
+and to make debugging easier.
+However, this can make Ray slower to run, and hence unsuitable for benchmarking.
+
+For a optimized build, you can try the following:
+
+.. code-block:: shell
+
+ bazel build -c opt "//:ray_pkg"
+
+This will build Ray's Python package with optimizations.
+(Note that this might take a while.)
+If you need to build all targets, you can use `"//:*"` instead of `"//:ray_pkg"`.
+
+To make this change permanent, you can add the following line to your user-level
+`~/.bazelrc` file (not to be confused with the workspace-level `.bazelrc` file):
+
+.. code-block:: shell
+
+ build --compilation_mode=opt
+
+If you do so, remember to revert this change when you are done. Otherwise, it
+will slow down all development in the future.
+
+Note: You can also explicitly specify `fastbuild` instead of `opt` to specify a
+fast build, or `dbg` instead of `opt` to generate more debug information,
+suitable for a debugger like `gdb`.
 
 .. _python-develop:
 
