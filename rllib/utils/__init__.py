@@ -13,8 +13,8 @@ from ray.rllib.utils.policy_client import PolicyClient
 from ray.rllib.utils.policy_server import PolicyServer
 from ray.rllib.utils.schedules import LinearSchedule, PiecewiseSchedule, \
     PolynomialSchedule, ExponentialSchedule, ConstantSchedule
-from ray.rllib.utils.test_utils import check, framework_iterator, \
-    check_compute_action
+from ray.rllib.utils.test_utils import check, check_compute_single_action, \
+    framework_iterator
 from ray.tune.utils import merge_dicts, deep_update
 
 
@@ -71,7 +71,7 @@ def try_import_tree():
 __all__ = [
     "add_mixins",
     "check",
-    "check_compute_action",
+    "check_compute_single_action",
     "deprecation_warning",
     "fc",
     "force_list",

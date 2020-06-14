@@ -5,6 +5,7 @@ import numpy as np
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.debug import summarize
+from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -25,11 +26,12 @@ class SampleBatchBuilder:
     However, it is useful to add data one row (dict) at a time.
     """
 
+    _next_unroll_id = 0  # disambiguates unrolls within a single episode
+
     @PublicAPI
     def __init__(self):
         self.buffers = collections.defaultdict(list)
         self.count = 0
-        self.unroll_id = 0  # disambiguates unrolls within a single episode
 
     @PublicAPI
     def add_values(self, **values):
@@ -54,11 +56,12 @@ class SampleBatchBuilder:
         batch = SampleBatch(
             {k: to_float_array(v)
              for k, v in self.buffers.items()})
-        batch.data[SampleBatch.UNROLL_ID] = np.repeat(self.unroll_id,
-                                                      batch.count)
+        if SampleBatch.UNROLL_ID not in batch.data:
+            batch.data[SampleBatch.UNROLL_ID] = np.repeat(
+                SampleBatchBuilder._next_unroll_id, batch.count)
+            SampleBatchBuilder._next_unroll_id += 1
         self.buffers.clear()
         self.count = 0
-        self.unroll_id += 1
         return batch
 
 
@@ -132,6 +135,11 @@ class MultiAgentSampleBatchBuilder:
         if agent_id not in self.agent_builders:
             self.agent_builders[agent_id] = SampleBatchBuilder()
             self.agent_to_policy[agent_id] = policy_id
+
+        # Include the current agent id for multi-agent algorithms.
+        if agent_id != _DUMMY_AGENT_ID:
+            values["agent_id"] = agent_id
+
         self.agent_builders[agent_id].add_values(**values)
 
     def postprocess_batch_so_far(self, episode=None):

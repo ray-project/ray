@@ -165,7 +165,7 @@ class Policy(metaclass=ABCMeta):
                 for s in state
             ]
 
-        batched_action, state_out, info = self.compute_actions(
+        out = self.compute_actions(
             [obs],
             state_batch,
             prev_action_batch=prev_action_batch,
@@ -175,7 +175,16 @@ class Policy(metaclass=ABCMeta):
             explore=explore,
             timestep=timestep)
 
-        single_action = unbatch(batched_action)
+        # Some policies don't return a tuple, but always just a single action.
+        # E.g. ES and ARS.
+        if not isinstance(out, tuple):
+            single_action = out
+            state_out = []
+            info = {}
+        # Normal case: Policy should return (action, state, info) tuple.
+        else:
+            batched_action, state_out, info = out
+            single_action = unbatch(batched_action)
         assert len(single_action) == 1
         single_action = single_action[0]
 

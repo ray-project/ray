@@ -28,9 +28,9 @@ def framework_iterator(config=None,
         config (Optional[dict]): An optional config dict to alter in place
             depending on the iteration.
         frameworks (Tuple[str]): A list/tuple of the frameworks to be tested.
-            Allowed are: "tf", "tfe", and "torch".
-        session (bool): If True, enter a tf.Session() and yield that as
-            well in the tf-case (otherwise, yield (fw, None)).
+            Allowed are: "tf", "tfe", "torch", and None.
+        session (bool): If True and only in the tf-case: Enter a tf.Session()
+            and yield that as second return value (otherwise yield (fw, None)).
 
     Yields:
         str: If enter_session is False:
@@ -95,7 +95,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         x (any): The value to be compared (to the expectation: `y`). This
             may be a Tensor.
         y (any): The expected value to be compared to `x`. This must not
-            be a Tensor.
+            be a tf-Tensor, but may be a tfe/torch-Tensor.
         decimals (int): The number of digits after the floating point up to
             which all numeric values have to match.
         atol (float): Absolute tolerance of the difference between x and y
@@ -244,13 +244,13 @@ def check_learning_achieved(tune_results, min_reward):
     print("ok")
 
 
-def check_compute_action(trainer,
-                         include_state=False,
-                         include_prev_action_reward=False):
+def check_compute_single_action(trainer,
+                                include_state=False,
+                                include_prev_action_reward=False):
     """Tests different combinations of arguments for trainer.compute_action.
 
     Args:
-        trainer (Trainer): The trainer object to test.
+        trainer (Trainer): The Trainer object to test.
         include_prev_action_reward (bool): Whether to include the prev-action
             and -reward in the `compute_action` call.
 
@@ -264,31 +264,44 @@ def check_compute_action(trainer,
 
     obs_space = pol.observation_space
     action_space = pol.action_space
-    for explore in [True, False]:
-        for full_fetch in [True, False]:
-            obs = np.clip(obs_space.sample(), -1.0, 1.0)
-            state_in = None
-            if include_state:
-                state_in = pol.model.get_initial_state()
-            action_in = action_space.sample() \
-                if include_prev_action_reward else None
-            reward_in = 1.0 if include_prev_action_reward else None
-            out = trainer.compute_action(
-                obs,
-                state=state_in,
-                prev_action=action_in,
-                prev_reward=reward_in,
-                explore=explore,
-                full_fetch=full_fetch)
 
-            state_out = None
-            if state_in or full_fetch:
-                action, state_out, _ = out
-            if state_out:
-                for si, so in zip(state_in, state_out):
-                    check(list(si.shape), so.shape)
+    for what in [pol, trainer]:
+        print("what={}".format(what))
+        method_to_test = trainer.compute_action if what is trainer else \
+            pol.compute_single_action
 
-            if not action_space.contains(action):
-                raise ValueError(
-                    "Returned action ({}) of trainer {} not in Env's "
-                    "action_space ({})!".format(action, trainer, action_space))
+        for explore in [True, False]:
+            print("explore={}".format(explore))
+            for full_fetch in ([False, True] if what is trainer else [False]):
+                print("full-fetch={}".format(full_fetch))
+                call_kwargs = {}
+                if what is trainer:
+                    call_kwargs["full_fetch"] = full_fetch
+
+                obs = np.clip(obs_space.sample(), -1.0, 1.0)
+                state_in = None
+                if include_state:
+                    state_in = pol.model.get_initial_state()
+                action_in = action_space.sample() \
+                    if include_prev_action_reward else None
+                reward_in = 1.0 if include_prev_action_reward else None
+                action = method_to_test(
+                    obs,
+                    state_in,
+                    prev_action=action_in,
+                    prev_reward=reward_in,
+                    explore=explore,
+                    **call_kwargs)
+
+                state_out = None
+                if state_in or full_fetch or what is pol:
+                    action, state_out, _ = action
+                if state_out:
+                    for si, so in zip(state_in, state_out):
+                        check(list(si.shape), so.shape)
+
+                if not action_space.contains(action):
+                    raise ValueError(
+                        "Returned action ({}) of trainer/policy {} not in "
+                        "Env's action_space "
+                        "({})!".format(action, what, action_space))

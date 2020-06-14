@@ -65,6 +65,9 @@ class BackendConfig:
             self.num_replicas = config_dict.pop("num_replicas")
         if "max_batch_size" in config_dict:
             self.max_batch_size = config_dict.pop("max_batch_size")
+        if "max_concurrent_queries" in config_dict:
+            self.max_concurrent_queries = config_dict.pop(
+                "max_concurrent_queries")
 
         if len(config_dict) != 0:
             raise ValueError("Unknown options in backend config: {}".format(

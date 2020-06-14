@@ -2,6 +2,10 @@
 #define RAY_UTIL_FILESYSTEM_H
 
 #include <string>
+#include <utility>
+
+// Filesystem and path manipulation APIs.
+// (NTFS stream & attribute paths are not supported.)
 
 namespace ray {
 
@@ -29,6 +33,14 @@ static char GetPathSep() {
 #endif
   return result;
 }
+
+/// Returns the executable binary suffix for the platform, if any.
+std::string GetExeSuffix();
+
+/// Equivalent to Python's os.path.basename() for file system paths.
+std::string GetFileName(const std::string &path);
+
+size_t GetRootPathLength(const std::string &path);
 
 /// \return A non-volatile temporary directory in which Ray can stores its files.
 std::string GetRayTempDir();
@@ -61,7 +73,6 @@ std::string JoinPaths(std::string base, Paths... components) {
   }
   return base;
 }
-
 }  // namespace ray
 
 #endif  // RAY_UTIL_UTIL_H
