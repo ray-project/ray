@@ -42,8 +42,8 @@ class ObjectStoreNotificationManagerIPC : public ObjectStoreNotificationManager 
   /// \param exit_on_error The manager will exit with error when it fails
   ///                      to process messages from socket.
   ObjectStoreNotificationManagerIPC(boost::asio::io_service &io_service,
-                                 const std::string &store_socket_name,
-                                 bool exit_on_error = true);
+                                    const std::string &store_socket_name,
+                                    bool exit_on_error = true);
 
   ~ObjectStoreNotificationManagerIPC() override;
 

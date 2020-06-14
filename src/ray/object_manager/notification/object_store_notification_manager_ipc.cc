@@ -31,7 +31,7 @@ namespace ray {
 ObjectStoreNotificationManagerIPC::ObjectStoreNotificationManagerIPC(
     boost::asio::io_service &io_service, const std::string &store_socket_name,
     bool exit_on_error)
-    : ObjectStoreNotificationManager(),
+    : ObjectStoreNotificationManager(io_service),
       store_client_(),
       length_(0),
       socket_(io_service),
@@ -79,9 +79,10 @@ void ObjectStoreNotificationManagerIPC::Shutdown() {
 }
 
 void ObjectStoreNotificationManagerIPC::NotificationWait() {
-  boost::asio::async_read(socket_, boost::asio::buffer(&length_, sizeof(length_)),
-                          boost::bind(&ObjectStoreNotificationManagerIPC::ProcessStoreLength,
-                                      this, boost::asio::placeholders::error));
+  boost::asio::async_read(
+      socket_, boost::asio::buffer(&length_, sizeof(length_)),
+      boost::bind(&ObjectStoreNotificationManagerIPC::ProcessStoreLength, this,
+                  boost::asio::placeholders::error));
 }
 
 void ObjectStoreNotificationManagerIPC::ProcessStoreLength(

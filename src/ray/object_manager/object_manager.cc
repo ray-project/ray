@@ -64,8 +64,15 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const ClientID &sel
       client_call_manager_(main_service, config_.rpc_service_threads_number) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
   main_service_ = &main_service;
-  store_notification_ = std::make_shared<ObjectStoreNotificationManagerIPC>(
-    main_service, config_.store_socket_name);
+
+  if (plasma::plasma_store_runner) {
+    store_notification_ = std::make_shared<ObjectStoreNotificationManager>(main_service);
+    plasma::plasma_store_runner->SetNotificationListener(store_notification_);
+  } else {
+    store_notification_ = std::make_shared<ObjectStoreNotificationManagerIPC>(
+        main_service, config_.store_socket_name);
+  }
+
   store_notification_->SubscribeObjAdded(
       [this](const object_manager::protocol::ObjectInfoT &object_info) {
         HandleObjectAdded(object_info);

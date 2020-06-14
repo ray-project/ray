@@ -15,9 +15,11 @@
 #ifndef RAY_OBJECT_STORE_NOTIFICATION_MANAGER_H
 #define RAY_OBJECT_STORE_NOTIFICATION_MANAGER_H
 
+#include <iostream>
 #include <memory>
 #include <vector>
-#include <iostream>
+
+#include <boost/asio.hpp>
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
@@ -30,7 +32,8 @@ namespace ray {
 /// Encapsulates notification handling from the object store.
 class ObjectStoreNotificationManager {
  public:
-  ObjectStoreNotificationManager(): num_adds_processed_(0), num_removes_processed_(0) {}
+  ObjectStoreNotificationManager(boost::asio::io_service &io_service)
+      : main_service_(&io_service), num_adds_processed_(0), num_removes_processed_(0) {}
   virtual ~ObjectStoreNotificationManager() {}
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that
@@ -51,15 +54,16 @@ class ObjectStoreNotificationManager {
 
   /// Support for rebroadcasting object add/rem events.
   void ProcessStoreAdd(const object_manager::protocol::ObjectInfoT &object_info) {
+    // TODO(suquark): Use strand in boost asio to enforce sequential execution.
     for (auto &handler : add_handlers_) {
-      handler(object_info);
+      main_service_->post([handler, object_info]() { handler(object_info); });
     }
     num_adds_processed_++;
   }
 
   void ProcessStoreRemove(const ObjectID &object_id) {
     for (auto &handler : rem_handlers_) {
-      handler(object_id);
+      main_service_->post([handler, object_id]() { handler(object_id); });
     }
     num_removes_processed_++;
   }
@@ -76,6 +80,9 @@ class ObjectStoreNotificationManager {
   }
 
  private:
+  /// Weak reference to main service. We ensure this object is destroyed before
+  /// main_service_ is stopped.
+  boost::asio::io_service *main_service_;
   std::vector<std::function<void(const object_manager::protocol::ObjectInfoT &)>>
       add_handlers_;
   std::vector<std::function<void(const ray::ObjectID &)>> rem_handlers_;
