@@ -2,7 +2,8 @@ import unittest
 
 import ray
 import ray.rllib.agents.ars as ars
-from ray.rllib.utils.test_utils import framework_iterator, check_compute_action
+from ray.rllib.utils.test_utils import framework_iterator, \
+    check_compute_single_action
 
 
 class TestARS(unittest.TestCase):
@@ -23,7 +24,7 @@ class TestARS(unittest.TestCase):
                 results = trainer.train()
                 print(results)
 
-            check_compute_action(trainer)
+            check_compute_single_action(trainer)
 
 
 if __name__ == "__main__":

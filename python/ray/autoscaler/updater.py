@@ -17,6 +17,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
 from ray.autoscaler.log_timer import LogTimer
+from ray.autoscaler.docker import check_docker_running_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -294,6 +295,66 @@ class SSHCommandRunner:
             self.ssh_private_key, self.ssh_user, self.ssh_ip)
 
 
+class DockerCommandRunner(SSHCommandRunner):
+    def __init__(self, docker_config, **common_args):
+        self.ssh_command_runner = SSHCommandRunner(**common_args)
+        self.docker_name = docker_config["container_name"]
+        self.docker_config = docker_config
+        self.home_dir = None
+
+    def run(self,
+            cmd,
+            timeout=120,
+            exit_on_fail=False,
+            port_forward=None,
+            with_output=False):
+
+        return self.ssh_command_runner.run(
+            cmd,
+            timeout=timeout,
+            exit_on_fail=exit_on_fail,
+            port_forward=None,
+            with_output=False)
+
+    def check_container_status(self):
+        no_exist = "not_present"
+        cmd = check_docker_running_cmd(self.docker_name) + " ".join(
+            ["||", "echo", quote(no_exist)])
+        output = self.ssh_command_runner.run(
+            cmd, with_output=True).decode("utf-8").strip()
+        if no_exist in output:
+            return False
+        return output
+
+    def run_rsync_up(self, source, target):
+        self.ssh_command_runner.run_rsync_up(source, target)
+        if self.check_container_status():
+            self.ssh_command_runner.run("docker cp {} {}:{}".format(
+                target, self.docker_name, self.docker_expand_user(target)))
+
+    def run_rsync_down(self, source, target):
+        self.ssh_command_runner.run("docker cp {}:{} {}".format(
+            self.docker_name, self.docker_expand_user(source), source))
+        self.ssh_command_runner.run_rsync_down(source, target)
+
+    def remote_shell_command_str(self):
+        inner_str = self.ssh_command_runner.remote_shell_command_str().replace(
+            "ssh", "ssh -tt", 1).strip("\n")
+        return inner_str + " docker exec -it {} /bin/bash\n".format(
+            self.docker_name)
+
+    def docker_expand_user(self, string):
+        if string.find("~") == 0:
+            if self.home_dir is None:
+                self.home_dir = self.ssh_command_runner.run(
+                    "docker exec {} env | grep HOME | cut -d'=' -f2".format(
+                        self.docker_name),
+                    with_output=True).decode("utf-8").strip()
+            return string.replace("~", self.home_dir)
+        else:
+            return string
+
+
 class NodeUpdater:
     """A process for syncing files and running init commands on a node."""
 
@@ -309,14 +370,15 @@ class NodeUpdater:
                  ray_start_commands,
                  runtime_hash,
                  process_runner=subprocess,
-                 use_internal_ip=False):
+                 use_internal_ip=False,
+                 docker_config=None):
 
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
         use_internal_ip = (use_internal_ip
                            or provider_config.get("use_internal_ips", False))
         self.cmd_runner = provider.get_command_runner(
             self.log_prefix, node_id, auth_config, cluster_name,
-            process_runner, use_internal_ip)
+            process_runner, use_internal_ip, docker_config)
 
         self.daemon = True
         self.process_runner = process_runner

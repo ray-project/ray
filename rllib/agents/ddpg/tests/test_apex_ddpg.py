@@ -3,8 +3,8 @@ import unittest
 
 import ray
 import ray.rllib.agents.ddpg.apex as apex_ddpg
-from ray.rllib.utils.test_utils import check, framework_iterator, \
-    check_compute_action
+from ray.rllib.utils.test_utils import check, check_compute_single_action, \
+    framework_iterator
 
 
 class TestApexDDPG(unittest.TestCase):
@@ -41,7 +41,7 @@ class TestApexDDPG(unittest.TestCase):
 
             for _ in range(num_iterations):
                 print(trainer.train())
-            check_compute_action(trainer)
+            check_compute_single_action(trainer)
 
             # Test again per-worker scale distribution
             # (should not have changed).

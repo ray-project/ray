@@ -62,7 +62,14 @@ class ARSTFPolicy:
             np.prod(variable.shape.as_list())
             for _, variable in self.variables.variables.items())
 
-    def compute_actions(self, observation, add_noise=False, update=True):
+    def compute_actions(self,
+                        observation,
+                        add_noise=False,
+                        update=True,
+                        **kwargs):
+        # Batch is given as list of one.
+        if isinstance(observation, list) and len(observation) == 1:
+            observation = observation[0]
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
 
@@ -82,6 +89,15 @@ class ARSTFPolicy:
         if add_noise and isinstance(self.action_space, gym.spaces.Box):
             actions += np.random.randn(*actions.shape) * self.action_noise_std
         return actions
+
+    def compute_single_action(self,
+                              observation,
+                              add_noise=False,
+                              update=True,
+                              **kwargs):
+        action = self.compute_actions(
+            [observation], add_noise=add_noise, update=update, **kwargs)
+        return action[0], [], {}
 
     def get_state(self):
         return {"state": self.get_flat_weights()}

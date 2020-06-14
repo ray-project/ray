@@ -223,7 +223,11 @@ def chop_into_sequences(episode_ids,
     feature_sequences = []
     for f in feature_columns:
         f = np.array(f)
-        f_pad = np.zeros((len(seq_lens) * max_seq_len, ) + np.shape(f)[1:])
+        length = len(seq_lens) * max_seq_len
+        if f.dtype == np.object or f.dtype.type is np.str_:
+            f_pad = [None] * length
+        else:
+            f_pad = np.zeros((length, ) + np.shape(f)[1:])
         seq_base = 0
         i = 0
         for l in seq_lens:

@@ -211,7 +211,7 @@ program:
 .. code-block:: python
 
   from collections import Counter
-  import socket
+  import platform
   import time
   import ray
 
@@ -220,7 +220,7 @@ program:
   @ray.remote
   def f(x):
       time.sleep(0.01)
-      return x + (socket.gethostname(), )
+      return x + (platform.node(), )
 
   # Check that objects can be transferred from each node to each other node.
   %time Counter(ray.get([f.remote(f.remote(())) for _ in range(100)]))
