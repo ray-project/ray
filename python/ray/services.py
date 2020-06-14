@@ -11,13 +11,13 @@ import socket
 import subprocess
 import sys
 import time
-import redis
+import ray
+import psutil
 
 import colorama
 # Ray modules
-import ray
 import ray.ray_constants as ray_constants
-import psutil
+import redis
 
 resource = None
 if sys.platform != "win32":
@@ -935,8 +935,9 @@ def _start_redis_instance(executable,
         load_module_args += ["--loadmodule", module]
 
     while counter < num_retries:
-        if counter > 0:
-            logger.warning("Redis failed to start, retrying now.")
+        if counter > num_retries // 2:
+            logger.warning("Redis failed to start after"
+                           "{} retries,  trying again.".format(counter))
 
         # Construct the command to start the Redis server.
         command = [executable]
