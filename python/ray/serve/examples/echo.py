@@ -16,9 +16,8 @@ def echo(flask_request):
 
 serve.init()
 
-serve.create_endpoint("my_endpoint", "/echo")
 serve.create_backend("echo:v1", echo)
-serve.set_traffic("my_endpoint", {"echo:v1": 1.0})
+serve.create_endpoint("my_endpoint", backend="echo:v1", route="/echo")
 
 while True:
     resp = requests.get("http://127.0.0.1:8000/echo").json()

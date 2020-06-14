@@ -21,12 +21,11 @@
 #include <unordered_set>
 #include <vector>
 
-#include "plasma/client.h"
-
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/object_manager/format/object_manager_generated.h"
+#include "ray/object_manager/plasma/client.h"
 
 namespace ray {
 

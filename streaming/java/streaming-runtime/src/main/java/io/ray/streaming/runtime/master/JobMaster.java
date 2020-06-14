@@ -1,7 +1,7 @@
 package io.ray.streaming.runtime.master;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.RayActor;
+import io.ray.api.ActorHandle;
 import io.ray.streaming.jobgraph.JobGraph;
 import io.ray.streaming.runtime.config.StreamingConfig;
 import io.ray.streaming.runtime.config.StreamingMasterConfig;
@@ -30,7 +30,7 @@ public class JobMaster {
   private GraphManager graphManager;
   private StreamingMasterConfig conf;
 
-  private RayActor jobMasterActor;
+  private ActorHandle<JobMaster> jobMasterActor;
 
   public JobMaster(Map<String, String> confMap) {
     LOG.info("Creating job master with conf: {}.", confMap);
@@ -76,7 +76,7 @@ public class JobMaster {
    * @param jobGraph logical plan
    * @return submit result
    */
-  public boolean submitJob(RayActor<JobMaster> jobMasterActor, JobGraph jobGraph) {
+  public boolean submitJob(ActorHandle<JobMaster> jobMasterActor, JobGraph jobGraph) {
     LOG.info("Begin submitting job using logical plan: {}.", jobGraph);
 
     this.jobMasterActor = jobMasterActor;
@@ -101,7 +101,7 @@ public class JobMaster {
     return true;
   }
 
-  public RayActor getJobMasterActor() {
+  public ActorHandle<JobMaster> getJobMasterActor() {
     return jobMasterActor;
   }
 

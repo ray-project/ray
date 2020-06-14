@@ -48,7 +48,8 @@ class GcsActorManager;
 /// https://docs.google.com/document/d/1d-9qBlsh2UQHo-AWMWR0GptI_Ajwu4SKx0Q0LHKPpeI/edit#heading=h.csi0gaglj2pv
 class GcsServer {
  public:
-  explicit GcsServer(const GcsServerConfig &config);
+  explicit GcsServer(const GcsServerConfig &config,
+                     boost::asio::io_service &main_service);
   virtual ~GcsServer();
 
   /// Start gcs server.
@@ -108,10 +109,10 @@ class GcsServer {
 
   /// Gcs server configuration
   GcsServerConfig config_;
+  /// The main io service to drive event posted from grpc threads.
+  boost::asio::io_context &main_service_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
-  /// The main io service to drive event posted from grpc threads.
-  boost::asio::io_context main_service_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
   rpc::ClientCallManager client_call_manager_;
   /// The gcs node manager.

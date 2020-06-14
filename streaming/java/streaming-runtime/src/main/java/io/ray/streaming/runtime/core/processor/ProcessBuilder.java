@@ -8,7 +8,6 @@ import io.ray.streaming.operator.impl.SourceOperator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
 public class ProcessBuilder {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ProcessBuilder.class);

@@ -16,7 +16,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import check, framework_iterator, \
-    check_compute_action
+    check_compute_single_action
 
 tf = try_import_tf()
 
@@ -40,7 +40,7 @@ FAKE_BATCH = {
 class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -65,7 +65,7 @@ class TestPPO(unittest.TestCase):
                     trainer = ppo.PPOTrainer(config=config, env=env)
                     for i in range(num_iterations):
                         trainer.train()
-                    check_compute_action(
+                    check_compute_single_action(
                         trainer,
                         include_prev_action_reward=True,
                         include_state=lstm)

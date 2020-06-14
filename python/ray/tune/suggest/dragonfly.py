@@ -68,7 +68,7 @@ class DragonflySearch(Searcher):
 
         algo = DragonflySearch(optimizer, metric="objective", mode="max")
 
-        tune.run(my_func, algo=algo)
+        tune.run(my_func, search_alg=algo)
 
     Parameters:
         optimizer (dragonfly.opt.BlackboxOptimiser): Optimizer provided
@@ -99,7 +99,7 @@ class DragonflySearch(Searcher):
                  **kwargs):
         assert dragonfly is not None, """dragonfly must be installed!
             You can install Dragonfly with the command:
-            `pip install dragonfly`."""
+            `pip install dragonfly-opt`."""
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
 
         self._initial_points = []

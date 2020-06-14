@@ -33,7 +33,7 @@ class StreamingContext:
                 self
             """
             if key is not None:
-                assert value
+                assert value is not None
                 self._options[key] = str(value)
             if conf is not None:
                 for k, v in conf.items():

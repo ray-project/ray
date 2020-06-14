@@ -13,7 +13,7 @@ import {
   getProfilingResultURL,
   launchKillActor,
   launchProfiling,
-  RayletInfoResponse,
+  RayletActorInfo,
 } from "../../../api";
 import Actors from "./Actors";
 
@@ -61,7 +61,7 @@ const styles = (theme: Theme) =>
   });
 
 type Props = {
-  actor: RayletInfoResponse["actors"][keyof RayletInfoResponse["actors"]];
+  actor: RayletActorInfo;
 };
 
 type State = {

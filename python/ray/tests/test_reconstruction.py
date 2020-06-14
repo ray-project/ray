@@ -328,6 +328,69 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
                 raise e.as_instanceof_cause()
 
 
+def test_reconstruction_stress(ray_start_cluster):
+    config = json.dumps({
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_timeout_milliseconds": 100,
+        "lineage_pinning_enabled": 1,
+        "free_objects_period_milliseconds": -1,
+        "max_direct_call_object_size": 100,
+        "task_retry_delay_ms": 100,
+    })
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(num_cpus=0, _internal_config=config)
+    ray.init(address=cluster.address)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(
+        num_cpus=1,
+        resources={"node1": 1},
+        object_store_memory=10**8,
+        _internal_config=config)
+    cluster.add_node(
+        num_cpus=1,
+        resources={"node2": 1},
+        object_store_memory=10**8,
+        _internal_config=config)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def large_object():
+        return np.zeros(10**5, dtype=np.uint8)
+
+    @ray.remote
+    def dependent_task(x):
+        return
+
+    for _ in range(3):
+        obj = large_object.options(resources={"node1": 1}).remote()
+        ray.get(dependent_task.options(resources={"node2": 1}).remote(obj))
+
+        outputs = [
+            large_object.options(resources={
+                "node1": 1
+            }).remote() for _ in range(1000)
+        ]
+        outputs = [
+            dependent_task.options(resources={
+                "node2": 1
+            }).remote(obj) for obj in outputs
+        ]
+
+        cluster.remove_node(node_to_kill, allow_graceful=False)
+        node_to_kill = cluster.add_node(
+            num_cpus=1,
+            resources={"node1": 1},
+            object_store_memory=10**8,
+            _internal_config=config)
+
+        i = 0
+        while outputs:
+            ray.get(outputs.pop(0))
+            print(i)
+            i += 1
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))
