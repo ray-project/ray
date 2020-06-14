@@ -279,14 +279,11 @@ def check_compute_single_action(trainer,
     action_space = pol.action_space
 
     for what in [pol, trainer]:
-        print("what={}".format(what))
         method_to_test = trainer.compute_action if what is trainer else \
             pol.compute_single_action
 
         for explore in [True, False]:
-            print("explore={}".format(explore))
             for full_fetch in ([False, True] if what is trainer else [False]):
-                print("full-fetch={}".format(full_fetch))
                 call_kwargs = {}
                 if what is trainer:
                     call_kwargs["full_fetch"] = full_fetch
