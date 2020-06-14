@@ -227,7 +227,7 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         else:
             errors = 0.5 * tf.square(td_error)
 
-    critic_loss = tf.reduce_mean(train_batch[PRIO_WEIGHTS] * errors)
+    critic_loss = tf.reduce_mean(tf.cast(train_batch[PRIO_WEIGHTS], dtype=tf.float32) * errors)
     actor_loss = -tf.reduce_mean(q_t_det_policy)
 
     # Add l2-regularization if required.
