@@ -227,7 +227,8 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         else:
             errors = 0.5 * tf.square(td_error)
 
-    critic_loss = tf.reduce_mean(tf.cast(train_batch[PRIO_WEIGHTS], dtype=tf.float32) * errors)
+    critic_loss = tf.reduce_mean(
+        tf.cast(train_batch[PRIO_WEIGHTS], dtype=tf.float32) * errors)
     actor_loss = -tf.reduce_mean(q_t_det_policy)
 
     # Add l2-regularization if required.
@@ -331,10 +332,10 @@ def gradients_fn(policy, optimizer, loss):
             clip_val=policy.config["grad_norm_clipping"])
     else:
         actor_grads_and_vars = optimizer.compute_gradients(
-                policy.actor_loss, var_list=policy.model.policy_variables())
+            policy.actor_loss, var_list=policy.model.policy_variables())
         critic_grads_and_vars = optimizer.compute_gradients(
-                policy.critic_loss, var_list=policy.model.q_variables())
-    
+            policy.critic_loss, var_list=policy.model.q_variables())
+
     policy._actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
                                     if g is not None]
     policy._critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
