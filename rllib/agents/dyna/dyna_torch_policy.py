@@ -28,8 +28,8 @@ def make_model_and_dist(policy, obs_space, action_space, config):
     # If we are the main MAML learner, build n (num_workers) dynamics Models
     # for being able to create checkpoints for the current state of training.
     policy.dynamics_model = ModelCatalog.get_model_v2(
-        input_space=obs_space,
-        output_space=action_space,
+        obs_space,
+        action_space,
         num_outputs=num_outputs,
         model_config=config["dynamics_model"],
         framework="torch",
@@ -41,8 +41,8 @@ def make_model_and_dist(policy, obs_space, action_space, config):
         action_space, config, dist_type="deterministic", framework="torch")
     # Create the pi-model and register it with the Policy.
     policy.pi = ModelCatalog.get_model_v2(
-        input_space=obs_space,
-        output_space=action_space,
+        obs_space,
+        action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
         framework="torch",

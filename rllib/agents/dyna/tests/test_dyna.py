@@ -6,7 +6,8 @@ import unittest
 import ray
 import ray.rllib.agents.dyna as dyna
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.test_utils import check_compute_action, framework_iterator
+from ray.rllib.utils.test_utils import check_compute_single_action, \
+    framework_iterator
 
 torch, _ = try_import_torch()
 
@@ -43,7 +44,7 @@ class TestDYNA(unittest.TestCase):
             # Check, whether normal action stepping works with DYNA's policy.
             # Note that DYNA does not train its Policy. It must be pushed
             # down from the main model-based algo from time to time.
-            check_compute_action(trainer)
+            check_compute_single_action(trainer)
 
             # Check, whether env dynamics were actually learnt - more or less.
             obs = test_env.reset()

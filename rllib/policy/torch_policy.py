@@ -1,3 +1,4 @@
+import functools
 import numpy as np
 import time
 
@@ -150,7 +151,8 @@ class TorchPolicy(Policy):
                     dist_class = self.dist_class
                     dist_inputs, state_out = self.model(
                         input_dict, state_batches, seq_lens)
-                if not issubclass(dist_class, TorchDistributionWrapper):
+                if not (isinstance(dist_class, functools.partial)
+                        or issubclass(dist_class, TorchDistributionWrapper)):
                     raise ValueError(
                         "`dist_class` ({}) not a TorchDistributionWrapper "
                         "subclass! Make sure your `action_distribution_fn` or "
