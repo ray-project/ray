@@ -70,8 +70,11 @@ class RandomTest:
     def create_endpoint(self):
         if len(self.endpoints) == self.max_endpoints:
             endpoint_to_delete = self.endpoints.pop()
-            serve.delete_endpoint(endpoint_to_delete)
-            serve.delete_backend(endpoint_to_delete)
+            try:
+                serve.delete_endpoint(endpoint_to_delete)
+                serve.delete_backend(endpoint_to_delete)
+            except ray.exceptions.RayActorError as e:
+                print(e)
 
         new_endpoint = "".join(
             [random.choice(string.ascii_letters) for _ in range(10)])
@@ -79,9 +82,12 @@ class RandomTest:
         def handler(self, *args):
             return new_endpoint
 
-        serve.create_backend(new_endpoint, handler)
-        serve.create_endpoint(
-            new_endpoint, backend=new_endpoint, route="/" + new_endpoint)
+        try:
+            serve.create_backend(new_endpoint, handler)
+            serve.create_endpoint(
+                new_endpoint, backend=new_endpoint, route="/" + new_endpoint)
+        except ray.exceptions.RayActorError as e:
+            print(e)
 
         self.endpoints.append(new_endpoint)
 
