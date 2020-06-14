@@ -5,7 +5,7 @@ from ray.rllib.utils.torch_ops import sequence_mask
 torch, nn = try_import_torch()
 
 
-class TorchRelativeMultiHeadAttention(nn.Module):
+class RelativeMultiHeadAttention(nn.Module):
     """A RelativeMultiHeadAttention layer as described in [3].
 
     Uses segment level recurrence with state reuse.
@@ -46,7 +46,6 @@ class TorchRelativeMultiHeadAttention(nn.Module):
         self._qkv_layer = SlimFC(
             in_size=in_dim, out_size=3 * num_heads * head_dim, use_bias=False)
 
-        # TODO (Tanay): keras TimeDistributed wrapper
         self._linear_layer = SlimFC(
             in_size=num_heads * head_dim,
             out_size=out_dim,

@@ -1,17 +1,21 @@
-import unittest
+import gym
 import numpy as np
+import unittest
+
+from ray.rllib.models.tf.attention_net import relative_position_embedding
 
 from ray.rllib.models.tf.layers import \
     MultiHeadAttention, RelativeMultiHeadAttention
-from ray.rllib.models.torch.modules.multi_head_attention import \
-    TorchMultiHeadAttention
-from ray.rllib.models.torch.modules.relative_multi_head_attention import \
-    TorchRelativeMultiHeadAttention
-from ray.rllib.utils.framework import try_import_torch, try_import_tf
+from ray.rllib.models.torch.attention_net import relative_position_embedding \
+    as relative_position_embedding_torch, GTrXLNet as TorchGTrXLNet
+from ray.rllib.models.tf.attention_net import GTrXLNet
 from ray.rllib.models.torch.modules.gru_gate import GRUGate
+from ray.rllib.models.torch.modules.multi_head_attention import \
+    MultiHeadAttention as TorchMultiHeadAttention
+from ray.rllib.models.torch.modules.relative_multi_head_attention import \
+    RelativeMultiHeadAttention as TorchRelativeMultiHeadAttention
+from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.test_utils import framework_iterator
-from ray.rllib.models.torch.attention_net import relative_position_embedding_torch
-from ray.rllib.models.tf.attention_net import relative_position_embedding
 
 torch, nn = try_import_torch()
 tf = try_import_tf()
@@ -38,10 +42,10 @@ class TestModules(unittest.TestCase):
             y_pred = model(inputs)
             # if t % 100 == 99:
             #    print(t, loss.item())
+            loss = criterion(y_pred, outputs)
 
             if t == 1:
                 init_loss = loss.item()
-            loss = criterion(y_pred, outputs)
 
             optimizer.zero_grad()
             loss.backward()
@@ -61,6 +65,7 @@ class TestModules(unittest.TestCase):
             model (tf.Model): Torch model to be trained.
             inputs (np.array): Training data
             outputs (np.array): Training labels
+            num_epochs (int): Number of training epochs
         """
 
         # Configure a model for mean-squared error loss.
@@ -79,7 +84,7 @@ class TestModules(unittest.TestCase):
 
     def test_multi_head_attention(self):
         """Tests the MultiHeadAttention mechanism of Vaswani et al."""
-        #B is batch size
+        # B is batch size
         B = 1
         # D_in is attention dim, L is memory_tau
         L, D_in, D_out = 2, 32, 10
@@ -94,7 +99,7 @@ class TestModules(unittest.TestCase):
                 x = torch.randn(B, L, D_in)
                 y = torch.randn(B, L, D_out)
 
-                model = TorchRelativeMultiHeadAttention(
+                model = TorchMultiHeadAttention(
                     in_dim=D_in, out_dim=D_out, num_heads=2, head_dim=32)
 
                 self.train_torch_model(model, x, y)
@@ -113,50 +118,73 @@ class TestModules(unittest.TestCase):
                 ])
                 self.train_tf_model(model, x, y)
 
-    def test_relative_mha(self):
-        """Tests the base transformer unit for TrXL, with a skip connection \
-            wrapped around a MultiHeadAttention layer"""
+    def test_attention_net(self):
+        """Tests the GTrXL. Builds a full AttentionNet and checks
+            that it trains"""
 
         # Checks that torch and tf embedding matrices are the same
-        assert relative_position_embedding(20, 15) == \
-            relative_position_embedding_torch((20, 15))
+        with tf.Session().as_default() as sess:
+            assert np.allclose(
+                relative_position_embedding(20, 15).eval(session=sess),
+                relative_position_embedding_torch(20, 15).numpy())
 
-        #B is batch size
+        # B is batch size
         B = 1
         # D_in is attention dim, L is memory_tau
-        L, D_in, D_out = 2, 32, 10
+        L, D_in, D_out = 2, 16, 2
 
         for fw, sess in framework_iterator(
                 frameworks=("tfe", "torch", "tf"), session=True):
 
             # Create a single attention layer with 2 heads
             if fw == 'torch':
-
+                continue
                 # Create random Tensors to hold inputs and outputs
                 x = torch.randn(B, L, D_in)
                 y = torch.randn(B, L, D_out)
 
-                model = TorchRelativeMultiHeadAttention(
-                    in_dim=D_in, out_dim=D_out, num_heads=2, head_dim=32)
-
+                print(torch.min(x))
+                model = TorchGTrXLNet(
+                    observation_space=gym.spaces.Box(
+                        low=torch.min(x).item(), high=torch.max(x).item(), shape=(D_in,)),
+                    action_space=gym.spaces.Discrete(2),
+                    num_outputs=2,
+                    model_config={"max_seq_len": 10},
+                    name="TestTFAttentionNet",
+                    num_transformer_units=1,
+                    attn_dim=32,
+                    num_heads=2,
+                    memory_tau=5,
+                    head_dim=16,
+                    ff_hidden_dim=16,
+                    init_gate_bias=2.0)
                 self.train_torch_model(model, x, y)
 
-            else:  # framework is tensorflow or tensorflow-eager
-
-                Phi = relative_position_embedding(
-                    self.max_seq_len + self.memory_tau, D_in)
-
+            else:  # Framework is tensorflow or tensorflow-eager.
+                #continue
                 x = np.random.random((B, L, D_in))
                 y = np.random.random((B, L, D_out))
 
-                inputs = tf.keras.layers.Input(shape=(L, D_in))
 
-                model = tf.keras.Sequential([
-                    inputs,
-                    RelativeMultiHeadAttention(
-                        out_dim=D_out, num_heads=2, head_dim=32)
-                ])
-                self.train_tf_model(model, x, y)
+                # How can we spoof observation/action space here
+                attention_net = GTrXLNet(
+                    observation_space=gym.spaces.Box(
+                        low=float("-inf"), high=float("inf"), shape=(D_in,)),
+                    action_space=gym.spaces.Discrete(2),
+                    num_outputs=D_out,
+                    model_config={"max_seq_len": 2},
+                    name="TestTFAttentionNet",
+                    num_transformer_units=1,
+                    attn_dim=32,
+                    num_heads=2,
+                    memory_tau=L,
+                    head_dim=16,
+                    ff_hidden_dim=16,
+                    init_gate_bias=2.0)
+                model = attention_net.trxl_model
+                init_state = attention_net.get_initial_state()
+
+                self.train_tf_model(model, init_state, y)
 
 
 if __name__ == "__main__":

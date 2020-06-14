@@ -10,11 +10,16 @@ from ray.rllib.utils.torch_ops import sequence_mask
 torch, nn = try_import_torch()
 
 
-class TorchMultiHeadAttention(nn.Module):
+class MultiHeadAttention(nn.Module):
     """A multi-head attention layer described in [1]."""
 
-    # Change to the tf implementation: include the in_dim parameter
     def __init__(self, in_dim, out_dim, num_heads, head_dim, **kwargs):
+        """
+        in_dim (int): Dimension of input
+        out_dim (int): Dimension of output
+        num_heads (int): Number of attention heads
+        head_dim (int): Output dimension of each attention head
+        """
         super().__init__(**kwargs)
 
         # No bias or non-linearity.
@@ -23,7 +28,6 @@ class TorchMultiHeadAttention(nn.Module):
         self._qkv_layer = SlimFC(
             in_size=in_dim, out_size=3 * num_heads * head_dim, use_bias=False)
 
-        # TODO: (Tanay) port the keras.layers.TimeDistributed wrapper
         self._linear_layer = SlimFC(
             in_size=num_heads * head_dim, out_size=out_dim, use_bias=False)
 

@@ -4,8 +4,13 @@ torch, nn = try_import_torch()
 
 
 class GRUGate(nn.Module):
-    # change from tf implementation: needs input_shape as a parameter
+    """Implements a gated recurrent unit for use in AttentionNet"""
+
     def __init__(self, input_shape, init_bias=0., **kwargs):
+        """
+        input_shape (torch.Tensor): dimension of the input
+        init_bias (int): Bias added to every input to stabilize training
+        """
         super().__init__(**kwargs)
         self._init_bias = init_bias
 
