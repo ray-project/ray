@@ -92,7 +92,8 @@ worker_nodes:
         # optionally set priority to use Spot instances 
         priority: Spot
         # set a maximum price for spot instances if desired
-        # maxPrice: -1
+        # billingProfile:
+        #     maxPrice: -1
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.

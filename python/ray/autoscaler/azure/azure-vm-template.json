@@ -76,9 +76,9 @@
                 "description": "Specifies the priority for the virtual machine."
             }
         },
-        "maxPrice": {
-            "type": "int",
-            "defaultValue": -1,
+        "billingProfile": {
+            "type": "object",
+            "defaultValue": {},
             "metadata": {
                 "description": "Specifies the maximum price to pay for Azure Spot VM."
             }
@@ -228,9 +228,7 @@
                     }
                 },
                 "priority": "[parameters('priority')]",
-                "billingProfile": {
-                    "maxPrice": "[parameters('maxPrice')]"
-                }
+                "billingProfile": "[parameters('billingProfile')]"
             },
             "identity": {
                 "type": "UserAssigned",
