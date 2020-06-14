@@ -1,6 +1,7 @@
 import numpy as np
 
-from ray.rllib.utils import try_import_torch, try_import_tree
+from ray.rllib.utils import try_import_tree
+from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()
 tree = try_import_tree()

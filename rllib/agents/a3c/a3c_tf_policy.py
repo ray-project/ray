@@ -6,8 +6,8 @@ from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
-from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
 

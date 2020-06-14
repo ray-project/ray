@@ -9,12 +9,12 @@ from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.optimizers.rollout import collect_samples
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.sgd import averaged
-from ray.rllib.utils.timer import TimerStat
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.sgd import averaged
+from ray.rllib.utils.timer import TimerStat
 
 tf = try_import_tf()
 

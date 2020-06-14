@@ -25,7 +25,7 @@ import yaml
 
 import ray
 from ray import tune
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 tf = try_import_tf()

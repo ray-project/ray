@@ -13,8 +13,8 @@ from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import huber_loss, reduce_mean_ignore_inf
-from ray.rllib.utils import try_import_torch
 
 torch, nn = try_import_torch()
 F = None
