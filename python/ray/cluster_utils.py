@@ -130,7 +130,7 @@ class Cluster:
         """
         global_node = ray.worker._global_node
         if global_node is not None:
-            if node._raylet_socket_name != global_node._raylet_socket_name: 
+            if node._raylet_socket_name != global_node._raylet_socket_name:
                 ray.shutdown()
                 raise ValueError(
                     "Removing a node that is connected to this Ray client "
