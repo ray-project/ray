@@ -156,7 +156,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
               label: "Number of ObjectIDs in scope",
               value: actor.numObjectIdsInScope.toLocaleString(),
               tooltip:
-                "The number of objects ids that this actor is keeping in scope via its internal state. " +
+                "The number of ObjectIDs that this actor is keeping in scope via its internal state. " +
                 "This does not imply that the objects are in active use or colocated on the node with the actor " +
                 `currently. This can be useful for debugging memory leaks. See the docs at ${memoryDebuggingDocLink} ` +
                 "for more information."
