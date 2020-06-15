@@ -45,14 +45,30 @@ public class PyFunction<R> {
     this.returnType = returnType;
   }
 
+  /**
+   * Create a python function.
+   *
+   * @param moduleName The full module name of this function
+   * @param functionName The name of this function
+   * @return a python function.
+   */
   public static PyFunction<Object> of(
       String moduleName, String functionName) {
     return of(moduleName, functionName, Object.class);
   }
 
+  /**
+   * Create a python function.
+   *
+   * @param moduleName The full module name of this function
+   * @param functionName The name of this function
+   * @param returnType Class of the return value of this function
+   * @param <R> Type of the return value of this function
+   * @return a python function.
+   */
   public static <R> PyFunction<R> of(
       String moduleName, String functionName, Class<R> returnType) {
-    return PyFunction.of(moduleName, functionName, returnType);
+    return new PyFunction<>(moduleName, functionName, returnType);
   }
 
 }
