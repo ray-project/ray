@@ -121,18 +121,17 @@ int main(int argc, char *argv[]) {
   }
   RAY_CHECK_OK(gcs_client->Connect(main_service));
 
-  // Parse the configuration list.
-  std::istringstream config_string(config_list);
-  std::string config_name;
-  std::string config_value;
-
-  while (std::getline(config_string, config_name, ',')) {
-    RAY_CHECK(std::getline(config_string, config_value, ','));
-    // TODO(rkn): The line below could throw an exception. What should we do about this?
-    raylet_config[config_name] = config_value;
-  }
-
   if (head_node) {
+    // Parse the configuration list.
+    std::istringstream config_string(config_list);
+    std::string config_name;
+    std::string config_value;
+
+    while (std::getline(config_string, config_name, ',')) {
+      RAY_CHECK(std::getline(config_string, config_value, ','));
+      // TODO(rkn): The line below could throw an exception. What should we do about this?
+      raylet_config[config_name] = config_value;
+    }
     RAY_CHECK_OK(gcs_client->Nodes().AsyncSetInternalConfig(raylet_config));
   }
 
