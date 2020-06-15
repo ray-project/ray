@@ -107,8 +107,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public ObjectRef call(PyFunction pyFunction, Object[] args,
-                        CallOptions options) {
+  public ObjectRef call(PyFunction pyFunction, Object[] args, CallOptions options) {
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
         pyFunction.moduleName,
         "",
