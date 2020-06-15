@@ -1,11 +1,10 @@
 package io.ray.streaming.runtime.config;
 
-import java.io.Serializable;
-import javax.accessibility.Accessible;
+import org.aeonbits.owner.Accessible;
 
 /**
  * Basic config interface.
  */
-public interface Config extends org.aeonbits.owner.Config, Accessible, Serializable {
+public interface Config extends org.aeonbits.owner.Config, Accessible {
 
 }

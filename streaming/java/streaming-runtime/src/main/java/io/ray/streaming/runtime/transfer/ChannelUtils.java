@@ -1,53 +1,68 @@
 package io.ray.streaming.runtime.transfer;
 
+import io.ray.streaming.runtime.config.StreamingWorkerConfig;
 import io.ray.streaming.runtime.generated.Streaming;
-import io.ray.streaming.util.Config;
-import java.util.Map;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class ChannelUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(ChannelUtils.class);
 
-  static byte[] toNativeConf(Map<String, String> conf) {
+  static byte[] toNativeConf(StreamingWorkerConfig workerConfig) {
     Streaming.StreamingConfig.Builder builder = Streaming.StreamingConfig.newBuilder();
-    if (conf.containsKey(Config.STREAMING_JOB_NAME)) {
-      builder.setJobName(conf.get(Config.STREAMING_JOB_NAME));
+
+    // job name
+    String jobName = workerConfig.commonConfig.jobName();
+    if (!StringUtils.isEmpty(jobName)) {
+      builder.setJobName(workerConfig.commonConfig.jobName());
     }
-    if (conf.containsKey(Config.TASK_JOB_ID)) {
-      builder.setTaskJobId(conf.get(Config.TASK_JOB_ID));
+
+    // worker name
+    String workerName = workerConfig.workerInternalConfig.workerName();
+    if (!StringUtils.isEmpty(workerName)) {
+      builder.setWorkerName(workerName);
     }
-    if (conf.containsKey(Config.STREAMING_WORKER_NAME)) {
-      builder.setWorkerName(conf.get(Config.STREAMING_WORKER_NAME));
+
+    // operator name
+    String operatorName = workerConfig.workerInternalConfig.workerOperatorName();
+    if (!StringUtils.isEmpty(operatorName)) {
+      builder.setOpName(operatorName);
     }
-    if (conf.containsKey(Config.STREAMING_OP_NAME)) {
-      builder.setOpName(conf.get(Config.STREAMING_OP_NAME));
+
+    // ring buffer capacity
+    int ringBufferCapacity = workerConfig.transferConfig.ringBufferCapacity();
+    if (ringBufferCapacity != -1) {
+      builder.setRingBufferCapacity(ringBufferCapacity);
     }
-    if (conf.containsKey(Config.STREAMING_RING_BUFFER_CAPACITY)) {
-      builder.setRingBufferCapacity(
-          Integer.parseInt(conf.get(Config.STREAMING_RING_BUFFER_CAPACITY)));
+
+    // empty message interval
+    int emptyMsgInterval = workerConfig.transferConfig.emptyMsgInterval();
+    if (emptyMsgInterval != -1) {
+      builder.setEmptyMessageInterval(emptyMsgInterval);
     }
-    if (conf.containsKey(Config.STREAMING_EMPTY_MESSAGE_INTERVAL)) {
-      builder.setEmptyMessageInterval(
-          Integer.parseInt(conf.get(Config.STREAMING_EMPTY_MESSAGE_INTERVAL)));
+
+    //flow control type
+    int flowControlType = workerConfig.transferConfig.flowControlType();
+    if (flowControlType != -1) {
+      builder.setFlowControlType(Streaming.FlowControlType.forNumber(flowControlType));
     }
-    if (conf.containsKey(Config.FLOW_CONTROL_TYPE)) {
-      builder.setFlowControlType(
-          Streaming.FlowControlType.forNumber(
-              Integer.parseInt(conf.get(Config.FLOW_CONTROL_TYPE))));
+
+    // writer consumed step
+    int writerConsumedStep = workerConfig.transferConfig.writerConsumedStep();
+    if (writerConsumedStep != -1) {
+      builder.setWriterConsumedStep(writerConsumedStep);
     }
-    if (conf.containsKey(Config.WRITER_CONSUMED_STEP)) {
-      builder.setWriterConsumedStep(
-          Integer.parseInt(conf.get(Config.WRITER_CONSUMED_STEP)));
+
+    //reader consumed step
+    int readerConsumedStep = workerConfig.transferConfig.readerConsumedStep();
+    if (readerConsumedStep != -1) {
+      builder.setReaderConsumedStep(readerConsumedStep);
     }
-    if (conf.containsKey(Config.READER_CONSUMED_STEP)) {
-      builder.setReaderConsumedStep(
-          Integer.parseInt(conf.get(Config.READER_CONSUMED_STEP)));
-    }
+
     Streaming.StreamingConfig streamingConf = builder.build();
     LOGGER.info("Streaming native conf {}", streamingConf.toString());
     return streamingConf.toByteArray();
   }
 
 }
-

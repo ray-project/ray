@@ -18,6 +18,7 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 
 #include "ray/common/constants.h"
+#include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/gcs/pb_util.h"
@@ -66,12 +67,7 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
       raylet_config_(raylet_config),
       starting_worker_timeout_callback_(starting_worker_timeout_callback) {
   RAY_CHECK(maximum_startup_concurrency > 0);
-#ifdef _WIN32
-  // If worker processes fail to initialize, don't display an error window.
-  SetErrorMode(GetErrorMode() | SEM_FAILCRITICALERRORS);
-  // If worker processes crash, don't display an error window.
-  SetErrorMode(GetErrorMode() | SEM_NOGPFAULTERRORBOX);
-#else
+#ifndef _WIN32
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);
@@ -143,9 +139,7 @@ WorkerPool::~WorkerPool() {
   }
   for (Process proc : procs_to_kill) {
     proc.Kill();
-  }
-  for (Process proc : procs_to_kill) {
-    proc.Wait();
+    // NOTE: Avoid calling Wait() here. It fails with ECHILD, as SIGCHLD is disabled.
   }
 }
 
@@ -303,17 +297,26 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
 }
 
 Status WorkerPool::GetNextFreePort(int *port) {
-  if (free_ports_) {
-    if (free_ports_->empty()) {
-      return Status::Invalid(
-          "Ran out of ports to allocate to workers. Please specify a wider port range.");
-    }
+  if (!free_ports_) {
+    *port = 0;
+    return Status::OK();
+  }
+
+  // Try up to the current number of ports.
+  int current_size = free_ports_->size();
+  for (int i = 0; i < current_size; i++) {
     *port = free_ports_->front();
     free_ports_->pop();
-  } else {
-    *port = 0;
+    if (CheckFree(*port)) {
+      return Status::OK();
+    }
+    // Return to pool to check later.
+    free_ports_->push(*port);
   }
-  return Status::OK();
+  *port = -1;
+  return Status::Invalid(
+      "No available ports. Please specify a wider port range using --min-worker-port and "
+      "--max-worker-port.");
 }
 
 void WorkerPool::MarkPortAsFree(int port) {
@@ -494,24 +497,28 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForJob(
   return workers;
 }
 
-const std::vector<std::shared_ptr<Worker>> WorkerPool::GetAllWorkers() const {
+const std::vector<std::shared_ptr<Worker>> WorkerPool::GetAllRegisteredWorkers() const {
   std::vector<std::shared_ptr<Worker>> workers;
 
   for (const auto &entry : states_by_lang_) {
     for (const auto &worker : entry.second.registered_workers) {
-      workers.push_back(worker);
+      if (worker->IsRegistered()) {
+        workers.push_back(worker);
+      }
     }
   }
 
   return workers;
 }
 
-const std::vector<std::shared_ptr<Worker>> WorkerPool::GetAllDrivers() const {
+const std::vector<std::shared_ptr<Worker>> WorkerPool::GetAllRegisteredDrivers() const {
   std::vector<std::shared_ptr<Worker>> drivers;
 
   for (const auto &entry : states_by_lang_) {
     for (const auto &driver : entry.second.registered_drivers) {
-      drivers.push_back(driver);
+      if (driver->IsRegistered()) {
+        drivers.push_back(driver);
+      }
     }
   }
 

@@ -62,8 +62,12 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_eps": 1e-6,
     "prioritized_replay_beta_annealing_timesteps": 20000,
     "final_prioritized_replay_beta": 0.4,
-
+    # Whether to LZ4 compress observations
     "compress_observations": False,
+    # If set, this will fix the ratio of sampled to replayed timesteps.
+    # Otherwise, replay will proceed at the native ratio determined by
+    # (train_batch_size / rollout_fragment_length).
+    "training_intensity": None,
 
     # === Optimization ===
     "optimization": {
@@ -119,7 +123,7 @@ DEFAULT_CONFIG = with_common_config({
 
 
 def get_policy_class(config):
-    if config.get("use_pytorch") is True:
+    if config["framework"] == "torch":
         from ray.rllib.agents.sac.sac_torch_policy import SACTorchPolicy
         return SACTorchPolicy
     else:
@@ -150,7 +154,7 @@ def validate_config(config):
 SACTrainer = GenericOffPolicyTrainer.with_updates(
     name="SAC",
     default_config=DEFAULT_CONFIG,
+    validate_config=validate_config,
     default_policy=SACTFPolicy,
     get_policy_class=get_policy_class,
-    validate_config=validate_config,
 )

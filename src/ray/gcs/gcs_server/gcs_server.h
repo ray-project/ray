@@ -15,9 +15,13 @@
 #ifndef RAY_GCS_GCS_SERVER_H
 #define RAY_GCS_GCS_SERVER_H
 
+#include <ray/gcs/pubsub/gcs_pub_sub.h>
 #include <ray/gcs/redis_gcs_client.h>
+#include <ray/rpc/client_call.h>
 #include <ray/rpc/gcs_server/gcs_rpc_server.h>
+#include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
+#include "ray/gcs/gcs_server/gcs_table_storage.h"
 
 namespace ray {
 namespace gcs {
@@ -44,7 +48,8 @@ class GcsActorManager;
 /// https://docs.google.com/document/d/1d-9qBlsh2UQHo-AWMWR0GptI_Ajwu4SKx0Q0LHKPpeI/edit#heading=h.csi0gaglj2pv
 class GcsServer {
  public:
-  explicit GcsServer(const GcsServerConfig &config);
+  explicit GcsServer(const GcsServerConfig &config,
+                     boost::asio::io_service &main_service);
   virtual ~GcsServer();
 
   /// Start gcs server.
@@ -73,20 +78,14 @@ class GcsServer {
   /// cluster.
   virtual void InitGcsNodeManager();
 
-  /// Initialize the gcs node manager.
+  /// Initialize the gcs actor manager.
   virtual void InitGcsActorManager();
 
   /// The job info handler
   virtual std::unique_ptr<rpc::JobInfoHandler> InitJobInfoHandler();
 
-  /// The actor info handler
-  virtual std::unique_ptr<rpc::ActorInfoHandler> InitActorInfoHandler();
-
-  /// The node info handler
-  virtual std::unique_ptr<rpc::NodeInfoHandler> InitNodeInfoHandler();
-
-  /// The object info handler
-  virtual std::unique_ptr<rpc::ObjectInfoHandler> InitObjectInfoHandler();
+  /// The object manager
+  virtual std::unique_ptr<GcsObjectManager> InitObjectManager();
 
   /// The task info handler
   virtual std::unique_ptr<rpc::TaskInfoHandler> InitTaskInfoHandler();
@@ -110,10 +109,12 @@ class GcsServer {
 
   /// Gcs server configuration
   GcsServerConfig config_;
+  /// The main io service to drive event posted from grpc threads.
+  boost::asio::io_context &main_service_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
-  /// The main io service to drive event posted from grpc threads.
-  boost::asio::io_context main_service_;
+  /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
+  rpc::ClientCallManager client_call_manager_;
   /// The gcs node manager.
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
   /// The gcs redis failure detector.
@@ -123,14 +124,12 @@ class GcsServer {
   /// Job info handler and service
   std::unique_ptr<rpc::JobInfoHandler> job_info_handler_;
   std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;
-  /// Actor info handler and service
-  std::unique_ptr<rpc::ActorInfoHandler> actor_info_handler_;
+  /// Actor info service
   std::unique_ptr<rpc::ActorInfoGrpcService> actor_info_service_;
   /// Node info handler and service
-  std::unique_ptr<rpc::NodeInfoHandler> node_info_handler_;
   std::unique_ptr<rpc::NodeInfoGrpcService> node_info_service_;
   /// Object info handler and service
-  std::unique_ptr<rpc::ObjectInfoHandler> object_info_handler_;
+  std::unique_ptr<gcs::GcsObjectManager> gcs_object_manager_;
   std::unique_ptr<rpc::ObjectInfoGrpcService> object_info_service_;
   /// Task info handler and service
   std::unique_ptr<rpc::TaskInfoHandler> task_info_handler_;
@@ -146,6 +145,10 @@ class GcsServer {
   std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
   /// Backend client
   std::shared_ptr<RedisGcsClient> redis_gcs_client_;
+  /// A publisher for publishing gcs messages.
+  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+  /// The gcs table storage.
+  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Gcs service state flag, which is used for ut.
   bool is_started_ = false;
   bool is_stopped_ = false;

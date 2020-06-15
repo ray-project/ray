@@ -1,43 +1,28 @@
 import logging
 import os
 import sys
-from typing import Any
+from typing import Any, Union
 
 logger = logging.getLogger(__name__)
 
 # Represents a generic tensor type.
 TensorType = Any
 
-
-def check_framework(framework="tf"):
-    """
-    Checks, whether the given framework is "valid", meaning, whether all
-    necessary dependencies are installed. Errors otherwise.
-
-    Args:
-        framework (str): Once of "tf", "torch", or None.
-
-    Returns:
-        str: The input framework string.
-    """
-    if framework == "tf":
-        if tf is None:
-            raise ImportError("Could not import tensorflow.")
-    elif framework == "torch":
-        if torch is None:
-            raise ImportError("Could not import torch.")
-    else:
-        assert framework is None
-    return framework
+# Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
+TensorStructType = Union[TensorType, dict, tuple]
 
 
 def try_import_tf(error=False):
-    """
+    """Tries importing tf and returns the module (or None).
+
     Args:
         error (bool): Whether to raise an error if tf cannot be imported.
 
     Returns:
         The tf module (either from tf2.0.compat.v1 OR as tf1.x.
+
+    Raises:
+        ImportError: If error=True and tf is not installed.
     """
     # Make sure, these are reset after each test case
     # that uses them: del os.environ["RLLIB_TEST_NO_TF_IMPORT"]
@@ -98,12 +83,16 @@ def tf_function(tf_module):
 
 
 def try_import_tfp(error=False):
-    """
+    """Tries importing tfp and returns the module (or None).
+
     Args:
         error (bool): Whether to raise an error if tfp cannot be imported.
 
     Returns:
         The tfp module.
+
+    Raises:
+        ImportError: If error=True and tfp is not installed.
     """
     if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
         logger.warning("Not importing TensorFlow Probability for test "
@@ -134,15 +123,19 @@ class ModuleStub:
 
 
 def try_import_torch(error=False):
-    """
+    """Tries importing torch and returns the module (or None).
+
     Args:
         error (bool): Whether to raise an error if torch cannot be imported.
 
     Returns:
         tuple: torch AND torch.nn modules.
+
+    Raises:
+        ImportError: If error=True and PyTorch is not installed.
     """
     if "RLLIB_TEST_NO_TORCH_IMPORT" in os.environ:
-        logger.warning("Not importing Torch for test purposes.")
+        logger.warning("Not importing PyTorch for test purposes.")
         return _torch_stubs()
 
     try:
@@ -202,8 +195,7 @@ def get_variable(value,
 
 
 def get_activation_fn(name, framework="tf"):
-    """
-    Returns a framework specific activation function, given a name string.
+    """Returns a framework specific activation function, given a name string.
 
     Args:
         name (str): One of "relu" (default), "tanh", or "linear".
@@ -211,18 +203,21 @@ def get_activation_fn(name, framework="tf"):
 
     Returns:
         A framework-specific activtion function. e.g. tf.nn.tanh or
-            torch.nn.ReLU. Returns None for name="linear".
+            torch.nn.ReLU. None if name in ["linear", None].
+
+    Raises:
+        ValueError: If name is an unknown activation function.
     """
     if framework == "torch":
-        _, nn = try_import_torch()
-        if name == "linear":
+        if name in ["linear", None]:
             return None
-        elif name == "relu":
+        _, nn = try_import_torch()
+        if name == "relu":
             return nn.ReLU
         elif name == "tanh":
             return nn.Tanh
     else:
-        if name == "linear":
+        if name in ["linear", None]:
             return None
         tf = try_import_tf()
         fn = getattr(tf.nn, name, None)

@@ -1,0 +1,30 @@
+# This bazelrc specifies configuration for the release asan test.
+# It exists because we want everything to be "default" configuration
+# instead of "--config=ci" or "--config=asan".
+
+# Cache
+build --remote_cache=https://storage.googleapis.com/ray-bazel-cache
+build --disk_cache=/tmp/bazel-cache
+build --repository_cache=/tmp/bazel-cache
+build --remote_upload_local_results=false
+
+# Asan
+build --strip=never
+build --copt -g
+build --copt -fsanitize=address
+build --copt -fno-sanitize=vptr
+build --copt -DADDRESS_SANITIZER
+build --copt -fno-omit-frame-pointer
+build --linkopt -fsanitize=address
+build --linkopt -fno-sanitize=vptr
+test --action_env=ASAN_OPTIONS=detect_leaks=0
+test --action_env=LD_PRELOAD=/usr/lib/gcc/x86_64-linux-gnu/7/libasan.so
+
+# Travis test config
+test --flaky_test_attempts=3
+test --nocache_test_results
+test --show_timestamps
+test --spawn_strategy=local
+test --test_output=errors
+test --test_verbose_timeout_warnings
+test --jobs 1

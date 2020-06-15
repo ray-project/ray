@@ -17,17 +17,17 @@ from ray.util.sgd.torch.distributed_torch_runner import (
 from ray.util.sgd.utils import check_for_failure, NUM_SAMPLES, BATCH_SIZE
 from ray.util.sgd.torch.torch_runner import TorchRunner
 from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP
+from ray.util.sgd.data import Dataset
 
 logger = logging.getLogger(__name__)
 RESIZE_COOLDOWN_S = 10
 
 
 def _validate_scheduler_step_freq(scheduler_step_freq):
-    if scheduler_step_freq:
-        if scheduler_step_freq not in VALID_SCHEDULER_STEP:
-            raise ValueError(
-                "Scheduler step freq must be in {}. Got {}".format(
-                    VALID_SCHEDULER_STEP, scheduler_step_freq))
+    """This validation check only happens if a scheduler is passed in."""
+    if scheduler_step_freq not in VALID_SCHEDULER_STEP:
+        raise ValueError("Scheduler step freq must be in {}. Got {}".format(
+            VALID_SCHEDULER_STEP, scheduler_step_freq))
 
 
 def _remind_gpu_usage(use_gpu):
@@ -131,6 +131,10 @@ class TorchTrainer:
             support "nccl", "gloo", and "auto". If "auto", RaySGD will
             automatically use "nccl" if `use_gpu` is True, and "gloo"
             otherwise.
+        serialize_data_creation (bool): A filelock will be used
+            to ensure no race conditions in data downloading among
+            different workers on the same node (using the local file system).
+            Defaults to True.
         wrap_ddp (bool): Whether to automatically wrap DistributedDataParallel
             over each model. If False, you are expected to call it yourself.
         add_dist_sampler (bool): Whether to automatically add a
@@ -144,10 +148,13 @@ class TorchTrainer:
             See https://nvidia.github.io/apex/amp.html#module-apex.amp. By
             default, the models and optimizers are passed in. Consider using
             "num_losses" if operating over multiple models and optimizers.
-        scheduler_step_freq: "batch", "epoch", or None. This will
+        scheduler_step_freq: "batch", "epoch", "manual", or None. This will
             determine when ``scheduler.step`` is called. If "batch",
             ``step`` will be called after every optimizer step. If "epoch",
-            ``step`` will be called after one pass of the DataLoader.
+            ``step`` will be called after one pass of the DataLoader. If
+            "manual", the scheduler will not be incremented automatically -
+            you are expected to call ``trainer.update_schedulers`` manually.
+            If a scheduler is passed in, this value is expected to not be None.
 
     """
 
@@ -171,11 +178,12 @@ class TorchTrainer:
             use_gpu="auto",
             backend="auto",
             wrap_ddp=True,
+            serialize_data_creation=True,
             use_fp16=False,
             use_tqdm=False,
             apex_args=None,
             add_dist_sampler=True,
-            scheduler_step_freq="batch",
+            scheduler_step_freq=None,
             num_replicas=None,
             batch_size=None,
             data_loader_args=None,
@@ -187,11 +195,9 @@ class TorchTrainer:
                  "For more information, see "
                  "https://github.com/pytorch/examples/issues/467."))
 
-        if not (callable(model_creator) and callable(optimizer_creator)
-                and callable(data_creator)):
+        if not (callable(model_creator) and callable(optimizer_creator)):
             raise ValueError(
-                "Must provide a callable model_creator, optimizer_creator, "
-                "and data_creator.")
+                "Must provide a callable model_creator and optimizer_creator.")
 
         if num_replicas is not None:
             raise DeprecationWarning(
@@ -237,6 +243,7 @@ class TorchTrainer:
         self.use_gpu = use_gpu
         self.max_replicas = num_workers
 
+        self.serialize_data_creation = serialize_data_creation
         self.wrap_ddp = wrap_ddp
         self.use_fp16 = use_fp16
         self.use_tqdm = use_tqdm
@@ -253,7 +260,9 @@ class TorchTrainer:
         self.local_worker = DeactivatedRunner()
         self.remote_workers = []
 
-        _validate_scheduler_step_freq(scheduler_step_freq)
+        if scheduler_creator:
+            _validate_scheduler_step_freq(scheduler_step_freq)
+
         self.scheduler_step_freq = scheduler_step_freq
 
         if not ray.is_initialized() and self.max_replicas > 1:
@@ -298,6 +307,7 @@ class TorchTrainer:
             scheduler_creator=self.scheduler_creator,
             training_operator_cls=self.training_operator_cls,
             config=worker_config,
+            serialize_data_creation=self.serialize_data_creation,
             use_fp16=self.use_fp16,
             use_gpu=self.use_gpu,
             use_tqdm=self.use_tqdm,
@@ -368,7 +378,8 @@ class TorchTrainer:
               profile=False,
               reduce_results=True,
               max_retries=3,
-              info=None):
+              info=None,
+              dataset=None):
         """Runs a training epoch.
 
         Calls `operator.train_epoch()` on N parallel workers simultaneously
@@ -394,6 +405,8 @@ class TorchTrainer:
                 in case of shared cluster usage. Defaults to 3.
             info (dict): Optional dictionary passed to the training
                 operator for ``train_epoch`` and ``train_batch``.
+            dataset (Dataset): Optional dataset to train with. If specified,
+                the dataloader passed in via data_creator will be ignored.
 
         Returns:
             (dict | list) A dictionary of metrics for training.
@@ -403,11 +416,14 @@ class TorchTrainer:
                 length will be equal to ``num_workers``.
         """
         assert max_retries >= 0, "`max_retries` must be non-negative."
+        assert isinstance(dataset, Dataset) is not None \
+            or self.data_creator, \
+            "Must specify either a data creator or a dataset"
         if self._should_resize():
             logger.info("Resize opportunity detected. Attempting to scale up.")
             self._resize_workers()
         success, worker_stats = self._train_epoch(
-            num_steps=num_steps, profile=profile, info=info)
+            num_steps=num_steps, profile=profile, info=info, dataset=dataset)
         # Fault handling
         for i in range(max_retries):
             if success:
@@ -418,7 +434,10 @@ class TorchTrainer:
             logger.info("Retrying training step with %d workers." %
                         (len(self.remote_workers) + 1))
             success, worker_stats = self._train_epoch(
-                num_steps=num_steps, profile=profile, info=info)
+                num_steps=num_steps,
+                profile=profile,
+                info=info,
+                dataset=dataset)
         if not success:
             raise RuntimeError("Training run failed.")
 
@@ -441,14 +460,26 @@ class TorchTrainer:
                 stats[stat_key] = worker_stats[0][stat_key]
         return stats
 
-    def _train_epoch(self, num_steps=None, profile=False, info=None):
+    def _train_epoch(self,
+                     num_steps=None,
+                     profile=False,
+                     info=None,
+                     dataset=None):
         params = dict(num_steps=num_steps, profile=profile, info=info)
-
-        remote_worker_stats = [
-            w.train_epoch.remote(**params) for w in self.remote_workers
-        ]
+        remote_worker_stats = []
+        if dataset:
+            dataset.set_num_shards(self.max_replicas)
+        for i, w in enumerate(self.remote_workers):
+            params = dict(num_steps=num_steps, profile=profile, info=info)
+            if dataset:
+                params["iterator"] = dataset.get_shard(i)
+            stats = w.train_epoch.remote(**params)
+            remote_worker_stats.append(stats)
 
         try:
+            if dataset:
+                params["iterator"] = dataset.get_shard(
+                    len(self.remote_workers))
             local_worker_stats = self.local_worker.train_epoch(**params)
         except RuntimeError as err:
             if "gloo" in err.args[0] and "Timed out" in err.args[0]:

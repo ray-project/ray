@@ -74,11 +74,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ObjectID ArgId(size_t arg_index, size_t id_index) const;
 
-  ObjectID ReturnId(size_t return_index, TaskTransportType transport_type) const;
-
-  ObjectID ReturnIdForPlasma(size_t return_index) const {
-    return ReturnId(return_index, TaskTransportType::RAYLET);
-  }
+  ObjectID ReturnId(size_t return_index) const;
 
   const uint8_t *ArgData(size_t arg_index) const;
 
@@ -139,7 +135,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ActorID ActorCreationId() const;
 
-  uint64_t MaxActorReconstructions() const;
+  int64_t MaxActorRestarts() const;
 
   std::vector<std::string> DynamicWorkerOptions() const;
 
@@ -150,6 +146,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   TaskID CallerId() const;
 
   const rpc::Address &CallerAddress() const;
+
+  WorkerID CallerWorkerId() const;
 
   uint64_t ActorCounter() const;
 
@@ -177,11 +175,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
  private:
   void ComputeResources();
 
-  /// Field storing required resources. Initalized in constructor.
+  /// Field storing required resources. Initialized in constructor.
   /// TODO(ekl) consider optimizing the representation of ResourceSet for fast copies
-  /// instead of keeping shared ptrs here.
+  /// instead of keeping shared pointers here.
   std::shared_ptr<ResourceSet> required_resources_;
-  /// Field storing required placement resources. Initalized in constructor.
+  /// Field storing required placement resources. Initialized in constructor.
   std::shared_ptr<ResourceSet> required_placement_resources_;
   /// Cached scheduling class of this task.
   SchedulingClass sched_cls_id_;

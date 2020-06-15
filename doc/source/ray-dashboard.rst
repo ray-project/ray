@@ -229,7 +229,7 @@ Logical View (Experimental)
 **State**: State of an actor. 
 
 - 0: Alive
-- 1: Reconstructing
+- 1: Restarting
 - 2: Dead
 
 **Pending**: A number of pending tasks for this actor.

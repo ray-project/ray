@@ -7,17 +7,20 @@
 #include <ray/api/ray_config.h>
 #include <ray/api/ray_exception.h>
 #include "../util/address_helper.h"
+#include "../util/process_helper.h"
 #include "local_mode_ray_runtime.h"
+#include "native_ray_runtime.h"
 
 namespace ray {
 namespace api {
 AbstractRayRuntime *AbstractRayRuntime::DoInit(std::shared_ptr<RayConfig> config) {
   AbstractRayRuntime *runtime;
-  if (config->runMode == RunMode::SINGLE_PROCESS) {
+  if (config->run_mode == RunMode::SINGLE_PROCESS) {
     GenerateBaseAddressOfCurrentLibrary();
     runtime = new LocalModeRayRuntime(config);
   } else {
-    throw RayException("Only single process mode supported now");
+    ProcessHelper::RayStart();
+    runtime = new NativeRayRuntime(config);
   }
   RAY_CHECK(runtime);
   return runtime;
@@ -30,8 +33,7 @@ void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,
 
 ObjectID AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data) {
   ObjectID object_id =
-      ObjectID::ForPut(worker_->GetCurrentTaskID(), worker_->GetNextPutIndex(),
-                       static_cast<uint8_t>(TaskTransportType::RAYLET));
+      ObjectID::ForPut(worker_->GetCurrentTaskID(), worker_->GetNextPutIndex());
   Put(data, object_id);
   return object_id;
 }

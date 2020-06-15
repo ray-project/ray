@@ -71,7 +71,8 @@ Once implemented, the model can then be registered and used in place of a built-
     trainer = ppo.PPOTrainer(env="CartPole-v0", config={
         "model": {
             "custom_model": "my_model",
-            "custom_options": {},  # extra options to pass to your model
+            # Extra kwargs to be passed to your model's c'tor.
+            "custom_model_config": {},
         },
     })
 
@@ -80,9 +81,9 @@ For a full example of a custom model in code, see the `keras model example <http
 Recurrent Models
 ~~~~~~~~~~~~~~~~
 
-Instead of using the ``use_lstm: True`` option, it can be preferable use a custom recurrent model. This provides more control over postprocessing of the LSTM output and can also allow the use of multiple LSTM cells to process different portions of the input. For a RNN model it is preferred to subclass ``RecurrentTFModelV2`` to implement ``__init__()``, ``get_initial_state()``, and ``forward_rnn()``. You can check out the `custom_keras_rnn_model.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_keras_rnn_model.py>`__ model as an example to implement your own model:
+Instead of using the ``use_lstm: True`` option, it can be preferable use a custom recurrent model. This provides more control over postprocessing of the LSTM output and can also allow the use of multiple LSTM cells to process different portions of the input. For an RNN model it is preferred to subclass ``RecurrentNetwork`` to implement ``__init__()``, ``get_initial_state()``, and ``forward_rnn()``. You can check out the `custom_rnn_model.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_rnn_model.py>`__ model as an example to implement your own model:
 
-.. autoclass:: ray.rllib.models.tf.recurrent_tf_modelv2.RecurrentTFModelV2
+.. autoclass:: ray.rllib.models.tf.recurrent_net.RecurrentNetwork
 
     .. automethod:: __init__
     .. automethod:: forward_rnn
@@ -91,7 +92,7 @@ Instead of using the ``use_lstm: True`` option, it can be preferable use a custo
 Batch Normalization
 ~~~~~~~~~~~~~~~~~~~
 
-You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"])`` to add batch norm layers to your custom model: `code example <https://github.com/ray-project/ray/blob/master/rllib/examples/batch_norm_model.py>`__. RLlib will automatically run the update ops for the batch norm layers during optimization (see `tf_policy.py <https://github.com/ray-project/ray/blob/master/rllib/policy/tf_policy.py>`__ and `multi_gpu_impl.py <https://github.com/ray-project/ray/blob/master/rllib/optimizers/multi_gpu_impl.py>`__ for the exact handling of these updates).
+You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"])`` to add batch norm layers to your custom model: `code example <https://github.com/ray-project/ray/blob/master/rllib/examples/batch_norm_model.py>`__. RLlib will automatically run the update ops for the batch norm layers during optimization (see `tf_policy.py <https://github.com/ray-project/ray/blob/master/rllib/policy/tf_policy.py>`__ and `multi_gpu_impl.py <https://github.com/ray-project/ray/blob/master/rllib/execution/multi_gpu_impl.py>`__ for the exact handling of these updates).
 
 In case RLlib does not properly detect the update ops for your custom model, you can override the ``update_ops()`` method to return the list of ops to run for updates.
 
@@ -120,7 +121,7 @@ Once implemented, the model can then be registered and used in place of a built-
     from ray.rllib.models import ModelCatalog
     from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 
-    class CustomTorchModel(nn.Module, TorchModelV2):
+    class CustomTorchModel(TorchModelV2):
         def __init__(self, obs_space, action_space, num_outputs, model_config, name): ...
         def forward(self, input_dict, state, seq_lens): ...
         def value_function(self): ...
@@ -129,10 +130,11 @@ Once implemented, the model can then be registered and used in place of a built-
 
     ray.init()
     trainer = a3c.A2CTrainer(env="CartPole-v0", config={
-        "use_pytorch": True,
+        "framework": "torch",
         "model": {
             "custom_model": "my_model",
-            "custom_options": {},  # extra options to pass to your model
+            # Extra kwargs to be passed to your model's c'tor.
+            "custom_model_config": {},
         },
     })
 
@@ -165,7 +167,8 @@ Custom preprocessors should subclass the RLlib `preprocessor class <https://gith
     trainer = ppo.PPOTrainer(env="CartPole-v0", config={
         "model": {
             "custom_preprocessor": "my_prep",
-            "custom_options": {},  # extra options to pass to your preprocessor
+            # Extra kwargs to be passed to your model's c'tor.
+            "custom_model_config": {},
         },
     })
 
@@ -216,6 +219,21 @@ Self-Supervised Model Losses
 ----------------------------
 
 You can also use the ``custom_loss()`` API to add in self-supervised losses such as VAE reconstruction loss and L2-regularization.
+
+Variable-length / Complex Observation Spaces
+--------------------------------------------
+
+RLlib supports complex and variable-length observation spaces, including ``gym.spaces.Tuple``, ``gym.spaces.Dict``, and ``rllib.utils.spaces.Repeated``. The handling of these spaces is transparent to the user. RLlib internally will insert preprocessors to insert padding for repeated elements, flatten complex observations into a fixed-size vector during transit, and unpack the vector into the structured tensor before sending it to the model. The flattened observation is available to the model as ``input_dict["obs_flat"]``, and the unpacked observation as ``input_dict["obs"]``.
+
+To enable batching of struct observations, RLlib unpacks them in a `StructTensor-like format <https://github.com/tensorflow/community/blob/master/rfcs/20190910-struct-tensor.md>`__. In summary, repeated fields are "pushed down" and become the outer dimensions of tensor batches, as illustrated in this figure from the StructTensor RFC.
+
+.. image:: struct-tensor.png
+
+For further information about complex observation spaces, see:
+  * A custom environment and model that uses `repeated struct fields <https://github.com/ray-project/ray/blob/master/rllib/examples/complex_struct_space.py>`__.
+  * The pydoc of the `Repeated space <https://github.com/ray-project/ray/blob/master/rllib/utils/spaces/repeated.py>`__.
+  * The pydoc of the batched `repeated values tensor <https://github.com/ray-project/ray/blob/master/rllib/models/repeated_values.py>`__.
+  * The `unit tests <https://github.com/ray-project/ray/blob/master/rllib/tests/test_nested_spaces.py>`__ for Tuple and Dict spaces.
 
 Variable-length / Parametric Action Spaces
 ------------------------------------------
@@ -274,7 +292,7 @@ Custom models can be used to work with environments where (1) the set of valid a
             return action_logits + inf_mask, state
 
 
-Depending on your use case it may make sense to use just the masking, just action embeddings, or both. For a runnable example of this in code, check out `parametric_action_cartpole.py <https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_action_cartpole.py>`__. Note that since masking introduces ``tf.float32.min`` values into the model output, this technique might not work with all algorithm options. For example, algorithms might crash if they incorrectly process the ``tf.float32.min`` values. The cartpole example has working configurations for DQN (must set ``hiddens=[]``), PPO (must disable running mean and set ``vf_share_layers=True``), and several other algorithms. Not all algorithms support parametric actions; see the `feature compatibility matrix <rllib-env.html#feature-compatibility-matrix>`__.
+Depending on your use case it may make sense to use just the masking, just action embeddings, or both. For a runnable example of this in code, check out `parametric_actions_cartpole.py <https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py>`__. Note that since masking introduces ``tf.float32.min`` values into the model output, this technique might not work with all algorithm options. For example, algorithms might crash if they incorrectly process the ``tf.float32.min`` values. The cartpole example has working configurations for DQN (must set ``hiddens=[]``), PPO (must disable running mean and set ``vf_share_layers=True``), and several other algorithms. Not all algorithms support parametric actions; see the `feature compatibility matrix <rllib-env.html#feature-compatibility-matrix>`__.
 
 
 Autoregressive Action Distributions

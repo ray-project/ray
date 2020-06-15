@@ -9,7 +9,9 @@ import pytest
 import ray
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
-from ray.test_utils import RayTestTimeoutException
+from ray.test_utils import RayTestTimeoutException, get_other_nodes
+
+SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 
 @pytest.fixture(params=[(1, 4), (4, 4)])
@@ -62,7 +64,7 @@ def test_worker_failed(ray_start_workers_separate_multinode):
     time.sleep(0.1)
     # Kill the workers as the tasks execute.
     for pid in pids:
-        os.kill(pid, signal.SIGKILL)
+        os.kill(pid, SIGKILL)
         time.sleep(0.1)
     # Make sure that we either get the object or we get an appropriate
     # exception.
@@ -88,7 +90,7 @@ def _test_component_failed(cluster, component_type):
     # execute. Do this in a loop while submitting tasks between each
     # component failure.
     time.sleep(0.1)
-    worker_nodes = cluster.list_all_nodes()[1:]
+    worker_nodes = get_other_nodes(cluster)
     assert len(worker_nodes) > 0
     for node in worker_nodes:
         process = node.all_processes[component_type][0].process
@@ -117,7 +119,7 @@ def _test_component_failed(cluster, component_type):
 
 def check_components_alive(cluster, component_type, check_component_alive):
     """Check that a given component type is alive on all worker nodes."""
-    worker_nodes = cluster.list_all_nodes()[1:]
+    worker_nodes = get_other_nodes(cluster)
     assert len(worker_nodes) > 0
     for node in worker_nodes:
         process = node.all_processes[component_type][0].process
@@ -149,29 +151,6 @@ def test_raylet_failed(ray_start_cluster):
     # The plasma stores should still be alive on the worker nodes.
     check_components_alive(cluster, ray_constants.PROCESS_TYPE_PLASMA_STORE,
                            True)
-
-
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
-@pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_cpus": 8,
-        "num_nodes": 2,
-        "_internal_config": json.dumps({
-            "num_heartbeats_timeout": 100
-        }),
-    }],
-    indirect=True)
-def test_plasma_store_failed(ray_start_cluster):
-    cluster = ray_start_cluster
-    # Kill all plasma stores on worker nodes.
-    _test_component_failed(cluster, ray_constants.PROCESS_TYPE_PLASMA_STORE)
-
-    # No processes should be left alive on the worker nodes.
-    check_components_alive(cluster, ray_constants.PROCESS_TYPE_PLASMA_STORE,
-                           False)
-    check_components_alive(cluster, ray_constants.PROCESS_TYPE_RAYLET, False)
 
 
 if __name__ == "__main__":

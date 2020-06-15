@@ -54,11 +54,17 @@ class TaskManagerTest : public ::testing::Test {
                  [this](const TaskSpecification &spec, bool delay) {
                    num_retries_++;
                    return Status::OK();
+                 },
+                 [this](const ClientID &node_id) { return all_nodes_alive_; },
+                 [this](const ObjectID &object_id) {
+                   objects_to_recover_.push_back(object_id);
                  }) {}
 
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
   std::shared_ptr<ActorManagerInterface> actor_manager_;
+  bool all_nodes_alive_ = true;
+  std::vector<ObjectID> objects_to_recover_;
   TaskManager manager_;
   int num_retries_ = 0;
 };
@@ -78,7 +84,7 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   manager_.AddPendingTask(caller_id, caller_address, spec, "");
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
 
   rpc::PushTaskReply reply;
@@ -118,7 +124,7 @@ TEST_F(TaskManagerTest, TestTaskFailure) {
   manager_.AddPendingTask(caller_id, caller_address, spec, "");
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
 
   auto error = rpc::ErrorType::WORKER_DIED;
@@ -142,7 +148,34 @@ TEST_F(TaskManagerTest, TestTaskFailure) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
 }
 
-TEST_F(TaskManagerTest, TestTaskRetry) {
+TEST_F(TaskManagerTest, TestPlasmaConcurrentFailure) {
+  TaskID caller_id = TaskID::Nil();
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+  manager_.AddPendingTask(caller_id, caller_address, spec, "");
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  auto return_id = spec.ReturnId(0);
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+
+  ASSERT_TRUE(objects_to_recover_.empty());
+  all_nodes_alive_ = false;
+
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  return_object->set_object_id(return_id.Binary());
+  return_object->set_in_plasma(true);
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+
+  std::vector<std::shared_ptr<RayObject>> results;
+  ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
+  ASSERT_EQ(objects_to_recover_.size(), 1);
+  ASSERT_EQ(objects_to_recover_[0], return_id);
+}
+
+TEST_F(TaskManagerTest, TestTaskReconstruction) {
   TaskID caller_id = TaskID::Nil();
   rpc::Address caller_address;
   ObjectID dep1 = ObjectID::FromRandom();
@@ -154,7 +187,7 @@ TEST_F(TaskManagerTest, TestTaskRetry) {
   manager_.AddPendingTask(caller_id, caller_address, spec, "", num_retries);
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
 
   auto error = rpc::ErrorType::WORKER_DIED;
@@ -187,6 +220,31 @@ TEST_F(TaskManagerTest, TestTaskRetry) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
 }
 
+TEST_F(TaskManagerTest, TestTaskKill) {
+  TaskID caller_id = TaskID::Nil();
+  rpc::Address caller_address;
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+  auto spec = CreateTaskHelper(1, {});
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+  int num_retries = 3;
+  manager_.AddPendingTask(caller_id, caller_address, spec, "", num_retries);
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
+  auto return_id = spec.ReturnId(0);
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+
+  manager_.MarkTaskCanceled(spec.TaskId());
+  auto error = rpc::ErrorType::TASK_CANCELLED;
+  manager_.PendingTaskFailed(spec.TaskId(), error);
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+  std::vector<std::shared_ptr<RayObject>> results;
+  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+  ASSERT_EQ(results.size(), 1);
+  rpc::ErrorType stored_error;
+  ASSERT_TRUE(results[0]->IsException(&stored_error));
+  ASSERT_EQ(stored_error, error);
+}
+
 // Test to make sure that the task spec and dependencies for an object are
 // evicted when lineage pinning is disabled in the ReferenceCounter.
 TEST_F(TaskManagerTest, TestLineageEvicted) {
@@ -199,7 +257,7 @@ TEST_F(TaskManagerTest, TestLineageEvicted) {
   int num_retries = 3;
   manager_.AddPendingTask(caller_id, caller_address, spec, "", num_retries);
 
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
   return_object->set_object_id(return_id.Binary());
@@ -235,7 +293,7 @@ TEST_F(TaskManagerLineageTest, TestLineagePinned) {
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   int num_retries = 3;
   manager_.AddPendingTask(caller_id, caller_address, spec, "", num_retries);
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   reference_counter_->AddLocalReference(return_id, "");
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
@@ -275,7 +333,7 @@ TEST_F(TaskManagerLineageTest, TestDirectObjectNoLineage) {
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   int num_retries = 3;
   manager_.AddPendingTask(caller_id, caller_address, spec, "", num_retries);
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   reference_counter_->AddLocalReference(return_id, "");
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
@@ -310,7 +368,7 @@ TEST_F(TaskManagerLineageTest, TestLineagePinnedOutOfOrder) {
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   int num_retries = 3;
   manager_.AddPendingTask(caller_id, caller_address, spec, "", num_retries);
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   reference_counter_->AddLocalReference(return_id, "");
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
@@ -351,7 +409,7 @@ TEST_F(TaskManagerLineageTest, TestRecursiveLineagePinned) {
     auto spec = CreateTaskHelper(1, {dep});
     int num_retries = 3;
     manager_.AddPendingTask(caller_id, caller_address, spec, "", num_retries);
-    auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+    auto return_id = spec.ReturnId(0);
     reference_counter_->AddLocalReference(return_id, "");
 
     // The task completes.
@@ -393,7 +451,7 @@ TEST_F(TaskManagerLineageTest, TestRecursiveDirectObjectNoLineage) {
     auto spec = CreateTaskHelper(1, {dep});
     int num_retries = 3;
     manager_.AddPendingTask(caller_id, caller_address, spec, "", num_retries);
-    auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+    auto return_id = spec.ReturnId(0);
     reference_counter_->AddLocalReference(return_id, "");
 
     // The task completes.
@@ -445,7 +503,7 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_EQ(num_retries_, 0);
 
   // The task completes.
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   reference_counter_->AddLocalReference(return_id, "");
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();

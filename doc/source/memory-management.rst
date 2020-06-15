@@ -164,6 +164,7 @@ Now, both the driver and the worker process running the task hold a ``LOCAL_REFE
 
   a = ray.put(None)
   b = ray.put([a])
+  del a
 
 In this example, we first create an object via ``ray.put()``, then capture its ``ObjectID`` inside of another ``ray.put()`` object, and delete the first ``ObjectID``. In this case, both objects are still pinned.
 

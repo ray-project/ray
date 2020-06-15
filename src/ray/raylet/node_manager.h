@@ -231,8 +231,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param object_ids The object ids to store error messages into.
   /// \param job_id The optional job to push errors to if the writes fail.
   void MarkObjectsAsFailed(const ErrorType &error_type,
-                           const std::vector<plasma::ObjectID> object_ids,
-                           const JobID &job_id);
+                           const std::vector<ObjectID> object_ids, const JobID &job_id);
   /// This is similar to TreatTaskAsFailed, but it will only mark the task as
   /// failed if at least one of the task's return values is lost. A return
   /// value is lost if it has been created before, but no longer exists on any
@@ -547,7 +546,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                  const uint8_t *message_data);
 
   /// Handle the case where an actor is disconnected, determine whether this
-  /// actor needs to be reconstructed and then update actor table.
+  /// actor needs to be restarted and then update actor table.
   /// This function needs to be called either when actor process dies or when
   /// a node dies.
   ///
@@ -618,6 +617,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleFormatGlobalMemoryInfo(const rpc::FormatGlobalMemoryInfoRequest &request,
                                     rpc::FormatGlobalMemoryInfoReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Trigger global GC across the cluster to free up references to actors or
+  /// object ids.
+  void TriggerGlobalGC();
 
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC();

@@ -9,7 +9,6 @@ import torch.optim as optim
 from torchvision import datasets
 
 from ray import tune
-from ray.tune import track
 from ray.tune.schedulers import ASHAScheduler
 from ray.tune.examples.mnist_pytorch import get_data_loaders, ConvNet, train, test
 # __tutorial_imports_end__
@@ -26,7 +25,7 @@ def train_mnist(config):
     for i in range(10):
         train(model, optimizer, train_loader)
         acc = test(model, test_loader)
-        track.log(mean_accuracy=acc)
+        tune.report(mean_accuracy=acc)
         if i % 5 == 0:
             # This saves the model to the trial directory
             torch.save(model, "./model.pth")
@@ -79,8 +78,7 @@ space = {
     "momentum": hp.uniform("momentum", 0.1, 0.9),
 }
 
-hyperopt_search = HyperOptSearch(
-    space, max_concurrent=2, reward_attr="mean_accuracy")
+hyperopt_search = HyperOptSearch(space, metric="mean_accuracy", mode="max")
 
 analysis = tune.run(train_mnist, num_samples=10, search_alg=hyperopt_search)
 # __run_searchalg_end__

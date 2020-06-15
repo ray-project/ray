@@ -75,14 +75,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CJobID CreationJobID() const
         CLanguage ActorLanguage() const
         CFunctionDescriptor ActorCreationTaskFunctionDescriptor() const
-        c_bool IsDirectCallActor() const
         c_string ExtensionData() const
 
     cdef cppclass CCoreWorker "ray::CoreWorker":
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
 
-        CRayStatus SubmitTask(
+        void SubmitTask(
             const CRayFunction &function, const c_vector[CTaskArg] &args,
             const CTaskOptions &options, c_vector[CObjectID] *return_ids,
             int max_retries)
@@ -96,7 +95,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_vector[CObjectID] *return_ids)
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
-            c_bool no_reconstruction)
+            c_bool no_restart)
+        CRayStatus CancelTask(const CObjectID &object_id, c_bool force_kill)
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)
@@ -122,6 +122,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                         CObjectID *c_actor_handle_id)
         CRayStatus GetActorHandle(const CActorID &actor_id,
                                   CActorHandle **actor_handle) const
+        CRayStatus GetNamedActorHandle(const c_string &name,
+                                       CActorHandle **actor_handle)
         void AddLocalReference(const CObjectID &object_id)
         void RemoveLocalReference(const CObjectID &object_id)
         void PromoteObjectToPlasma(const CObjectID &object_id)
@@ -191,6 +193,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string raylet_socket
         CJobID job_id
         CGcsClientOptions gcs_options
+        c_bool enable_logging
         c_string log_dir
         c_bool install_failure_signal_handler
         c_string node_ip_address
@@ -214,7 +217,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool ref_counting_enabled
         c_bool is_local_mode
         int num_workers
+        (c_bool() nogil) kill_main
         CCoreWorkerOptions()
+        (void() nogil) terminate_asyncio_thread
 
     cdef cppclass CCoreWorkerProcess "ray::CoreWorkerProcess":
         @staticmethod

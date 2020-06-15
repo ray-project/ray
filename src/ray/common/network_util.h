@@ -20,6 +20,7 @@
 #include <boost/bind.hpp>
 #include <boost/date_time/posix_time/posix_time_types.hpp>
 #include <boost/system/error_code.hpp>
+
 #include "constants.h"
 
 using boost::asio::deadline_timer;
@@ -33,58 +34,75 @@ class AsyncClient {
  public:
   AsyncClient() : socket_(io_service_), timer_(io_service_) {}
 
+  ~AsyncClient() {
+    io_service_.stop();
+    socket_.close();
+  }
+
   /// This function is used to asynchronously connect a socket to the specified address
   /// with timeout.
   ///
   /// \param ip The ip that the rpc server is listening on.
   /// \param port The port that the rpc server is listening on.
   /// \param timeout_ms The maximum wait time in milliseconds.
+  /// \param is_timeout Whether connection timeout.
+  /// \param error_code Set to indicate what error occurred, if any.
   /// \return Whether the connection is successful.
-  bool Connect(const std::string &ip, int port, int64_t timeout_ms) {
+  bool Connect(const std::string &ip, int port, int64_t timeout_ms, bool *is_timeout,
+               boost::system::error_code *error_code = nullptr) {
     try {
       auto endpoint =
           boost::asio::ip::tcp::endpoint(boost::asio::ip::address::from_string(ip), port);
 
       bool is_connected = false;
-      bool is_timeout = false;
+      *is_timeout = false;
       socket_.async_connect(endpoint, boost::bind(&AsyncClient::ConnectHandle, this,
                                                   boost::asio::placeholders::error,
                                                   boost::ref(is_connected)));
 
       // Set a deadline for the asynchronous operation.
       timer_.expires_from_now(boost::posix_time::milliseconds(timeout_ms));
-      timer_.async_wait(boost::bind(&AsyncClient::TimerHandle, this,
-                                    boost::asio::placeholders::error,
-                                    boost::ref(is_timeout)));
+      timer_.async_wait(boost::bind(&AsyncClient::TimerHandle, this, is_timeout));
 
       do {
         io_service_.run_one();
-      } while (!is_timeout && !is_connected);
+      } while (!(*is_timeout) && !is_connected);
 
       timer_.cancel();
+
+      if (error_code != nullptr) {
+        *error_code = error_code_;
+      }
       return is_connected;
     } catch (...) {
       return false;
     }
   }
 
+  /// This function is used to obtain the local ip address of the client socket.
+  ///
+  /// \return The local ip address of the client socket.
+  std::string GetLocalIPAddress() {
+    return socket_.local_endpoint().address().to_string();
+  }
+
  private:
   void ConnectHandle(boost::system::error_code error_code, bool &is_connected) {
+    error_code_ = error_code;
     if (!error_code) {
       is_connected = true;
     }
   }
 
-  void TimerHandle(boost::system::error_code error_code, bool &is_timeout) {
-    if (!error_code) {
-      socket_.close();
-      is_timeout = true;
-    }
+  void TimerHandle(bool *is_timeout) {
+    socket_.close();
+    *is_timeout = true;
   }
 
   boost::asio::io_service io_service_;
   tcp::socket socket_;
   deadline_timer timer_;
+  boost::system::error_code error_code_;
 };
 
 /// A helper function to get a valid local ip.
@@ -96,58 +114,15 @@ class AsyncClient {
 /// \param port The port that the local ip is listening on.
 /// \param timeout_ms The maximum wait time in milliseconds.
 /// \return A valid local ip.
-std::string GetValidLocalIp(int port, int64_t timeout_ms) {
-  boost::asio::io_service io_service;
-  boost::asio::ip::tcp::socket socket(io_service);
-  boost::system::error_code error_code;
-  socket.connect(boost::asio::ip::tcp::endpoint(
-                     boost::asio::ip::address::from_string(kPublicDNSServerIp),
-                     kPublicDNSServerPort),
-                 error_code);
-  std::string address;
-  if (!error_code) {
-    address = socket.local_endpoint().address().to_string();
-  } else {
-    address = "127.0.0.1";
+std::string GetValidLocalIp(int port, int64_t timeout_ms);
 
-    if (error_code == boost::system::errc::host_unreachable) {
-      boost::asio::ip::detail::endpoint primary_endpoint;
-      boost::asio::io_context io_context;
-      boost::asio::ip::tcp::resolver resolver(io_context);
-      boost::asio::ip::tcp::resolver::query query(
-          boost::asio::ip::host_name(), "",
-          boost::asio::ip::resolver_query_base::flags::v4_mapped);
-      boost::asio::ip::tcp::resolver::iterator iter = resolver.resolve(query, error_code);
-      boost::asio::ip::tcp::resolver::iterator end;  // End marker.
-      if (!error_code) {
-        while (iter != end) {
-          boost::asio::ip::tcp::endpoint ep = *iter;
-          if (ep.address().is_v4() && !ep.address().is_loopback() &&
-              !ep.address().is_multicast()) {
-            primary_endpoint.address(ep.address());
-            primary_endpoint.port(ep.port());
+/// A helper function to test whether target rpc server is valid.
+///
+/// \param ip The ip that the target rpc server is listening on.
+/// \param port The port that the target rpc server is listening on.
+/// \param timeout_ms The maximum wait time in milliseconds.
+/// \return Whether target rpc server is valid.
+bool Ping(const std::string &ip, int port, int64_t timeout_ms);
 
-            AsyncClient client;
-            if (client.Connect(primary_endpoint.address().to_string(), port,
-                               timeout_ms)) {
-              break;
-            }
-          }
-          iter++;
-        }
-      } else {
-        RAY_LOG(WARNING) << "Failed to resolve ip address, error = "
-                         << strerror(error_code.value());
-        iter = end;
-      }
-
-      if (iter != end) {
-        address = primary_endpoint.address().to_string();
-      }
-    }
-  }
-
-  return address;
-}
-
+bool CheckFree(int port);
 #endif  // RAY_COMMON_NETWORK_UTIL_H

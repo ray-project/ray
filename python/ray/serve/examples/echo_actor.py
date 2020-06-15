@@ -24,10 +24,9 @@ class MagicCounter:
         return base_number + self.increment
 
 
-serve.init(blocking=True)
-serve.create_endpoint("magic_counter", "/counter")
-serve.create_backend(MagicCounter, "counter:v1", 42)  # increment=42
-serve.link("magic_counter", "counter:v1")
+serve.init()
+serve.create_backend("counter:v1", MagicCounter, 42)  # increment=42
+serve.create_endpoint("magic_counter", backend="counter:v1", route="/counter")
 
 print("Sending ten queries via HTTP")
 for i in range(10):

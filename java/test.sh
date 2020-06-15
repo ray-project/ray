@@ -46,5 +46,5 @@ popd
 
 pushd $ROOT_DIR
 echo "Testing maven install."
-mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN --no-transfer-progress clean install -DskipTests
+mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests
 popd

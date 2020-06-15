@@ -76,6 +76,8 @@ class CallbackReply {
   /// \return size_t The next cursor for scan.
   size_t ReadAsScanArray(std::vector<std::string> *array) const;
 
+  bool IsSubscribeCallback() const { return is_subscribe_callback_; }
+
   bool IsUnsubscribeCallback() const { return is_unsubscribe_callback_; }
 
  private:
@@ -101,6 +103,7 @@ class CallbackReply {
   /// Represent the reply of StringArray or ScanArray.
   std::vector<std::string> string_array_reply_;
 
+  bool is_subscribe_callback_ = false;
   bool is_unsubscribe_callback_ = false;
 
   /// Represent the reply of SCanArray, means the next scan cursor for scan request.
@@ -143,20 +146,25 @@ class RedisCallbackManager {
     boost::asio::io_service *io_service_;
   };
 
-  int64_t add(const RedisCallback &function, bool is_subscription,
-              boost::asio::io_service &io_service);
+  /// Allocate an index at which we can add a callback later on.
+  int64_t AllocateCallbackIndex();
 
-  std::shared_ptr<CallbackItem> get(int64_t callback_index);
+  /// Add a callback at an optionally specified index.
+  int64_t AddCallback(const RedisCallback &function, bool is_subscription,
+                      boost::asio::io_service &io_service, int64_t callback_index = -1);
 
   /// Remove a callback.
-  void remove(int64_t callback_index);
+  void RemoveCallback(int64_t callback_index);
+
+  /// Get a callback.
+  std::shared_ptr<CallbackItem> GetCallback(int64_t callback_index) const;
 
  private:
   RedisCallbackManager() : num_callbacks_(0){};
 
   ~RedisCallbackManager() {}
 
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
 
   int64_t num_callbacks_ = 0;
   std::unordered_map<int64_t, std::shared_ptr<CallbackItem>> callback_items_;
@@ -242,10 +250,12 @@ class RedisContext {
   ///
   /// \param pattern The pattern of subscription channel.
   /// \param redisCallback The callback function that the notification calls.
-  /// \param out_callback_index The output pointer to callback index.
+  /// \param callback_index The index at which to add the callback. This index
+  /// must already be allocated in the callback manager via
+  /// RedisCallbackManager::AllocateCallbackIndex.
   /// \return Status.
   Status PSubscribeAsync(const std::string &pattern, const RedisCallback &redisCallback,
-                         int64_t *out_callback_index);
+                         int64_t callback_index);
 
   /// Unsubscribes the client from the given pattern.
   ///
@@ -293,7 +303,7 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id, const vo
                               RedisCallback redisCallback, int log_length) {
   RAY_CHECK(redis_async_context_);
   int64_t callback_index =
-      RedisCallbackManager::instance().add(redisCallback, false, io_service_);
+      RedisCallbackManager::instance().AddCallback(redisCallback, false, io_service_);
   Status status = Status::OK();
   if (length > 0) {
     if (log_length >= 0) {

@@ -127,7 +127,12 @@ class Worker {
 
   void SetAssignedTask(Task &assigned_task) { assigned_task_ = assigned_task; };
 
-  rpc::CoreWorkerClient *rpc_client() { return rpc_client_.get(); }
+  bool IsRegistered() { return rpc_client_ != nullptr; }
+
+  rpc::CoreWorkerClient *rpc_client() {
+    RAY_CHECK(IsRegistered());
+    return rpc_client_.get();
+  }
 
  private:
   /// The worker's ID.

@@ -57,7 +57,8 @@ def build_ddpg_models(policy, observation_space, action_space, config):
         num_outputs = 256  # arbitrary
         config["model"]["no_final_linear"] = True
     else:
-        default_model = TorchNoopModel if config["use_pytorch"] else NoopModel
+        default_model = TorchNoopModel if config["framework"] == "torch" \
+            else NoopModel
         num_outputs = int(np.product(observation_space.shape))
 
     policy.model = ModelCatalog.get_model_v2(
@@ -65,9 +66,9 @@ def build_ddpg_models(policy, observation_space, action_space, config):
         action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
-        framework="torch" if config["use_pytorch"] else "tf",
-        model_interface=DDPGTorchModel
-        if config["use_pytorch"] else DDPGTFModel,
+        framework=config["framework"],
+        model_interface=(DDPGTorchModel
+                         if config["framework"] == "torch" else DDPGTFModel),
         default_model=default_model,
         name="ddpg_model",
         actor_hidden_activation=config["actor_hidden_activation"],
@@ -84,9 +85,9 @@ def build_ddpg_models(policy, observation_space, action_space, config):
         action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
-        framework="torch" if config["use_pytorch"] else "tf",
-        model_interface=DDPGTorchModel
-        if config["use_pytorch"] else DDPGTFModel,
+        framework=config["framework"],
+        model_interface=(DDPGTorchModel
+                         if config["framework"] == "torch" else DDPGTFModel),
         default_model=default_model,
         name="target_ddpg_model",
         actor_hidden_activation=config["actor_hidden_activation"],
@@ -114,9 +115,9 @@ def get_distribution_inputs_and_class(policy,
     }, [], None)
     dist_inputs = model.get_policy_output(model_out)
 
-    return dist_inputs,\
-        TorchDeterministic if policy.config["use_pytorch"] else Deterministic,\
-        []  # []=state out
+    return dist_inputs, (TorchDeterministic
+                         if policy.config["framework"] == "torch" else
+                         Deterministic), []  # []=state out
 
 
 def ddpg_actor_critic_loss(policy, model, _, train_batch):
@@ -215,8 +216,8 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         twin_td_error = twin_q_t_selected - q_t_selected_target
         td_error = td_error + twin_td_error
         if use_huber:
-            errors = huber_loss(td_error, huber_threshold) \
-                + huber_loss(twin_td_error, huber_threshold)
+            errors = huber_loss(td_error, huber_threshold) + \
+                huber_loss(twin_td_error, huber_threshold)
         else:
             errors = 0.5 * tf.square(td_error) + 0.5 * tf.square(twin_td_error)
     else:
@@ -417,7 +418,7 @@ def setup_late_mixins(policy, obs_space, action_space, config):
 
 
 DDPGTFPolicy = build_tf_policy(
-    name="DQNTFPolicy",
+    name="DDPGTFPolicy",
     get_default_config=lambda: ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG,
     make_model=build_ddpg_models,
     action_distribution_fn=get_distribution_inputs_and_class,

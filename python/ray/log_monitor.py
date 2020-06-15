@@ -4,6 +4,7 @@ import glob
 import json
 import logging
 import os
+import platform
 import shutil
 import time
 import traceback
@@ -301,7 +302,7 @@ if __name__ == "__main__":
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The log monitor on node {} failed with the following "
-                   "error:\n{}".format(os.uname()[1], traceback_str))
+                   "error:\n{}".format(platform.node(), traceback_str))
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.LOG_MONITOR_DIED_ERROR, message)
         raise e

@@ -106,6 +106,10 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
     "compress_observations": False,
+    # If set, this will fix the ratio of sampled to replayed timesteps.
+    # Otherwise, replay will proceed at the native ratio determined by
+    # (train_batch_size / rollout_fragment_length).
+    "training_intensity": None,
 
     # === Optimization ===
     # Learning rate for the critic (Q-function) optimizer.
@@ -199,7 +203,7 @@ def validate_config(config):
 
 
 def get_policy_class(config):
-    if config["use_pytorch"]:
+    if config["framework"] == "torch":
         from ray.rllib.agents.ddpg.ddpg_torch_policy import DDPGTorchPolicy
         return DDPGTorchPolicy
     else:

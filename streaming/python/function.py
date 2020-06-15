@@ -1,17 +1,32 @@
+import enum
 import importlib
 import inspect
 import sys
 from abc import ABC, abstractmethod
-import typing
 
 from ray import cloudpickle
 from ray.streaming.runtime import gateway_client
 
 
+class Language(enum.Enum):
+    JAVA = 0
+    PYTHON = 1
+
+
 class Function(ABC):
     """The base interface for all user-defined functions."""
 
-    def open(self, conf: typing.Dict[str, str]):
+    def open(self, runtime_context):
+        pass
+
+    def close(self):
+        pass
+
+
+class EmptyFunction(Function):
+    """Default function which does nothing"""
+
+    def open(self, runtime_context):
         pass
 
     def close(self):
@@ -49,9 +64,6 @@ class SourceFunction(Function):
         """
         pass
 
-    def close(self):
-        pass
-
 
 class MapFunction(Function):
     """
@@ -60,6 +72,7 @@ class MapFunction(Function):
     for each input element.
     """
 
+    @abstractmethod
     def map(self, value):
         pass
 
@@ -70,6 +83,7 @@ class FlatMapFunction(Function):
     transform them into zero, one, or more elements.
     """
 
+    @abstractmethod
     def flat_map(self, value, collector):
         """Takes an element from the input data set and transforms it into zero,
         one, or more elements.
@@ -87,6 +101,7 @@ class FilterFunction(Function):
     The predicate decides whether to keep the element, or to discard it.
     """
 
+    @abstractmethod
     def filter(self, value):
         """The filter function that evaluates the predicate.
 
@@ -106,6 +121,7 @@ class KeyFunction(Function):
     deterministic key for that object.
     """
 
+    @abstractmethod
     def key_by(self, value):
         """User-defined function that deterministically extracts the key from
          an object.
@@ -126,6 +142,7 @@ class ReduceFunction(Function):
     them into one.
     """
 
+    @abstractmethod
     def reduce(self, old_value, new_value):
         """
         The core method of ReduceFunction, combining two values into one value
@@ -145,6 +162,7 @@ class ReduceFunction(Function):
 class SinkFunction(Function):
     """Interface for implementing user defined sink functionality."""
 
+    @abstractmethod
     def sink(self, value):
         """Writes the given value to the sink. This function is called for
          every record."""
@@ -208,7 +226,7 @@ class SimpleFlatMapFunction(FlatMapFunction):
         self.func = func
         self.process_func = None
         sig = inspect.signature(func)
-        assert len(sig.parameters) <= 2,\
+        assert len(sig.parameters) <= 2, \
             "func should receive value [, collector] as arguments"
         if len(sig.parameters) == 2:
 
@@ -283,7 +301,8 @@ def load_function(descriptor_func_bytes: bytes):
     Returns:
         a streaming function
     """
-    function_bytes, module_name, class_name, function_name, function_interface\
+    assert len(descriptor_func_bytes) > 0
+    function_bytes, module_name, function_name, function_interface \
         = gateway_client.deserialize(descriptor_func_bytes)
     if function_bytes:
         return deserialize(function_bytes)
@@ -292,16 +311,18 @@ def load_function(descriptor_func_bytes: bytes):
         assert function_interface
         function_interface = getattr(sys.modules[__name__], function_interface)
         mod = importlib.import_module(module_name)
-        if class_name:
-            assert function_name is None
-            cls = getattr(mod, class_name)
-            assert issubclass(cls, function_interface)
-            return cls()
-        else:
-            assert function_name
-            func = getattr(mod, function_name)
+        assert function_name
+        func = getattr(mod, function_name)
+        # If func is a python function, user function is a simple python
+        # function, which will be wrapped as a SimpleXXXFunction.
+        # If func is a python class, user function is a sub class
+        # of XXXFunction.
+        if inspect.isfunction(func):
             simple_func_class = _get_simple_function_class(function_interface)
             return simple_func_class(func)
+        else:
+            assert issubclass(func, function_interface)
+            return func()
 
 
 def _get_simple_function_class(function_interface):

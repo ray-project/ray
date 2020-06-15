@@ -9,8 +9,8 @@ from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio
 from ray.rllib.agents.sac.sac_tf_model import SACTFModel
 from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.tf.tf_action_dist import (Categorical, SquashedGaussian,
-                                                DiagGaussian)
+from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
+    DiagGaussian, SquashedGaussian
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -45,8 +45,15 @@ def build_sac_model(policy, obs_space, action_space, config):
     if config["use_state_preprocessor"]:
         num_outputs = 256  # Flatten last Conv2D to this many nodes.
     else:
-        config["model"]["fcnet_hiddens"] = []
         num_outputs = 0
+        # No state preprocessor: fcnet_hiddens should be empty.
+        if config["model"]["fcnet_hiddens"]:
+            logger.warning(
+                "When not using a state-preprocessor with SAC, `fcnet_hiddens`"
+                " will be set to an empty list! Any hidden layer sizes are "
+                "defined via `policy_model.hidden_layer_sizes` and "
+                "`Q_model.hidden_layer_sizes`.")
+            config["model"]["fcnet_hiddens"] = []
 
     # Force-ignore any additionally provided hidden layer sizes.
     # Everything should be configured using SAC's "Q_model" and "policy_model"
@@ -56,8 +63,9 @@ def build_sac_model(policy, obs_space, action_space, config):
         action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
-        framework="torch" if config["use_pytorch"] else "tf",
-        model_interface=SACTorchModel if config["use_pytorch"] else SACTFModel,
+        framework=config["framework"],
+        model_interface=SACTorchModel
+        if config["framework"] == "torch" else SACTFModel,
         name="sac_model",
         actor_hidden_activation=config["policy_model"]["fcnet_activation"],
         actor_hiddens=config["policy_model"]["fcnet_hiddens"],
@@ -72,8 +80,9 @@ def build_sac_model(policy, obs_space, action_space, config):
         action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
-        framework="torch" if config["use_pytorch"] else "tf",
-        model_interface=SACTorchModel if config["use_pytorch"] else SACTFModel,
+        framework=config["framework"],
+        model_interface=SACTorchModel
+        if config["framework"] == "torch" else SACTFModel,
         name="target_sac_model",
         actor_hidden_activation=config["policy_model"]["fcnet_activation"],
         actor_hiddens=config["policy_model"]["fcnet_hiddens"],
@@ -94,15 +103,14 @@ def postprocess_trajectory(policy,
 
 
 def get_dist_class(config, action_space):
-    assert config["_use_beta_distribution"] is False, \
-        "Beta-distr. not supported for tf!"
-
     if isinstance(action_space, Discrete):
-        action_dist_class = Categorical
+        return Categorical
     else:
-        action_dist_class = (SquashedGaussian
-                             if config["normalize_actions"] else DiagGaussian)
-    return action_dist_class
+        if config["normalize_actions"]:
+            return SquashedGaussian if \
+                not config["_use_beta_distribution"] else Beta
+        else:
+            return DiagGaussian
 
 
 def get_distribution_inputs_and_class(policy,

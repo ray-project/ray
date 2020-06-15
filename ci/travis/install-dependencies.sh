@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-{ SHELLOPTS_STACK="${SHELLOPTS_STACK-}|$(set +o); set -$-"; } 2> /dev/null  # Push caller's shell options (quietly)
+# Push caller's shell options (quietly)
+{ SHELLOPTS_STACK="${SHELLOPTS_STACK-}|$(set +o); set -$-"; } 2> /dev/null
 
 set -euxo pipefail
 
@@ -9,20 +10,38 @@ WORKSPACE_DIR="${ROOT_DIR}/../.."
 
 pkg_install_helper() {
   case "${OSTYPE}" in
-    darwin*) brew install "$@";;
-    linux*) sudo apt-get install -qq -o=Dpkg::Use-Pty=0 "$@" | grep --line-buffered -v "^\(Preparing to unpack\|Unpacking\|Processing triggers for\) ";;
+    darwin*)
+      brew install "$@"
+      ;;
+    linux*)
+      sudo apt-get install -qq -o=Dpkg::Use-Pty=0 "$@" | {
+        grep --line-buffered -v "^\(Preparing to unpack\|Unpacking\|Processing triggers for\) "
+      }
+      ;;
     *) false;;
   esac
+}
+
+install_bazel() {
+  "${ROOT_DIR}"/install-bazel.sh
+  if [ -f /etc/profile.d/bazel.sh ]; then
+    . /etc/profile.d/bazel.sh
+  fi
 }
 
 install_base() {
   case "${OSTYPE}" in
     linux*)
+      # Expired apt key error: https://github.com/bazelbuild/bazel/issues/11470#issuecomment-633205152
+      curl -f -s -L -R https://bazel.build/bazel-release.pub.gpg | sudo apt-key add - || true
       sudo apt-get update -qq
-      pkg_install_helper build-essential curl unzip tmux gdb libunwind-dev python3-pip python3-setuptools
+      pkg_install_helper build-essential curl unzip libunwind-dev python3-pip python3-setuptools \
+        tmux gdb
       if [ "${LINUX_WHEELS-}" = 1 ]; then
         pkg_install_helper docker
-        sudo usermod -a -G docker travis
+        if [ -n "${TRAVIS-}" ]; then
+          sudo usermod -a -G docker travis
+        fi
       fi
       if [ -n "${PYTHON-}" ]; then
         "${ROOT_DIR}/install-strace.sh" || true
@@ -32,51 +51,101 @@ install_base() {
 }
 
 install_miniconda() {
-  local miniconda_version="3-4.5.4" miniconda_platform="" exe_suffix=".sh"
-  case "${OSTYPE}" in
-    linux*) miniconda_platform=Linux;;
-    darwin*) miniconda_platform=MacOSX;;
-    msys*) miniconda_platform=Windows; exe_suffix=".exe";;
-  esac
-  local miniconda_url="https://repo.continuum.io/miniconda/Miniconda${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
-  local miniconda_target="./${miniconda_url##*/}"
-  local miniconda_dir="$HOME/miniconda"
-  curl -s -L -o "${miniconda_target}" "${miniconda_url}"
-  chmod +x "${miniconda_target}"
-  case "${OSTYPE}" in
-    msys*)
-      miniconda_dir="${miniconda_dir}/bin"  # HACK: Compensate for python.exe being in the installation root on Windows
-      MSYS2_ARG_CONV_EXCL="*" "${miniconda_target}" /S /D="$(cygpath -w -- "${miniconda_dir}")"
-      ;;
-    *)
-      "${miniconda_target}" -b -p "${miniconda_dir}" | grep --line-buffered -v "^\(installing: \|installation finished\.\)"
-      ;;
-  esac
-  { local set_x="${-//[^x]/}"; } 2> /dev/null  # save set -x to suppress noise
-  set +x
-  local source_line='PYTHON3_BIN_PATH=python; PATH="$HOME/miniconda/bin:$PATH"; export PYTHON3_BIN_PATH PATH;'
-  test -f ~/.bashrc && grep -x -q -F "${source_line}" -- ~/.bashrc || echo "${source_line}" >> ~/.bashrc
-  test -z "${set_x}" || set -x  # restore set -x
-  eval "${source_line}"
-  python -m pip install --upgrade --quiet pip
+  local conda="${CONDA_EXE-}"  # Try to get the activated conda executable
+
+  if [ -z "${conda}" ]; then  # If no conda is found, try to find it in PATH
+    conda="$(command -v conda || true)"
+  fi
+
+  if [ ! -x "${conda}" ]; then  # If no conda is found, install it
+    local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
+    case "${OSTYPE}" in
+      linux*) miniconda_dir="/opt/miniconda";;
+      darwin*) miniconda_dir="/usr/local/opt/miniconda";;
+      msys) miniconda_dir="${ALLUSERSPROFILE}\Miniconda3";;  # Avoid spaces; prefer the default path
+    esac
+
+    local miniconda_version="Miniconda3-py37_4.8.2" miniconda_platform="" exe_suffix=".sh"
+    case "${OSTYPE}" in
+      linux*) miniconda_platform=Linux;;
+      darwin*) miniconda_platform=MacOSX;;
+      msys*) miniconda_platform=Windows; exe_suffix=".exe";;
+    esac
+
+    local miniconda_url="https://repo.continuum.io/miniconda/${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
+    local miniconda_target="${HOME}/${miniconda_url##*/}"
+    curl -f -s -L -o "${miniconda_target}" "${miniconda_url}"
+    chmod +x "${miniconda_target}"
+
+    case "${OSTYPE}" in
+      msys*)
+        # We set /AddToPath=0 because
+        # (1) it doesn't take care of the current shell, and
+        # (2) it's consistent with -b in the UNIX installers.
+        MSYS2_ARG_CONV_EXCL="*" "${miniconda_target}" \
+          /RegisterPython=0 /AddToPath=0 /InstallationType=AllUsers /S /D="${miniconda_dir}"
+        conda="${miniconda_dir}\Scripts\conda.exe"
+        ;;
+      *)
+        mkdir -p -- "${miniconda_dir}"
+        # We're forced to pass -b for non-interactive mode.
+        # Unfortunately it inhibits PATH modifications as a side effect.
+        "${WORKSPACE_DIR}"/ci/suppress_output "${miniconda_target}" -f -b -p "${miniconda_dir}"
+        conda="${miniconda_dir}/bin/conda"
+        ;;
+    esac
+  fi
+
+  if [ ! -x "${CONDA_PYTHON_EXE-}" ]; then  # If conda isn't activated, activate it
+    local restore_shell_state=""
+    if [ -o xtrace ]; then set +x && restore_shell_state="set -x"; fi  # Disable set -x (noisy here)
+
+    # TODO(mehrdadn): conda activation is buggy on MSYS2; it adds C:/... to PATH,
+    # which gets split on a colon. Is it necessary to work around this?
+    eval "$("${conda}" shell."${SHELL##*/}" hook)"  # Activate conda
+    conda init "${SHELL##*/}"  # Add to future shells
+
+    ${restore_shell_state}  # Restore set -x
+  fi
+
+  local python_version
+  python_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
+  if [ -n "${PYTHON-}" ] && [ "${PYTHON}" != "${python_version}" ]; then  # Update Python version
+    (
+      set +x
+      echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
+      "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
+    )
+  fi
+
+  command -V python
+  test -x "${CONDA_PYTHON_EXE}"  # make sure conda is activated
+}
+
+install_linters() {
+  pip install flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0 yapf==0.23.0
 }
 
 install_nvm() {
   local NVM_HOME="${HOME}/.nvm"
   if [ "${OSTYPE}" = msys ]; then
-    local version="1.1.7"
+    local ver="1.1.7"
     if [ ! -f "${NVM_HOME}/nvm.sh" ]; then
       mkdir -p -- "${NVM_HOME}"
       export NVM_SYMLINK="${PROGRAMFILES}\nodejs"
       (
         cd "${NVM_HOME}"
-        local target="./nvm-${version}.zip"
-        curl -s -L -o "${target}" "https://github.com/coreybutler/nvm-windows/releases/download/${version}/nvm-noinstall.zip"
+        local target="./nvm-${ver}.zip"
+        curl -f -s -L -o "${target}" \
+          "https://github.com/coreybutler/nvm-windows/releases/download/${ver}/nvm-noinstall.zip"
         unzip -q -- "${target}"
         rm -f -- "${target}"
         printf "%s\r\n" "root: $(cygpath -w -- "${NVM_HOME}")" "path: ${NVM_SYMLINK}" > settings.txt
       )
-      printf "%s\n" "export NVM_HOME=\"$(cygpath -w -- "${NVM_HOME}")\"" 'nvm() { "${NVM_HOME}/nvm.exe" "$@"; }' > "${NVM_HOME}/nvm.sh"
+      printf "%s\n" \
+        "export NVM_HOME=\"$(cygpath -w -- "${NVM_HOME}")\"" \
+        'nvm() { "${NVM_HOME}/nvm.exe" "$@"; }' \
+        > "${NVM_HOME}/nvm.sh"
     fi
   else
     test -f "${NVM_HOME}/nvm.sh"  # double-check NVM is already available on other platforms
@@ -89,7 +158,7 @@ install_pip() {
     python=python3
   fi
 
-  if "${python}" -m pip --version || "${python}" -m ensurepip; then  # If pip is present, configure it
+  if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
     "${python}" -m pip install --upgrade --quiet pip
 
     # If we're in a CI environment, do some configuration
@@ -104,7 +173,7 @@ install_pip() {
 
 install_node() {
   if [ "${OSTYPE}" = msys ]; then
-    { echo "WARNING: Skipping running Node.js due to module incompatibilities with Windows"; } 2> /dev/null
+    { echo "WARNING: Skipping running Node.js due to incompatibilities with Windows"; } 2> /dev/null
   else
     # Install the latest version of Node.js in order to build the dashboard.
     (
@@ -117,54 +186,90 @@ install_node() {
   fi
 }
 
-run_npm() {
-  npm ci
+install_toolchains() {
+  "${ROOT_DIR}"/install-toolchains.sh
 }
 
 install_dependencies() {
 
+  install_bazel
   install_base
-  if [ -n "${GITHUB_WORKFLOW-}" ]; then  # Keep Travis's built-in compilers and only use this for GitHub Actions (for now)
-    "${ROOT_DIR}"/install-toolchains.sh
-  fi
+  install_toolchains
   install_nvm
   install_pip
 
-  if [ -n "${PYTHON-}" ]; then
+  if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ]; then
     install_miniconda
-    pip_packages=(scipy tensorflow=="${TF_VERSION:-2.0.0b1}" cython==0.29.0 gym opencv-python-headless pyyaml \
-      pandas==0.24.2 requests feather-format lxml openpyxl xlrd py-spy pytest pytest-timeout networkx tabulate aiohttp \
-      uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
-      scikit-learn numba)
+  fi
+
+  # Install modules needed in all jobs.
+  pip install --no-clean dm-tree  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
+
+  if [ -n "${PYTHON-}" ]; then
+    # PyTorch is installed first since we are using a "-f" directive to find the wheels.
+    # We want to install the CPU version only.
+    local torch_url="https://download.pytorch.org/whl/torch_stable.html"
+    case "${OSTYPE}" in
+      darwin*) pip install torch torchvision;;
+      *) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f "${torch_url}";;
+    esac
+
+    local tf_version
+    case "${OSTYPE}" in
+      msys) tf_version="${TF_VERSION:-2.2.0}";;
+      *) tf_version="${TF_VERSION:-2.1.0}";;
+    esac
+    pip_packages+=(scipy tensorflow=="${tf_version}" cython==0.29.0 gym \
+      opencv-python-headless pyyaml pandas==0.24.2 requests feather-format lxml openpyxl xlrd \
+      py-spy pytest pytest-timeout networkx tabulate aiohttp uvicorn dataclasses pygments werkzeug \
+      kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio scikit-learn==0.22.2 numba \
+      Pillow prometheus_client boto3)
     if [ "${OSTYPE}" != msys ]; then
       # These packages aren't Windows-compatible
       pip_packages+=(blist)  # https://github.com/DanielStutzbach/blist/issues/81#issue-391460716
     fi
-    CC=gcc pip install "${pip_packages[@]}"
-  elif [ "${LINT-}" = 1 ]; then
-    install_miniconda
-    pip install flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0  # Python linters
-    pushd "${WORKSPACE_DIR}/python/ray/dashboard/client"  # TypeScript & HTML linters
-      install_node
-      run_npm
-    popd
+
+    # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
+    # that break the entire CI job: Simply retry installation in this case
+    # after n seconds.
+    local status="0";
+    local errmsg="";
+    for i in {1..3};
+    do
+      errmsg=$(CC=gcc pip install "${pip_packages[@]}" 2>&1) && break;
+      status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
+    done
+    if [ "$status" != "0" ]; then
+      echo "${status}" && return 1
+    fi
   fi
 
-  # Install modules needed in all jobs.
-  pip install dm-tree
+  if [ "${LINT-}" = 1 ]; then
+    install_linters
+    # readthedocs has an antiquated build env.
+    # This is a best effort to reproduce it locally to avoid doc build failures and hidden errors.
+    local python_version
+    python_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
+    if [ "${OSTYPE}" = msys ] && [ "${python_version}" = "3.8" ]; then
+      { echo "WARNING: Pillow binaries not available on Windows; cannot build docs"; } 2> /dev/null
+    else
+      pip install -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
+      pip install -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
+    fi
+  fi
 
   # Additional RLlib dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ]; then
-    pip install tensorflow-probability=="${TFP_VERSION-0.8}" gast==0.2.2 torch=="${TORCH_VERSION-1.4}" torchvision \
-      atari_py gym[atari] lz4 smart_open
+    pip install tensorflow-probability=="${TFP_VERSION-0.8}" gast==0.2.2 \
+      torch=="${TORCH_VERSION-1.4}" torchvision atari_py gym[atari] lz4 smart_open
   fi
 
   # Additional streaming dependencies.
   if [ "${RAY_CI_STREAMING_PYTHON_AFFECTED}" = 1 ]; then
-    pip install msgpack>=0.6.2
+    pip install "msgpack>=1.0.0"
   fi
 
-  if [ -n "${PYTHON-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
+  if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
     install_node
   fi
 
@@ -173,4 +278,5 @@ install_dependencies() {
 
 install_dependencies "$@"
 
-{ set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null  # Pop caller's shell options (quietly)
+# Pop caller's shell options (quietly)
+{ set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null

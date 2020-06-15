@@ -32,12 +32,14 @@ class TaskFinisherInterface {
   virtual void CompletePendingTask(const TaskID &task_id, const rpc::PushTaskReply &reply,
                                    const rpc::Address &actor_addr) = 0;
 
-  virtual void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+  virtual bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
                                  Status *status = nullptr) = 0;
 
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
       const std::vector<ObjectID> &contained_ids) = 0;
+
+  virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
 
   virtual ~TaskFinisherInterface() {}
 };
@@ -51,17 +53,22 @@ class TaskResubmissionInterface {
 };
 
 using RetryTaskCallback = std::function<void(const TaskSpecification &spec, bool delay)>;
+using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
  public:
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
               std::shared_ptr<ActorManagerInterface> actor_manager,
-              RetryTaskCallback retry_task_callback)
+              RetryTaskCallback retry_task_callback,
+              const std::function<bool(const ClientID &node_id)> &check_node_alive,
+              ReconstructObjectCallback reconstruct_object_callback)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         actor_manager_(actor_manager),
-        retry_task_callback_(retry_task_callback) {
+        retry_task_callback_(retry_task_callback),
+        check_node_alive_(check_node_alive),
+        reconstruct_object_callback_(reconstruct_object_callback) {
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
           RemoveLineageReference(object_id, ids_to_release);
@@ -114,7 +121,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] task_id ID of the pending task.
   /// \param[in] error_type The type of the specific error.
   /// \param[in] status Optional status message.
-  void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+  /// \return Whether the task will be retried or not.
+  bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
                          Status *status = nullptr) override;
 
   /// A task's dependencies were inlined in the task spec. This will decrement
@@ -128,6 +136,15 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// the inlined dependencies.
   void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
                                  const std::vector<ObjectID> &contained_ids) override;
+
+  /// Set number of retries to zero for a task that is being canceled.
+  ///
+  /// \param[in] task_id to cancel.
+  /// \return Whether the task was pending and was marked for cancellation.
+  bool MarkTaskCanceled(const TaskID &task_id) override;
+
+  /// Return the spec for a pending task.
+  absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const;
 
   /// Return whether this task can be submitted for execution.
   ///
@@ -155,7 +172,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               size_t num_returns)
         : spec(spec_arg), num_retries_left(num_retries_left_arg) {
       for (size_t i = 0; i < num_returns; i++) {
-        reconstructable_return_ids.insert(spec.ReturnId(i, TaskTransportType::DIRECT));
+        reconstructable_return_ids.insert(spec.ReturnId(i));
       }
     }
     /// The task spec. This is pinned as long as the following are true:
@@ -225,6 +242,17 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;
+
+  /// Called to check whether a raylet is still alive. This is used when
+  /// processing a worker's reply to check whether the node that the worker
+  /// was on is still alive. If the node is down, the plasma objects returned by the task
+  /// are marked as failed.
+  const std::function<bool(const ClientID &node_id)> check_node_alive_;
+  /// Called when processing a worker's reply if the node that the worker was
+  /// on died. This should be called to attempt to recover a plasma object
+  /// returned by the task (or store an error if the object is not
+  /// recoverable).
+  const ReconstructObjectCallback reconstruct_object_callback_;
 
   // The number of task failures we have logged total.
   int64_t num_failure_logs_ GUARDED_BY(mu_) = 0;

@@ -7,6 +7,7 @@ import pytest
 
 import ray
 import ray.ray_constants as ray_constants
+from ray.test_utils import get_other_nodes
 
 
 @pytest.mark.parametrize(
@@ -70,8 +71,8 @@ def test_actor_creation_node_failure(ray_start_cluster):
             assert len(ready) == len(children_out)
 
         # Remove a node. Any actor creation tasks that were forwarded to this
-        # node must be reconstructed.
-        cluster.remove_node(cluster.list_all_nodes()[-1])
+        # node must be restarted.
+        cluster.remove_node(get_other_nodes(cluster, True)[-1])
 
 
 @pytest.mark.skipif(

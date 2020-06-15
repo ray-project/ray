@@ -1,23 +1,76 @@
+from functools import partial
 import numpy as np
-from gym.spaces import Box
-from scipy.stats import norm, beta
+from gym.spaces import Box, Dict, Tuple
+from scipy.stats import beta, norm
 import unittest
 
-from ray.rllib.models.tf.tf_action_dist import Categorical, MultiCategorical, \
-    SquashedGaussian, GumbelSoftmax
-from ray.rllib.models.torch.torch_action_dist import TorchMultiCategorical, \
-    TorchSquashedGaussian, TorchBeta
-from ray.rllib.utils import try_import_tf, try_import_torch
+from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
+    DiagGaussian, GumbelSoftmax, MultiActionDistribution, MultiCategorical, \
+    SquashedGaussian
+from ray.rllib.models.torch.torch_action_dist import TorchBeta, \
+    TorchCategorical, TorchDiagGaussian, TorchMultiActionDistribution, \
+    TorchMultiCategorical, TorchSquashedGaussian
+from ray.rllib.utils import try_import_tree
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, \
-    softmax, SMALL_NUMBER
+    softmax, SMALL_NUMBER, LARGE_INTEGER
 from ray.rllib.utils.test_utils import check, framework_iterator
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
+tree = try_import_tree()
 
 
 class TestDistributions(unittest.TestCase):
     """Tests ActionDistribution classes."""
+
+    def _stability_test(self,
+                        distribution_cls,
+                        network_output_shape,
+                        fw,
+                        sess=None,
+                        bounds=None):
+        extreme_values = [
+            0.0,
+            float(LARGE_INTEGER),
+            -float(LARGE_INTEGER),
+            1.1e-34,
+            1.1e34,
+            -1.1e-34,
+            -1.1e34,
+            SMALL_NUMBER,
+            -SMALL_NUMBER,
+        ]
+        inputs = np.zeros(shape=network_output_shape, dtype=np.float32)
+        for batch_item in range(network_output_shape[0]):
+            for num in range(len(inputs[batch_item]) // 2):
+                inputs[batch_item][num] = np.random.choice(extreme_values)
+            else:
+                # For Gaussians, the second half of the vector is
+                # log standard deviations, and should therefore be
+                # the log of a positive number >= 1.
+                inputs[batch_item][num] = np.log(
+                    max(1, np.random.choice((extreme_values))))
+
+        dist = distribution_cls(inputs, {})
+        for _ in range(100):
+            sample = dist.sample()
+            if fw != "tf":
+                sample_check = sample.numpy()
+            else:
+                sample_check = sess.run(sample)
+            assert not np.any(np.isnan(sample_check))
+            assert np.all(np.isfinite(sample_check))
+            if bounds:
+                assert np.min(sample_check) >= bounds[0]
+                assert np.max(sample_check) <= bounds[1]
+            logp = dist.logp(sample)
+            if fw != "tf":
+                logp_check = logp.numpy()
+            else:
+                logp_check = sess.run(logp)
+            assert not np.any(np.isnan(logp_check))
+            assert np.all(np.isfinite(logp_check))
 
     def test_categorical(self):
         """Tests the Categorical ActionDistribution (tf only)."""
@@ -103,8 +156,14 @@ class TestDistributions(unittest.TestCase):
         input_space = Box(-2.0, 2.0, shape=(200, 10))
         low, high = -2.0, 1.0
 
-        for fw, sess in framework_iterator(session=True):
+        for fw, sess in framework_iterator(
+                frameworks=("torch", "tf", "tfe"), session=True):
             cls = SquashedGaussian if fw != "torch" else TorchSquashedGaussian
+
+            # Do a stability test using extreme NN outputs to see whether
+            # sampling and logp'ing result in NaN or +/-inf values.
+            self._stability_test(
+                cls, input_space.shape, fw=fw, sess=sess, bounds=(low, high))
 
             # Batch of size=n and deterministic.
             inputs = input_space.sample()
@@ -125,8 +184,8 @@ class TestDistributions(unittest.TestCase):
                 values = sess.run(values)
             else:
                 values = values.numpy()
-            self.assertTrue(np.max(values) < high)
-            self.assertTrue(np.min(values) > low)
+            self.assertTrue(np.max(values) <= high)
+            self.assertTrue(np.min(values) >= low)
 
             check(np.mean(values), expected.mean(), decimals=1)
 
@@ -143,12 +202,12 @@ class TestDistributions(unittest.TestCase):
             # Unsquash values, then get log-llh from regular gaussian.
             # atanh_in = np.clip((values - low) / (high - low) * 2.0 - 1.0,
             #   -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER)
-            atanh_in = (values - low) / (high - low) * 2.0 - 1.0
-            unsquashed_values = np.arctanh(atanh_in)
+            normed_values = (values - low) / (high - low) * 2.0 - 1.0
+            save_normed_values = np.clip(normed_values, -1.0 + SMALL_NUMBER,
+                                         1.0 - SMALL_NUMBER)
+            unsquashed_values = np.arctanh(save_normed_values)
             log_prob_unsquashed = np.sum(
-                np.log(
-                    norm.pdf(unsquashed_values, means, stds) + SMALL_NUMBER),
-                -1)
+                np.log(norm.pdf(unsquashed_values, means, stds)), -1)
             log_prob = log_prob_unsquashed - \
                 np.sum(np.log(1 - np.tanh(unsquashed_values) ** 2),
                        axis=-1)
@@ -185,18 +244,88 @@ class TestDistributions(unittest.TestCase):
                 outs = sess.run(outs)
             check(outs, log_prob, decimals=4)
 
+    def test_diag_gaussian(self):
+        """Tests the DiagGaussian ActionDistribution for all frameworks."""
+        input_space = Box(-2.0, 2.0, shape=(200, 10))
+
+        for fw, sess in framework_iterator(
+                frameworks=("torch", "tf", "tfe"), session=True):
+            cls = DiagGaussian if fw != "torch" else TorchDiagGaussian
+
+            # Do a stability test using extreme NN outputs to see whether
+            # sampling and logp'ing result in NaN or +/-inf values.
+            self._stability_test(cls, input_space.shape, fw=fw, sess=sess)
+
+            # Batch of size=n and deterministic.
+            inputs = input_space.sample()
+            means, _ = np.split(inputs, 2, axis=-1)
+            diag_distribution = cls(inputs, {})
+            expected = means
+            # Sample n times, expect always mean value (deterministic draw).
+            out = diag_distribution.deterministic_sample()
+            check(out, expected)
+
+            # Batch of size=n and non-deterministic -> expect roughly the mean.
+            inputs = input_space.sample()
+            means, log_stds = np.split(inputs, 2, axis=-1)
+            diag_distribution = cls(inputs, {})
+            expected = means
+            values = diag_distribution.sample()
+            if sess:
+                values = sess.run(values)
+            else:
+                values = values.numpy()
+            check(np.mean(values), expected.mean(), decimals=1)
+
+            # Test log-likelihood outputs.
+            sampled_action_logp = diag_distribution.logp(
+                values if fw != "torch" else torch.Tensor(values))
+            if sess:
+                sampled_action_logp = sess.run(sampled_action_logp)
+            else:
+                sampled_action_logp = sampled_action_logp.numpy()
+
+            # NN output.
+            means = np.array(
+                [[0.1, 0.2, 0.3, 0.4, 50.0], [-0.1, -0.2, -0.3, -0.4, -1.0]],
+                dtype=np.float32)
+            log_stds = np.array(
+                [[0.8, -0.2, 0.3, -1.0, 2.0], [0.7, -0.3, 0.4, -0.9, 2.0]],
+                dtype=np.float32)
+
+            diag_distribution = cls(
+                inputs=np.concatenate([means, log_stds], axis=-1), model={})
+            # Convert to parameters for distr.
+            stds = np.exp(log_stds)
+            # Values to get log-likelihoods for.
+            values = np.array([[0.9, 0.2, 0.4, -0.1, -1.05],
+                               [-0.9, -0.2, 0.4, -0.1, -1.05]])
+
+            # get log-llh from regular gaussian.
+            log_prob = np.sum(np.log(norm.pdf(values, means, stds)), -1)
+
+            outs = diag_distribution.logp(values if fw != "torch" else
+                                          torch.Tensor(values))
+            if sess:
+                outs = sess.run(outs)
+            check(outs, log_prob, decimals=4)
+
     def test_beta(self):
         input_space = Box(-2.0, 1.0, shape=(200, 10))
         low, high = -1.0, 2.0
         plain_beta_value_space = Box(0.0, 1.0, shape=(200, 5))
 
-        for fw, sess in framework_iterator(frameworks="torch", session=True):
-            cls = TorchBeta
+        for fw, sess in framework_iterator(session=True):
+            cls = TorchBeta if fw == "torch" else Beta
             inputs = input_space.sample()
             beta_distribution = cls(inputs, {}, low=low, high=high)
 
             inputs = beta_distribution.inputs
-            alpha, beta_ = np.split(inputs.numpy(), 2, axis=-1)
+            if sess:
+                inputs = sess.run(inputs)
+            else:
+                inputs = inputs.numpy()
+            alpha, beta_ = np.split(inputs, 2, axis=-1)
 
             # Mean for a Beta distribution: 1 / [1 + (beta/alpha)]
             expected = (1.0 / (1.0 + beta_ / alpha)) * (high - low) + low
@@ -219,11 +348,17 @@ class TestDistributions(unittest.TestCase):
             inputs = input_space.sample()
             beta_distribution = cls(inputs, {}, low=low, high=high)
             inputs = beta_distribution.inputs
-            alpha, beta_ = np.split(inputs.numpy(), 2, axis=-1)
+            if sess:
+                inputs = sess.run(inputs)
+            else:
+                inputs = inputs.numpy()
+            alpha, beta_ = np.split(inputs, 2, axis=-1)
 
             values = plain_beta_value_space.sample()
             values_scaled = values * (high - low) + low
-            out = beta_distribution.logp(torch.Tensor(values_scaled))
+            if fw == "torch":
+                values_scaled = torch.Tensor(values_scaled)
+            out = beta_distribution.logp(values_scaled)
             check(
                 out,
                 np.sum(np.log(beta.pdf(values, alpha, beta_)), -1),
@@ -232,9 +367,9 @@ class TestDistributions(unittest.TestCase):
             # TODO(sven): Test entropy outputs (against scipy).
 
     def test_gumbel_softmax(self):
-        """Tests the GumbelSoftmax ActionDistribution (tf-eager only)."""
+        """Tests the GumbelSoftmax ActionDistribution (tf + eager only)."""
         for fw, sess in framework_iterator(
-                frameworks=["tf", "eager"], session=True):
+                frameworks=["tf", "tfe"], session=True):
             batch_size = 1000
             num_categories = 5
             input_space = Box(-1.0, 1.0, shape=(batch_size, num_categories))
@@ -257,6 +392,172 @@ class TestDistributions(unittest.TestCase):
             if sess:
                 outs = sess.run(outs)
             check(np.mean(np.argmax(outs, -1)), expected_mean, rtol=0.08)
+
+    def test_multi_action_distribution(self):
+        """Tests the MultiActionDistribution (across all frameworks)."""
+        batch_size = 1000
+        input_space = Tuple([
+            Box(-10.0, 10.0, shape=(batch_size, 4)),
+            Box(-2.0, 2.0, shape=(
+                batch_size,
+                6,
+            )),
+            Dict({
+                "a": Box(-1.0, 1.0, shape=(batch_size, 4))
+            }),
+        ])
+        std_space = Box(
+            -0.05, 0.05, shape=(
+                batch_size,
+                3,
+            ))
+
+        low, high = -1.0, 1.0
+        value_space = Tuple([
+            Box(0, 3, shape=(batch_size, ), dtype=np.int32),
+            Box(-2.0, 2.0, shape=(batch_size, 3), dtype=np.float32),
+            Dict({
+                "a": Box(0.0, 1.0, shape=(batch_size, 2), dtype=np.float32)
+            })
+        ])
+
+        for fw, sess in framework_iterator(session=True):
+            if fw == "torch":
+                cls = TorchMultiActionDistribution
+                child_distr_cls = [
+                    TorchCategorical, TorchDiagGaussian,
+                    partial(TorchBeta, low=low, high=high)
+                ]
+            else:
+                cls = MultiActionDistribution
+                child_distr_cls = [
+                    Categorical,
+                    DiagGaussian,
+                    partial(Beta, low=low, high=high),
+                ]
+
+            inputs = list(input_space.sample())
+            distr = cls(
+                np.concatenate([inputs[0], inputs[1], inputs[2]["a"]], axis=1),
+                model={},
+                action_space=value_space,
+                child_distributions=child_distr_cls,
+                input_lens=[4, 6, 4])
+
+            # Adjust inputs for the Beta distr just as Beta itself does.
+            inputs[2]["a"] = np.clip(inputs[2]["a"], np.log(SMALL_NUMBER),
+                                     -np.log(SMALL_NUMBER))
+            inputs[2]["a"] = np.log(np.exp(inputs[2]["a"]) + 1.0) + 1.0
+            # Sample deterministically.
+            expected_det = [
+                np.argmax(inputs[0], axis=-1),
+                inputs[1][:, :3],  # [:3]=Mean values.
+                # Mean for a Beta distribution:
+                # 1 / [1 + (beta/alpha)] * range + low
+                (1.0 / (1.0 + inputs[2]["a"][:, 2:] / inputs[2]["a"][:, 0:2]))
+                * (high - low) + low,
+            ]
+            out = distr.deterministic_sample()
+            if sess:
+                out = sess.run(out)
+            check(out[0], expected_det[0])
+            check(out[1], expected_det[1])
+            check(out[2]["a"], expected_det[2])
+
+            # Stochastic sampling -> expect roughly the mean.
+            inputs = list(input_space.sample())
+            # Fix categorical inputs (not needed for distribution itself, but
+            # for our expectation calculations).
+            inputs[0] = softmax(inputs[0], -1)
+            # Fix std inputs (shouldn't be too large for this test).
+            inputs[1][:, 3:] = std_space.sample()
+            # Adjust inputs for the Beta distr just as Beta itself does.
+            inputs[2]["a"] = np.clip(inputs[2]["a"], np.log(SMALL_NUMBER),
+                                     -np.log(SMALL_NUMBER))
+            inputs[2]["a"] = np.log(np.exp(inputs[2]["a"]) + 1.0) + 1.0
+            distr = cls(
+                np.concatenate([inputs[0], inputs[1], inputs[2]["a"]], axis=1),
+                model={},
+                action_space=value_space,
+                child_distributions=child_distr_cls,
+                input_lens=[4, 6, 4])
+            expected_mean = [
+                np.mean(np.sum(inputs[0] * np.array([0, 1, 2, 3]), -1)),
+                inputs[1][:, :3],  # [:3]=Mean values.
+                # Mean for a Beta distribution:
+                # 1 / [1 + (beta/alpha)] * range + low
+                (1.0 / (1.0 + inputs[2]["a"][:, 2:] / inputs[2]["a"][:, :2])) *
+                (high - low) + low,
+            ]
+            out = distr.sample()
+            if sess:
+                out = sess.run(out)
+            out = list(out)
+            if fw == "torch":
+                out[0] = out[0].numpy()
+                out[1] = out[1].numpy()
+                out[2]["a"] = out[2]["a"].numpy()
+            check(np.mean(out[0]), expected_mean[0], decimals=1)
+            check(np.mean(out[1], 0), np.mean(expected_mean[1], 0), decimals=1)
+            check(
+                np.mean(out[2]["a"], 0),
+                np.mean(expected_mean[2], 0),
+                decimals=1)
+
+            # Test log-likelihood outputs.
+            # Make sure beta-values are within 0.0 and 1.0 for the numpy
+            # calculation (which doesn't have scaling).
+            inputs = list(input_space.sample())
+            # Adjust inputs for the Beta distr just as Beta itself does.
+            inputs[2]["a"] = np.clip(inputs[2]["a"], np.log(SMALL_NUMBER),
+                                     -np.log(SMALL_NUMBER))
+            inputs[2]["a"] = np.log(np.exp(inputs[2]["a"]) + 1.0) + 1.0
+            distr = cls(
+                np.concatenate([inputs[0], inputs[1], inputs[2]["a"]], axis=1),
+                model={},
+                action_space=value_space,
+                child_distributions=child_distr_cls,
+                input_lens=[4, 6, 4])
+            inputs[0] = softmax(inputs[0], -1)
+            values = list(value_space.sample())
+            log_prob_beta = np.log(
+                beta.pdf(values[2]["a"], inputs[2]["a"][:, :2],
+                         inputs[2]["a"][:, 2:]))
+            # Now do the up-scaling for [2] (beta values) to be between
+            # low/high.
+            values[2]["a"] = values[2]["a"] * (high - low) + low
+            inputs[1][:, 3:] = np.exp(inputs[1][:, 3:])
+            expected_log_llh = np.sum(
+                np.concatenate([
+                    np.expand_dims(
+                        np.log(
+                            [i[values[0][j]]
+                             for j, i in enumerate(inputs[0])]), -1),
+                    np.log(
+                        norm.pdf(values[1], inputs[1][:, :3],
+                                 inputs[1][:, 3:])), log_prob_beta
+                ], -1), -1)
+
+            values[0] = np.expand_dims(values[0], -1)
+            if fw == "torch":
+                values = tree.map_structure(lambda s: torch.Tensor(s), values)
+            # Test all flattened input.
+            concat = np.concatenate(tree.flatten(values),
+                                    -1).astype(np.float32)
+            out = distr.logp(concat)
+            if sess:
+                out = sess.run(out)
+            check(out, expected_log_llh, atol=15)
+            # Test structured input.
+            out = distr.logp(values)
+            if sess:
+                out = sess.run(out)
+            check(out, expected_log_llh, atol=15)
+            # Test flattened input.
+            out = distr.logp(tree.flatten(values))
+            if sess:
+                out = sess.run(out)
+            check(out, expected_log_llh, atol=15)
 
 
 if __name__ == "__main__":

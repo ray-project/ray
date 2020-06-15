@@ -17,6 +17,8 @@ import logging
 import os
 import pickle
 import sys
+import _thread
+import setproctitle
 
 from libc.stdint cimport (
     int32_t,
@@ -77,10 +79,10 @@ from ray.includes.libcoreworker cimport (
     CActorHandle,
 )
 from ray.includes.ray_config cimport RayConfig
+from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
 import ray
-from ray.async_compat import (sync_to_async,
-                              AsyncGetResponse, AsyncMonitorState)
+from ray.async_compat import (sync_to_async, AsyncGetResponse)
 import ray.memory_monitor as memory_monitor
 import ray.ray_constants as ray_constants
 from ray import profiling
@@ -90,6 +92,7 @@ from ray.exceptions import (
     RayTaskError,
     ObjectStoreFullError,
     RayTimeoutError,
+    RayCancellationError
 )
 from ray.utils import decode
 import gc
@@ -104,22 +107,16 @@ include "includes/buffer.pxi"
 include "includes/common.pxi"
 include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
+include "includes/global_state_accessor.pxi"
 
 
 logger = logging.getLogger(__name__)
 
 
-def set_internal_config(dict options):
-    cdef:
-        unordered_map[c_string, c_string] c_options
-
-    if options is None:
-        return
-
-    for key, value in options.items():
-        c_options[str(key).encode("ascii")] = str(value).encode("ascii")
-
-    RayConfig.instance().initialize(c_options)
+def gcs_actor_service_enabled():
+    return (
+        RayConfig.instance().gcs_service_enabled() and
+        RayConfig.instance().gcs_actor_service_enabled())
 
 
 cdef int check_status(const CRayStatus& status) nogil except -1:
@@ -135,6 +132,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise KeyboardInterrupt()
     elif status.IsTimedOut():
         raise RayTimeoutError(message)
+    elif status.IsNotFound():
+        raise ValueError(message)
     else:
         raise RayletError(message)
 
@@ -395,21 +394,8 @@ cdef execute_task(
                         return function(actor, *arguments, **kwarguments)
                     async_function = sync_to_async(function)
 
-                coroutine = async_function(actor, *arguments, **kwarguments)
-                loop = core_worker.create_or_get_event_loop()
-                monitor_state = loop.monitor_state
-                monitor_state.register_coroutine(coroutine,
-                                                 str(function.method))
-                future = asyncio.run_coroutine_threadsafe(coroutine, loop)
-
-                def callback(future):
-                    task_done_event.Notify()
-                    monitor_state.unregister_coroutine(coroutine)
-
-                future.add_done_callback(callback)
-                core_worker.yield_current_fiber(task_done_event)
-
-                return future.result()
+                return core_worker.run_async_func_in_event_loop(
+                    async_function, actor, *arguments, **kwarguments)
 
             return function(actor, *arguments, **kwarguments)
 
@@ -431,11 +417,11 @@ cdef execute_task(
                     if core_worker.current_actor_is_asyncio():
                         # We deserialize objects in event loop thread to
                         # prevent segfaults. See #7799
-                        def deserialize_args():
+                        async def deserialize_args():
                             return (ray.worker.global_worker
                                     .deserialize_objects(
                                         metadata_pairs, object_ids))
-                        args = core_worker.run_function_in_event_loop(
+                        args = core_worker.run_async_func_in_event_loop(
                             deserialize_args)
                     else:
                         args = ray.worker.global_worker.deserialize_objects(
@@ -453,13 +439,23 @@ cdef execute_task(
                     class_name, repr(args), repr(kwargs))
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
             # Execute the task.
-            with ray.worker._changeproctitle(title, next_title):
-                with core_worker.profile_event(b"task:execute"):
-                    task_exception = True
-                    outputs = function_executor(*args, **kwargs)
+            with core_worker.profile_event(b"task:execute"):
+                task_exception = True
+                try:
+                    with ray.worker._changeproctitle(title, next_title):
+                        outputs = function_executor(*args, **kwargs)
                     task_exception = False
-                    if c_return_ids.size() == 1:
-                        outputs = (outputs,)
+                except KeyboardInterrupt as e:
+                    raise RayCancellationError(
+                            core_worker.get_current_task_id())
+                if c_return_ids.size() == 1:
+                    outputs = (outputs,)
+            # Check for a cancellation that was called when the function
+            # was exiting and was raised after the except block.
+            if not check_signals().ok():
+                task_exception = True
+                raise RayCancellationError(
+                            core_worker.get_current_task_id())
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
                 core_worker.store_task_outputs(
@@ -551,6 +547,14 @@ cdef void async_plasma_callback(CObjectID object_id,
             event_handler._loop.call_soon_threadsafe(
                 event_handler._complete_future, obj_id)
 
+cdef c_bool kill_main_task() nogil:
+    with gil:
+        if setproctitle.getproctitle() != "ray::IDLE":
+            _thread.interrupt_main()
+            return True
+        return False
+
+
 cdef CRayStatus check_signals() nogil:
     with gil:
         try:
@@ -626,6 +630,12 @@ cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
                 <uint8_t*>(c_str.data()), c_str.size(), True))
 
 
+cdef void terminate_asyncio_thread() nogil:
+    with gil:
+        core_worker = ray.worker.global_worker.core_worker
+        core_worker.destroy_event_loop_if_exists()
+
+
 cdef class CoreWorker:
 
     def __cinit__(self, is_driver, store_socket, raylet_socket,
@@ -643,6 +653,7 @@ cdef class CoreWorker:
         options.raylet_socket = raylet_socket.encode("ascii")
         options.job_id = job_id.native()
         options.gcs_options = gcs_options.native()[0]
+        options.enable_logging = True
         options.log_dir = log_dir.encode("utf-8")
         options.install_failure_signal_handler = True
         options.node_ip_address = node_ip_address.encode("utf-8")
@@ -658,6 +669,8 @@ cdef class CoreWorker:
         options.ref_counting_enabled = True
         options.is_local_mode = local_mode
         options.num_workers = 1
+        options.kill_main = kill_main_task
+        options.terminate_asyncio_thread = terminate_asyncio_thread
 
         CCoreWorkerProcess.Initialize(options)
 
@@ -868,9 +881,9 @@ cdef class CoreWorker:
             prepare_args(self, language, args, &args_vector)
 
             with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker().SubmitTask(
+                CCoreWorkerProcess.GetCoreWorker().SubmitTask(
                     ray_function, args_vector, task_options, &return_ids,
-                    max_retries))
+                    max_retries)
 
             return VectorToObjectIDs(return_ids)
 
@@ -878,11 +891,13 @@ cdef class CoreWorker:
                      Language language,
                      FunctionDescriptor function_descriptor,
                      args,
-                     uint64_t max_reconstructions,
+                     int64_t max_restarts,
+                     int64_t max_task_retries,
                      resources,
                      placement_resources,
                      int32_t max_concurrency,
                      c_bool is_detached,
+                     c_string name,
                      c_bool is_asyncio,
                      c_string extension_data):
         cdef:
@@ -904,9 +919,9 @@ cdef class CoreWorker:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
-                        max_reconstructions, max_concurrency,
+                        max_restarts, max_task_retries, max_concurrency,
                         c_resources, c_placement_resources,
-                        dynamic_worker_options, is_detached, is_asyncio),
+                        dynamic_worker_options, is_detached, name, is_asyncio),
                     extension_data,
                     &c_actor_id))
 
@@ -945,13 +960,24 @@ cdef class CoreWorker:
 
             return VectorToObjectIDs(return_ids)
 
-    def kill_actor(self, ActorID actor_id, c_bool no_reconstruction):
+    def kill_actor(self, ActorID actor_id, c_bool no_restart):
         cdef:
             CActorID c_actor_id = actor_id.native()
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().KillActor(
-                  c_actor_id, True, no_reconstruction))
+                  c_actor_id, True, no_restart))
+
+    def cancel_task(self, ObjectID object_id, c_bool force_kill):
+        cdef:
+            CObjectID c_object_id = object_id.native()
+            CRayStatus status = CRayStatus.OK()
+
+        status = CCoreWorkerProcess.GetCoreWorker().CancelTask(
+                                            c_object_id, force_kill)
+
+        if not status.ok():
+            raise TypeError(status.message().decode())
 
     def resource_ids(self):
         cdef:
@@ -986,23 +1012,12 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().RemoveActorHandleReference(
             c_actor_id)
 
-    def deserialize_and_register_actor_handle(self, const c_string &bytes,
-                                              ObjectID
-                                              outer_object_id):
-        cdef:
-            CActorHandle* c_actor_handle
-            CObjectID c_outer_object_id = (outer_object_id.native() if
-                                           outer_object_id else
-                                           CObjectID.Nil())
+    cdef make_actor_handle(self, CActorHandle *c_actor_handle):
         worker = ray.worker.global_worker
         worker.check_connected()
         manager = worker.function_actor_manager
-        c_actor_id = (CCoreWorkerProcess.GetCoreWorker()
-                      .DeserializeAndRegisterActorHandle(
-                          bytes, c_outer_object_id))
-        check_status(CCoreWorkerProcess.GetCoreWorker().GetActorHandle(
-            c_actor_id, &c_actor_handle))
-        actor_id = ActorID(c_actor_id.Binary())
+
+        actor_id = ActorID(c_actor_handle.GetActorID().Binary())
         job_id = JobID(c_actor_handle.CreationJobID().Binary())
         language = Language.from_native(c_actor_handle.ActorLanguage())
         actor_creation_function_descriptor = \
@@ -1036,6 +1051,30 @@ cdef class CoreWorker:
                                          0,  # actor method cpu
                                          actor_creation_function_descriptor,
                                          worker.current_session_and_job)
+
+    def deserialize_and_register_actor_handle(self, const c_string &bytes,
+                                              ObjectID
+                                              outer_object_id):
+        cdef:
+            CActorHandle* c_actor_handle
+            CObjectID c_outer_object_id = (outer_object_id.native() if
+                                           outer_object_id else
+                                           CObjectID.Nil())
+        c_actor_id = (CCoreWorkerProcess.GetCoreWorker()
+                      .DeserializeAndRegisterActorHandle(
+                          bytes, c_outer_object_id))
+        check_status(CCoreWorkerProcess.GetCoreWorker().GetActorHandle(
+            c_actor_id, &c_actor_handle))
+        return self.make_actor_handle(c_actor_handle)
+
+    def get_named_actor_handle(self, const c_string &name):
+        cdef:
+            CActorHandle* c_actor_handle
+
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker()
+                         .GetNamedActorHandle(name, &c_actor_handle))
+        return self.make_actor_handle(c_actor_handle)
 
     def serialize_actor_handle(self, ActorID actor_id):
         cdef:
@@ -1142,16 +1181,13 @@ cdef class CoreWorker:
             asyncio.set_event_loop(self.async_event_loop)
             # Initialize the async plasma connection.
             # Delayed import due to async_api depends on _raylet.
-            from ray.experimental.async_api import _async_init
-            self.async_event_loop.run_until_complete(_async_init())
-
-            # Create and attach the monitor object
-            monitor_state = AsyncMonitorState(self.async_event_loop)
-            self.async_event_loop.monitor_state = monitor_state
+            from ray.experimental.async_api import init as plasma_async_init
+            plasma_async_init()
 
         if self.async_thread is None:
             self.async_thread = threading.Thread(
-                target=lambda: self.async_event_loop.run_forever()
+                target=lambda: self.async_event_loop.run_forever(),
+                name="AsyncIO Thread"
             )
             # Making the thread a daemon causes it to exit
             # when the main thread exits.
@@ -1160,19 +1196,22 @@ cdef class CoreWorker:
 
         return self.async_event_loop
 
-    def run_function_in_event_loop(self, func):
+    def run_async_func_in_event_loop(self, func, *args, **kwargs):
         cdef:
             CFiberEvent event
         loop = self.create_or_get_event_loop()
-        coroutine = sync_to_async(func)()
-        future = asyncio.run_coroutine_threadsafe(coroutine, loop)
+        coroutine = func(*args, **kwargs)
+        if threading.get_ident() == self.async_thread.ident:
+            future = asyncio.ensure_future(coroutine, loop)
+        else:
+            future = asyncio.run_coroutine_threadsafe(coroutine, loop)
         future.add_done_callback(lambda _: event.Notify())
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
                 .YieldCurrentFiber(event))
         return future.result()
 
-    def destory_event_loop_if_exists(self):
+    def destroy_event_loop_if_exists(self):
         if self.async_event_loop is not None:
             self.async_event_loop.stop()
         if self.async_thread is not None:

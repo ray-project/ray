@@ -79,6 +79,7 @@ Models, Preprocessors, and Action Distributions
 *  `Custom Action Distributions <rllib-models.html#custom-action-distributions>`__
 *  `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
 *  `Self-Supervised Model Losses <rllib-models.html#self-supervised-model-losses>`__
+*  `Variable-length / Complex Observation Spaces <rllib-models.html#variable-length-complex-observation-spaces>`__
 *  `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
 *  `Autoregressive Action Distributions <rllib-models.html#autoregressive-action-distributions>`__
 
@@ -89,9 +90,9 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Distributed Prioritized Experience Replay (Ape-X) <apex>`
 
-   -  |tensorflow| :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <impala>`
+   -  |pytorch| |tensorflow| :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <impala>`
 
-   -  |tensorflow| :ref:`Asynchronous Proximal Policy Optimization (APPO) <appo>`
+   -  |pytorch| |tensorflow| :ref:`Asynchronous Proximal Policy Optimization (APPO) <appo>`
 
    -  |pytorch| :ref:`Decentralized Distributed Proximal Policy Optimization (DD-PPO) <ddppo>`
 
@@ -101,7 +102,7 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Advantage Actor-Critic (A2C, A3C) <a3c>`
 
-   -  |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
+   -  |pytorch| |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
 
    -  |pytorch| |tensorflow| :ref:`Deep Q Networks (DQN, Rainbow, Parametric DQN) <dqn>`
 
@@ -109,13 +110,13 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Proximal Policy Optimization (PPO) <ppo>`
 
-   -  |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
+   -  |pytorch| |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
 
 *  Derivative-free
 
-   -  |tensorflow| :ref:`Augmented Random Search (ARS) <ars>`
+   -  |pytorch| |tensorflow| :ref:`Augmented Random Search (ARS) <ars>`
 
-   -  |tensorflow| :ref:`Evolution Strategies <es>`
+   -  |pytorch| |tensorflow| :ref:`Evolution Strategies <es>`
 
 *  Multi-agent specific
 
@@ -124,7 +125,7 @@ Algorithms
 
 *  Offline
 
-   -  |tensorflow| :ref:`Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
+   -  |pytorch| |tensorflow| :ref:`Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
 
 *  Contextual bandits
 
@@ -180,8 +181,8 @@ Package Reference
 *  `ray.rllib.agents <rllib-package-ref.html#module-ray.rllib.agents>`__
 *  `ray.rllib.env <rllib-package-ref.html#module-ray.rllib.env>`__
 *  `ray.rllib.evaluation <rllib-package-ref.html#module-ray.rllib.evaluation>`__
+*  `ray.rllib.execution <rllib-package-ref.html#module-ray.rllib.execution>`__
 *  `ray.rllib.models <rllib-package-ref.html#module-ray.rllib.models>`__
-*  `ray.rllib.optimizers <rllib-package-ref.html#module-ray.rllib.optimizers>`__
 *  `ray.rllib.utils <rllib-package-ref.html#module-ray.rllib.utils>`__
 
 Troubleshooting
