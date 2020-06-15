@@ -96,7 +96,7 @@ class ServeMaster:
         # If starting the actor for the first time, starts up the other system
         # components. If recovering, fetches their actor handles.
         self._get_or_start_metric_exporter(metric_exporter_class)
-        self._get_or_start_router()
+        #self._get_or_start_router()
         self._get_or_start_http_proxy(http_node_id, http_proxy_host,
                                       http_proxy_port)
 
@@ -173,7 +173,7 @@ class ServeMaster:
 
     def get_http_proxy_config(self):
         """Called by the HTTP proxy on startup to fetch required state."""
-        return self.routes, self.get_router()
+        return self.routes
 
     def _get_or_start_metric_exporter(self, metric_exporter_class):
         """Get the metric exporter belonging to this serve instance.
@@ -254,15 +254,15 @@ class ServeMaster:
         # Push configuration state to the router.
         # TODO(edoakes): should we make this a pull-only model for simplicity?
         for endpoint, traffic_policy in self.traffic_policies.items():
-            await self.router.set_traffic.remote(endpoint, traffic_policy)
+            await self.http_proxy.set_traffic.remote(endpoint, traffic_policy)
 
         for backend_tag, replica_dict in self.workers.items():
             for replica_tag, worker in replica_dict.items():
-                await self.router.add_new_worker.remote(
+                await self.http_proxy.add_new_worker.remote(
                     backend_tag, replica_tag, worker)
 
         for backend, (_, backend_config, _) in self.backends.items():
-            await self.router.set_backend_config.remote(
+            await self.http_proxy.set_backend_config.remote(
                 backend, backend_config)
             await self.broadcast_backend_config(backend)
 
@@ -341,8 +341,8 @@ class ServeMaster:
         self.workers[backend_tag][replica_tag] = worker_handle
 
         # Register the worker with the router.
-        await self.router.add_new_worker.remote(backend_tag, replica_tag,
-                                                worker_handle)
+        await self.http_proxy.add_new_worker.remote(backend_tag, replica_tag,
+                                                    worker_handle)
 
     async def _start_pending_replicas(self):
         """Starts the pending backend replicas in self.replicas_to_start.
@@ -380,8 +380,8 @@ class ServeMaster:
                     continue
 
                 # Remove the replica from router. This call is idempotent.
-                await self.router.remove_worker.remote(backend_tag,
-                                                       replica_tag)
+                await self.http_proxy.remove_worker.remote(
+                    backend_tag, replica_tag)
 
                 # TODO(edoakes): this logic isn't ideal because there may be
                 # pending tasks still executing on the replica. However, if we
@@ -398,7 +398,7 @@ class ServeMaster:
         Clears self.backends_to_remove.
         """
         for backend_tag in self.backends_to_remove:
-            await self.router.remove_backend.remote(backend_tag)
+            await self.http_proxy.remove_backend.remote(backend_tag)
         self.backends_to_remove.clear()
 
     async def _remove_pending_endpoints(self):
@@ -407,7 +407,7 @@ class ServeMaster:
         Clears self.endpoints_to_remove.
         """
         for endpoint_tag in self.endpoints_to_remove:
-            await self.router.remove_endpoint.remote(endpoint_tag)
+            await self.http_proxy.remove_endpoint.remote(endpoint_tag)
         self.endpoints_to_remove.clear()
 
     def _scale_replicas(self, backend_tag, num_replicas):
@@ -522,7 +522,7 @@ class ServeMaster:
         # update to avoid inconsistent state if we crash after pushing the
         # update.
         self._checkpoint()
-        await self.router.set_traffic.remote(endpoint_name, traffic_dict)
+        await self.http_proxy.set_traffic.remote(endpoint_name, traffic_dict)
 
     async def set_traffic(self, endpoint_name, traffic_dict):
         """Sets the traffic policy for the specified endpoint."""
@@ -626,7 +626,7 @@ class ServeMaster:
 
             # Set the backend config inside the router
             # (particularly for max-batch-size).
-            await self.router.set_backend_config.remote(
+            await self.http_proxy.set_backend_config.remote(
                 backend_tag, backend_config)
             await self.broadcast_backend_config(backend_tag)
 
@@ -685,7 +685,7 @@ class ServeMaster:
 
             # Inform the router about change in configuration
             # (particularly for setting max_batch_size).
-            await self.router.set_backend_config.remote(
+            await self.http_proxy.set_backend_config.remote(
                 backend_tag, backend_config)
 
             await self._start_pending_replicas()
