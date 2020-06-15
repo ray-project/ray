@@ -110,7 +110,10 @@ def run(run_or_experiment,
             function or class, or the string identifier of a
             trainable function or class registered in the tune registry.
             If Experiment, then Tune will execute training based on
-            Experiment.spec.
+            Experiment.spec. If you want to pass in a Python lambda, you
+            will need to first register the function:
+            ``tune.register_trainable("lambda_id", lambda x: ...)``. You can
+            then use ``tune.run("lambda_id")``.
         name (str): Name of experiment.
         stop (dict | callable | :class:`Stopper`): Stopping criteria. If dict,
             the keys may be any field in the return result of 'train()',
@@ -215,6 +218,8 @@ def run(run_or_experiment,
         ray_auto_init (bool): Automatically starts a local Ray cluster
             if using a RayTrialExecutor (which is the default) and
             if Ray is not initialized. Defaults to True.
+
+
 
     Returns:
         ExperimentAnalysis: Object for experiment analysis.

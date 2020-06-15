@@ -73,8 +73,6 @@ def report(**kwargs):
 def make_checkpoint_dir(step=None):
     """Gets the next checkpoint dir.
 
-    .. versionadded:: 0.8.6
-
     .. code-block:: python
 
         import time
@@ -97,6 +95,13 @@ def make_checkpoint_dir(step=None):
                 tune.save_checkpoint(path)
 
                 tune.report(hello="world", ray="tune")
+
+    Args:
+        step (int): Current training iteration - used for setting
+            an index to uniquely identify the checkpoint.
+
+    .. versionadded:: 0.8.6
+
     """
     _session = get_session()
     return _session.make_checkpoint_dir(step=step)
@@ -104,8 +109,6 @@ def make_checkpoint_dir(step=None):
 
 def save_checkpoint(checkpoint):
     """Register the given checkpoint.
-
-    .. versionadded:: 0.8.6
 
     .. code-block:: python
 
@@ -138,6 +141,8 @@ def save_checkpoint(checkpoint):
     Args:
         **kwargs: Any key value pair to be logged by Tune. Any of these
             metrics can be used for early stopping or optimization.
+
+    .. versionadded:: 0.8.6
     """
     _session = get_session()
     return _session.save_checkpoint(checkpoint)
@@ -146,28 +151,25 @@ def save_checkpoint(checkpoint):
 def get_trial_dir():
     """Returns the directory where trial results are saved.
 
-    For function API use only. Do not call this method in the Class API. Use
-    `self.logdir` instead.
+    For function API use only.
     """
     _session = get_session()
     return _session.logdir
 
 
 def get_trial_name():
-    """Trial name for the corresponding trial of this Trainable.
+    """Trial name for the corresponding trial.
 
-    For function API use only. Do not call this method in the Class API. Use
-    `self.trial_name` instead.
+    For function API use only.
     """
     _session = get_session()
     return _session.trial_name
 
 
 def get_trial_id():
-    """Trial id for the corresponding trial of this Trainable.
+    """Trial id for the corresponding trial.
 
-    For function API use only. Do not call this method in the Class API. Use
-    `self.trial_id` instead.
+    For function API use only.
     """
     _session = get_session()
     return _session.trial_id
