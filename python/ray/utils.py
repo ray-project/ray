@@ -393,6 +393,7 @@ def setup_logger(logging_level, logging_format):
 def open_log(path, **kwargs):
     kwargs.setdefault("buffering", 1)
     kwargs.setdefault("mode", "a")
+    kwargs.setdefault("encoding", "utf-8")
     return open(path, **kwargs)
 
 

@@ -184,96 +184,6 @@ def compute_task_id(ObjectID object_id):
     return TaskID(object_id.native().TaskId().Binary())
 
 
-def setup_logging(stdout_name, stderr_name):
-    """Sets up logging for the current worker, creating the file and flushing
-    buffers as is necessary.
-
-    Args:
-        stdout_name (str): The file name that stdout should be written to.
-        stderr_name(str): The file name that stderr should be written to.
-
-    Returns:
-        (tuple) The absolute paths of the files that stdout and stderr will be
-    written to.
-    """
-    stdout_path = ""
-    stderr_path = ""
-    worker_pid = os.getpid()
-
-    cdef extern from "ray/util/util.h":
-        void flush_out()
-        void flush_err()
-
-    if stdout_name:
-        # Line-buffer the output (mode 1).
-        stdout_file = open_worker_log(stdout_name, worker_pid)
-
-        # Before redirecting stdout we need to make sure userspace buffers
-        # are all flushed.
-        # Flush python's userspace buffers
-        sys.stdout.flush()
-
-        # TODO (Alex): Flush the c/c++ userspasce buffers if necessary.
-        # `fflush(stdout); cout.flush();`
-
-        stdout_fileno = sys.stdout.fileno()
-
-        # Redirect stdout at the file descriptor level. If we simply set
-        # sys.stdout, then logging from C++ can fail to be
-        # redirected. Note that dup2 will automatically close the old file
-        # descriptor before overriding it.
-        os.dup2(stdout_file.fileno(), stdout_fileno)
-
-        # We must close the original file descriptor to avoid leaking file
-        # descriptors.
-        stdout_file.close()
-
-        # We also manually set sys.stdout and sys.stderr because that seems to
-        # have an affect on the output buffering. Without doing this, stdout
-        # and stderr are heavily buffered resulting in seemingly lost logging
-        # statements. We never want to the stdout file descriptor, dup2 will
-        # close it when necessary and we don't want python's GC to close it.
-        sys.stdout = open_log(stdout_fileno, closefd=False)
-
-        stdout_path = os.path.abspath(stdout_file.name)
-
-    # The stderr case should be analogous to the stdout case
-    if stderr_name:
-        # Line-buffer the errput (mode 1).
-        stderr_file = open_worker_log(stderr_name, worker_pid)
-
-        # Before redirecting stderr we need to make sure userspace buffers
-        # are all flushed.
-        # Flush python's userspace buffers
-        sys.stderr.flush()
-
-        # TODO (Alex): Flush the c/c++ userspasce buffers if necessary.
-        # `fflush(stderr); cerr.flush();`
-
-        stderr_fileno = sys.stderr.fileno()
-
-        # Redirect stderr at the file descriptor level. If we simply set
-        # sys.stderr, then logging from C++ can fail to be
-        # redirected. Note that dup2 will automatically close the old file
-        # descriptor before overriding it.
-        os.dup2(stderr_file.fileno(), stderr_fileno)
-
-        # We must close the original file descriptor to avoid leaking file
-        # descriptors.
-        stderr_file.close()
-
-        # We also manually set sys.stderr and sys.stderr because that seems to
-        # have an affect on the errput buffering. Witherr doing this, stderr
-        # and stderr are heavily buffered resulting in seemingly lost logging
-        # statements. We never want to the stderr file descriptor, dup2 will
-        # close it when necessary and we don't want python's GC to close it.
-        sys.stderr = open_log(stderr_fileno, closefd=False)
-
-        stderr_path = os.path.abspath(stderr_file.name)
-
-    return stdout_path, stderr_path
-
-
 cdef increase_recursion_limit():
     """Double the recusion limit if current depth is close to the limit"""
     cdef:
@@ -397,12 +307,13 @@ cdef prepare_args(
 
 
 def switch_worker_log(worker, next_job_id):
-    if worker.current_logging_job != next_job_id:
+    if worker.current_logging_job and (worker.current_logging_job !=
+                                       next_job_id):
         job_stdout_path, job_stderr_path = (
             worker.node.get_job_redirected_log_file(
-                worker.worker_id, next_job_id.binary())
+                worker.worker_id, next_job_id.Binary())
         )
-        setup_logging(job_stdout_path, job_stderr_path)
+        ray.worker.set_log_file(job_stdout_path, job_stderr_path)
         worker.current_logging_job = next_job_id
 
 
@@ -542,6 +453,7 @@ cdef execute_task(
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
                 try:
+                    switch_worker_log(worker, job_id)
                     with ray.worker._changeproctitle(title, next_title):
                         outputs = function_executor(*args, **kwargs)
                     task_exception = False
