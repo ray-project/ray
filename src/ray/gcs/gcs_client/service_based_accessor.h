@@ -274,7 +274,7 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
  private:
-  /// Save the subscribe operation in this function, so we can call it again when PubSub
+  /// Save the subscribe operations, so we can call them again when PubSub
   /// server restarts from a failure.
   std::unordered_map<TaskID, SubscribeOperation> subscribe_task_operations_;
   std::unordered_map<TaskID, SubscribeOperation> subscribe_task_lease_operations_;
@@ -318,7 +318,7 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
  private:
-  /// Save the subscribe operation in this function, so we can call it again when PubSub
+  /// Save the subscribe operations, so we can call them again when PubSub
   /// server restarts from a failure.
   std::unordered_map<ObjectID, SubscribeOperation> subscribe_object_operations_;
 
