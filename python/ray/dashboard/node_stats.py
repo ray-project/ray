@@ -254,8 +254,6 @@ class NodeStats(threading.Thread):
                         data = json.loads(ray.utils.decode(data))
                         self._node_stats[data["hostname"]] = data
                     else:
-                        logger.warning(channel)
-                        logger.warning(data)
                         logger.warning("Unexpected channel data received, "
                                        "channel: {}, data: {}".format(
                                            channel,
