@@ -78,8 +78,37 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
             env, ray_function.GetFunctionDescriptor());
         // convert args
         // TODO (kfstorm): Avoid copying binary data from Java to C++
-        jobject args_array_list = NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(
-            env, args, NativeRayObjectToJavaNativeRayObject);
+        jbooleanArray java_pre_execute_results =
+            static_cast<jbooleanArray>(env->CallObjectMethod(
+                java_task_executor, java_task_executor_parse_function_arguments,
+                ray_function_array_list));
+        RAY_CHECK_JAVA_EXCEPTION(env);
+        jboolean *pre_execute_results =
+            env->GetBooleanArrayElements(java_pre_execute_results, nullptr);
+        jobject args_array_list = nullptr;
+        // If the lengths don't match, it means that `parseFunctionArguments` failed. In
+        // this case, pass null as arguments to `execute` method.
+        if (static_cast<size_t>(env->GetArrayLength(java_pre_execute_results)) ==
+            args.size()) {
+          size_t i = 0;
+          args_array_list = NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(
+              env, args,
+              [pre_execute_results, &i](
+                  JNIEnv *env, const std::shared_ptr<ray::RayObject> &native_object) {
+                if (*(pre_execute_results + (i++))) {
+                  // If the type of this argument is ByteBuffer, we create a
+                  // DirectByteBuffer here To avoid data copy.
+                  // TODO: Check native_object->GetMetadata() == "RAW"
+                  jobject obj = env->NewDirectByteBuffer(
+                      native_object->GetData()->Data(), native_object->GetData()->Size());
+                  RAY_CHECK(obj);
+                  return obj;
+                }
+                return NativeRayObjectToJavaNativeRayObject(env, native_object);
+              });
+        }
+        env->ReleaseBooleanArrayElements(java_pre_execute_results, pre_execute_results,
+                                         JNI_ABORT);
 
         // invoke Java method
         jobject java_return_objects =

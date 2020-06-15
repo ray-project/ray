@@ -7,6 +7,7 @@ import io.ray.api.exception.UnreconstructableException;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.generated.Gcs.ErrorType;
 import io.ray.runtime.serializer.Serializer;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -45,6 +46,9 @@ public class ObjectSerializer {
     if (meta != null && meta.length > 0) {
       // If meta is not null, deserialize the object from meta.
       if (Arrays.equals(meta, OBJECT_METADATA_TYPE_RAW)) {
+        if (objectType == ByteBuffer.class) {
+          return ByteBuffer.wrap(data);
+        }
         return data;
       } else if (Arrays.equals(meta, OBJECT_METADATA_TYPE_CROSS_LANGUAGE) ||
           Arrays.equals(meta, OBJECT_METADATA_TYPE_JAVA)) {
@@ -81,6 +85,17 @@ public class ObjectSerializer {
       // If the object is a byte array, skip serializing it and use a special metadata to
       // indicate it's raw binary. So that this object can also be read by Python.
       return new NativeRayObject((byte[]) object, OBJECT_METADATA_TYPE_RAW);
+    } else if (object instanceof ByteBuffer) {
+      // Serialize ByteBuffer to raw bytes.
+      ByteBuffer buffer = (ByteBuffer) object;
+      byte[] bytes;
+      if (buffer.hasArray()) {
+        bytes = buffer.array();
+      } else {
+        bytes = new byte[buffer.remaining()];
+        buffer.get(bytes);
+      }
+      return new NativeRayObject(bytes, OBJECT_METADATA_TYPE_RAW);
     } else if (object instanceof RayTaskException) {
       byte[] serializedBytes = Serializer.encode(object).getLeft();
       return new NativeRayObject(serializedBytes, TASK_EXECUTION_EXCEPTION_META);
