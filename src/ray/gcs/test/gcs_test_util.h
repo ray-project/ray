@@ -70,8 +70,7 @@ struct Mocker {
     PlacementGroupSpecBuilder builder;
 
     auto placement_group_id = PlacementGroupID::FromRandom();
-    builder.SetPlacementGroupSpec(placement_group_id, name, bundles,
-                                  strategy);
+    builder.SetPlacementGroupSpec(placement_group_id, name, bundles, strategy);
     return builder.Build();
   }
 

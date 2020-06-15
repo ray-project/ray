@@ -52,17 +52,23 @@ class GcsPlacementGroupSchedulerInterface {
 
 class GcsScheduleStrategy {
  public:
-  virtual std::unordered_map<BundleID, ClientID> Schedule(std::vector<ray::BundleSpecification> &bundles, const GcsNodeManager &node_manager) = 0;
+  virtual std::unordered_map<BundleID, ClientID> Schedule(
+      std::vector<ray::BundleSpecification> &bundles,
+      const GcsNodeManager &node_manager) = 0;
 };
 
-class GcsPackStrategy : public GcsScheduleStrategy{
+class GcsPackStrategy : public GcsScheduleStrategy {
  public:
-  std::unordered_map<BundleID, ClientID> Schedule(std::vector<ray::BundleSpecification> &bundles, const GcsNodeManager &node_manager) override;
+  std::unordered_map<BundleID, ClientID> Schedule(
+      std::vector<ray::BundleSpecification> &bundles,
+      const GcsNodeManager &node_manager) override;
 };
 
 class GcsSpreadStrategy : public GcsScheduleStrategy {
  public:
-  std::unordered_map<BundleID, ClientID> Schedule(std::vector<ray::BundleSpecification> &bundles, const  GcsNodeManager &node_manager) override;
+  std::unordered_map<BundleID, ClientID> Schedule(
+      std::vector<ray::BundleSpecification> &bundles,
+      const GcsNodeManager &node_manager) override;
 };
 
 /// GcsPlacementGroupScheduler is responsible for scheduling placement_groups registered
@@ -81,7 +87,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   explicit GcsPlacementGroupScheduler(
       boost::asio::io_context &io_context,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      const GcsNodeManager &gcs_node_manager, 
+      const GcsNodeManager &gcs_node_manager,
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_failure_handler,
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_success_handler,
       LeaseResourceClientFactoryFn lease_client_factory = nullptr);
@@ -151,7 +157,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
                         LeaseResourceCallback>>
       lease_resource_queue_;
 
-  std::vector<std::shared_ptr<GcsScheduleStrategy>>scheduler;
+  std::vector<std::shared_ptr<GcsScheduleStrategy>> scheduler;
 };
 
 }  // namespace gcs

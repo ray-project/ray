@@ -37,8 +37,9 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
   scheduler.push_back(std::make_shared<GcsSpreadStrategy>());
 }
 
-std::unordered_map<BundleID, ClientID> GcsPackStrategy::Schedule(std::vector<ray::BundleSpecification>&bundles, const GcsNodeManager &node_manager){
-  std::unordered_map<BundleID, ClientID>schedule_map;
+std::unordered_map<BundleID, ClientID> GcsPackStrategy::Schedule(
+    std::vector<ray::BundleSpecification> &bundles, const GcsNodeManager &node_manager) {
+  std::unordered_map<BundleID, ClientID> schedule_map;
   auto &alive_nodes = node_manager.GetAllAliveNodes();
   for (size_t pos = 0; pos < bundles.size(); pos++) {
     schedule_map[bundles[pos].BundleId()] =
@@ -47,22 +48,24 @@ std::unordered_map<BundleID, ClientID> GcsPackStrategy::Schedule(std::vector<ray
   return schedule_map;
 }
 
-std::unordered_map<BundleID, ClientID> GcsSpreadStrategy::Schedule(std::vector<ray::BundleSpecification>&bundles, const GcsNodeManager &node_manager){
-  std::unordered_map<BundleID, ClientID>schedule_map;
+std::unordered_map<BundleID, ClientID> GcsSpreadStrategy::Schedule(
+    std::vector<ray::BundleSpecification> &bundles, const GcsNodeManager &node_manager) {
+  std::unordered_map<BundleID, ClientID> schedule_map;
   auto &alive_nodes = node_manager.GetAllAliveNodes();
   auto iter = alive_nodes.begin();
-    size_t index = 0;
-    size_t alive_nodes_size = alive_nodes.size();
-    for (; iter != alive_nodes.end(); iter++, index++) {
-      for (size_t base = 0;; base++) {
-        if (index + base * alive_nodes_size >= bundles.size()) {
-          break;
-        } else {
-          schedule_map[bundles[index + base * alive_nodes_size].BundleId()] =  ClientID::FromBinary(iter->second->node_id());
-        }
+  size_t index = 0;
+  size_t alive_nodes_size = alive_nodes.size();
+  for (; iter != alive_nodes.end(); iter++, index++) {
+    for (size_t base = 0;; base++) {
+      if (index + base * alive_nodes_size >= bundles.size()) {
+        break;
+      } else {
+        schedule_map[bundles[index + base * alive_nodes_size].BundleId()] =
+            ClientID::FromBinary(iter->second->node_id());
       }
     }
-    return schedule_map;
+  }
+  return schedule_map;
 }
 
 void GcsPlacementGroupScheduler::Schedule(
@@ -102,9 +105,10 @@ void GcsPlacementGroupScheduler::Schedule(
             }
             if (lease_success) {
               rpc::ScheduleData data;
-              for(size_t i = 0; i < bundles.size(); i ++) {
+              for (size_t i = 0; i < bundles.size(); i++) {
                 auto schedule_plan = data.add_schedule_plan();
-                schedule_plan->set_client_id(schedule_map.at(bundles[i].BundleId()).Binary());
+                schedule_plan->set_client_id(
+                    schedule_map.at(bundles[i].BundleId()).Binary());
                 schedule_plan->set_bundle_id(bundles[i].BundleId().Binary());
               }
               RAY_CHECK_OK(gcs_table_storage_->PlacementGroupScheduleTable().Put(
@@ -114,7 +118,8 @@ void GcsPlacementGroupScheduler::Schedule(
               for (size_t i = 0; i < finish_count; i++) {
                 if (decision[i] != ClientID::Nil()) {
                   RetureReourceForNode(bundles[i],
-                                       gcs_node_manager_.GetNode(schedule_map.at(bundles[pos].BundleId())));
+                                       gcs_node_manager_.GetNode(
+                                           schedule_map.at(bundles[pos].BundleId())));
                 }
               }
               schedule_failure_handler_(placement_group);

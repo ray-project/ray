@@ -154,7 +154,7 @@ cdef extern from "ray/protobuf/common.pb.h" nogil:
         CBundle()
         const c_string &SerializeAsString()
         void ParseFromString(const c_string &serialized)
-        
+
 
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
@@ -173,8 +173,10 @@ cdef extern from "ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_ACTOR_TASK "ray::TaskType::ACTOR_TASK"
 
 cdef extern from "ray/protobuf/common.pb.h" nogil:
-    cdef CPlacementStrategy PLACEMENT_STRATEGY_PACK "ray::PlacementStrategy::PACK"
-    cdef CPlacementStrategy PLACEMENT_STRATEGY_SPREAD "ray::PlacementStrategy::SPREAD"
+    cdef CPlacementStrategy PLACEMENT_STRATEGY_PACK \
+        "ray::PlacementStrategy::PACK"
+    cdef CPlacementStrategy PLACEMENT_STRATEGY_SPREAD \
+        "ray::PlacementStrategy::SPREAD"
 
 cdef extern from "ray/common/task/scheduling_resources.h" nogil:
     cdef cppclass ResourceSet "ray::ResourceSet":

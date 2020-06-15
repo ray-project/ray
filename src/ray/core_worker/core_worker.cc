@@ -1110,7 +1110,8 @@ void CoreWorker::SubmitTask(const RayFunction &function, const std::vector<TaskA
   }
 }
 
-std::unordered_map<std::string, double>RenameResource(const std::unordered_map<std::string, double> &resources, BundleID bundle_id){
+std::unordered_map<std::string, double> RenameResource(
+    const std::unordered_map<std::string, double> &resources, BundleID bundle_id) {
   std::unordered_map<std::string, double> new_resources;
   if (bundle_id != BundleID::Nil()) {
     for (auto iter = resources.begin(); iter != resources.end(); iter++) {
@@ -1134,8 +1135,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   const JobID job_id = worker_context_.GetCurrentJobID();
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
-  auto new_placement_resources = RenameResource(actor_creation_options.placement_resources,actor_creation_options.bundle_id);
-  auto new_resource = RenameResource(actor_creation_options.resources, actor_creation_options.bundle_id);
+  auto new_placement_resources = RenameResource(
+      actor_creation_options.placement_resources, actor_creation_options.bundle_id);
+  auto new_resource =
+      RenameResource(actor_creation_options.resources, actor_creation_options.bundle_id);
   BuildCommonTaskSpec(builder, job_id, actor_creation_task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, new_resource,
@@ -1181,20 +1184,19 @@ Status CoreWorker::CreatePlacementGroup(
     const RayFunction &function,
     const PlacementGroupCreationOptions &placement_group_creation_options,
     PlacementGroupID *return_placement_group_id) {
-  const PlacementGroupID placement_group_id = PlacementGroupID :: FromRandom();
+  const PlacementGroupID placement_group_id = PlacementGroupID ::FromRandom();
   PlacementGroupSpecBuilder builder;
-  builder.SetPlacementGroupSpec(
-      placement_group_id,
-      placement_group_creation_options.name, placement_group_creation_options.bundles,
-      placement_group_creation_options.strategy);
+  builder.SetPlacementGroupSpec(placement_group_id, placement_group_creation_options.name,
+                                placement_group_creation_options.bundles,
+                                placement_group_creation_options.strategy);
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   if (RayConfig::instance().gcs_service_enabled() &&
       RayConfig::instance().gcs_placement_group_service_enabled()) {
-        RAY_LOG(INFO) << "Submitting Placement Group creation to GCS: "
+    RAY_LOG(INFO) << "Submitting Placement Group creation to GCS: "
                   << placement_group_id.Binary();
-        RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncCreatePlacementGroup(
-              placement_group_spec));
+    RAY_CHECK_OK(
+        gcs_client_->PlacementGroups().AsyncCreatePlacementGroup(placement_group_spec));
   }
   return Status::OK();
 }

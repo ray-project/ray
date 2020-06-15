@@ -159,7 +159,8 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         @staticmethod
         CWorkerID FromBinary(const c_string &binary)
 
-    cdef cppclass CPlacementGroupID "ray::PlacementGroupID"(CBaseID[CPlacementGroupID]):
+    cdef cppclass CPlacementGroupID \
+            "ray::PlacementGroupID"(CBaseID[CPlacementGroupID]):
         @staticmethod
         CPlacementGroupID FromBinary(const c_string &binary)
 
@@ -183,4 +184,6 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         size_t Size()
 
         @staticmethod
-        CBundleID Of(const CPlacementGroupID &placement_group_id, const uint32_t index)
+        CBundleID Of(
+            const CPlacementGroupID &placement_group_id,
+            const uint32_t index)

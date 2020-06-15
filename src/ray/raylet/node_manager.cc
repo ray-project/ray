@@ -1852,7 +1852,7 @@ void NodeManager::HandleRequestResourceLease(
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "bundle lease request " << bundle_spec.BundleId();
   auto resource_ids = ScheduleBundle(cluster_resource_map_, bundle_spec);
-  if(resource_ids.AvailableResources().size() == 0) {
+  if (resource_ids.AvailableResources().size() == 0) {
     send_reply_callback(Status::OutOfMemory("reserve resource failed"), nullptr, nullptr);
   } else {
     send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -1871,7 +1871,8 @@ void NodeManager::HandleRequestResourceReturn(
     std::string resource_name = bundle_id.Binary() + "_" + resource.first;
     local_available_resources_.ReturnBundleReousce(resource_name);
   }
-  cluster_resource_map_[self_node_id_].ReturnBundleResource(bundle_id.Binary(), resource_set);
+  cluster_resource_map_[self_node_id_].ReturnBundleResource(bundle_id.Binary(),
+                                                            resource_set);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2013,12 +2014,13 @@ ResourceIdSet NodeManager::ScheduleBundle(
   if (reserve_resource_success) {
     acquired_resources =
         local_available_resources_.Acquire(bundle_spec.GetRequiredResources());
-    for(auto resource:acquired_resources.AvailableResources()) {
+    for (auto resource : acquired_resources.AvailableResources()) {
       std::string resource_name = bundle_id.Binary() + "_" + resource.first;
       local_available_resources_.AddBundleResource(resource_name, resource.second);
     }
     cluster_resource_map_[self_node_id_].Acquire(bundle_spec.GetRequiredResources());
-    cluster_resource_map_[self_node_id_].UpdateBundleResource(bundle_id.Binary(), bundle_spec.GetRequiredResources());
+    cluster_resource_map_[self_node_id_].UpdateBundleResource(
+        bundle_id.Binary(), bundle_spec.GetRequiredResources());
   }
   return acquired_resources;
 }
@@ -2570,7 +2572,8 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
                  << worker->GetProcess().GetId() << ", worker id: " << worker->WorkerId();
   flatbuffers::FlatBufferBuilder fbb;
 
-  ResourceIdSet acquired_resources = local_available_resources_.Acquire(spec.GetRequiredResources());
+  ResourceIdSet acquired_resources =
+      local_available_resources_.Acquire(spec.GetRequiredResources());
   cluster_resource_map_[self_node_id_].Acquire(spec.GetRequiredResources());
 
   if (spec.IsActorCreationTask()) {

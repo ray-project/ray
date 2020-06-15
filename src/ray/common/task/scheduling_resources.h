@@ -149,15 +149,17 @@ class ResourceSet {
   void AddResources(const ResourceSet &other);
 
   /// \brief Aggregate resources from the other set into this set, adding any missing
-  /// resource labels to this set. The resource id will change to bundle_id + "_" + reource_id
+  /// resource labels to this set. The resource id will change to bundle_id + "_" +
+  /// reource_id
   ///
   /// \param other: The other resource set to add.
   /// \param bundle_id: The bundle_id of the bundle.
   /// \return Void.
   void AddBundleResources(const std::string &bundle_id, const ResourceSet &other);
 
-  /// \brief Return back all the bundle resource. Changeing the resource name and adding any missing
-  /// resource labels to this set. The resource id will remove bundle_id + "_" part.
+  /// \brief Return back all the bundle resource. Changeing the resource name and adding
+  /// any missing resource labels to this set. The resource id will remove bundle_id + "_"
+  /// part.
   ///
   /// \param other: The other resource set to add.
   /// \param bundle_id: The bundle_id of the bundle.
@@ -547,13 +549,15 @@ class SchedulingResources {
   /// Create if not exists.
   /// \param resource_name: Name of the resource to be modified
   /// \param resource_set: New resource_set of the resource.
-  void UpdateBundleResource(const std::string &bundle_id,const ResourceSet &resource_set);
-  
+  void UpdateBundleResource(const std::string &bundle_id,
+                            const ResourceSet &resource_set);
+
   /// \brief delete total, available and load resources with the ResourceIds.
   /// Create if not exists.
   /// \param resource_name: Name of the resource to be deleted
   /// \param resource_set:  resource_set of the resource.
-  void ReturnBundleResource(const std::string &bundle_id, const ResourceSet &resource_set);
+  void ReturnBundleResource(const std::string &bundle_id,
+                            const ResourceSet &resource_set);
 
   /// \brief Delete resource from total, available and load resources.
   ///

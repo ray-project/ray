@@ -1292,13 +1292,14 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
   rpc::CreatePlacementGroupRequest request;
   request.mutable_placement_group_spec()->CopyFrom(placement_group_spec.GetMessage());
   client_impl_->GetGcsRpcClient().CreatePlacementGroup(
-      request, [placement_group_spec](const Status &, const rpc::CreatePlacementGroupReply &reply) {
+      request, [placement_group_spec](const Status &,
+                                      const rpc::CreatePlacementGroupReply &reply) {
         auto status =
             reply.status().code() == (int)StatusCode::OK
                 ? Status()
                 : Status(StatusCode(reply.status().code()), reply.status().message());
-        if(status.ok()) {
-          RAY_LOG(DEBUG) << "Finished registering placement group. placement group id = " 
+        if (status.ok()) {
+          RAY_LOG(DEBUG) << "Finished registering placement group. placement group id = "
                          << placement_group_spec.PlacementGroupId();
         }
       });

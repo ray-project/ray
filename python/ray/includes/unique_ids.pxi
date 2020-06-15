@@ -398,9 +398,10 @@ cdef class ActorClassID(UniqueID):
 
     cdef CActorClassID native(self):
         return <CActorClassID>self.data
-    
+
 cdef class PlacementGroupID(BaseID):
     cdef CPlacementGroupID data
+
     def __init__(self, id):
         check_id(id, CPlacementGroupID.Size())
         self.data = CPlacementGroupID.FromBinary(<c_string>id)
@@ -437,10 +438,11 @@ cdef class PlacementGroupID(BaseID):
 
 cdef class BundleID(BaseID):
     cdef CBundleID data
+
     def __init__(self, id):
         check_id(id, CBundleID.Size())
         self.data = CBundleID.FromBinary(<c_string>id)
-    
+
     cdef CBundleID native(self):
         return <CBundleID>self.data
 
@@ -455,8 +457,9 @@ cdef class BundleID(BaseID):
     @classmethod
     def of(cls, placement_group_id, index):
         assert isinstance(placement_group_id, PlacementGroupID)
-        return cls(CBundleID.Of(CPlacementGroupID.FromBinary(placement_group_id.binary()),
-                                index).Binary())
+        return cls(CBundleID.Of(
+            CPlacementGroupID.FromBinary(placement_group_id.binary()),
+            index).Binary())
 
     def binary(self):
         return self.data.Binary()

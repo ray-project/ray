@@ -237,6 +237,7 @@ cdef class Language:
     CPP = Language.from_native(LANGUAGE_CPP)
     JAVA = Language.from_native(LANGUAGE_JAVA)
 
+
 @cython.auto_pickle(False)
 cdef class PlacementStrategy:
     cdef CPlacementStrategy strategy
@@ -246,7 +247,8 @@ cdef class PlacementStrategy:
 
     def __eq__(self, other):
         return (isinstance(other, PlacementStrategy) and
-                (<int32_t>self.strategy) == (<int32_t>(<PlacementStrategy>other).strategy))
+                ((<int32_t>self.strategy) ==
+                (<int32_t>(<PlacementStrategy>other).strategy)))
 
     def __repr__(self):
         if <int32_t>self.strategy == <int32_t>PLACEMENT_STRATEGY_PACK:
@@ -258,12 +260,11 @@ cdef class PlacementStrategy:
 
     def __reduce__(self):
         return PlacementStrategy, (<int32_t>self.strategy,)
-    
+
+
 @cython.auto_pickle(False)
 cdef class Bundle:
     cdef CBundle bundle
-
-
 
 
 cdef int prepare_resources(
@@ -966,8 +967,6 @@ cdef class CoreWorker:
     #                           PlacementStrategy strategy,
     #                           c_vector[Bundle] &bundle):
     #    return name
-
-
 
     def submit_actor_task(self,
                           Language language,

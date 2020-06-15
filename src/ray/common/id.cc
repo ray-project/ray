@@ -195,7 +195,7 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
 
 PlacementGroupID PlacementGroupID::FromRandom() {
   PlacementGroupIDFlagsType flags = 0x0000;
-    SetCreatedByTaskFlag(false, &flags);
+  SetCreatedByTaskFlag(false, &flags);
   // No need to set transport type for a random object id.
   // No need to assign put_index/return_index bytes.
   std::vector<uint8_t> task_id_bytes(TaskID::kLength, 0x0);
@@ -207,9 +207,9 @@ PlacementGroupID PlacementGroupID::FromRandom() {
       flags);
 }
 
-PlacementGroupID PlacementGroupID::GeneratePlacementGroupId(const std::string &placement_group_id_binary,
-                                    PlacementGroupIDFlagsType flags,
-                                    PlacementGroupIDIndexType placement_group_index) {
+PlacementGroupID PlacementGroupID::GeneratePlacementGroupId(
+    const std::string &placement_group_id_binary, PlacementGroupIDFlagsType flags,
+    PlacementGroupIDIndexType placement_group_index) {
   RAY_CHECK(placement_group_id_binary.size() == PlacementGroupID::Size());
   PlacementGroupID ret;
   std::memcpy(ret.id_, placement_group_id_binary.c_str(), TaskID::kLength);
@@ -219,7 +219,8 @@ PlacementGroupID PlacementGroupID::GeneratePlacementGroupId(const std::string &p
   return ret;
 }
 
-BundleID BundleID::Of(const PlacementGroupID &placement_group_id, const BundleIDIndexType index) {
+BundleID BundleID::Of(const PlacementGroupID &placement_group_id,
+                      const BundleIDIndexType index) {
   BundleID ret;
   std::memcpy(ret.id_, placement_group_id.Data(), PlacementGroupID::kLength);
   std::memcpy(ret.id_ + PlacementGroupID::kLength, &index, sizeof(index));

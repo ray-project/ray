@@ -440,7 +440,8 @@ class RedisGcsTableStorage : public GcsTableStorage {
     object_table_.reset(new GcsObjectTable(store_client_));
     node_table_.reset(new GcsNodeTable(store_client_));
     node_resource_table_.reset(new GcsNodeResourceTable(store_client_));
-    placement_group_schedule_table_.reset(new GcsPlacementGroupScheduleTable(store_client_));
+    placement_group_schedule_table_.reset(
+        new GcsPlacementGroupScheduleTable(store_client_));
     heartbeat_table_.reset(new GcsHeartbeatTable(store_client_));
     heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(store_client_));
     error_info_table_.reset(new GcsErrorInfoTable(store_client_));
@@ -468,7 +469,8 @@ class InMemoryGcsTableStorage : public GcsTableStorage {
     object_table_.reset(new GcsObjectTable(store_client_));
     node_table_.reset(new GcsNodeTable(store_client_));
     node_resource_table_.reset(new GcsNodeResourceTable(store_client_));
-    placement_group_schedule_table_.reset(new GcsPlacementGroupScheduleTable(store_client_));
+    placement_group_schedule_table_.reset(
+        new GcsPlacementGroupScheduleTable(store_client_));
     heartbeat_table_.reset(new GcsHeartbeatTable(store_client_));
     heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(store_client_));
     error_info_table_.reset(new GcsErrorInfoTable(store_client_));

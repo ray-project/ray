@@ -164,10 +164,9 @@ using Bundle = rpc::Bundle;
 
 struct PlacementGroupCreationOptions {
   PlacementGroupCreationOptions() {}
-  PlacementGroupCreationOptions(const std::string &name,
-                                PlacementStrategy strategy,
+  PlacementGroupCreationOptions(const std::string &name, PlacementStrategy strategy,
                                 const std::vector<Bundle> &bundles)
-      :  name(name), strategy(strategy), bundles(bundles) {}
+      : name(name), strategy(strategy), bundles(bundles) {}
 
   const PlacementStrategy strategy = rpc::PACK;
 

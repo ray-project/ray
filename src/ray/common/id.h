@@ -368,10 +368,10 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
 
   static constexpr size_t kFlagsBytesLength = sizeof(PlacementGroupIDFlagsType);
 
-
  public:
   /// Length of `PlacementGroupID` in bytes.
-  static constexpr size_t kLength =  kIndexBytesLength + kFlagsBytesLength + TaskID::kLength;
+  static constexpr size_t kLength =
+      kIndexBytesLength + kFlagsBytesLength + TaskID::kLength;
 
   /// Size of `PlacementGroupID` in bytes.
   ///
@@ -393,9 +393,9 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
 
  private:
   /// A helper method to generate an PlacementGroupID.
-  static PlacementGroupID GeneratePlacementGroupId(const std::string &placement_group_id_binary,
-                                   PlacementGroupIDFlagsType flags,
-                                   PlacementGroupIDIndexType placement_group_index = 0);
+  static PlacementGroupID GeneratePlacementGroupId(
+      const std::string &placement_group_id_binary, PlacementGroupIDFlagsType flags,
+      PlacementGroupIDIndexType placement_group_index = 0);
   uint8_t id_[kLength];
 
   // TODO(AlisaWu): fill the class of PlacementGroupID.
@@ -417,10 +417,11 @@ class BundleID : public BaseID<BundleID> {
   /// Creates a `BundleID` by hashing the given information.
   ///
   /// \param placement_group_id The placement group id to which this bundles belongs.
-  /// \param bundle_id The bundle index in the placement group. 
+  /// \param bundle_id The bundle index in the placement group.
   ///
   /// \return The random `ActorID`.
-  static BundleID Of(const PlacementGroupID &placement_group_id, const BundleIDIndexType index);
+  static BundleID Of(const PlacementGroupID &placement_group_id,
+                     const BundleIDIndexType index);
 
   MSGPACK_DEFINE(id_);
 
