@@ -47,6 +47,7 @@ DEFINE_bool(disable_stats, false, "Whether disable the stats.");
 DEFINE_string(stat_address, "127.0.0.1:8888", "The address that we report metrics to.");
 DEFINE_bool(enable_stdout_exporter, false,
             "Whether enable the stdout exporter for stats.");
+DEFINE_bool(head_node, false, "Whether this is the head node of the cluster.");
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
 DEFINE_string(plasma_directory, "", "The shared memory directory of the object store.");
@@ -84,6 +85,7 @@ int main(int argc, char *argv[]) {
   const bool disable_stats = FLAGS_disable_stats;
   const std::string stat_address = FLAGS_stat_address;
   const bool enable_stdout_exporter = FLAGS_enable_stdout_exporter;
+  const bool head_node = FLAGS_head_node;
   const int64_t object_store_memory = FLAGS_object_store_memory;
   const std::string plasma_directory = FLAGS_plasma_directory;
   const bool huge_pages = FLAGS_huge_pages;
@@ -119,21 +121,26 @@ int main(int argc, char *argv[]) {
   }
   RAY_CHECK_OK(gcs_client->Connect(main_service));
 
+  // Parse the configuration list.
+  std::istringstream config_string(config_list);
+  std::string config_name;
+  std::string config_value;
+
+  while (std::getline(config_string, config_name, ',')) {
+    RAY_CHECK(std::getline(config_string, config_value, ','));
+    // TODO(rkn): The line below could throw an exception. What should we do about this?
+    raylet_config[config_name] = config_value;
+  }
+
+  if (head_node) {
+    RAY_CHECK_OK(gcs_client->Nodes().AsyncSetInternalConfig(raylet_config));
+  }
+
   std::unique_ptr<ray::raylet::Raylet> server(nullptr);
 
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig([&](const std::unordered_map<
                                                               std::string, std::string>
                                                                   stored_raylet_config) {
-    // Parse the configuration list.
-    std::istringstream config_string(config_list);
-    std::string config_name;
-    std::string config_value;
-
-    while (std::getline(config_string, config_name, ',')) {
-      RAY_CHECK(std::getline(config_string, config_value, ','));
-      // TODO(rkn): The line below could throw an exception. What should we do about this?
-      raylet_config[config_name] = config_value;
-    }
     for (auto pair : stored_raylet_config) {
       raylet_config[pair.first] = pair.second;
     }
@@ -217,8 +224,7 @@ int main(int argc, char *argv[]) {
     // Initialize the node manager.
     server.reset(new ray::raylet::Raylet(
         main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
-        redis_password, node_manager_config, object_manager_config, gcs_client,
-        stored_raylet_config.size() < raylet_config.size()));
+        redis_password, node_manager_config, object_manager_config, gcs_client));
 
     server->Start();
   }));

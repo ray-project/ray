@@ -392,11 +392,6 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
     return Status::NotImplemented("GetInternalConfig not implemented.");
   }
 
-  Status AsyncGetInternalConfig(
-      const MapCallback<std::string, std::string> &callback) override {
-    return Status::NotImplemented("GetInternalConfig not implemented.");
-  }
-
  private:
   RedisGcsClient *client_impl_{nullptr};
 

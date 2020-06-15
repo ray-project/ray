@@ -92,6 +92,11 @@ class Node:
                 "The raylet IP address should only be different than the node "
                 "IP address when connecting to an existing raylet; i.e., when "
                 "head=False and connect_only=True.")
+        if ray_params._internal_config and len(
+                ray_params._internal_config) > 0 and (not head
+                                                      and not connect_only):
+            raise ValueError(
+                "Internal Config parameters can only be set on the head node.")
 
         self._raylet_ip_address = raylet_ip_address
 
@@ -186,12 +191,6 @@ class Node:
             redis_client.set("session_name", self.session_name)
             redis_client.set("session_dir", self._session_dir)
             redis_client.set("temp_dir", self._temp_dir)
-        else:
-            if (self._config != "{}"):
-                logger.error(
-                    "Internal Config parameters can only be set on the head "
-                    "node. NOTE, this include lru_evict.")
-                self._config == str(dict())
 
         if not connect_only:
             self.start_ray_processes()
@@ -641,7 +640,8 @@ class Node:
             plasma_directory=self._ray_params.plasma_directory,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
-            socket_to_use=self.socket)
+            socket_to_use=self.socket,
+            head_node=self.head)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 

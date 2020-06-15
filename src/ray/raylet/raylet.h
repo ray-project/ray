@@ -55,7 +55,7 @@ class Raylet {
          int redis_port, const std::string &redis_password,
          const NodeManagerConfig &node_manager_config,
          const ObjectManagerConfig &object_manager_config,
-         std::shared_ptr<gcs::GcsClient> gcs_client, bool set_internal_config = true);
+         std::shared_ptr<gcs::GcsClient> gcs_client);
 
   /// Start this raylet.
   void Start();

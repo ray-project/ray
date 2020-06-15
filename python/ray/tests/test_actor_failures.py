@@ -441,7 +441,8 @@ def test_caller_task_reconstruction(ray_start_regular):
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_internal_config_map(
-            initial_reconstruction_timeout_milliseconds=1000)
+            initial_reconstruction_timeout_milliseconds=1000,
+            num_heartbeats_timeout=10)
     ],
     indirect=True)
 def test_multiple_actor_restart(ray_start_cluster_head):
@@ -453,14 +454,7 @@ def test_multiple_actor_restart(ray_start_cluster_head):
     num_actors_at_a_time = 3
     num_function_calls_at_a_time = 10
 
-    worker_nodes = [
-        cluster.add_node(
-            num_cpus=3,
-            _internal_config=json.dumps({
-                "initial_reconstruction_timeout_milliseconds": 200,
-                "num_heartbeats_timeout": 10,
-            })) for _ in range(num_nodes)
-    ]
+    worker_nodes = [cluster.add_node(num_cpus=3) for _ in range(num_nodes)]
 
     @ray.remote(max_restarts=-1, max_task_retries=-1)
     class SlowCounter:
