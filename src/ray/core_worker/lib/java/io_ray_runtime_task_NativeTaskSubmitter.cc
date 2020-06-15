@@ -89,11 +89,17 @@ inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject call
 
 inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                                         jobject actorCreationOptions) {
+  std::string name = "";
   int64_t max_restarts = 0;
   std::unordered_map<std::string, double> resources;
   std::vector<std::string> dynamic_worker_options;
   uint64_t max_concurrency = 1;
   if (actorCreationOptions) {
+    auto java_name = (jstring)env->GetObjectField(
+        actorCreationOptions, java_actor_creation_options_name);
+    if (java_name) {
+      name = JavaStringToNativeString(env, java_name);
+    }
     max_restarts =
         env->GetIntField(actorCreationOptions, java_actor_creation_options_max_restarts);
     jobject java_resources =
@@ -109,7 +115,6 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
         actorCreationOptions, java_actor_creation_options_max_concurrency));
   }
 
-  std::string name = "";
   ray::ActorCreationOptions actor_creation_options{
       max_restarts,
       0,  // TODO: Allow setting max_task_retries from Java.
