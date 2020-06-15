@@ -160,7 +160,7 @@ def run(run_or_experiment,
             This has no effect when using the Functional Training API.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
-            This has no effect when using the Functional API.
+            This has no effect when using the Functional Training API.
         sync_on_checkpoint (bool): Force sync-down of trial checkpoint to
             driver. If set to False, checkpoint syncing from worker to driver
             is asynchronous and best-effort. This does not affect persistent
