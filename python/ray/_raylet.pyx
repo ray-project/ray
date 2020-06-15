@@ -94,7 +94,7 @@ from ray.exceptions import (
     RayTimeoutError,
     RayCancellationError
 )
-from ray.utils import decode, open_worker_log, open_log
+from ray.utils import decode
 import gc
 import msgpack
 
