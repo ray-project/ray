@@ -17,7 +17,6 @@ from ray.test_utils import (
     wait_for_errors,
     wait_for_pid_to_exit,
     generate_internal_config_map,
-    get_non_head_nodes,
     get_other_nodes,
 )
 
