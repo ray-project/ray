@@ -19,19 +19,19 @@ package io.ray.api.function;
  * {@code
  * // bar returns input, so we have to set the returnType to int.class if bar accepts an int
  * ObjectRef<Integer> res = actor.call(
- *    new PyRemoteFunction<>("example_package.example_module", "bar", Integer.class),
+ *    new PyFunction<>("example_package.example_module", "bar", Integer.class),
  *    1);
  * Integer value = res.get();
  *
  * // bar returns input, so we have to set the returnType to String.class if bar accepts a string
  * ObjectRef<String> res = actor.call(
- *    new PyRemoteFunction<>("example_package.example_module", "bar", String.class),
+ *    new PyFunction<>("example_package.example_module", "bar", String.class),
  *    "Hello world!");
  * String value = res.get();
  * }
  * </pre>
  */
-public class PyRemoteFunction<R> {
+public class PyFunction<R> {
   // The full module name of this function
   public final String moduleName;
   // The name of this function
@@ -39,7 +39,7 @@ public class PyRemoteFunction<R> {
   // Type of the return value of this function
   public final Class<R> returnType;
 
-  public PyRemoteFunction(String moduleName, String functionName, Class<R> returnType) {
+  public PyFunction(String moduleName, String functionName, Class<R> returnType) {
     this.moduleName = moduleName;
     this.functionName = functionName;
     this.returnType = returnType;
