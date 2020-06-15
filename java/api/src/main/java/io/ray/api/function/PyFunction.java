@@ -19,13 +19,13 @@ package io.ray.api.function;
  * {@code
  * // bar returns input, so we have to set the returnType to int.class if bar accepts an int
  * ObjectRef<Integer> res = actor.call(
- *    new PyFunction<>("example_package.example_module", "bar", Integer.class),
+ *    PyFunction.of("example_package.example_module", "bar", Integer.class),
  *    1);
  * Integer value = res.get();
  *
  * // bar returns input, so we have to set the returnType to String.class if bar accepts a string
  * ObjectRef<String> res = actor.call(
- *    new PyFunction<>("example_package.example_module", "bar", String.class),
+ *    PyFunction.of("example_package.example_module", "bar", String.class),
  *    "Hello world!");
  * String value = res.get();
  * }
@@ -39,9 +39,20 @@ public class PyFunction<R> {
   // Type of the return value of this function
   public final Class<R> returnType;
 
-  public PyFunction(String moduleName, String functionName, Class<R> returnType) {
+  private PyFunction(String moduleName, String functionName, Class<R> returnType) {
     this.moduleName = moduleName;
     this.functionName = functionName;
     this.returnType = returnType;
   }
+
+  public static PyFunction<Object> of(
+      String moduleName, String functionName) {
+    return of(moduleName, functionName, Object.class);
+  }
+
+  public static <R> PyFunction<R> of(
+      String moduleName, String functionName, Class<R> returnType) {
+    return PyFunction.of(moduleName, functionName, returnType);
+  }
+
 }
