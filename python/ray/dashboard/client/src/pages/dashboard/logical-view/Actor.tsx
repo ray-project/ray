@@ -19,6 +19,7 @@ import {
 import ActorDetailsPane from "./ActorDetailsPane";
 import Actors from "./Actors";
 
+const memoryDebuggingDocLink = "https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory"
 const styles = (theme: Theme) =>
   createStyles({
     root: {
@@ -157,21 +158,23 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
               tooltip:
                 "The number of objects ids that this actor is keeping in scope via its internal state. " +
                 "This does not imply that the objects are in active use or colocated on the node with the actor " +
-                "currently. This can be useful for debugging memory leaks.",
+                `currently. This can be useful for debugging memory leaks. See the docs at ${memoryDebuggingDocLink} ` +
+                "for more information."
             },
             {
               label: "Number of local objects",
               value: actor.numLocalObjects.toLocaleString(),
               tooltip:
                 "The number of small objects that this actor has stored in its local in-process memory store. This can be useful for " +
-                "debugging memory leaks.",
+                `debugging memory leaks. See the docs at ${memoryDebuggingDocLink} for more information`,
             },
             {
               label: "Object store memory used (MiB)",
               value: actor.usedObjectStoreMemory.toLocaleString(),
               tooltip:
                 "The total amount of memory that this actor is occupying in the Ray object store. " +
-                "If this number is increasing without bounds, you might have a memory leak.",
+                "If this number is increasing without bounds, you might have a memory leak. See " +
+                `the docs at: ${memoryDebuggingDocLink} for more information.`,
             },
           ]
         : [
