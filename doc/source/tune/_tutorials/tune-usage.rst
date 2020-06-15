@@ -147,7 +147,7 @@ When running a hyperparameter search, Tune can automatically and periodically sa
  * fault-tolerance when using pre-emptible machines.
  * Pausing trials when using Trial Schedulers such as HyperBand and PBT.
 
-Checkpointing assumes that the model state will be saved to disk on whichever node the Trainable is running on. 
+Checkpointing assumes that the model state will be saved to disk on whichever node the Trainable is running on.
 
 To use Tune's checkpointing features, you must expose a ``checkpoint`` argument in the function signature, and call ``tune.make_checkpoint_dir`` and ``tune.save_checkpoint``:
 
@@ -166,7 +166,7 @@ To use Tune's checkpointing features, you must expose a ``checkpoint`` argument 
             for iter in range(start, 100):
                 time.sleep(1)
 
-                # 
+                # Obtain a checkpoint directory
                 checkpoint_dir = tune.make_checkpoint_dir(step=step)
                 path = os.path.join(checkpoint_dir, "checkpoint")
                 with open(path, "w") as f:
@@ -177,7 +177,7 @@ To use Tune's checkpointing features, you must expose a ``checkpoint`` argument 
 
         tune.run(train_func)
 
-In this example, checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<step>``. 
+In this example, checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<step>``.
 
 You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)`` By doing this, you can change whatever experiments' configuration such as the experiment's name, the training iteration or so:
 

@@ -138,7 +138,7 @@ Class API Checkpointing
 
 You can also implement checkpoint/restore using the Trainable Class API:
 
-.. code-block:: python 
+.. code-block:: python
 
     class MyTrainableClass(Trainable):
         def _save(self, tmp_checkpoint_dir):
