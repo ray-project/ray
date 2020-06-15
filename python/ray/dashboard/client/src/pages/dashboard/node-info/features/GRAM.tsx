@@ -1,3 +1,4 @@
+import { Typography } from "@material-ui/core";
 import React from "react";
 import { GPUStats } from "../../../../api";
 import { MiBRatio } from "../../../../common/formatUtils";
@@ -39,7 +40,9 @@ export const ClusterGRAM: ClusterFeatureComponent = ({ nodes }) => {
   return (
     <div style={{ minWidth: 60 }}>
       {isNaN(clusterAverageUtilization) ? (
-        <b>No GPUs</b>
+        <Typography color="textSecondary" component="span" variant="inherit">
+          N/A
+        </Typography>
       ) : (
         <UsageBar
           percent={clusterAverageUtilization}
@@ -55,7 +58,9 @@ export const NodeGRAM: NodeFeatureComponent = ({ node }) => {
   return (
     <div style={{ minWidth: 60 }}>
       {isNaN(gramUtil) ? (
-        <b>No GPUs</b>
+        <Typography color="textSecondary" component="span" variant="inherit">
+          N/A
+        </Typography>
       ) : (
         <UsageBar percent={gramUtil} text={`${gramUtil.toFixed(1)}%`} />
       )}
@@ -77,7 +82,9 @@ export const WorkerGRAM: WorkerFeatureComponent = ({ worker, node }) => {
   return (
     <div style={{ minWidth: 60 }}>
       {node.gpus.length === 0 ? (
-        <b>No GPUs</b>
+        <Typography color="textSecondary" component="span" variant="inherit">
+          N/A
+        </Typography>
       ) : (
         <UsageBar
           percent={100 * (usedGRAM / totalNodeGRAM)}

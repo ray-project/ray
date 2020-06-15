@@ -1,3 +1,4 @@
+import { Typography } from "@material-ui/core";
 import React from "react";
 import UsageBar from "../../../../common/UsageBar";
 import { getWeightedAverage, sum } from "../../../../common/util";
@@ -32,7 +33,9 @@ export const ClusterGPU: ClusterFeatureComponent = ({ nodes }) => {
   return (
     <div style={{ minWidth: 60 }}>
       {isNaN(clusterAverageUtilization) ? (
-        <b>No GPUs</b>
+        <Typography color="textSecondary" component="span" variant="inherit">
+          N/A
+        </Typography>
       ) : (
         <UsageBar
           percent={clusterAverageUtilization}
@@ -48,7 +51,9 @@ export const NodeGPU: NodeFeatureComponent = ({ node }) => {
   return (
     <div style={{ minWidth: 60 }}>
       {isNaN(nodeUtil) ? (
-        <b>No GPUs</b>
+        <Typography color="textSecondary" component="span" variant="inherit">
+          N/A
+        </Typography>
       ) : (
         <UsageBar percent={nodeUtil} text={`${nodeUtil.toFixed(1)}%`} />
       )}
@@ -59,12 +64,12 @@ export const NodeGPU: NodeFeatureComponent = ({ node }) => {
 export const WorkerGPU: WorkerFeatureComponent = ({ rayletWorker }) => {
   const workerRes = rayletWorker?.coreWorkerStats.usedResources;
   const workerUsedGPUResources = workerRes?.["GPU"] || NaN;
-  const message = isNaN(workerUsedGPUResources)
-    ? "No GPUs"
-    : `${workerUsedGPUResources} GPUs in use`;
-  return (
-    <div style={{ minWidth: 60 }}>
-      <b>{message}</b>
-    </div>
+  const message = isNaN(workerUsedGPUResources) ? (
+    <Typography color="textSecondary" component="span" variant="inherit">
+      N/A
+    </Typography>
+  ) : (
+    <b>`${workerUsedGPUResources} GPUs in use`</b>
   );
+  return <div style={{ minWidth: 60 }}>{message}</div>;
 };
