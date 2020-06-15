@@ -430,7 +430,6 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
             # Start trial, process result (x2), process save
             for _ in range(4):
                 runner.step()
-            print(t1.last_result)
             assert t1.has_checkpoint()
 
             cluster.add_node(num_cpus=1)
