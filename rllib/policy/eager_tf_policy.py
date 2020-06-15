@@ -199,7 +199,7 @@ def build_eager_tf_policy(name,
     class eager_policy_cls(base):
         def __init__(self, observation_space, action_space, config):
             assert tf.executing_eagerly()
-            self.framework = "tf"
+            self.framework = "tfe"
             Policy.__init__(self, observation_space, action_space, config)
             self._is_training = False
             self._loss_initialized = False
@@ -231,7 +231,7 @@ def build_eager_tf_policy(name,
                     action_space,
                     logit_dim,
                     config["model"],
-                    framework="tf",
+                    framework=self.framework,
                 )
             self.exploration = self._create_exploration()
             self._state_in = [
