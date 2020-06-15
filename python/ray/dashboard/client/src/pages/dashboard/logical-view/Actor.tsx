@@ -167,7 +167,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 "debugging memory leaks.",
             },
             {
-              label: "Object store memory used (MB)",
+              label: "Object store memory used (MiB)",
               value: actor.usedObjectStoreMemory.toLocaleString(),
               tooltip:
                 "The total amount of memory that this actor is occupying in the Ray object store. " +
