@@ -135,9 +135,8 @@ class Cluster:
                 raise ValueError(
                     "Removing a node that is connected to this Ray client "
                     "is not allowed because it will break the driver."
-                    "Please make sure to use a function "
-                    "get_other_node to avoid removing a node that the Ray"
-                    " client is connected.")
+                    "You can use the get_other_node utility to avoid removing"
+                    "a node that the Ray client is connected.")
 
         if self.head_node == node:
             self.head_node.kill_all_processes(
