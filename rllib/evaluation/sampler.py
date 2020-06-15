@@ -8,7 +8,7 @@ import time
 
 from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import MultiAgentEpisode
-from ray.rllib.evaluation.fast_multi_agent_batch_builder import \
+from ray.rllib.evaluation.fast_multi_agent_sample_batch_builder import \
     _FastMultiAgentSampleBatchBuilder
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
@@ -104,7 +104,7 @@ class SyncSampler(SamplerInput):
                  soft_horizon=False,
                  no_done_at_end=False,
                  observation_fn=None,
-                 fast_sampling=False):
+                 _fast_sampling=False):
         """Initializes a SyncSampler object.
 
         Args:
@@ -141,7 +141,7 @@ class SyncSampler(SamplerInput):
             observation_fn (Optional[ObservationFunction]): Optional
                 multi-agent observation func to use for preprocessing
                 observations.
-            fast_sampling (bool): Whether to use the (experimental)
+            _fast_sampling (bool): Whether to use the (experimental)
                 `_fast_sampling` procedure to collect samples. Default: False.
         """
 
@@ -161,7 +161,7 @@ class SyncSampler(SamplerInput):
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
             pack_multiple_episodes_in_batch, callbacks, tf_sess,
             self.perf_stats, soft_horizon, no_done_at_end, observation_fn,
-            fast_sampling)
+            _fast_sampling)
         self.metrics_queue = queue.Queue()
 
     @override(SamplerInput)
@@ -222,7 +222,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
                  soft_horizon=False,
                  no_done_at_end=False,
                  observation_fn=None,
-                 fast_sampling=False):
+                 _fast_sampling=False):
         """Initializes a AsyncSampler object.
 
         Args:
@@ -261,7 +261,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             observation_fn (Optional[ObservationFunction]): Optional
                 multi-agent observation func to use for preprocessing
                 observations.
-            fast_sampling (bool): Whether to use the (experimental)
+            _fast_sampling (bool): Whether to use the (experimental)
                 `_fast_sampling` procedure to collect samples. Default: False.
         """
         for _, f in obs_filters.items():
@@ -291,7 +291,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.perf_stats = PerfStats()
         self.shutdown = False
         self.observation_fn = observation_fn
-        self.fast_sampling = fast_sampling
+        self._fast_sampling = _fast_sampling
 
     @override(threading.Thread)
     def run(self):
@@ -315,7 +315,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.preprocessors, self.obs_filters, self.clip_rewards,
             self.clip_actions, self.pack_multiple_episodes_in_batch,
             self.callbacks, self.tf_sess, self.perf_stats, self.soft_horizon,
-            self.no_done_at_end, self.observation_fn, self.fast_sampling)
+            self.no_done_at_end, self.observation_fn, self._fast_sampling)
         while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -365,7 +365,7 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
                 preprocessors, obs_filters, clip_rewards, clip_actions,
                 pack_multiple_episodes_in_batch, callbacks, tf_sess,
                 perf_stats, soft_horizon, no_done_at_end, observation_fn,
-                fast_sampling):
+                _fast_sampling=False):
     """This implements the common experience collection logic.
 
     Args:
@@ -399,7 +399,7 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
             and instead record done=False.
         observation_fn (ObservationFunction): Optional multi-agent
             observation func to use for preprocessing observations.
-        fast_sampling (bool): Whether to use the (experimental)
+        _fast_sampling (bool): Whether to use the (experimental)
             `_fast_sampling` procedure to collect samples. Default: False.
 
     Yields:
@@ -442,7 +442,7 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
     def get_batch_builder():
         if batch_builder_pool:
             return batch_builder_pool.pop()
-        elif fast_sampling:
+        elif _fast_sampling:
             return _FastMultiAgentSampleBatchBuilder(policies, clip_rewards,
                                                      callbacks)
         else:

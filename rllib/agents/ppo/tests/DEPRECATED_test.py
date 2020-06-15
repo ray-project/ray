@@ -2,7 +2,7 @@ import unittest
 import numpy as np
 from numpy.testing import assert_allclose
 
-from ray.rllib.agents.ppo.utils import flatten, concatenate
+from ray.rllib.agents.ppo.DEPRECATED_utils import flatten, concatenate
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()

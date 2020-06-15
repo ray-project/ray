@@ -49,6 +49,10 @@ class TestPPO(unittest.TestCase):
     def test_ppo_compilation(self):
         """Test whether a PPOTrainer can be built with both frameworks."""
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
+
+        #TEST: enable fast sampling.
+        config["_fast_sampling"] = True
+
         config["num_workers"] = 0
         config["num_sgd_iter"] = 2
         # Settings in case we use an LSTM.
