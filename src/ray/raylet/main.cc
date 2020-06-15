@@ -104,7 +104,7 @@ int main(int argc, char *argv[]) {
   // IO Service for node manager.
   boost::asio::io_service main_service;
 
-  // Ensure IO Service keeps running.
+  // Ensure that the IO service keeps running. Without this, the service will exit as soon as there is no more work to be processed.
   boost::asio::io_service::work main_work(main_service);
 
   // Initialize gcs client

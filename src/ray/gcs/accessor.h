@@ -567,7 +567,7 @@ class NodeInfoAccessor {
   virtual Status SetInternalConfig(
       std::unordered_map<std::string, std::string> config) = 0;
 
-  /// Get the Internal Config string from GCS.
+  /// Get the internal config string from GCS.
   ///
   /// \param callback Processes a map of config options
   /// \return Status
