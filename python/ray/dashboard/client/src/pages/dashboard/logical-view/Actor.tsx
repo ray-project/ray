@@ -163,7 +163,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
               label: "Number of local objects",
               value: actor.numLocalObjects.toLocaleString(),
               tooltip:
-                "The number of objects that this actor has stored in memory on the node. This can be useful for " +
+                "The number of small objects that this actor has stored in its local in-process memory store. This can be useful for " +
                 "debugging memory leaks.",
             },
             {
