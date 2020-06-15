@@ -934,8 +934,10 @@ def _start_redis_instance(executable,
     for module in modules:
         load_module_args += ["--loadmodule", module]
 
+    wait_tries = 1
     while counter < num_retries:
-        if counter > num_retries // 2:
+        if counter > wait_tries:
+            wait_tries *= 2
             logger.warning("Redis failed to start after"
                            "{} retries,  trying again.".format(counter))
 
