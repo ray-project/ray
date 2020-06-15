@@ -74,6 +74,29 @@ export type NodeInfoResponseWorker = {
   };
 };
 
+export type GPUProcessStats = {
+  // Sub stat of GPU stats, this type represents the GPU
+  // utilization of a single process of a single GPU.
+  username: string;
+  command: string;
+  gpu_memory_usage: number;
+  pid: number;
+};
+
+export type GPUStats = {
+  // This represents stats fetched from a node about a single GPU
+  uuid: string;
+  name: string;
+  temperature_gpu: number;
+  fan_speed: number;
+  utilization_gpu: number;
+  power_draw: number;
+  enforced_power_limit: number;
+  memory_used: number;
+  memory_total: number;
+  processes: Array<GPUProcessStats>;
+};
+
 export type NodeInfoResponse = {
   clients: Array<{
     now: number;
@@ -82,6 +105,7 @@ export type NodeInfoResponse = {
     boot_time: number; // System boot time expressed in seconds since epoch
     cpu: number; // System-wide CPU utilization expressed as a percentage
     cpus: [number, number]; // Number of logical CPUs and physical CPUs
+    gpus: Array<GPUStats>; // GPU stats fetched from node, 1 entry per GPU
     mem: [number, number, number]; // Total, available, and used percentage of memory
     disk: {
       [path: string]: {
@@ -108,6 +132,18 @@ export type NodeInfoResponse = {
 };
 
 export const getNodeInfo = () => get<NodeInfoResponse>("/api/node_info", {});
+
+export type RayletCoreWorkerStats = {
+  usedResources: {
+    [key: string]: number;
+  };
+};
+
+export type RayletWorkerStats = {
+  pid: number;
+  isDriver?: boolean;
+  coreWorkerStats: RayletCoreWorkerStats;
+};
 
 export type RayletActorInfo =
   | {
@@ -145,10 +181,7 @@ export type RayletInfoResponse = {
   nodes: {
     [ip: string]: {
       extraInfo?: string;
-      workersStats: {
-        pid: number;
-        isDriver?: boolean;
-      }[];
+      workersStats: Array<RayletWorkerStats>;
     };
   };
   actors: {
