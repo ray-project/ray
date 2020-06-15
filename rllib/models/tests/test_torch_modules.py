@@ -143,7 +143,7 @@ class TestModules(unittest.TestCase):
                 x = torch.randn(B, L, D_in)
                 y = torch.randn(B, L, D_out)
 
-                print(torch.min(x))
+
                 model = TorchGTrXLNet(
                     observation_space=gym.spaces.Box(
                         low=torch.min(x).item(), high=torch.max(x).item(), shape=(D_in,)),
@@ -165,6 +165,8 @@ class TestModules(unittest.TestCase):
                 x = np.random.random((B, L, D_in))
                 y = np.random.random((B, L, D_out))
 
+                value_labels = np.random.random((B, L, 1))
+                memory_labels = np.random.random((B, L, D_in))
 
                 # How can we spoof observation/action space here
                 attention_net = GTrXLNet(
@@ -175,16 +177,19 @@ class TestModules(unittest.TestCase):
                     model_config={"max_seq_len": 2},
                     name="TestTFAttentionNet",
                     num_transformer_units=1,
-                    attn_dim=32,
+                    attn_dim=D_in,
                     num_heads=2,
                     memory_tau=L,
-                    head_dim=16,
+                    head_dim=D_out,
                     ff_hidden_dim=16,
                     init_gate_bias=2.0)
                 model = attention_net.trxl_model
                 init_state = attention_net.get_initial_state()
+                init_state = [np.expand_dims(s, 0) for s in init_state]
 
-                self.train_tf_model(model, init_state, y)
+                self.train_tf_model(model,
+                                    [x] + init_state,
+                                    [y, value_labels, memory_labels])
 
 
 if __name__ == "__main__":
