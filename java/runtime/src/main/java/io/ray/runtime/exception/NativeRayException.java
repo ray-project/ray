@@ -1,5 +1,8 @@
 package io.ray.runtime.exception;
 
+import com.google.common.base.FinalizablePhantomReference;
+import com.google.common.base.FinalizableReferenceQueue;
+import com.google.common.collect.Sets;
 import io.ray.api.exception.RayException;
 import io.ray.api.id.ObjectId;
 import io.ray.api.runtimecontext.RuntimeContext;
@@ -13,10 +16,16 @@ import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 
+import java.lang.ref.Reference;
 import java.util.Arrays;
+import java.util.Set;
 import org.apache.commons.lang3.tuple.Pair;
 
 public class NativeRayException extends RayException {
+
+  private static final FinalizableReferenceQueue REFERENCE_QUEUE = new FinalizableReferenceQueue();
+  // This ensures that the FinalizablePhantomReference itself is not garbage-collected.
+  private static final Set<Reference<?>> references = Sets.newConcurrentHashSet();
 
   private long nativeHandle;
 
@@ -99,10 +108,12 @@ public class NativeRayException extends RayException {
         traceBack,
         serialized.getLeft(),
         cause == null ? new byte[0] : cause.toBytes());
+    autoDestroyNative(this.nativeHandle);
   }
 
   protected NativeRayException(byte[] serialized) {
     this.nativeHandle = nativeDeserialize(serialized);
+    autoDestroyNative(this.nativeHandle);
   }
 
   public static NativeRayException fromBytes(byte[] serialized) {
@@ -138,11 +149,6 @@ public class NativeRayException extends RayException {
   }
 
   @Override
-  protected void finalize() {
-    destroy();
-  }
-
-  @Override
   public Throwable getCause() {
     byte[] serializedCause = nativeCause(this.nativeHandle);
     if (serializedCause.length > 0) {
@@ -151,9 +157,19 @@ public class NativeRayException extends RayException {
     return null;
   }
 
-  public void destroy() {
-    nativeDestroy(this.nativeHandle);
-    this.nativeHandle = 0;
+  private void autoDestroyNative(long nativeHandle) {
+    if (nativeHandle == 0) {
+      return;
+    }
+    Reference<NativeRayException> reference =
+        new FinalizablePhantomReference<NativeRayException>(this, REFERENCE_QUEUE) {
+          @Override
+          public void finalizeReferent() {
+            nativeDestroy(nativeHandle);
+            references.remove(this);
+          }
+        };
+    references.add(reference);
   }
 
   public Language getLanguage() {
