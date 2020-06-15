@@ -370,7 +370,6 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-
   bool ReportJobError(const rpc::ReportJobErrorRequest &request) {
     std::promise<bool> promise;
     client_->ReportJobError(
