@@ -1,3 +1,4 @@
+import gym
 import logging
 import numpy as np
 
@@ -275,12 +276,14 @@ def check_compute_single_action(trainer,
     except AttributeError:
         pol = trainer.policy
 
-    obs_space = pol.observation_space
-    action_space = pol.action_space
-
     for what in [pol, trainer]:
-        method_to_test = trainer.compute_action if what is trainer else \
-            pol.compute_single_action
+        if what is trainer:
+            obs_space = trainer.workers.local_worker().env.observation_space
+            method_to_test = trainer.compute_action
+        else:
+            obs_space = pol.observation_space
+            method_to_test = pol.compute_single_action
+        action_space = pol.action_space
 
         for explore in [True, False]:
             for full_fetch in ([False, True] if what is trainer else [False]):
@@ -288,7 +291,9 @@ def check_compute_single_action(trainer,
                 if what is trainer:
                     call_kwargs["full_fetch"] = full_fetch
 
-                obs = np.clip(obs_space.sample(), -1.0, 1.0)
+                obs = obs_space.sample()
+                if isinstance(obs_space, gym.spaces.Box):
+                    obs = np.clip(obs, -1.0, 1.0)
                 state_in = None
                 if include_state:
                     state_in = pol.model.get_initial_state()

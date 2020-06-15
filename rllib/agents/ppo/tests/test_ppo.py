@@ -40,7 +40,7 @@ FAKE_BATCH = {
 class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -53,11 +53,13 @@ class TestPPO(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config):
-            trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
-            for i in range(num_iterations):
-                trainer.train()
-            check_compute_single_action(
-                trainer, include_prev_action_reward=True)
+            for env in ["FrozenLake-v0", "CartPole-v0"]:
+                print("env={}".format(env))
+                trainer = ppo.PPOTrainer(config=config, env=env)
+                for i in range(num_iterations):
+                    print(trainer.train())
+                check_compute_single_action(
+                    trainer, include_prev_action_reward=True)
 
     def test_ppo_fake_multi_gpu_learning(self):
         """Test whether PPOTrainer can learn CartPole w/ faked multi-GPU."""
@@ -81,10 +83,10 @@ class TestPPO(unittest.TestCase):
         learnt = False
         for i in range(num_iterations):
             results = trainer.train()
+            print(results)
             if results["episode_reward_mean"] > 150:
                 learnt = True
                 break
-            print(results)
         assert learnt, "PPO multi-GPU (with fake-GPUs) did not learn CartPole!"
 
     def test_ppo_exploration_setup(self):
