@@ -228,8 +228,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param job_id The id of finished job.
   void OnJobFinished(const JobID &job_id);
 
-  void ClearActorStates(std::vector<ActorID> actor_ids);
-
  private:
   /// A data structure representing an actor's owner.
   struct Owner {

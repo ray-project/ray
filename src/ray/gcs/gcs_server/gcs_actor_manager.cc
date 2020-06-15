@@ -765,75 +765,41 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
 }
 
 void GcsActorManager::OnJobFinished(const JobID &job_id) {
-  RAY_CHECK_OK(gcs_table_storage_->ActorTable().DeleteByJobId(job_id, nullptr));
-  auto on_done =
+  auto on_actor_done = [this](const std::unordered_map<ActorID, ActorTableData> &result) {
+    if (!result.empty()) {
+      std::vector<ActorID> non_detached_actors;
+      for (auto &item : result) {
+        if (!item.second.is_detached()) {
+          non_detached_actors.push_back(item.first);
+        }
+      }
+      RAY_CHECK_OK(
+          gcs_table_storage_->ActorTable().BatchDelete(non_detached_actors, nullptr));
+    }
+  };
+  // Only non-detached actors should be deleted. We get all actors of this job and to the
+  // filtering.
+  RAY_CHECK_OK(gcs_table_storage_->ActorTable().GetByJobId(job_id, on_actor_done));
+
+  auto on_checkpoint_id_done =
       [this](const std::unordered_map<ActorID, ActorCheckpointIdData> &result) {
         if (!result.empty()) {
           std::vector<ActorCheckpointID> checkpoint_ids;
-          std::vector<ActorID> actor_ids;
           for (auto &item : result) {
-            actor_ids.push_back(item.first);
             for (auto &id : item.second.checkpoint_ids()) {
               checkpoint_ids.push_back(ActorCheckpointID::FromBinary(id));
             }
           }
           RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointTable().BatchDelete(
               checkpoint_ids, nullptr));
-          ClearActorStates(actor_ids);
         }
       };
   // Get checkpoint id first from checkpoint id table and delete all checkpoints related
   // to this job
-  RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointIdTable().GetByJobId(job_id, on_done));
+  RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointIdTable().GetByJobId(
+      job_id, on_checkpoint_id_done));
   RAY_CHECK_OK(
       gcs_table_storage_->ActorCheckpointIdTable().DeleteByJobId(job_id, nullptr));
-}
-
-void GcsActorManager::ClearActorStates(std::vector<ActorID> actor_ids) {
-  for (auto &actor_id : actor_ids) {
-    actor_to_register_callbacks_.erase(actor_id);
-
-    auto it = registered_actors_.find(actor_id);
-    if (it != registered_actors_.end()) {
-      const auto actor = std::move(it->second);
-      registered_actors_.erase(it);
-
-      named_actors_.erase(actor->GetName());
-
-      const auto &node_id = actor->GetNodeID();
-      const auto &worker_id = actor->GetWorkerID();
-      auto node_it = created_actors_.find(node_id);
-      if (node_it != created_actors_.end() && node_it->second.count(worker_id)) {
-        RAY_CHECK(node_it->second.erase(actor->GetWorkerID()));
-        if (node_it->second.empty()) {
-          created_actors_.erase(node_it);
-        }
-      }
-
-      const auto &owner_node_id = actor->GetOwnerNodeID();
-      const auto &owner_id = actor->GetOwnerID();
-
-      auto &node = owners_[owner_node_id];
-      auto worker_it = node.find(owner_id);
-      RAY_CHECK(worker_it != node.end());
-      auto &owner = worker_it->second;
-      RAY_CHECK(owner.children_actor_ids.erase(actor_id));
-      if (owner.children_actor_ids.empty()) {
-        node.erase(worker_it);
-        if (node.empty()) {
-          owners_.erase(owner_node_id);
-        }
-      }
-    }
-
-    auto pending_it = std::find_if(pending_actors_.begin(), pending_actors_.end(),
-                                   [actor_id](const std::shared_ptr<GcsActor> &actor) {
-                                     return actor->GetActorID() == actor_id;
-                                   });
-    if (pending_it != pending_actors_.end()) {
-      pending_actors_.erase(pending_it);
-    }
-  }
 }
 
 }  // namespace gcs

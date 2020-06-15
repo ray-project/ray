@@ -316,12 +316,6 @@ void GcsObjectManager::LoadInitialData(const EmptyCallback &done) {
   RAY_CHECK_OK(gcs_table_storage_->ObjectTable().GetAll(callback));
 }
 
-void GcsObjectManager::OnJobFinished(const JobID &job_id) {
-  /// Remove caches in object manager first, then items in object table.
-  RemoveAllObjectLocationsInCacheByJobId(job_id);
-  RAY_CHECK_OK(gcs_table_storage_->ObjectTable().DeleteByJobId(job_id, nullptr));
-}
-
 }  // namespace gcs
 
 }  // namespace ray

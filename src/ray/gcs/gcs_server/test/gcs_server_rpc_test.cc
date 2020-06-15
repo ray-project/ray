@@ -508,33 +508,6 @@ TEST_F(GcsServerTest, TestJobGarbageCollection) {
   add_job_request.mutable_data()->CopyFrom(*job_table_data);
   ASSERT_TRUE(AddJob(add_job_request));
 
-  // Add task for job
-  TaskID task_id = TaskID::ForDriverTask(job_id);
-  auto task_table_data = Mocker::GenTaskTableData(job_id.Binary(), task_id.Binary());
-  rpc::AddTaskRequest add_task_request;
-  add_task_request.mutable_task_data()->CopyFrom(*task_table_data);
-  ASSERT_TRUE(AddTask(add_task_request));
-
-  rpc::TaskTableData task_result = GetTask(task_id.Binary());
-  ASSERT_TRUE(task_result.task().task_spec().job_id() == job_id.Binary());
-
-  // Add task lease
-  ClientID node_id = ClientID::FromRandom();
-  auto task_lease_data = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
-  rpc::AddTaskLeaseRequest add_task_lease_request;
-  add_task_lease_request.mutable_task_lease_data()->CopyFrom(*task_lease_data);
-  ASSERT_TRUE(AddTaskLease(add_task_lease_request));
-
-  // Attempt task reconstruction
-  rpc::AttemptTaskReconstructionRequest attempt_task_reconstruction_request;
-  rpc::TaskReconstructionData task_reconstruction_data;
-  task_reconstruction_data.set_task_id(task_id.Binary());
-  task_reconstruction_data.set_node_manager_id(node_id.Binary());
-  task_reconstruction_data.set_num_reconstructions(0);
-  attempt_task_reconstruction_request.mutable_task_reconstruction()->CopyFrom(
-      task_reconstruction_data);
-  ASSERT_TRUE(AttemptTaskReconstruction(attempt_task_reconstruction_request));
-
   // Register actor for job
   auto actor_table_data = Mocker::GenActorTableData(job_id);
   rpc::RegisterActorInfoRequest register_actor_info_request;
@@ -564,40 +537,12 @@ TEST_F(GcsServerTest, TestJobGarbageCollection) {
   ASSERT_TRUE(checkpoint_id_result->actor_id() == actor_table_data->actor_id());
   ASSERT_TRUE(checkpoint_id_result->checkpoint_ids_size() == 1);
 
-  // Add object location for job
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
-  ClientID node1_id = ClientID::FromRandom();
-
-  rpc::AddObjectLocationRequest add_object_location_request;
-  add_object_location_request.set_object_id(object_id.Binary());
-  add_object_location_request.set_node_id(node1_id.Binary());
-  ASSERT_TRUE(AddObjectLocation(add_object_location_request));
-  std::vector<rpc::ObjectTableData> object_locations =
-      GetObjectLocations(object_id.Binary());
-  ASSERT_TRUE(object_locations.size() == 1);
-  ASSERT_TRUE(object_locations[0].manager() == node1_id.Binary());
-
   // Mark job finished
   rpc::MarkJobFinishedRequest mark_job_finished_request;
   mark_job_finished_request.set_job_id(job_table_data->job_id());
   ASSERT_TRUE(MarkJobFinished(mark_job_finished_request));
 
-  std::function<bool()> condition_func = [this, &task_id]() -> bool {
-    return !GetTask(task_id.Binary()).has_task();
-  };
-  ASSERT_TRUE(WaitForCondition(condition_func, 10 * 1000));
-
-  condition_func = [this, &task_id]() -> bool {
-    return !GetTaskLease(task_id.Binary()).has_value();
-  };
-  ASSERT_TRUE(WaitForCondition(condition_func, 10 * 1000));
-
-  condition_func = [this, &object_id]() -> bool {
-    return GetObjectLocations(object_id.Binary()).empty();
-  };
-  ASSERT_TRUE(WaitForCondition(condition_func, 10 * 1000));
-
-  condition_func = [this, &actor_table_data]() -> bool {
+  std::function<bool()> condition_func = [this, &actor_table_data]() -> bool {
     return !GetActorInfo(actor_table_data->actor_id()).has_value();
   };
   ASSERT_TRUE(WaitForCondition(condition_func, 10 * 1000));
