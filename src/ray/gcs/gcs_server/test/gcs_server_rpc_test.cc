@@ -537,6 +537,42 @@ TEST_F(GcsServerTest, TestJobGarbageCollection) {
   ASSERT_TRUE(checkpoint_id_result->actor_id() == actor_table_data->actor_id());
   ASSERT_TRUE(checkpoint_id_result->checkpoint_ids_size() == 1);
 
+  // Register detached actor for job
+  auto detached_actor_table_data = Mocker::GenActorTableData(job_id);
+  detached_actor_table_data->set_is_detached(true);
+  rpc::RegisterActorInfoRequest register_detached_actor_info_request;
+  register_detached_actor_info_request.mutable_actor_table_data()->CopyFrom(
+      *detached_actor_table_data);
+  ASSERT_TRUE(RegisterActorInfo(register_detached_actor_info_request));
+  boost::optional<rpc::ActorTableData> detached_actor_result =
+      GetActorInfo(detached_actor_table_data->actor_id());
+  ASSERT_TRUE(detached_actor_result->state() ==
+              rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+
+  // Add checkpoint for detached actor
+  ActorCheckpointID detached_checkpoint_id = ActorCheckpointID::FromRandom();
+  rpc::ActorCheckpointData detached_checkpoint;
+  detached_checkpoint.set_actor_id(detached_actor_table_data->actor_id());
+  detached_checkpoint.set_checkpoint_id(detached_checkpoint_id.Binary());
+  detached_checkpoint.set_execution_dependency(detached_checkpoint_id.Binary());
+
+  rpc::AddActorCheckpointRequest add_detached_actor_checkpoint_request;
+  add_detached_actor_checkpoint_request.mutable_checkpoint_data()->CopyFrom(
+      detached_checkpoint);
+  ASSERT_TRUE(AddActorCheckpoint(add_detached_actor_checkpoint_request));
+  boost::optional<rpc::ActorCheckpointData> detached_checkpoint_result =
+      GetActorCheckpoint(detached_actor_table_data->actor_id(),
+                         detached_checkpoint_id.Binary());
+  ASSERT_TRUE(detached_checkpoint_result->actor_id() ==
+              detached_actor_table_data->actor_id());
+  ASSERT_TRUE(detached_checkpoint_result->checkpoint_id() ==
+              detached_checkpoint_id.Binary());
+  boost::optional<rpc::ActorCheckpointIdData> detached_checkpoint_id_result =
+      GetActorCheckpointID(detached_actor_table_data->actor_id());
+  ASSERT_TRUE(detached_checkpoint_id_result->actor_id() ==
+              detached_actor_table_data->actor_id());
+  ASSERT_TRUE(detached_checkpoint_id_result->checkpoint_ids_size() == 1);
+
   // Mark job finished
   rpc::MarkJobFinishedRequest mark_job_finished_request;
   mark_job_finished_request.set_job_id(job_table_data->job_id());
@@ -557,6 +593,23 @@ TEST_F(GcsServerTest, TestJobGarbageCollection) {
     return !GetActorCheckpointID(actor_table_data->actor_id()).has_value();
   };
   ASSERT_TRUE(WaitForCondition(condition_func, 10 * 1000));
+
+  detached_actor_result = GetActorInfo(detached_actor_table_data->actor_id());
+  ASSERT_TRUE(detached_actor_result->state() ==
+              rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+
+  detached_checkpoint_result = GetActorCheckpoint(detached_actor_table_data->actor_id(),
+                                                  detached_checkpoint_id.Binary());
+  ASSERT_TRUE(detached_checkpoint_result->actor_id() ==
+              detached_actor_table_data->actor_id());
+  ASSERT_TRUE(detached_checkpoint_result->checkpoint_id() ==
+              detached_checkpoint_id.Binary());
+
+  detached_checkpoint_id_result =
+      GetActorCheckpointID(detached_actor_table_data->actor_id());
+  ASSERT_TRUE(detached_checkpoint_id_result->actor_id() ==
+              detached_actor_table_data->actor_id());
+  ASSERT_TRUE(detached_checkpoint_id_result->checkpoint_ids_size() == 1);
 }
 
 TEST_F(GcsServerTest, TestNodeInfo) {
