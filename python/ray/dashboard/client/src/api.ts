@@ -160,7 +160,11 @@ export type RayletActorInfo =
       numObjectIdsInScope: number;
       pid: number;
       port: number;
-      state: 0 | 1 | 2;
+      state:
+        | ActorState.Creating
+        | ActorState.Alive
+        | ActorState.Restarting
+        | ActorState.Dead;
       taskQueueLength: number;
       timestamp: number;
       usedObjectStoreMemory: number;
@@ -173,9 +177,19 @@ export type RayletActorInfo =
       actorId: string;
       actorTitle: string;
       requiredResources: { [key: string]: number };
-      state: -1;
-      invalidStateType?: "infeasibleActor" | "pendingActor";
+      state: ActorState.Invalid;
+      invalidStateType?: InvalidStateType;
     };
+
+export type InvalidStateType = "infeasibleActor" | "pendingActor";
+
+export enum ActorState {
+  Invalid = -1,
+  Creating = 0,
+  Alive = 1,
+  Restarting = 2,
+  Dead = 3,
+}
 
 export type RayletInfoResponse = {
   nodes: {
