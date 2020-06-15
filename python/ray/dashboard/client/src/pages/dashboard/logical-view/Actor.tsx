@@ -152,7 +152,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 "The number of tasks this actor has executed throughout its lifetimes.",
             },
             {
-              label: "Number of object IDs in scope",
+              label: "Number of ObjectIDs in scope",
               value: actor.numObjectIdsInScope.toLocaleString(),
               tooltip:
                 "The number of objects ids that this actor is keeping in scope via its internal state. " +
