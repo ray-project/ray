@@ -15,17 +15,17 @@
 #ifndef RAY_RPC_OBJECT_MANAGER_CLIENT_H
 #define RAY_RPC_OBJECT_MANAGER_CLIENT_H
 
-#include <thread>
-
 #include <grpcpp/grpcpp.h>
 #include <grpcpp/resource_quota.h>
 #include <grpcpp/support/channel_arguments.h>
 
+#include <thread>
+
 #include "ray/common/status.h"
+#include "ray/protobuf/object_manager.grpc.pb.h"
+#include "ray/protobuf/object_manager.pb.h"
+#include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
-#include "src/ray/protobuf/object_manager.grpc.pb.h"
-#include "src/ray/protobuf/object_manager.pb.h"
-#include "src/ray/rpc/grpc_client.h"
 
 namespace ray {
 namespace rpc {

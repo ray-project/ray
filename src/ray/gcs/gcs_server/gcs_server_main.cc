@@ -54,6 +54,8 @@ int main(int argc, char *argv[]) {
 
   RayConfig::instance().initialize(config_map);
 
+  boost::asio::io_service main_service;
+
   ray::gcs::GcsServerConfig gcs_server_config;
   gcs_server_config.grpc_server_name = "GcsServer";
   gcs_server_config.grpc_server_port = 0;
@@ -62,6 +64,26 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_port = redis_port;
   gcs_server_config.redis_password = redis_password;
   gcs_server_config.retry_redis = retry_redis;
-  ray::gcs::GcsServer gcs_server(gcs_server_config);
+  ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);
+
+  // Destroy the GCS server on a SIGTERM. The pointer to main_service is
+  // guaranteed to be valid since this function will run the event loop
+  // instead of returning immediately.
+  auto handler = [&main_service, &gcs_server](const boost::system::error_code &error,
+                                              int signal_number) {
+    RAY_LOG(INFO) << "GCS server received SIGTERM, shutting down...";
+    gcs_server.Stop();
+    main_service.stop();
+  };
+  boost::asio::signal_set signals(main_service);
+#ifdef _WIN32
+  signals.add(SIGBREAK);
+#else
+  signals.add(SIGTERM);
+#endif
+  signals.async_wait(handler);
+
   gcs_server.Start();
+
+  main_service.run();
 }

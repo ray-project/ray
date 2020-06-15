@@ -18,15 +18,18 @@
 #include <process.h>
 #else
 #include <signal.h>
+#include <stddef.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #endif
 #include <unistd.h>
 
 #include <algorithm>
+#include <fstream>
 #include <string>
 #include <vector>
 
+#include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
@@ -50,48 +53,98 @@ class ProcessFD {
   pid_t GetId() const;
 
   // Fork + exec combo. Returns -1 for the PID on failure.
-  static ProcessFD spawnvp(const char *argv[], std::error_code &ec) {
+  static ProcessFD spawnvp(const char *argv[], std::error_code &ec, bool decouple) {
     ec = std::error_code();
     intptr_t fd;
     pid_t pid;
 #ifdef _WIN32
+    (void)decouple;  // Windows doesn't require anything particular for decoupling.
     std::vector<std::string> args;
     for (size_t i = 0; argv[i]; ++i) {
       args.push_back(argv[i]);
     }
-    // Calling CreateCommandLine() here wouldn't make sense here if the
-    // Microsoft C runtime properly quoted each command-argument argument.
-    // However, it doesn't quote at all. It just joins arguments with a space.
-    // So we have to do the quoting manually and pass everything as a single argument.
-    fd = _spawnlp(P_NOWAIT, args[0].c_str(), CreateCommandLine(args).c_str(), NULL);
-    if (fd != -1) {
-      pid = static_cast<pid_t>(GetProcessId(reinterpret_cast<HANDLE>(fd)));
-      if (pid == 0) {
-        pid = -1;
-      }
-    } else {
-      pid = -1;
+    std::string cmds[] = {std::string(), CreateCommandLine(args)};
+    if (GetFileName(args.at(0)).find('.') == std::string::npos) {
+      // Some executables might be missing an extension.
+      // Append a single "." to prevent automatic appending of extensions by the system.
+      std::vector<std::string> args_direct_call = args;
+      args_direct_call[0] += ".";
+      cmds[0] = CreateCommandLine(args_direct_call);
     }
-    if (pid == -1) {
+    bool succeeded = false;
+    PROCESS_INFORMATION pi = {};
+    for (int attempt = 0; attempt < sizeof(cmds) / sizeof(*cmds); ++attempt) {
+      std::string &cmd = cmds[attempt];
+      if (!cmd.empty()) {
+        (void)cmd.c_str();  // We'll need this to be null-terminated (but mutable) below
+        TCHAR *cmdline = &*cmd.begin();
+        STARTUPINFO si = {sizeof(si)};
+        if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+          succeeded = true;
+          break;
+        }
+      }
+    }
+    if (succeeded) {
+      CloseHandle(pi.hThread);
+      fd = reinterpret_cast<intptr_t>(pi.hProcess);
+      pid = pi.dwProcessId;
+    } else {
       ec = std::error_code(GetLastError(), std::system_category());
+      fd = -1;
+      pid = -1;
     }
 #else
     // TODO(mehrdadn): Use clone() on Linux or posix_spawnp() on Mac to avoid duplicating
     // file descriptors into the child process, as that can be problematic.
-    pid = fork();
+    int pipefds[2];  // Create pipe to get PID & track lifetime
+    if (pipe(pipefds) == -1) {
+      pipefds[0] = pipefds[1] = -1;
+    }
+    pid = pipefds[1] != -1 ? fork() : -1;
+    if (pid <= 0 && pipefds[0] != -1) {
+      close(pipefds[0]);  // not the parent, so close the read end of the pipe
+      pipefds[0] = -1;
+    }
+    if (pid != 0 && pipefds[1] != -1) {
+      close(pipefds[1]);  // not the child, so close the write end of the pipe
+      pipefds[1] = -1;
+    }
     if (pid == 0) {
-      // Child process case. Reset the SIGCHLD handler for the worker.
+      // Child process case. Reset the SIGCHLD handler.
       signal(SIGCHLD, SIG_DFL);
-      if (execvp(argv[0], const_cast<char *const *>(argv)) == -1) {
-        pid = -1;
-        abort();  // fork() succeeded but exec() failed, so abort the child
+      // If process needs to be decoupled, double-fork to avoid zombies.
+      if (pid_t pid2 = decouple ? fork() : 0) {
+        _exit(pid2 == -1 ? errno : 0);  // Parent of grandchild; must exit
+      }
+      // This is the spawned process. Any intermediate parent is now dead.
+      pid_t my_pid = getpid();
+      if (write(pipefds[1], &my_pid, sizeof(my_pid)) == sizeof(my_pid)) {
+        execvp(argv[0], const_cast<char *const *>(argv));
+      }
+      _exit(errno);  // fork() succeeded and exec() failed, so abort the child
+    }
+    if (pid > 0) {
+      // Parent process case
+      if (decouple) {
+        int s;
+        (void)waitpid(pid, &s, 0);  // can't do much if this fails, so ignore return value
+      }
+      int r = read(pipefds[0], &pid, sizeof(pid));
+      (void)r;  // can't do much if this fails, so ignore return value
+    }
+    if (decouple) {
+      fd = pipefds[0];  // grandchild, but we can use this to track its lifetime
+    } else {
+      fd = -1;  // direct child, so we can use the PID to track its lifetime
+      if (pipefds[0] != -1) {
+        close(pipefds[0]);
+        pipefds[0] = -1;
       }
     }
     if (pid == -1) {
       ec = std::error_code(errno, std::system_category());
     }
-    // TODO(mehrdadn): This would be a good place to open a descriptor later
-    fd = -1;
 #endif
     return ProcessFD(pid, fd);
   }
@@ -99,11 +152,13 @@ class ProcessFD {
 
 ProcessFD::~ProcessFD() {
   if (fd_ != -1) {
+    bool success;
 #ifdef _WIN32
-    CloseHandle(reinterpret_cast<HANDLE>(fd_));
+    success = !!CloseHandle(reinterpret_cast<HANDLE>(fd_));
 #else
-    close(static_cast<int>(fd_));
+    success = close(static_cast<int>(fd_)) == 0;
 #endif
+    RAY_CHECK(success) << "error " << errno << " closing process " << pid_ << " FD";
   }
 }
 
@@ -219,12 +274,30 @@ Process &Process::operator=(Process other) {
 
 Process::Process(pid_t pid) { p_ = std::make_shared<ProcessFD>(pid); }
 
-Process::Process(const char *argv[], void *io_service, std::error_code &ec) {
+Process::Process(const char *argv[], void *io_service, std::error_code &ec,
+                 bool decouple) {
   (void)io_service;
-  ProcessFD procfd = ProcessFD::spawnvp(argv, ec);
+  ProcessFD procfd = ProcessFD::spawnvp(argv, ec, decouple);
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }
+}
+
+std::error_code Process::Call(const std::vector<std::string> &args) {
+  std::vector<const char *> argv;
+  for (size_t i = 0; i != args.size(); ++i) {
+    argv.push_back(args[i].c_str());
+  }
+  argv.push_back(NULL);
+  std::error_code ec;
+  Process proc(&*argv.begin(), NULL, ec, true);
+  if (!ec) {
+    int return_code = proc.Wait();
+    if (return_code != 0) {
+      ec = std::error_code(return_code, std::system_category());
+    }
+  }
+  return ec;
 }
 
 Process Process::CreateNewDummy() {
@@ -247,6 +320,24 @@ bool Process::IsNull() const { return !p_; }
 
 bool Process::IsValid() const { return GetId() != -1; }
 
+std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string> &args,
+                                                   bool decouple,
+                                                   const std::string &pid_file) {
+  std::vector<const char *> argv;
+  for (size_t i = 0; i != args.size(); ++i) {
+    argv.push_back(args[i].c_str());
+  }
+  argv.push_back(NULL);
+  std::error_code error;
+  Process proc(&*argv.begin(), NULL, error, decouple);
+  if (!error && !pid_file.empty()) {
+    std::ofstream file(pid_file, std::ios_base::out | std::ios_base::trunc);
+    file << proc.GetId() << std::endl;
+    RAY_CHECK(file.good());
+  }
+  return std::make_pair(std::move(proc), error);
+}
+
 int Process::Wait() const {
   int status;
   if (p_) {
@@ -265,8 +356,27 @@ int Process::Wait() const {
         status = -1;
       }
 #else
-      (void)fd;
-      if (waitpid(pid, &status, 0) != 0) {
+      // There are 3 possible cases:
+      // - The process is a child whose death we await via waitpid().
+      //   This is the usual case, when we have a child whose SIGCHLD we handle.
+      // - The process shares a pipe with us whose closure we use to detect its death.
+      //   This is used to track a non-owned process, like a grandchild.
+      // - The process has no relationship with us, in which case we simply fail,
+      //   since we have no need for this (and there's no good way to do it).
+      // Why don't we just poll the PID? Because it's better not to:
+      // - It would be prone to a race condition (we won't know when the PID is recycled).
+      // - It would incur high latency and/or high CPU usage for the caller.
+      if (fd != -1) {
+        // We have a pipe, so wait for its other end to close, to detect process death.
+        unsigned char buf[1 << 8];
+        ptrdiff_t r;
+        while ((r = read(fd, buf, sizeof(buf))) > 0) {
+          // Keep reading until socket terminates
+        }
+        status = r == -1 ? -1 : 0;
+      } else if (waitpid(pid, &status, 0) == -1) {
+        // Just the normal waitpid() case.
+        // (We can only do this once, only if we own the process. It fails otherwise.)
         error = std::error_code(errno, std::system_category());
       }
 #endif

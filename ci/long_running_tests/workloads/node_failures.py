@@ -4,7 +4,7 @@ import time
 
 import ray
 from ray.cluster_utils import Cluster
-from ray.test_utils import get_non_head_nodes
+from ray.test_utils import get_other_nodes
 
 num_redis_shards = 5
 redis_max_memory = 10**8
@@ -51,8 +51,8 @@ while True:
 
     for _ in range(100):
         previous_ids = [f.remote(previous_id) for previous_id in previous_ids]
+    node_to_kill = get_other_nodes(cluster, exclude_head=True)[0]
 
-    node_to_kill = get_non_head_nodes(cluster)[0]
     # Remove the first non-head node.
     cluster.remove_node(node_to_kill)
     cluster.add_node()

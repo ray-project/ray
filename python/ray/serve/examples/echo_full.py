@@ -13,9 +13,6 @@ from ray.serve.utils import pformat_color_json
 # initialize ray serve system.
 serve.init()
 
-# an endpoint is associated with an http URL.
-serve.create_endpoint("my_endpoint", "/echo")
-
 
 # a backend can be a function or class.
 # it can be made to be invoked from web as well as python.
@@ -27,9 +24,9 @@ def echo_v1(flask_request, response="hello from python!"):
 
 serve.create_backend("echo:v1", echo_v1)
 
-# We can link an endpoint to a backend, the means all the traffic
-# goes to my_endpoint will now goes to echo:v1 backend.
-serve.set_traffic("my_endpoint", {"echo:v1": 1.0})
+# An endpoint is associated with an HTTP path and traffic to the endpoint
+# will be serviced by the echo:v1 backend.
+serve.create_endpoint("my_endpoint", backend="echo:v1", route="/echo")
 
 print(requests.get("http://127.0.0.1:8000/echo", timeout=0.5).text)
 # The service will be reachable from http

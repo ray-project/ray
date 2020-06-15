@@ -52,6 +52,9 @@ XRAY_HEARTBEAT_BATCH_PATTERN = "HEARTBEAT_BATCH:".encode("ascii")
 # xray job updates
 XRAY_JOB_PATTERN = "JOB:*".encode("ascii")
 
+# Actor pub/sub updates
+RAY_ACTOR_PUBSUB_PATTERN = "ACTOR:*".encode("ascii")
+
 # These prefixes must be kept up-to-date with the TablePrefix enum in
 # gcs.proto.
 # TODO(rkn): We should use scoped enums, in which case we should be able to

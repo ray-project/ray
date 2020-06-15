@@ -48,7 +48,7 @@ OBSERVATION_SPACES_TO_TEST = {
 }
 
 
-def check_support(alg, config, check_bounds=False):
+def check_support(alg, config, train=True, check_bounds=False, tfe=False):
     config["log_level"] = "ERROR"
 
     def _do_check(alg, config, a_name, o_name):
@@ -83,7 +83,8 @@ def check_support(alg, config, check_bounds=False):
                         assert isinstance(a.get_policy().model, TorchFCNetV2)
                     else:
                         assert isinstance(a.get_policy().model, FCNetV2)
-            a.train()
+            if train:
+                a.train()
         except UnsupportedSpaceException:
             stat = "unsupported"
         finally:
@@ -95,20 +96,26 @@ def check_support(alg, config, check_bounds=False):
                     pass
         print(stat)
 
-    for _ in framework_iterator(config, frameworks=("tf", "torch")):
-        # Check all action spaces.
+    frameworks = ("tf", "torch")
+    if tfe:
+        frameworks += ("tfe", )
+    for _ in framework_iterator(config, frameworks=frameworks):
+        # Check all action spaces (using a discrete obs-space).
         for a_name, action_space in ACTION_SPACES_TO_TEST.items():
             _do_check(alg, config, a_name, "discrete")
-        # Check all obs spaces.
+        # Check all obs spaces (using a supported action-space).
         for o_name, obs_space in OBSERVATION_SPACES_TO_TEST.items():
-            _do_check(alg, config, "discrete", o_name)
+            a_name = "discrete" if alg not in ["DDPG", "SAC"] else "vector"
+            _do_check(alg, config, a_name, o_name)
 
 
-class ModelSupportedSpaces(unittest.TestCase):
-    def setUp(self):
-        ray.init(num_cpus=4, ignore_reinit_error=True, local_mode=True)
+class TestSupportedSpaces(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init(num_cpus=4)
 
-    def tearDown(self):
+    @classmethod
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_a3c(self):
@@ -116,7 +123,7 @@ class ModelSupportedSpaces(unittest.TestCase):
         check_support("A3C", config, check_bounds=True)
 
     def test_appo(self):
-        check_support("APPO", {"num_gpus": 0, "vtrace": False})
+        check_support("APPO", {"num_gpus": 0, "vtrace": False}, train=False)
         check_support("APPO", {"num_gpus": 0, "vtrace": True})
 
     def test_ars(self):
@@ -135,13 +142,14 @@ class ModelSupportedSpaces(unittest.TestCase):
                     "ou_base_scale": 100.0
                 },
                 "timesteps_per_iteration": 1,
+                "buffer_size": 1000,
                 "use_state_preprocessor": True,
             },
             check_bounds=True)
 
     def test_dqn(self):
-        config = {"timesteps_per_iteration": 1}
-        check_support("DQN", config)
+        config = {"timesteps_per_iteration": 1, "buffer_size": 1000}
+        check_support("DQN", config, tfe=True)
 
     def test_es(self):
         check_support(
@@ -163,14 +171,14 @@ class ModelSupportedSpaces(unittest.TestCase):
             "rollout_fragment_length": 10,
             "sgd_minibatch_size": 1,
         }
-        check_support("PPO", config, check_bounds=True)
+        check_support("PPO", config, check_bounds=True, tfe=True)
 
     def test_pg(self):
         config = {"num_workers": 1, "optimizer": {}}
-        check_support("PG", config, check_bounds=True)
+        check_support("PG", config, train=False, check_bounds=True, tfe=True)
 
     def test_sac(self):
-        check_support("SAC", {}, check_bounds=True)
+        check_support("SAC", {"buffer_size": 1000}, check_bounds=True)
 
 
 if __name__ == "__main__":
