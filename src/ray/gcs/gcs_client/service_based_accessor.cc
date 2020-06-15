@@ -777,7 +777,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncSetInternalConfig(
   client_impl_->GetGcsRpcClient().SetInternalConfig(
       request, [](const Status &status, const rpc::SetInternalConfigReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(ERROR) << "Problem setting Internal Config: " << status.message();
+          RAY_LOG(ERROR) << "Failed to set internal config: " << status.message();
         }
       });
   return Status::OK();
@@ -797,7 +797,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetInternalConfig(
           }
         }
         if (!status.ok()) {
-          RAY_LOG(ERROR) << "Error getting internal config: " << status.message();
+          RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
         }
         callback(result);
       });

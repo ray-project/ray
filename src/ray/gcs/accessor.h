@@ -560,14 +560,15 @@ class NodeInfoAccessor {
   /// \return Status
   virtual Status AsyncReSubscribe() = 0;
 
-  /// Set the Intrenal Config string from the first node.
+  /// Set the internal config string that will be used by all nodes started in the
+  /// cluster.
   ///
   /// \param config Map of config options
   /// \return Status
   virtual Status AsyncSetInternalConfig(
       std::unordered_map<std::string, std::string> &config) = 0;
 
-  /// Get the Internal Config string from GCS.
+  /// Get the internal config string from GCS.
   ///
   /// \param callback Processes a map of config options
   /// \return Status
