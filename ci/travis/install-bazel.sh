@@ -83,6 +83,7 @@ if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
   cat <<EOF >> "${HOME}/.bazelrc"
 # CI output doesn't scroll, so don't use curses
 build --color=yes
+build --config=ci
 build --curses=no
 build --disk_cache="$(test "${OSTYPE}" = msys || echo ~/ray-bazel-cache)"
 # Use ray google cloud cache
