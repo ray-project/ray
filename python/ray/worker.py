@@ -901,15 +901,10 @@ def _set_log_file(file_name, worker_pid, old_obj, setter_func):
 
     fileno = old_obj.fileno()
 
-    # Redirect stdout at the file descriptor level. If we simply set
-    # sys.stdout, then logging from C++ can fail to be
-    # redirected. Note that dup2 will automatically close the old file
-    # descriptor before overriding it.
+    # C++ logging requires redirecting the stdout file descriptor. Note that
+    # dup2 will automatically close the old file descriptor before overriding
+    # it.
     os.dup2(f.fileno(), fileno)
-
-    # We must close the original file descriptor to avoid leaking file
-    # descriptors.
-    f.close()
 
     # We also manually set sys.stdout and sys.stderr because that seems to
     # have an effect on the output buffering. Without doing this, stdout
