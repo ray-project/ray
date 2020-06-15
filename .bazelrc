@@ -88,12 +88,6 @@ build:ci --show_progress_rate_limit=15
 build:ci --show_task_finish
 build:ci --ui_actions_shown=1024
 build:ci-travis --show_timestamps  # Travis doesn't have an option to show timestamps, but GitHub Actions does
-# If we are in Travis, most of the compilation result will be cached.
-# This means we are I/O bounded. By default, Bazel set the number of concurrent
-# jobs to the the number cores on the machine, which are not efficient for
-# network bounded cache downloading workload. Therefore we increase the number
-# of jobs to 50
-build:ci-travis --jobs=50
 # GitHub Actions has low disk space, so prefer hardlinks there.
 build:ci-github --experimental_repository_cache_hardlinks
 test:ci --flaky_test_attempts=3
