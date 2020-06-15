@@ -382,7 +382,8 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
     return Status::NotImplemented("AsyncReSubscribe not implemented");
   }
 
-  Status SetInternalConfig(std::unordered_map<std::string, std::string> config) override {
+  Status AsyncSetInternalConfig(
+      std::unordered_map<std::string, std::string> &config) override {
     return Status::NotImplemented("Set Internal Config Not Implemented");
   }
 

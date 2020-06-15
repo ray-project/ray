@@ -118,7 +118,6 @@ int main(int argc, char *argv[]) {
   }
   RAY_CHECK_OK(gcs_client->Connect(main_service));
 
-  // Keep server reference outside of the callback
   std::unique_ptr<ray::raylet::Raylet> server(nullptr);
 
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig([&](const std::unordered_map<

@@ -188,7 +188,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   Status AsyncReSubscribe() override;
 
-  Status SetInternalConfig(std::unordered_map<std::string, std::string> config) override;
+  Status AsyncSetInternalConfig(
+      std::unordered_map<std::string, std::string> &config) override;
 
   Status AsyncGetInternalConfig(
       const MapCallback<std::string, std::string> &callback) override;

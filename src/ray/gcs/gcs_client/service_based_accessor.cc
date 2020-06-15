@@ -766,8 +766,8 @@ Status ServiceBasedNodeInfoAccessor::AsyncReSubscribe() {
   return Status::OK();
 }
 
-Status ServiceBasedNodeInfoAccessor::SetInternalConfig(
-    std::unordered_map<std::string, std::string> config) {
+Status ServiceBasedNodeInfoAccessor::AsyncSetInternalConfig(
+    std::unordered_map<std::string, std::string> &config) {
   rpc::SetInternalConfigRequest request;
   rpc::StoredConfig cfg;
   for (auto &pair : config) {
