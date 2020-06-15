@@ -109,6 +109,38 @@ export type NodeInfoResponse = {
 
 export const getNodeInfo = () => get<NodeInfoResponse>("/api/node_info", {});
 
+export type RayletActorInfo =
+  | {
+      actorId: string;
+      actorTitle: string;
+      averageTaskExecutionSpeed: number;
+      children: RayletInfoResponse["actors"];
+      // currentTaskFuncDesc: string[];
+      ipAddress: string;
+      jobId: string;
+      nodeId: string;
+      numExecutedTasks: number;
+      numLocalObjects: number;
+      numObjectIdsInScope: number;
+      pid: number;
+      port: number;
+      state: 0 | 1 | 2;
+      taskQueueLength: number;
+      timestamp: number;
+      usedObjectStoreMemory: number;
+      usedResources: { [key: string]: number };
+      currentTaskDesc?: string;
+      numPendingTasks?: number;
+      webuiDisplay?: Record<string, string>;
+    }
+  | {
+      actorId: string;
+      actorTitle: string;
+      requiredResources: { [key: string]: number };
+      state: -1;
+      invalidStateType?: "infeasibleActor" | "pendingActor";
+    };
+
 export type RayletInfoResponse = {
   nodes: {
     [ip: string]: {
@@ -120,37 +152,7 @@ export type RayletInfoResponse = {
     };
   };
   actors: {
-    [actorId: string]:
-      | {
-          actorId: string;
-          actorTitle: string;
-          averageTaskExecutionSpeed: number;
-          children: RayletInfoResponse["actors"];
-          // currentTaskFuncDesc: string[];
-          ipAddress: string;
-          jobId: string;
-          nodeId: string;
-          numExecutedTasks: number;
-          numLocalObjects: number;
-          numObjectIdsInScope: number;
-          pid: number;
-          port: number;
-          state: 0 | 1 | 2;
-          taskQueueLength: number;
-          timestamp: number;
-          usedObjectStoreMemory: number;
-          usedResources: { [key: string]: number };
-          currentTaskDesc?: string;
-          numPendingTasks?: number;
-          webuiDisplay?: Record<string, string>;
-        }
-      | {
-          actorId: string;
-          actorTitle: string;
-          requiredResources: { [key: string]: number };
-          state: -1;
-          invalidStateType?: "infeasibleActor" | "pendingActor";
-        };
+    [actorId: string]: RayletActorInfo;
   };
 };
 

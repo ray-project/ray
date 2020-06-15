@@ -99,14 +99,16 @@ class ConsolePopen(subprocess.Popen):
             # CREATE_NEW_PROCESS_GROUP is used to send Ctrl+C on Windows:
             # https://docs.python.org/3/library/subprocess.html#subprocess.Popen.send_signal
             new_pgroup = subprocess.CREATE_NEW_PROCESS_GROUP
-            flags = 0
+            flags_to_add = 0
             if ray.utils.detect_fate_sharing_support():
                 # If we don't have kernel-mode fate-sharing, then don't do this
                 # because our children need to be in out process group for
                 # the process reaper to properly terminate them.
-                flags = new_pgroup
-            kwargs.setdefault("creationflags", flags)
-            self._use_signals = (kwargs["creationflags"] & new_pgroup)
+                flags_to_add = new_pgroup
+            flags_key = "creationflags"
+            if flags_to_add:
+                kwargs[flags_key] = (kwargs.get(flags_key) or 0) | flags_to_add
+            self._use_signals = (kwargs[flags_key] & new_pgroup)
             super(ConsolePopen, self).__init__(*args, **kwargs)
 
 
@@ -503,6 +505,14 @@ def start_ray_process(command,
         if fate_share and sys.platform.startswith("linux"):
             ray.utils.set_kill_on_parent_death_linux()
 
+    win32_fate_sharing = fate_share and sys.platform == "win32"
+    # With Windows fate-sharing, we need special care:
+    # The process must be added to the job before it is allowed to execute.
+    # Otherwise, there's a race condition: the process might spawn children
+    # before the process itself is assigned to the job.
+    # After that point, its children will not be added to the job anymore.
+    CREATE_SUSPENDED = 0x00000004  # from Windows headers
+
     process = ConsolePopen(
         command,
         env=modified_env,
@@ -510,10 +520,16 @@ def start_ray_process(command,
         stdout=stdout_file,
         stderr=stderr_file,
         stdin=subprocess.PIPE if pipe_stdin else None,
-        preexec_fn=preexec_fn if sys.platform != "win32" else None)
+        preexec_fn=preexec_fn if sys.platform != "win32" else None,
+        creationflags=CREATE_SUSPENDED if win32_fate_sharing else 0)
 
-    if fate_share and sys.platform == "win32":
-        ray.utils.set_kill_child_on_death_win32(process)
+    if win32_fate_sharing:
+        try:
+            ray.utils.set_kill_child_on_death_win32(process)
+            psutil.Process(process.pid).resume()
+        except (psutil.Error, OSError):
+            process.kill()
+            raise
 
     return ProcessInfo(
         process=process,
@@ -1190,7 +1206,6 @@ def start_gcs_server(redis_address,
     """
     gcs_ip_address, gcs_port = redis_address.split(":")
     redis_password = redis_password or ""
-    config = config or {}
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
     command = [
         GCS_SERVER_EXECUTABLE,
@@ -1230,6 +1245,8 @@ def start_raylet(redis_address,
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
+                 plasma_directory=None,
+                 huge_pages=False,
                  fate_share=None,
                  socket_to_use=None):
     """Start a raylet, which is a combined local scheduler and object manager.
@@ -1273,7 +1290,6 @@ def start_raylet(redis_address,
     # The caller must provide a node manager port so that we can correctly
     # populate the command to start a worker.
     assert node_manager_port is not None and node_manager_port != 0
-    config = config or {}
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
 
     if use_valgrind and use_profiler:
@@ -1362,6 +1378,16 @@ def start_raylet(redis_address,
         "--temp_dir={}".format(temp_dir),
         "--session_dir={}".format(session_dir),
     ]
+    if config.get("plasma_store_as_thread"):
+        # command related to the plasma store
+        plasma_directory, object_store_memory = determine_plasma_store_config(
+            resource_spec.object_store_memory, plasma_directory, huge_pages)
+        command += [
+            "--object_store_memory={}".format(object_store_memory),
+            "--plasma_directory={}".format(plasma_directory),
+        ]
+        if huge_pages:
+            command.append("--huge_pages")
     if socket_to_use:
         socket_to_use.close()
     process_info = start_ray_process(
@@ -1554,6 +1580,7 @@ def start_plasma_store(resource_spec,
                        stdout_file=None,
                        stderr_file=None,
                        plasma_directory=None,
+                       keep_idle=False,
                        huge_pages=False,
                        fate_share=None,
                        use_valgrind=False):
@@ -1571,6 +1598,7 @@ def start_plasma_store(resource_spec,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
+        keep_idle: If True, run the plasma store as an idle placeholder.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1594,6 +1622,8 @@ def start_plasma_store(resource_spec,
         command += ["-d", plasma_directory]
     if huge_pages:
         command += ["-h"]
+    if keep_idle:
+        command.append("-z")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_PLASMA_STORE,
@@ -1721,7 +1751,6 @@ def start_raylet_monitor(redis_address,
     """
     gcs_ip_address, gcs_port = redis_address.split(":")
     redis_password = redis_password or ""
-    config = config or {}
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
     command = [
         RAYLET_MONITOR_EXECUTABLE,

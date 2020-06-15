@@ -3,7 +3,6 @@ package io.ray.streaming.message;
 import java.io.Serializable;
 import java.util.Objects;
 
-
 public class Record<T> implements Serializable {
   protected transient String stream;
   protected T value;
