@@ -38,11 +38,13 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             self.state.update(extra_data)
 
     def setUp(self):
+        self.absolute_local_dir = None
         ray.init(num_cpus=1, num_gpus=0, local_mode=self.local_mode)
 
     def tearDown(self):
-        shutil.rmtree(self.absolute_local_dir, ignore_errors=True)
-        self.absolute_local_dir = None
+        if self.absolute_local_dir is not None:
+            shutil.rmtree(self.absolute_local_dir, ignore_errors=True)
+            self.absolute_local_dir = None
         ray.shutdown()
         # Without this line, test_tune_server.testAddTrial would fail.
         _register_all()
