@@ -1228,8 +1228,12 @@ def connect(node,
                 and int(redirect_worker_output_val) == 1):
             log_stdout_file, log_stderr_file = (
                 node.new_worker_redirected_log_file(worker.worker_id))
-            log_stdout_file_name, log_stderr_file_name = \
-                set_log_file(log_stdout_file, log_stderr_file)
+            try:
+                log_stdout_file_name, log_stderr_file_name = \
+                    set_log_file(log_stdout_file, log_stderr_file)
+            except IOError:
+                raise IOError("Workers must be able to redirect their output at"
+                              "the file descriptor level.")
             worker.current_logging_job = None
     elif not LOCAL_MODE:
         raise ValueError(
