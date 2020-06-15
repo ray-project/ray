@@ -605,6 +605,7 @@ cc_library(
     }),
     deps = [
         ":ray_util",
+        ":gcs_service_rpc",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",

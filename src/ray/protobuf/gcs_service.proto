@@ -388,12 +388,21 @@ message GetAllProfileInfoReply {
   repeated ProfileTableData profile_info_list = 2;
 }
 
+message ReportMetricsRequest {
+  StatsMetrics stats_metrics = 1;
+}
+message ReportMetricsReply {
+  GcsStatus status = 1;
+}
+
 // Service for stats access.
 service StatsGcsService {
   // Add profile data to GCS Service.
   rpc AddProfileData(AddProfileDataRequest) returns (AddProfileDataReply);
   // Get information of all profiles from GCS Service.
   rpc GetAllProfileInfo(GetAllProfileInfoRequest) returns (GetAllProfileInfoReply);
+  // Report stats metrics to GCS.
+  rpc ReportMetrics(ReportMetricsRequest) returns (ReportMetricsReply);
 }
 
 message ReportJobErrorRequest {
