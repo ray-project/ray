@@ -143,7 +143,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
               value: actor.taskQueueLength.toLocaleString(),
               tooltip:
                 "The number of tasks that are currently pending to execute on this actor. If this number " +
-                "remains consistently high, it can indicate that this actor is a bottle-neck in your program.",
+                "remains consistently high, it may indicate that this actor is a bottleneck in your application.",
             },
             {
               label: "Number of executed tasks",
