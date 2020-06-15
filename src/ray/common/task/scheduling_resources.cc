@@ -226,6 +226,26 @@ void ResourceSet::AddResources(const ResourceSet &other) {
   }
 }
 
+void ResourceSet::AddBundleResources(const std::string &bundle_id, const ResourceSet &other) {
+  for (const auto &resource_pair : other.GetResourceAmountMap()) {
+    const std::string &resource_label = bundle_id + "_" + resource_pair.first;
+    const FractionalResourceQuantity &resource_capacity = resource_pair.second;
+    resource_capacity_[resource_label] += resource_capacity;
+  }
+}
+
+void ResourceSet::ReturnBundleResources(const std::string &bundle_id, const ResourceSet &other) {
+  for (const auto &resource_pair : other.GetResourceAmountMap()) {
+    const std::string &bundle_resource_label = resource_pair.first;
+    if (bundle_resource_label.find(bundle_id) != std::string::npos) {
+      const std::string &resource_label = bundle_resource_label.substr(bundle_resource_label.find("_"));
+      const FractionalResourceQuantity &resource_capacity = resource_pair.second;
+      resource_capacity_[resource_label] += resource_capacity;
+      DeleteResource(bundle_resource_label);
+    }
+  }
+}
+
 FractionalResourceQuantity ResourceSet::GetResource(
     const std::string &resource_name) const {
   if (resource_capacity_.count(resource_name) == 0) {
@@ -808,11 +828,11 @@ void SchedulingResources::UpdateResourceCapacity(const std::string &resource_nam
 }
 
 void SchedulingResources::UpdateBundleResource(const std::string &bundle_id, const ResourceSet &resource_set) {
-  // TODO(AlisaWu): update resource.
+  resources_available_.AddBundleResources(bundle_id, resource_set);
 }
 
 void SchedulingResources::ReturnBundleResource(const std::string &bundle_id, const ResourceSet &resource_set) {
-  // TODO(AlisaWu): return resource.
+  resources_available_.ReturnBundleResources(bundle_id, resource_set);
 }
 
 void SchedulingResources::DeleteResource(const std::string &resource_name) {

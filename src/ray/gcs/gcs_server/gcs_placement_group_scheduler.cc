@@ -76,7 +76,7 @@ void GcsPlacementGroupScheduler::Schedule(
   auto schedule_map = scheduler[strategy]->Schedule(bundles, gcs_node_manager_);
   std::vector<ClientID> decision;
   decision.resize(bundles.size());
-  int finish_count = 0;
+  size_t finish_count = 0;
   for (size_t pos = 0; pos < bundles.size(); pos++) {
     RAY_CHECK(node_to_bundles_when_leasing_[schedule_map.at(bundles[pos].BundleId())]
                   .emplace(bundles[pos].BundleId())

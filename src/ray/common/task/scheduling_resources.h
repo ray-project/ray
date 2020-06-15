@@ -148,6 +148,22 @@ class ResourceSet {
   /// \return Void.
   void AddResources(const ResourceSet &other);
 
+  /// \brief Aggregate resources from the other set into this set, adding any missing
+  /// resource labels to this set. The resource id will change to bundle_id + "_" + reource_id
+  ///
+  /// \param other: The other resource set to add.
+  /// \param bundle_id: The bundle_id of the bundle.
+  /// \return Void.
+  void AddBundleResources(const std::string &bundle_id, const ResourceSet &other);
+
+  /// \brief Return back all the bundle resource. Changeing the resource name and adding any missing
+  /// resource labels to this set. The resource id will remove bundle_id + "_" part.
+  ///
+  /// \param other: The other resource set to add.
+  /// \param bundle_id: The bundle_id of the bundle.
+  /// \return Void.
+  void ReturnBundleResources(const std::string &bundle_id, const ResourceSet &other);
+
   /// \brief Subtract a set of resources from the current set of resources and
   /// check that the post-subtraction result nonnegative. Assumes other
   /// is a subset of the ResourceSet. Deletes any resource if the capacity after
