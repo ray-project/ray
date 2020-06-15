@@ -307,11 +307,11 @@ cdef prepare_args(
 
 
 def switch_worker_log(worker, next_job_id):
-    if worker.current_logging_job and (worker.current_logging_job !=
+    if (worker.current_logging_job is None) or (worker.current_logging_job !=
                                        next_job_id):
         job_stdout_path, job_stderr_path = (
             worker.node.get_job_redirected_log_file(
-                worker.worker_id, next_job_id.Binary())
+                worker.worker_id, next_job_id.binary())
         )
         ray.worker.set_log_file(job_stdout_path, job_stderr_path)
         worker.current_logging_job = next_job_id
