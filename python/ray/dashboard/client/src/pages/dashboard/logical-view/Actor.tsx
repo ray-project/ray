@@ -19,7 +19,8 @@ import {
 import ActorDetailsPane from "./ActorDetailsPane";
 import Actors from "./Actors";
 
-const memoryDebuggingDocLink = "https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory"
+const memoryDebuggingDocLink =
+  "https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory";
 const styles = (theme: Theme) =>
   createStyles({
     root: {
@@ -159,7 +160,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 "The number of ObjectIDs that this actor is keeping in scope via its internal state. " +
                 "This does not imply that the objects are in active use or colocated on the node with the actor " +
                 `currently. This can be useful for debugging memory leaks. See the docs at ${memoryDebuggingDocLink} ` +
-                "for more information."
+                "for more information.",
             },
             {
               label: "Number of local objects",
