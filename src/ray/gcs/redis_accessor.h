@@ -83,7 +83,7 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
       const ActorID &actor_id,
       const OptionalItemCallback<ActorCheckpointIdData> &callback) override;
 
-  void AsyncReSubscribe(bool is_pubsub_server_restarted) override {}
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
  protected:
   virtual std::vector<ActorID> GetAllActorID() const;
@@ -183,7 +183,7 @@ class RedisJobInfoAccessor : public JobInfoAccessor {
     return Status::NotImplemented("AsyncGetAll not implemented");
   }
 
-  void AsyncReSubscribe(bool is_pubsub_server_restarted) override {}
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
  private:
   /// Append job information to GCS asynchronously.
@@ -241,7 +241,7 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
       const std::shared_ptr<TaskReconstructionData> &data_ptr,
       const StatusCallback &callback) override;
 
-  void AsyncReSubscribe(bool is_pubsub_server_restarted) override {}
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
  private:
   RedisGcsClient *client_impl_{nullptr};
@@ -292,7 +292,7 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
 
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
 
-  void AsyncReSubscribe(bool is_pubsub_server_restarted) override {}
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
  private:
   RedisGcsClient *client_impl_{nullptr};
@@ -373,7 +373,7 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
       const ItemCallback<HeartbeatBatchTableData> &subscribe,
       const StatusCallback &done) override;
 
-  void AsyncReSubscribe(bool is_pubsub_server_restarted) override {}
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
  private:
   RedisGcsClient *client_impl_{nullptr};
@@ -448,7 +448,7 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
       const std::unordered_map<std::string, std::string> &worker_info,
       const StatusCallback &callback) override;
 
-  void AsyncReSubscribe(bool is_pubsub_server_restarted) override {}
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
  private:
   RedisGcsClient *client_impl_{nullptr};

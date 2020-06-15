@@ -76,8 +76,9 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeToFinishedJobs(
   return subscribe_operation_(done);
 }
 
-void ServiceBasedJobInfoAccessor::AsyncReSubscribe(bool is_pubsub_server_restarted) {
+void ServiceBasedJobInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(INFO) << "Reestablishing subscription for job info.";
+  // If the pub-sub server has restarted, we need to resubscribe to the pub-sub server.
   if (subscribe_operation_ != nullptr && is_pubsub_server_restarted) {
     RAY_CHECK_OK(subscribe_operation_(nullptr));
   }
@@ -263,28 +264,30 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
   RAY_LOG(DEBUG) << "Subscribing update operations of actor, actor id = " << actor_id;
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe actor, actor id = " << actor_id;
 
-  auto fetch_data_operation = [this, actor_id, subscribe](const StatusCallback &done) {
-    auto callback = [actor_id, subscribe, done](
+  auto fetch_data_operation = [this, actor_id,
+                               subscribe](const StatusCallback &fetch_done) {
+    auto callback = [actor_id, subscribe, fetch_done](
                         const Status &status,
                         const boost::optional<rpc::ActorTableData> &result) {
       if (result) {
         subscribe(actor_id, *result);
       }
-      if (done) {
-        done(status);
+      if (fetch_done) {
+        fetch_done(status);
       }
     };
     RAY_CHECK_OK(AsyncGet(actor_id, callback));
   };
 
-  auto subscribe_operation = [this, actor_id, subscribe](const StatusCallback &done) {
+  auto subscribe_operation = [this, actor_id,
+                              subscribe](const StatusCallback &subscribe_done) {
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
       ActorTableData actor_data;
       actor_data.ParseFromString(data);
       subscribe(ActorID::FromBinary(actor_data.actor_id()), actor_data);
     };
     return client_impl_->GetGcsPubSub().Subscribe(ACTOR_CHANNEL, actor_id.Hex(),
-                                                  on_subscribe, done);
+                                                  on_subscribe, subscribe_done);
   };
 
   subscribe_operations_[actor_id] = subscribe_operation;
@@ -374,8 +377,11 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
   return Status::OK();
 }
 
-void ServiceBasedActorInfoAccessor::AsyncReSubscribe(bool is_pubsub_server_restarted) {
+void ServiceBasedActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(INFO) << "Reestablishing subscription for actor info.";
+  // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
+  // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
+  // server first, then fetch data from the GCS server.
   if (is_pubsub_server_restarted) {
     if (subscribe_all_operation_ != nullptr) {
       RAY_CHECK_OK(subscribe_all_operation_(
@@ -738,8 +744,11 @@ void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_in
   }
 }
 
-void ServiceBasedNodeInfoAccessor::AsyncReSubscribe(bool is_pubsub_server_restarted) {
+void ServiceBasedNodeInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(INFO) << "Reestablishing subscription for node info.";
+  // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
+  // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
+  // server first, then fetch data from the GCS server.
   if (is_pubsub_server_restarted) {
     if (subscribe_node_operation_ != nullptr) {
       RAY_CHECK_OK(subscribe_node_operation_(
@@ -823,21 +832,23 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe task, task id = " << task_id;
 
-  auto fetch_data_operation = [this, task_id, subscribe](const StatusCallback &done) {
-    auto callback = [task_id, subscribe, done](
+  auto fetch_data_operation = [this, task_id,
+                               subscribe](const StatusCallback &fetch_done) {
+    auto callback = [task_id, subscribe, fetch_done](
                         const Status &status,
                         const boost::optional<rpc::TaskTableData> &result) {
       if (result) {
         subscribe(task_id, *result);
       }
-      if (done) {
-        done(status);
+      if (fetch_done) {
+        fetch_done(status);
       }
     };
     RAY_CHECK_OK(AsyncGet(task_id, callback));
   };
 
-  auto subscribe_operation = [this, task_id, subscribe](const StatusCallback &done) {
+  auto subscribe_operation = [this, task_id,
+                              subscribe](const StatusCallback &subscribe_done) {
     auto on_subscribe = [task_id, subscribe](const std::string &id,
                                              const std::string &data) {
       TaskTableData task_data;
@@ -845,7 +856,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
       subscribe(task_id, task_data);
     };
     return client_impl_->GetGcsPubSub().Subscribe(TASK_CHANNEL, task_id.Hex(),
-                                                  on_subscribe, done);
+                                                  on_subscribe, subscribe_done);
   };
 
   subscribe_task_operations_[task_id] = subscribe_operation;
@@ -909,19 +920,21 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe task lease, task id = " << task_id;
 
-  auto fetch_data_operation = [this, task_id, subscribe](const StatusCallback &done) {
-    auto callback = [task_id, subscribe, done](
+  auto fetch_data_operation = [this, task_id,
+                               subscribe](const StatusCallback &fetch_done) {
+    auto callback = [task_id, subscribe, fetch_done](
                         const Status &status,
                         const boost::optional<rpc::TaskLeaseData> &result) {
       subscribe(task_id, result);
-      if (done) {
-        done(status);
+      if (fetch_done) {
+        fetch_done(status);
       }
     };
     RAY_CHECK_OK(AsyncGetTaskLease(task_id, callback));
   };
 
-  auto subscribe_operation = [this, task_id, subscribe](const StatusCallback &done) {
+  auto subscribe_operation = [this, task_id,
+                              subscribe](const StatusCallback &subscribe_done) {
     auto on_subscribe = [task_id, subscribe](const std::string &id,
                                              const std::string &data) {
       TaskLeaseData task_lease_data;
@@ -929,7 +942,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
       subscribe(task_id, task_lease_data);
     };
     return client_impl_->GetGcsPubSub().Subscribe(TASK_LEASE_CHANNEL, task_id.Hex(),
-                                                  on_subscribe, done);
+                                                  on_subscribe, subscribe_done);
   };
 
   subscribe_task_lease_operations_[task_id] = subscribe_operation;
@@ -970,8 +983,11 @@ Status ServiceBasedTaskInfoAccessor::AttemptTaskReconstruction(
   return Status::OK();
 }
 
-void ServiceBasedTaskInfoAccessor::AsyncReSubscribe(bool is_pubsub_server_restarted) {
+void ServiceBasedTaskInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(INFO) << "Reestablishing subscription for task info.";
+  // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
+  // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
+  // server first, then fetch data from the GCS server.
   if (is_pubsub_server_restarted) {
     for (auto &item : subscribe_task_operations_) {
       auto &task_id = item.first;
@@ -1098,8 +1114,9 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe object location, object id = " << object_id;
 
-  auto fetch_data_operation = [this, object_id, subscribe](const StatusCallback &done) {
-    auto callback = [object_id, subscribe, done](
+  auto fetch_data_operation = [this, object_id,
+                               subscribe](const StatusCallback &fetch_done) {
+    auto callback = [object_id, subscribe, fetch_done](
                         const Status &status,
                         const std::vector<rpc::ObjectTableData> &result) {
       if (status.ok()) {
@@ -1107,14 +1124,15 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
                                                    result);
         subscribe(object_id, notification);
       }
-      if (done) {
-        done(status);
+      if (fetch_done) {
+        fetch_done(status);
       }
     };
     RAY_CHECK_OK(AsyncGetLocations(object_id, callback));
   };
 
-  auto subscribe_operation = [this, object_id, subscribe](const StatusCallback &done) {
+  auto subscribe_operation = [this, object_id,
+                              subscribe](const StatusCallback &subscribe_done) {
     auto on_subscribe = [object_id, subscribe](const std::string &id,
                                                const std::string &data) {
       rpc::ObjectLocationChange object_location_change;
@@ -1128,7 +1146,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
       subscribe(object_id, notification);
     };
     return client_impl_->GetGcsPubSub().Subscribe(OBJECT_CHANNEL, object_id.Hex(),
-                                                  on_subscribe, done);
+                                                  on_subscribe, subscribe_done);
   };
 
   subscribe_object_operations_[object_id] = subscribe_operation;
@@ -1137,8 +1155,11 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
       [fetch_data_operation, done](const Status &status) { fetch_data_operation(done); });
 }
 
-void ServiceBasedObjectInfoAccessor::AsyncReSubscribe(bool is_pubsub_server_restarted) {
+void ServiceBasedObjectInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(INFO) << "Reestablishing subscription for object locations.";
+  // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
+  // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
+  // server first, then fetch data from the GCS server.
   if (is_pubsub_server_restarted) {
     for (auto &item : subscribe_object_operations_) {
       RAY_CHECK_OK(item.second([this, item](const Status &status) {
@@ -1246,8 +1267,9 @@ Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
   return subscribe_operation_(done);
 }
 
-void ServiceBasedWorkerInfoAccessor::AsyncReSubscribe(bool is_pubsub_server_restarted) {
+void ServiceBasedWorkerInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(INFO) << "Reestablishing subscription for worker failures.";
+  // If the pub-sub server has restarted, we need to resubscribe to the pub-sub server.
   if (subscribe_operation_ != nullptr && is_pubsub_server_restarted) {
     RAY_CHECK_OK(subscribe_operation_(nullptr));
   }

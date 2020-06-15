@@ -153,11 +153,12 @@ class ActorInfoAccessor {
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
-  /// PubSub server restart will cause GCS server restart. In this case, we need to re
-  /// subscribe from PubSub server, otherwise we only need to fetch data from GCS server.
+  /// PubSub server restart will cause GCS server restart. In this case, we need to
+  /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
+  /// server.
   ///
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
-  virtual void AsyncReSubscribe(bool is_pubsub_server_restarted) = 0;
+  virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
 
  protected:
   ActorInfoAccessor() = default;
@@ -205,11 +206,12 @@ class JobInfoAccessor {
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
-  /// PubSub server restart will cause GCS server restart. In this case, we need to re
-  /// subscribe from PubSub server, otherwise we only need to fetch data from GCS server.
+  /// PubSub server restart will cause GCS server restart. In this case, we need to
+  /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
+  /// server.
   ///
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
-  virtual void AsyncReSubscribe(bool is_pubsub_server_restarted) = 0;
+  virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
 
  protected:
   JobInfoAccessor() = default;
@@ -315,11 +317,12 @@ class TaskInfoAccessor {
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
-  /// PubSub server restart will cause GCS server restart. In this case, we need to re
-  /// subscribe from PubSub server, otherwise we only need to fetch data from GCS server.
+  /// PubSub server restart will cause GCS server restart. In this case, we need to
+  /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
+  /// server.
   ///
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
-  virtual void AsyncReSubscribe(bool is_pubsub_server_restarted) = 0;
+  virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
 
  protected:
   TaskInfoAccessor() = default;
@@ -386,11 +389,12 @@ class ObjectInfoAccessor {
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
-  /// PubSub server restart will cause GCS server restart. In this case, we need to re
-  /// subscribe from PubSub server, otherwise we only need to fetch data from GCS server.
+  /// PubSub server restart will cause GCS server restart. In this case, we need to
+  /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
+  /// server.
   ///
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
-  virtual void AsyncReSubscribe(bool is_pubsub_server_restarted) = 0;
+  virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
 
  protected:
   ObjectInfoAccessor() = default;
@@ -564,11 +568,12 @@ class NodeInfoAccessor {
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
-  /// PubSub server restart will cause GCS server restart. In this case, we need to re
-  /// subscribe from PubSub server, otherwise we only need to fetch data from GCS server.
+  /// PubSub server restart will cause GCS server restart. In this case, we need to
+  /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
+  /// server.
   ///
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
-  virtual void AsyncReSubscribe(bool is_pubsub_server_restarted) = 0;
+  virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
 
  protected:
   NodeInfoAccessor() = default;
@@ -668,11 +673,12 @@ class WorkerInfoAccessor {
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
-  /// PubSub server restart will cause GCS server restart. In this case, we need to re
-  /// subscribe from PubSub server, otherwise we only need to fetch data from GCS server.
+  /// PubSub server restart will cause GCS server restart. In this case, we need to
+  /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
+  /// server.
   ///
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
-  virtual void AsyncReSubscribe(bool is_pubsub_server_restarted) = 0;
+  virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
 
  protected:
   WorkerInfoAccessor() = default;
