@@ -42,18 +42,16 @@ Optimized & Debug Builds
 ----------------------------
 
 The default build configuration may skip performing compile-time optimizations.
-This is to ensure that compilation remain as fast as possible,
-and to make debugging easier.
+This makes debugging easier and ensures compilation remains as fast as possible.
 However, this can make Ray slower to run, and hence unsuitable for benchmarking.
 
-For a optimized build, you can try the following:
+For an optimized build, you can do the following:
 
 .. code-block:: shell
 
  bazel build -c opt "//:ray_pkg"
 
-This will build Ray's Python package with optimizations.
-(Note that this might take a while.)
+This will build Ray's Python package with optimizations (this may take a while).
 If you need to build all targets, you can use `"//:*"` instead of `"//:ray_pkg"`.
 
 To make this change permanent, you can add the following line to your user-level

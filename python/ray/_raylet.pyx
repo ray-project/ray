@@ -109,7 +109,8 @@ include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
 
-OPTIMIZE = __OPTIMIZE__
+# Expose GCC & Clang macro to report whether C++ optimizations were enabled during compilation.
+OPTIMIZED = __OPTIMIZE__
 
 logger = logging.getLogger(__name__)
 

@@ -106,7 +106,7 @@ upload_wheels() {
   fi
   (
     cd "${WORKSPACE_DIR}"/python
-    if ! python -s -c "import ray, sys; sys.exit(0 if ray._raylet.OPTIMIZE else 1)"; then
+    if ! python -s -c "import ray, sys; sys.exit(0 if ray._raylet.OPTIMIZED else 1)"; then
       echo "ERROR: Uploading non-optimized wheels! Performance will suffer for users!"
       false
     fi

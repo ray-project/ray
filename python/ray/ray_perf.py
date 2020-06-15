@@ -93,7 +93,7 @@ def timeit(name, fn, multiplier=1):
 
 
 def check_optimized_build():
-    if not ray._raylet.OPTIMIZE:
+    if not ray._raylet.OPTIMIZED:
         msg = ("WARNING: Unoptimized build! "
                "To benchmark an optimized build, try:\n"
                "\tbazel build -c opt //:ray_pkg\n"
