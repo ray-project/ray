@@ -1,6 +1,5 @@
 # coding: utf-8
 import os
-import pickle
 import shutil
 import tempfile
 import unittest

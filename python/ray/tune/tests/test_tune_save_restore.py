@@ -150,7 +150,6 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         self._train(exp_name, local_dir, local_dir)
         self._restore(exp_name, local_dir, local_dir)
 
-
     def testCheckpointWithNoop(self):
         """Tests that passing the checkpoint_dir right back works."""
 
@@ -175,6 +174,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
 
         validate_save_restore(MockTrainable)
         validate_save_restore(MockTrainable, use_object_store=True)
+
 
 if __name__ == "__main__":
     import pytest
