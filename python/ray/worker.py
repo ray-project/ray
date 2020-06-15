@@ -1309,7 +1309,8 @@ def connect(node,
             worker.logger_thread = threading.Thread(
                 target=print_logs,
                 name="ray_print_logs",
-                args=(worker.redis_client, worker.threads_stopped, worker.current_job_id))
+                args=(worker.redis_client, worker.threads_stopped,
+                      worker.current_job_id))
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
 

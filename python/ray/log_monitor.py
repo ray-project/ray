@@ -22,14 +22,14 @@ logger = logging.getLogger(__name__)
 # First group is worker id. Second group is job id.
 JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]{40})-(\d+)")
 
+
 class LogFileInfo:
     def __init__(self,
                  filename=None,
                  size_when_last_opened=None,
                  file_position=None,
                  file_handle=None,
-                 job_id=None
-    ):
+                 job_id=None):
         assert (filename is not None and size_when_last_opened is not None
                 and file_position is not None)
         self.filename = filename
