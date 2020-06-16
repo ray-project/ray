@@ -162,7 +162,7 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, DeleteResources,
                              node_info_grpc_client_, )
 
-  /// Set internal config of the cluster in GCS Service.
+  /// Set internal config of the cluster in the GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, SetInternalConfig,
                              node_info_grpc_client_, )
 

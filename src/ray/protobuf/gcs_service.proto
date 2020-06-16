@@ -263,9 +263,9 @@ service NodeInfoGcsService {
   rpc UpdateResources(UpdateResourcesRequest) returns (UpdateResourcesReply);
   // Delete resources of a node in GCS Service.
   rpc DeleteResources(DeleteResourcesRequest) returns (DeleteResourcesReply);
-  // Set Cluster Internal Config
+  // Set cluster internal config.
   rpc SetInternalConfig(SetInternalConfigRequest) returns (SetInternalConfigReply);
-  // Get Cluster Internal Config
+  // Get cluster internal config.
   rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
 }
 
