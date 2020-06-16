@@ -846,7 +846,7 @@ TEST_F(ServiceBasedGcsClientTest, TestErrorInfo) {
   ASSERT_TRUE(ReportJobError(error_table_data));
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestJobTableReSubscribe) {
+TEST_F(ServiceBasedGcsClientTest, TestJobTableResubscribe) {
   // Test that subscription of the job table can still work when GCS server restarts.
   JobID job_id = JobID::FromInt(1);
   auto job_table_data = Mocker::GenJobTableData(job_id);
@@ -865,7 +865,7 @@ TEST_F(ServiceBasedGcsClientTest, TestJobTableReSubscribe) {
   WaitPendingDone(job_update_count, 1);
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestActorTableReSubscribe) {
+TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // Test that subscription of the actor table can still work when GCS server restarts.
   JobID job_id = JobID::FromInt(1);
   auto actor_table_data = Mocker::GenActorTableData(job_id);
@@ -932,7 +932,7 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableReSubscribe) {
                  rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestObjectTableReSubscribe) {
+TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
   ObjectID object1_id = ObjectID::FromRandom();
   ObjectID object2_id = ObjectID::FromRandom();
   ClientID node_id = ClientID::FromRandom();
@@ -974,7 +974,7 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectTableReSubscribe) {
   WaitPendingDone(object2_change_count, 2);
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestNodeTableReSubscribe) {
+TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
   // Test that subscription of the node table can still work when GCS server restarts.
   // Subscribe to node addition and removal events from GCS and cache those information.
   std::atomic<int> node_change_count(0);
@@ -1024,7 +1024,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableReSubscribe) {
   WaitPendingDone(batch_heartbeat_count, 2);
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestTaskTableReSubscribe) {
+TEST_F(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
   JobID job_id = JobID::FromInt(6);
   TaskID task_id = TaskID::ForDriverTask(job_id);
   auto task_table_data = Mocker::GenTaskTableData(job_id.Binary(), task_id.Binary());
@@ -1063,7 +1063,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskTableReSubscribe) {
   WaitPendingDone(task_count, 1);
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestWorkerTableReSubscribe) {
+TEST_F(ServiceBasedGcsClientTest, TestWorkerTableResubscribe) {
   // Subscribe to all unexpected failure of workers from GCS.
   std::atomic<int> worker_failure_count(0);
   auto on_subscribe = [&worker_failure_count](const WorkerID &worker_id,
