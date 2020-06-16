@@ -102,8 +102,8 @@ Splitting Traffic Between Backends
 ==================================
 
 At times it may be useful to expose a single endpoint that is served by multiple backends.
-You can do this by splitting the traffic for an endpoint between backends using ``set_traffic``.
-When calling ``set_traffic``, you provide a dictionary of backend name to a float value that will be used to randomly route that portion of traffic (out of a total of 1.0) to the given backend.
+You can do this by splitting the traffic for an endpoint between backends using :mod:`set_traffic <ray.serve.set_traffic>`.
+When calling :mod:`set_traffic <ray.serve.set_traffic>`, you provide a dictionary of backend name to a float value that will be used to randomly route that portion of traffic (out of a total of 1.0) to the given backend.
 For example, here we split traffic 50/50 between two backends:
 
 .. code-block:: python
@@ -120,7 +120,7 @@ Please see :ref:`session-affinity` for details on how to ensure that clients or 
 A/B Testing
 -----------
 
-``set_traffic`` can be used to implement A/B testing by having one backend serve the majority of traffic while a fraction is routed to a second model:
+:mod:`set_traffic <ray.serve.set_traffic>` can be used to implement A/B testing by having one backend serve the majority of traffic while a fraction is routed to a second model:
 
 .. code-block:: python
 
@@ -143,7 +143,7 @@ A/B Testing
 Incremental Rollout
 -------------------
 
-``set_traffic`` can also be used to implement incremental rollout.
+:mod:`set_traffic <ray.serve.set_traffic>` can also be used to implement incremental rollout.
 Here, we want to replace an existing backend with a new implementation by gradually increasing the proportion of traffic that it serves.
 In the example below, we do this repeatedly in one script, but in practice this would likely happen over time across multiple scripts.
 
@@ -221,7 +221,7 @@ See :doc:`deployment` for information about how to deploy serve.
 How do I delete backends and endpoints?
 ---------------------------------------
 
-To delete a backend, you can use `serve.delete_backend`.
+To delete a backend, you can use :mod:`serve.delete_backend <ray.serve.delete_backend>`.
 Note that the backend must not be use by any endpoints in order to be delete.
 Once a backend is deleted, its tag can be reused.
 
@@ -230,7 +230,7 @@ Once a backend is deleted, its tag can be reused.
   serve.delete_backend("simple_backend")
 
 
-To delete a endpoint, you can use `serve.delete_endpoint`.
+To delete a endpoint, you can use :mod:`serve.delete_endpoint <ray.serve.delete_endpoint>`.
 Note that the endpoint will no longer work and return a 404 when queried.
 Once a endpoint is deleted, its tag can be reused.
 
