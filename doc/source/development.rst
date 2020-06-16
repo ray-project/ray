@@ -38,35 +38,33 @@ the following:
 This command is not enough to recompile all C++ unit tests. To do so, see
 `Testing locally`_.
 
-Optimized & Debug Builds
+Fast, Debug, and Optimized Builds
 ----------------------------
 
-The default build configuration may skip performing compile-time optimizations.
-This makes debugging easier and ensures compilation remains as fast as possible.
-However, this can make Ray slower to run, and hence unsuitable for benchmarking.
-
-For an optimized build, you can do the following:
+Currently, Ray is built with optimizations, which can take a long time and
+interfere with debugging. To perform fast, debug, or optimized builds, you
+can run the following (via `-c` `fastbuild`/`dbg`/`opt`, respectively):
 
 .. code-block:: shell
 
- bazel build -c opt "//:ray_pkg"
+ bazel build -c fastbuild //:ray_pkg
 
-This will build Ray's Python package with optimizations (this may take a while).
-If you need to build all targets, you can use `"//:*"` instead of `"//:ray_pkg"`.
+This will rebuild Ray with the appropriate options (which may take a while).
+If you need to build all targets, you can use `"//:*"` instead of `//:ray_pkg`.
 
-To make this change permanent, you can add the following line to your user-level
-`~/.bazelrc` file (not to be confused with the workspace-level `.bazelrc` file):
+To make this change permanent, you can add an option such as the following line
+to your user-level `~/.bazelrc` file (not to be confused with the workspace-level
+`.bazelrc` file):
 
 .. code-block:: shell
 
- build --compilation_mode=opt
+ build --compilation_mode=fastbuild
 
-If you do so, remember to revert this change when you are done. Otherwise, it
-will slow down all development in the future.
+If you do so, remember to revert this change, unless you want it to affect all of
+your development in the future.
 
-Note: You can also explicitly specify `fastbuild` instead of `opt` to specify a
-fast build, or `dbg` instead of `opt` to generate more debug information,
-suitable for a debugger like `gdb`.
+Using `dbg` instead of `fastbuild` generates more debug information, which can
+make it easier to debug with a debugger like `gdb`.
 
 .. _python-develop:
 
