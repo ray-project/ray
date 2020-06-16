@@ -8,8 +8,8 @@ from torchvision.datasets import CIFAR10
 import torchvision.transforms as transforms
 
 import ray
-from ray import autoscaler
 from ray import tune
+from ray.autoscaler.commands import kill_node
 from ray.tune import CLIReporter
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -28,7 +28,7 @@ class FailureInjectorExecutor(RayTrialExecutor):
         if random.random() < 0.1:
             # With 10% probability fully terminate the node.
             should_terminate = random.random() < 0.1
-            autoscaler.commands.kill_node(
+            kill_node(
                 "/home/ubuntu/ray_bootstrap_config.yaml",
                 yes=True,
                 hard=should_terminate,
