@@ -1230,10 +1230,10 @@ def connect(node,
                 raise IOError(
                     "Workers must be able to redirect their output at"
                     "the file descriptor level.")
-            worker.current_logging_job = None
     elif not LOCAL_MODE:
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
+    worker.current_logging_job = None
     redis_address, redis_port = node.redis_address.split(":")
     gcs_options = ray._raylet.GcsClientOptions(
         redis_address,
