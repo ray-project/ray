@@ -1,3 +1,0 @@
-class ViewRequirement:
-    #TODO
-    pass

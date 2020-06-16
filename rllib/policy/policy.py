@@ -73,14 +73,15 @@ class Policy(metaclass=ABCMeta):
     @abstractmethod
     @DeveloperAPI
     def compute_actions(self,
-                        obs_batch,
-                        state_batches=None,
-                        prev_action_batch=None,
-                        prev_reward_batch=None,
-                        info_batch=None,
-                        episodes=None,
+                        obs_batch,  #TODO: deprecate
+                        state_batches=None,  #TODO: deprecate
+                        prev_action_batch=None,  #TODO: deprecate
+                        prev_reward_batch=None,  #TODO: deprecate
+                        info_batch=None,  #TODO: deprecate
+                        episodes=None,  #TODO: deprecate
                         explore=None,
                         timestep=None,
+                        data=None,  #TODO: move this up as the main source
                         **kwargs):
         """Computes actions for the current policy.
 
@@ -99,6 +100,7 @@ class Policy(metaclass=ABCMeta):
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
             timestep (int): The current (sampling) time step.
+            data #TODO
             kwargs: forward compatibility placeholder
 
         Returns:
@@ -437,3 +439,12 @@ def clip_action(action, action_space):
         return a
 
     return tree.map_structure(map_, action, action_space)
+
+
+def get_view(model, data, is_training=False):
+    # Get Model's view requirements.
+    view_reqs = model.get_view_requirements(is_training=is_training)
+    view = {}
+    for vr in view_reqs:
+        view[vr["name"]] = data[vr["col"]]
+    return view

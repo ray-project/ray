@@ -24,15 +24,20 @@ class SampleBatch:
     samples, each with an "obs" and "reward" attribute.
     """
 
-    # Outputs from interacting with the environment
-    CUR_OBS = "obs"
-    NEXT_OBS = "new_obs"
+    # Outputs from interacting with the environment.
+    OBS = "obs"
     ACTIONS = "actions"
     REWARDS = "rewards"
-    PREV_ACTIONS = "prev_actions"
-    PREV_REWARDS = "prev_rewards"
     DONES = "dones"
     INFOS = "infos"
+
+    # Deprecated: Use OBS instead.
+    CUR_OBS = "obs"
+    # Deprecated: Use ViewRequirement for your Model instead with OBS (t+1).
+    NEXT_OBS = "new_obs"
+    # deprecated: Use ViewRequirement for your Model instead with ACTIONS (t-1)
+    PREV_ACTIONS = "prev_actions"
+    PREV_REWARDS = "prev_rewards"
 
     # Extra action fetches keys.
     ACTION_DIST_INPUTS = "action_dist_inputs"

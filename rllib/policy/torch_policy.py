@@ -106,24 +106,30 @@ class TorchPolicy(Policy):
                         episodes=None,
                         explore=None,
                         timestep=None,
+                        data=None,
                         **kwargs):
 
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
 
         with torch.no_grad():
-            seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
-            input_dict = self._lazy_tensor_dict({
-                SampleBatch.CUR_OBS: obs_batch,
-                "is_training": False,
-            })
-            if prev_action_batch is not None:
-                input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
-            if prev_reward_batch is not None:
-                input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
-            state_batches = [
-                self._convert_to_tensor(s) for s in (state_batches or [])
-            ]
+            if data is not None:
+                input_view = self.get_view(self.model, data)
+                
+                return
+            else:
+                seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
+                input_dict = self._lazy_tensor_dict({
+                    SampleBatch.CUR_OBS: obs_batch,
+                    "is_training": False,
+                })
+                if prev_action_batch is not None:
+                    input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
+                if prev_reward_batch is not None:
+                    input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
+                state_batches = [
+                    self._convert_to_tensor(s) for s in (state_batches or [])
+                ]
 
             if self.action_sampler_fn:
                 action_dist = dist_inputs = None

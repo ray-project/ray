@@ -99,21 +99,21 @@ class VisionNetwork(TorchModelV2, nn.Module):
     @override(TorchModelV2)
     def forward(self, input_dict, state, seq_lens):
         self._features = self._convs(input_dict["obs"].float().permute(0, 3, 1, 2))  #self._hidden_layers(input_dict["obs"].float())
-        #self._features = self._last_conv2d(self._features)
         if not self.last_layer_is_flattened:
             logits = self._logits(self._features)
             logits = logits.squeeze(3)
             logits = logits.squeeze(2)
             return logits, state
-
-        #test = self._flatten(self._features)
-        #return test, state
         return self._features, state
 
     @override(TorchModelV2)
     def value_function(self):
         assert self._features is not None, "must call forward() first"
-        return self._value_branch(self._features).squeeze(1)
+        if not self.last_layer_is_flattened:
+            features = self._features.squeeze(3).squeeze(2)
+        else:
+            features = self._features
+        return self._value_branch(features).squeeze(1)
 
     def _hidden_layers(self, obs):
         res = self._convs(obs.permute(0, 3, 1, 2))  # switch to channel-major

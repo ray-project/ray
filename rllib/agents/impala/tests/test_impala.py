@@ -40,11 +40,15 @@ class TestIMPALA(unittest.TestCase):
                 # Test w/ LSTM.
                 print("w/ LSTM")
                 local_cfg["model"]["use_lstm"] = True
+                local_cfg["model"]["lstm_use_prev_action_reward"] = True
                 local_cfg["num_aggregation_workers"] = 2
                 trainer = impala.ImpalaTrainer(config=local_cfg, env=env)
                 for i in range(num_iterations):
                     print(trainer.train())
-                check_compute_single_action(trainer, include_state=True)
+                check_compute_single_action(
+                    trainer,
+                    include_state=True,
+                    include_prev_action_reward=True)
                 trainer.stop()
 
 
