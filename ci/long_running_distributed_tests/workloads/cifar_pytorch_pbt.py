@@ -1,11 +1,8 @@
-import logging
-import random
 import numpy as np
 import os
-import time
+import random
 import torch
 import torch.nn as nn
-import argparse
 from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 from torch.utils.data import DataLoader, Subset
@@ -14,25 +11,28 @@ import torchvision.transforms as transforms
 
 import ray
 from ray.tune import CLIReporter
-from ray.tune.resources import Resources
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.trial import Trial
-from ray.tune.utils.util import merge_dicts
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.resnet import ResNet18
 from ray.util.sgd.utils import BATCH_SIZE
+
 
 class FailureInjectorExecutor(RayTrialExecutor):
     """Adds random failure injection to the TrialExecutor."""
 
     def on_step_begin(self, trial_runner):
-        """Before step() called, update available resources and randomly inject failure."""
+        """Before step(), update available resources and inject failure."""
         self._update_avail_resources()
         # With 10% probability inject failure to a worker.
         if random.random() < 0.1:
             # With 10% probability fully terminate the node.
             should_terminate = random.random() < 0.1
-            ray.util.autoscaler.comamnds.kill_node("/home/ubuntu/ray_bootstrap_config.yaml", yes=True, hard=should_terminate, override_cluster_name=None)
+            ray.util.autoscaler.comamnds.kill_node(
+                "/home/ubuntu/ray_bootstrap_config.yaml",
+                yes=True,
+                hard=should_terminate,
+                override_cluster_name=None)
+
 
 def initialization_hook():
     # Need this for avoiding a connection restart issue on AWS.
@@ -81,52 +81,53 @@ def optimizer_creator(model, config):
         lr=config.get("lr", 0.1),
         momentum=config.get("momentum", 0.9))
 
+
 ray.init(address="auto", log_to_driver=True)
 num_training_workers = 3
 
 executor = FailureInjectorExecutor(queue_trials=True)
 
 TorchTrainable = TorchTrainer.as_trainable(
-        model_creator=ResNet18,
-        data_creator=cifar_creator,
-        optimizer_creator=optimizer_creator,
-        loss_creator=nn.CrossEntropyLoss,
-        initialization_hook=initialization_hook,
-        num_workers=num_training_workers,
-        config={
-            BATCH_SIZE: 128 * num_training_workers,
-        },
-        use_gpu=True)
+    model_creator=ResNet18,
+    data_creator=cifar_creator,
+    optimizer_creator=optimizer_creator,
+    loss_creator=nn.CrossEntropyLoss,
+    initialization_hook=initialization_hook,
+    num_workers=num_training_workers,
+    config={
+        BATCH_SIZE: 128 * num_training_workers,
+    },
+    use_gpu=True)
 
 pbt_scheduler = PopulationBasedTraining(
-        time_attr="training_iteration",
-        metric="val_loss",
-        mode="min",
-        perturbation_interval=1,
-        hyperparam_mutations={
-            # distribution for resampling
-            "lr": lambda: np.random.uniform(0.001, 1),
-            # allow perturbations within this set of categorical values
-            "momentum": [0.8, 0.9, 0.99],
-        })
+    time_attr="training_iteration",
+    metric="val_loss",
+    mode="min",
+    perturbation_interval=1,
+    hyperparam_mutations={
+        # distribution for resampling
+        "lr": lambda: np.random.uniform(0.001, 1),
+        # allow perturbations within this set of categorical values
+        "momentum": [0.8, 0.9, 0.99],
+    })
 
 reporter = CLIReporter()
 reporter.add_metric_column("val_loss", "loss")
 reporter.add_metric_column("val_accuracy", "acc")
 
 analysis = tune.run(
-        TorchTrainable,
-        num_samples=4,
-        config={
-            "lr": tune.choice([0.001, 0.01, 0.1]),
-            "momentum": 0.8,
-            "head_location": None,
-            "worker_locations": None
-        },
-        max_failures=-1,  # used for fault tolerance
-        checkpoint_freq=2,  # used for fault tolerance
-        progress_reporter=reporter,
-        scheduler=pbt_scheduler,
-        trial_executor=executor)
+    TorchTrainable,
+    num_samples=4,
+    config={
+        "lr": tune.choice([0.001, 0.01, 0.1]),
+        "momentum": 0.8,
+        "head_location": None,
+        "worker_locations": None
+    },
+    max_failures=-1,  # used for fault tolerance
+    checkpoint_freq=2,  # used for fault tolerance
+    progress_reporter=reporter,
+    scheduler=pbt_scheduler,
+    trial_executor=executor)
 
 print(analysis.get_best_config(metric="val_loss", mode="min"))
