@@ -25,7 +25,7 @@ def flatten_space(space):
         if isinstance(space_, Tuple):
             for s in space_:
                 _helper_flatten(s, l)
-        elif isinstance(space_, Dict) or isinstance(space_, FlexDict):
+        elif isinstance(space_, (Dict, FlexDict)):
             for k in space_.spaces:
                 _helper_flatten(space_[k], l)
         else:
