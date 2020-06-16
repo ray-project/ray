@@ -33,7 +33,7 @@ matrix:
 
     - os: linux
       env:
-        - PYTHON=3.6 ENABLE_ASAN="--config=asan -j 2"
+        - PYTHON=3.6 BAZEL_CONFIG="asan"
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
       install:
@@ -42,7 +42,7 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         # Run all C++ unit tests with ASAN enabled. ASAN adds too much overhead to run Python tests.
-        - bazel test $ENABLE_ASAN --config=ci --build_tests_only -- //:all
+        - bazel test --config=ci --build_tests_only -- //:all
 
     - os: osx
       osx_image: xcode7
@@ -176,7 +176,7 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
-        - ./ci/keep_alive bazel test --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
 
     # RLlib: Learning tests with tf=1.x (from rllib/tuned_examples/*.yaml).
     # Requested by Edi (MS): Test all learning capabilities with tf1.x
@@ -193,7 +193,7 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
-        - ./ci/keep_alive bazel test --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
 
     # RLlib: Learning tests with torch (from rllib/tuned_examples/*.yaml).
     - os: linux
@@ -209,7 +209,7 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
-        - ./ci/keep_alive bazel test --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_torch rllib/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=learning_tests_torch rllib/...
 
     # RLlib: Quick Agent train.py runs (compilation & running, no(!) learning).
     # Agent single tests (compilation, loss-funcs, etc..).
