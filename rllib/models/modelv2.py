@@ -3,6 +3,7 @@ import gym
 
 from ray.rllib.models.preprocessors import get_preprocessor, \
     RepeatedValuesPreprocessor
+from ray.rllib.utils.spaces import simplex
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
