@@ -97,9 +97,6 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   void RemoveObjectLocationInCache(const ObjectID &object_id, const ClientID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Remove all cached object locations for given job id.
-  void RemoveAllObjectLocationsInCacheByJobId(const JobID &job_id);
-
  private:
   typedef absl::flat_hash_set<ObjectID> ObjectSet;
 

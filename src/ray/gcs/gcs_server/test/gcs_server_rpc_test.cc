@@ -354,28 +354,6 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  boost::optional<rpc::TaskLeaseData> GetTaskLease(const std::string &task_id) {
-    boost::optional<rpc::TaskLeaseData> task_lease_data_opt;
-    rpc::GetTaskLeaseRequest request;
-    request.set_task_id(task_id);
-    std::promise<bool> promise;
-    client_->GetTaskLease(
-        request, [&task_lease_data_opt, &promise](const Status &status,
-                                                  const rpc::GetTaskLeaseReply &reply) {
-          if (status.ok()) {
-            if (reply.has_task_lease_data()) {
-              task_lease_data_opt = reply.task_lease_data();
-            } else {
-              task_lease_data_opt = boost::none;
-            }
-          }
-          promise.set_value(true);
-        });
-
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-    return task_lease_data_opt;
-  }
-
   bool AttemptTaskReconstruction(const rpc::AttemptTaskReconstructionRequest &request) {
     std::promise<bool> promise;
     client_->AttemptTaskReconstruction(
