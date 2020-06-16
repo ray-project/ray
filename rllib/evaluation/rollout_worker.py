@@ -968,15 +968,6 @@ class RolloutWorker(ParallelIteratorWorker):
         from ray.util.sgd import utils
         return utils.find_free_port()
 
-    def sample_tasks(self, n_tasks):
-        """Samples n_tasks subtasks from an environment"""
-        return self.async_env.vector_env.envs[0].sample_tasks(n_tasks)
-
-    def set_task(self, task):
-        """Sets a specific subtask for the worker across all vectorized environments"""
-        for env in self.async_env.vector_env.envs:
-            env.set_task(task)
-
     def __del__(self):
         if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):
             self.sampler.shutdown = True

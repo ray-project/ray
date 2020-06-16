@@ -5,6 +5,9 @@
 pong-ppo:
     env: PongNoFrameskip-v4
     run: PPO
+    local_dir: ~/ppo_tests
+    stop:
+        timesteps_total: 3000000
     config:
         # Works for both torch and tf.
         framework: tf
@@ -18,8 +21,10 @@ pong-ppo:
         rollout_fragment_length: 20
         sgd_minibatch_size: 500
         num_sgd_iter: 10
-        num_workers: 32
-        num_envs_per_worker: 5
+        num_workers:
+            grid_search: [31, 31, 31, 31, 31]
+        clip_actions: False
+        num_envs_per_worker: 1
         batch_mode: truncate_episodes
         observation_filter: NoFilter
         vf_share_layers: true

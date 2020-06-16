@@ -9,7 +9,7 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils.tf_ops import make_tf_callable
 from ray.rllib.utils import try_import_tf
-from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, vf_preds_fetches, clip_gradients, setup_config
+from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, vf_preds_fetches, clip_gradients, setup_config, ValueNetworkMixin
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops, state_ops, control_flow_ops
@@ -79,7 +79,7 @@ def PPOLoss(
         vf_loss = reduce_mean_valid(vf_loss(value_fn, value_targets, vf_preds, vf_clip_param))
         entropy_loss = reduce_mean_valid(entropy_loss(pi_new_dist))
 
-        total_loss = - surr_loss #+ cur_kl_coeff * kl_loss + vf_loss_coeff * vf_loss - entropy_coeff * entropy_loss
+        total_loss = - surr_loss + cur_kl_coeff * kl_loss + vf_loss_coeff * vf_loss - entropy_coeff * entropy_loss
         return total_loss, surr_loss, kl_loss, vf_loss, entropy_loss
 
 
@@ -159,7 +159,7 @@ class MAMLLoss(object):
         self.policy_vars = {}
         for var in policy_vars:
             self.policy_vars[var.name] = var
-        import pdb; pdb.set_trace()
+
         # Calculate pi_new for PPO
         pi_new_logits, current_policy_vars, value_fns = [], [], []
         for i in range(self.num_tasks):
@@ -167,8 +167,6 @@ class MAMLLoss(object):
             pi_new_logits.append(pi_new)
             value_fns.append(value_fn)
             current_policy_vars.append(self.policy_vars)
-
-        self.pi_new_logits = pi_new_logits
 
         inner_kls = []
         inner_ppo_loss = []
@@ -231,12 +229,12 @@ class MAMLLoss(object):
         self.mean_entropy = entropy_loss
         self.inner_kl_loss = tf.reduce_mean(tf.multiply(self.cur_kl_coeff, mean_inner_kl))
         self.loss = tf.reduce_mean(tf.stack(ppo_obj, axis=0)) + self.inner_kl_loss
-        self.loss = tf.Print(self.loss, ["Meta-Loss", self.loss, self.mean_inner_kl])
+        self.loss = tf.Print(self.loss, [self.loss, self.mean_inner_kl])
 
-    def feed_forward(self, obs, policy_vars, policy_config, context = None):
+    def feed_forward(self, obs, policy_vars, policy_config):
         # Hacky for now, reconstruct FC network with adapted weights
         # @mluo: TODO for any network
-        def fc_network(inp, network_vars, hidden_nonlinearity, output_nonlinearity, policy_config, hyper_vars = None, context=None):
+        def fc_network(inp, network_vars, hidden_nonlinearity, output_nonlinearity, policy_config):
             hidden_sizes = policy_config["fcnet_hiddens"]
             bias_added = False
             x = inp
@@ -301,7 +299,6 @@ class MAMLLoss(object):
         return placeholder_list
 
 def maml_loss(policy, model, dist_class, train_batch):
-    train_batch["obs"] = tf.Print(train_batch["obs"], ["Observatoins", train_batch["obs"]])
     logits, state = model.from_batch(train_batch)
     action_dist = dist_class(logits, model)
 
@@ -373,31 +370,6 @@ def maml_stats(policy, train_batch):
         }
 
 
-class ValueNetworkMixin:
-    def __init__(self, obs_space, action_space, config):
-        if config["use_gae"]:
-            @make_tf_callable(self.get_session())
-            def value(ob, prev_action, prev_reward, *state):
-                model_out, _ = self.model({
-                    SampleBatch.CUR_OBS: tf.convert_to_tensor([ob]),
-                    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-                        [prev_action]),
-                    SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
-                        [prev_reward]),
-                    "is_training": tf.convert_to_tensor([False]),
-                }, [tf.convert_to_tensor([s]) for s in state],
-                                          tf.convert_to_tensor([1]))
-                return self.model.value_function()[0]
-
-        else:
-
-            @make_tf_callable(self.get_session())
-            def value(ob, prev_action, prev_reward, *state):
-                return tf.constant(0.0)
-
-        self._value = value
-
-
 class KLCoeffMixin:
     def __init__(self, config):
         self.kl_coeff_val = [config["kl_coeff"]]*config["inner_adaptation_steps"]
@@ -442,6 +414,5 @@ MAMLTFPolicy = build_tf_policy(
     before_init=setup_config,
     before_loss_init=setup_mixins,
     mixins=[
-        KLCoeffMixin,
-        ValueNetworkMixin
+        KLCoeffMixin
     ])
