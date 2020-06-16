@@ -484,8 +484,7 @@ py_test(
     name = "test_ppo",
     tags = ["agents_dir"],
     size = "large",
-    srcs = ["agents/ppo/tests/test_ppo.py",
-            "agents/ppo/tests/test.py"]  # TODO(sven): Move down once PR 6889 merged
+    srcs = ["agents/ppo/tests/test_ppo.py"]  # "agents/ppo/tests/test.py",
 )
 
 # DDPPO
