@@ -346,7 +346,8 @@ class LocalDistributedRunner(DistributedTorchRunner):
         global _dummy_gpu_actor
         if cleanup:
             if _dummy_cpu_actor or _dummy_gpu_actor:
-                assert not self.is_actor(), "Actor shouldn't have a dummy actor."
+                assert not self.is_actor(), ("Actor shouldn't have a "
+                                             "dummy actor.")
             if _dummy_cpu_actor:
                 ray.kill(_dummy_cpu_actor)
             if _dummy_gpu_actor:
