@@ -771,7 +771,7 @@ Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        const ObjectID &object_id, bool pin_object) {
   bool object_exists;
-  if (options_.is_local_mode || object.GetSize() < RayConfig::instance().max_direct_call_object_size()) {
+  if (options_.is_local_mode || static_cast<int64_t>(object.GetSize()) < RayConfig::instance().max_direct_call_object_size()) {
     RAY_LOG(DEBUG) << "Put " << object_id << " in memory store";
     RAY_CHECK(memory_store_->Put(object, object_id));
     return Status::OK();
@@ -804,7 +804,7 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
                           ObjectID *object_id, std::shared_ptr<Buffer> *data) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex());
-  if (options_.is_local_mode || data_size < RayConfig::instance().max_direct_call_object_size()) {
+  if (options_.is_local_mode || static_cast<int64_t>(data_size) < RayConfig::instance().max_direct_call_object_size()) {
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
   } else {
     RAY_RETURN_NOT_OK(
