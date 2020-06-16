@@ -3,14 +3,15 @@ import os
 import random
 import torch
 import torch.nn as nn
-from ray import tune
-from ray.tune.schedulers import PopulationBasedTraining
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import CIFAR10
 import torchvision.transforms as transforms
 
 import ray
+from ray import autoscaler
+from ray import tune
 from ray.tune import CLIReporter
+from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.resnet import ResNet18
@@ -27,7 +28,7 @@ class FailureInjectorExecutor(RayTrialExecutor):
         if random.random() < 0.1:
             # With 10% probability fully terminate the node.
             should_terminate = random.random() < 0.1
-            ray.util.autoscaler.comamnds.kill_node(
+            autoscaler.commands.kill_node(
                 "/home/ubuntu/ray_bootstrap_config.yaml",
                 yes=True,
                 hard=should_terminate,
