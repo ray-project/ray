@@ -21,7 +21,7 @@ def flatten_space(space):
     """
 
     def _helper_flatten(space_, l):
-        from ray.rllib.utils.spaces.simplex import FlexDict
+        from ray.rllib.utils.spaces.flexdict import FlexDict
         if isinstance(space_, Tuple):
             for s in space_:
                 _helper_flatten(s, l)

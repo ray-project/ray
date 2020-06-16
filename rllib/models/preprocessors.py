@@ -4,7 +4,6 @@ import logging
 import numpy as np
 import gym
 
-from ray.rllib.utils.spaces import simplex
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.spaces.repeated import Repeated
 
