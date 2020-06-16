@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_FUNCTION_DESCRIPTOR_H
-#define RAY_CORE_WORKER_FUNCTION_DESCRIPTOR_H
+#pragma once
 
 #include <string>
 
@@ -252,5 +251,3 @@ class FunctionDescriptorBuilder {
   static FunctionDescriptor Deserialize(const std::string &serialized_binary);
 };
 }  // namespace ray
-
-#endif

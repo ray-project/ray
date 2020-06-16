@@ -1,7 +1,7 @@
 """ Code adapted from https://github.com/ikostrikov/pytorch-a3c"""
 import numpy as np
 
-from ray.rllib.utils import try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
 

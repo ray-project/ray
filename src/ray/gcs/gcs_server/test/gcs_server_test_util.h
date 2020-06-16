@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_SERVER_TEST_UTIL_H
-#define RAY_GCS_SERVER_TEST_UTIL_H
+#pragma once
 
 #include <memory>
 #include <utility>
@@ -317,5 +316,3 @@ struct GcsServerMocker {
 };
 
 }  // namespace ray
-
-#endif  // RAY_GCS_SERVER_TEST_UTIL_H

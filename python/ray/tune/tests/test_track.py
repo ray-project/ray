@@ -17,18 +17,6 @@ class TrackApiTest(unittest.TestCase):
         session.shutdown()
         ray.shutdown()
 
-    def testSessionInitShutdown(self):
-        self.assertTrue(session._session is None)
-
-        # Checks that the singleton _session is created/destroyed
-        # by session.init() and session.shutdown()
-        for _ in range(2):
-            # do it twice to see that we can reopen the session
-            session.init(reporter=None)
-            self.assertTrue(session._session is not None)
-            session.shutdown()
-            self.assertTrue(session._session is None)
-
     def testSoftDeprecation(self):
         """Checks that tune.track.log code does not break."""
         from ray.tune import track

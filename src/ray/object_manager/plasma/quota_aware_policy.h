@@ -15,8 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef PLASMA_QUOTA_AWARE_POLICY_H
-#define PLASMA_QUOTA_AWARE_POLICY_H
+#pragma once
 
 #include <list>
 #include <memory>
@@ -87,5 +86,3 @@ class QuotaAwarePolicy : public EvictionPolicy {
 };
 
 }  // namespace plasma
-
-#endif  // PLASMA_EVICTION_POLICY_H

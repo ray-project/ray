@@ -15,8 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef PLASMA_TEST_UTIL_H
-#define PLASMA_TEST_UTIL_H
+#pragma once
 
 #include <algorithm>
 #include <limits>
@@ -45,5 +44,3 @@ ObjectID random_object_id() {
   } while (false);
 
 }  // namespace plasma
-
-#endif  // PLASMA_TEST_UTIL_H

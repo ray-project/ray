@@ -1,5 +1,4 @@
-#ifndef RAY_COMMON_TASK_TASK_H
-#define RAY_COMMON_TASK_TASK_H
+#pragma once
 
 #include <inttypes.h>
 
@@ -125,5 +124,3 @@ class Task {
 };
 
 }  // namespace ray
-
-#endif  // RAY_COMMON_TASK_TASK_H

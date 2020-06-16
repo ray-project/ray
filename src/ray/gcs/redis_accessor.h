@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_REDIS_ACCESSOR_H
-#define RAY_GCS_REDIS_ACCESSOR_H
+#pragma once
 
 #include <ray/common/task/task_spec.h>
 #include "ray/common/id.h"
@@ -467,5 +466,3 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_REDIS_ACCESSOR_H

@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_REDIS_STRING_H_
-#define RAY_REDIS_STRING_H_
+#pragma once
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -89,5 +88,3 @@ std::string RedisString_ToString(RedisModuleString *string) {
   const char *data = RedisModule_StringPtrLen(string, &size);
   return std::string(data, size);
 }
-
-#endif  // RAY_REDIS_STRING_H_

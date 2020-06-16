@@ -31,9 +31,9 @@ from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.filter import get_filter
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils import try_import_tf, try_import_torch
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
