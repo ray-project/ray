@@ -281,11 +281,11 @@ class LocalDistributedRunner(DistributedTorchRunner):
     def _try_reserve_resources_and_set_cuda(self, num_cpus, num_gpus):
         visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
         reserved_gpu_device = reserve_resources(num_cpus, 1)
+        if num_gpus == 0:
+            return
         # This needs to be set even if torch.cuda is already
         # initialized because the env var is used later when
         # starting the DDP setup.
-        if num_gpus == 0:
-            return
         os.environ["CUDA_VISIBLE_DEVICES"] = reserved_gpu_device
         if visible_devices:
             # We want to set the index on the visible devices list.
