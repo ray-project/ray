@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_TEST_UTIL_H
-#define RAY_COMMON_TEST_UTIL_H
+#pragma once
 
 #include <unistd.h>
 
@@ -117,5 +116,3 @@ class TestSetupUtil {
 };
 
 }  // namespace ray
-
-#endif  // RAY_UTIL_TEST_UTIL_H

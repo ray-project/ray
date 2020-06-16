@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_ACTOR_MANAGER_H
-#define RAY_CORE_WORKER_ACTOR_MANAGER_H
+#pragma once
 
 #include "ray/core_worker/actor_handle.h"
 #include "ray/gcs/redis_gcs_client.h"
@@ -46,5 +45,3 @@ class ActorManager : public ActorManagerInterface {
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_ACTOR_MANAGER_H

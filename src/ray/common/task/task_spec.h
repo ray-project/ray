@@ -1,5 +1,4 @@
-#ifndef RAY_COMMON_TASK_TASK_SPEC_H
-#define RAY_COMMON_TASK_TASK_SPEC_H
+#pragma once
 
 #include <cstddef>
 #include <string>
@@ -208,5 +207,3 @@ struct hash<ray::SchedulingClassDescriptor> {
   }
 };
 }  // namespace std
-
-#endif  // RAY_COMMON_TASK_TASK_SPEC_H

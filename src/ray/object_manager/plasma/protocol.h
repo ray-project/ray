@@ -15,8 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef PLASMA_PROTOCOL_H
-#define PLASMA_PROTOCOL_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -247,5 +246,3 @@ Status SendRefreshLRUReply(int sock);
 Status ReadRefreshLRUReply(uint8_t* data, size_t size);
 
 }  // namespace plasma
-
-#endif /* PLASMA_PROTOCOL */

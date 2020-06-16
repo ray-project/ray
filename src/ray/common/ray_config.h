@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CONFIG_H
-#define RAY_CONFIG_H
+#pragma once
 
 #include <sstream>
 #include <unordered_map>
@@ -68,5 +67,3 @@ class RayConfig {
 #undef RAY_CONFIG
 };
 // clang-format on
-
-#endif  // RAY_CONFIG_H

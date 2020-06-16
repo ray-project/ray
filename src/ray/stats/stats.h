@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_STATS_STATS_H
-#define RAY_STATS_STATS_H
+#pragma once
 
 #include <exception>
 #include <string>
@@ -72,5 +71,3 @@ static void Init(const std::string &address, const TagsType &global_tags,
 }  // namespace stats
 
 }  // namespace ray
-
-#endif  // RAY_STATS_STATS_H

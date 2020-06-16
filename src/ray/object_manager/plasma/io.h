@@ -15,8 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef PLASMA_IO_H
-#define PLASMA_IO_H
+#pragma once
 
 #include <inttypes.h>
 #include <sys/socket.h>
@@ -65,5 +64,3 @@ int AcceptClient(int socket_fd);
 std::unique_ptr<uint8_t[]> ReadMessageAsync(int sock);
 
 }  // namespace plasma
-
-#endif  // PLASMA_IO_H

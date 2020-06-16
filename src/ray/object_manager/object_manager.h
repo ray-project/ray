@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_OBJECT_MANAGER_OBJECT_MANAGER_H
-#define RAY_OBJECT_MANAGER_OBJECT_MANAGER_H
+#pragma once
 
 #include <algorithm>
 #include <cstdint>
@@ -454,5 +453,3 @@ class ObjectManager : public ObjectManagerInterface,
 };
 
 }  // namespace ray
-
-#endif  // RAY_OBJECT_MANAGER_OBJECT_MANAGER_H
