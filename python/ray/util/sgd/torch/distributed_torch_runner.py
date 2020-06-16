@@ -194,31 +194,41 @@ class _DummyActor:
 # This is a bit of a hack. It prevents the reassignment of CUDA_VISIBLE_DEVICES
 # during a trainer resize. We won't need this if we don't shutdown
 # all the actors.
-_dummy_actor = None
+_dummy_gpu_actor = None
+# used to reserve CPU resources
+_dummy_cpu_actor = None
 
 
 def clear_dummy_actor():
-    global _dummy_actor
-    if _dummy_actor:
+    global _dummy_gpu_actor
+    if _dummy_gpu_actor:
         try:
-            _dummy_actor.__ray_terminate__.remote()
+            _dummy_gpu_actor.__ray_terminate__.remote()
         except Exception as exc:
             logger.info("Tried to clear dummy actor: %s", str(exc))
 
-    _dummy_actor = None
+    _dummy_gpu_actor = None
+
+    global _dummy_cpu_actor
+    if _dummy_cpu_actor:
+        try:
+            _dummy_cpu_actor.__ray_terminate__.remote()
+        except Exception as exc:
+            logger.info("Tried to clear dummy actor: %s", str(exc))
+
+    _dummy_cpu_actor = None
 
 
 def reserve_resources(num_cpus, num_gpus, retries=20):
     ip = ray.services.get_node_ip_address()
-    reserved_gpu_device = None
 
-    global _dummy_actor
-
-    if num_cpus > 0 and num_gpus == 0:
-        _dummy_actor = ray.remote(
+    if num_cpus > 0:
+        global _dummy_cpu_actor
+        _dummy_cpu_actor = ray.remote(
             num_cpus=num_cpus,
             resources={"node:" + ip: 0.1})(_DummyActor).remote()
-        return reserved_gpu_device
+
+    reserved_gpu_device = None
 
     cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
     cuda_device_set = {}
@@ -228,23 +238,28 @@ def reserve_resources(num_cpus, num_gpus, retries=20):
         assert isinstance(cuda_devices, str)
         cuda_device_set = set(cuda_devices.split(","))
 
+    global _dummy_gpu_actor
+    unused_actors = []
+
     success = False
     for _ in range(retries):
-        if _dummy_actor is None:
-            _dummy_actor = ray.remote(
-                num_cpus=num_cpus, num_gpus=1,
+        if _dummy_gpu_actor is None:
+            _dummy_gpu_actor = ray.remote(
+                num_gpus=num_gpus,
                 resources={"node:" + ip: 0.1})(_DummyActor).remote()
 
-        reserved_gpu_device = ray.get(_dummy_actor.cuda_devices.remote())
+        reserved_gpu_device = ray.get(_dummy_gpu_actor.cuda_devices.remote())
 
         if match_devices and reserved_gpu_device not in cuda_device_set:
             logger.debug("Device %s not in list of visible devices %s",
                          reserved_gpu_device, cuda_device_set)
-            _dummy_actor.__ray_terminate__.remote()
-            _dummy_actor = None
+            unused_actors.append(_dummy_gpu_actor)
+            _dummy_gpu_actor = None
         else:
             logger.debug("Found matching device %s", reserved_gpu_device)
             success = True
+            for actor in unused_actors:
+                actor.__ray_terminate__.remote()
             break
 
     if not success:
@@ -280,7 +295,7 @@ class LocalDistributedRunner(DistributedTorchRunner):
 
     def _try_reserve_resources_and_set_cuda(self, num_cpus, num_gpus):
         visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
-        reserved_gpu_device = reserve_resources(num_cpus, 1)
+        reserved_gpu_device = reserve_resources(num_cpus, num_gpus)
         if num_gpus == 0:
             return
         # This needs to be set even if torch.cuda is already
@@ -327,11 +342,17 @@ class LocalDistributedRunner(DistributedTorchRunner):
 
     def shutdown(self, cleanup=True):
         super(LocalDistributedRunner, self).shutdown()
-        global _dummy_actor
-        if cleanup and _dummy_actor:
-            assert not self.is_actor(), "Actor shouldn't have a dummy actor."
-            ray.kill(_dummy_actor)
-            _dummy_actor = None
+        global _dummy_cpu_actor
+        global _dummy_gpu_actor
+        if cleanup:
+            if _dummy_cpu_actor or _dummy_gpu_actor:
+                assert not self.is_actor(), "Actor shouldn't have a dummy actor."
+            if _dummy_cpu_actor:
+                ray.kill(_dummy_cpu_actor)
+            if _dummy_gpu_actor:
+                ray.kill(_dummy_gpu_actor)
+            _dummy_cpu_actor = None
+            _dummy_gpu_actor = None
 
     def is_actor(self):
         actor_id = ray.worker.global_worker.actor_id
