@@ -705,11 +705,13 @@ ray.get(main_wait.release.remote())
     driver1_expected = "1\n2\n".encode("ascii")
     driver2_expected = "3\n4\n".encode("ascii")
 
-    assert driver1_expected in driver1_out
-    assert driver2_expected not in driver1_out
+    # We check for "in" not an exact match because the ray INFO logs appear in
+    # stderr
+    assert driver1_expected in driver1_err
+    assert driver2_expected not in driver1_err
 
-    assert driver2_expected in driver2_out
-    assert driver1_expected not in driver2_out
+    assert driver2_expected in driver2_err
+    assert driver1_expected not in driver2_err
 
 
 if __name__ == "__main__":
