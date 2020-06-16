@@ -332,7 +332,8 @@ class TorchTrainer:
             # Start local worker
             self.local_worker = LocalDistributedRunner(
                 num_cpus=self.num_cpus_per_worker,
-                num_gpus=int(self.use_gpu), **params)
+                num_gpus=int(self.use_gpu),
+                **params)
 
             # Generate actor class
             RemoteRunner = ray.remote(

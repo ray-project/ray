@@ -52,8 +52,8 @@ class TFTrainer:
         # Generate actor class
         # todo: are these resource quotas right?
         # should they be exposed to the client codee?
-        Runner = ray.remote(num_cpus=self.num_cpus_per_worker,
-                            num_gpus=int(use_gpu))(TFRunner)
+        Runner = ray.remote(
+            num_cpus=self.num_cpus_per_worker, num_gpus=int(use_gpu))(TFRunner)
 
         # todo: should we warn about using
         # distributed training on one device only?
