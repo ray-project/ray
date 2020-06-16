@@ -935,9 +935,6 @@ def _start_redis_instance(executable,
         load_module_args += ["--loadmodule", module]
 
     while counter < num_retries:
-        if counter > 0:
-            logger.warning("Redis failed to start, retrying now.")
-
         # Construct the command to start the Redis server.
         command = [executable]
         if password:
@@ -965,7 +962,6 @@ def _start_redis_instance(executable,
                                stdout_file.name if stdout_file is not None else
                                "<stdout>", stderr_file.name
                                if stdout_file is not None else "<stderr>"))
-
     # Create a Redis client just for configuring Redis.
     redis_client = redis.StrictRedis(
         host="127.0.0.1", port=port, password=password)
