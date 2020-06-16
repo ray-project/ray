@@ -11,14 +11,14 @@ forever until they fail. To set up the project you need to run
 
 Running the Workloads
 ---------------------
-Easiest approach is to use the `Anyscale UI <https://www.anyscale.dev/>`. First run ``anyscale snapshot create`` from the command line to create a project snapshot. Then from the UI, you can launch an individual session and execute the test_workload command for each test. 
+Easiest approach is to use the `Anyscale UI <https://www.anyscale.dev/>`_. First run ``anyscale snapshot create`` from the command line to create a project snapshot. Then from the UI, you can launch an individual session and execute the test_workload command for each test. 
 
 You can also start the workloads using the CLI with:
 
 .. code-block:: bash
 
-    $ anyscale start --ray-wheel=*`RAY_WHEEL_LINK`*
-    $ anyscale run test_workload --workload=*`WORKLOAD_NAME`*
+    $ anyscale start --ray-wheel=RAY_WHEEL_LINK
+    $ anyscale run test_workload --workload=WORKLOAD_NAME
 
 
 Doing this for each workload will start one EC2 instance per workload and will start the workloads
@@ -36,7 +36,7 @@ Shut Down the Workloads
 -----------------------
 
 The instances running the workloads can all be killed by running
-``anyscale stop --name "*"``.
+``anyscale stop SESSION_NAME``.
 
 Adding a Workload
 -----------------
