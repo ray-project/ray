@@ -483,6 +483,17 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
   }
 
+  void CheckActorData(const gcs::ActorTableData &actor,
+                      rpc::ActorTableData_ActorState expected_state) {
+    ASSERT_TRUE(actor.state() == expected_state);
+  }
+
+  void CheckActorData(const gcs::ActorTableData &actor, const ActorID &expected_id,
+                      rpc::ActorTableData_ActorState expected_state) {
+    ASSERT_TRUE(actor.actor_id() == expected_id.Binary() &&
+                actor.state() == expected_state);
+  }
+
   // GCS server.
   gcs::GcsServerConfig config_;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
@@ -864,16 +875,20 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableReSubscribe) {
 
   // Subscribe to any register or update operations of actors.
   std::atomic<int> actors_update_count(0);
-  auto subscribe_all = [&actors_update_count](const ActorID &id,
-                                              const rpc::ActorTableData &result) {
+  std::vector<gcs::ActorTableData> actors_update_received;
+  auto subscribe_all = [&actors_update_count, &actors_update_received](
+                           const ActorID &id, const rpc::ActorTableData &data) {
+    actors_update_received.emplace_back(data);
     ++actors_update_count;
   };
   ASSERT_TRUE(SubscribeAllActors(subscribe_all));
 
   // Subscribe to any update operations of actor1.
   std::atomic<int> actor1_update_count(0);
-  auto actor1_subscribe = [&actor1_update_count](const ActorID &actor_id,
-                                                 const gcs::ActorTableData &data) {
+  std::vector<gcs::ActorTableData> actor1_update_received;
+  auto actor1_subscribe = [&actor1_update_count, &actor1_update_received](
+                              const ActorID &actor_id, const gcs::ActorTableData &data) {
+    actor1_update_received.emplace_back(data);
     ++actor1_update_count;
   };
   ASSERT_TRUE(SubscribeActor(actor1_id, actor1_subscribe));
@@ -893,11 +908,50 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableReSubscribe) {
 
   RestartGcsServer();
 
+  // RPC calls once, triggering GCS client reconnect GCS server and resubscribe.
+  ASSERT_TRUE(GetActor(actor1_id).state() ==
+              rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+  WaitPendingDone(actors_update_count, 4);
+
+  actor1_table_data->set_state(
+      rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
+  actor2_table_data->set_state(
+      rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
   ASSERT_TRUE(UpdateActor(actor1_id, actor1_table_data));
   ASSERT_TRUE(UpdateActor(actor2_id, actor2_table_data));
   WaitPendingDone(actor1_update_count, 3);
   WaitPendingDone(actor2_update_count, 1);
   UnsubscribeActor(actor1_id);
+
+  // Check received actor1 update info.
+  CheckActorData(actor1_update_received[0],
+                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+  CheckActorData(actor1_update_received[1],
+                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+  CheckActorData(actor1_update_received[2],
+                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
+
+  // Check received all actors update info.
+  WaitPendingDone(actors_update_count, 6);
+  for (auto &actor : actors_update_received) {
+    RAY_LOG(INFO) << "actor id = " << ActorID::FromBinary(actor.actor_id())
+                  << ", state = " << actor.state();
+  }
+  CheckActorData(actors_update_received[0], actor1_id,
+                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+  CheckActorData(actors_update_received[1], actor2_id,
+                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+  CheckActorData(actors_update_received[4], actor1_id,
+                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
+  CheckActorData(actors_update_received[5], actor2_id,
+                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
+
+  // The third and fourth messages obtained from GCS server by resubscribe cannot confirm
+  // the order of actors, so only state is checked here.
+  CheckActorData(actors_update_received[2],
+                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+  CheckActorData(actors_update_received[3],
+                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestObjectTableReSubscribe) {
