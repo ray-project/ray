@@ -3,7 +3,7 @@ import collections
 import random
 import threading
 import time
-from typing import TypeVar, Generic, Iterable, List, Callable, Any, Generator
+from typing import TypeVar, Generic, Iterable, List, Callable, Any
 
 import ray
 from ray.util.iter_metrics import MetricsContext, SharedMetrics
@@ -193,7 +193,7 @@ class ParallelIterator(Generic[T]):
             name=self.name + name,
             parent_iterators=self.parent_iterators)
 
-    def transform(self, fn: Callable[[Generator[T]], Generator[U]]
+    def transform(self, fn: Callable[[Iterable[T]], Iterable[U]]
                   ) -> "ParallelIterator[U]":
         """Remotely transform the iterator.
 
@@ -753,7 +753,7 @@ class LocalIterator(Generic[T]):
     def __repr__(self):
         return "LocalIterator[{}]".format(self.name)
 
-    def transform(self, fn: Callable[[Generator[T]], Generator[U]]
+    def transform(self, fn: Callable[[Iterable[T]], Iterable[U]]
                   ) -> "LocalIterator[U]":
 
         # TODO(ekl) can we automatically handle NextValueNotReady here?
