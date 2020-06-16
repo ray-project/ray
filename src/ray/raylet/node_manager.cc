@@ -2166,9 +2166,11 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   RAY_LOG(DEBUG) << "Submitting task: " << task.DebugString();
 
   if (local_queues_.HasTask(task_id)) {
-    RAY_LOG(WARNING) << "Submitted task " << task_id
-                     << " is already queued and will not be restarted. This is most "
-                        "likely due to spurious reconstruction.";
+    RAY_LOG(WARNING)
+        << "Submitted task " << task_id
+        << " is already queued, we will remove it from queue and "
+           "recreate the task, because the dispatch task callback of the old task "
+           "is invalid if the GCS server is restarted.";
     std::unordered_set<TaskID> task_ids;
     task_ids.insert(task_id);
     local_queues_.RemoveTasks(task_ids);

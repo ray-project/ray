@@ -763,14 +763,14 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
       }
     }
 
-    RAY_LOG(INFO) << "The number of registered actors is " << registered_actors_.size()
-                  << ", and the number of created actors is " << created_actors_.size();
+    RAY_LOG(DEBUG) << "The number of registered actors is " << registered_actors_.size()
+                   << ", and the number of created actors is " << created_actors_.size();
     for (auto &item : registered_actors_) {
       auto &actor = item.second;
       if (actor->GetState() != ray::rpc::ActorTableData::ALIVE) {
         RAY_LOG(DEBUG) << "Reschedule the registered actor, actor id = "
-                       << actor->GetActorID();
-        gcs_actor_scheduler_->Schedule(actor);
+                       << actor->GetActorID() << ", state = " << actor->GetState();
+        gcs_actor_scheduler_->Reschedule(actor);
       }
     }
 

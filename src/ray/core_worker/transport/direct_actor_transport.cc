@@ -279,18 +279,20 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto task_id = TaskID::FromBinary(request.task_spec().task_id());
+  RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
+  const TaskSpecification task_spec(request.task_spec());
+
   // If GCS server is restarted after sending create actor task to the core worker, the
   // restarted GCS server will send the same create actor task to the core worker again.
   // We just need to ignore it and reply ok.
-  if (completed_task_ids_.count(task_id)) {
+  if (task_spec.IsActorCreationTask() &&
+      worker_context_.GetCurrentActorID() == task_spec.ActorId()) {
     send_reply_callback(Status::OK(), nullptr, nullptr);
-    RAY_LOG(INFO) << "Task is repeated, reply directly, task id = " << task_id
-                  << ", actor id = " << task_id.ActorId();
+    RAY_LOG(INFO) << "Actor creation task is repeated, reply directly, task id = "
+                  << task_id << ", actor id = " << task_id.ActorId();
     return;
   }
 
-  RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
-  const TaskSpecification task_spec(request.task_spec());
   std::vector<ObjectID> dependencies;
   for (size_t i = 0; i < task_spec.NumArgs(); ++i) {
     int count = task_spec.ArgIdCount(i);
@@ -379,7 +381,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   // through a scheduling queue.
   if (task_spec.IsActorCreationTask()) {
     accept_callback();
-    completed_task_ids_.insert(task_id);
     return;
   }
 

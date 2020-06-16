@@ -40,6 +40,28 @@ GcsActorScheduler::GcsActorScheduler(
 }
 
 void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
+  // Select a node to lease worker for the actor.
+  auto node = SelectNodeRandomly();
+  if (node == nullptr) {
+    // There are no available nodes to schedule the actor, so just trigger the failed
+    // handler.
+    schedule_failure_handler_(std::move(actor));
+    return;
+  }
+
+  // Update the address of the actor as it is tied to a new node.
+  rpc::Address address;
+  address.set_raylet_id(node->node_id());
+  actor->UpdateAddress(address);
+
+  // If the actor is already tied to a node, then lease worker directly from the node.
+  RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
+                .emplace(actor->GetActorID())
+                .second);
+  LeaseWorkerFromNode(actor, node);
+}
+
+void GcsActorScheduler::Reschedule(std::shared_ptr<GcsActor> actor) {
   if (!actor->GetWorkerID().IsNil()) {
     RAY_LOG(INFO) << "Actor " << actor->GetActorID()
                   << " owners a leased worker. Create actor directly on worker.";
@@ -57,42 +79,9 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
           leased_worker->GetWorkerID(), leased_worker);
     }
     CreateActorOnWorker(actor, leased_worker);
-    return;
+  } else {
+    Schedule(actor);
   }
-
-  auto node_id = actor->GetNodeID();
-  if (!node_id.IsNil()) {
-    if (auto node = gcs_node_manager_.GetNode(node_id)) {
-      // If the actor is already tied to a node and the node is available, then record
-      // the relationship of the node and actor and then lease worker directly from the
-      // node.
-      RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
-                    .emplace(actor->GetActorID())
-                    .second);
-      LeaseWorkerFromNode(actor, node);
-      return;
-    }
-
-    // The actor is already tied to a node which is unavailable now, so we should reset
-    // the address.
-    actor->UpdateAddress(rpc::Address());
-  }
-
-  // Select a node to lease worker for the actor.
-  auto node = SelectNodeRandomly();
-  if (node == nullptr) {
-    // There are no available nodes to schedule the actor, so just trigger the failed
-    // handler.
-    schedule_failure_handler_(std::move(actor));
-    return;
-  }
-
-  // Update the address of the actor as it is tied to a new node.
-  rpc::Address address;
-  address.set_raylet_id(node->node_id());
-  actor->UpdateAddress(address);
-
-  Schedule(actor);
 }
 
 std::vector<ActorID> GcsActorScheduler::CancelOnNode(const ClientID &node_id) {
