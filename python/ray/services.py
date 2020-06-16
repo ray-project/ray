@@ -935,9 +935,6 @@ def _start_redis_instance(executable,
         load_module_args += ["--loadmodule", module]
 
     while counter < num_retries:
-        if counter > 0:
-            logger.warning("Redis failed to start, retrying now.")
-
         # Construct the command to start the Redis server.
         command = [executable]
         if password:

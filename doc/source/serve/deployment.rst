@@ -56,14 +56,16 @@ Creating a Model and Serving it
 -------------------------------
 
 In the following snippet we will complete two things:
+
 1. Define a servable model by instantiating a class and defining the ``__call__`` method.
-2. Connect to our running Ray cluster(``ray.init(...)``) and then start or connect to the Ray Serve instance on that cluster(``serve.init(...)``).
+2. Connect to our running Ray cluster(``ray.init(...)``) and then start or connect to the Ray Serve instance on that
+   cluster(:mod:`serve.init(...) <ray.serve.init>`).
 
 
 You can see that defining the model is straightforward and simple, we're simply instantiating
 the model like we might a typical Python class.
 
-Configuring our model to accept traffic is specified via ``.set_traffic`` after we created
+Configuring our model to accept traffic is specified via :mod:`.set_traffic <ray.serve.set_traffic>` after we created
 a backend in serve for our model (and versioned it with a string).
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/tutorial_deploy.py
@@ -72,7 +74,8 @@ a backend in serve for our model (and versioned it with a string).
 
 What serve does when we run this code is store the model as a Ray actor 
 and route traffic to it as the endpoint is queried, in this case over HTTP.
-Note that in order for this endpoint to be accessible from other machines, we need to specify ``http_host="0.0.0.0"`` in ``serve.init`` like we did here.
+Note that in order for this endpoint to be accessible from other machines, we
+need to specify ``http_host="0.0.0.0"`` in :mod:`serve.init <ray.serve.init>` like we did here.
 
 Now let's query our endpoint to see the result.
 
@@ -278,7 +281,7 @@ To learn more, in general, about Ray Clusters see :doc:`../cluster-index`.
 Deploying Multiple Serve Instaces on a Single Ray Cluster
 ---------------------------------------------------------
 
-You can run multiple serve instances on the same Ray cluster by providing a ``name`` in ``serve.init()``.
+You can run multiple serve instances on the same Ray cluster by providing a ``name`` in :mod:`serve.init() <ray.serve.init>`.
 
 .. code-block:: python
 
