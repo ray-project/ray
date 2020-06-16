@@ -208,9 +208,17 @@ def clear_dummy_actor():
     _dummy_actor = None
 
 
-def reserve_cuda_device(retries=20):
+def reserve_resources(num_cpus, num_gpus, retries=20):
     ip = ray.services.get_node_ip_address()
-    reserved_device = None
+    reserved_gpu_device = None
+
+    global _dummy_actor
+
+    if num_cpus > 0 and num_gpus == 0:
+        _dummy_actor = ray.remote(
+            num_cpus=num_cpus,
+            resources={"node:" + ip: 0.1})(_DummyActor).remote()
+        return reserved_gpu_device
 
     cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
     cuda_device_set = {}
@@ -220,28 +228,24 @@ def reserve_cuda_device(retries=20):
         assert isinstance(cuda_devices, str)
         cuda_device_set = set(cuda_devices.split(","))
 
-    global _dummy_actor
-    unused_actors = []
-
     success = False
     for _ in range(retries):
         if _dummy_actor is None:
             _dummy_actor = ray.remote(
+                num_cpus=num_cpus,
                 num_gpus=1,
                 resources={"node:" + ip: 0.1})(_DummyActor).remote()
 
-        reserved_device = ray.get(_dummy_actor.cuda_devices.remote())
+        reserved_gpu_device = ray.get(_dummy_actor.cuda_devices.remote())
 
-        if match_devices and reserved_device not in cuda_device_set:
+        if match_devices and reserved_gpu_device not in cuda_device_set:
             logger.debug("Device %s not in list of visible devices %s",
-                         reserved_device, cuda_device_set)
-            unused_actors.append(_dummy_actor)
+                         reserved_gpu_device, cuda_device_set)
+            _dummy_actor.__ray_terminate__.remote()
             _dummy_actor = None
         else:
-            logger.debug("Found matching device %s", reserved_device)
+            logger.debug("Found matching device %s", reserved_gpu_device)
             success = True
-            for actor in unused_actors:
-                actor.__ray_terminate__.remote()
             break
 
     if not success:
@@ -250,7 +254,7 @@ def reserve_cuda_device(retries=20):
             "make sure that Ray has access to all the visible devices: "
             "{}".format(os.environ.get("CUDA_VISIBLE_DEVICES")))
 
-    return reserved_device
+    return reserved_gpu_device
 
 
 class LocalDistributedRunner(DistributedTorchRunner):
@@ -271,33 +275,35 @@ class LocalDistributedRunner(DistributedTorchRunner):
             assert num_gpus == 1, "Does not support multi-gpu workers"
 
         if not self.is_actor() and num_gpus > 0:
-            self._try_reserve_and_set_cuda()
+            self._try_reserve_resources_and_set_cuda()
 
         super(LocalDistributedRunner, self).__init__(*args, **kwargs)
 
-    def _try_reserve_and_set_cuda(self):
+    def _try_reserve_resources_and_set_cuda(self, num_cpus, num_gpus):
         visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
-        reserved_device = reserve_cuda_device()
+        reserved_gpu_device = reserve_resources(num_cpus, 1)
         # This needs to be set even if torch.cuda is already
         # initialized because the env var is used later when
         # starting the DDP setup.
-        os.environ["CUDA_VISIBLE_DEVICES"] = reserved_device
+        if num_gpus == 0:
+            return
+        os.environ["CUDA_VISIBLE_DEVICES"] = reserved_gpu_device
         if visible_devices:
             # We want to set the index on the visible devices list.
-            if reserved_device not in visible_devices:
+            if reserved_gpu_device not in visible_devices:
                 raise RuntimeError(
                     "TorchTrainer reserved a device {} that was not in the "
                     "CUDA_VISIBLE_DEVICES {}. This may be because the "
                     "Ray cluster is not set with the right env vars. "
-                    "If that is not the issue, please raise a "
-                    "Github issue.".format(reserved_device, visible_devices))
+                    "If that is not the issue, please raise a Github "
+                    "issue.".format(reserved_gpu_device, visible_devices))
             devices = visible_devices.split(",")
-            scoped_index = devices.index(reserved_device)
+            scoped_index = devices.index(reserved_gpu_device)
             self._set_cuda_device(str(scoped_index))
         else:
             # Once cuda is initialized, torch.device ignores the os.env
             # so we have to set the right actual device.
-            self._set_cuda_device(reserved_device)
+            self._set_cuda_device(reserved_gpu_device)
 
     def _set_cuda_device(self, device_str):
         """Sets the CUDA device for this current local worker."""
