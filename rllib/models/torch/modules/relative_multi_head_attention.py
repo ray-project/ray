@@ -57,8 +57,8 @@ class RelativeMultiHeadAttention(nn.Module):
 
         self._uvar = torch.zeros(num_heads, head_dim)
         self._vvar = torch.zeros(num_heads, head_dim)
-        nn.init.xavier_uniform(self._uvar)
-        nn.init.xavier_uniform(self._vvar)
+        nn.init.xavier_uniform_(self._uvar)
+        nn.init.xavier_uniform_(self._vvar)
 
         self._rel_pos_encoder = rel_pos_encoder
         self._input_layernorm = None

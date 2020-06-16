@@ -137,8 +137,8 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                     rel_pos_encoder=Phi,
                     input_layernorm=True,
                     output_activation=nn.ReLU),
-                fan_in_layer=GRUGate(init_gate_bias),
-                name="mha_{}".format(i + 1))
+                fan_in_layer=GRUGate(self.attn_dim, init_gate_bias)
+            )
 
             # Position-wise MultiLayerPerceptron part.
             E_layer = SkipConnection(
@@ -154,8 +154,8 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                         out_size=self.attn_dim,
                         use_bias=False,
                         activation_fn=nn.ReLU)),
-                fan_in_layer=GRUGate(init_gate_bias),
-                name="pos_wise_mlp_{}".format(i + 1))
+                fan_in_layer=GRUGate(self.attn_dim, init_gate_bias)
+                )
 
             # Build a list of all layers in order.
             self.layers.extend([MHA_layer, E_layer])
@@ -164,8 +164,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         self.logits = SlimFC(
             in_size=self.attn_dim,
             out_size=self.num_outputs,
-            activation_fn=nn.ReLU,
-            name="logits")
+            activation_fn=nn.ReLU)
 
         # Value function used by all RLlib Torch RL implementations.
         self._value_out = None

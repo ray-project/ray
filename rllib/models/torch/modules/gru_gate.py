@@ -6,7 +6,7 @@ torch, nn = try_import_torch()
 class GRUGate(nn.Module):
     """Implements a gated recurrent unit for use in AttentionNet"""
 
-    def __init__(self, input_shape, init_bias=0., **kwargs):
+    def __init__(self, dim, init_bias=0., **kwargs):
         """
         input_shape (torch.Tensor): dimension of the input
         init_bias (int): Bias added to every input to stabilize training
@@ -14,12 +14,12 @@ class GRUGate(nn.Module):
         super().__init__(**kwargs)
         self._init_bias = init_bias
 
-        h_shape, x_shape = input_shape
-        if x_shape[-1] != h_shape[-1]:
-            raise ValueError(
-                "Both inputs to GRUGate must have equal size in last axis!")
+#        h_shape, x_shape = input_shape
+#        if x_shape[-1] != h_shape[-1]:
+#            raise ValueError(
+#                "Both inputs to GRUGate must have equal size in last axis!")
 
-        dim = int(h_shape[-1])
+#        dim = int(h_shape[-1])
 
         # Xavier initialization of torch tensors
         self._w_r = torch.zeros(dim, dim)
@@ -30,13 +30,13 @@ class GRUGate(nn.Module):
         self._u_z = torch.zeros(dim, dim)
         self._u_h = torch.zeros(dim, dim)
 
-        nn.init.xavier_uniform(self._w_r)
-        nn.init.xavier_uniform(self._w_z)
-        nn.init.xavier_uniform(self._w_h)
+        nn.init.xavier_uniform_(self._w_r)
+        nn.init.xavier_uniform_(self._w_z)
+        nn.init.xavier_uniform_(self._w_h)
 
-        nn.init.xavier_uniform(self._u_r)
-        nn.init.xavier_uniform(self._u_z)
-        nn.init.xavier_uniform(self._u_h)
+        nn.init.xavier_uniform_(self._u_r)
+        nn.init.xavier_uniform_(self._u_z)
+        nn.init.xavier_uniform_(self._u_h)
 
         self._bias_z = torch.zeros(dim, ).fill_(self._init_bias)
 
