@@ -1,7 +1,7 @@
-Long Running Tests
+Long Running Distributed Tests
 ==================
 
-This directory contains the long-running workloads which are intended to run
+This directory contains the long-running multi-node workloads which are intended to run
 forever until they fail. To set up the project you need to run
 
 .. code-block:: bash
@@ -9,18 +9,16 @@ forever until they fail. To set up the project you need to run
     $ pip install anyscale
     $ anyscale init
 
-Note that all the long running test is running inside virtual environment, tensorflow_p36
-
 Running the Workloads
 ---------------------
-Easiest approach is to use the `Anyscale UI <https://www.anyscale.dev/>`. First run ``anyscale snapshot create`` from the command line to create a project snapshot. Then from the UI, you can launch an individual session and execute the run command for each test. 
+Easiest approach is to use the `Anyscale UI <https://www.anyscale.dev/>`. First run ``anyscale snapshot create`` from the command line to create a project snapshot. Then from the UI, you can launch an individual session and execute the test_workload command for each test. 
 
 You can also start the workloads using the CLI with:
 
 .. code-block:: bash
 
-    $ anyscale start
-    $ anyscale run run --workload=*`WORKLOAD_NAME`* --wheel=*`RAY_WHEEL_LINK`*
+    $ anyscale start --ray-wheel=*`RAY_WHEEL_LINK`*
+    $ anyscale run test_workload --workload=*`WORKLOAD_NAME`*
 
 
 Doing this for each workload will start one EC2 instance per workload and will start the workloads
