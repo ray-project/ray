@@ -45,8 +45,6 @@ message RequestResourceLeaseRequest {
 }
 
 message RequestResourceLeaseReply {
-  // Resource mapping ids acquired by the leased worker.
-  repeated ResourceMapEntry resource_mapping = 1;
 }
 
 message RequestResourceReturnRequest {

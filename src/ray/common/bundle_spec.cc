@@ -36,7 +36,6 @@ BundleID BundleSpecification::BundleId() const {
   }
   return BundleID::FromBinary(message_->bundle_id());
 }
-
 // uint64_t BundleSpecification::UnitCount() const {
 //     // TODO(AlisaWu): fill this function.
 // }

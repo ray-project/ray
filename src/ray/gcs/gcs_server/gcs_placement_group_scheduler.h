@@ -101,11 +101,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param placement_group to be scheduled.
   void Schedule(std::shared_ptr<GcsPlacementGroup> placement_group) override;
 
-  std::deque<std::tuple<BundleSpecification, std::shared_ptr<rpc::GcsNodeInfo>,
-                        LeaseResourceCallback>>
-  GetLeaseResourceQueue() {
-    return lease_resource_queue_;
-  }
+//   std::deque<std::tuple<BundleSpecification, std::shared_ptr<rpc::GcsNodeInfo>,
+//                         LeaseResourceCallback>>
 
   /// Lease resource from the specified node for the specified bundle.
   void LeaseResourceFromNode();
@@ -116,13 +113,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param node The node that the worker will be returned for.
   void RetureReourceForNode(BundleSpecification bundle_spec,
                             std::shared_ptr<ray::rpc::GcsNodeInfo> node);
-
-  /// Handler to process a granted lease.
-  ///
-  /// \param bundle Contains the resources needed to lease workers from the specified
-  /// node. \param reply The reply of `RequestWorkerLeaseForBundleRequest`.
-  Status HandleResourceLeasedReply(const rpc::Bundle &bundle,
-                                   const ray::rpc::RequestResourceLeaseReply &reply);
 
   /// Get an existing lease client or connect a new one.
   std::shared_ptr<ResourceLeaseInterface> GetOrConnectLeaseClient(

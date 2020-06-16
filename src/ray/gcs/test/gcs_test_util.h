@@ -65,24 +65,28 @@ struct Mocker {
   }
 
   static PlacementGroupSpecification GenPlacementGroupCreation(
-      const JobID &job_id, const std::string &name,
-      const std::vector<rpc::Bundle> &bundles, rpc::PlacementStrategy strategy) {
+      const std::string &name,
+      std::vector<rpc::Bundle> &bundles, rpc::PlacementStrategy strategy) {
     PlacementGroupSpecBuilder builder;
 
     auto placement_group_id = PlacementGroupID::FromRandom();
+    for(size_t i = 0;i < bundles.size(); i++) {
+      bundles[i].set_bundle_id(BundleID::Of(placement_group_id, i).Binary());
+    }
     builder.SetPlacementGroupSpec(placement_group_id, name, bundles, strategy);
     return builder.Build();
   }
 
   static rpc::CreatePlacementGroupRequest GenCreatePlacementGroupRequest(
-      const JobID &job_id, const std::string name = "") {
+     const std::string name = "") {
     rpc::CreatePlacementGroupRequest request;
     std::vector<rpc::Bundle> bundles;
     rpc::PlacementStrategy strategy = rpc::PlacementStrategy::SPREAD;
     rpc::Bundle bundle;
     bundles.push_back(bundle);
+    bundles.push_back(bundle);
     auto placement_group_creation_spec =
-        GenPlacementGroupCreation(job_id, name, bundles, strategy);
+        GenPlacementGroupCreation(name, bundles, strategy);
     request.mutable_placement_group_spec()->CopyFrom(
         placement_group_creation_spec.GetMessage());
     return request;

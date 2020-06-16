@@ -210,7 +210,7 @@ PlacementGroupID PlacementGroupID::FromRandom() {
 PlacementGroupID PlacementGroupID::GeneratePlacementGroupId(
     const std::string &placement_group_id_binary, PlacementGroupIDFlagsType flags,
     PlacementGroupIDIndexType placement_group_index) {
-  RAY_CHECK(placement_group_id_binary.size() == PlacementGroupID::Size());
+  RAY_CHECK(placement_group_id_binary.size() == TaskID::Size());
   PlacementGroupID ret;
   std::memcpy(ret.id_, placement_group_id_binary.c_str(), TaskID::kLength);
   std::memcpy(ret.id_ + TaskID::kLength, &flags, sizeof(flags));

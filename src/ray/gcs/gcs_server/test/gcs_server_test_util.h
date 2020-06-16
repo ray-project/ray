@@ -139,6 +139,50 @@ struct GcsServerMocker {
     std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
   };
 
+  class MockRayletResourceClient : public ResourceLeaseInterface {
+   public:
+
+
+    ray::Status RequestResourceLease(
+      const BundleSpecification &bundle_spec,
+      const ray::rpc::ClientCallback<ray::rpc::RequestResourceLeaseReply> &callback) override {
+        num_lease_requested += 1;
+        lease_callbacks.push_back(callback);
+        return Status::OK();
+
+      }
+
+    ray::Status RequestResourceReturn(
+      BundleSpecification &bundle_spec,
+      const ray::rpc::ClientCallback<ray::rpc::RequestResourceReturnReply> &callback) override {
+        
+        num_return_requested += 1;
+        return_callbacks.push_back(callback);
+        return Status::OK();
+      }
+
+          // Trigger reply to RequestWorkerLease.
+    bool GrantResourceLease(Status status = Status::OK()) {
+      rpc::RequestResourceLeaseReply reply;
+      if (lease_callbacks.size() == 0) {
+        return false;
+      } else {
+        auto callback = lease_callbacks.front();
+        callback(status, reply);
+        lease_callbacks.pop_front();
+        return true;
+      }
+    }
+
+    ~MockRayletResourceClient() {}
+
+    int num_lease_requested = 0;
+    int num_return_requested = 0;
+    ClientID node_id = ClientID::FromRandom();
+    std::list<rpc::ClientCallback<rpc::RequestResourceLeaseReply>> lease_callbacks = {};
+    std::list<rpc::ClientCallback<rpc::RequestResourceReturnReply>> return_callbacks = {};
+    // std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
+  };
   class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
    public:
     using gcs::GcsActorScheduler::GcsActorScheduler;
@@ -173,9 +217,10 @@ struct GcsServerMocker {
    public:
     using gcs::GcsPlacementGroupScheduler::GcsPlacementGroupScheduler;
 
-    void ResetLeaseClientFactory(gcs::LeaseClientFactoryFn lease_client_factory) {
-      // lease_client_factory_ = std::move(lease_client_factory);
+    void ResetLeaseClientFactory(gcs::LeaseResourceClientFactoryFn lease_client_factory) {
+      lease_client_factory_ = std::move(lease_client_factory);
     }
+    
   };
   class MockedGcsActorTable : public gcs::GcsActorTable {
    public:

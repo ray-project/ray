@@ -1741,7 +1741,7 @@ def make_decorator(num_return_vals=None,
 def remote(*args, **kwargs):
     """Define a remote function or an actor class.
 
-    This can be used with no arguments to define a remote function or actor as
+    This can be used with no arguments to define a rmote function or actor as
     follows:
 
     .. code-block:: python
