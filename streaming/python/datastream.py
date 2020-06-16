@@ -562,4 +562,3 @@ class JavaStreamSink(Stream):
 
     def get_language(self):
         return function.Language.JAVA
-
