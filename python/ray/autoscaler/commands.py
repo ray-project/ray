@@ -78,8 +78,10 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name,
     validate_config(config)
 
     confirm("This will destroy your cluster", yes)
-    exec_cluster(config_file, "ray stop", False, False, False, False, False,
-                override_cluster_name, None, False)
+
+    if not workers_only:
+        exec_cluster(config_file, "ray stop", False, False, False, False, False,
+                     override_cluster_name, None, False)
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
