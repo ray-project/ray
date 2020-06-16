@@ -1,12 +1,12 @@
 import numpy as np
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils import try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
 
 
-class DQNTorchModel(TorchModelV2):
+class DQNTorchModel(TorchModelV2, nn.Module):
     """Extension of standard TorchModelV2 to provide dueling-Q functionality.
     """
 
@@ -46,7 +46,7 @@ class DQNTorchModel(TorchModelV2):
             sigma0 (float): initial value of noisy nets
             add_layer_norm (bool): Enable layer norm (for param noise).
         """
-
+        nn.Module.__init__(self)
         super(DQNTorchModel, self).__init__(obs_space, action_space,
                                             num_outputs, model_config, name)
 

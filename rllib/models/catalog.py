@@ -15,14 +15,10 @@ from ray.rllib.models.tf.recurrent_net import LSTMWrapper
 from ray.rllib.models.tf.tf_action_dist import Categorical, \
     Deterministic, DiagGaussian, Dirichlet, \
     MultiActionDistribution, MultiCategorical
-from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.visionnet_v1 import VisionNetwork
-from ray.rllib.models.torch.recurrent_net import LSTMWrapper as \
-    TorchLSTMWrapper
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
-from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
@@ -129,14 +125,18 @@ class ModelCatalog:
         Args:
             action_space (Space): Action space of the target gym env.
             config (Optional[dict]): Optional model config.
-            dist_type (Optional[str]): Identifier of the action distribution.
+            dist_type (Optional[str]): Identifier of the action distribution
+                interpreted as a hint.
             framework (str): One of "tf", "tfe", or "torch".
             kwargs (dict): Optional kwargs to pass on to the Distribution's
                 constructor.
 
         Returns:
-            dist_class (ActionDistribution): Python class of the distribution.
-            dist_dim (int): The size of the input vector to the distribution.
+            Tuple:
+                - dist_class (ActionDistribution): Python class of the
+                    distribution.
+                - dist_dim (int): The size of the input vector to the
+                    distribution.
         """
 
         dist = None
@@ -403,6 +403,8 @@ class ModelCatalog:
                 default_model or ModelCatalog._get_v2_model_class(
                     obs_space, model_config, framework=framework)
             if model_config.get("use_lstm"):
+                from ray.rllib.models.torch.recurrent_net import LSTMWrapper \
+                    as TorchLSTMWrapper
                 wrapped_cls = v2_class
                 forward = wrapped_cls.forward
                 v2_class = ModelCatalog._wrap_if_needed(
@@ -511,7 +513,7 @@ class ModelCatalog:
 
     @staticmethod
     def _wrap_if_needed(model_cls, model_interface):
-        assert issubclass(model_cls, (TFModelV2, TorchModelV2)), model_cls
+        assert issubclass(model_cls, ModelV2), model_cls
 
         if not model_interface or issubclass(model_cls, model_interface):
             return model_cls
@@ -525,6 +527,30 @@ class ModelCatalog:
 
         return wrapper
 
+    @staticmethod
+    def _get_v2_model_class(input_space, model_config, framework="tf"):
+        if framework == "torch":
+            from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
+                                                      FCNet)
+            from ray.rllib.models.torch.visionnet import (VisionNetwork as
+                                                          VisionNet)
+        else:
+            from ray.rllib.models.tf.fcnet import \
+                FullyConnectedNetwork as FCNet
+            from ray.rllib.models.tf.visionnet import \
+                VisionNetwork as VisionNet
+
+        # Discrete/1D obs-spaces.
+        if isinstance(input_space, gym.spaces.Discrete) or \
+                len(input_space.shape) <= 2:
+            return FCNet
+        # Default Conv2D net.
+        else:
+            return VisionNet
+
+    # -------------------
+    # DEPRECATED METHODS.
+    # -------------------
     @staticmethod
     def get_model(input_dict,
                   obs_space,
@@ -582,27 +608,6 @@ class ModelCatalog:
 
         return FullyConnectedNetwork(input_dict, obs_space, action_space,
                                      num_outputs, options)
-
-    @staticmethod
-    def _get_v2_model_class(obs_space, model_config, framework="tf"):
-        if framework == "torch":
-            from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
-                                                      FCNet)
-            from ray.rllib.models.torch.visionnet import (VisionNetwork as
-                                                          VisionNet)
-        else:
-            from ray.rllib.models.tf.fcnet import \
-                FullyConnectedNetwork as FCNet
-            from ray.rllib.models.tf.visionnet import \
-                VisionNetwork as VisionNet
-
-        # Discrete/1D obs-spaces.
-        if isinstance(obs_space, gym.spaces.Discrete) or \
-                len(obs_space.shape) <= 2:
-            return FCNet
-        # Default Conv2D net.
-        else:
-            return VisionNet
 
     @staticmethod
     def get_torch_model(obs_space,

@@ -5,21 +5,21 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import SlimFC, AppendBiasLayer, \
     normc_initializer
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import get_activation_fn
-from ray.rllib.utils import try_import_torch
+from ray.rllib.utils.framework import get_activation_fn, try_import_torch
 
 torch, nn = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
 
-class FullyConnectedNetwork(TorchModelV2):
+class FullyConnectedNetwork(TorchModelV2, nn.Module):
     """Generic fully connected network."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
+        nn.Module.__init__(self)
 
         activation = get_activation_fn(
             model_config.get("fcnet_activation"), framework="torch")

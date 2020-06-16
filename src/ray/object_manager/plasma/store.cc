@@ -28,16 +28,9 @@
 
 #include "ray/object_manager/plasma/store.h"
 
-#include <assert.h>
-#include <fcntl.h>
 #include <limits.h>
-#include <signal.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/statvfs.h>
-#include <sys/types.h>
-#include <unistd.h>
 
 #include <ctime>
 #include <deque>
@@ -66,14 +59,9 @@ using arrow::cuda::CudaContext;
 using arrow::cuda::CudaDeviceManager;
 #endif
 
-using arrow::util::ArrowLog;
-using arrow::util::ArrowLogLevel;
-
 namespace fb = plasma::flatbuf;
 
 namespace plasma {
-
-void SetMallocGranularity(int value);
 
 struct GetRequest {
   GetRequest(Client* client, const std::vector<ObjectID>& object_ids);
@@ -221,7 +209,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID& object_id, bool evict_if_f
                                       int64_t data_size, int64_t metadata_size,
                                       int device_num, Client* client,
                                       PlasmaObject* result) {
-  ARROW_LOG(DEBUG) << "creating object " << object_id.hex();
+  ARROW_LOG(DEBUG) << "creating object " << object_id.Hex();
 
   auto entry = GetObjectTableEntry(&store_info_, object_id);
   if (entry != nullptr) {
@@ -240,7 +228,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID& object_id, bool evict_if_f
     pointer =
         AllocateMemory(total_size, evict_if_full, &fd, &map_size, &offset, client, true);
     if (!pointer) {
-      ARROW_LOG(ERROR) << "Not enough memory to create the object " << object_id.hex()
+      ARROW_LOG(ERROR) << "Not enough memory to create the object " << object_id.Hex()
                        << ", data_size=" << data_size
                        << ", metadata_size=" << metadata_size
                        << ", will send a reply of PlasmaError::OutOfMemory";
@@ -603,7 +591,7 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID>& object_ids,
     // Set object construction duration.
     entry->construct_duration = std::time(nullptr) - entry->create_time;
 
-    object_info.object_id = object_ids[i].binary();
+    object_info.object_id = object_ids[i].Binary();
     object_info.data_size = entry->data_size;
     object_info.metadata_size = entry->metadata_size;
     object_info.digest = digests[i];
@@ -663,7 +651,7 @@ PlasmaError PlasmaStore::DeleteObject(ObjectID& object_id) {
   EraseFromObjectTable(object_id);
   // Inform all subscribers that the object has been deleted.
   fb::ObjectInfoT notification;
-  notification.object_id = object_id.binary();
+  notification.object_id = object_id.Binary();
   notification.is_deletion = true;
   PushNotification(&notification);
 
@@ -678,7 +666,7 @@ void PlasmaStore::EvictObjects(const std::vector<ObjectID>& object_ids) {
   std::vector<std::shared_ptr<arrow::Buffer>> evicted_object_data;
   std::vector<ObjectTableEntry*> evicted_entries;
   for (const auto& object_id : object_ids) {
-    ARROW_LOG(DEBUG) << "evicting object " << object_id.hex();
+    ARROW_LOG(DEBUG) << "evicting object " << object_id.Hex();
     auto entry = GetObjectTableEntry(&store_info_, object_id);
     // TODO(rkn): This should probably not fail, but should instead throw an
     // error. Maybe we should also support deleting objects that have been
@@ -702,7 +690,7 @@ void PlasmaStore::EvictObjects(const std::vector<ObjectID>& object_ids) {
       EraseFromObjectTable(object_id);
       // Inform all subscribers that the object has been deleted.
       fb::ObjectInfoT notification;
-      notification.object_id = object_id.binary();
+      notification.object_id = object_id.Binary();
       notification.is_deletion = true;
       PushNotification(&notification);
     }
@@ -910,7 +898,7 @@ void PlasmaStore::SubscribeToUpdates(Client* client) {
   for (const auto& entry : store_info_.objects) {
     if (entry.second->state == ObjectState::PLASMA_SEALED) {
       ObjectInfoT info;
-      info.object_id = entry.first.binary();
+      info.object_id = entry.first.Binary();
       info.data_size = entry.second->data_size;
       info.metadata_size = entry.second->metadata_size;
       info.digest =
@@ -1132,154 +1120,6 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       ARROW_CHECK(0);
   }
   return Status::OK();
-}
-
-void HandleSignal(int signal) {
-  if (signal == SIGTERM) {
-    ARROW_LOG(INFO) << "SIGTERM Signal received, closing Plasma Server...";
-#ifdef _WIN32
-    ExitThread(0);
-#else
-    pthread_exit(0);
-#endif
-  }
-}
-
-PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_memory,
-                     bool hugepages_enabled, std::string plasma_directory,
-                     const std::string external_store_endpoint):
-    hugepages_enabled_(hugepages_enabled), external_store_endpoint_(external_store_endpoint) {
-  ArrowLog::StartArrowLog("plasma_store", ArrowLogLevel::ARROW_INFO);
-  ArrowLog::InstallFailureSignalHandler();
-
-  // Sanity check.
-  if (socket_name.empty()) {
-    ARROW_LOG(FATAL) << "please specify socket for incoming connections with -s switch";
-  }
-  socket_name_ = socket_name;
-  if (system_memory == -1) {
-    ARROW_LOG(FATAL) << "please specify the amount of system memory with -m switch";
-  }
-  // Set system memory capacity
-  plasma::PlasmaAllocator::SetFootprintLimit(static_cast<size_t>(system_memory));
-  ARROW_LOG(INFO) << "Allowing the Plasma store to use up to "
-                  << static_cast<double>(system_memory) / 1000000000
-                  << "GB of memory.";
-  if (hugepages_enabled && plasma_directory.empty()) {
-    ARROW_LOG(FATAL) << "if you want to use hugepages, please specify path to huge pages "
-                        "filesystem with -d";
-  }
-  if (plasma_directory.empty()) {
-#ifdef __linux__
-    plasma_directory = "/dev/shm";
-#else
-    plasma_directory = "/tmp";
-#endif
-  }
-  ARROW_LOG(INFO) << "Starting object store with directory " << plasma_directory
-                  << " and huge page support "
-                  << (hugepages_enabled ? "enabled" : "disabled");
-#ifdef __linux__
-  if (!hugepages_enabled) {
-    // On Linux, check that the amount of memory available in /dev/shm is large
-    // enough to accommodate the request. If it isn't, then fail.
-    int shm_fd = open(plasma_directory.c_str(), O_RDONLY);
-    struct statvfs shm_vfs_stats;
-    fstatvfs(shm_fd, &shm_vfs_stats);
-    // The value shm_vfs_stats.f_bsize is the block size, and the value
-    // shm_vfs_stats.f_bavail is the number of available blocks.
-    int64_t shm_mem_avail = shm_vfs_stats.f_bsize * shm_vfs_stats.f_bavail;
-    close(shm_fd);
-    // Keep some safety margin for allocator fragmentation.
-    shm_mem_avail = 9 * shm_mem_avail / 10;
-    if (system_memory > shm_mem_avail) {
-      ARROW_LOG(WARNING)
-          << "System memory request exceeds memory available in " << plasma_directory
-          << ". The request is for " << system_memory
-          << " bytes, and the amount available is " << shm_mem_avail
-          << " bytes. You may be able to free up space by deleting files in "
-             "/dev/shm. If you are inside a Docker container, you may need to "
-             "pass an argument with the flag '--shm-size' to 'docker run'.";
-      system_memory = shm_mem_avail;
-    }
-  } else {
-    plasma::SetMallocGranularity(1024 * 1024 * 1024);  // 1 GB
-  }
-#endif
-  system_memory_ = system_memory;
-  plasma_directory_ = plasma_directory;
-}
-
-void PlasmaStoreRunner::Start() {
-#ifdef _WINSOCKAPI_
-  WSADATA wsadata;
-  WSAStartup(MAKEWORD(2, 2), &wsadata);
-#endif
-   // Get external store
-  std::shared_ptr<plasma::ExternalStore> external_store{nullptr};
-  if (!external_store_endpoint_.empty()) {
-    std::string name;
-    ARROW_CHECK_OK(
-        plasma::ExternalStores::ExtractStoreName(external_store_endpoint_, &name));
-    external_store = plasma::ExternalStores::GetStore(name);
-    if (external_store == nullptr) {
-      ARROW_LOG(FATAL) << "No such external store \"" << name << "\"";
-    }
-    ARROW_LOG(DEBUG) << "connecting to external store...";
-    ARROW_CHECK_OK(external_store->Connect(external_store_endpoint_));
-  }
-  ARROW_LOG(DEBUG) << "starting server listening on " << socket_name_;
-
-  // Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
-  // to a client that has already died, the store could die.
-#ifndef _WIN32  // TODO(mehrdadn): Is there an equivalent of this we need for Windows?
-   // Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
-   // to a client that has already died, the store could die.
-   signal(SIGPIPE, SIG_IGN);
-#endif
-  signal(SIGTERM, HandleSignal);
-
-  // Create the event loop.
-  loop_.reset(new EventLoop);
-  store_.reset(new PlasmaStore(loop_.get(), plasma_directory_, hugepages_enabled_,
-                               socket_name_, external_store));
-  plasma_config = store_->GetPlasmaStoreInfo();
-
-  // We are using a single memory-mapped file by mallocing and freeing a single
-  // large amount of space up front. According to the documentation,
-  // dlmalloc might need up to 128*sizeof(size_t) bytes for internal
-  // bookkeeping.
-  void* pointer = plasma::PlasmaAllocator::Memalign(
-      kBlockSize, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
-  ARROW_CHECK(pointer != nullptr);
-  // This will unmap the file, but the next one created will be as large
-  // as this one (this is an implementation detail of dlmalloc).
-  plasma::PlasmaAllocator::Free(
-      pointer, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
-
-  int socket = ConnectOrListenIpcSock(socket_name_, true);
-  // TODO(pcm): Check return value.
-  ARROW_CHECK(socket >= 0);
-
-  loop_->AddFileEvent(socket, kEventLoopRead, [this, socket](int events) {
-    this->store_->ConnectClient(socket);
-  });
-  loop_->Start();
-
-  Shutdown();
-#ifdef _WINSOCKAPI_
-  WSACleanup();
-#endif
-  ArrowLog::UninstallSignalAction();
-  ArrowLog::ShutDownArrowLog();
-}
-
-void PlasmaStoreRunner::Stop() { loop_->Stop(); }
-
-void PlasmaStoreRunner::Shutdown() {
-  loop_->Shutdown();
-  loop_ = nullptr;
-  store_ = nullptr;
 }
 
 }  // namespace plasma

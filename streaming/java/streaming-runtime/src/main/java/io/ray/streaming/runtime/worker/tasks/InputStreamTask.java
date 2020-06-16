@@ -1,12 +1,12 @@
 package io.ray.streaming.runtime.worker.tasks;
 
+import com.google.common.base.MoreObjects;
 import io.ray.streaming.runtime.core.processor.Processor;
 import io.ray.streaming.runtime.serialization.CrossLangSerializer;
 import io.ray.streaming.runtime.serialization.JavaSerializer;
 import io.ray.streaming.runtime.serialization.Serializer;
 import io.ray.streaming.runtime.transfer.Message;
 import io.ray.streaming.runtime.worker.JobWorker;
-import io.ray.streaming.util.Config;
 
 public abstract class InputStreamTask extends StreamTask {
   private volatile boolean running = true;
@@ -15,10 +15,9 @@ public abstract class InputStreamTask extends StreamTask {
   private final io.ray.streaming.runtime.serialization.Serializer javaSerializer;
   private final io.ray.streaming.runtime.serialization.Serializer crossLangSerializer;
 
-  public InputStreamTask(int taskId, Processor processor, JobWorker streamWorker) {
-    super(taskId, processor, streamWorker);
-    readTimeoutMillis = Long.parseLong((String) streamWorker.getConfig()
-        .getOrDefault(Config.READ_TIMEOUT_MS, Config.DEFAULT_READ_TIMEOUT_MS));
+  public InputStreamTask(int taskId, Processor processor, JobWorker jobWorker) {
+    super(taskId, processor, jobWorker);
+    readTimeoutMillis = jobWorker.getWorkerConfig().transferConfig.readerTimerIntervalMs();
     javaSerializer = new JavaSerializer();
     crossLangSerializer = new CrossLangSerializer();
   }
@@ -56,10 +55,9 @@ public abstract class InputStreamTask extends StreamTask {
 
   @Override
   public String toString() {
-    final StringBuilder sb = new StringBuilder("InputStreamTask{");
-    sb.append("taskId=").append(taskId);
-    sb.append(", processor=").append(processor);
-    sb.append('}');
-    return sb.toString();
+    return MoreObjects.toStringHelper(this)
+      .add("taskId", taskId)
+      .add("processor", processor)
+      .toString();
   }
 }

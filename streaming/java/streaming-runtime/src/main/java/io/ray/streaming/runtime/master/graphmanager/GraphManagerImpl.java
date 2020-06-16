@@ -53,7 +53,10 @@ public class GraphManagerImpl implements GraphManager {
       int jobVertexId = jobVertex.getVertexId();
       exeJobVertexMap.put(jobVertexId,
           new ExecutionJobVertex(
-              jobVertex, jobConfig, executionGraph.getExecutionVertexIdGenerator()));
+              jobVertex,
+              jobConfig,
+              executionGraph.getExecutionVertexIdGenerator(),
+              buildTime));
     }
 
     // connect vertex

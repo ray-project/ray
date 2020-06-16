@@ -57,7 +57,7 @@ class DurableTrainable(Trainable):
             Checkpoint path or prefix that may be passed to restore().
         """
         if checkpoint_dir:
-            if checkpoint_dir.starts_with(os.path.abspath(self.logdir)):
+            if checkpoint_dir.startswith(os.path.abspath(self.logdir)):
                 raise ValueError("`checkpoint_dir` must be `self.logdir`, or "
                                  "a sub-directory.")
         checkpoint_path = super(DurableTrainable, self).save(checkpoint_dir)

@@ -301,8 +301,11 @@ cc_library(
         ":common_fbs",
         ":plasma_fbs",
         ":platform_shims",
+        ":ray_common",
+        ":ray_util",
         "@arrow",
         "@com_github_google_glog//:glog",
+        "@msgpack",
     ],
 )
 
@@ -378,6 +381,7 @@ cc_library(
         "src/ray/object_manager/plasma/plasma_allocator.cc",
         "src/ray/object_manager/plasma/quota_aware_policy.cc",
         "src/ray/object_manager/plasma/store.cc",
+        "src/ray/object_manager/plasma/store_runner.cc",
     ],
     hdrs = [
         "src/ray/object_manager/plasma/events.h",
@@ -386,6 +390,7 @@ cc_library(
         "src/ray/object_manager/plasma/plasma_allocator.h",
         "src/ray/object_manager/plasma/quota_aware_policy.h",
         "src/ray/object_manager/plasma/store.h",
+        "src/ray/object_manager/plasma/store_runner.h",
         "src/ray/thirdparty/dlmalloc.c",
     ],
     copts = PLASMA_COPTS,
@@ -459,8 +464,8 @@ cc_library(
         ":common_cc_proto",
         ":gcs_cc_proto",
         ":node_manager_fbs",
-        ":plasma_client",
         ":ray_util",
+        "@arrow",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -872,6 +877,16 @@ cc_test(
 )
 
 cc_test(
+    name = "filesystem_test",
+    srcs = ["src/ray/util/filesystem_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "util_test",
     srcs = ["src/ray/util/util_test.cc"],
     copts = COPTS,
@@ -1196,7 +1211,7 @@ cc_library(
         ":gcs",
         ":object_manager_fbs",
         ":object_manager_rpc",
-        ":plasma_client",
+        ":plasma_store_server_lib",
         ":ray_common",
         ":ray_util",
         "@boost//:asio",
@@ -1270,7 +1285,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":plasma_client",
+        ":platform_shims",
         ":sha256",
         "@boost//:asio",
         "@com_github_google_glog//:glog",
