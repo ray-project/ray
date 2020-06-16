@@ -8,6 +8,7 @@ from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.spaces.repeated import Repeated
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -82,7 +83,8 @@ class ModelV2:
 
         Args:
             input_dict (dict): dictionary of input tensors, including "obs",
-                "obs_flat", "prev_action", "prev_reward", "is_training"
+                "obs_flat", "prev_action", "prev_reward", "is_training",
+                "eps_id", "agent_id", "infos", and "t".
             state (list): list of state tensors with sizes matching those
                 returned by get_initial_state + the batch dimension
             seq_lens (Tensor): 1d tensor holding input sequence lengths
@@ -345,7 +347,7 @@ def _unpack_obs(obs, space, tensorlib=tf):
 
     if (isinstance(space, gym.spaces.Dict)
             or isinstance(space, gym.spaces.Tuple)
-            or isinstance(space, simplex.Repeated)):
+            or isinstance(space, Repeated)):
         if id(space) in _cache:
             prep = _cache[id(space)]
         else:
@@ -387,7 +389,7 @@ def _unpack_obs(obs, space, tensorlib=tf):
                     tensorlib.reshape(obs_slice, batch_dims + list(p.shape)),
                     v,
                     tensorlib=tensorlib)
-        elif isinstance(space, simplex.Repeated):
+        elif isinstance(space, Repeated):
             assert isinstance(prep, RepeatedValuesPreprocessor), prep
             child_size = prep.child_preprocessor.size
             # The list lengths are stored in the first slot of the flat obs.

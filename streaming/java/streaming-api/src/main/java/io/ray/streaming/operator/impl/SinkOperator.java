@@ -5,7 +5,6 @@ import io.ray.streaming.message.Record;
 import io.ray.streaming.operator.OneInputOperator;
 import io.ray.streaming.operator.StreamOperator;
 
-
 public class SinkOperator<T> extends StreamOperator<SinkFunction<T>> implements
     OneInputOperator<T> {
 

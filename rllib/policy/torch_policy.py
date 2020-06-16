@@ -324,6 +324,26 @@ class TorchPolicy(Policy):
         self.model.load_state_dict(weights)
 
     @override(Policy)
+    def get_state(self):
+        state = super().get_state()
+        state["_optimizer_variables"] = []
+        for i, o in enumerate(self._optimizers):
+            state["_optimizer_variables"].append(o.state_dict())
+        return state
+
+    @override(Policy)
+    def set_state(self, state):
+        state = state.copy()  # shallow copy
+        # Set optimizer vars first.
+        optimizer_vars = state.pop("_optimizer_variables", None)
+        if optimizer_vars:
+            assert len(optimizer_vars) == len(self._optimizers)
+            for o, s in zip(self._optimizers, optimizer_vars):
+                o.load_state_dict(s)
+        # Then the Policy's (NN) weights.
+        super().set_state(state)
+
+    @override(Policy)
     def is_recurrent(self):
         return len(self.model.get_initial_state()) > 0
 

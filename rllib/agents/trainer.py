@@ -21,9 +21,7 @@ from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
-from ray.rllib.utils.spaces import space_utils
-from ray.rllib.utils.framework import check_framework, try_import_tf, \
-    TensorStructType
+from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.from_config import from_config
@@ -151,8 +149,7 @@ COMMON_CONFIG = {
     # tf: TensorFlow
     # tfe: TensorFlow eager
     # torch: PyTorch
-    # auto: "torch" if only PyTorch installed, "tf" otherwise.
-    "framework": "auto",
+    "framework": "tf",
     # Enable tracing in eager mode. This greatly improves performance, but
     # makes it slightly harder to debug since Python code won't be evaluated
     # after the initial eager pass. Only possible if framework=tfe.
@@ -351,7 +348,18 @@ COMMON_CONFIG = {
         # observations to include more state.
         # See rllib/evaluation/observation_function.py for more info.
         "observation_fn": None,
+        # When replay_mode=lockstep, RLlib will replay all the agent
+        # transitions at a particular timestep together in a batch. This allows
+        # the policy to implement differentiable shared computations between
+        # agents it controls at that timestep. When replay_mode=independent,
+        # transitions are replayed independently per policy.
+        "replay_mode": "independent",
     },
+
+    # === Replay Settings ===
+    # The number of contiguous environment steps to replay at once. This may
+    # be set to greater than 1 to support recurrent models.
+    "replay_sequence_length": 1,
 
     # Deprecated keys:
     "use_pytorch": DEPRECATED_VALUE,  # Replaced by `framework=torch`.
@@ -578,9 +586,7 @@ class Trainer(Trainable):
                 self.config["framework"] = "tfe"
             self.config.pop("eager")
 
-        # Check all dependencies and resolve "auto" framework.
-        self.config["framework"] = check_framework(self.config["framework"])
-        # Notify about eager/tracing support.
+        # Enable eager/tracing support.
         if tf and self.config["framework"] == "tfe":
             if not tf.executing_eagerly():
                 tf.enable_eager_execution()
@@ -1055,24 +1061,18 @@ class Trainer(Trainable):
     @staticmethod
     def _validate_config(config: dict):
         if "policy_graphs" in config["multiagent"]:
-            logger.warning(
-                "The `policy_graphs` config has been renamed to `policies`.")
-            # Backwards compatibility
-            config["multiagent"]["policies"] = config["multiagent"][
-                "policy_graphs"]
-            del config["multiagent"]["policy_graphs"]
+            deprecation_warning("policy_graphs", "policies")
+            # Backwards compatibility.
+            config["multiagent"]["policies"] = config["multiagent"].pop(
+                "policy_graphs")
         if "gpu" in config:
-            raise ValueError(
-                "The `gpu` config is deprecated, please use `num_gpus=0|1` "
-                "instead.")
+            deprecation_warning("gpu", "num_gpus=0|1", error=True)
         if "gpu_fraction" in config:
-            raise ValueError(
-                "The `gpu_fraction` config is deprecated, please use "
-                "`num_gpus=<fraction>` instead.")
+            deprecation_warning(
+                "gpu_fraction", "num_gpus=<fraction>", error=True)
         if "use_gpu_for_workers" in config:
-            raise ValueError(
-                "The `use_gpu_for_workers` config is deprecated, please use "
-                "`num_gpus_per_worker=1` instead.")
+            deprecation_warning(
+                "use_gpu_for_workers", "num_gpus_per_worker=1", error=True)
         if type(config["input_evaluation"]) != list:
             raise ValueError(
                 "`input_evaluation` must be a list of strings, got {}".format(

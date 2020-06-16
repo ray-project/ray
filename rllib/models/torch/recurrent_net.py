@@ -1,6 +1,7 @@
 import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -10,16 +11,19 @@ torch, nn = try_import_torch()
 
 
 @DeveloperAPI
-class RecurrentNetwork(TorchModelV2, nn.Module):
+class RecurrentNetwork(TorchModelV2):
     """Helper class to simplify implementing RNN models with TorchModelV2.
 
     Instead of implementing forward(), you can implement forward_rnn() which
     takes batches with the time dimension added already.
 
     Here is an example implementation for a subclass
-    ``MyRNNClass(nn.Module, RecurrentNetwork)``::
+    ``MyRNNClass(RecurrentNetwork, nn.Module)``::
 
         def __init__(self, obs_space, num_outputs):
+            nn.Module.__init__(self)
+            super().__init__(obs_space, action_space, num_outputs,
+                             model_config, name)
             self.obs_size = _get_size(obs_space)
             self.rnn_hidden_dim = model_config["lstm_cell_size"]
             self.fc1 = nn.Linear(self.obs_size, self.rnn_hidden_dim)
@@ -50,12 +54,6 @@ class RecurrentNetwork(TorchModelV2, nn.Module):
             self._cur_value = self.value_branch(h).squeeze(1)
             return q, [h]
     """
-
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
-                              model_config, name)
-        nn.Module.__init__(self)
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
@@ -90,3 +88,65 @@ class RecurrentNetwork(TorchModelV2, nn.Module):
                 return model_out, [h, c]
         """
         raise NotImplementedError("You must implement this for an RNN model")
+
+
+class LSTMWrapper(RecurrentNetwork, nn.Module):
+    """An LSTM wrapper serving as an interface for ModelV2s that set use_lstm.
+    """
+
+    def __init__(self, obs_space, action_space, num_outputs, model_config,
+                 name):
+
+        nn.Module.__init__(self)
+        super().__init__(obs_space, action_space, None, model_config, name)
+
+        self.cell_size = model_config["lstm_cell_size"]
+        self.lstm = nn.LSTM(self.num_outputs, self.cell_size, batch_first=True)
+
+        self.num_outputs = num_outputs
+
+        # Postprocess LSTM output with another hidden layer and compute values.
+        self._logits_branch = SlimFC(
+            in_size=self.cell_size,
+            out_size=self.num_outputs,
+            activation_fn=None,
+            initializer=torch.nn.init.xavier_uniform_)
+        self._value_branch = SlimFC(
+            in_size=self.cell_size,
+            out_size=1,
+            activation_fn=None,
+            initializer=torch.nn.init.xavier_uniform_)
+
+    @override(RecurrentNetwork)
+    def forward(self, input_dict, state, seq_lens):
+        assert seq_lens is not None
+        # Push obs through "unwrapped" net's `forward()` first.
+        wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
+
+        # Then through our LSTM.
+        input_dict["obs_flat"] = wrapped_out
+        return super().forward(input_dict, state, seq_lens)
+
+    @override(RecurrentNetwork)
+    def forward_rnn(self, inputs, state, seq_lens):
+        self._features, [h, c] = self.lstm(
+            inputs,
+            [torch.unsqueeze(state[0], 0),
+             torch.unsqueeze(state[1], 0)])
+        model_out = self._logits_branch(self._features)
+        return model_out, [torch.squeeze(h, 0), torch.squeeze(c, 0)]
+
+    @override(ModelV2)
+    def get_initial_state(self):
+        # Place hidden states on same device as model.
+        linear = next(self._logits_branch._model.children())
+        h = [
+            linear.weight.new(1, self.cell_size).zero_().squeeze(0),
+            linear.weight.new(1, self.cell_size).zero_().squeeze(0)
+        ]
+        return h
+
+    @override(ModelV2)
+    def value_function(self):
+        assert self._features is not None, "must call forward() first"
+        return torch.reshape(self._value_branch(self._features), [-1])

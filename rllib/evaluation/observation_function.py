@@ -12,7 +12,7 @@ class ObservationFunction:
     These callbacks can be used for preprocessing of observations, especially
     in multi-agent scenarios.
 
-    Observations functions can be specified in the multi-agent config by
+    Observation functions can be specified in the multi-agent config by
     specifying ``{"observation_function": your_obs_func}``. Note that
     ``your_obs_func`` can be a plain Python function.
 

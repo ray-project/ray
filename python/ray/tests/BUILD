@@ -459,6 +459,7 @@ py_test(
     name = "test_gcs_fault_tolerance",
     size = "medium",
     srcs = SRCS + ["test_gcs_fault_tolerance.py"],
-    tags = ["exclusive"],
+    # TODO(swang): Enable again once pubsub client supports GCS server restart.
+    tags = ["exclusive", "manual"],
     deps = ["//:ray_lib"],
 )

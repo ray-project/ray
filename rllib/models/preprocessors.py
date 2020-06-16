@@ -6,6 +6,7 @@ import gym
 
 from ray.rllib.utils.spaces import simplex
 from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.spaces.repeated import Repeated
 
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128, )
@@ -250,7 +251,7 @@ class RepeatedValuesPreprocessor(Preprocessor):
 
     @override(Preprocessor)
     def _init_shape(self, obs_space, options):
-        assert isinstance(self._obs_space, simplex.Repeated)
+        assert isinstance(self._obs_space, Repeated)
         child_space = obs_space.child_space
         self.child_preprocessor = get_preprocessor(child_space)(child_space,
                                                                 self._options)
@@ -301,7 +302,7 @@ def get_preprocessor(space):
         preprocessor = TupleFlatteningPreprocessor
     elif isinstance(space, gym.spaces.Dict):
         preprocessor = DictFlatteningPreprocessor
-    elif isinstance(space, simplex.Repeated):
+    elif isinstance(space, Repeated):
         preprocessor = RepeatedValuesPreprocessor
     else:
         preprocessor = NoPreprocessor

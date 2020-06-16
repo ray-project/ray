@@ -7,7 +7,8 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker, \
     _validate_multiagent_config
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
     ShuffledInput
-from ray.rllib.utils import merge_dicts, try_import_tf
+from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()
 
@@ -226,7 +227,7 @@ class WorkerSet:
         else:
             input_evaluation = config["input_evaluation"]
 
-        # Fill in the default policy if 'None' is specified in multiagent
+        # Fill in the default policy if 'None' is specified in multiagent.
         if config["multiagent"]["policies"]:
             tmp = config["multiagent"]["policies"]
             _validate_multiagent_config(tmp, allow_none_graph=True)

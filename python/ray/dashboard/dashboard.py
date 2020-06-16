@@ -12,7 +12,7 @@ import errno
 import json
 import logging
 import os
-import socket
+import platform
 import threading
 import time
 import traceback
@@ -875,7 +875,7 @@ class TuneCollector(threading.Thread):
 
             # round all floats
             for key in float_keys:
-                details[key] = round(details[key], 3)
+                details[key] = round(details[key], 12)
 
             # group together config attributes
             for key in config_keys:
@@ -965,7 +965,7 @@ if __name__ == "__main__":
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The dashboard on node {} failed with the following "
-                   "error:\n{}".format(socket.gethostname(), traceback_str))
+                   "error:\n{}".format(platform.node(), traceback_str))
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
         if isinstance(e, OSError) and e.errno == errno.ENOENT:

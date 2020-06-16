@@ -13,7 +13,10 @@ logger = logging.getLogger(__name__)
 class Unity3DEnv(MultiAgentEnv):
     """A MultiAgentEnv representing a single Unity3D game instance.
 
-    For an example on how to use this class inside a Unity game client, which
+    For an example on how to use this Env with a running Unity3D editor
+    or with a compiled game, see:
+    `rllib/examples/unity3d_env_local.py`
+    For an example on how to use it inside a Unity game client, which
     connects to an RLlib Policy server, see:
     `rllib/examples/serving/unity3d_[client|server].py`
 
@@ -191,42 +194,60 @@ class Unity3DEnv(MultiAgentEnv):
         # The RLlib server must know about the Spaces that the Client will be
         # using inside Unity3D, up-front.
         obs_spaces = {
+            # 3DBall.
+            "3DBall": Box(float("-inf"), float("inf"), (8, )),
+            # 3DBallHard.
+            "3DBallHard": Box(float("-inf"), float("inf"), (45, )),
             # SoccerStrikersVsGoalie.
+            "Goalie": Box(float("-inf"), float("inf"), (738, )),
             "Striker": Tuple([
                 Box(float("-inf"), float("inf"), (231, )),
                 Box(float("-inf"), float("inf"), (63, )),
             ]),
-            "Goalie": Box(float("-inf"), float("inf"), (738, )),
-            # 3DBall.
-            "Agent": Box(float("-inf"), float("inf"), (8, )),
+            # Tennis.
+            "Tennis": Box(float("-inf"), float("inf"), (27, )),
+            # VisualHallway.
+            "VisualHallway": Box(float("-inf"), float("inf"), (84, 84, 3)),
+            # Walker.
+            "Walker": Box(float("-inf"), float("inf"), (212, )),
         }
         action_spaces = {
-            # SoccerStrikersVsGoalie.
-            "Striker": MultiDiscrete([3, 3, 3]),
-            "Goalie": MultiDiscrete([3, 3, 3]),
             # 3DBall.
-            "Agent": Box(float("-inf"), float("inf"), (2, ), dtype=np.float32),
+            "3DBall": Box(
+                float("-inf"), float("inf"), (2, ), dtype=np.float32),
+            # 3DBallHard.
+            "3DBallHard": Box(
+                float("-inf"), float("inf"), (2, ), dtype=np.float32),
+            # SoccerStrikersVsGoalie.
+            "Goalie": MultiDiscrete([3, 3, 3]),
+            "Striker": MultiDiscrete([3, 3, 3]),
+            # Tennis.
+            "Tennis": Box(float("-inf"), float("inf"), (3, )),
+            # VisualHallway.
+            "VisualHallway": MultiDiscrete([5]),
+            # Walker.
+            "Walker": Box(float("-inf"), float("inf"), (39, )),
         }
 
         # Policies (Unity: "behaviors") and agent-to-policy mapping fns.
         if game_name == "SoccerStrikersVsGoalie":
             policies = {
-                "Striker": (None, obs_spaces["Striker"],
-                            action_spaces["Striker"], {}),
                 "Goalie": (None, obs_spaces["Goalie"], action_spaces["Goalie"],
                            {}),
+                "Striker": (None, obs_spaces["Striker"],
+                            action_spaces["Striker"], {}),
             }
 
             def policy_mapping_fn(agent_id):
                 return "Striker" if "Striker" in agent_id else "Goalie"
 
-        else:  # 3DBall
+        else:
             policies = {
-                "Agent": (None, obs_spaces["Agent"], action_spaces["Agent"],
-                          {})
+                game_name: (None, obs_spaces[game_name],
+                            action_spaces[game_name], {}),
             }
 
             def policy_mapping_fn(agent_id):
-                return "Agent"
+                return game_name
 
         return policies, policy_mapping_fn

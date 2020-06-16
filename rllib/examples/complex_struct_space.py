@@ -133,11 +133,10 @@ class CustomTFRPGModel(TFModelV2):
     def value_function(self):
         return self.model.value_function()
 
-
 if __name__ == "__main__":
     ray.init()
     args = parser.parse_args()
-    if args.torch:
+    if args.framework == "torch":
         ModelCatalog.register_custom_model("my_model", CustomTorchRPGModel)
     else:
         ModelCatalog.register_custom_model("my_model", CustomTFRPGModel)
@@ -147,7 +146,7 @@ if __name__ == "__main__":
             "timesteps_total": 1,
         },
         config={
-            "use_pytorch": args.torch,
+            "framework": args.framework,
             "eager": args.eager,
             "env": SimpleRPG,
             "rollout_fragment_length": 1,
