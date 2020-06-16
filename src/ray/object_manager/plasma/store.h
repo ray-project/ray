@@ -15,8 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef PLASMA_STORE_H
-#define PLASMA_STORE_H
+#pragma once
 
 #include <deque>
 #include <memory>
@@ -246,5 +245,3 @@ class PlasmaStore {
 };
 
 }  // namespace plasma
-
-#endif  // PLASMA_STORE_H

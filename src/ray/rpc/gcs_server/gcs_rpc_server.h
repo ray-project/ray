@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RPC_GCS_RPC_SERVER_H
-#define RAY_RPC_GCS_RPC_SERVER_H
+#pragma once
 
 #include "ray/protobuf/gcs_service.grpc.pb.h"
 #include "ray/rpc/grpc_server.h"
@@ -468,5 +467,3 @@ using WorkerInfoHandler = WorkerInfoGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif  // RAY_RPC_GCS_RPC_SERVER_H

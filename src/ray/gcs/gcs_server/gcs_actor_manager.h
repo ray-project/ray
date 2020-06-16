@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_ACTOR_MANAGER_H
-#define RAY_GCS_ACTOR_MANAGER_H
+#pragma once
 
 #include <ray/common/id.h>
 #include <ray/common/task/task_execution_spec.h>
@@ -289,5 +288,3 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif  // RAY_GCS_ACTOR_MANAGER_H
