@@ -19,7 +19,7 @@ parser.add_argument("--num-cpus", type=int, default=0)
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init(num_cpus=args.num_cpus or None, local_mode=True)
+    ray.init(num_cpus=args.num_cpus or None)
     register_env("NestedSpaceRepeatAfterMeEnv",
                  lambda c: NestedSpaceRepeatAfterMeEnv(c))
 

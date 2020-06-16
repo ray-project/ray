@@ -14,7 +14,7 @@ torch, _ = try_import_torch()
 
 
 @PublicAPI
-class ModelV2():
+class ModelV2:
     """Defines a Keras-style abstract network model for use with RLlib.
 
     Custom models should extend either TFModelV2 or TorchModelV2 instead of
