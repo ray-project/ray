@@ -124,6 +124,9 @@ def ckpt_restore_test(alg_name, tfe=False):
                 if abs(a1 - a2) > .1:
                     raise AssertionError("algo={} [a1={} a2={}]".format(
                         alg_name, a1, a2))
+            # Stop both Trainers.
+            alg1.stop()
+            alg2.stop()
 
 
 class TestCheckpointRestore(unittest.TestCase):
