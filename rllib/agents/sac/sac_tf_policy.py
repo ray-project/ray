@@ -335,7 +335,7 @@ def gradients(policy, optimizer, loss):
             ) + optimizer.compute_gradients(
                 policy.critic_loss[1], var_list=q_variables[half_cutoff:])
         else:
-            critic_grads_and_vars = optimizer[0].compute_gradients(
+            critic_grads_and_vars = optimizer.compute_gradients(
                 policy.critic_loss[0], var_list=policy.model.q_variables())
         alpha_grads_and_vars = optimizer.compute_gradients(
             policy.alpha_loss, var_list=[policy.model.log_alpha])
