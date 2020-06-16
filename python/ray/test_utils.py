@@ -248,7 +248,7 @@ class Semaphore:
         self._sema = asyncio.Semaphore(value=value)
 
     async def acquire(self):
-        self._sema.acquire()
+        await self._sema.acquire()
 
     async def release(self):
         self._sema.release()
