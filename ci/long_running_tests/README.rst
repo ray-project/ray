@@ -20,7 +20,7 @@ You can also start the workloads using the CLI with:
 .. code-block:: bash
 
     $ anyscale start
-    $ anyscale run run --workload=*`WORKLOAD_NAME`* --wheel=*`RAY_WHEEL_LINK`*
+    $ anyscale run run --workload=<WORKLOAD_NAME> --wheel=<RAY_WHEEL_LINK>
 
 
 Doing this for each workload will start one EC2 instance per workload and will start the workloads
@@ -38,7 +38,7 @@ Shut Down the Workloads
 -----------------------
 
 The instances running the workloads can all be killed by running
-``anyscale stop --name "*"``.
+``anyscale stop <SESSION_NAME>``.
 
 Adding a Workload
 -----------------
