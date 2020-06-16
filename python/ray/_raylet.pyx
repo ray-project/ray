@@ -307,6 +307,8 @@ cdef prepare_args(
 
 
 def switch_worker_log(worker, next_job_id):
+    if worker.mode == ray.LOCAL_MODE:
+        return
     if (worker.current_logging_job is None) or \
             (worker.current_logging_job != next_job_id):
         job_stdout_path, job_stderr_path = (
