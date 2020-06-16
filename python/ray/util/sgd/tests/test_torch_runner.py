@@ -190,7 +190,8 @@ class TestLocalDistributedRunner(unittest.TestCase):
         mock_runner._set_cuda_device = MagicMock()
         preset_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
 
-        LocalDistributedRunner._try_reserve_and_set_cuda(mock_runner)
+        LocalDistributedRunner._try_reserve_resources_and_set_cuda(
+            mock_runner, 0, 1)
 
         self.assertTrue(mock_runner._set_cuda_device.called)
         local_device = mock_runner._set_cuda_device.call_args[0][0]
@@ -228,7 +229,8 @@ class TestLocalDistributedRunner(unittest.TestCase):
             init_mock.return_value = False
             mock_runner = MagicMock()
             mock_runner._set_cuda_device = MagicMock()
-            LocalDistributedRunner._try_reserve_and_set_cuda(mock_runner)
+            LocalDistributedRunner._try_reserve_resources_and_set_cuda(
+                mock_runner, 0, 1)
             args, _ = mock_runner._set_cuda_device.call_args
             self.assertTrue(("1" in args) or "0" in args)
             self.assertEquals(len(os.environ["CUDA_VISIBLE_DEVICES"]), 1)
@@ -239,7 +241,8 @@ class TestLocalDistributedRunner(unittest.TestCase):
             init_mock.return_value = False
             mock_runner = MagicMock()
             mock_runner._set_cuda_device = MagicMock()
-            LocalDistributedRunner._try_reserve_and_set_cuda(mock_runner)
+            LocalDistributedRunner._try_reserve_resources_and_set_cuda(
+                mock_runner, 0, 1)
             mock_runner._set_cuda_device.assert_called_with("0")
             self.assertEquals(len(os.environ["CUDA_VISIBLE_DEVICES"]), 1)
 

@@ -188,7 +188,7 @@ class TFTrainable(Trainable):
             config=config.get("trainer_config", {}),
             num_replicas=config["num_replicas"],
             use_gpu=config["use_gpu"],
-            num_cpus_per_worker=config["num_cpus_per_worker"])
+            num_cpus_per_worker=config.get("num_cpus_per_worker", 1))
 
     def _train(self):
 
