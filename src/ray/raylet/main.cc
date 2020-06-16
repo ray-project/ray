@@ -121,6 +121,7 @@ int main(int argc, char *argv[]) {
   }
   RAY_CHECK_OK(gcs_client->Connect(main_service));
 
+  // The internal_config is only set on the head node--other nodes get it from GCS.
   if (head_node) {
     // Parse the configuration list.
     std::istringstream config_string(config_list);
