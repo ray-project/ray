@@ -22,6 +22,7 @@ from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray, \
     unbatch
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
+from ray.rllib.utils.types import SampleBatchType
 
 tree = try_import_tree()
 
@@ -33,7 +34,7 @@ PolicyEvalData = namedtuple("PolicyEvalData", [
 ])
 
 
-class PerfStats:
+class _PerfStats:
     """Sampler perf stats that will be included in rollout metrics."""
 
     def __init__(self):
@@ -55,7 +56,7 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
     """Reads input experiences from an existing sampler."""
 
     @override(InputReader)
-    def next(self):
+    def next(self) -> SampleBatchType:
         batches = [self.get_data()]
         batches.extend(self.get_extra_batches())
         if len(batches) > 1:
@@ -148,7 +149,7 @@ class SyncSampler(SamplerInput):
         self.preprocessors = preprocessors
         self.obs_filters = obs_filters
         self.extra_batches = queue.Queue()
-        self.perf_stats = PerfStats()
+        self.perf_stats = _PerfStats()
         # Create the rollout generator to use for calls to `get_data()`.
         self.rollout_provider = _env_runner(
             worker, self.base_env, self.extra_batches.put, self.policies,
@@ -279,7 +280,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.blackhole_outputs = blackhole_outputs
         self.soft_horizon = soft_horizon
         self.no_done_at_end = no_done_at_end
-        self.perf_stats = PerfStats()
+        self.perf_stats = _PerfStats()
         self.shutdown = False
         self.observation_fn = observation_fn
 
@@ -381,7 +382,7 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
         callbacks (DefaultCallbacks): User callbacks to run on episode events.
         tf_sess (Session|None): Optional tensorflow session to use for batching
             TF policy evaluations.
-        perf_stats (PerfStats): Record perf stats into this object.
+        perf_stats (_PerfStats): Record perf stats into this object.
         soft_horizon (bool): Calculate rewards but don't reset the
             environment when the horizon is hit.
         no_done_at_end (bool): Ignore the done=True at the end of the episode

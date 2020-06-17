@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, Union
 
 # Represents a fully filled out config of a Trainer class.
 TrainerConfigDict = dict
@@ -53,3 +53,9 @@ GradInfoDict = dict
 # key(s) of a GradInfoDict. In the multi-agent case, this will be keyed by
 # policy id.
 LearnerStatsDict = dict
+
+# Type of dict returned by compute_gradients() representing model gradients.
+GradientType = dict
+
+# Some kind of sample batch.
+SampleBatchType = Union["SampleBatch", "MultiAgentBatch"]
