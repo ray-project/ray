@@ -259,5 +259,5 @@ driver:
 
 .. code-block:: python
 
-  counter = ray.get_actor("CounterActor")
+  counter = ray.util.get_actor("CounterActor")
   print(ray.get(counter.get_counter.remote()))
