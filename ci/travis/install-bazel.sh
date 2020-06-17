@@ -53,7 +53,7 @@ else
   target="./install.sh"
   curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
   chmod +x "${target}"
-  if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
+  if [ "${CI-}" = true ]; then
     sudo "${target}" > /dev/null  # system-wide install for CI
     command -V bazel 1>&2
   else
@@ -62,36 +62,26 @@ else
   rm -f "${target}"
 fi
 
+for bazel_cfg in ${BAZEL_CONFIG-}; do
+  echo "build --config=${bazel_cfg}" >> ~/.bazelrc
+done
 if [ "${TRAVIS-}" = true ]; then
-  # Use bazel disk cache if this script is running in Travis.
-  cat <<EOF >> "${HOME}/.bazelrc"
-build --show_timestamps  # Travis doesn't have an option to show timestamps, but GitHub Actions does
-# If we are in Travis, most of the compilation result will be cached.
-# This means we are I/O bounded. By default, Bazel set the number of concurrent
-# jobs to the the number cores on the machine, which are not efficient for
-# network bounded cache downloading workload. Therefore we increase the number
-# of jobs to 50
-build --jobs=50
-EOF
+  echo "build --config=ci-travis" >> ~/.bazelrc
+
+  # If we are in Travis, most of the compilation result will be cached.
+  # This means we are I/O bounded. By default, Bazel set the number of concurrent
+  # jobs to the the number cores on the machine, which are not efficient for
+  # network bounded cache downloading workload. Therefore we increase the number
+  # of jobs to 50
+  # NOTE: Normally --jobs should be under 'build:ci-travis' in .bazelrc, but we put
+  # it under 'build' here avoid conflicts with other --config options.
+  echo "build --jobs=50" >> ~/.bazelrc
 fi
-if [ -n "${GITHUB_WORKFLOW-}" ]; then
-  cat <<EOF >> "${HOME}/.bazelrc"
---output_base=".bazel-out"  # On GitHub Actions, staying on the same volume seems to be faster
-EOF
+if [ "${GITHUB_ACTIONS-}" = true ]; then
+  echo "build --config=ci-github" >> ~/.bazelrc
 fi
-if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
-  cat <<EOF >> "${HOME}/.bazelrc"
-# CI output doesn't scroll, so don't use curses
-build --color=yes
-build --curses=no
-build --disk_cache="$(test "${OSTYPE}" = msys || echo ~/ray-bazel-cache)"
-# Use ray google cloud cache
-build --remote_cache="https://storage.googleapis.com/ray-bazel-cache"
-build --show_progress_rate_limit=15
-build --show_task_finish
-build --ui_actions_shown=1024
-build --verbose_failures
-EOF
+if [ "${CI-}" = true ]; then
+  echo "build --config=ci" >> ~/.bazelrc
   # If we are in master build, we can write to the cache as well.
   upload=0
   if [ "${TRAVIS_PULL_REQUEST-false}" = false ]; then
@@ -113,16 +103,16 @@ EOF
     fi
   fi
   if [ 0 -ne "${upload}" ]; then
-    translated_path="${HOME}/bazel_cache_credential.json"
+    translated_path=~/bazel_cache_credential.json
     if [ "${OSTYPE}" = msys ]; then  # On Windows, we need path translation
       translated_path="$(cygpath -m -- "${translated_path}")"
     fi
-    cat <<EOF >> "${HOME}/.bazelrc"
+    cat <<EOF >> ~/.bazelrc
 build --google_credentials="${translated_path}"
 EOF
   else
     echo "Using remote build cache in read-only mode." 1>&2
-    cat <<EOF >> "${HOME}/.bazelrc"
+    cat <<EOF >> ~/.bazelrc
 build --remote_upload_local_results=false
 EOF
   fi

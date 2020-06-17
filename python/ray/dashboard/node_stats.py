@@ -209,7 +209,7 @@ class NodeStats(threading.Thread):
             try:
                 with self._node_stats_lock:
                     channel = ray.utils.decode(x["channel"])\
-                                if "pattern" not in x\
+                                if "pattern" not in x or x["pattern"] is None\
                                 else x["pattern"]
                     data = x["data"]
                     if channel == log_channel:
@@ -250,9 +250,14 @@ class NodeStats(threading.Thread):
                             "state": actor_data.state,
                             "timestamp": actor_data.timestamp
                         }
-                    else:
+                    elif channel == ray.gcs_utils.RAY_REPORTER_PUBSUB_PATTERN:
                         data = json.loads(ray.utils.decode(data))
                         self._node_stats[data["hostname"]] = data
+                    else:
+                        logger.warning("Unexpected channel data received, "
+                                       "channel: {}, data: {}".format(
+                                           channel,
+                                           json.loads(ray.utils.decode(data))))
 
             except Exception:
                 logger.exception(traceback.format_exc())

@@ -1,5 +1,5 @@
-#ifndef _STREAMING_QUEUE_CLIENT_H_
-#define _STREAMING_QUEUE_CLIENT_H_
+#pragma once
+
 #include "queue_handler.h"
 #include "transport.h"
 
@@ -50,4 +50,3 @@ class WriterClient {
 };
 }  // namespace streaming
 }  // namespace ray
-#endif

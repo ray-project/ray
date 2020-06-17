@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_CORE_WORKER_H
-#define RAY_CORE_WORKER_CORE_WORKER_H
+#pragma once
 
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
@@ -1081,5 +1080,3 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_CORE_WORKER_H

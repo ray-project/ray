@@ -1,5 +1,4 @@
-#ifndef RAY_UTIL_FILESYSTEM_H
-#define RAY_UTIL_FILESYSTEM_H
+#pragma once
 
 #include <string>
 #include <utility>
@@ -74,5 +73,3 @@ std::string JoinPaths(std::string base, Paths... components) {
   return base;
 }
 }  // namespace ray
-
-#endif  // RAY_UTIL_UTIL_H

@@ -52,7 +52,8 @@ class RandomKiller:
 
     def run(self):
         while True:
-            ray.kill(random.choice(self._get_all_serve_actors()))
+            ray.kill(
+                random.choice(self._get_all_serve_actors()), no_restart=False)
             time.sleep(self.kill_period_s)
 
 

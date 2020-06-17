@@ -5,29 +5,6 @@ logger = logging.getLogger(__name__)
 _session = None
 
 
-class _ReporterSession:
-    def __init__(self, tune_reporter):
-        self.tune_reporter = tune_reporter
-
-    def report(self, **metrics):
-        return self.tune_reporter(**metrics)
-
-    @property
-    def logdir(self):
-        """Trial logdir (subdir of given experiment directory)"""
-        return self.tune_reporter.logdir
-
-    @property
-    def trial_name(self):
-        """Trial name for the corresponding trial of this Trainable"""
-        return self.tune_reporter.trial_name
-
-    @property
-    def trial_id(self):
-        """Trial id for the corresponding trial of this Trainable"""
-        return self.tune_reporter.trial_id
-
-
 def get_session():
     global _session
     if _session is None:
@@ -56,7 +33,11 @@ def init(reporter, ignore_reinit_error=True):
         else:
             raise ValueError(reinit_msg)
 
-    _session = _ReporterSession(reporter)
+    if reporter is None:
+        logger.warning("You are using a Tune session outside of Tune. "
+                       "Most session commands will have no effect.")
+
+    _session = reporter
 
 
 def shutdown():
@@ -86,34 +67,109 @@ def report(**kwargs):
             metrics can be used for early stopping or optimization.
     """
     _session = get_session()
-    return _session.report(**kwargs)
+    return _session(**kwargs)
+
+
+def make_checkpoint_dir(step=None):
+    """Gets the next checkpoint dir.
+
+    .. code-block:: python
+
+        import time
+        from ray import tune
+
+        def func(config, checkpoint=None):
+            start = 0
+            if checkpoint:
+                with open(checkpoint) as f:
+                    state = json.loads(f.read())
+                    start = state["step"] + 1
+
+            for iter in range(start, 100):
+                time.sleep(1)
+
+                checkpoint_dir = tune.make_checkpoint_dir(step=step)
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(json.dumps({"step": start}))
+                tune.save_checkpoint(path)
+
+                tune.report(hello="world", ray="tune")
+
+    Args:
+        step (int): Current training iteration - used for setting
+            an index to uniquely identify the checkpoint.
+
+    .. versionadded:: 0.8.6
+
+    """
+    _session = get_session()
+    return _session.make_checkpoint_dir(step=step)
+
+
+def save_checkpoint(checkpoint):
+    """Register the given checkpoint.
+
+    .. code-block:: python
+
+        import os
+        import json
+        import time
+        from ray import tune
+
+        def func(config, checkpoint=None):
+            start = 0
+            if checkpoint:
+                with open(checkpoint) as f:
+                    state = json.loads(f.read())
+                    accuracy = state["acc"]
+                    start = state["step"] + 1
+
+            for iter in range(start, 10):
+                time.sleep(1)
+
+                checkpoint_dir = tune.make_checkpoint_dir(step=iter)
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(json.dumps({"step": start}))
+                tune.save_checkpoint(path)
+
+                tune.report(hello="world", ray="tune")
+
+        analysis = tune.run(run_me)
+
+    Args:
+        **kwargs: Any key value pair to be logged by Tune. Any of these
+            metrics can be used for early stopping or optimization.
+
+    .. versionadded:: 0.8.6
+    """
+    _session = get_session()
+    return _session.save_checkpoint(checkpoint)
 
 
 def get_trial_dir():
     """Returns the directory where trial results are saved.
 
-    For function API use only. Do not call this method in the Class API. Use
-    `self.logdir` instead.
+    For function API use only.
     """
     _session = get_session()
     return _session.logdir
 
 
 def get_trial_name():
-    """Trial name for the corresponding trial of this Trainable.
+    """Trial name for the corresponding trial.
 
-    For function API use only. Do not call this method in the Class API. Use
-    `self.trial_name` instead.
+    For function API use only.
     """
     _session = get_session()
     return _session.trial_name
 
 
 def get_trial_id():
-    """Trial id for the corresponding trial of this Trainable.
+    """Trial id for the corresponding trial.
 
-    For function API use only. Do not call this method in the Class API. Use
-    `self.trial_id` instead.
+    For function API use only.
     """
     _session = get_session()
     return _session.trial_id

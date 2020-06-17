@@ -65,6 +65,11 @@ auth:
     ssh_private_key: ~/.ssh/id_rsa
     ssh_public_key: ~/.ssh/id_rsa.pub
 
+# More specific customization to node configurations can be made using the ARM template azure-vm-template.json file
+# See documentation here: https://docs.microsoft.com/en-us/azure/templates/microsoft.compute/2019-03-01/virtualmachines
+# Changes to the local file will be used during deployment of the head node, however worker nodes deployment occurs 
+# on the head node, so changes to the template must be included in the wheel file used in setup_commands section below
+
 # Provider-specific config for the head node, e.g. instance type.
 head_node:
     azure_arm_parameters:
@@ -84,6 +89,11 @@ worker_nodes:
         imageOffer: ubuntu-1804
         imageSku: 1804-gen2
         imageVersion: 20.02.01
+        # optionally set priority to use Spot instances 
+        priority: Spot
+        # set a maximum price for spot instances if desired
+        # billingProfile:
+        #     maxPrice: -1
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.

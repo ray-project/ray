@@ -193,6 +193,7 @@ Getting Involved
    serve/tutorials/index.rst
    serve/deployment.rst
    serve/advanced.rst
+   serve/package-ref.rst
 
 .. toctree::
    :maxdepth: -1

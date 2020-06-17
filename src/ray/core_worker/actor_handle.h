@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_ACTOR_HANDLE_H
-#define RAY_CORE_WORKER_ACTOR_HANDLE_H
+#pragma once
 
 #include <gtest/gtest_prod.h>
 
@@ -89,5 +88,3 @@ class ActorHandle {
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_ACTOR_HANDLE_H

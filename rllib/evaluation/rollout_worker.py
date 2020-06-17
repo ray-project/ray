@@ -31,9 +31,9 @@ from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.filter import get_filter
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils import try_import_tf, try_import_torch
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -164,7 +164,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 policy ids in multi-agent mode. This function will be called
                 each time a new agent appears in an episode, to bind that agent
                 to a policy for the duration of the episode.
-            policies_to_train (list): Optional whitelist of policies to train,
+            policies_to_train (list): Optional list of policies to train,
                 or None for all policies.
             tf_session_creator (func): A function that returns a TF session.
                 This is optional and only useful with TFPolicy.

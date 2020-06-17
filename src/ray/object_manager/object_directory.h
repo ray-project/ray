@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_OBJECT_MANAGER_OBJECT_DIRECTORY_H
-#define RAY_OBJECT_MANAGER_OBJECT_DIRECTORY_H
+#pragma once
 
 #include <memory>
 #include <mutex>
@@ -197,5 +196,3 @@ class ObjectDirectory : public ObjectDirectoryInterface {
 };
 
 }  // namespace ray
-
-#endif  // RAY_OBJECT_MANAGER_OBJECT_DIRECTORY_H
