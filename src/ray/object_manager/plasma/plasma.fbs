@@ -179,8 +179,6 @@ table PlasmaCreateAndSealRequest {
   data: string;
   // The object's metadata.
   metadata: string;
-  // Hash of the object data.
-  digest: string;
 }
 
 table PlasmaCreateAndSealReply {
@@ -194,7 +192,6 @@ table PlasmaCreateAndSealBatchRequest {
     evict_if_full: bool;
     data: [string];
     metadata: [string];
-    digest: [string];
 }
 
 table PlasmaCreateAndSealBatchReply {
@@ -215,8 +212,6 @@ table PlasmaAbortReply {
 table PlasmaSealRequest {
   // ID of the object to be sealed.
   object_id: string;
-  // Hash of the object data.
-  digest: string;
 }
 
 table PlasmaSealReply {

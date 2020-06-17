@@ -178,21 +178,6 @@ class ARROW_EXPORT PlasmaClient {
   /// \return The return status.
   Status Contains(const ObjectID& object_id, bool* has_object);
 
-  /// List all the objects in the object store.
-  ///
-  /// This API is experimental and might change in the future.
-  ///
-  /// \param[out] objects ObjectTable of objects in the store. For each entry
-  ///             in the map, the following fields are available:
-  ///             - metadata_size: Size of the object metadata in bytes
-  ///             - data_size: Size of the object data in bytes
-  ///             - ref_count: Number of clients referencing the object buffer
-  ///             - create_time: Unix timestamp of the object creation
-  ///             - construct_duration: Object creation time in seconds
-  ///             - state: Is the object still being created or already sealed?
-  /// \return The return status.
-  Status List(ObjectTable* objects);
-
   /// Abort an unsealed object in the object store. If the abort succeeds, then
   /// it will be as if the object was never created at all. The unsealed object
   /// must have only a single reference (the one that would have been removed by
