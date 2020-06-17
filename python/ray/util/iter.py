@@ -205,6 +205,7 @@ class ParallelIterator(Generic[T]):
         parallelism without the overhead of increasing the number of shards
         (which are actor based). If `max_concurrency` is not 1, this function
         provides no semantic guarantees on the output order.
+        Results will be returned as soon as they are ready.
 
         A performance note: When executing concurrently, this function
         maintains its own internal buffer. If `num_async` is `n` and
