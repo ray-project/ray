@@ -235,10 +235,9 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           // A local request failed. This shouldn't happen if the raylet is still alive
           // and we don't currently handle raylet failures, so treat it as a fatal
           // error.
-          RAY_LOG(ERROR)
-              << "Core worker failed to get responses from local raylet. This is most "
-                 "likely because the local raylet has been crahsed. Note that we don't "
-                 "currently handle local raylet failures.";
+          RAY_LOG(ERROR) << "The worker failed to receive a response from the local "
+                            "raylet. This is most "
+                            "likely because the local raylet has crahsed.";
           RAY_LOG(FATAL) << status.ToString();
         }
       }));
