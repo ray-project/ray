@@ -24,7 +24,7 @@ enum class EventType : uint8_t {
   FullChannel = 3,
   // Recovery at the beginning.
   Reload = 4,
-  // Error event if event queue is freezed.
+  // Error event if event queue is not active.
   ErrorEvent = 5
 };
 
@@ -57,7 +57,7 @@ class EventQueue {
   /// Resume event queue to normal model.
   void Unfreeze();
 
-  /// Push is prohibited when event queue is freezed.
+  /// Push is prohibited when event queue is not active.
   void Freeze();
 
   void Push(const Event &t);
@@ -83,6 +83,9 @@ class EventQueue {
   inline bool Empty() const { return buffer_.empty() && urgent_buffer_.empty(); }
 
   inline bool Full() const { return buffer_.size() + urgent_buffer_.size() == capacity_; }
+
+  /// Wait for queue util it's timeout or any stuff in.
+  void WaitFor(std::unique_lock<std::mutex> &lock);
 
  private:
   std::mutex ring_buffer_mutex_;

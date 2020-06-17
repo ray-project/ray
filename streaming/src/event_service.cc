@@ -57,15 +57,21 @@ void EventQueue::Pop() {
   no_full_cv_.notify_all();
 }
 
-bool EventQueue::Get(Event &evt) {
-  std::unique_lock<std::mutex> lock(ring_buffer_mutex_);
+void EventQueue::WaitFor(std::unique_lock<std::mutex> &lock) {
+  // To avoid deadlock when EventQueue is empty but is_active is changed in other
+  // thread, Event queue should awaken this condtion variable and check it again.
   while (is_active_ && Empty()) {
     if (!no_empty_cv_.wait_for(lock, std::chrono::milliseconds(kConditionTimeoutMs),
                                [this]() { return !is_active_ || !Empty(); })) {
       STREAMING_LOG(DEBUG) << "No empty condition variable wait timeout."
-                           << " Empty => " << Empty() << ", is freezed " << is_active_;
+                           << " Empty => " << Empty() << ", is active " << is_active_;
     }
   }
+}
+
+bool EventQueue::Get(Event &evt) {
+  std::unique_lock<std::mutex> lock(ring_buffer_mutex_);
+  WaitFor(lock);
   if (!is_active_) {
     return false;
   }
@@ -81,15 +87,9 @@ bool EventQueue::Get(Event &evt) {
 
 Event EventQueue::PopAndGet() {
   std::unique_lock<std::mutex> lock(ring_buffer_mutex_);
-  while (is_active_ && Empty()) {
-    if (!no_empty_cv_.wait_for(lock, std::chrono::milliseconds(kConditionTimeoutMs),
-                               [this]() { return !is_active_ || !Empty(); })) {
-      STREAMING_LOG(DEBUG) << "No empty condition variable wait timeout."
-                           << " Empty => " << Empty() << ", is freezed " << is_active_;
-    }
-  }
+  WaitFor(lock);
   if (!is_active_) {
-    // Return error event if queue is freezed.
+    // Return error event if queue is active.
     return Event({nullptr, EventType::ErrorEvent, false});
   }
   if (!urgent_buffer_.empty()) {
