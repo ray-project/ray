@@ -45,9 +45,6 @@ enum MessageType:long {
   // See if the store contains an object (will be deprecated).
   PlasmaContainsRequest,
   PlasmaContainsReply,
-  // List all objects in the store.
-  PlasmaListRequest,
-  PlasmaListReply,
   // Get information for a newly connecting client.
   PlasmaConnectRequest,
   PlasmaConnectReply,
@@ -287,13 +284,6 @@ table PlasmaContainsReply {
   object_id: string;
   // 1 if the object is in the store and 0 otherwise.
   has_object: int;
-}
-
-table PlasmaListRequest {
-}
-
-table PlasmaListReply {
-  objects: [ObjectInfo];
 }
 
 // PlasmaConnect is used by a plasma client the first time it connects with the
