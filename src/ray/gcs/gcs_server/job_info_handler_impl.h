@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "gcs_object_manager.h"
 #include "gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_gcs_client.h"
@@ -23,10 +24,10 @@ namespace ray {
 namespace rpc {
 
 /// This implementation class of `JobInfoHandler`.
-class DefaultJobInfoHandler : public rpc::JobInfoHandler {
+class GcsJobInfoHandler : public rpc::JobInfoHandler {
  public:
-  explicit DefaultJobInfoHandler(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                                 std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub)
+  explicit GcsJobInfoHandler(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                             std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub)
       : gcs_table_storage_(std::move(gcs_table_storage)),
         gcs_pub_sub_(std::move(gcs_pub_sub)) {}
 
@@ -40,9 +41,17 @@ class DefaultJobInfoHandler : public rpc::JobInfoHandler {
   void HandleGetAllJobInfo(const GetAllJobInfoRequest &request, GetAllJobInfoReply *reply,
                            SendReplyCallback send_reply_callback) override;
 
+  void AddJobFinishedListener(
+      std::function<void(std::shared_ptr<JobID>)> listener) override;
+
  private:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+
+  /// Listeners which monitors the finish of jobs.
+  std::vector<std::function<void(std::shared_ptr<JobID>)>> job_finished_listeners_;
+
+  void ClearJobInfos(const JobID &job_id);
 };
 
 }  // namespace rpc
