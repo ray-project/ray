@@ -119,11 +119,11 @@ class TorchPolicy(Policy):
             if data is not None:
                 assert obs_batch is state_batches is prev_action_batch is \
                        prev_reward_batch is info_batch is episodes is None
-                input_view = get_view(self.model, data, is_training=False)
-                input_dict = input_view
+                input_dict = self._lazy_tensor_dict(
+                    get_view(self.model, data, is_training=False))
                 state_batches = []
+                seq_lens = None
             else:
-                seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
                 input_dict = self._lazy_tensor_dict({
                     SampleBatch.CUR_OBS: obs_batch,
                     "is_training": False,
@@ -135,6 +135,7 @@ class TorchPolicy(Policy):
                 state_batches = [
                     self._convert_to_tensor(s) for s in (state_batches or [])
                 ]
+                seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
 
             if self.action_sampler_fn:
                 action_dist = dist_inputs = None
@@ -183,16 +184,26 @@ class TorchPolicy(Policy):
             # Add default and custom fetches.
             extra_fetches = self.extra_action_out(input_dict, state_batches,
                                                   self.model, action_dist)
-            # Action-logp and action-prob.
-            if logp is not None:
-                logp = convert_to_non_torch_type(logp)
-                extra_fetches[SampleBatch.ACTION_PROB] = np.exp(logp)
-                extra_fetches[SampleBatch.ACTION_LOGP] = logp
             # Action-dist inputs.
             if dist_inputs is not None:
                 extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
-            return convert_to_non_torch_type((actions, state_out,
-                                              extra_fetches))
+            # _fast_sampling case: Leave everything as is (torch.Tensors).
+            if data is not None:
+                # Action-logp and action-prob.
+                if logp is not None:
+                    extra_fetches[SampleBatch.ACTION_PROB] = torch.exp(logp)
+                    extra_fetches[SampleBatch.ACTION_LOGP] = logp
+                return actions, state_out, extra_fetches
+            # Non _fast_sampling case: Convert everything to non-torch type
+            # (for postprocessing).
+            else:
+                # Action-logp and action-prob.
+                if logp is not None:
+                    logp = convert_to_non_torch_type(logp)
+                    extra_fetches[SampleBatch.ACTION_PROB] = np.exp(logp)
+                    extra_fetches[SampleBatch.ACTION_LOGP] = logp
+                return convert_to_non_torch_type((actions, state_out,
+                                                  extra_fetches))
 
     @override(Policy)
     def compute_log_likelihoods(self,

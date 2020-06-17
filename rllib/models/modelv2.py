@@ -6,7 +6,8 @@ from ray.rllib.models.preprocessors import get_preprocessor, \
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
+    TensorType
 from ray.rllib.utils.spaces.repeated import Repeated
 
 tf = try_import_tf()
@@ -25,14 +26,14 @@ class ModelV2:
                value_function() -> V(s)
 
     Attributes:
-        obs_space (Space): observation space of the target gym env. This
-            may have an `original_space` attribute that specifies how to
+        obs_space (gym.spaces.Space): Observation space of the target gym env.
+            This may have an `original_space` attribute that specifies how to
             unflatten the tensor into a ragged tensor.
-        action_space (Space): action space of the target gym env
-        num_outputs (int): number of output units of the model
-        model_config (dict): config for the model, documented in ModelCatalog
-        name (str): name (scope) for the model
-        framework (str): either "tf" or "torch"
+        action_space (gym.spaces.Space): Action space of the target gym env.
+        num_outputs (int): Number of output units of the model.
+        model_config (dict): Config for the model, documented in ModelCatalog.
+        name (str): Name (scope) for the model.
+        framework (str): Either "tf" or "torch".
     """
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
@@ -318,17 +319,20 @@ def flatten(obs, framework):
 
 
 @DeveloperAPI
-def restore_original_dimensions(obs, obs_space, tensorlib=tf):
+def restore_original_dimensions(obs: TensorType,
+                                obs_space: gym.spaces.Space,
+                                tensorlib=tf):
     """Unpacks Dict and Tuple space observations into their original form.
 
-    This is needed since we flatten Dict and Tuple observations in transit.
-    Before sending them to the model though, we should unflatten them into
-    Dicts or Tuples of tensors.
+    This is needed since we flatten Dict and Tuple observations in transit
+    within a SampleBatch. Before sending them to the model though, we should
+    unflatten them into Dicts or Tuples of tensors.
 
-    Arguments:
-        obs: The flattened observation tensor.
-        obs_space: The flattened obs space. If this has the `original_space`
-            attribute, we will unflatten the tensor to that shape.
+    Args:
+        obs (TensorType): The flattened observation tensor.
+        obs_space (gym.spaces.Space): The flattened obs space. If this has the
+            `original_space` attribute, we will unflatten the tensor to that
+            shape.
         tensorlib: The library used to unflatten (reshape) the array/tensor.
 
     Returns:

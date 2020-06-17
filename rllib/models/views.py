@@ -1,4 +1,5 @@
 from collections import namedtuple
+import numpy as np
 
 from ray.rllib.utils import force_list
 
@@ -61,6 +62,11 @@ def get_view(model, data, is_training=False):
     view_requirements = model.get_view_requirements(is_training=is_training)
     view = {}
     for vr in view_requirements:
-        ts = force_list(vr.timesteps)
-        view[vr.col] = [d[vr.col][vr.timesteps] for d in data]
+        #ts = force_list(vr.timesteps)
+        # Create the batch of data from the different buffers in `data`.
+        # TODO: (sven): Here, we actually do a copy of the data (from a list).
+        #   The only way to avoid this entirely would be to keep a single(!)
+        #   np buffer per column across all currently ongoing agents + episodes
+        #   (which seems very hard to realize).
+        view[vr.col] = np.array([d[vr.col][vr.timesteps] for d in data])
     return view

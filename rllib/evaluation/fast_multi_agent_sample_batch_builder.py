@@ -17,12 +17,15 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 class _FastMultiAgentSampleBatchBuilder:
-    """Util to build SampleBatches for each policy in a multi-agent env.
+    """Builds SampleBatches for each policy (and agent) in a multi-agent env.
 
-    Input data is per-agent, while output data is per-policy. There is an M:N
-    mapping between agents and policies. We retain one local batch builder
-    per agent. When an agent is done, then its local batch is appended into the
-    corresponding policy batch for the agent's policy.
+    Input data is per-agent, while output data is per-policy. There is a
+    mapping from M agents to N policies (M can change over time; N is fixed at
+    beginning).
+    We retain one local batch builder per acting agent in the environment.
+    When an agent is done (or hits the rollout_fragment_len limit), its
+    batch is appended into the corresponding policy batch for the agent's
+    policy.
     """
 
     def __init__(self,
@@ -70,7 +73,7 @@ class _FastMultiAgentSampleBatchBuilder:
                 agents.
         """
 
-        return sum(a.count for a in self.agent_builders.values())
+        return sum(a.timestep for a in self.agent_builders.values())
 
     def has_pending_agent_data(self):
         """Returns whether there is pending unprocessed data.
@@ -83,10 +86,11 @@ class _FastMultiAgentSampleBatchBuilder:
         return len(self.agent_builders) > 0
 
     @DeveloperAPI
-    def add_initial_observation(self, agent_id, policy_id, obs):
+    def add_initial_observation(self, env_id, agent_id, policy_id, obs):
         """Add the given dictionary (row) of values to this batch.
 
         Arguments:
+            env_id (obj): Unique id for the episode we are adding values for.
             agent_id (obj): Unique id for the agent we are adding values for.
             policy_id (obj): Unique id for policy controlling the agent.
             obs (any): Initial observation (after env.reset()).
@@ -96,11 +100,8 @@ class _FastMultiAgentSampleBatchBuilder:
         else:
             assert self.agent_to_policy[agent_id] == policy_id
 
-        # Include the current agent id for multi-agent algorithms.
-        #if agent_id != _DUMMY_AGENT_ID:
-        #    values["agent_id"] = agent_id
-
-        self.agent_builders[agent_id].add_initial_observation(obs)
+        self.agent_builders[agent_id].add_initial_observation(
+            env_id, agent_id, obs)
 
     @DeveloperAPI
     def add_values(self, agent_id, policy_id, **values):
@@ -133,7 +134,7 @@ class _FastMultiAgentSampleBatchBuilder:
                 holds this MultiAgentBatchBuilder object.
         """
 
-        # Materialize the batches so far.
+        # Materialize the per-agent batches so far.
         pre_batches = {}
         for agent_id, builder in self.agent_builders.items():
             pre_batches[agent_id] = (
@@ -192,7 +193,7 @@ class _FastMultiAgentSampleBatchBuilder:
 
     def check_missing_dones(self):
         for agent_id, builder in self.agent_builders.items():
-            if builder.buffers["dones"][-1] is not True:
+            if not builder.buffers["dones"][builder.timestep - 1]:
                 raise ValueError(
                     "The environment terminated for all agents, but we still "
                     "don't have a last observation for "

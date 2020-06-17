@@ -2,20 +2,21 @@ import collections
 import logging
 import numpy as np
 
+from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.debug import summarize
-from ray.rllib.env.base_env import _DUMMY_AGENT_ID
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
 
-def to_float_array(v):
-    arr = np.array(v)
-    if arr.dtype == np.float64:
-        return arr.astype(np.float32)  # save some memory
-    return arr
+#def to_float_array(v):
+#    arr = np.array(v)
+#    if arr.dtype == np.float64:
+#        return arr.astype(np.float32)  # save some memory
+#    return arr
 
 
 @PublicAPI
@@ -59,7 +60,7 @@ class SampleBatchBuilder:
         """Returns a sample batch including all previously added values."""
 
         batch = SampleBatch(
-            {k: to_float_array(v)
+            {k: convert_to_numpy(v, reduce_floats=True)
              for k, v in self.buffers.items()})
         if SampleBatch.UNROLL_ID not in batch.data:
             batch.data[SampleBatch.UNROLL_ID] = np.repeat(

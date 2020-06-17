@@ -44,7 +44,7 @@ class SampleBatch:
     ACTION_PROB = "action_prob"
     ACTION_LOGP = "action_logp"
 
-    # Uniquely identifies an episode
+    # Uniquely identifies an episode.
     EPS_ID = "eps_id"
 
     # Uniquely identifies a sample batch. This is important to distinguish RNN
@@ -52,10 +52,10 @@ class SampleBatch:
     # concatenated (fusing sequences across batches can be unsafe).
     UNROLL_ID = "unroll_id"
 
-    # Uniquely identifies an agent within an episode
+    # Uniquely identifies an agent within an episode.
     AGENT_INDEX = "agent_index"
 
-    # Value function predictions emitted by the behaviour policy
+    # Value function predictions emitted by the behaviour policy.
     VF_PREDS = "vf_preds"
 
     @PublicAPI
@@ -70,8 +70,9 @@ class SampleBatch:
             self.data[k] = np.array(v, copy=False)
         if not lengths:
             raise ValueError("Empty sample batch")
-        assert len(set(lengths)) == 1, ("data columns must be same length",
-                                        self.data, lengths)
+        assert len(set(lengths)) in [1, 2], \
+            "Data columns must be same length (except obs!): " \
+            "lengths are {}".format(lengths)
         self.count = lengths[0]
 
     @staticmethod
