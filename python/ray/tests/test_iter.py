@@ -22,9 +22,17 @@ def test_transform(ray_start_regular_shared):
         for item in it:
             yield item * 2
 
+    def g(it):
+        for item in it:
+            if item >= 2:
+                yield item
+
     it = from_range(4).transform(f)
     assert repr(it) == "ParallelIterator[from_range[4, shards=2].transform()]"
     assert list(it.gather_sync()) == [0, 4, 2, 6]
+
+    it = from_range(4)
+    assert list(it.gather_sync().transform(g)) == [2, 3]
 
 
 def test_metrics(ray_start_regular_shared):
