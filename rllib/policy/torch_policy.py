@@ -3,6 +3,7 @@ import numpy as np
 import time
 
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
+from ray.rllib.models.views import get_view
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
@@ -98,7 +99,7 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     def compute_actions(self,
-                        obs_batch,
+                        obs_batch=None,
                         state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
@@ -109,14 +110,18 @@ class TorchPolicy(Policy):
                         data=None,
                         **kwargs):
 
+        assert obs_batch is not None or data is not None
+
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
 
         with torch.no_grad():
             if data is not None:
-                input_view = self.get_view(self.model, data)
-                
-                return
+                assert obs_batch is state_batches is prev_action_batch is \
+                       prev_reward_batch is info_batch is episodes is None
+                input_view = get_view(self.model, data, is_training=False)
+                input_dict = input_view
+                state_batches = []
             else:
                 seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
                 input_dict = self._lazy_tensor_dict({
@@ -137,7 +142,7 @@ class TorchPolicy(Policy):
                 actions, logp = self.action_sampler_fn(
                     self,
                     self.model,
-                    input_dict[SampleBatch.CUR_OBS],
+                    input_dict[SampleBatch.OBS],
                     explore=explore,
                     timestep=timestep)
             else:
@@ -149,7 +154,7 @@ class TorchPolicy(Policy):
                         self.action_distribution_fn(
                             self,
                             self.model,
-                            input_dict[SampleBatch.CUR_OBS],
+                            input_dict[SampleBatch.OBS],
                             explore=explore,
                             timestep=timestep,
                             is_training=False)

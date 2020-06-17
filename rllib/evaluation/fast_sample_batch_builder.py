@@ -33,16 +33,32 @@ class _FastSampleBatchBuilder:
         self.horizon = self.actual_horizon = horizon
         if self.horizon == float("inf"):
             self.actual_horizon = 1000
-        self.buffers = None
+        self.initial_obs = None
+        self.buffers = {}
         self.time_step = 0
+
+    def add_initial_observation(self, obs):
+        """Adds a single initial observation (after env.reset()) to the buffer.
+
+        Args:
+            obs (any): Initial observation (after env.reset()).
+        """
+        # Our buffer should be empty when we add the first observation.
+        assert self.initial_obs is None and self.time_step == 0
+        # Keep timestep as is (0). Only increase once we get the other-than-obs
+        # data (which will include the next obs).
+        self.initial_obs = obs
 
     @PublicAPI
     def add_values(self, **values):
-        """Add the given dictionary (row) of values to this batch."""
+        """Add the given dictionary (row) of values to this batch.
 
-        # Create buffers if non-existent.
-        if self.buffers is None:
-            self._build_buffers(values)
+        Args:
+            **values (Dict[str,any]): Data dict (interpreted as a single row)
+                to be added to buffer.
+        """
+        if len(self.buffers) == 0:
+            self._build_buffers(single_data=values)
 
         t = self.time_step
         for k, v in values.items():
@@ -62,19 +78,19 @@ class _FastSampleBatchBuilder:
             batch (SampleBatch): The SampleBatch whose data to insert into this
                 SampleBatchBuilder's preallocated buffers.
         """
+        if len(self.buffers) == 0:
+            self._build_buffers(batched_data=values)
 
-        if self.buffers is None:
-            self._build_buffers(batch)
-
-        t = self.time_step
         ts = batch.count
-
         # Extend (re-alloc) buffers if full and horizon == +inf.
-        if t + ts >= self.actual_horizon and \
+        if self.time_step + ts >= self.actual_horizon and \
                 self.horizon == float("inf"):
             self._extend_buffers()
 
         for k, column in batch.items():
+            # For "obs" column: Always add it to the next timestep b/c obs is
+            # initialized with a value before everything else (at env.reset()).
+            t = self.time_step + (0 if k != "obs" else 1)
             self.buffers[k][t:t+ts] = column
         self.time_step += ts
 
@@ -96,20 +112,23 @@ class _FastSampleBatchBuilder:
         self.time_step = 0
         return batch
 
-    def _build_buffers(self, single_data=None, data_batch=None):
+    def _build_buffers(self, single_data=None, batched_data=None):
         """Creates zero-filled pre-allocated numpy buffers for data collection.
 
         Args:
             single_data (Dict[str,np.ndarray]): Dict of column names (keys) and
                 sample numpy data (values). Note: Only one of `single_data` or
                 `data_batch` must be provided.
-            data_batch (Dict[str,np.ndarray]): Dict of column names (keys) and
+            batched_data (Dict[str,np.ndarray]): Dict of column names (keys) and
                 (batched) sample numpy data (values). Note: Only one of
                 `single_data` or `data_batch` must be provided.
         """
         self.buffers = {}
-        for k, d in (
-                single_data.items() if single_data else data_batch.items()):
-            shape = (self.actual_horizon,) + (d.shape if single_data else
-                                              d.shape[1:])
-            self.buffers[k] = np.zeros(shape=shape, dtype=d.dtype)
+        for col, data in (
+                single_data.items() if single_data else batched_data.items()):
+            shape = (self.actual_horizon,) + (data.shape if single_data else
+                                              data.shape[1:])
+            self.buffers[col] = np.zeros(shape=shape, dtype=data.dtype)
+
+        # Fill in our initial obs.
+        self.buffers["obs"][0] = self.initial_obs

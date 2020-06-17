@@ -3,7 +3,7 @@ import numpy as np
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.models.view_requirement import ViewRequirement
+from ray.rllib.models.views import ViewRequirement
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override, DeveloperAPI

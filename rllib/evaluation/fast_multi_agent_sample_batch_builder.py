@@ -1,3 +1,5 @@
+from collections import defaultdict
+from functools import partial
 import logging
 import numpy as np
 from typing import Union
@@ -52,7 +54,8 @@ class _FastMultiAgentSampleBatchBuilder:
         }
         # Whenever we observe a new agent, add a new SampleBatchBuilder for
         # this agent.
-        self.agent_builders = {}
+        self.agent_builders = defaultdict(partial(
+            _FastSampleBatchBuilder, horizon=self.horizon))
         # Internal agent-to-policy map.
         self.agent_to_policy = {}
         # Number of "inference" steps taken in the environment.
@@ -80,6 +83,26 @@ class _FastMultiAgentSampleBatchBuilder:
         return len(self.agent_builders) > 0
 
     @DeveloperAPI
+    def add_initial_observation(self, agent_id, policy_id, obs):
+        """Add the given dictionary (row) of values to this batch.
+
+        Arguments:
+            agent_id (obj): Unique id for the agent we are adding values for.
+            policy_id (obj): Unique id for policy controlling the agent.
+            obs (any): Initial observation (after env.reset()).
+        """
+        if agent_id not in self.agent_to_policy:
+            self.agent_to_policy[agent_id] = policy_id
+        else:
+            assert self.agent_to_policy[agent_id] == policy_id
+
+        # Include the current agent id for multi-agent algorithms.
+        #if agent_id != _DUMMY_AGENT_ID:
+        #    values["agent_id"] = agent_id
+
+        self.agent_builders[agent_id].add_initial_observation(obs)
+
+    @DeveloperAPI
     def add_values(self, agent_id, policy_id, **values):
         """Add the given dictionary (row) of values to this batch.
 
@@ -88,10 +111,10 @@ class _FastMultiAgentSampleBatchBuilder:
             policy_id (obj): Unique id for policy controlling the agent.
             values (dict): Row of values to add for this agent.
         """
-
-        if agent_id not in self.agent_builders:
-            self.agent_builders[agent_id] = _FastSampleBatchBuilder()
+        if agent_id not in self.agent_to_policy:
             self.agent_to_policy[agent_id] = policy_id
+        else:
+            assert self.agent_to_policy[agent_id] == policy_id
 
         # Include the current agent id for multi-agent algorithms.
         if agent_id != _DUMMY_AGENT_ID:

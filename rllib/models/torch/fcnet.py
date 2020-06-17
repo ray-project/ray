@@ -1,9 +1,11 @@
 import logging
 import numpy as np
 
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import SlimFC, AppendBiasLayer, \
     normc_initializer
+from ray.rllib.models.views import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import get_activation_fn, try_import_torch
 
@@ -112,7 +114,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         # Holds the last input, in case value branch is separate.
         self._last_flat_in = None
 
-    @override(TorchModelV2)
+    @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         obs = input_dict["obs_flat"].float()
         self._last_flat_in = obs.reshape(obs.shape[0], -1)
@@ -123,7 +125,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
             logits = self._append_free_log_std(logits)
         return logits, state
 
-    @override(TorchModelV2)
+    @override(ModelV2)
     def value_function(self):
         assert self._features is not None, "must call forward() first"
         if self._value_branch_separate:
@@ -131,3 +133,9 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                 self._value_branch_separate(self._last_flat_in)).squeeze(1)
         else:
             return self._value_branch(self._features).squeeze(1)
+
+    @override(ModelV2)
+    def get_view_requirements(self, is_training=False):
+        return [
+            ViewRequirement("obs"),
+        ]

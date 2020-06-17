@@ -41,6 +41,7 @@ class MultiAgentEpisode:
 
     def __init__(self, policies, policy_mapping_fn, batch_builder_factory,
                  extra_batch_callback):
+        # Facgtory to create a new SampleBatchBuilder.
         self.new_batch_builder = batch_builder_factory
         self.add_extra_batch = extra_batch_callback
         self.batch_builder = batch_builder_factory()
@@ -54,6 +55,7 @@ class MultiAgentEpisode:
         self._policies = policies
         self._policy_mapping_fn = policy_mapping_fn
         self._next_agent_index = 0
+        # TODO: (sven) deprecate all these
         self._agent_to_index = {}
         self._agent_to_policy = {}
         self._agent_to_rnn_state = {}

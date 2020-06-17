@@ -472,7 +472,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 blackhole_outputs="simulation" in input_evaluation,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
-                observation_fn=observation_fn)
+                observation_fn=observation_fn,
+                _fast_sampling=policy_config["_fast_sampling"])
             # Start the Sampler thread.
             self.sampler.start()
         else:
@@ -492,7 +493,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 clip_actions=clip_actions,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
-                observation_fn=observation_fn)
+                observation_fn=observation_fn,
+                _fast_sampling=policy_config["_fast_sampling"])
 
         self.input_reader = input_creator(self.io_context)
         assert isinstance(self.input_reader, InputReader), self.input_reader

@@ -223,13 +223,17 @@ class ModelV2:
             i += 1
         return self.__call__(input_dict, states, train_batch.get("seq_lens"))
 
-    def get_view_requirements(self):
-        """Returns the ViewRequirements for this Model (or None).
+    def get_view_requirements(self, is_training=False):
+        """Returns a list of ViewRequirements for this Model (or None).
 
         A ViewRequirement object tells the caller of this Model, which
         data at which timesteps are needed by this Model. This could be a
         sequence of past observations, internal-states, previous rewards, or
         other episode data/previous model outputs.
+
+        Args:
+            is_training (bool): Whether the returned requirements are for
+                training or inference (default).
 
         Returns:
             Optional[List[ViewRequirement]]: The list of ViewRequirement

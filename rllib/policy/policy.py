@@ -73,7 +73,7 @@ class Policy(metaclass=ABCMeta):
     @abstractmethod
     @DeveloperAPI
     def compute_actions(self,
-                        obs_batch,  #TODO: deprecate
+                        obs_batch=None,  #TODO: deprecate
                         state_batches=None,  #TODO: deprecate
                         prev_action_batch=None,  #TODO: deprecate
                         prev_reward_batch=None,  #TODO: deprecate
@@ -100,7 +100,7 @@ class Policy(metaclass=ABCMeta):
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
             timestep (int): The current (sampling) time step.
-            data #TODO
+            data (dict): The data dict to be used to build a ModelView #TODO
             kwargs: forward compatibility placeholder
 
         Returns:

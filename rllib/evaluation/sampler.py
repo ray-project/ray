@@ -443,11 +443,11 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
         if batch_builder_pool:
             return batch_builder_pool.pop()
         elif _fast_sampling:
-            return _FastMultiAgentSampleBatchBuilder(policies, clip_rewards,
-                                                     callbacks)
+            return _FastMultiAgentSampleBatchBuilder(
+                policies, clip_rewards, callbacks, horizon=horizon)
         else:
-            return MultiAgentSampleBatchBuilder(policies, clip_rewards,
-                                                callbacks)
+            return MultiAgentSampleBatchBuilder(
+                policies, clip_rewards, callbacks)
 
     def new_episode():
         episode = MultiAgentEpisode(policies, policy_mapping_fn,
@@ -502,7 +502,8 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
             callbacks=callbacks,
             soft_horizon=soft_horizon,
             no_done_at_end=no_done_at_end,
-            observation_fn=observation_fn)
+            observation_fn=observation_fn,
+            _fast_sampling=_fast_sampling)
         perf_stats.processing_time += time.time() - t1
         for o in outputs:
             yield o
@@ -513,7 +514,8 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
             to_eval=to_eval,
             policies=policies,
             active_episodes=active_episodes,
-            tf_sess=tf_sess)
+            tf_sess=tf_sess,
+            _fast_sampling=_fast_sampling)
         perf_stats.inference_time += time.time() - t2
 
         # Process results and update episode state.
@@ -539,7 +541,8 @@ def _process_observations(
         worker, base_env, policies, batch_builder_pool, active_episodes,
         unfiltered_obs, rewards, dones, infos, horizon, preprocessors,
         obs_filters, rollout_fragment_length, pack_multiple_episodes_in_batch,
-        callbacks, soft_horizon, no_done_at_end, observation_fn):
+        callbacks, soft_horizon, no_done_at_end, observation_fn,
+        _fast_sampling=False):
     """Record new data from the environment and prepare for policy evaluation.
 
     Args:
@@ -576,6 +579,8 @@ def _process_observations(
             and instead record done=False.
         observation_fn (ObservationFunction): Optional multi-agent
             observation func to use for preprocessing observations.
+        _fast_sampling (bool): Whether to use the (experimental)
+            `_fast_sampling` procedure to collect samples. Default: False.
 
     Returns:
         Tuple:
@@ -664,12 +669,15 @@ def _process_observations(
 
             agent_done = bool(all_agents_done or dones[env_id].get(agent_id))
             if not agent_done:
-                to_eval[policy_id].append(
-                    PolicyEvalData(env_id, agent_id, filtered_obs,
-                                   infos[env_id].get(agent_id, {}),
-                                   episode.rnn_state_for(agent_id),
-                                   episode.last_action_for(agent_id),
-                                   rewards[env_id][agent_id] or 0.0))
+                if _fast_sampling:
+                    item = episode.batch_builder.agent_builders[agent_id]
+                else:
+                    item = PolicyEvalData(env_id, agent_id, filtered_obs,
+                                          infos[env_id].get(agent_id, {}),
+                                          episode.rnn_state_for(agent_id),
+                                          episode.last_action_for(agent_id),
+                                          rewards[env_id][agent_id] or 0.0)
+                to_eval[policy_id].append(item)
 
             last_observation = episode.last_observation_for(agent_id)
             episode._set_last_observation(agent_id, filtered_obs)
@@ -677,8 +685,9 @@ def _process_observations(
             episode._set_last_info(agent_id, infos[env_id].get(agent_id, {}))
 
             # Record transition info if applicable.
-            if (last_observation is not None and infos[env_id].get(
-                    agent_id, {}).get("training_enabled", True)):
+            if (not _fast_sampling and last_observation is not None and
+                    infos[env_id].get(agent_id, {}).get(
+                        "training_enabled", True)):
                 episode.batch_builder.add_values(
                     agent_id,
                     policy_id,
@@ -696,6 +705,30 @@ def _process_observations(
                     infos=infos[env_id].get(agent_id, {}),
                     new_obs=filtered_obs,
                     **episode.last_pi_info_for(agent_id))
+            elif _fast_sampling:
+                if not last_observation:
+                    episode.batch_builder.add_initial_observation(
+                        agent_id, policy_id, filtered_obs)
+                else:
+                    print()
+                    episode.batch_builder.add_values(
+                        agent_id,
+                        policy_id,
+                        t=episode.length - 1,
+                        eps_id=episode.episode_id,
+                        agent_index=episode._agent_index(agent_id),
+                        # Action taken at timestep t.
+                        actions=episode.last_action_for(agent_id),
+                        # Reward received after taking a at timestep t.
+                        rewards=rewards[env_id][agent_id],
+                        # After taking a, did we reach terminal?
+                        dones=(False if (no_done_at_end
+                                         or (hit_horizon and soft_horizon)) else
+                               agent_done),
+                        # Next observation.
+                        obs=filtered_obs,
+                        infos=infos[env_id].get(agent_id, {}),
+                        **episode.last_pi_info_for(agent_id))
 
         # Invoke the step callback after the step is logged to the episode
         callbacks.on_episode_step(
@@ -711,15 +744,22 @@ def _process_observations(
 
             # Reached end of episode and we are not allowed to pack the
             # next episode into the same SampleBatch OR rollout_fragment_length
-            # reached -> Build SampleBatch.
-            # and add it to "outputs".
+            # reached -> Build SampleBatch and add it to "outputs".
             if (all_agents_done and not pack_multiple_episodes_in_batch) or \
                     episode.batch_builder.count >= rollout_fragment_length:
+                # TODO: (sven) Case: rollout_fragment_length reached: Do not
+                #  store any data in `episode` anymore
+                #  (useless for get_view_requirements when t<<-1, e.g.
+                #  attention), but keep last episode data around in
+                #  SampleBatchBuilder
+                #  to be able to still reference into it should a model require
+                #  this.
                 outputs.append(episode.batch_builder.build_and_reset(episode))
             # Make sure postprocessor stays within one episode.
             elif all_agents_done:
                 episode.batch_builder.postprocess_batch_so_far(episode)
 
+        # Episode is done.
         if all_agents_done:
             # Handle episode termination.
             batch_builder_pool.append(episode.batch_builder)
@@ -780,17 +820,25 @@ def _process_observations(
     return active_envs, to_eval, outputs
 
 
-def _do_policy_eval(*, to_eval, policies, active_episodes, tf_sess=None):
+def _do_policy_eval(*,
+                    to_eval,
+                    policies,
+                    active_episodes,
+                    tf_sess=None,
+                    _fast_sampling=False):
     """Call compute_actions on collected episode/model data to get next action.
 
     Args:
-        tf_sess (Optional[tf.Session]): Optional tensorflow session to use for
-            batching TF policy evaluations.
         to_eval (Dict[str,List[PolicyEvalData]]): Mapping of policy IDs to
-            lists of PolicyEvalData objects.
+            lists of PolicyEvalData objects (items in these lists will be the
+            batch's items for the model forward pass).
         policies (Dict[str,Policy]): Mapping from policy ID to Policy obj.
         active_episodes (defaultdict[str,MultiAgentEpisode]): Mapping from
             episode ID to currently ongoing MultiAgentEpisode object.
+        tf_sess (Optional[tf.Session]): Optional tensorflow session to use for
+            batching TF policy evaluations.
+        _fast_sampling (bool): Whether to use the (experimental)
+            `_fast_sampling` procedure to collect samples. Default: False.
 
     Returns:
         eval_results: dict of policy to compute_action() outputs.
@@ -799,52 +847,58 @@ def _do_policy_eval(*, to_eval, policies, active_episodes, tf_sess=None):
     eval_results = {}
 
     if tf_sess:
-        builder = TFRunBuilder(tf_sess, "policy_eval")
+        tf_run_builder = TFRunBuilder(tf_sess, "policy_eval")
         pending_fetches = {}
     else:
-        builder = None
+        tf_run_builder = None
 
     if log_once("compute_actions_input"):
         logger.info("Inputs to compute_actions():\n\n{}\n".format(
             summarize(to_eval)))
 
     for policy_id, eval_data in to_eval.items():
-        rnn_in = [t.rnn_state for t in eval_data]
         policy = _get_or_raise(policies, policy_id)
+
         # If tf (non eager) AND TFPolicy's compute_action method has not been
         # overridden -> Use `policy._build_compute_actions()`.
-        if builder and (policy.compute_actions.__code__ is
-                        TFPolicy.compute_actions.__code__):
-
+        if tf_run_builder and (policy.compute_actions.__code__ is
+                               TFPolicy.compute_actions.__code__):
+    
             obs_batch = [t.obs for t in eval_data]
-            state_batches = _to_column_format(rnn_in)
+            state_batches = _to_column_format([t.rnn_state for t in eval_data])
             # TODO(ekl): how can we make info batch available to TF code?
             prev_action_batch = [t.prev_action for t in eval_data]
             prev_reward_batch = [t.prev_reward for t in eval_data]
 
             pending_fetches[policy_id] = policy._build_compute_actions(
-                builder,
+                tf_run_builder,
                 obs_batch=obs_batch,
                 state_batches=state_batches,
                 prev_action_batch=prev_action_batch,
                 prev_reward_batch=prev_reward_batch,
                 timestep=policy.global_timestep)
         else:
-            rnn_in_cols = [
-                np.stack([row[i] for row in rnn_in])
-                for i in range(len(rnn_in[0]))
-            ]
-            eval_results[policy_id] = policy.compute_actions(
-                [t.obs for t in eval_data],
-                state_batches=rnn_in_cols,
-                prev_action_batch=[t.prev_action for t in eval_data],
-                prev_reward_batch=[t.prev_reward for t in eval_data],
-                info_batch=[t.info for t in eval_data],
-                episodes=[active_episodes[t.env_id] for t in eval_data],
-                timestep=policy.global_timestep)
-    if builder:
+            if _fast_sampling:
+                eval_results[policy_id] = policy.compute_actions(
+                    data=eval_data,
+                    timestep=policy.global_timestep)
+            else:
+                rnn_in = [t.rnn_state for t in eval_data]
+                rnn_in_cols = [
+                    np.stack([row[i] for row in rnn_in])
+                    for i in range(len(rnn_in[0]))
+                ]
+                eval_results[policy_id] = policy.compute_actions(
+                    [t.obs for t in eval_data],
+                    state_batches=rnn_in_cols,
+                    prev_action_batch=[t.prev_action for t in eval_data],
+                    prev_reward_batch=[t.prev_reward for t in eval_data],
+                    info_batch=[t.info for t in eval_data],
+                    episodes=[active_episodes[t.env_id] for t in eval_data],
+                    timestep=policy.global_timestep)
+    if tf_run_builder:
         for pid, v in pending_fetches.items():
-            eval_results[pid] = builder.get(v)
+            eval_results[pid] = tf_run_builder.get(v)
 
     if log_once("compute_actions_result"):
         logger.info("Outputs of compute_actions():\n\n{}\n".format(
@@ -853,8 +907,13 @@ def _do_policy_eval(*, to_eval, policies, active_episodes, tf_sess=None):
     return eval_results
 
 
-def _process_policy_eval_results(*, to_eval, eval_results, active_episodes,
-                                 active_envs, off_policy_actions, policies,
+def _process_policy_eval_results(*,
+                                 to_eval,
+                                 eval_results,
+                                 active_episodes,
+                                 active_envs,
+                                 off_policy_actions,
+                                 policies,
                                  clip_actions):
     """Process the output of policy neural network evaluation.
 
@@ -908,15 +967,19 @@ def _process_policy_eval_results(*, to_eval, eval_results, active_episodes,
         # Split action-component batches into single action rows.
         actions = unbatch(actions)
         for i, action in enumerate(actions):
-            env_id = eval_data[i].env_id
-            agent_id = eval_data[i].agent_id
             # Clip if necessary.
             if clip_actions:
                 clipped_action = clip_action(action,
                                              policy.action_space_struct)
             else:
                 clipped_action = action
+            env_id = eval_data[i].env_id
+            agent_id = eval_data[i].agent_id
             actions_to_send[env_id][agent_id] = clipped_action
+
+            # TODO: (sven) deprecate storing data directly in episode
+            #  (should all be stored in SampleBatchBuilder and kept for the
+            #  length of an episode).
             episode = active_episodes[env_id]
             episode._set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
             episode._set_last_pi_info(
