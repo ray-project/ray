@@ -60,7 +60,7 @@ public class JobGraph implements Serializable {
         }
       }
       digraph.append(System.getProperty("line.separator"));
-      digraph.append(srcNode).append(" -> ").append(targetNode);
+      digraph.append(String.format("  \"%s\" -> \"%s\"", srcNode, targetNode));
     }
     digraph.append(System.getProperty("line.separator")).append("}");
 
