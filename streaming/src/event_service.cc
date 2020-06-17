@@ -63,7 +63,7 @@ bool EventQueue::Get(Event &evt) {
     if (!no_empty_cv_.wait_for(lock, std::chrono::milliseconds(kConditionTimeoutMs),
                                [this]() { return !is_active_ || !Empty(); })) {
       STREAMING_LOG(DEBUG) << "No empty condition variable wait timeout."
-                           << " Empty => " << Empty() << ", is freezed " << is_active_;
+                           << " Empty => " << Empty() << ", is not active " << is_active_;
     }
   }
   if (!is_active_) {
@@ -85,11 +85,11 @@ Event EventQueue::PopAndGet() {
     if (!no_empty_cv_.wait_for(lock, std::chrono::milliseconds(kConditionTimeoutMs),
                                [this]() { return !is_active_ || !Empty(); })) {
       STREAMING_LOG(DEBUG) << "No empty condition variable wait timeout."
-                           << " Empty => " << Empty() << ", is freezed " << is_active_;
+                           << " Empty => " << Empty() << ", is not active " << is_active_;
     }
   }
   if (!is_active_) {
-    // Return error event if queue is freezed.
+    // Return error event if queue is not active.
     return Event({nullptr, EventType::ErrorEvent, false});
   }
   if (!urgent_buffer_.empty()) {

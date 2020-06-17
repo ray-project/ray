@@ -24,7 +24,7 @@ enum class EventType : uint8_t {
   FullChannel = 3,
   // Recovery at the beginning.
   Reload = 4,
-  // Error event if event queue is freezed.
+  // Error event if event queue is not active.
   ErrorEvent = 5
 };
 
@@ -57,7 +57,7 @@ class EventQueue {
   /// Resume event queue to normal model.
   void Unfreeze();
 
-  /// Push is prohibited when event queue is freezed.
+  /// Push is prohibited when event queue is not active.
   void Freeze();
 
   void Push(const Event &t);
