@@ -133,9 +133,18 @@ export type NodeInfoResponse = {
 
 export const getNodeInfo = () => get<NodeInfoResponse>("/api/node_info", {});
 
+export type ResourceSlot = {
+  slot: number;
+  allocation: number;
+};
+
+export type ResourceAllocations = {
+  resourceSlots: ResourceSlot[];
+};
+
 export type RayletCoreWorkerStats = {
   usedResources: {
-    [key: string]: number;
+    [key: string]: ResourceAllocations;
   };
 };
 
@@ -168,7 +177,7 @@ export type RayletActorInfo =
       taskQueueLength: number;
       timestamp: number;
       usedObjectStoreMemory: number;
-      usedResources: { [key: string]: number };
+      usedResources: { [key: string]: ResourceAllocations };
       currentTaskDesc?: string;
       numPendingTasks?: number;
       webuiDisplay?: Record<string, string>;
