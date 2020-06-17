@@ -488,12 +488,6 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     ASSERT_TRUE(actor.state() == expected_state);
   }
 
-  void CheckActorData(const gcs::ActorTableData &actor, const ActorID &expected_id,
-                      rpc::ActorTableData_ActorState expected_state) {
-    ASSERT_TRUE(actor.actor_id() == expected_id.Binary() &&
-                actor.state() == expected_state);
-  }
-
   // GCS server.
   gcs::GcsServerConfig config_;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
@@ -908,7 +902,8 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // Restart GCS server.
   RestartGcsServer();
 
-  // RPC calls once, triggering GCS client reconnect GCS server and resubscribe.
+  // We need to send a RPC to detect GCS server restart. Then GCS client will
+  // reconnect to GCS server and resubscribe.
   ASSERT_TRUE(GetActor(actor_id).state() ==
               rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
 
