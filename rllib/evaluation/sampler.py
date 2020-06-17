@@ -55,8 +55,8 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
     """Reads input experiences from an existing sampler."""
 
     @override(InputReader)
-    def next(self, dataset_id=None):
-        batches = [self.get_data(dataset_id=dataset_id)]
+    def next(self):
+        batches = [self.get_data()]
         batches.extend(self.get_extra_batches())
         if len(batches) > 1:
             return batches[0].concat_samples(batches)
@@ -156,27 +156,23 @@ class SyncSampler(SamplerInput):
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
             pack_multiple_episodes_in_batch, callbacks, tf_sess,
             self.perf_stats, soft_horizon, no_done_at_end, observation_fn)
-        self.metrics_queues = {}
+        self.metrics_queue = queue.Queue()
 
     @override(SamplerInput)
-    def get_data(self, dataset_id=None):
+    def get_data(self):
         while True:
             item = next(self.rollout_provider)
             if isinstance(item, RolloutMetrics):
-                if dataset_id not in self.metrics_queues:
-                    self.metrics_queues[dataset_id] = queue.Queue()
-                self.metrics_queues[dataset_id].put(item)
+                self.metrics_queue.put(item)
             else:
                 return item
 
     @override(SamplerInput)
-    def get_metrics(self, dataset_id=None):
+    def get_metrics(self):
         completed = []
-        if dataset_id not in self.metrics_queues:
-            self.metrics_queues[dataset_id] = queue.Queue()
         while True:
             try:
-                completed.append(self.metrics_queues[dataset_id].get_nowait()._replace(
+                completed.append(self.metrics_queue.get_nowait()._replace(
                     perf_stats=self.perf_stats.get()))
             except queue.Empty:
                 break

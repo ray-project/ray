@@ -101,8 +101,8 @@ class InnerAdaptationSteps:
             # Metrics Reporting
             metrics = _get_shared_metrics()
             metrics.counters[STEPS_SAMPLED_COUNTER] += out.count
-            self.metrics["adaptation_delta"] = self.metrics["episode_reward_mean" + str(self.n)] - \
-                                                        res["episode_reward_mean"]
+            self.metrics["adaptation_delta"] = self.metrics["episode_reward_mean_adapt_" + str(self.n)] - \
+                                                        self.metrics["episode_reward_mean"]
             return [(out, self.metrics)]
         else:
             self.inner_adaptation_step(self.workers, samples)
