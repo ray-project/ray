@@ -1078,11 +1078,11 @@ class Trainer(Trainable):
                     config["input_evaluation"]))
 
     def _try_recover(self):
-        """Try to identify and blacklist any unhealthy workers.
+        """Try to identify and remove any unhealthy workers.
 
         This method is called after an unexpected remote error is encountered
         from a worker. It issues check requests to all current workers and
-        blacklists any that respond with error. If no healthy workers remain,
+        removes any that respond with error. If no healthy workers remain,
         an error is raised.
         """
 
@@ -1110,7 +1110,7 @@ class Trainer(Trainable):
                 healthy_workers.append(w)
                 logger.info("Worker {} looks healthy".format(i + 1))
             except RayError:
-                logger.exception("Blacklisting worker {}".format(i + 1))
+                logger.exception("Removing unhealthy worker {}".format(i + 1))
                 try:
                     w.__ray_terminate__.remote()
                 except Exception:
