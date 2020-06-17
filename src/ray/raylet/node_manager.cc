@@ -755,15 +755,15 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
       VectorFromProtobuf(heartbeat_data.resources_available_capacity()));
   ResourceSet remote_load(VectorFromProtobuf(heartbeat_data.resource_load_label()),
                           VectorFromProtobuf(heartbeat_data.resource_load_capacity()));
+  auto tmp_resource_map = remote_available.GetResourceMap();
   // TODO(atumanov): assert that the load is a non-empty ResourceSet.
   remote_resources.SetAvailableResources(std::move(remote_available));
   // Extract the load information and save it locally.
   remote_resources.SetLoadResources(std::move(remote_load));
 
   if (new_scheduler_enabled_ && client_id != self_node_id_) {
-    new_resource_scheduler_->AddOrUpdateNode(client_id.Binary(),
-                                             remote_total.GetResourceMap(),
-                                             remote_available.GetResourceMap());
+    new_resource_scheduler_->AddOrUpdateNode(
+        client_id.Binary(), remote_total.GetResourceMap(), tmp_resource_map);
     NewSchedulerSchedulePendingTasks();
     return;
   }
