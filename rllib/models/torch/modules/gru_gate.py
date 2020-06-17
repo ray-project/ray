@@ -14,13 +14,6 @@ class GRUGate(nn.Module):
         super().__init__(**kwargs)
         self._init_bias = init_bias
 
-#        h_shape, x_shape = input_shape
-#        if x_shape[-1] != h_shape[-1]:
-#            raise ValueError(
-#                "Both inputs to GRUGate must have equal size in last axis!")
-
-#        dim = int(h_shape[-1])
-
         # Xavier initialization of torch tensors
         self._w_r = torch.zeros(dim, dim)
         self._w_z = torch.zeros(dim, dim)
@@ -46,14 +39,14 @@ class GRUGate(nn.Module):
 
         r = torch.tensordot(X, self._w_r, dims=1) + \
             torch.tensordot(h, self._u_r, dims=1)
-        r = nn.functional.sigmoid(r)
+        r = torch.sigmoid(r)
 
         z = torch.tensordot(X, self._w_z, dims=1) + \
             torch.tensordot(h, self._u_z, dims=1) - self._bias_z
-        z = nn.functional.sigmoid(z)
+        z = torch.sigmoid(z)
 
         h_next = torch.tensordot(X, self._w_h, dims=1) + \
             torch.tensordot((h * r), self._u_h, dims=1)
-        h_next = nn.functional.tanh(h_next)
+        h_next = torch.tanh(h_next)
 
         return (1 - z) * h + z * h_next

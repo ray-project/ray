@@ -114,15 +114,12 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         self.obs_dim = observation_space.shape[0]
 
         # Constant (non-trainable) sinusoid rel pos encoding matrix.
-        Phi = relative_position_embedding(
-            self.max_seq_len + self.memory_tau, self.attn_dim)
+        Phi = relative_position_embedding(self.max_seq_len + self.memory_tau,
+                                          self.attn_dim)
 
         self.linear_layer = SlimFC(
             in_size=self.obs_dim, out_size=self.attn_dim)
-        memory_outs = [
-            torch.zeros(self.memory_tau, self.attn_dim, dtype=torch.float32)
-            for _ in range(self.num_transformer_units)
-        ]
+
         self.layers = [self.linear_layer]
 
         # 2) Create L Transformer blocks according to [2].
@@ -137,8 +134,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                     rel_pos_encoder=Phi,
                     input_layernorm=True,
                     output_activation=nn.ReLU),
-                fan_in_layer=GRUGate(self.attn_dim, init_gate_bias)
-            )
+                fan_in_layer=GRUGate(self.attn_dim, init_gate_bias))
 
             # Position-wise MultiLayerPerceptron part.
             E_layer = SkipConnection(
@@ -154,8 +150,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                         out_size=self.attn_dim,
                         use_bias=False,
                         activation_fn=nn.ReLU)),
-                fan_in_layer=GRUGate(self.attn_dim, init_gate_bias)
-                )
+                fan_in_layer=GRUGate(self.attn_dim, init_gate_bias))
 
             # Build a list of all layers in order.
             self.layers.extend([MHA_layer, E_layer])
@@ -179,17 +174,19 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         # end and only keep the most recent (up to `max_seq_len`). This allows
         # us to deal with timestep-wise inference and full sequence training
         # within the same logic.
+        state = [torch.from_numpy(item) for item in state]
         observations = state[0]
         memory = state[1:]
 
+        inputs = torch.reshape(inputs, [1, -1, observations.shape[-1]])
         observations = torch.cat(
-            (observations, inputs), dims=1)[:, -self.max_seq_len:]
+            (observations, inputs), axis=1)[:, -self.max_seq_len:]
 
-        all_out = [observations] + memory
+        all_out = observations
         for i in range(len(self.layers)):
             # MHA layers which need memory passed in.
             if i % 2 == 1:
-                all_out = self.layers[i](all_out, memory=memory[i])
+                all_out = self.layers[i](all_out, memory=memory[i // 2])
             # Either linear layers or MultiLayerPerceptrons.
             else:
                 all_out = self.layers[i](all_out)
@@ -203,7 +200,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
             memory_outs = [
                 torch.cat(
                     [memory[i][:, -(self.memory_tau - self.max_seq_len):], m],
-                    dims=1) for i, m in enumerate(memory_outs)
+                    axis=1) for i, m in enumerate(memory_outs)
             ]
         else:
             memory_outs = [m[:, -self.memory_tau:] for m in memory_outs]

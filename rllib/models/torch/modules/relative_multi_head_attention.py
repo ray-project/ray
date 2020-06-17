@@ -64,7 +64,7 @@ class RelativeMultiHeadAttention(nn.Module):
         self._input_layernorm = None
 
         if input_layernorm:
-            self._input_layernorm = torch.nn.LayerNorm(self._head_dim)
+            self._input_layernorm = torch.nn.LayerNorm(in_dim)
 
     def forward(self, inputs, memory=None):
         T = list(inputs.size())[1]  # length of segment (time)
@@ -73,7 +73,7 @@ class RelativeMultiHeadAttention(nn.Module):
 
         # Add previous memory chunk (as const, w/o gradient) to input.
         # Tau (number of (prev) time slices in each memory chunk).
-        Tau = list(memory.size())[1] if memory is not None else 0
+        Tau = list(memory.shape)[1] if memory is not None else 0
         if memory is not None:
             memory.requires_grad_(False)
             inputs = torch.cat((memory, inputs), dim=1)
@@ -106,14 +106,14 @@ class RelativeMultiHeadAttention(nn.Module):
 
         # causal mask of the same length as the sequence
         mask = sequence_mask(
-            torch.range(Tau + 1, T + Tau + 1), dtype=score.dtype)
+            torch.arange(Tau + 1, T + Tau + 1), dtype=score.dtype)
         mask = mask[None, :, :, None]
 
-        masked_score = score * mask + 1e30 * (mask - 1.)
-        wmat = nn.functional.softmax(masked_score, axis=2)
+        masked_score = score * mask + 1e30 * (mask.to(torch.float32) - 1.)
+        wmat = nn.functional.softmax(masked_score, dim=2)
 
         out = torch.einsum("bijh,bjhd->bihd", wmat, values)
-        shape = list(out.shape())[:2] + [H * d]
+        shape = list(out.shape)[:2] + [H * d]
         out = torch.reshape(out, shape)
 
         return self._linear_layer(out)
@@ -123,7 +123,7 @@ class RelativeMultiHeadAttention(nn.Module):
         # Transposed version of the shift approach described in [3].
         # https://github.com/kimiyoung/transformer-xl/blob/
         # 44781ed21dbaec88b280f74d9ae2877f52b492a5/tf/model.py#L31
-        x_size = list(torch.shape(x))
+        x_size = list(x.shape)
 
         x = torch.nn.functional.pad(x, (0, 0, 1, 0, 0, 0, 0, 0))
         x = torch.reshape(x, [x_size[0], x_size[2] + 1, x_size[1], x_size[3]])
