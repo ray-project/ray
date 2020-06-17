@@ -208,6 +208,14 @@ class ParallelIterator(Generic[T]):
 
         Returns:
             ParallelIterator[U]: a parallel iterator.
+
+        Examples:
+            >>> def f(it):
+            ...     for x in it:
+            ...         if x % 2 == 0:
+            ...            yield x
+            >>> from_range(10, 1).transform(f).gather_sync().take(5)
+            ... [0, 2, 4, 6, 8]
         """
         return self._with_transform(lambda local_it: local_it.transform(fn),
                                     ".transform()")
