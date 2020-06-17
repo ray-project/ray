@@ -39,7 +39,7 @@ This command is not enough to recompile all C++ unit tests. To do so, see
 `Testing locally`_.
 
 Fast, Debug, and Optimized Builds
-----------------------------
+---------------------------------
 
 Currently, Ray is built with optimizations, which can take a long time and
 interfere with debugging. To perform fast, debug, or optimized builds, you
