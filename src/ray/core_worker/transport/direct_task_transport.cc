@@ -237,8 +237,9 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           // error.
           RAY_LOG(ERROR)
               << "Core worker failed to get responses from local raylet. This is most "
-                 "likely because the local raylet has been crahsed." RAY_LOG(FATAL)
-              << status.ToString();
+                 "likely because the local raylet has been crahsed. Note that we don't "
+                 "currently handle local raylet failures.";
+          RAY_LOG(FATAL) << status.ToString();
         }
       }));
   RAY_CHECK(pending_lease_requests_
