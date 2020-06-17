@@ -1,17 +1,23 @@
 import collections
 import logging
 import numpy as np
+from typing import List, Any, Dict, TYPE_CHECKING
 
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.types import PolicyID
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.util.debug import log_once
+
+if TYPE_CHECKING:
+    from ray.rllib.agents.callbacks import DefaultCallbacks
 
 logger = logging.getLogger(__name__)
 
 
-def to_float_array(v):
+def to_float_array(v: List[Any]) -> np.ndarray:
     arr = np.array(v)
     if arr.dtype == np.float64:
         return arr.astype(np.float32)  # save some memory
@@ -30,11 +36,11 @@ class SampleBatchBuilder:
 
     @PublicAPI
     def __init__(self):
-        self.buffers = collections.defaultdict(list)
+        self.buffers: Dict[str, List] = collections.defaultdict(list)
         self.count = 0
 
     @PublicAPI
-    def add_values(self, **values):
+    def add_values(self, **values: Dict[str, Any]) -> None:
         """Add the given dictionary (row) of values to this batch."""
 
         for k, v in values.items():
@@ -42,7 +48,7 @@ class SampleBatchBuilder:
         self.count += 1
 
     @PublicAPI
-    def add_batch(self, batch):
+    def add_batch(self, batch: SampleBatch) -> None:
         """Add the given batch of values to this batch."""
 
         for k, column in batch.items():
@@ -50,7 +56,7 @@ class SampleBatchBuilder:
         self.count += batch.count
 
     @PublicAPI
-    def build_and_reset(self):
+    def build_and_reset(self) -> SampleBatch:
         """Returns a sample batch including all previously added values."""
 
         batch = SampleBatch(
@@ -75,7 +81,8 @@ class MultiAgentSampleBatchBuilder:
     corresponding policy batch for the agent's policy.
     """
 
-    def __init__(self, policy_map, clip_rewards, callbacks):
+    def __init__(self, policy_map: Dict[PolicyID, Policy], clip_rewards: bool,
+                 callbacks: "DefaultCallbacks"):
         """Initialize a MultiAgentSampleBatchBuilder.
 
         Args:

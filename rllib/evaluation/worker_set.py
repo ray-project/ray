@@ -1,6 +1,6 @@
 import logging
 from types import FunctionType
-from typing import TypeVar, Callable, List
+from typing import TypeVar, Callable, List, Union
 
 import ray
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -195,8 +195,10 @@ class WorkerSet:
         workers._remote_workers = remote_workers or []
         return workers
 
-    def _make_worker(self, cls: type, env_creator: Callable[[EnvContext], ],
-                     policy, worker_index, config):
+    def _make_worker(
+            self, cls: Callable, env_creator: Callable[[EnvContext], EnvType],
+            policy: Policy, worker_index: int,
+            config: TrainerConfigDict) -> Union[RolloutWorker, "ActorHandle"]:
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))

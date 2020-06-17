@@ -360,7 +360,7 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
     This also supports vectorization if num_envs > 1.
     """
 
-    def __init__(self, make_env: Callable[[int], []],
+    def __init__(self, make_env: Callable[[int], EnvType],
                  existing_envs: List[MultiAgentEnv], num_envs: int):
         """Wrap existing multi-agent envs.
 
