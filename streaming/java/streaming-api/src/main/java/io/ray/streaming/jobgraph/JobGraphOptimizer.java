@@ -156,7 +156,9 @@ public class JobGraphOptimizer {
     }
   }
 
-  private boolean canBeChained(JobVertex precedingVertex, JobVertex succeedingVertex, JobEdge edge) {
+  private boolean canBeChained(JobVertex precedingVertex,
+                               JobVertex succeedingVertex,
+                               JobEdge edge) {
     if (jobGraph.getVertexOutputEdges(precedingVertex.getVertexId()).size() > 1 ||
         jobGraph.getVertexInputEdges(succeedingVertex.getVertexId()).size() > 1) {
       return false;
