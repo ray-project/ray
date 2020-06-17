@@ -15,9 +15,10 @@
 #ifndef RAY_RAYLET_RAYLET_H
 #define RAY_RAYLET_RAYLET_H
 
+#include <list>
+
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
-#include <list>
 
 // clang-format off
 #include "ray/raylet/node_manager.h"
@@ -49,7 +50,6 @@ class Raylet {
   /// \param object_manager_config Configuration to initialize the object
   /// manager.
   /// \param gcs_client A client connection to the GCS.
-  /// \param set_internal_config Store the internal_config in GCS.
   Raylet(boost::asio::io_service &main_service, const std::string &socket_name,
          const std::string &node_ip_address, const std::string &redis_address,
          int redis_port, const std::string &redis_password,
