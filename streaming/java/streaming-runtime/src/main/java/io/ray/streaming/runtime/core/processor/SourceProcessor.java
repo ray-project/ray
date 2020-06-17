@@ -1,16 +1,16 @@
 package io.ray.streaming.runtime.core.processor;
 
 import io.ray.streaming.message.Record;
-import io.ray.streaming.operator.impl.SourceOperatorImpl;
+import io.ray.streaming.operator.SourceOperator;
 
 /**
  * The processor for the stream sources, containing a SourceOperator.
  *
  * @param <T> The type of source data.
  */
-public class SourceProcessor<T> extends StreamProcessor<Record, SourceOperatorImpl<T>> {
+public class SourceProcessor<T> extends StreamProcessor<Record, SourceOperator<T>> {
 
-  public SourceProcessor(SourceOperatorImpl<T> operator) {
+  public SourceProcessor(SourceOperator<T> operator) {
     super(operator);
   }
 
