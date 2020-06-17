@@ -219,7 +219,7 @@ def test_for_each_concur_sync(ray_start_regular_shared):
         [(i, main_wait, test_wait) for i in range(8)], num_shards=2)
     it = it.for_each(task, max_concurrency=2, resources={"num_cpus": 0.01})
 
-    list_promise = to_list.remote(it.gather_async())
+    list_promise = to_list.remote(it.gather_sync())
 
     for i in range(4):
         assert i in [0, 1, 2, 3]
