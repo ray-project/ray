@@ -211,7 +211,7 @@ def test_for_each_concur_sync(ray_start_regular_shared):
         ray.get(test_wait.acquire.remote())
         return i + 10
 
-    @ray.remote(num_cpus=0.1)
+    @ray.remote(num_cpus=0.01)
     def to_list(it):
         return list(it)
 

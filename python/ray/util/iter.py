@@ -233,6 +233,7 @@ class ParallelIterator(Generic[T]):
             ... [0, 2, 4, 8]
 
         """
+        assert max_concurrency >= 0, "max_concurrency must be non-negative."
         return self._with_transform(
             lambda local_it: local_it.for_each(fn, max_concurrency, resources),
             ".for_each()")
