@@ -878,8 +878,14 @@ TEST_F(ServiceBasedGcsClientTest, TestJobTableResubscribe) {
   };
   ASSERT_TRUE(SubscribeToAllJobs(subscribe));
 
+  ASSERT_TRUE(AddJob(job_table_data));
+  ASSERT_TRUE(MarkJobFinished(job_id));
+  WaitPendingDone(job_update_count, 1);
+
   RestartGcsServer();
 
+  job_id = JobID::FromInt(2);
+  job_table_data = Mocker::GenJobTableData(job_id);
   ASSERT_TRUE(AddJob(job_table_data));
   ASSERT_TRUE(MarkJobFinished(job_id));
   WaitPendingDone(job_update_count, 2);
@@ -939,16 +945,17 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
                  rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
 
   // Update the actor state to DEAD.
+  actor_table_data->set_timestamp(std::time(nullptr));
   actor_table_data->set_state(
       rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
   ASSERT_TRUE(UpdateActor(actor_id, actor_table_data));
 
   // We should receive a new DEAD notification from the subscribe channel.
-  WaitPendingDone(num_subscribe_all_notifications, 3);
-  WaitPendingDone(num_subscribe_one_notifications, 3);
-  CheckActorData(subscribe_all_notifications[2],
+  WaitPendingDone(num_subscribe_all_notifications, 2);
+  WaitPendingDone(num_subscribe_one_notifications, 2);
+  CheckActorData(subscribe_all_notifications[1],
                  rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
-  CheckActorData(subscribe_one_notifications[2],
+  CheckActorData(subscribe_one_notifications[1],
                  rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
 }
 

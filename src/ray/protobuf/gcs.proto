@@ -368,6 +368,11 @@ message StoredConfig {
   map<string, string> config = 1;
 }
 
+message NodeResources {
+  bytes node_id = 1;
+  map<string, ResourceTableData> resources = 2;
+}
+
 message ObjectTableDataList {
   repeated ObjectTableData items = 1;
 }

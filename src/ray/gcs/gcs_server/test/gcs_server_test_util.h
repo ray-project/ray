@@ -300,6 +300,11 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
+    Status AsyncGetAllNodeResources(
+        const gcs::MultiItemCallback<rpc::NodeResources> &callback) override {
+      return Status::NotImplemented("");
+    }
+
     Status AsyncUpdateResources(const ClientID &node_id, const ResourceMap &resources,
                                 const gcs::StatusCallback &callback) override {
       return Status::NotImplemented("");
