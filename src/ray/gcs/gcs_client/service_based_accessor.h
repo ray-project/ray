@@ -30,15 +30,14 @@ using FetchDataOperation = std::function<void(const StatusCallback &done)>;
 class ServiceBasedGcsClient;
 
 /// \class IdempotentFilter
-/// IdempotentFilter is used to filter duplicate or older data.
-template <typename ID, typename Data>
+/// `IdempotentFilter` is used to filter duplicate or older data.
 class IdempotentFilter {
  public:
-  bool Filter(const ID &id, const Data &data);
+  bool Filter(const std::string &id, int64_t timestamp);
 
  private:
   /// A cache of the current latest message timestamp for each ID.
-  std::unordered_map<ID, int64_t> cache_;
+  std::unordered_map<std::string, int64_t> cache_;
 };
 
 /// \class ServiceBasedJobInfoAccessor
@@ -71,9 +70,13 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
   /// server restarts from a failure.
   SubscribeOperation subscribe_operation_;
 
+  /// Save the fetch data operation in this function, so we can call it again when GCS
+  /// server restarts from a failure.
+  FetchDataOperation fetch_data_operation_;
+
   ServiceBasedGcsClient *client_impl_;
 
-  IdempotentFilter<JobID, JobTableData> idempotent_filter_;
+  IdempotentFilter subscribe_filter_;
 };
 
 /// \class ServiceBasedActorInfoAccessor
@@ -147,6 +150,9 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   ServiceBasedGcsClient *client_impl_;
 
   Sequencer<ActorID> sequencer_;
+
+  IdempotentFilter subscribe_all_filter_;
+  IdempotentFilter subscribe_filter_;
 };
 
 /// \class ServiceBasedNodeInfoAccessor

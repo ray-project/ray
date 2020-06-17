@@ -18,19 +18,16 @@
 namespace ray {
 namespace gcs {
 
-template <typename ID, typename Data>
-bool IdempotentFilter<ID, Data>::Filter(const ID &id, const Data &data) {
+bool IdempotentFilter::Filter(const std::string &id, int64_t timestamp) {
   auto it = cache_.find(id);
   if (it == cache_.end()) {
-    cache_[id] = data.timestamp();
-  } else if (it->second >= data.timestamp()) {
-    it->second = data.timestamp();
+    cache_[id] = timestamp;
+  } else if (it->second >= timestamp) {
+    it->second = timestamp;
     return false;
   }
   return true;
 }
-
-template class IdempotentFilter<JobID, JobTableData>;
 
 ServiceBasedJobInfoAccessor::ServiceBasedJobInfoAccessor(
     ServiceBasedGcsClient *client_impl)
@@ -77,11 +74,14 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<JobID, JobTableData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   fetch_all_data_operation_ = [this, subscribe](const StatusCallback &done) {
-    auto callback = [subscribe, done](
+    auto callback = [this, subscribe, done](
                         const Status &status,
                         const std::vector<rpc::JobTableData> &job_info_list) {
-      for (auto &job_info : job_info_list) {
-        subscribe(JobID::FromBinary(job_info.job_id()), job_info);
+      for (auto &job_data : job_info_list) {
+        if (job_data.is_dead() &&
+            subscribe_filter_.Filter(job_data.job_id(), job_data.timestamp())) {
+          subscribe(JobID::FromBinary(job_data.job_id()), job_data);
+        }
       }
       if (done) {
         done(status);
@@ -89,14 +89,20 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
     };
     RAY_CHECK_OK(AsyncGetAll(callback));
   };
+
   subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
-    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+    auto on_subscribe = [this, subscribe](const std::string &id,
+                                          const std::string &data) {
       JobTableData job_data;
       job_data.ParseFromString(data);
-      subscribe(JobID::FromBinary(id), job_data);
+      if (job_data.is_dead() &&
+          subscribe_filter_.Filter(job_data.job_id(), job_data.timestamp())) {
+        subscribe(JobID::FromBinary(id), job_data);
+      }
     };
     return client_impl_->GetGcsPubSub().SubscribeAll(JOB_CHANNEL, on_subscribe, done);
   };
+
   return subscribe_operation_(
       [this, done](const Status &status) { fetch_all_data_operation_(done); });
 }

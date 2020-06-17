@@ -511,16 +511,13 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 };
 
 TEST_F(ServiceBasedGcsClientTest, TestIdempotentFilter) {
-  gcs::IdempotentFilter<JobID, rpc::JobTableData> filter;
+  gcs::IdempotentFilter filter;
   auto job_id = JobID::FromInt(1);
-  rpc::JobTableData job_table_data;
-  job_table_data.set_timestamp(10);
-  ASSERT_TRUE(filter.Filter(job_id, job_table_data));
-  ASSERT_FALSE(filter.Filter(job_id, job_table_data));
-  job_table_data.set_timestamp(9);
-  ASSERT_FALSE(filter.Filter(job_id, job_table_data));
-  job_table_data.set_timestamp(11);
-  ASSERT_TRUE(filter.Filter(job_id, job_table_data));
+  ;
+  ASSERT_TRUE(filter.Filter(job_id.Binary(), 10));
+  ASSERT_FALSE(filter.Filter(job_id.Binary(), 10));
+  ASSERT_FALSE(filter.Filter(job_id.Binary(), 9));
+  ASSERT_TRUE(filter.Filter(job_id.Binary(), 11));
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestJobInfo) {
