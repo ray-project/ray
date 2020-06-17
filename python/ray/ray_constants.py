@@ -36,6 +36,7 @@ REDIS_MINIMUM_MEMORY_BYTES = 10**7
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379
 
+DEFAULT_DASHBOARD_PORT = 8265
 # Default resource requirements for actors when no resource requirements are
 # specified.
 DEFAULT_ACTOR_METHOD_CPU_SIMPLE = 1

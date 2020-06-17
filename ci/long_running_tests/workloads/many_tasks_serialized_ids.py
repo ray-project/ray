@@ -35,7 +35,7 @@ for i in range(num_nodes):
         resources={str(i): 2},
         object_store_memory=object_store_memory,
         redis_max_memory=redis_max_memory,
-        webui_host="0.0.0.0",
+        dashboard_host="0.0.0.0",
         _internal_config=config,
     )
 ray.init(address=cluster.address)

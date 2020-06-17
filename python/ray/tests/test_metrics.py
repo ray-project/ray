@@ -20,7 +20,7 @@ import psutil  # We must import psutil after ray because we bundle it with ray.
 
 
 def test_worker_stats(shutdown_only):
-    addresses = ray.init(num_cpus=1, include_webui=True)
+    addresses = ray.init(num_cpus=1, include_dashboard=True)
     raylet = ray.nodes()[0]
     num_cpus = raylet["Resources"]["CPU"]
     raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
@@ -155,7 +155,7 @@ def test_worker_stats(shutdown_only):
 
 
 def test_raylet_info_endpoint(shutdown_only):
-    addresses = ray.init(include_webui=True, num_cpus=6)
+    addresses = ray.init(include_dashboard=True, num_cpus=6)
 
     @ray.remote
     def f():
