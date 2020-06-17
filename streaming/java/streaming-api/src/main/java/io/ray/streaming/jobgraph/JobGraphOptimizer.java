@@ -66,7 +66,7 @@ public class JobGraphOptimizer {
       } else {
         outputEdges.forEach(edge -> {
           JobVertex succeedingVertex = vertexMap.get(edge.getTargetVertexId());
-          if (canChain(vertex, succeedingVertex, edge)) {
+          if (canBeChained(vertex, succeedingVertex, edge)) {
             verticesToMerge.add(succeedingVertex);
             mergeVerticesRecursively(succeedingVertex, verticesToMerge);
           } else {
@@ -121,7 +121,7 @@ public class JobGraphOptimizer {
         outputEdgesMap.get(tailVertex).forEach(edge -> {
           Pair<JobVertex, List<JobVertex>> downstreamPair =
               mergedVertexMap.get(edge.getTargetVertexId());
-          // change ForwardPartition to RoundRobinPartition if necessary.
+          // change ForwardPartition to RoundRobinPartition.
           Partition partition = changePartition(edge.getPartition());
           JobEdge newEdge = new JobEdge(
               mergedVertex.getVertexId(),
@@ -136,7 +136,7 @@ public class JobGraphOptimizer {
   }
 
   /**
-   * Change ForwardPartition to RoundRobinPartition if necessary.
+   * Change ForwardPartition to RoundRobinPartition.
    */
   private Partition changePartition(Partition partition) {
     if (partition instanceof PythonPartition) {
@@ -156,7 +156,7 @@ public class JobGraphOptimizer {
     }
   }
 
-  private boolean canChain(JobVertex precedingVertex, JobVertex succeedingVertex, JobEdge edge) {
+  private boolean canBeChained(JobVertex precedingVertex, JobVertex succeedingVertex, JobEdge edge) {
     if (jobGraph.getVertexOutputEdges(precedingVertex.getVertexId()).size() > 1 ||
         jobGraph.getVertexInputEdges(succeedingVertex.getVertexId()).size() > 1) {
       return false;
