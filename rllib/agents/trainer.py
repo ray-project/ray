@@ -829,14 +829,14 @@ class Trainer(Trainable):
             return result[0]  # backwards compatibility
 
     def compute_actions(self,
-                       observations,
-                       state=None,
-                       prev_action=None,
-                       prev_reward=None,
-                       info=None,
-                       policy_id=DEFAULT_POLICY_ID,
-                       full_fetch=False,
-                       explore=None):
+                        observations,
+                        state=None,
+                        prev_action=None,
+                        prev_reward=None,
+                        info=None,
+                        policy_id=DEFAULT_POLICY_ID,
+                        full_fetch=False,
+                        explore=None):
         """Computes an action for the specified policy on the local Worker.
 
         Note that you can also access the policy object through
@@ -863,25 +863,23 @@ class Trainer(Trainable):
             tuple: The full output of policy.compute_actions() if
                 full_fetch=True or we have an RNN-based Policy.
         """
-        #Preprocess obs and states
+        # Preprocess obs and states
         stateDefined = state is not None
         policy = self.get_policy(policy_id)
         filtered_obs, filtered_state = [], []
         for agent_id, ob in observations.items():
-            worker       = self.workers.local_worker()
-            preprocessed = worker.preprocessors[
-                    policy_id].transform(ob)
-            filtered     = worker.filters[policy_id](
-                    preprocessed, update=False)
+            worker = self.workers.local_worker()
+            preprocessed = worker.preprocessors[policy_id].transform(ob)
+            filtered = worker.filters[policy_id](preprocessed, update=False)
             filtered_obs.append(filtered)
             if state is None:
-               continue
+                continue
             elif agent_id in state:
-               filtered_state.append(state[agent_id])
+                filtered_state.append(state[agent_id])
             else:
-               filtered_state.append(policy.get_initial_state())
+                filtered_state.append(policy.get_initial_state())
 
-        #Batch obs and states
+        # Batch obs and states
         obs_batch = np.stack(filtered_obs)
         if state is None:
             state = []
@@ -892,7 +890,7 @@ class Trainer(Trainable):
         # Figure out the current (sample) time step and pass it into Policy.
         self.global_vars["timestep"] += 1
 
-        #Batch compute actions
+        # Batch compute actions
         actions, states, infos = policy.compute_actions(
             obs_batch,
             state,
@@ -903,17 +901,17 @@ class Trainer(Trainable):
             explore=explore,
             timestep=self.global_vars["timestep"])
 
-        #Unbatch actions for the environment
+        # Unbatch actions for the environment
         atns, actions = space_utils.unbatch(actions), {}
         for key, atn in zip(observations, atns):
-           actions[key] = atn
+            actions[key] = atn
 
-        #Unbatch states into a dict
+        # Unbatch states into a dict
         unbatched_states = {}
         for idx, agent_id in enumerate(observations):
             unbatched_states[agent_id] = [s[idx] for s in states]
 
-        #Return only actions or full tuple
+        # Return only actions or full tuple
         if stateDefined or full_fetch:
             return actions, unbatched_states, infos
         else:

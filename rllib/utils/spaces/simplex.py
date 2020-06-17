@@ -3,6 +3,7 @@ import gym
 
 from ray.rllib.utils.annotations import PublicAPI
 
+
 @PublicAPI
 class Simplex(gym.Space):
     """Represents a d - 1 dimensional Simplex in R^d.
