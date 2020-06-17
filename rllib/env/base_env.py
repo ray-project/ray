@@ -448,13 +448,14 @@ class _MultiAgentEnvState:
         self.last_infos = {}
         return obs, rew, dones, info
 
-    def observe(self, obs, rewards, dones, infos):
+    def observe(self, obs: MultiAgentDict, rewards: MultiAgentDict,
+                dones: MultiAgentDict, infos: MultiAgentDict):
         self.last_obs = obs
         self.last_rewards = rewards
         self.last_dones = dones
         self.last_infos = infos
 
-    def reset(self):
+    def reset(self) -> MultiAgentDict:
         self.last_obs = self.env.reset()
         self.last_rewards = {
             agent_id: None

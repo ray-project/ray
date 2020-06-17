@@ -34,6 +34,9 @@ MultiEnvDict = Dict[EnvID, MultiAgentDict]
 # Represents an observation returned from the env.
 EnvObsType = Any
 
+# Represents an action passed to the env.
+EnvActionType = Any
+
 # Info dictionary returned by calling step() on gym envs. Commonly empty dict.
 EnvInfoDict = dict
 
