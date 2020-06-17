@@ -9,6 +9,8 @@ import java.util.List;
 
 public interface Operator extends Serializable {
 
+  String getName();
+
   void open(List<Collector> collectors, RuntimeContext runtimeContext);
 
   void finish();

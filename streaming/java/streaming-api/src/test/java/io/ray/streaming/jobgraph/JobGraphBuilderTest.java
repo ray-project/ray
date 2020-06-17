@@ -89,7 +89,7 @@ public class JobGraphBuilderTest {
     jobGraph.generateDigraph();
     String diGraph = jobGraph.getDigraph();
     LOG.info(diGraph);
-    Assert.assertTrue(diGraph.contains("1-SourceOperatorImpl -> 2-KeyByOperator"));
-    Assert.assertTrue(diGraph.contains("2-KeyByOperator -> 3-SinkOperator"));
+    Assert.assertTrue(diGraph.contains("\"1-SourceOperatorImpl\" -> \"2-KeyByOperator\""));
+    Assert.assertTrue(diGraph.contains("\"2-KeyByOperator\" -> \"3-SinkOperator\""));
   }
 }

@@ -4,11 +4,13 @@ import com.google.common.base.Preconditions;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.api.context.RuntimeContext;
 import io.ray.streaming.api.function.Function;
+import io.ray.streaming.operator.Operator;
 import io.ray.streaming.operator.OperatorType;
 import io.ray.streaming.operator.StreamOperator;
 import java.util.List;
 import java.util.Map;
 import java.util.StringJoiner;
+import java.util.stream.Collectors;
 
 /**
  * Represents a {@link StreamOperator} that wraps python {@link PythonFunction}.
@@ -74,6 +76,18 @@ public class PythonOperator extends StreamOperator {
   }
 
   @Override
+  public String getName() {
+    StringBuilder builder = new StringBuilder();
+    builder.append(PythonOperator.class.getSimpleName()).append("[");
+    if (function != null) {
+      builder.append(((PythonFunction)function).toSimpleString());
+    } else {
+      builder.append(moduleName).append(".").append(className);
+    }
+    return builder.append("]").toString();
+  }
+
+  @Override
   public String toString() {
     StringJoiner stringJoiner = new StringJoiner(", ",
         PythonOperator.class.getSimpleName() + "[", "]");
@@ -110,6 +124,12 @@ public class PythonOperator extends StreamOperator {
     @Override
     public Language getLanguage() {
       return Language.PYTHON;
+    }
+
+    @Override
+    public String getName() {
+      return operators.stream().map(Operator::getName)
+          .collect(Collectors.joining(" -> ", "[", "]"));
     }
 
     @Override

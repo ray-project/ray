@@ -71,6 +71,7 @@ public abstract class StreamOperator<F extends Function> implements Operator {
     }
   }
 
+  @Override
   public String getName() {
     return name;
   }
