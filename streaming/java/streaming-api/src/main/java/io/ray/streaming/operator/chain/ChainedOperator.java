@@ -65,6 +65,12 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
     return headOperator.getLanguage();
   }
 
+  @Override
+  public String getName() {
+    return operators.stream().map(Operator::getName)
+        .collect(Collectors.joining(" -> ", "[", "]"));
+  }
+
   public List<StreamOperator> getOperators() {
     return operators;
   }
@@ -158,5 +164,6 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
     public void processElement(Record<L> record1, Record<R> record2) {
       inputOperator.processElement(record1, record2);
     }
+
   }
 }

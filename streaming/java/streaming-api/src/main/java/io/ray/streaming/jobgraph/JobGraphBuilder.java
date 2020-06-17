@@ -2,6 +2,7 @@ package io.ray.streaming.jobgraph;
 
 import com.google.common.base.Preconditions;
 import io.ray.streaming.api.stream.DataStream;
+import io.ray.streaming.api.stream.JoinStream;
 import io.ray.streaming.api.stream.Stream;
 import io.ray.streaming.api.stream.StreamSink;
 import io.ray.streaming.api.stream.StreamSource;
@@ -26,7 +27,7 @@ public class JobGraphBuilder {
   private List<StreamSink> streamSinkList;
 
   public JobGraphBuilder(List<StreamSink> streamSinkList) {
-    this(streamSinkList, "job-" + System.currentTimeMillis());
+    this(streamSinkList, "job_" + System.currentTimeMillis());
   }
 
   public JobGraphBuilder(List<StreamSink> streamSinkList, String jobName) {
@@ -95,7 +96,13 @@ public class JobGraphBuilder {
         processStream(otherStream);
       }
 
-      // TODO(chaokunyang) add two input stream support, ex join
+      // process join stream
+      if (stream instanceof JoinStream) {
+        DataStream rightStream =  ((JoinStream) stream).getRightStream();
+        this.jobGraph.addEdge(
+            new JobEdge(rightStream.getId(), vertexId, rightStream.getPartition()));
+        processStream(rightStream);
+      }
     } else {
       throw new UnsupportedOperationException("Unsupported stream: " + stream);
     }
