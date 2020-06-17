@@ -81,7 +81,7 @@ class GcsServer {
   virtual void InitGcsActorManager();
 
   /// The job info handler
-  virtual std::unique_ptr<rpc::JobInfoHandler> InitJobInfoHandler();
+  virtual void InitJobInfoHandler();
 
   /// The object manager
   virtual std::unique_ptr<GcsObjectManager> InitObjectManager();
