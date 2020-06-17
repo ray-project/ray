@@ -18,6 +18,20 @@
 namespace ray {
 namespace gcs {
 
+template <typename ID, typename Data>
+bool IdempotentFilter<ID, Data>::Filter(const ID &id, const Data &data) {
+  auto it = cache_.find(id);
+  if (it == cache_.end()) {
+    cache_[id] = data.timestamp();
+  } else if (it->second >= data.timestamp()) {
+    it->second = data.timestamp();
+    return false;
+  }
+  return true;
+}
+
+template class IdempotentFilter<JobID, JobTableData>;
+
 ServiceBasedJobInfoAccessor::ServiceBasedJobInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}

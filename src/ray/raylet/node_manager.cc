@@ -760,7 +760,6 @@ void NodeManager::ResourceCreateUpdated(const ClientID &client_id,
     // The resource update is on the local node, check if we can reschedule tasks.
     TryLocalInfeasibleTaskScheduling();
   }
-  return;
 }
 
 void NodeManager::ResourceDeleted(const ClientID &client_id,
@@ -787,7 +786,6 @@ void NodeManager::ResourceDeleted(const ClientID &client_id,
       new_resource_scheduler_->DeleteResource(client_id.Binary(), resource_label);
     }
   }
-  return;
 }
 
 void NodeManager::TryLocalInfeasibleTaskScheduling() {

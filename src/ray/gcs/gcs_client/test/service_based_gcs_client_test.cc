@@ -510,6 +510,19 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   const std::chrono::milliseconds timeout_ms_{2000};
 };
 
+TEST_F(ServiceBasedGcsClientTest, TestIdempotentFilter) {
+  gcs::IdempotentFilter<JobID, rpc::JobTableData> filter;
+  auto job_id = JobID::FromInt(1);
+  rpc::JobTableData job_table_data;
+  job_table_data.set_timestamp(10);
+  ASSERT_TRUE(filter.Filter(job_id, job_table_data));
+  ASSERT_FALSE(filter.Filter(job_id, job_table_data));
+  job_table_data.set_timestamp(9);
+  ASSERT_FALSE(filter.Filter(job_id, job_table_data));
+  job_table_data.set_timestamp(11);
+  ASSERT_TRUE(filter.Filter(job_id, job_table_data));
+}
+
 TEST_F(ServiceBasedGcsClientTest, TestJobInfo) {
   // Create job table data.
   JobID add_job_id = JobID::FromInt(1);
