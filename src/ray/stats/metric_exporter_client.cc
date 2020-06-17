@@ -32,42 +32,5 @@ void MetricExporterDecorator::ReportMetrics(const MetricPoints &points) {
     exporter_->ReportMetrics(points);
   }
 }
-
-GcsExporterClient::GcsExporterClient(std::shared_ptr<MetricExporterClient> exporter,
-                                     rpc::GcsRpcClient &gcs_rpc_client)
-    : MetricExporterDecorator(exporter), gcs_rpc_client_(gcs_rpc_client) {}
-
-void GcsExporterClient::ReportMetrics(const MetricPoints &points) {
-  // Apply upper decorators first.
-  MetricExporterDecorator::ReportMetrics(points);
-
-  rpc::StatsMetrics stats_metrics;
-  for (auto &point : points) {
-    auto metric = stats_metrics.add_metrics();
-    metric->set_metric_name(point.metric_name);
-    metric->set_timestamp(point.timestamp);
-    metric->set_value(point.value);
-    std::for_each(point.tags.begin(), point.tags.end(),
-                  [&metric](const std::pair<std::string, std::string> &point_tag) {
-                    auto tag = metric->add_tags();
-                    tag->set_key(point_tag.first);
-                    tag->set_value(point_tag.second);
-                  });
-  }
-  rpc::ReportMetricsRequest report_metrics_request;
-  report_metrics_request.mutable_stats_metrics()->CopyFrom(stats_metrics);
-  std::promise<bool> promise;
-  gcs_rpc_client_.ReportMetrics(
-      report_metrics_request,
-      [&promise](const Status &status, const rpc::ReportMetricsReply &reply) {
-        promise.set_value(status.ok());
-      });
-  auto status =
-      promise.get_future().wait_for(std::chrono::milliseconds(kMetricExporterRpcTimeout));
-  if (status == std::future_status::ready) {
-    RAY_LOG(WARNING) << "Metric export rpc request failed.";
-  }
-}
-
 }  // namespace stats
 }  // namespace ray

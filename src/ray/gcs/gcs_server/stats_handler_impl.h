@@ -36,9 +36,6 @@ class DefaultStatsHandler : public rpc::StatsHandler {
                                rpc::GetAllProfileInfoReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleReportMetrics(const ReportMetricsRequest &request, ReportMetricsReply *reply,
-                           SendReplyCallback send_reply_callback) override;
-
  private:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 };

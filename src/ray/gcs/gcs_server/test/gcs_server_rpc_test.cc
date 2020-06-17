@@ -360,16 +360,6 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool ReportMetrics(const rpc::ReportMetricsRequest &request) {
-    std::promise<bool> promise;
-    client_->ReportMetrics(
-        request, [&promise](const Status &status, const rpc::ReportMetricsReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool ReportJobError(const rpc::ReportJobErrorRequest &request) {
     std::promise<bool> promise;
     client_->ReportJobError(
@@ -592,18 +582,6 @@ TEST_F(GcsServerTest, TestStats) {
   rpc::AddProfileDataRequest add_profile_data_request;
   add_profile_data_request.mutable_profile_data()->CopyFrom(profile_table_data);
   ASSERT_TRUE(AddProfileData(add_profile_data_request));
-
-  rpc::StatsMetrics stats_metrics;
-  auto metric = stats_metrics.add_metrics();
-  metric->set_metric_name("ray.metric.a1");
-  metric->set_timestamp(current_sys_time_ms());
-  metric->set_value(1.0);
-  auto tag = metric->add_tags();
-  tag->set_key("tag1");
-  tag->set_value("value1");
-  rpc::ReportMetricsRequest report_metrics_request;
-  report_metrics_request.mutable_stats_metrics()->CopyFrom(stats_metrics);
-  ASSERT_TRUE(ReportMetrics(report_metrics_request));
 }
 
 TEST_F(GcsServerTest, TestErrorInfo) {

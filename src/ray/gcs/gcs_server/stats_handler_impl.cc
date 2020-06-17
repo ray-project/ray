@@ -62,13 +62,5 @@ void DefaultStatsHandler::HandleGetAllProfileInfo(
   }
 }
 
-void DefaultStatsHandler::HandleReportMetrics(const ReportMetricsRequest &request,
-                                              ReportMetricsReply *reply,
-                                              SendReplyCallback send_reply_callback) {
-  /// TODO: Export received metrics info for scheduler or dashboard exhibition.
-  RAY_LOG(INFO) << "Reporting Metrics size " << request.stats_metrics().metrics_size();
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-}
-
 }  // namespace rpc
 }  // namespace ray

@@ -24,6 +24,7 @@ namespace stats {
 class MetricExporterClient {
  public:
   virtual void ReportMetrics(const MetricPoints &points) = 0;
+  virtual ~MetricExporterClient() = default;
 };
 
 /// Default stdout exporter client can log metrics info for debug.
@@ -50,23 +51,12 @@ class MetricExporterDecorator : public MetricExporterClient {
   std::shared_ptr<MetricExporterClient> exporter_;
 };
 
-/// GcsExporterClient is used for exporting metrics to GCS server via RPC.
-class GcsExporterClient : public MetricExporterDecorator {
- public:
-  GcsExporterClient(std::shared_ptr<MetricExporterClient> exporter,
-                    rpc::GcsRpcClient &gcs_rpc_client);
-  void ReportMetrics(const MetricPoints &points) override;
-
- private:
-  rpc::GcsRpcClient &gcs_rpc_client_;
-  static constexpr uint32_t kMetricExporterRpcTimeout = 2000;
-};
-
 class OpentsdbExporterClient : public MetricExporterDecorator {
  public:
   OpentsdbExporterClient(std::shared_ptr<MetricExporterClient> exporter)
       : MetricExporterDecorator(exporter) {}
   void ReportMetrics(const MetricPoints &points) override {
+    MetricExporterDecorator::ReportMetrics(points);
     // TODO(lingxuan.zlx): opentsdb client is used for report to backend
     // storage.
   }
