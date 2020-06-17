@@ -908,6 +908,10 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // Restart GCS server.
   RestartGcsServer();
 
+  // RPC calls once, triggering GCS client reconnect GCS server and resubscribe.
+  ASSERT_TRUE(GetActor(actor_id).state() ==
+              rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+
   // When GCS client detects that GCS server has restarted, but the pub-sub server
   // didn't restart, it will fetch data again from the GCS server. So we'll receive
   // another notification of ALIVE state.
@@ -927,9 +931,9 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   WaitPendingDone(num_subscribe_all_notifications, 3);
   WaitPendingDone(num_subscribe_one_notifications, 3);
   CheckActorData(subscribe_all_notifications[2],
-                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
   CheckActorData(subscribe_one_notifications[2],
-                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
