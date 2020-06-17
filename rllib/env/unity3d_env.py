@@ -3,9 +3,11 @@ import logging
 import mlagents_envs
 from mlagents_envs.environment import UnityEnvironment
 import numpy as np
+from typing import Callable
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.types import MultiAgentDict, PolicyID, AgentID
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +28,13 @@ class Unity3DEnv(MultiAgentEnv):
     """
 
     def __init__(self,
-                 file_name=None,
-                 worker_id=0,
-                 base_port=5004,
-                 seed=0,
-                 no_graphics=False,
-                 timeout_wait=60,
-                 episode_horizon=1000):
+                 file_name: str = None,
+                 worker_id: int = 0,
+                 base_port: int = 5004,
+                 seed: int = 0,
+                 no_graphics: bool = False,
+                 timeout_wait: int = 60,
+                 episode_horizon: int = 1000):
         """Initializes a Unity3DEnv object.
 
         Args:
@@ -92,7 +94,9 @@ class Unity3DEnv(MultiAgentEnv):
         self.episode_timesteps = 0
 
     @override(MultiAgentEnv)
-    def step(self, action_dict):
+    def step(
+            self, action_dict: MultiAgentDict
+    ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
         """Performs one multi-agent step through the game.
 
         Args:
@@ -139,7 +143,7 @@ class Unity3DEnv(MultiAgentEnv):
         return obs, rewards, dones, infos
 
     @override(MultiAgentEnv)
-    def reset(self):
+    def reset(self) -> MultiAgentDict:
         """Resets the entire Unity3D scene (a single multi-agent episode)."""
         self.episode_timesteps = 0
         self.unity_env.reset()
@@ -189,7 +193,8 @@ class Unity3DEnv(MultiAgentEnv):
         return obs, rewards, {"__all__": False}, infos
 
     @staticmethod
-    def get_policy_configs_for_game(game_name):
+    def get_policy_configs_for_game(
+            game_name: str) -> Tuple[dict, Callable[[AgentID], PolicyID]]:
 
         # The RLlib server must know about the Spaces that the Client will be
         # using inside Unity3D, up-front.
