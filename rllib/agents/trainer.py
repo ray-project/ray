@@ -12,6 +12,7 @@ import ray
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.normalize_actions import NormalizeActionWrapper
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy import Policy, PolicyID
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -24,7 +25,7 @@ from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.types import TrainerConfigDict, \
-    PartialTrainerConfigDict, EnvConfigDict, EnvInfoDict, ResultDict, EnvType
+    PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
@@ -681,7 +682,7 @@ class Trainer(Trainable):
         self.__setstate__(extra_data)
 
     @DeveloperAPI
-    def _make_workers(self, env_creator: Callable[[EnvConfigDict], EnvType],
+    def _make_workers(self, env_creator: Callable[[EnvContext], EnvType],
                       policy: type, config: TrainerConfigDict,
                       num_workers: int) -> WorkerSet:
         """Default factory method for a WorkerSet running under this Trainer.
@@ -713,7 +714,7 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def _init(self, config: TrainerConfigDict,
-              env_creator: Callable[[EnvConfigDict], EnvType]):
+              env_creator: Callable[[EnvContext], EnvType]):
         """Subclasses should override this for custom initialization."""
         raise NotImplementedError
 
