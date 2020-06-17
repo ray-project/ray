@@ -141,6 +141,10 @@ int main(int argc, char *argv[]) {
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig([&](const std::unordered_map<
                                                               std::string, std::string>
                                                                   stored_raylet_config) {
+    // NOTE: We update the raylet_config map from above. This avoids a race condition
+    // between AsyncSetInternalConfig and AsyncGetInternalConfig on the head node. There
+    // is an unlikely race condition where a second node calls AsyncGetInternalConfig
+    // before the head finishes AsyncSetInternalConfig.
     for (auto pair : stored_raylet_config) {
       raylet_config[pair.first] = pair.second;
     }
