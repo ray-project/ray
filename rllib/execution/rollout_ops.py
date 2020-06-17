@@ -10,10 +10,10 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import GradientType, SampleBatchType, \
     STEPS_SAMPLED_COUNTER, LEARNER_INFO, SAMPLE_TIMER, \
     GRAD_WAIT_TIMER, _check_sample_batch_type, _get_shared_metrics
-from ray.rllib.policy.policy import PolicyID
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.sgd import standardized
+from ray.rllib.utils.types import PolicyID
 
 logger = logging.getLogger(__name__)
 

@@ -42,3 +42,14 @@ EnvInfoDict = dict
 
 # Represents the result dict returned by Trainer.train().
 ResultDict = dict
+
+# Dict of tensors returned by compute gradients on the policy, e.g.,
+# {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}, for multi-agent,
+# {"policy1": {"learner_stats": ..., }, "policy2": ...}.
+GradInfoDict = dict
+
+# Dict of learner stats returned by compute gradients on the policy, e.g.,
+# {"vf_loss": ..., ...}. This will always be nested under the "learner_stats"
+# key(s) of a GradInfoDict. In the multi-agent case, this will be keyed by
+# policy id.
+LearnerStatsDict = dict
