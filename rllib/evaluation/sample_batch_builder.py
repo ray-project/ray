@@ -1,13 +1,14 @@
 import collections
 import logging
 import numpy as np
-from typing import List, Any, Dict, TYPE_CHECKING
+from typing import List, Any, Dict, Optional, TYPE_CHECKING
 
+from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.types import PolicyID
+from ray.rllib.utils.types import PolicyID, AgentID
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.util.debug import log_once
 
@@ -109,7 +110,7 @@ class MultiAgentSampleBatchBuilder:
         # Regardless of the number of agents involved in each of these steps.
         self.count = 0
 
-    def total(self):
+    def total(self) -> int:
         """Returns the total number of steps taken in the env (all agents).
 
         Returns:
@@ -119,7 +120,7 @@ class MultiAgentSampleBatchBuilder:
 
         return sum(a.count for a in self.agent_builders.values())
 
-    def has_pending_agent_data(self):
+    def has_pending_agent_data(self) -> bool:
         """Returns whether there is pending unprocessed data.
 
         Returns:
@@ -130,7 +131,8 @@ class MultiAgentSampleBatchBuilder:
         return len(self.agent_builders) > 0
 
     @DeveloperAPI
-    def add_values(self, agent_id, policy_id, **values):
+    def add_values(self, agent_id: AgentID, policy_id: AgentID,
+                   **values: Dict[str, Any]) -> None:
         """Add the given dictionary (row) of values to this batch.
 
         Arguments:
@@ -149,7 +151,8 @@ class MultiAgentSampleBatchBuilder:
 
         self.agent_builders[agent_id].add_values(**values)
 
-    def postprocess_batch_so_far(self, episode=None):
+    def postprocess_batch_so_far(
+            self, episode: Optional[MultiAgentEpisode] = None) -> None:
         """Apply policy postprocessors to any unprocessed rows.
 
         This pushes the postprocessed per-agent batches onto the per-policy
@@ -217,7 +220,7 @@ class MultiAgentSampleBatchBuilder:
         self.agent_builders.clear()
         self.agent_to_policy.clear()
 
-    def check_missing_dones(self):
+    def check_missing_dones(self) -> None:
         for agent_id, builder in self.agent_builders.items():
             if builder.buffers["dones"][-1] is not True:
                 raise ValueError(
@@ -230,7 +233,8 @@ class MultiAgentSampleBatchBuilder:
                     "Alternatively, set no_done_at_end=True to allow this.")
 
     @DeveloperAPI
-    def build_and_reset(self, episode=None):
+    def build_and_reset(self, episode: Optional[MultiAgentEpisode] = None
+                        ) -> MultiAgentBatch:
         """Returns the accumulated sample batches for each policy.
 
         Any unprocessed rows will be first postprocessed with a policy
