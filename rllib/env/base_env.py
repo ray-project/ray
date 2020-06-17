@@ -1,8 +1,11 @@
+from typing import Callable
+
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.types import EnvType
 
 ASYNC_RESET_RETURN = "async_reset_return"
 
@@ -73,11 +76,11 @@ class BaseEnv:
     """
 
     @staticmethod
-    def to_base_env(env,
-                    make_env=None,
-                    num_envs=1,
-                    remote_envs=False,
-                    remote_env_batch_wait_ms=0):
+    def to_base_env(env: EnvType,
+                    make_env: Callable[[int], EnvType] = None,
+                    num_envs: int = 1,
+                    remote_envs: bool = False,
+                    remote_env_batch_wait_ms: bool = 0) -> "BaseEnv":
         """Wraps any env type as needed to expose the async interface."""
 
         from ray.rllib.env.remote_vector_env import RemoteVectorEnv

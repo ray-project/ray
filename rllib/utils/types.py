@@ -1,3 +1,5 @@
+from typing import Any
+
 # Represents a fully filled out config of a Trainer class.
 TrainerConfigDict = dict
 
@@ -8,6 +10,10 @@ PartialTrainerConfigDict = dict
 # Represents the env_config sub-dict of the trainer config that is passed to
 # the env constructor.
 EnvConfigDict = dict
+
+# Represents a BaseEnv, MultiAgentEnv, ExternalEnv, ExternalMultiAgentEnv,
+# VectorEnv, or gym.Env.
+EnvType = Any
 
 # Info dictionary returned by calling step() on gym envs.
 EnvInfoDict = dict

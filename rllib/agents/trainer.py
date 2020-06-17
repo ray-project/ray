@@ -11,7 +11,6 @@ from typing import Callable, List, Dict, Union, Any
 import ray
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.env import EnvType
 from ray.rllib.env.normalize_actions import NormalizeActionWrapper
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy import Policy, PolicyID
@@ -25,7 +24,7 @@ from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.types import TrainerConfigDict, \
-    PartialTrainerConfigDict, EnvConfigDict, EnvInfoDict, ResultDict
+    PartialTrainerConfigDict, EnvConfigDict, EnvInfoDict, ResultDict, EnvType
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
