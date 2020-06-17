@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Dict
 
 # Represents a fully filled out config of a Trainer class.
 TrainerConfigDict = dict
@@ -15,8 +15,27 @@ EnvConfigDict = dict
 # VectorEnv, or gym.Env.
 EnvType = Any
 
-# Info dictionary returned by calling step() on gym envs.
+# Represents a generic identifier for an agent (e.g., "agent1").
+AgentID = Any
+
+# Represents a generic identifier for a policy (e.g., "pol1").
+PolicyID = str
+
+# Represents an environment id.
+EnvID = int
+
+# A dict keyed by agent ids, e.g. {"agent-1": value}.
+MultiAgentDict = Dict[AgentID, Any]
+
+# A dict keyed by env ids that contain further nested dictionaries keyed by
+# agent ids. e.g., {"env-1": {"agent-1": value}}.
+MultiEnvDict = Dict[EnvID, MultiAgentDict]
+
+# Represents an observation returned from the env.
+EnvObsType = Any
+
+# Info dictionary returned by calling step() on gym envs. Commonly empty dict.
 EnvInfoDict = dict
 
-# Represents the result dict returned by Trainer.train()
+# Represents the result dict returned by Trainer.train().
 ResultDict = dict

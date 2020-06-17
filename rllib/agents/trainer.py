@@ -370,13 +370,16 @@ COMMON_CONFIG = {
 
 
 @DeveloperAPI
-def with_common_config(extra_config):
+def with_common_config(
+        extra_config: PartialTrainerConfigDict) -> TrainerConfigDict:
     """Returns the given config dict merged with common agent confs."""
 
     return with_base_config(COMMON_CONFIG, extra_config)
 
 
-def with_base_config(base_config, extra_config):
+def with_base_config(
+        base_config: TrainerConfigDict,
+        extra_config: PartialTrainerConfigDict) -> TrainerConfigDict:
     """Returns the given config dict merged with a base agent conf."""
 
     config = copy.deepcopy(base_config)
