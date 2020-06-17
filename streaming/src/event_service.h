@@ -50,7 +50,7 @@ struct Event {
 /// processing functions ordered by its priority.
 class EventQueue {
  public:
-  EventQueue(size_t size) : urgent_(false), capacity_(size), is_freezed_(true) {}
+  EventQueue(size_t size) : urgent_(false), capacity_(size), is_active_(true) {}
 
   virtual ~EventQueue();
 
@@ -95,7 +95,10 @@ class EventQueue {
   // Urgent event will be poped out first if urgent_ flag is true.
   bool urgent_;
   size_t capacity_;
-  bool is_freezed_;
+  // Event service active flag.
+  bool is_active_;
+  // Pop/Get timeout ms for condition variables wait.
+  static constexpr int kConditionTimeoutMs = 200;
 };
 
 class EventService {
