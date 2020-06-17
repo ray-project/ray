@@ -500,6 +500,13 @@ class NodeInfoAccessor {
   virtual Status AsyncGetResources(const ClientID &node_id,
                                    const OptionalItemCallback<ResourceMap> &callback) = 0;
 
+  /// Get resources of all nodes from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetAllNodeResources(
+      const MultiItemCallback<rpc::NodeResources> &callback) = 0;
+
   /// Update resources of node in GCS asynchronously.
   ///
   /// \param node_id The ID of node to update dynamic resources.

@@ -35,7 +35,17 @@ class ServiceBasedGcsClient;
 /// `IdempotentFilter` is used to filter duplicate or older data.
 class IdempotentFilter {
  public:
+  /// Check whether the data is duplicate or older. Non-thread safe.
+  ///
+  /// \param id The id of data.
+  /// \param timestamp The timestamp of data.
+  /// \return If data is duplicate or older, return false, otherwise return true.
   bool Filter(const std::string &id, int64_t timestamp);
+
+  /// Remove the specified id of data. Non-thread safe.
+  ///
+  /// \param id The id of data.
+  void Remove(const std::string &id);
 
  private:
   /// A cache of the current latest message timestamp for each ID.
@@ -192,6 +202,9 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   Status AsyncGetResources(const ClientID &node_id,
                            const OptionalItemCallback<ResourceMap> &callback) override;
 
+  Status AsyncGetAllNodeResources(
+      const MultiItemCallback<rpc::NodeResources> &callback) override;
+
   Status AsyncUpdateResources(const ClientID &node_id, const ResourceMap &resources,
                               const StatusCallback &callback) override;
 
@@ -236,6 +249,10 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
   FetchDataOperation fetch_node_data_operation_;
+  FetchDataOperation fetch_resource_data_operation_;
+
+  IdempotentFilter subscribe_node_filter_;
+  IdempotentFilter subscribe_resource_filter_;
 
   void HandleNotification(const GcsNodeInfo &node_info);
 
