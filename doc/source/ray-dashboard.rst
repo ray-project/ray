@@ -58,10 +58,10 @@ The logical view shows you:
 
 Memory View
 ~~~~~~~~~~~~
-The Memory view shows you:
+The memory view shows you:
 
-- States of Ray objects, such as sizes, refernece types, and call sites.
-- Summary of reference types and object sizes in use.
+- The state of Ray objects, including their size, reference type, and call site.
+- A summary of reference types and object sizes in use.
 
 .. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/dashboard/Memory-view-basic.png
     :align: center
@@ -136,7 +136,7 @@ is bigger than the total gpus available in this cluster (2 GPUs).
 
 Debugging ObjectStoreFullError and Memory Leak
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-You can get information for Ray objects through the Ray Memory tab. It is useful to debug memory leak, especially the `ObjectStoreFullError` error.
+You can view information for Ray objects in the memory tab. It is useful to debug memory leaks, especially `ObjectStoreFullError`.
 Note that this is the ported version of the `ray memory command <https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory>`_. To learn how to translate this table, please learn the `ray memory` command.
 
 Inspect Memory Usage
