@@ -239,7 +239,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     default=None,
     type=bool,
     help="provide this argument if the UI should be started "
-    "(DEPRECATED: please use --include-dashboard")
+    "(DEPRECATED: please use --include-dashboard.")
 @click.option(
     "--webui-host",
     required=False,
@@ -351,13 +351,16 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             raise ValueError("Cannot specify both --port and --redis-port "
                              "as port is a rename of deprecated redis-port")
     if include_webui is not None:
-        logger.warn("The --include-webui argument will be deprecated soon. "
+        logger.warn("The --include-webui argument will be deprecated"
+                    " in release 0.8.7 "
                     "Please use --include-dashboard instead.")
+        if include_dashboard is not None:
+            include_dashboard = include_webui
 
     dashboard_host_default = "localhost"
     if webui_host != dashboard_host_default:
-        logger.warn("The --webui-host argument will be deprecated soon. "
-                    "Please use --dashboard-host instead.")
+        logger.warn("The --webui-host argument will be deprecated"
+                    " soon. Please use --dashboard-host instead.")
         if webui_host != dashboard_host and dashboard_host != "localhost":
             raise ValueError(
                 "Cannot specify both --webui-host and --dashboard-host,"
@@ -485,11 +488,10 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             raise Exception("If --head is not passed in, --redis-max-clients "
                             "must not be provided.")
         if include_webui:
-            raise Exception(
-                "If --head is not passed in, the --include-webui"
-                "flag is not relevant.")
+            raise Exception("If --head is not passed in, the --include-webui"
+                            "flag is not relevant.")
         if include_dashboard:
-            raise Exception(
+            raise ValueError(
                 "If --head is not passed in, the --include-dashboard"
                 "flag is not relevant.")
         if include_java is not None:

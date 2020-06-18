@@ -31,8 +31,7 @@ subprocess.call([
     "chmod +x hey_linux_amd64"
 ])
 
-ray.init(
-    address=cluster.address, include_dashboard=True, dashboard_host="0.0.0.0")
+ray.init(address=cluster.address, dashboard_host="0.0.0.0")
 serve.init()
 
 
