@@ -91,11 +91,7 @@ void ServiceBasedGcsClient::Disconnect() {
   RAY_CHECK(is_connected_);
   is_connected_ = false;
   is_ready_to_exit_ = true;
-  boost::system::error_code ec;
-  detect_timer_->cancel(ec);
-  if (ec) {
-    RAY_LOG(WARNING) << "An exception occurs when Shutdown, error " << ec.message();
-  }
+  detect_timer_->cancel();
   gcs_pub_sub_.reset();
   redis_gcs_client_->Disconnect();
   redis_gcs_client_.reset();
