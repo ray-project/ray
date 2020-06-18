@@ -47,8 +47,11 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   };
   std::pair<std::string, int> address = get_server_address_func_();
 
-  re_subscribe_func_ = [this](bool is_pubsub_server_restarted,
-                              const std::pair<std::string, int> &address) {
+  resubscribe_func_ = [this](bool is_pubsub_server_restarted,
+                             const std::pair<std::string, int> &address) {
+    // Both service discovery and RPC disconnection will call resubscribe if gcs server
+    // restarts. In order to avoid repeated subscriptions, we added a check of current gcs
+    // server address.
     if (address != current_gcs_server_address_) {
       current_gcs_server_address_ = address;
       job_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
@@ -64,7 +67,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   client_call_manager_.reset(new rpc::ClientCallManager(io_service));
   gcs_rpc_client_.reset(
       new rpc::GcsRpcClient(address.first, address.second, *client_call_manager_,
-                            get_server_address_func_, re_subscribe_func_));
+                            get_server_address_func_, resubscribe_func_));
   job_accessor_.reset(new ServiceBasedJobInfoAccessor(this));
   actor_accessor_.reset(new ServiceBasedActorInfoAccessor(this));
   node_accessor_.reset(new ServiceBasedNodeInfoAccessor(this));
@@ -139,7 +142,7 @@ void ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
 
 void ServiceBasedGcsClient::Tick() {
   auto address = get_server_address_func_();
-  re_subscribe_func_(false, address);
+  resubscribe_func_(false, address);
   ScheduleTick();
 }
 
