@@ -38,26 +38,26 @@ def dockerize_if_needed(config):
         docker_pull_cmd = "docker pull {}".format(docker_image)
         config["initialization_commands"].append(docker_pull_cmd)
 
-    head_docker_start = docker_start_cmds(ssh_user, head_docker_image,
-                                          docker_mounts, cname,
+    head_docker_start = docker_start_cmds(ssh_user, head_docker_image, cname,
                                           run_options + head_run_options)
 
-    worker_docker_start = docker_start_cmds(ssh_user, worker_docker_image,
-                                            docker_mounts, cname,
-                                            run_options + worker_run_options)
+    worker_docker_start = docker_start_cmds(
+        ssh_user, worker_docker_image, cname, run_options + worker_run_options)
 
     config["head_setup_commands"] = head_docker_start + (with_docker_exec(
         config["head_setup_commands"], container_name=cname))
     config["head_start_ray_commands"] = (
-        docker_autoscaler_setup(cname) + with_docker_exec(
-            config["head_start_ray_commands"], container_name=cname))
+        docker_autoscaler_setup(cname) + copy_file_mounts(
+            docker_mounts, cname) + with_docker_exec(
+                config["head_start_ray_commands"], container_name=cname))
 
     config["worker_setup_commands"] = worker_docker_start + (with_docker_exec(
         config["worker_setup_commands"], container_name=cname))
-    config["worker_start_ray_commands"] = with_docker_exec(
-        config["worker_start_ray_commands"],
-        container_name=cname,
-        env_vars=["RAY_HEAD_IP"])
+    config["worker_start_ray_commands"] = copy_file_mounts(
+        docker_mounts, cname) + with_docker_exec(
+            config["worker_start_ray_commands"],
+            container_name=cname,
+            env_vars=["RAY_HEAD_IP"])
 
     return config
 
@@ -84,7 +84,7 @@ def check_docker_running_cmd(cname):
     return " ".join(["docker", "inspect", "-f", "'{{.State.Running}}'", cname])
 
 
-def docker_start_cmds(user, image, mount, cname, user_options):
+def docker_start_cmds(user, image, cname, user_options):
     cmds = []
 
     # create flags
@@ -93,8 +93,6 @@ def docker_start_cmds(user, image, mount, cname, user_options):
         "-p {port}:{port}".format(port=port)
         for port in ["6379", "8076", "4321"]
     ])
-    mount_flags = " ".join(
-        ["-v {src}:{dest}".format(src=k, dest=v) for k, v in mount.items()])
 
     # for click, used in ray cli
     env_vars = {"LC_ALL": "C.UTF-8", "LANG": "C.UTF-8"}
@@ -107,11 +105,22 @@ def docker_start_cmds(user, image, mount, cname, user_options):
     docker_check = check_docker_running_cmd(cname) + " || "
     docker_run = [
         "docker", "run", "--rm", "--name {}".format(cname), "-d", "-it",
-        port_flags, mount_flags, env_flags, user_options_str, "--net=host",
-        image, "bash"
+        port_flags, env_flags, user_options_str, "--net=host", image, "bash"
     ]
     cmds.append(docker_check + " ".join(docker_run))
 
+    return cmds
+
+
+def copy_file_mounts(mounts, cname):
+    cmds = []
+    for src, dest in mounts.items():
+        assert dest.find("~") != 0, "Remote file munt must be an absolute path"
+        cmds.append(
+            with_docker_exec(
+                ["mkdir -p {}".format(os.path.dirname(dest.rstrip("/")))],
+                container_name=cname)[0])
+        cmds.append("docker cp {} {}:{}".format(src, cname, dest))
     return cmds
 
 
