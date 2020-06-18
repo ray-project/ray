@@ -11,6 +11,8 @@ import os
 
 import requests
 from pygments import formatters, highlight, lexers
+
+import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
 from ray.serve.context import FakeFlaskRequest, TaskContext
 from ray.serve.http_util import build_flask_request
@@ -173,3 +175,36 @@ def unpack_future(src: asyncio.Future, num_items: int) -> List[asyncio.Future]:
     src.add_done_callback(unwrap_callback)
 
     return dest_futures
+
+
+class MockScheduler:
+    def __init__(self, ray_nodes=None):
+        if ray_nodes is None:
+            ray_nodes = ray.nodes()
+
+        self.node_to_resources = {
+            node["NodeID"]: node["Resources"]
+            for node in ray_nodes if node["Alive"]
+        }
+
+    def try_schedule(self, resource_dict) -> bool:
+        # Filter out zero value
+        resource_dict = {k: v for k, v in resource_dict.items() if v > 0}
+
+        for node_id, node_resource in self.node_to_resources.items():
+            # Check if we can schedule on this node
+            feasible = True
+            for key, count in resource_dict.items():
+                if node_resource.get(key, 0) - count < 0:
+                    feasible = False
+
+            # If we can, schedule it on this node
+            if feasible:
+                self._substract_resource(resource_dict, node_id)
+                return True
+        return False
+
+    def _substract_resource(self, resource_dict, node_id):
+        node_resource = self.node_to_resources[node_id]
+        for key, count in resource_dict.items():
+            node_resource[key] -= count

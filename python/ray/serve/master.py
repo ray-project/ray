@@ -13,7 +13,9 @@ from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.metric.exporter import MetricExporterActor
 from ray.serve.router import Router
-from ray.serve.utils import (format_actor_name, get_random_letters, logger)
+from ray.serve.exceptions import RayServeException
+from ray.serve.utils import (format_actor_name, get_random_letters, logger,
+                             MockScheduler)
 
 import numpy as np
 
@@ -423,6 +425,25 @@ class ServeMaster:
 
         current_num_replicas = len(self.replicas[backend_tag])
         delta_num_replicas = num_replicas - current_num_replicas
+
+        _, _, replicas_config = self.backends[backend_tag]
+        resource_per_replica = replicas_config.resource_dict
+
+        if delta_num_replicas > 0:
+            scheduler = MockScheduler()
+            can_schedule = [
+                scheduler.try_schedule(resource_per_replica)
+                for _ in range(delta_num_replicas)
+            ]
+            if not all(can_schedule):
+                num_possible = sum(can_schedule)
+                raise RayServeException(
+                    "Cannot scale backend {} to {} replicas. Ray Serve tried "
+                    "to add {} replicas but the resources only allows {} "
+                    "to be added. To fix this, consider scaling to replica to "
+                    "{}.".format(backend_tag, num_replicas, delta_num_replicas,
+                                 num_possible,
+                                 current_num_replicas + num_possible))
 
         if delta_num_replicas > 0:
             logger.debug("Adding {} replicas to backend {}".format(

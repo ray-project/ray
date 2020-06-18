@@ -4,7 +4,8 @@ import json
 import numpy as np
 import pytest
 
-from ray.serve.utils import ServeEncoder, chain_future, unpack_future
+from ray.serve.utils import (ServeEncoder, chain_future, unpack_future,
+                             MockScheduler)
 
 
 def test_bytes_encoder():
@@ -64,6 +65,28 @@ async def test_future_chaining():
     for future in single_futures:
         with pytest.raises(ValueError):
             await future
+
+
+def test_mock_scheduler():
+    ray_nodes = [{
+        "NodeID": "AAA",
+        "Alive": True,
+        "Resources": {
+            "CPU": 2.0,
+            "GPU": 2.0
+        }
+    }, {
+        "NodeID": "BBB",
+        "Alive": True,
+        "Resources": {
+            "CPU": 4.0,
+        }
+    }]
+    sched = MockScheduler(ray_nodes=ray_nodes)
+    assert sched.try_schedule({"CPU": 4})
+    assert sched.try_schedule({"CPU": 2, "GPU": 2})
+    assert not sched.try_schedule({"CPU": 100})
+    assert not sched.try_schedule({"CPU": 2})
 
 
 if __name__ == "__main__":
