@@ -351,8 +351,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             raise ValueError("Cannot specify both --port and --redis-port "
                              "as port is a rename of deprecated redis-port")
     if include_webui is not None:
-        logger.warn("The --include-webui argument will be deprecated"
-                    " in release 0.8.7 "
+        logger.warn("The --include-webui argument will be deprecated soon"
                     "Please use --include-dashboard instead.")
         if include_dashboard is not None:
             include_dashboard = include_webui

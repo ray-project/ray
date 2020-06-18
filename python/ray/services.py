@@ -1128,14 +1128,23 @@ def start_dashboard(require_dashboard,
     Returns:
         ProcessInfo for the process that was started.
     """
-    while True:
+    if port == ray_constants.DEFAULT_DASHBOARD_PORT:
+        while True:
+            try:
+                port_test_socket = socket.socket()
+                port_test_socket.bind(("127.0.0.1", port))
+                port_test_socket.close()
+                break
+            except socket.error:
+                port += 1
+    else:
         try:
             port_test_socket = socket.socket()
             port_test_socket.bind(("127.0.0.1", port))
             port_test_socket.close()
-            break
         except socket.error:
-            port += 1
+            raise ValueError("The given dashboard port {}"
+                             " is already in use".format(port))
 
     dashboard_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "dashboard/dashboard.py")
