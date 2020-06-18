@@ -1,7 +1,8 @@
-import { Typography } from "@material-ui/core";
+import { Typography, Tooltip } from "@material-ui/core";
 import React from "react";
 import UsageBar from "../../../../common/UsageBar";
 import { getWeightedAverage, sum } from "../../../../common/util";
+import { ResourceSlot, GPUStats } from "../../../../api";
 import {
   ClusterFeatureComponent,
   Node,
@@ -11,7 +12,7 @@ import {
 
 const clusterUtilization = (nodes: Array<Node>): number => {
   const utils = nodes
-    .map((node) => ({ weight: node.gpus.length, value: nodeUtilization(node) }))
+    .map((node) => ({ weight: node.gpus.length, value: nodeAverageUtilization(node) }))
     .filter((util) => !isNaN(util.value));
   if (utils.length === 0) {
     return NaN;
@@ -19,7 +20,7 @@ const clusterUtilization = (nodes: Array<Node>): number => {
   return getWeightedAverage(utils);
 };
 
-const nodeUtilization = (node: Node): number => {
+const nodeAverageUtilization = (node: Node): number => {
   if (!node.gpus || node.gpus.length === 0) {
     return NaN;
   }
@@ -47,19 +48,35 @@ export const ClusterGPU: ClusterFeatureComponent = ({ nodes }) => {
 };
 
 export const NodeGPU: NodeFeatureComponent = ({ node }) => {
-  const nodeUtil = nodeUtilization(node);
+  const hasGPU = (node.gpus !== undefined) && (node.gpus.length !== 0)
   return (
     <div style={{ minWidth: 60 }}>
-      {isNaN(nodeUtil) ? (
-        <Typography color="textSecondary" component="span" variant="inherit">
-          N/A
-        </Typography>
+      {hasGPU ? (
+        node.gpus.map((gpu, i) => <NodeGPUEntry gpu={gpu} slot={i} />)
       ) : (
-        <UsageBar percent={nodeUtil} text={`${nodeUtil.toFixed(1)}%`} />
-      )}
+          <Typography color="textSecondary" component="span" variant="inherit">
+            N/A
+          </Typography>
+        )}
     </div>
   );
 };
+
+type NodeGPUEntryProps = {
+  slot: number;
+  gpu: GPUStats;
+}
+const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ slot, gpu }) => {
+  const utilPercent = gpu.utilization_gpu * 100;
+  return (
+    <div>
+      <Tooltip title={gpu.name}>
+        <Typography>[{slot}]</Typography>
+      </Tooltip>
+      <UsageBar percent={utilPercent} text={`${utilPercent.toFixed(1)}`} />
+    </div>
+  )
+}
 
 export const WorkerGPU: WorkerFeatureComponent = ({ rayletWorker }) => {
   const workerRes = rayletWorker?.coreWorkerStats.usedResources;
