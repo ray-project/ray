@@ -725,8 +725,23 @@ void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value) {
     RAY_LOG(DEBUG) << "Storing object promoted to plasma " << object_id;
-    RAY_CHECK_OK(
-        Put(*value, /*contained_object_ids=*/{}, object_id, /*pin_object=*/true));
+    bool object_exists;
+    RAY_CHECK_OK(plasma_store_provider_->Put(*value, object_id, &object_exists));
+    if (!object_exists) {
+      // Tell the raylet to pin the object **after** it is created.
+      RAY_LOG(DEBUG) << "Pinning put object " << object_id;
+      RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
+          rpc_address_, {object_id},
+          [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+            // Only release the object once the raylet has responded to avoid the race
+            // condition that the object could be evicted before the raylet pins it.
+            if (!plasma_store_provider_->Release(object_id).ok()) {
+              RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
+                            << "), might cause a leak in plasma.";
+            }
+          }));
+    }
+    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
   }
 
   auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
