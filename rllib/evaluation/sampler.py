@@ -5,14 +5,17 @@ import numpy as np
 import queue
 import threading
 import time
+from typing import List, Dict, Callable, TYPE_CHECKING
 
 from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
-from ray.rllib.policy.policy import clip_action
+from ray.rllib.policy.policy import clip_action, Policy
 from ray.rllib.policy.tf_policy import TFPolicy
+from ray.rllib.models.preprocessors import Preprocessor
+from ray.rllib.utils.filter import Filter
 from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.offline import InputReader
@@ -22,7 +25,12 @@ from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray, \
     unbatch
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils.types import SampleBatchType
+from ray.rllib.utils.types import SampleBatchType, AgentID, PolicyID
+
+if TYPE_CHECKING:
+    from ray.rllib.agents.callbacks import DefaultCallbacks
+    from ray.rllib.evaluation.observation_function import ObservationFunction
+    from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 tree = try_import_tree()
 
@@ -66,17 +74,17 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
 
     @abstractmethod
     @DeveloperAPI
-    def get_data(self):
+    def get_data(self) -> SampleBatchType:
         raise NotImplementedError
 
     @abstractmethod
     @DeveloperAPI
-    def get_metrics(self):
+    def get_metrics(self) -> List[RolloutMetrics]:
         raise NotImplementedError
 
     @abstractmethod
     @DeveloperAPI
-    def get_extra_batches(self):
+    def get_extra_batches(self) -> List[SampleBatchType]:
         raise NotImplementedError
 
 
@@ -87,22 +95,22 @@ class SyncSampler(SamplerInput):
 
     def __init__(self,
                  *,
-                 worker,
-                 env,
-                 policies,
-                 policy_mapping_fn,
-                 preprocessors,
-                 obs_filters,
-                 clip_rewards,
-                 rollout_fragment_length,
-                 callbacks,
-                 horizon=None,
-                 pack_multiple_episodes_in_batch=False,
+                 worker: "RolloutWorker",
+                 env: BaseEnv,
+                 policies: Dict[PolicyID, Policy],
+                 policy_mapping_fn: Callable[[AgentID], PolicyID],
+                 preprocessors: Dict[PolicyID, Preprocessor],
+                 obs_filters: Dict[PolicyID, Filter],
+                 clip_rewards: bool,
+                 rollout_fragment_length: int,
+                 callbacks: "DefaultCallbacks",
+                 horizon: int = None,
+                 pack_multiple_episodes_in_batch: bool = False,
                  tf_sess=None,
-                 clip_actions=True,
-                 soft_horizon=False,
-                 no_done_at_end=False,
-                 observation_fn=None):
+                 clip_actions: bool = True,
+                 soft_horizon: bool = False,
+                 no_done_at_end: bool = False,
+                 observation_fn: "ObservationFunction" = None):
         """Initializes a SyncSampler object.
 
         Args:
@@ -160,7 +168,7 @@ class SyncSampler(SamplerInput):
         self.metrics_queue = queue.Queue()
 
     @override(SamplerInput)
-    def get_data(self):
+    def get_data(self) -> SampleBatchType:
         while True:
             item = next(self.rollout_provider)
             if isinstance(item, RolloutMetrics):
@@ -169,7 +177,7 @@ class SyncSampler(SamplerInput):
                 return item
 
     @override(SamplerInput)
-    def get_metrics(self):
+    def get_metrics(self) -> List[RolloutMetrics]:
         completed = []
         while True:
             try:
@@ -180,7 +188,7 @@ class SyncSampler(SamplerInput):
         return completed
 
     @override(SamplerInput)
-    def get_extra_batches(self):
+    def get_extra_batches(self) -> List[SampleBatchType]:
         extra = []
         while True:
             try:
@@ -200,23 +208,23 @@ class AsyncSampler(threading.Thread, SamplerInput):
 
     def __init__(self,
                  *,
-                 worker,
-                 env,
-                 policies,
-                 policy_mapping_fn,
-                 preprocessors,
-                 obs_filters,
-                 clip_rewards,
-                 rollout_fragment_length,
-                 callbacks,
-                 horizon=None,
-                 pack_multiple_episodes_in_batch=False,
+                 worker: "RolloutWorker",
+                 env: BaseEnv,
+                 policies: Dict[PolicyID, Policy],
+                 policy_mapping_fn: Callable[[AgentID], PolicyID],
+                 preprocessors: Dict[PolicyID, Preprocessor],
+                 obs_filters: Dict[PolicyID, Filter],
+                 clip_rewards: bool,
+                 rollout_fragment_length: int,
+                 callbacks: "DefaultCallbacks",
+                 horizon: int = None,
+                 pack_multiple_episodes_in_batch: bool = False,
                  tf_sess=None,
-                 clip_actions=True,
-                 blackhole_outputs=False,
-                 soft_horizon=False,
-                 no_done_at_end=False,
-                 observation_fn=None):
+                 clip_actions: bool = True,
+                 blackhole_outputs: bool = False,
+                 soft_horizon: bool = False,
+                 no_done_at_end: bool = False,
+                 observation_fn: "ObservationFunction" = None):
         """Initializes a AsyncSampler object.
 
         Args:
@@ -318,7 +326,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 queue_putter(item)
 
     @override(SamplerInput)
-    def get_data(self):
+    def get_data(self) -> SampleBatchType:
         if not self.is_alive():
             raise RuntimeError("Sampling thread has died")
         rollout = self.queue.get(timeout=600.0)
@@ -330,7 +338,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         return rollout
 
     @override(SamplerInput)
-    def get_metrics(self):
+    def get_metrics(self) -> List[RolloutMetrics]:
         completed = []
         while True:
             try:
@@ -341,7 +349,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         return completed
 
     @override(SamplerInput)
-    def get_extra_batches(self):
+    def get_extra_batches(self) -> List[SampleBatchType]:
         extra = []
         while True:
             try:
