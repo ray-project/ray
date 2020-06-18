@@ -2,7 +2,7 @@ pendulum-mass-maml:
     env: ray.rllib.examples.env.pendulum_mass.PendulumMassEnv
     run: MAML
     stop:
-        training_iteration: 1001   
+        training_iteration: 500   
     config:
         horizon: 200
         rollout_fragment_length: 200

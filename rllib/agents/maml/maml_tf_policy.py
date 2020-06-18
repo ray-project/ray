@@ -399,6 +399,10 @@ class KLCoeffMixin:
 
 
 def maml_optimizer_fn(policy, config):
+    """
+    Workers use simple SGD for inner adaptation
+    Meta-Policy uses Adam optimizer for meta-update
+    """
     if not config["worker_index"]:
         return tf.train.AdamOptimizer(learning_rate=config["lr"])
     return tf.train.GradientDescentOptimizer(learning_rate=config["inner_lr"])

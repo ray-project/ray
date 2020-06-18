@@ -4,6 +4,11 @@ from gym.envs.mujoco.mujoco_env import MujocoEnv
 
 
 class HalfCheetahRandDirecEnv(MujocoEnv, gym.utils.EzPickle):
+    """HalfCheetah Environment with two diff tasks, moving forwards or backwards
+
+    Direction is defined as a scalar: +1.0 (forwards) or -1.0 (backwards)
+    """
+
     def __init__(self, goal_direction=None):
         self.goal_direction = goal_direction if goal_direction else 1.0
         MujocoEnv.__init__(self, "half_cheetah.xml", 5)

@@ -199,7 +199,8 @@ def execution_plan(workers, config):
 
 def get_policy_class(config):
     # @mluo: TODO
-    assert config["framework"] != "torch"
+    if config["framework"] == "torch":
+        raise ValueError("MAML not implemented in Pytorch yet")
     return MAMLTFPolicy
 
 
@@ -207,22 +208,13 @@ def validate_config(config):
     if config["inner_adaptation_steps"] <= 0:
         raise ValueError("Inner Adaptation Steps must be >=1.")
     if config["maml_optimizer_steps"] <= 0:
-        raise ValueError("")
+        raise ValueError("PPO steps for meta-update needs to be >=0")
     if config["entropy_coeff"] < 0:
-        raise ValueError("entropy_coeff must be >= 0")
+        raise ValueError("entropy_coeff must be >=0")
     if config["batch_mode"] != "complete_episodes":
         raise ValueError("truncate_episodes not supported")
     if config["num_workers"] <= 0:
         raise ValueError("Must have at least 1 worker/task.")
-    if (config["batch_mode"] == "truncate_episodes" and not config["use_gae"]):
-        raise ValueError(
-            "Episode truncation is not supported without a value "
-            "function. Consider setting batch_mode=complete_episodes.")
-    if (config["multiagent"]["policies"] and not config["simple_optimizer"]):
-        logger.info(
-            "In multi-agent mode, policies will be optimized sequentially "
-            "by the multi-GPU optimizer. Consider setting "
-            "simple_optimizer=True if this doesn't work for you.")
 
 
 MAMLTrainer = build_trainer(

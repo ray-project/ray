@@ -4,12 +4,18 @@ from gym.envs.mujoco.mujoco_env import MujocoEnv
 
 
 class AntRandGoalEnv(gym.utils.EzPickle, MujocoEnv):
+    """Ant Environment that randomizes goals as tasks
+
+    Goals are randomly sampled 2D positions
+    """
+
     def __init__(self):
         self.set_task(self.sample_tasks(1)[0])
         MujocoEnv.__init__(self, "ant.xml", 5)
         gym.utils.EzPickle.__init__(self)
 
     def sample_tasks(self, n_tasks):
+        # Samples a goal position (2x1 position ector)
         a = np.random.random(n_tasks) * 2 * np.pi
         r = 3 * np.random.random(n_tasks)**0.5
         return np.stack((r * np.cos(a), r * np.sin(a)), axis=-1)

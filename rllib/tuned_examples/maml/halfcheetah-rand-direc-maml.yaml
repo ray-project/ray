@@ -2,7 +2,7 @@ halfcheetah-rand-direc-maml:
     env: ray.rllib.examples.env.halfcheetah_rand_direc.HalfCheetahRandDirecEnv
     run: MAML
     stop:
-        training_iteration: 2001    
+        training_iteration: 1000    
     config:
         horizon: 100
         rollout_fragment_length: 100
