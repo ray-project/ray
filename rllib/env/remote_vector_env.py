@@ -4,7 +4,7 @@ from typing import Tuple, Callable, Optional
 import ray
 from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID, ASYNC_RESET_RETURN
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.types import MultiEnvDict, EnvType, EnvObsType, EnvID
+from ray.rllib.utils.types import MultiEnvDict, EnvType, EnvID, MultiAgentDict
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ class RemoteVectorEnv(BaseEnv):
 
     @PublicAPI
     def try_reset(self,
-                  env_id: Optional[EnvID] = None) -> Optional[EnvObsType]:
+                  env_id: Optional[EnvID] = None) -> Optional[MultiAgentDict]:
         actor = self.actors[env_id]
         obj_id = actor.reset.remote()
         self.pending[obj_id] = actor

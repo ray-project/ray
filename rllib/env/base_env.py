@@ -5,7 +5,7 @@ from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.types import EnvType, MultiEnvDict, EnvObsType, EnvID, \
+from ray.rllib.utils.types import EnvType, MultiEnvDict, EnvID, \
     AgentID, MultiAgentDict
 
 if TYPE_CHECKING:
@@ -172,7 +172,7 @@ class BaseEnv:
 
     @PublicAPI
     def try_reset(self,
-                  env_id: Optional[EnvID] = None) -> Optional[EnvObsType]:
+                  env_id: Optional[EnvID] = None) -> Optional[MultiAgentDict]:
         """Attempt to reset the sub-env with the given id or all sub-envs.
 
         If the environment does not support synchronous reset, None can be
@@ -346,7 +346,7 @@ class _VectorEnvToBaseEnv(BaseEnv):
 
     @override(BaseEnv)
     def try_reset(self,
-                  env_id: Optional[EnvID] = None) -> Optional[EnvObsType]:
+                  env_id: Optional[EnvID] = None) -> Optional[MultiAgentDict]:
         return {_DUMMY_AGENT_ID: self.vector_env.reset_at(env_id)}
 
     @override(BaseEnv)
@@ -417,7 +417,7 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
 
     @override(BaseEnv)
     def try_reset(self,
-                  env_id: Optional[EnvID] = None) -> Optional[EnvObsType]:
+                  env_id: Optional[EnvID] = None) -> Optional[MultiAgentDict]:
         obs = self.env_states[env_id].reset()
         assert isinstance(obs, dict), "Not a multi-agent obs"
         if obs is not None and env_id in self.dones:
