@@ -228,6 +228,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param job_id The id of finished job.
   void OnJobFinished(const JobID &job_id);
 
+  /// Check if the specified actor was created successfully.
+  ///
+  /// \param actor_id The id of actor.
+  bool IsActorCreated(const ActorID &actor_id) const;
+
  private:
   /// A data structure representing an actor's owner.
   struct Owner {

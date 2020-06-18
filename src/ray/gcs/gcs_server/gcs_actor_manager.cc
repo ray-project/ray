@@ -708,7 +708,6 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
         // Invoke all callbacks for all registration requests of this actor (duplicated
         // requests are included) and remove all of them from
         // actor_to_register_callbacks_.
-
         auto iter = actor_to_register_callbacks_.find(actor_id);
         if (iter != actor_to_register_callbacks_.end()) {
           for (auto &callback : iter->second) {
@@ -825,6 +824,17 @@ void GcsActorManager::OnJobFinished(const JobID &job_id) {
   // Only non-detached actors should be deleted. We get all actors of this job and to the
   // filtering.
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().GetByJobId(job_id, on_done));
+}
+
+bool GcsActorManager::IsActorCreated(const ActorID &actor_id) const {
+  for (auto &node_iter : created_actors_) {
+    for (auto &actor_iter : node_iter.second) {
+      if (actor_iter.second == actor_id) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 }  // namespace gcs

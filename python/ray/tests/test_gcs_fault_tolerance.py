@@ -44,7 +44,7 @@ def test_gcs_server_re_schedule_actor():
     assert result == 3
 
     ids = []
-    for i in range(0,100):
+    for i in range(0, 100):
         actor = Increase.remote()
         ids.append(actor.method.remote(1))
 
@@ -57,6 +57,7 @@ def test_gcs_server_re_schedule_actor():
     assert len(unready) == 0
 
     ray.shutdown()
+
 
 if __name__ == "__main__":
     import pytest
