@@ -223,7 +223,13 @@ def test_raylet_info_endpoint(shutdown_only):
                 raise Exception(
                     "Timed out while waiting for dashboard to start.")
 
-    assert parent_actor_info["usedResources"]["CPU"] == 2
+    def cpu_resources(actor_info):
+        cpu_resources = 0
+        for slot in actor_info["usedResources"]["CPU"]["resourceSlots"]:
+            cpu_resources += slot["allocation"]
+        return cpu_resources
+
+    assert cpu_resources(parent_actor_info) == 2
     assert parent_actor_info["numExecutedTasks"] == 4
     for _, child_actor_info in children.items():
         if child_actor_info["state"] == -1:
@@ -231,7 +237,7 @@ def test_raylet_info_endpoint(shutdown_only):
         else:
             assert child_actor_info["state"] == 1
             assert len(child_actor_info["children"]) == 0
-            assert child_actor_info["usedResources"]["CPU"] == 1
+            assert cpu_resources(child_actor_info) == 1
 
     profiling_id = requests.get(
         webui_url + "/api/launch_profiling",

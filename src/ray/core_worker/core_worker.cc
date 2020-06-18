@@ -1602,6 +1602,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   {
     absl::MutexLock lock(&mutex_);
     current_task_ = TaskSpecification();
+    if (task_spec.IsNormalTask()) {
+      resource_ids_.reset(new ResourceMappingType());
+    }
   }
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId();
 
@@ -1962,11 +1965,13 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_actor_id(actor_id_.Binary());
   auto used_resources_map = stats->mutable_used_resources();
   for (auto const &it : *resource_ids_) {
-    double quantity = 0;
+    rpc::ResourceAllocations allocations;
     for (auto const &pair : it.second) {
-      quantity += pair.second;
+      auto resource_slot = allocations.add_resource_slots();
+      resource_slot->set_slot(pair.first);
+      resource_slot->set_allocation(pair.second);
     }
-    (*used_resources_map)[it.first] = quantity;
+    (*used_resources_map)[it.first] = allocations;
   }
   stats->set_actor_title(actor_title_);
   google::protobuf::Map<std::string, std::string> webui_map(webui_display_.begin(),
