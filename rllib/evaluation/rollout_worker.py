@@ -164,7 +164,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 policy ids in multi-agent mode. This function will be called
                 each time a new agent appears in an episode, to bind that agent
                 to a policy for the duration of the episode.
-            policies_to_train (list): Optional whitelist of policies to train,
+            policies_to_train (list): Optional list of policies to train,
                 or None for all policies.
             tf_session_creator (func): A function that returns a TF session.
                 This is optional and only useful with TFPolicy.

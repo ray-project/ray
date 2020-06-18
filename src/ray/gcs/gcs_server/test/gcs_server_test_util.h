@@ -289,7 +289,7 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
+    void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
   };
 
   class MockedErrorInfoAccessor : public gcs::ErrorInfoAccessor {
