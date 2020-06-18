@@ -137,7 +137,7 @@ is bigger than the total gpus available in this cluster (2 GPUs).
 Debugging ObjectStoreFullError and Memory Leak
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 You can view information for Ray objects in the memory tab. It is useful to debug memory leaks, especially `ObjectStoreFullError`.
-Note that this is the ported version of the `ray memory command <https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory>`_. To learn how to translate this table, please learn the `ray memory` command.
+Note that this is the same information as displayed in the `ray memory command <https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory>`_. For details about the information contained in the table, please see the `ray memory` documentation.
 
 Inspect Memory Usage
 ~~~~~~~~~~~~~~~~~~~~
