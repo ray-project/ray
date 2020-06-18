@@ -1,24 +1,18 @@
-import logging 
+import logging
 
-import ray
 import numpy as np
 from ray.rllib.utils.sgd import standardized
-from ray.util.iter import from_actors, LocalIterator
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.maml.maml_tf_policy import MAMLTFPolicy
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.optimizers.maml_optimizer import MAMLOptimizer
-from gym.envs.registration import registry, register, make, spec
 from typing import List
-from ray.rllib.evaluation.metrics import get_learner_stats, LEARNER_STATS_KEY
+from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.execution.common import SampleBatchType, \
     STEPS_SAMPLED_COUNTER, STEPS_TRAINED_COUNTER, LEARNER_INFO, \
-    APPLY_GRADS_TIMER, COMPUTE_GRADS_TIMER, WORKER_UPDATE_TIMER, \
-    LEARN_ON_BATCH_TIMER, LOAD_BATCH_TIMER, LAST_TARGET_UPDATE_TS, \
-    NUM_TARGET_UPDATES, _get_global_vars, _check_sample_batch_type, \
     _get_shared_metrics
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.execution.metric_ops import CollectMetrics
+from ray.util.iter import from_actors
 
 logger = logging.getLogger(__name__)
 
@@ -65,17 +59,20 @@ DEFAULT_CONFIG = with_common_config({
     "use_kl_loss": True,
     # Grad Clipping
     "grad_clip": None,
+    # Batch Mode
+    "batch_mode": "complete_episodes",
 })
 # __sphinx_doc_end__
 # yapf: enable
 
+
 # @mluo: TODO
 def set_worker_tasks(workers):
     n_tasks = len(workers.remote_workers())
-    tasks = workers.local_worker().foreach_env(lambda x: x)[0].sample_tasks(n_tasks)
+    tasks = workers.local_worker().foreach_env(lambda x: x)[0].sample_tasks(
+        n_tasks)
     for i, worker in enumerate(workers.remote_workers()):
-        worker.foreach_env.remote(
-            lambda env: env.set_task(tasks[i]))
+        worker.foreach_env.remote(lambda env: env.set_task(tasks[i]))
 
 
 class InnerAdaptationSteps:
@@ -91,7 +88,7 @@ class InnerAdaptationSteps:
         samples, split_lst = self.post_process_samples(samples)
         self.buffer.extend(samples)
         self.split.append(split_lst)
-        self.post_process_metrics() 
+        self.post_process_metrics()
         if len(self.split) > self.n:
             out = SampleBatch.concat_samples(self.buffer)
             out["split"] = np.array(self.split)
@@ -101,8 +98,12 @@ class InnerAdaptationSteps:
             # Metrics Reporting
             metrics = _get_shared_metrics()
             metrics.counters[STEPS_SAMPLED_COUNTER] += out.count
-            self.metrics["adaptation_delta"] = self.metrics["episode_reward_mean_adapt_" + str(self.n)] - \
-                                                        self.metrics["episode_reward_mean"]
+
+            # Reporting Adaptation Rew Diff
+            ep_rew_pre = self.metrics["episode_reward_mean"]
+            ep_rew_post = self.metrics["episode_reward_mean_adapt_" +
+                                       str(self.n)]
+            self.metrics["adaptation_delta"] = ep_rew_post - ep_rew_pre
             return [(out, self.metrics)]
         else:
             self.inner_adaptation_step(samples)
@@ -111,23 +112,26 @@ class InnerAdaptationSteps:
     def post_process_samples(self, samples):
         split_lst = []
         for sample in samples:
-            sample['advantages'] = standardized(sample['advantages'])
-            split_lst.append(sample['obs'].shape[0])
+            sample["advantages"] = standardized(sample["advantages"])
+            split_lst.append(sample.count)
         return samples, split_lst
-
 
     def inner_adaptation_step(self, samples):
         for i, e in enumerate(self.workers.remote_workers()):
             e.learn_on_batch.remote(samples[i])
 
     def post_process_metrics(self):
-        # Obtain Current Dataset Metrics and filter out 
-        name = "_adapt_" + str(len(self.split)-1) if len(self.split)>1 else ""
+        # Obtain Current Dataset Metrics and filter out
+        name = "_adapt_" + str(len(self.split) - 1) if len(
+            self.split) > 1 else ""
         res = self.metric_gen.__call__(None)
 
-        self.metrics["episode_reward_max" + str(name)] = res["episode_reward_max"]
-        self.metrics["episode_reward_mean" + str(name)] = res["episode_reward_mean"]
-        self.metrics["episode_reward_min" + str(name)] = res["episode_reward_min"]
+        self.metrics["episode_reward_max" +
+                     str(name)] = res["episode_reward_max"]
+        self.metrics["episode_reward_mean" +
+                     str(name)] = res["episode_reward_mean"]
+        self.metrics["episode_reward_min" +
+                     str(name)] = res["episode_reward_min"]
 
 
 class MetaUpdate:
@@ -149,7 +153,7 @@ class MetaUpdate:
 
         # Set worker tasks
         set_worker_tasks(self.workers)
-        
+
         # Update KLS
         def update(pi, pi_id):
             assert "inner_kl" not in fetches, (
@@ -159,6 +163,7 @@ class MetaUpdate:
                 pi.update_kls(fetches[pi_id]["inner_kl"])
             else:
                 logger.warning("No data for {}, not updating kl".format(pi_id))
+
         self.workers.local_worker().foreach_trainable_policy(update)
 
         # Modify Reporting Metrics
@@ -179,18 +184,22 @@ def execution_plan(workers, config):
     # Samples and sets worker tasks
     set_worker_tasks(workers)
 
-    #Metric Collector
+    # Metric Collector
     metric_collect = CollectMetrics(
-            workers, min_history=config["metrics_smoothing_episodes"],
-            timeout_seconds=config["collect_metrics_timeout"])
+        workers,
+        min_history=config["metrics_smoothing_episodes"],
+        timeout_seconds=config["collect_metrics_timeout"])
 
     # Iterator for Inner Adaptation Data gathering (from pre->post adaptation)
     rollouts = from_actors(workers.remote_workers())
     rollouts = rollouts.batch_across_shards()
-    rollouts = rollouts.combine(InnerAdaptationSteps(workers, config["inner_adaptation_steps"], metric_collect))
-    
+    rollouts = rollouts.combine(
+        InnerAdaptationSteps(workers, config["inner_adaptation_steps"],
+                             metric_collect))
+
     # Metaupdate Step
-    train_op = rollouts.for_each(MetaUpdate(workers, config["maml_optimizer_steps"], metric_collect))
+    train_op = rollouts.for_each(
+        MetaUpdate(workers, config["maml_optimizer_steps"], metric_collect))
     return train_op
 
 
@@ -201,10 +210,10 @@ def get_policy_class(config):
 
 
 def validate_config(config):
-    if config["inner_adaptation_steps"]<=0:
-        raise ValueError(
-            "Inner Adaptation Steps must be >=1."
-            )
+    if config["inner_adaptation_steps"] <= 0:
+        raise ValueError("Inner Adaptation Steps must be >=1.")
+    if config["maml_optimizer_steps"] <= 0:
+        raise ValueError("")
     if config["entropy_coeff"] < 0:
         raise DeprecationWarning("entropy_coeff must be >= 0")
     if (config["batch_mode"] == "truncate_episodes" and not config["use_gae"]):
@@ -218,32 +227,10 @@ def validate_config(config):
             "simple_optimizer=True if this doesn't work for you.")
 
 
-register(
-    id='AntRandGoal-v2',
-    entry_point='ray.rllib.examples.env.ant_rand_goal:AntRandGoalEnv',
-    max_episode_steps=1000,
-)
-
-register(
-    id='HalfCheetahRandDirec-v2',
-    entry_point='ray.rllib.examples.env.halfcheetah_rand_direc:HalfCheetahRandDirecEnv',
-    max_episode_steps=1000,
-)
-
-register(
-    id='PendulumMass-v0',
-    entry_point='ray.rllib.examples.env.pendulum_mass:PendulumMassEnv',
-    max_episode_steps=200,
-)
-
-
 MAMLTrainer = build_trainer(
     name="MAML",
     default_config=DEFAULT_CONFIG,
     default_policy=MAMLTFPolicy,
     get_policy_class=get_policy_class,
     execution_plan=execution_plan,
-    #make_policy_optimizer=MAMLOptimizer,
-    #after_optimizer_step=after_optimizer_step,
-    #collect_metrics_fn=maml_metrics,
     validate_config=validate_config)

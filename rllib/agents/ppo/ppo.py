@@ -199,7 +199,7 @@ def execution_plan(workers, config):
 
     # Update KL after each round of training.
     train_op = train_op.for_each(lambda t: t[1]).for_each(UpdateKL(workers))
-    import pdb; pdb.set_trace()
+
     return StandardMetricsReporting(train_op, workers, config) \
         .for_each(lambda result: warn_about_bad_reward_scales(config, result))
 
