@@ -45,15 +45,19 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
                                  &address);
     return address;
   };
-  std::pair<std::string, int> address = get_server_address();
+  std::pair<std::string, int> address = get_server_address_func_();
 
-  auto re_subscribe = [this](bool is_pubsub_server_restarted) {
-    job_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-    actor_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-    node_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-    task_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-    object_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-    worker_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
+  re_subscribe_func_ = [this](bool is_pubsub_server_restarted,
+                              const std::pair<std::string, int> &address) {
+    if (address != current_gcs_server_address_) {
+      current_gcs_server_address_ = address;
+      job_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
+      actor_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
+      node_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
+      task_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
+      object_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
+      worker_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
+    }
   };
 
   // Connect to gcs service.
@@ -135,7 +139,7 @@ void ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
 
 void ServiceBasedGcsClient::Tick() {
   auto address = get_server_address_func_();
-  re_subscribe_func_(address);
+  re_subscribe_func_(false, address);
   ScheduleTick();
 }
 
