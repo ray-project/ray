@@ -14,6 +14,8 @@ public class PythonUnionStream extends PythonDataStream {
   private List<PythonDataStream> unionStreams;
 
   public PythonUnionStream(PythonDataStream input, List<PythonDataStream> others) {
+    // Union stream does not create a physical operation, so we don't have to set partition
+    // function for it.
     super(input, new PythonOperator(
         "ray.streaming.operator", "UnionOperator"));
     this.unionStreams = new ArrayList<>();
