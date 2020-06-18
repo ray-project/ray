@@ -168,7 +168,7 @@ class SSHCommandRunner:
         self.OPTS = [
             ("StrictHostKeyChecking", "no"),
             ("ControlMaster", "auto"),
-            ("ControlPath", "{}/%C".format(ssh_control_path)),
+            ("ControlPath", "{}/%C".format(self.ssh_control_path)),
             ("ControlPersist", "10s"),
             # Try fewer extraneous key pairs.
             ("IdentitiesOnly", "yes"),
