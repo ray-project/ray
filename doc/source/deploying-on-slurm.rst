@@ -39,7 +39,7 @@ Clusters managed by Slurm may require that Ray is initialized as a part of the s
   for ((  i=1; i<=$worker_num; i++ ))
   do
     node2=${nodes_array[$i]}
-    srun --nodes=1 --ntasks=1 -w $node2 ray start --block --address=$ip_head --redis-password=$redis_password & # Starting the workers
+    srun --nodes=1 --ntasks=1 -w $node2 ray start --block --redis-address=$ip_head --redis-password=$redis_password & # Starting the workers
     # Flag --block will keep ray process alive on each compute node.
     sleep 5
   done
