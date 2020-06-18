@@ -55,24 +55,12 @@ DEFAULT_CONFIG = with_common_config({
     "maml_optimizer_steps": 5,
     # Inner Adaptation Step size
     "inner_lr": 0.1,
-<<<<<<< HEAD
-=======
-    # Use PPO KL Loss
-    "use_kl_loss": True,
-    # Grad Clipping
-    "grad_clip": None,
-    # Batch Mode
-    "batch_mode": "complete_episodes",
->>>>>>> d8a4c076a0a810e69a20ba745ef1525158a9cf1a
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
-<<<<<<< HEAD
-=======
 # @mluo: TODO
->>>>>>> d8a4c076a0a810e69a20ba745ef1525158a9cf1a
 def set_worker_tasks(workers):
     n_tasks = len(workers.remote_workers())
     tasks = workers.local_worker().foreach_env(lambda x: x)[0].sample_tasks(

@@ -27,7 +27,9 @@ class TestMAML(unittest.TestCase):
 
         # Test for tf framework (torch not implemented yet).
         for _ in framework_iterator(config, frameworks=("tf")):
-            trainer = maml.MAMLTrainer(config=config, env="ray.rllib.examples.env.pendulum_mass.PendulumMassEnv")
+            trainer = maml.MAMLTrainer(
+                config=config,
+                env="ray.rllib.examples.env.pendulum_mass.PendulumMassEnv")
             for i in range(num_iterations):
                 trainer.train()
             check_compute_action(trainer, include_prev_action_reward=True)
