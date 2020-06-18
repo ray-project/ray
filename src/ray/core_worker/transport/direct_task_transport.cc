@@ -275,12 +275,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           // it to the Raylet since that will kill it early.
           absl::MutexLock lock(&mu_);
           worker_to_lease_client_.erase(addr);
-        } else if (!status.ok() || !is_actor_creation) {
-          // Successful actor creation leases the worker indefinitely from the raylet.
-          absl::MutexLock lock(&mu_);
-          OnWorkerIdle(addr, scheduling_key,
-                       /*error=*/!status.ok(), assigned_resources);
-        }
+        } 
+
         if (!status.ok()) {
           // TODO: It'd be nice to differentiate here between process vs node
           // failure (e.g., by contacting the raylet). If it was a process
@@ -290,9 +286,17 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
               task_id,
               is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
               &status));
-        } else {
+        } else /* if (status.ok())*/ {
           task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
         }
+
+        if (!reply.worker_exiting() && (!status.ok() || !is_actor_creation)) {
+          // Successful actor creation leases the worker indefinitely from the raylet.
+          absl::MutexLock lock(&mu_);
+          OnWorkerIdle(addr, scheduling_key,
+                       /*error=*/!status.ok(), assigned_resources);
+        }
+
       }));
 }
 
