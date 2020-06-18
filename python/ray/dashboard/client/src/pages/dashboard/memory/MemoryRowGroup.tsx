@@ -2,15 +2,13 @@ import {
   createStyles,
   TableRow,
   Theme,
-  withStyles,
-  WithStyles,
+  makeStyles
 } from "@material-ui/core";
 import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
 import React, { useState } from "react";
 import {
   MemoryTableEntry,
-  MemoryTableResponse,
   MemoryTableSummary,
 } from "../../../api";
 import {
@@ -20,7 +18,7 @@ import {
 import MemorySummary from "./MemorySummary";
 import { MemoryTableRow } from "./MemoryTableRow";
 
-const styles = (theme: Theme) =>
+const useMemoryRowGroupStyles = makeStyles((theme: Theme) =>
   createStyles({
     expandCollapseCell: {
       cursor: "pointer",
@@ -34,17 +32,18 @@ const styles = (theme: Theme) =>
       fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
       whiteSpace: "pre",
     },
-  });
+  }));
 
-type Props = {
+type MemoryRowGroupProps = {
   groupKey: string;
-  memoryTableGroups: MemoryTableResponse["group"];
+  summary: MemoryTableSummary;
+  entries: MemoryTableEntry[];
   initialExpanded: boolean;
 };
 
-const MemoryRowGroup = (props: Props & WithStyles<typeof styles>) => {
-  const { classes, groupKey, memoryTableGroups } = props;
-  const [expanded, setExpanded] = useState(props.initialExpanded);
+const MemoryRowGroup: React.FC<MemoryRowGroupProps> = ({ groupKey, entries, summary, initialExpanded}) => {
+  const classes = useMemoryRowGroupStyles();
+  const [expanded, setExpanded] = useState(initialExpanded);
   const toggleExpanded = () => setExpanded(!expanded);
 
   const features = [
@@ -56,10 +55,6 @@ const MemoryRowGroup = (props: Props & WithStyles<typeof styles>) => {
     "reference_type",
     "call_site",
   ];
-
-  const memoryTableGroup = memoryTableGroups[groupKey];
-  const entries: Array<MemoryTableEntry> = memoryTableGroup["entries"];
-  const summary: MemoryTableSummary = memoryTableGroup["summary"];
 
   return (
     <React.Fragment>
@@ -95,4 +90,4 @@ const MemoryRowGroup = (props: Props & WithStyles<typeof styles>) => {
   );
 };
 
-export default withStyles(styles)(MemoryRowGroup);
+export default MemoryRowGroup;

@@ -25,15 +25,20 @@ import { StoreState } from "../../../store";
 import MemoryRowGroup from "./MemoryRowGroup";
 import { MemoryTableRow } from "./MemoryTableRow";
 
-const makeGroupedEntries = (memoryTableGroups: MemoryTableGroups) => {
-  return Object.keys(memoryTableGroups).map((group_key, index) => (
-    <MemoryRowGroup
-      key={index}
-      groupKey={group_key}
-      memoryTableGroups={memoryTableGroups}
+const makeGroupedEntries = (memoryTableGroups: MemoryTableGroups, order: Order, orderBy: keyof MemoryTableEntry | null) => {
+  const comparator = orderBy && getComparator(order, orderBy);
+  return Object.entries(memoryTableGroups).map(([groupKey, group]) => {
+    const sortedEntries = comparator
+      ? stableSort(group.entries, comparator)
+      : group.entries;
+    
+    return <MemoryRowGroup
+      groupKey={groupKey}
+      summary={group.summary}
+      entries={sortedEntries}
       initialExpanded={true}
     />
-  ));
+  });
 };
 
 const makeUngroupedEntries = (
@@ -146,7 +151,7 @@ const MemoryInfo: React.FC<{}> = () => {
             />
             <TableBody>
               {isGrouped
-                ? makeGroupedEntries(memoryTable.group)
+                ? makeGroupedEntries(memoryTable.group, order, orderBy)
                 : makeUngroupedEntries(memoryTable.group, order, orderBy)}
             </TableBody>
           </Table>
