@@ -761,10 +761,11 @@ def _process_observations(
                 episode=episode)
             if hit_horizon and soft_horizon:
                 episode.soft_reset()
-                resetted_obs = agent_obs
+                resetted_obs: Dict[AgentID, EnvObsType] = agent_obs
             else:
                 del active_episodes[env_id]
-                resetted_obs = base_env.try_reset(env_id)
+                resetted_obs: Dict[AgentID, EnvObsType] = base_env.try_reset(
+                    env_id)
             if resetted_obs is None:
                 # Reset not supported, drop this env from the ready list.
                 if horizon != float("inf"):
@@ -774,21 +775,22 @@ def _process_observations(
             elif resetted_obs != ASYNC_RESET_RETURN:
                 # Creates a new episode if this is not async return.
                 # If reset is async, we will get its result in some future poll
-                episode = active_episodes[env_id]
+                episode: MultiAgentEpisode = active_episodes[env_id]
                 if observation_fn:
-                    resetted_obs = observation_fn(
+                    resetted_obs: Dict[AgentID, EnvObsType] = observation_fn(
                         agent_obs=resetted_obs,
                         worker=worker,
                         base_env=base_env,
                         policies=policies,
                         episode=episode)
+                # type: AgentID, EnvObsType
                 for agent_id, raw_obs in resetted_obs.items():
-                    policy_id = episode.policy_for(agent_id)
-                    policy = _get_or_raise(policies, policy_id)
-                    prep_obs = _get_or_raise(preprocessors,
-                                             policy_id).transform(raw_obs)
-                    filtered_obs = _get_or_raise(obs_filters,
-                                                 policy_id)(prep_obs)
+                    policy_id: PolicyID = episode.policy_for(agent_id)
+                    policy: Policy = _get_or_raise(policies, policy_id)
+                    prep_obs: EnvObsType = _get_or_raise(
+                        preprocessors, policy_id).transform(raw_obs)
+                    filtered_obs: EnvObsType = _get_or_raise(
+                        obs_filters, policy_id)(prep_obs)
                     episode._set_last_observation(agent_id, filtered_obs)
                     to_eval[policy_id].append(
                         PolicyEvalData(
