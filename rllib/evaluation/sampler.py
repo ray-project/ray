@@ -695,6 +695,7 @@ def _process_observations(
                                           episode.rnn_state_for(agent_id),
                                           episode.last_action_for(agent_id),
                                           rewards[env_id][agent_id] or 0.0)
+                print("Adding item={}/{} to to_eval".format(item.get("env_id", "no_env_id"), item.get("agent_id", "no_agent_id")))
                 to_eval[policy_id].append(item)
 
             prev_observation = episode.last_observation_for(agent_id)
@@ -725,10 +726,14 @@ def _process_observations(
                     **episode.last_pi_info_for(agent_id))
             elif _fast_sampling:
                 if prev_observation is None:
+                    print("Adding initial_obs to {}/{} buffers".format(
+                        env_id, agent_id))
                     episode.batch_builder.add_initial_observation(
                         env_id, agent_id, policy_id, filtered_obs)
                 else:
                     eval_idx = eval_idx_map[policy_id][env_id][agent_id]
+                    print("Adding row to {}/{} buffers".format(
+                        env_id, agent_id))
                     episode.batch_builder.add_values(
                         agent_id,
                         policy_id,
@@ -771,16 +776,18 @@ def _process_observations(
                 #  (useless for get_view_requirements when t<<-1, e.g.
                 #  attention), but keep last episode data around in
                 #  SampleBatchBuilder
-                #  to be able to still reference into it should a model require
-                #  this.
+                #  to be able to still reference into it
+                #  should a model require this.
+                print("Materializing Policy buffer!")
                 outputs.append(episode.batch_builder.build_and_reset(episode))
             # Make sure postprocessor stays within one episode.
             elif all_agents_done:
+                print("Materializing all agent buffers.")
                 episode.batch_builder.postprocess_batch_so_far(episode)
 
         # Episode is done.
         if all_agents_done:
-            # Handle episode termination.
+            # We can pass the BatchBuilder to recycling.
             batch_builder_pool.append(episode.batch_builder)
             # Call each policy's Exploration.on_episode_end method.
             for p in policies.values():
@@ -827,14 +834,25 @@ def _process_observations(
                     filtered_obs = _get_or_raise(obs_filters,
                                                  policy_id)(prep_obs)
                     episode._set_last_observation(agent_id, filtered_obs)
-                    to_eval[policy_id].append(
-                        PolicyEvalData(
+
+                    if _fast_sampling:
+                        # Add initial obs to buffer.
+                        print("Adding initial_obs to {}/{} buffers".format(
+                            env_id, agent_id))
+                        episode.batch_builder.add_initial_observation(
+                            env_id, agent_id, policy_id, filtered_obs)
+                        item = episode.batch_builder.agent_builders[
+                            agent_id].buffers
+                    else:
+                        item = PolicyEvalData(
                             env_id, agent_id, filtered_obs,
                             episode.last_info_for(agent_id) or {},
                             episode.rnn_state_for(agent_id),
                             np.zeros_like(
                                 flatten_to_single_ndarray(
-                                    policy.action_space.sample())), 0.0))
+                                policy.action_space.sample())),
+                                0.0)
+                    to_eval[policy_id].append(item)
 
     return active_envs, to_eval, outputs
 

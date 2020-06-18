@@ -30,8 +30,8 @@ class MinibatchBuffer:
         """Get a new batch from the internal ring buffer.
 
         Returns:
-           buf: Data item saved from inqueue.
-           released: True if the item is now removed from the ring buffer.
+            buf: Data item saved from inqueue.
+            released: True if the item is now removed from the ring buffer.
         """
         if self.ttl[self.idx] <= 0:
             self.buffers[self.idx] = self.inqueue.get(timeout=self.timeout)

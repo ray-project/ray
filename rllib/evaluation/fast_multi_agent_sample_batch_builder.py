@@ -6,6 +6,7 @@ from typing import Union
 
 from ray.rllib.evaluation.fast_sample_batch_builder import \
     _FastSampleBatchBuilder
+from ray.rllib.evaluation.trajectory import Trajectory
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
@@ -57,8 +58,8 @@ class _FastMultiAgentSampleBatchBuilder:
         }
         # Whenever we observe a new agent, add a new SampleBatchBuilder for
         # this agent.
-        self.agent_builders = defaultdict(partial(
-            _FastSampleBatchBuilder, horizon=self.horizon))
+        self.single_agent_trajectories = defaultdict(partial(
+            Trajectory, horizon=self.horizon))
         # Internal agent-to-policy map.
         self.agent_to_policy = {}
         # Number of "inference" steps taken in the environment.
@@ -137,6 +138,7 @@ class _FastMultiAgentSampleBatchBuilder:
         # Materialize the per-agent batches so far.
         pre_batches = {}
         for agent_id, builder in self.agent_builders.items():
+            print()
             pre_batches[agent_id] = (
                 self.policy_map[self.agent_to_policy[agent_id]],
                 builder.build_and_reset())
@@ -153,16 +155,21 @@ class _FastMultiAgentSampleBatchBuilder:
                     a_min=-self.clip_rewards,
                     a_max=self.clip_rewards)
         for agent_id, (_, pre_batch) in pre_batches.items():
-            other_batches = pre_batches.copy()
-            del other_batches[agent_id]
-            policy = self.policy_map[self.agent_to_policy[agent_id]]
             if any(pre_batch["dones"][:-1]) or len(set(
                     pre_batch["eps_id"])) > 1:
                 raise ValueError(
                     "Batches sent to postprocessing must only contain steps "
                     "from a single episode!", pre_batch)
+
+            other_batches = None
+            if len(pre_batches) > 1:
+                other_batches = pre_batches.copy()
+                del other_batches[agent_id]
+
+            policy = self.policy_map[self.agent_to_policy[agent_id]]
             post_batches[agent_id] = policy.postprocess_trajectory(
                 pre_batch, other_batches, episode)
+            post_batches[agent_id].last_obs = pre_batch.last_obs
             # Call the Policy's Exploration's postprocess method.
             if getattr(policy, "exploration", None) is not None:
                 policy.exploration.postprocess_trajectory(
@@ -185,6 +192,7 @@ class _FastMultiAgentSampleBatchBuilder:
                 policies=self.policy_map,
                 postprocessed_batch=post_batch,
                 original_batches=pre_batches)
+            print()
             self.policy_builders[self.agent_to_policy[agent_id]].add_batch(
                 post_batch)
 
@@ -222,7 +230,7 @@ class _FastMultiAgentSampleBatchBuilder:
         self.postprocess_batch_so_far(episode)
         policy_batches = {}
         for policy_id, builder in self.policy_builders.items():
-            if builder.count > 0:
+            if builder.timestep > 0:
                 policy_batches[policy_id] = builder.build_and_reset()
         old_count = self.count
         self.count = 0

@@ -151,14 +151,14 @@ def build_torch_policy(name,
             # Not using this here will introduce a memory leak (issue #6962).
             with torch.no_grad():
                 # Call super's postprocess_trajectory first.
-                sample_batch = super().postprocess_trajectory(
+                post_processed_sample_batch = super().postprocess_trajectory(
                     convert_to_non_torch_type(sample_batch),
                     convert_to_non_torch_type(other_agent_batches), episode)
                 if postprocess_fn:
-                    return postprocess_fn(self, sample_batch,
+                    return postprocess_fn(self, post_processed_sample_batch,
                                           other_agent_batches, episode)
 
-                return sample_batch
+                return post_processed_sample_batch
 
         @override(TorchPolicy)
         def extra_grad_process(self, optimizer, loss):

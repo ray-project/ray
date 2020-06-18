@@ -175,10 +175,18 @@ def postprocess_ppo_gae(policy,
         next_state = []
         for i in range(policy.num_state_tensors()):
             next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-        last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
-                               sample_batch[SampleBatch.ACTIONS][-1],
-                               sample_batch[SampleBatch.REWARDS][-1],
-                               *next_state)
+        if policy.config["_fast_sampling"]:
+            # Use the last_obs property of SampleBatch (saves NEXT_OBS field,
+            # which should not be populated anymore).
+            last_r = policy._value(sample_batch.last_obs,
+                                   sample_batch[SampleBatch.ACTIONS][-1],
+                                   sample_batch[SampleBatch.REWARDS][-1],
+                                   *next_state)
+        else:
+            last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
+                                   sample_batch[SampleBatch.ACTIONS][-1],
+                                   sample_batch[SampleBatch.REWARDS][-1],
+                                   *next_state)
     batch = compute_advantages(
         sample_batch,
         last_r,

@@ -62,7 +62,13 @@ class SampleBatch:
     def __init__(self, *args, **kwargs):
         """Constructs a sample batch (same params as dict constructor)."""
 
+        # Placeholder for a last_obs value (in an n x sars'-trajectory).
+        # Only used if _fast_sampling=True in the config to be able to
+        # deprecate the NEXT_OBS field entirely.
+        self.last_obs = kwargs.pop("_last_obs", None)
+
         self.data = dict(*args, **kwargs)
+
         lengths = []
         for k, v in self.data.copy().items():
             assert isinstance(k, str), self
