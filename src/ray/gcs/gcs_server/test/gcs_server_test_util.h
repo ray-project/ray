@@ -27,6 +27,7 @@
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "ray/util/asio_util.h"
+#include "ray/raylet/node_manager.h"
 
 namespace ray {
 
@@ -138,11 +139,8 @@ struct GcsServerMocker {
     std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
     std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
   };
-
   class MockRayletResourceClient : public ResourceLeaseInterface {
    public:
-
-
     ray::Status RequestResourceLease(
       const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestResourceLeaseReply> &callback) override {

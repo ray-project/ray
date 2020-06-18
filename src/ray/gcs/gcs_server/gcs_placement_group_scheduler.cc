@@ -115,9 +115,9 @@ void GcsPlacementGroupScheduler::Schedule(
                     schedule_map.at(bundles[i].BundleId()).Binary());
                 schedule_plan->set_bundle_id(bundles[i].BundleId().Binary());
               }
-              //  RAY_CHECK_OK(gcs_table_storage_->PlacementGroupScheduleTable().Put(
-              //      placement_group->GetPlacementGroupID(), data, [](Status status) {}));
-              schedule_success_handler_(placement_group);
+               RAY_CHECK_OK(gcs_table_storage_->PlacementGroupScheduleTable().Put(
+                   placement_group->GetPlacementGroupID(), data, [](Status status) {}));
+                    schedule_success_handler_(placement_group);
             } else {
               for (size_t i = 0; i < (*finish_count); i++) {
                 if ((*decision_ptr)[i] != ClientID::Nil()) {

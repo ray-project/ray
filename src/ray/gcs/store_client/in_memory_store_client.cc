@@ -24,7 +24,7 @@ Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   table->records_[key] = data;
-  main_io_service_.post([callback]() { callback(Status::OK()); });
+  main_io_service_.post([]() {callback(Status::OK());});
   return Status::OK();
 }
 

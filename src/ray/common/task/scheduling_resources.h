@@ -161,10 +161,9 @@ class ResourceSet {
   /// any missing resource labels to this set. The resource id will remove bundle_id + "_"
   /// part.
   ///
-  /// \param other: The other resource set to add.
   /// \param bundle_id: The bundle_id of the bundle.
   /// \return Void.
-  void ReturnBundleResources(const std::string &bundle_id, const ResourceSet &other);
+  void ReturnBundleResources(const std::string &bundle_id);
 
   /// \brief Subtract a set of resources from the current set of resources and
   /// check that the post-subtraction result nonnegative. Assumes other
@@ -555,9 +554,7 @@ class SchedulingResources {
   /// \brief delete total, available and load resources with the ResourceIds.
   /// Create if not exists.
   /// \param resource_name: Name of the resource to be deleted
-  /// \param resource_set:  resource_set of the resource.
-  void ReturnBundleResource(const std::string &bundle_id,
-                            const ResourceSet &resource_set);
+  void ReturnBundleResource(const std::string &bundle_id);
 
   /// \brief Delete resource from total, available and load resources.
   ///

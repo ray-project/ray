@@ -142,7 +142,9 @@ void ResourceSet::AddOrUpdateResource(const std::string &resource_name,
 }
 
 bool ResourceSet::DeleteResource(const std::string &resource_name) {
+  RAY_LOG(INFO) <<resource_name;
   if (resource_capacity_.count(resource_name) == 1) {
+    RAY_LOG(INFO) <<"????";
     resource_capacity_.erase(resource_name);
     return true;
   } else {
@@ -235,16 +237,17 @@ void ResourceSet::AddBundleResources(const std::string &bundle_id,
   }
 }
 
-void ResourceSet::ReturnBundleResources(const std::string &bundle_id,
-                                        const ResourceSet &other) {
-  for (const auto &resource_pair : other.GetResourceAmountMap()) {
-    const std::string &bundle_resource_label = resource_pair.first;
+void ResourceSet::ReturnBundleResources(const std::string &bundle_id) {
+  for (auto iter = resource_capacity_.begin(); iter != resource_capacity_.end();){
+    const std::string &bundle_resource_label = iter->first;
     if (bundle_resource_label.find(bundle_id) != std::string::npos) {
       const std::string &resource_label =
-          bundle_resource_label.substr(bundle_resource_label.find("_"));
-      const FractionalResourceQuantity &resource_capacity = resource_pair.second;
+          bundle_resource_label.substr(bundle_resource_label.find_last_of("_") + 1);
+      const FractionalResourceQuantity &resource_capacity = iter->second;
       resource_capacity_[resource_label] += resource_capacity;
-      DeleteResource(bundle_resource_label);
+      iter = resource_capacity_.erase(iter);
+    } else {
+      iter++;
     }
   }
 }
@@ -835,9 +838,8 @@ void SchedulingResources::UpdateBundleResource(const std::string &bundle_id,
   resources_available_.AddBundleResources(bundle_id, resource_set);
 }
 
-void SchedulingResources::ReturnBundleResource(const std::string &bundle_id,
-                                               const ResourceSet &resource_set) {
-  resources_available_.ReturnBundleResources(bundle_id, resource_set);
+void SchedulingResources::ReturnBundleResource(const std::string &bundle_id) {
+  resources_available_.ReturnBundleResources(bundle_id);
 }
 
 void SchedulingResources::DeleteResource(const std::string &resource_name) {

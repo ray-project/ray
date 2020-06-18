@@ -408,8 +408,6 @@ class BundleID : public BaseID<BundleID> {
  public:
   static constexpr int64_t kLength = PlacementGroupID::kLength + kIndexBytesLength;
 
-  static BundleID FromInt(uint16_t value);
-
   static size_t Size() { return kLength; }
 
   BundleID() : BaseID() {}
