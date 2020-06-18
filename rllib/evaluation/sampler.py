@@ -5,7 +5,8 @@ import numpy as np
 import queue
 import threading
 import time
-from typing import List, Dict, Callable, TYPE_CHECKING
+from typing import List, Dict, Callable, Set, Tuple, Any, Iterable, \
+    TYPE_CHECKING
 
 from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import MultiAgentEpisode
@@ -25,7 +26,8 @@ from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray, \
     unbatch
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils.types import SampleBatchType, AgentID, PolicyID
+from ray.rllib.utils.types import SampleBatchType, AgentID, PolicyID, \
+    MultiEnvDict, EnvID
 
 if TYPE_CHECKING:
     from ray.rllib.agents.callbacks import DefaultCallbacks
@@ -359,11 +361,17 @@ class AsyncSampler(threading.Thread, SamplerInput):
         return extra
 
 
-def _env_runner(worker, base_env, extra_batch_callback, policies,
-                policy_mapping_fn, rollout_fragment_length, horizon,
-                preprocessors, obs_filters, clip_rewards, clip_actions,
-                pack_multiple_episodes_in_batch, callbacks, tf_sess,
-                perf_stats, soft_horizon, no_done_at_end, observation_fn):
+def _env_runner(
+        worker: RolloutWorker, base_env: BaseEnv,
+        extra_batch_callback: Callable[[SampleBatchType], None], policies,
+        policy_mapping_fn: Callable[[AgentID], PolicyID],
+        rollout_fragment_length: int, horizon: int,
+        preprocessors: Dict[PolicyID, Preprocessor],
+        obs_filters: Dict[PolicyID, Filter], clip_rewards: bool,
+        clip_actions: bool, pack_multiple_episodes_in_batch: bool,
+        callbacks: "DefaultCallbacks", tf_sess, perf_stats: _PerfStats,
+        soft_horizon: bool, no_done_at_end: bool,
+        observation_fn: "ObservationFunction") -> Iterable[SampleBatchType]:
     """This implements the common experience collection logic.
 
     Args:
@@ -466,6 +474,7 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
         perf_stats.iters += 1
         t0 = time.time()
         # Get observations from all ready agents.
+        # type: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
         unfiltered_obs, rewards, dones, infos, off_policy_actions = \
             base_env.poll()
         perf_stats.env_wait_time += time.time() - t0
@@ -477,6 +486,8 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
 
         # Process observations and prepare for policy evaluation.
         t1 = time.time()
+        # type: Set[EnvID], Dict[PolicyID, List[PolicyEvalData]],
+        #       List[Union[RolloutMetrics, SampleBatchType]]
         active_envs, to_eval, outputs = _process_observations(
             worker=worker,
             base_env=base_env,
@@ -502,7 +513,8 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
 
         # Do batched policy eval (accross vectorized envs).
         t2 = time.time()
-        eval_results = _do_policy_eval(
+        eval_results: Dict[PolicyID, Tuple[np.ndarray, List[Any], dict]] = \
+            _do_policy_eval(
             to_eval=to_eval,
             policies=policies,
             active_episodes=active_episodes,
@@ -511,7 +523,7 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
 
         # Process results and update episode state.
         t3 = time.time()
-        actions_to_send = _process_policy_eval_results(
+        actions_to_send: MultiEnvDict = _process_policy_eval_results(
             to_eval=to_eval,
             eval_results=eval_results,
             active_episodes=active_episodes,
