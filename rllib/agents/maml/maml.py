@@ -105,7 +105,7 @@ class InnerAdaptationSteps:
                                                         self.metrics["episode_reward_mean"]
             return [(out, self.metrics)]
         else:
-            self.inner_adaptation_step(self.workers, samples)
+            self.inner_adaptation_step(samples)
             return []
 
     def post_process_samples(self, samples):
@@ -116,8 +116,8 @@ class InnerAdaptationSteps:
         return samples, split_lst
 
 
-    def inner_adaptation_step(self, workers, samples):
-        for i, e in enumerate(workers.remote_workers()):
+    def inner_adaptation_step(self, samples):
+        for i, e in enumerate(self.workers.remote_workers()):
             e.learn_on_batch.remote(samples[i])
 
     def post_process_metrics(self):
@@ -128,7 +128,6 @@ class InnerAdaptationSteps:
         self.metrics["episode_reward_max" + str(name)] = res["episode_reward_max"]
         self.metrics["episode_reward_mean" + str(name)] = res["episode_reward_mean"]
         self.metrics["episode_reward_min" + str(name)] = res["episode_reward_min"]
-
 
 
 class MetaUpdate:
@@ -195,37 +194,11 @@ def execution_plan(workers, config):
     return train_op
 
 
-def after_optimizer_step(trainer, fetches):
-    if trainer.config["use_kl_loss"]:
-        print(fetches)
-        trainer.workers.local_worker().for_policy(lambda pi: pi.update_kls(fetches["default_policy"]["inner_kl"]))
-
-
-def maml_metrics(trainer):
-    res = trainer.optimizer.collect_metrics(
-            trainer.config["collect_metrics_timeout"],
-            min_history=trainer.config["metrics_smoothing_episodes"],
-            selected_workers=trainer.workers.remote_workers(),
-            dataset_id=str(0))
-
-    for i in range(1,trainer.config["inner_adaptation_steps"]+1):    
-        res_adapt = trainer.optimizer.collect_metrics(
-                trainer.config["collect_metrics_timeout"],
-                min_history=trainer.config["metrics_smoothing_episodes"],
-                selected_workers=trainer.workers.remote_workers(),
-                dataset_id=str(i))
-        res["episode_reward_max_adapt_" + str(i)] = res_adapt["episode_reward_max"]
-        res["episode_reward_mean_adapt_" + str(i)] = res_adapt["episode_reward_mean"]
-        res["episode_reward_min_adapt_" + str(i)] = res_adapt["episode_reward_min"]
-
-    res["adaptation_delta"] = res["episode_reward_mean_adapt_" + str(trainer.config["inner_adaptation_steps"])] - res["episode_reward_mean"]
-    return res
-
-
 def get_policy_class(config):
     # @mluo: TODO
     assert config["framework"] != "torch"
     return MAMLTFPolicy
+
 
 def validate_config(config):
     if config["inner_adaptation_steps"]<=0:
@@ -244,6 +217,7 @@ def validate_config(config):
             "by the multi-GPU optimizer. Consider setting "
             "simple_optimizer=True if this doesn't work for you.")
 
+
 register(
     id='AntRandGoal-v2',
     entry_point='ray.rllib.examples.env.ant_rand_goal:AntRandGoalEnv',
@@ -261,6 +235,7 @@ register(
     entry_point='ray.rllib.examples.env.pendulum_mass:PendulumMassEnv',
     max_episode_steps=200,
 )
+
 
 MAMLTrainer = build_trainer(
     name="MAML",

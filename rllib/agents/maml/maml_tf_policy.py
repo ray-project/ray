@@ -114,7 +114,7 @@ class WorkerLoss(object):
             vf_clip_param=vf_clip_param,
             vf_loss_coeff=vf_loss_coeff,
             clip_loss=clip_loss)
-        self.loss = tf.Print(self.loss, ["Worker Loss", self.loss])
+        self.loss = tf.Print(self.loss, ["Worker Adapt Loss", self.loss])
 
 # This is the Meta-Update computation graph for master worker
 class MAMLLoss(object):
@@ -229,7 +229,7 @@ class MAMLLoss(object):
         self.mean_entropy = entropy_loss
         self.inner_kl_loss = tf.reduce_mean(tf.multiply(self.cur_kl_coeff, mean_inner_kl))
         self.loss = tf.reduce_mean(tf.stack(ppo_obj, axis=0)) + self.inner_kl_loss
-        self.loss = tf.Print(self.loss, [self.loss, self.mean_inner_kl])
+        self.loss = tf.Print(self.loss, ["Meta-Loss", self.loss, "Inner KL", self.mean_inner_kl])
 
     def feed_forward(self, obs, policy_vars, policy_config):
         # Hacky for now, reconstruct FC network with adapted weights
@@ -248,9 +248,9 @@ class MAMLLoss(object):
                     raise NameError
 
                 if bias_added:
-                    if "fc_out" not in name:
+                    if "out" not in name:
                         x = hidden_nonlinearity(x)
-                    elif "fc_out" in name:
+                    elif "out" in name:
                         x = output_nonlinearity(x)
                     else:
                         raise NameError
@@ -387,6 +387,7 @@ class KLCoeffMixin:
                 self.kl_coeff_val[i] *= 0.5
             elif kl > 1.5 * self.kl_target:
                 self.kl_coeff_val[i] *= 2.0
+        print(self.kl_coeff_val)
         self.kl_coeff.load(self.kl_coeff_val, session=self.get_session())
         return self.kl_coeff_val
 
