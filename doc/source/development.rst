@@ -42,29 +42,30 @@ Fast, Debug, and Optimized Builds
 ---------------------------------
 
 Currently, Ray is built with optimizations, which can take a long time and
-interfere with debugging. To perform fast, debug, or optimized builds, you
-can run the following (via `-c` `fastbuild`/`dbg`/`opt`, respectively):
+interfere with debugging. To perform fast, debug, or optimized builds, you can
+run the following (via ``-c`` ``fastbuild``/``dbg``/``opt``, respectively):
 
 .. code-block:: shell
 
  bazel build -c fastbuild //:ray_pkg
 
 This will rebuild Ray with the appropriate options (which may take a while).
-If you need to build all targets, you can use `"//:*"` instead of `//:ray_pkg`.
+If you need to build all targets, you can use ``"//:*"`` instead of
+``//:ray_pkg``.
 
-To make this change permanent, you can add an option such as the following line
-to your user-level `~/.bazelrc` file (not to be confused with the workspace-level
-`.bazelrc` file):
+To make this change permanent, you can add an option such as the following
+line to your user-level ``~/.bazelrc`` file (not to be confused with the
+workspace-level ``.bazelrc`` file):
 
 .. code-block:: shell
 
  build --compilation_mode=fastbuild
 
-If you do so, remember to revert this change, unless you want it to affect all of
-your development in the future.
+If you do so, remember to revert this change, unless you want it to affect
+all of your development in the future.
 
-Using `dbg` instead of `fastbuild` generates more debug information, which can
-make it easier to debug with a debugger like `gdb`.
+Using ``dbg`` instead of ``fastbuild`` generates more debug information,
+which can make it easier to debug with a debugger like ``gdb``.
 
 .. _python-develop:
 
