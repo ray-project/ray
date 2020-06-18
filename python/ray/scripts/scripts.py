@@ -857,7 +857,7 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     exec_cluster(
         cluster_config_file,
         cmd,
-        False,
+        'docker',
         screen,
         tmux,
         stop,
@@ -870,10 +870,11 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
 @click.argument("cluster_config_file", required=True, type=str)
 @click.argument("cmd", required=True, type=str)
 @click.option(
-    "--outside-docker",
-    is_flag=True,
-    default=False,
-    help="Runs command outside of docker.")
+    "--run-env",
+    required=False,
+    type=str,
+    default="auto",
+    help="Chooses running location. Either auto, host, or docker.")
 @click.option(
     "--stop",
     is_flag=True,
@@ -904,12 +905,12 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     multiple=True,
     type=int,
     help="Port to forward. Use this multiple times to forward multiple ports.")
-def exec_cmd(cluster_config_file, cmd, outside_docker, screen, tmux, stop,
-             start, cluster_name, port_forward):
+def exec_cmd(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
+             cluster_name, port_forward):
     """Execute a command via SSH on a Ray cluster."""
     port_forward = [(port, port) for port in list(port_forward)]
-    exec_cluster(cluster_config_file, cmd, outside_docker, screen, tmux, stop,
-                 start, cluster_name, port_forward)
+    exec_cluster(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
+                 cluster_name, port_forward)
 
 
 @cli.command()

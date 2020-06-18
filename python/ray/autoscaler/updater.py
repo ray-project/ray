@@ -311,11 +311,15 @@ class DockerCommandRunner(SSHCommandRunner):
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
-            outside_docker=True,
+            run_env=True,
             **kwargs):
-        if not outside_docker:
+        if run_env == "auto":
+            run_env = "host" if cmd.find("docker") == 0 else "docker"
+
+        if run_env == "docker":
             cmd = self.docker_expand_user(cmd, any_char=True)
             cmd = with_docker_exec([cmd], container_name=self.docker_name)[0]
+
         if self.shutdown:
             cmd += "; sudo shutdown -h now"
         return self.ssh_command_runner.run(
@@ -336,7 +340,7 @@ class DockerCommandRunner(SSHCommandRunner):
             cmd, with_output=True).decode("utf-8").strip()
         if no_exist in output:
             return False
-        return output
+        return "true" in output.lower()
 
     def run_rsync_up(self, source, target):
         self.ssh_command_runner.run_rsync_up(source, target)

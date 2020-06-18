@@ -164,9 +164,9 @@ def kill_node(config_file, yes, hard, override_cluster_name):
 
 
 def monitor_cluster(cluster_config_file, num_lines, override_cluster_name):
-    """Kills a random Raylet worker."""
+    """Tails the autoscaler logs of a Ray cluster."""
     cmd = "tail -n {} -f /tmp/ray/session_*/logs/monitor*".format(num_lines)
-    exec_cluster(cluster_config_file, cmd, False, False, False, False, False,
+    exec_cluster(cluster_config_file, cmd, 'auto', False, False, False, False,
                  override_cluster_name, None)
 
 
@@ -354,13 +354,13 @@ def attach_cluster(config_file, start, use_screen, use_tmux,
                 "--new only makes sense if passing --screen or --tmux")
         cmd = "$SHELL"
 
-    exec_cluster(config_file, cmd, False, False, False, False, start,
+    exec_cluster(config_file, cmd, 'auto', False, False, False, start,
                  override_cluster_name, port_forward)
 
 
 def exec_cluster(config_file,
                  cmd=None,
-                 outside_docker=False,
+                 run_env='auto',
                  screen=False,
                  tmux=False,
                  stop=False,
@@ -373,7 +373,7 @@ def exec_cluster(config_file,
     Arguments:
         config_file: path to the cluster yaml
         cmd: command to run
-        outside_docker: whether to run the command outside of a docker
+        run_env: whether to run the command on the host or optionally in a container
         screen: whether to run in a screen
         tmux: whether to run in a tmux session
         stop: whether to stop the cluster after command run
@@ -407,15 +407,13 @@ def exec_cluster(config_file,
             docker_config=config["docker"])
 
         is_docker = isinstance(updater.cmd_runner, DockerCommandRunner)
-        assert (not outside_docker
-                ) or is_docker, "outside_docker requrires docker to be in use"
 
         if cmd and stop:
             cmd += "; ".join([
                 "ray stop",
                 "ray teardown ~/ray_bootstrap_config.yaml --yes --workers-only"
             ])
-            if is_docker:
+            if is_docker and run_env == "docker":
                 updater.cmd_runner.shutdown_after_next_cmd()
             else:
                 cmd += "; sudo shutdown -h now"
@@ -427,7 +425,7 @@ def exec_cluster(config_file,
             tmux,
             port_forward=port_forward,
             with_output=with_output,
-            outside_docker=outside_docker)
+            run_env=run_env)
         if tmux or screen:
             attach_command_parts = ["ray attach", config_file]
             if override_cluster_name is not None:
@@ -453,7 +451,7 @@ def _exec(updater,
           tmux,
           port_forward=None,
           with_output=False,
-          outside_docker=False):
+          run_env='auto'):
     if cmd:
         if screen:
             cmd = [
@@ -473,7 +471,7 @@ def _exec(updater,
         exit_on_fail=True,
         port_forward=port_forward,
         with_output=with_output,
-        outside_docker=outside_docker)
+        run_env=run_env)
 
 
 def rsync(config_file,
