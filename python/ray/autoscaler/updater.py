@@ -146,6 +146,36 @@ class KubernetesCommandRunner:
                                             self.node_id)
 
 
+class SSHOptions:
+    def __init__(self, control_path=None, **kwargs):
+        self.arg_dict = {
+            "StrictHostKeyChecking": "no",
+            # Try fewer extraneous key pairs.
+            "IdentitiesOnly": "yes",
+            # Abort if port forwarding fails (instead of just printing to
+            # stderr).
+            "ExitOnForwardFailure": "yes",
+            # Quickly kill the connection if network connection breaks (as
+            # opposed to hanging/blocking).
+            "ServerAliveInterval": 5,
+            "ServerAliveCountMax": 3
+        }
+        if control_path:
+            self.arg_dict.update({
+                "ControlMaster": "auto",
+                "ControlPath": "{}/%C".format(control_path),
+                "ControlPersist": "10s",
+            })
+        self.arg_dict.update(kwargs)
+
+    def get_ssh_options(self, ssh_key, timeout):
+        self.arg_dict["ConnectTimeout"] = "{}s".format(timeout)
+        return ["-i", ssh_key] + [
+            x for y in (["-o", "{}={}".format(k, v)]
+                        for k, v in self.arg_dict.items()) for x in y
+        ]
+
+
 class SSHCommandRunner:
     def __init__(self, log_prefix, node_id, provider, auth_config,
                  cluster_name, process_runner, use_internal_ip):
@@ -165,28 +195,7 @@ class SSHCommandRunner:
         self.ssh_user = auth_config["ssh_user"]
         self.ssh_control_path = ssh_control_path
         self.ssh_ip = None
-        self.OPTS = [
-            ("StrictHostKeyChecking", "no"),
-            ("ControlMaster", "auto"),
-            ("ControlPath", "{}/%C".format(self.ssh_control_path)),
-            ("ControlPersist", "10s"),
-            # Try fewer extraneous key pairs.
-            ("IdentitiesOnly", "yes"),
-            # Abort if port forwarding fails (instead of just printing to
-            # stderr).
-            ("ExitOnForwardFailure", "yes"),
-            # Quickly kill the connection if network connection breaks (as
-            # opposed to hanging/blocking).
-            ("ServerAliveInterval", 5),
-            ("ServerAliveCountMax", 3),
-        ]
-
-    def get_default_ssh_options(self, connect_timeout):
-        OPTS = [("ConnectTimeout", "{}s".format(connect_timeout))] + self.OPTS
-        return ["-i", self.ssh_private_key] + [
-            x for y in (["-o", "{}={}".format(k, v)] for k, v in OPTS)
-            for x in y
-        ]
+        self.default_ssh_options = SSHOptions(self.ssh_control_path)
 
     def get_node_ip(self):
         if self.use_internal_ip:
@@ -231,8 +240,10 @@ class SSHCommandRunner:
             timeout=120,
             exit_on_fail=False,
             port_forward=None,
-            with_output=False):
-
+            with_output=False,
+            ssh_options=None):
+        if not ssh_options:
+            ssh_options = self.default_ssh_options
         self.set_ssh_ip_if_required()
 
         ssh = ["ssh", "-tt"]
@@ -245,9 +256,9 @@ class SSHCommandRunner:
                             "{} -> localhost:{}".format(local, remote))
                 ssh += ["-L", "{}:localhost:{}".format(remote, local)]
 
-        final_cmd = ssh + self.get_default_ssh_options(timeout) + [
-            "{}@{}".format(self.ssh_user, self.ssh_ip)
-        ]
+        final_cmd = ssh + ssh_options.get_ssh_options(
+            self.ssh_private_key,
+            timeout) + ["{}@{}".format(self.ssh_user, self.ssh_ip)]
         if cmd:
             logger.info(self.log_prefix +
                         "Running {} on {}...".format(cmd, self.ssh_ip))
@@ -277,16 +288,18 @@ class SSHCommandRunner:
         self.set_ssh_ip_if_required()
         self.process_runner.check_call([
             "rsync", "--rsh",
-            " ".join(["ssh"] + self.get_default_ssh_options(120)), "-avz",
-            source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target)
+            " ".join(["ssh"] + self.default_ssh_options.get_ssh_options(
+                self.ssh_private_key, 120)), "-avz", source, "{}@{}:{}".format(
+                    self.ssh_user, self.ssh_ip, target)
         ])
 
     def run_rsync_down(self, source, target):
         self.set_ssh_ip_if_required()
         self.process_runner.check_call([
             "rsync", "--rsh",
-            " ".join(["ssh"] + self.get_default_ssh_options(120)), "-avz",
-            "{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target
+            " ".join(["ssh"] + self.default_ssh_options.get_ssh_options(
+                self.ssh_private_key, 120)), "-avz", "{}@{}:{}".format(
+                    self.ssh_user, self.ssh_ip, source), target
         ])
 
     def remote_shell_command_str(self):
@@ -323,24 +336,17 @@ class DockerCommandRunner(SSHCommandRunner):
         except Exception:
             logger.info("Docker not installed, installing now")
 
-        # Disable session reuse to allow for group changes to be
-        # correctly reflected.
-        old_opts = self.ssh_command_runner.OPTS
-        new_opts = [opt for opt in old_opts if "Control" not in opt[0]]
-        self.ssh_command_runner.OPTS = new_opts
-
         install_commands = [
             "curl -fsSL https://get.docker.com -o get-docker.sh",
             "sudo sh get-docker.sh", "sudo usermod -aG docker $USER",
             "sudo systemctl restart docker -f"
         ]
         for cmd in install_commands:
-            self.ssh_command_runner.run(cmd)
+            self.ssh_command_runner.run(cmd, ssh_options=SSHOptions())
 
         logger.info("Docker install finished!")
 
         # Restore initial SSH options.
-        self.ssh_command_runner.OPTS = old_opts
 
     def check_container_status(self):
         no_exist = "not_present"
