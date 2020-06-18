@@ -8,7 +8,7 @@ from ray.rllib.agents.dqn.simple_q_tf_policy import build_q_models, \
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.utils import try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import huber_loss
 
 torch, nn = try_import_torch()

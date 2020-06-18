@@ -6,7 +6,7 @@ from ray.serve.metric.types import (
     convert_event_type_to_class,
     MetricMetadata,
 )
-from ray.serve.utils import retry_actor_failures_async, _get_logger
+from ray.serve.utils import _get_logger
 from ray.serve.constants import METRIC_PUSH_INTERVAL_S
 
 logger = _get_logger()
@@ -129,8 +129,7 @@ class MetricClient:
 
         old_batch, self.metric_records = self.metric_records, []
         logger.debug("Pushing metric batch {}".format(old_batch))
-        await retry_actor_failures_async(self.exporter.ingest,
-                                         self.registered_metrics, old_batch)
+        await self.exporter.ingest.remote(self.registered_metrics, old_batch)
 
     async def push_to_exporter_forever(self, interval_s):
         while True:

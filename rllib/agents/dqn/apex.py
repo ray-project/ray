@@ -86,6 +86,8 @@ def apex_execution_plan(workers: WorkerSet, config: dict):
         config["prioritized_replay_alpha"],
         config["prioritized_replay_beta"],
         config["prioritized_replay_eps"],
+        config["multiagent"]["replay_mode"],
+        config["replay_sequence_length"],
     ], num_replay_buffer_shards)
 
     # Start the learner thread.

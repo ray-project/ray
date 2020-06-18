@@ -514,10 +514,10 @@ class TrainableFunctionApiTest(unittest.TestCase):
             all(t.status == Trial.TERMINATED for t in analysis.trials))
         self.assertTrue(len(analysis.dataframe()) <= top)
 
-        patience = 10
+        patience = 5
         stopper = EarlyStopping("test", top=top, mode="min", patience=patience)
 
-        analysis = tune.run(train, num_samples=100, stop=stopper)
+        analysis = tune.run(train, num_samples=20, stop=stopper)
         self.assertTrue(
             all(t.status == Trial.TERMINATED for t in analysis.trials))
         self.assertTrue(len(analysis.dataframe()) <= patience)

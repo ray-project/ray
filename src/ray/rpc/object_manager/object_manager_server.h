@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RPC_OBJECT_MANAGER_SERVER_H
-#define RAY_RPC_OBJECT_MANAGER_SERVER_H
+#pragma once
 
-#include "src/ray/rpc/grpc_server.h"
-#include "src/ray/rpc/server_call.h"
-
-#include "src/ray/protobuf/object_manager.grpc.pb.h"
-#include "src/ray/protobuf/object_manager.pb.h"
+#include "ray/protobuf/object_manager.grpc.pb.h"
+#include "ray/protobuf/object_manager.pb.h"
+#include "ray/rpc/grpc_server.h"
+#include "ray/rpc/server_call.h"
 
 namespace ray {
 namespace rpc {
@@ -80,5 +78,3 @@ class ObjectManagerGrpcService : public GrpcService {
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif

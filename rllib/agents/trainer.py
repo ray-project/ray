@@ -1,4 +1,5 @@
 from datetime import datetime
+import numpy as np
 import copy
 import logging
 import math
@@ -6,18 +7,22 @@ import os
 import pickle
 import time
 import tempfile
+from typing import Callable, List, Dict, Union, Any
 
 import ray
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.env import EnvType
 from ray.rllib.env.normalize_actions import NormalizeActionWrapper
 from ray.rllib.models import MODEL_DEFAULTS
+from ray.rllib.policy import Policy, PolicyID
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
-from ray.rllib.utils.framework import check_framework, try_import_tf
+from ray.rllib.utils.spaces import space_utils
+from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.from_config import from_config
@@ -25,7 +30,7 @@ from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
 from ray.tune.resources import Resources
-from ray.tune.logger import UnifiedLogger
+from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
 tf = try_import_tf()
@@ -145,8 +150,7 @@ COMMON_CONFIG = {
     # tf: TensorFlow
     # tfe: TensorFlow eager
     # torch: PyTorch
-    # auto: "torch" if only PyTorch installed, "tf" otherwise.
-    "framework": "auto",
+    "framework": "tf",
     # Enable tracing in eager mode. This greatly improves performance, but
     # makes it slightly harder to debug since Python code won't be evaluated
     # after the initial eager pass. Only possible if framework=tfe.
@@ -339,13 +343,24 @@ COMMON_CONFIG = {
         "policies": {},
         # Function mapping agent ids to policy ids.
         "policy_mapping_fn": None,
-        # Optional whitelist of policies to train, or None for all policies.
+        # Optional list of policies to train, or None for all policies.
         "policies_to_train": None,
         # Optional function that can be used to enhance the local agent
         # observations to include more state.
         # See rllib/evaluation/observation_function.py for more info.
         "observation_fn": None,
+        # When replay_mode=lockstep, RLlib will replay all the agent
+        # transitions at a particular timestep together in a batch. This allows
+        # the policy to implement differentiable shared computations between
+        # agents it controls at that timestep. When replay_mode=independent,
+        # transitions are replayed independently per policy.
+        "replay_mode": "independent",
     },
+
+    # === Replay Settings ===
+    # The number of contiguous environment steps to replay at once. This may
+    # be set to greater than 1 to support recurrent models.
+    "replay_sequence_length": 1,
 
     # Deprecated keys:
     "use_pytorch": DEPRECATED_VALUE,  # Replaced by `framework=torch`.
@@ -402,7 +417,10 @@ class Trainer(Trainable):
     _override_all_subkeys_if_type_changes = ["exploration_config"]
 
     @PublicAPI
-    def __init__(self, config=None, env=None, logger_creator=None):
+    def __init__(self,
+                 config: dict = None,
+                 env: str = None,
+                 logger_creator: Callable[[], Logger] = None):
         """Initialize an RLLib trainer.
 
         Args:
@@ -446,7 +464,7 @@ class Trainer(Trainable):
 
     @classmethod
     @override(Trainable)
-    def default_resource_request(cls, config):
+    def default_resource_request(cls, config: dict) -> Resources:
         cf = dict(cls._default_config, **config)
         Trainer._validate_config(cf)
         num_workers = cf["num_workers"] + cf["evaluation_num_workers"]
@@ -464,7 +482,7 @@ class Trainer(Trainable):
 
     @override(Trainable)
     @PublicAPI
-    def train(self):
+    def train(self) -> dict:
         """Overrides super.train to synchronize global vars."""
 
         if self._has_policy_optimizer():
@@ -525,14 +543,14 @@ class Trainer(Trainable):
                 workers.local_worker().filters))
 
     @override(Trainable)
-    def _log_result(self, result):
+    def _log_result(self, result: dict):
         self.callbacks.on_train_result(trainer=self, result=result)
         # log after the callback is invoked, so that the user has a chance
         # to mutate the result
         Trainable._log_result(self, result)
 
     @override(Trainable)
-    def _setup(self, config):
+    def _setup(self, config: dict):
         env = self._env_id
         if env:
             config["env"] = env
@@ -569,9 +587,7 @@ class Trainer(Trainable):
                 self.config["framework"] = "tfe"
             self.config.pop("eager")
 
-        # Check all dependencies and resolve "auto" framework.
-        self.config["framework"] = check_framework(self.config["framework"])
-        # Notify about eager/tracing support.
+        # Enable eager/tracing support.
         if tf and self.config["framework"] == "tfe":
             if not tf.executing_eagerly():
                 tf.enable_eager_execution()
@@ -649,7 +665,7 @@ class Trainer(Trainable):
             self.optimizer.stop()
 
     @override(Trainable)
-    def _save(self, checkpoint_dir):
+    def _save(self, checkpoint_dir: str) -> str:
         checkpoint_path = os.path.join(checkpoint_dir,
                                        "checkpoint-{}".format(self.iteration))
         pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
@@ -657,12 +673,14 @@ class Trainer(Trainable):
         return checkpoint_path
 
     @override(Trainable)
-    def _restore(self, checkpoint_path):
+    def _restore(self, checkpoint_path: str):
         extra_data = pickle.load(open(checkpoint_path, "rb"))
         self.__setstate__(extra_data)
 
     @DeveloperAPI
-    def _make_workers(self, env_creator, policy, config, num_workers):
+    def _make_workers(self, env_creator: Callable[[dict], EnvType],
+                      policy: type, config: dict,
+                      num_workers: int) -> WorkerSet:
         """Default factory method for a WorkerSet running under this Trainer.
 
         Override this method by passing a custom `make_workers` into
@@ -696,7 +714,7 @@ class Trainer(Trainable):
         raise NotImplementedError
 
     @DeveloperAPI
-    def _evaluate(self):
+    def _evaluate(self) -> dict:
         """Evaluates current policy under `evaluation_config` settings.
 
         Note that this default implementation does not do anything beyond
@@ -751,14 +769,14 @@ class Trainer(Trainable):
 
     @PublicAPI
     def compute_action(self,
-                       observation,
-                       state=None,
-                       prev_action=None,
-                       prev_reward=None,
-                       info=None,
-                       policy_id=DEFAULT_POLICY_ID,
-                       full_fetch=False,
-                       explore=None):
+                       observation: TensorStructType,
+                       state: List[Any] = None,
+                       prev_action: TensorStructType = None,
+                       prev_reward: int = None,
+                       info: dict = None,
+                       policy_id: PolicyID = DEFAULT_POLICY_ID,
+                       full_fetch: bool = False,
+                       explore: bool = None) -> TensorStructType:
         """Computes an action for the specified policy on the local Worker.
 
         Note that you can also access the policy object through
@@ -810,18 +828,107 @@ class Trainer(Trainable):
         else:
             return result[0]  # backwards compatibility
 
+    def compute_actions(self,
+                        observations,
+                        state=None,
+                        prev_action=None,
+                        prev_reward=None,
+                        info=None,
+                        policy_id=DEFAULT_POLICY_ID,
+                        full_fetch=False,
+                        explore=None):
+        """Computes an action for the specified policy on the local Worker.
+
+        Note that you can also access the policy object through
+        self.get_policy(policy_id) and call compute_actions() on it directly.
+
+        Arguments:
+            observation (obj): observation from the environment.
+            state (dict): RNN hidden state, if any. If state is not None,
+                then all of compute_single_action(...) is returned
+                (computed action, rnn state(s), logits dictionary).
+                Otherwise compute_single_action(...)[0] is returned
+                (computed action).
+            prev_action (obj): previous action value, if any
+            prev_reward (int): previous reward, if any
+            info (dict): info object, if any
+            policy_id (str): Policy to query (only applies to multi-agent).
+            full_fetch (bool): Whether to return extra action fetch results.
+                This is always set to True if RNN state is specified.
+            explore (bool): Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
+
+        Returns:
+            any: The computed action if full_fetch=False, or
+            tuple: The full output of policy.compute_actions() if
+                full_fetch=True or we have an RNN-based Policy.
+        """
+        # Preprocess obs and states
+        stateDefined = state is not None
+        policy = self.get_policy(policy_id)
+        filtered_obs, filtered_state = [], []
+        for agent_id, ob in observations.items():
+            worker = self.workers.local_worker()
+            preprocessed = worker.preprocessors[policy_id].transform(ob)
+            filtered = worker.filters[policy_id](preprocessed, update=False)
+            filtered_obs.append(filtered)
+            if state is None:
+                continue
+            elif agent_id in state:
+                filtered_state.append(state[agent_id])
+            else:
+                filtered_state.append(policy.get_initial_state())
+
+        # Batch obs and states
+        obs_batch = np.stack(filtered_obs)
+        if state is None:
+            state = []
+        else:
+            state = list(zip(*filtered_state))
+            state = [np.stack(s) for s in state]
+
+        # Figure out the current (sample) time step and pass it into Policy.
+        self.global_vars["timestep"] += 1
+
+        # Batch compute actions
+        actions, states, infos = policy.compute_actions(
+            obs_batch,
+            state,
+            prev_action,
+            prev_reward,
+            info,
+            clip_actions=self.config["clip_actions"],
+            explore=explore,
+            timestep=self.global_vars["timestep"])
+
+        # Unbatch actions for the environment
+        atns, actions = space_utils.unbatch(actions), {}
+        for key, atn in zip(observations, atns):
+            actions[key] = atn
+
+        # Unbatch states into a dict
+        unbatched_states = {}
+        for idx, agent_id in enumerate(observations):
+            unbatched_states[agent_id] = [s[idx] for s in states]
+
+        # Return only actions or full tuple
+        if stateDefined or full_fetch:
+            return actions, unbatched_states, infos
+        else:
+            return actions
+
     @property
-    def _name(self):
+    def _name(self) -> str:
         """Subclasses should override this to declare their name."""
         raise NotImplementedError
 
     @property
-    def _default_config(self):
+    def _default_config(self) -> dict:
         """Subclasses should override this to declare their default config."""
         raise NotImplementedError
 
     @PublicAPI
-    def get_policy(self, policy_id=DEFAULT_POLICY_ID):
+    def get_policy(self, policy_id: PolicyID = DEFAULT_POLICY_ID) -> Policy:
         """Return policy for the specified id, or None.
 
         Arguments:
@@ -830,7 +937,7 @@ class Trainer(Trainable):
         return self.workers.local_worker().get_policy(policy_id)
 
     @PublicAPI
-    def get_weights(self, policies=None):
+    def get_weights(self, policies: List[PolicyID] = None) -> dict:
         """Return a dictionary of policy ids to weights.
 
         Arguments:
@@ -840,7 +947,7 @@ class Trainer(Trainable):
         return self.workers.local_worker().get_weights(policies)
 
     @PublicAPI
-    def set_weights(self, weights):
+    def set_weights(self, weights: Dict[PolicyID, dict]):
         """Set policy weights by policy id.
 
         Arguments:
@@ -866,9 +973,9 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def export_policy_checkpoint(self,
-                                 export_dir,
-                                 filename_prefix="model",
-                                 policy_id=DEFAULT_POLICY_ID):
+                                 export_dir: str,
+                                 filename_prefix: str = "model",
+                                 policy_id: PolicyID = DEFAULT_POLICY_ID):
         """Export tensorflow policy model checkpoint to local directory.
 
         Arguments:
@@ -887,8 +994,8 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def import_policy_model_from_h5(self,
-                                    import_file,
-                                    policy_id=DEFAULT_POLICY_ID):
+                                    import_file: str,
+                                    policy_id: PolicyID = DEFAULT_POLICY_ID):
         """Imports a policy's model with given policy_id from a local h5 file.
 
         Arguments:
@@ -905,7 +1012,8 @@ class Trainer(Trainable):
             import_file, policy_id)
 
     @DeveloperAPI
-    def collect_metrics(self, selected_workers=None):
+    def collect_metrics(self,
+                        selected_workers: List["ActorHandle"] = None) -> dict:
         """Collects metrics from the remote workers of this agent.
 
         This is the same data as returned by a call to train().
@@ -916,14 +1024,14 @@ class Trainer(Trainable):
             selected_workers=selected_workers)
 
     @classmethod
-    def resource_help(cls, config):
+    def resource_help(cls, config: dict) -> str:
         return ("\n\nYou can adjust the resource requests of RLlib agents by "
                 "setting `num_workers`, `num_gpus`, and other configs. See "
                 "the DEFAULT_CONFIG defined by each agent for more info.\n\n"
                 "The config of this agent is: {}".format(config))
 
     @classmethod
-    def merge_trainer_configs(cls, config1, config2):
+    def merge_trainer_configs(cls, config1: dict, config2: dict) -> dict:
         config1 = copy.deepcopy(config1)
         # Error if trainer default has deprecated value.
         if config1["sample_batch_size"] != DEPRECATED_VALUE:
@@ -950,37 +1058,31 @@ class Trainer(Trainable):
                            cls._override_all_subkeys_if_type_changes)
 
     @staticmethod
-    def _validate_config(config):
+    def _validate_config(config: dict):
         if "policy_graphs" in config["multiagent"]:
-            logger.warning(
-                "The `policy_graphs` config has been renamed to `policies`.")
-            # Backwards compatibility
-            config["multiagent"]["policies"] = config["multiagent"][
-                "policy_graphs"]
-            del config["multiagent"]["policy_graphs"]
+            deprecation_warning("policy_graphs", "policies")
+            # Backwards compatibility.
+            config["multiagent"]["policies"] = config["multiagent"].pop(
+                "policy_graphs")
         if "gpu" in config:
-            raise ValueError(
-                "The `gpu` config is deprecated, please use `num_gpus=0|1` "
-                "instead.")
+            deprecation_warning("gpu", "num_gpus=0|1", error=True)
         if "gpu_fraction" in config:
-            raise ValueError(
-                "The `gpu_fraction` config is deprecated, please use "
-                "`num_gpus=<fraction>` instead.")
+            deprecation_warning(
+                "gpu_fraction", "num_gpus=<fraction>", error=True)
         if "use_gpu_for_workers" in config:
-            raise ValueError(
-                "The `use_gpu_for_workers` config is deprecated, please use "
-                "`num_gpus_per_worker=1` instead.")
+            deprecation_warning(
+                "use_gpu_for_workers", "num_gpus_per_worker=1", error=True)
         if type(config["input_evaluation"]) != list:
             raise ValueError(
                 "`input_evaluation` must be a list of strings, got {}".format(
                     config["input_evaluation"]))
 
     def _try_recover(self):
-        """Try to identify and blacklist any unhealthy workers.
+        """Try to identify and remove any unhealthy workers.
 
         This method is called after an unexpected remote error is encountered
         from a worker. It issues check requests to all current workers and
-        blacklists any that respond with error. If no healthy workers remain,
+        removes any that respond with error. If no healthy workers remain,
         an error is raised.
         """
 
@@ -1008,7 +1110,7 @@ class Trainer(Trainable):
                 healthy_workers.append(w)
                 logger.info("Worker {} looks healthy".format(i + 1))
             except RayError:
-                logger.exception("Blacklisting worker {}".format(i + 1))
+                logger.exception("Removing unhealthy worker {}".format(i + 1))
                 try:
                     w.__ray_terminate__.remote()
                 except Exception:
@@ -1037,7 +1139,8 @@ class Trainer(Trainable):
             self.optimizer, PolicyOptimizer)
 
     @override(Trainable)
-    def _export_model(self, export_formats, export_dir):
+    def _export_model(self, export_formats: List[str],
+                      export_dir: str) -> Dict[str, str]:
         ExportFormat.validate(export_formats)
         exported = {}
         if ExportFormat.CHECKPOINT in export_formats:
@@ -1050,7 +1153,7 @@ class Trainer(Trainable):
             exported[ExportFormat.MODEL] = path
         return exported
 
-    def import_model(self, import_file):
+    def import_model(self, import_file: str):
         """Imports a model from import_file.
 
         Note: Currently, only h5 files are supported.
@@ -1075,7 +1178,7 @@ class Trainer(Trainable):
         else:
             return self.import_policy_model_from_h5(import_file)
 
-    def __getstate__(self):
+    def __getstate__(self) -> dict:
         state = {}
         if hasattr(self, "workers"):
             state["worker"] = self.workers.local_worker().save()
@@ -1083,7 +1186,7 @@ class Trainer(Trainable):
             state["optimizer"] = self.optimizer.save()
         return state
 
-    def __setstate__(self, state):
+    def __setstate__(self, state: dict):
         if "worker" in state:
             self.workers.local_worker().restore(state["worker"])
             remote_state = ray.put(state["worker"])
@@ -1092,7 +1195,7 @@ class Trainer(Trainable):
         if "optimizer" in state:
             self.optimizer.restore(state["optimizer"])
 
-    def _register_if_needed(self, env_object):
+    def _register_if_needed(self, env_object: Union[str, EnvType]):
         if isinstance(env_object, str):
             return env_object
         elif isinstance(env_object, type):

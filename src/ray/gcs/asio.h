@@ -32,8 +32,7 @@
 // Adapted from https://github.com/ryangraham/hiredis-boostasio-adapter
 // (Copyright 2018 Ryan Graham)
 
-#ifndef RAY_GCS_ASIO_H
-#define RAY_GCS_ASIO_H
+#pragma once
 
 #include <stdio.h>
 #include <iostream>
@@ -92,5 +91,3 @@ extern "C" void call_C_delRead(void *private_data);
 extern "C" void call_C_addWrite(void *private_data);
 extern "C" void call_C_delWrite(void *private_data);
 extern "C" void call_C_cleanup(void *private_data);
-
-#endif  // RAY_GCS_ASIO_H

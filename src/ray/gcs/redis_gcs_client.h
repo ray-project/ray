@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_REDIS_GCS_CLIENT_H
-#define RAY_GCS_REDIS_GCS_CLIENT_H
+#pragma once
 
 #include <map>
 #include <string>
@@ -138,5 +137,3 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_REDIS_GCS_CLIENT_H

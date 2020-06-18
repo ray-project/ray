@@ -37,4 +37,8 @@ public class Functions {
     }
   }
 
+  public static RichFunction emptyFunction() {
+    return new DefaultRichFunction(null);
+  }
+
 }

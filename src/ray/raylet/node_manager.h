@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RAYLET_NODE_MANAGER_H
-#define RAY_RAYLET_NODE_MANAGER_H
+#pragma once
 
 #include <boost/asio/steady_timer.hpp>
 
@@ -231,8 +230,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param object_ids The object ids to store error messages into.
   /// \param job_id The optional job to push errors to if the writes fail.
   void MarkObjectsAsFailed(const ErrorType &error_type,
-                           const std::vector<plasma::ObjectID> object_ids,
-                           const JobID &job_id);
+                           const std::vector<ObjectID> object_ids, const JobID &job_id);
   /// This is similar to TreatTaskAsFailed, but it will only mark the task as
   /// failed if at least one of the task's return values is lost. A return
   /// value is lost if it has been created before, but no longer exists on any
@@ -790,5 +788,3 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 }  // namespace raylet
 
 }  // end namespace ray
-
-#endif  // RAY_RAYLET_NODE_MANAGER_H

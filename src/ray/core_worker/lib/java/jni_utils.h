@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_JAVA_JNI_UTILS_H
-#define RAY_COMMON_JAVA_JNI_UTILS_H
+#pragma once
 
 #include <jni.h>
 
@@ -422,5 +421,3 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
   RAY_LOG(FATAL) << "Unknown function descriptor type: " << function_descriptor->Type();
   return NativeStringVectorToJavaStringList(env, std::vector<std::string>());
 }
-
-#endif  // RAY_COMMON_JAVA_JNI_UTILS_H

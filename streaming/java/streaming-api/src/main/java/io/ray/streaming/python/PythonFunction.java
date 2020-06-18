@@ -2,6 +2,7 @@ package io.ray.streaming.python;
 
 import com.google.common.base.Preconditions;
 import io.ray.streaming.api.function.Function;
+import java.util.StringJoiner;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -99,4 +100,17 @@ public class PythonFunction implements Function {
     return functionInterface;
   }
 
+  @Override
+  public String toString() {
+    StringJoiner stringJoiner = new StringJoiner(", ",
+        PythonFunction.class.getSimpleName() + "[", "]");
+    if (function != null) {
+      stringJoiner.add("function=binary function");
+    } else {
+      stringJoiner.add("moduleName='" + moduleName + "'")
+          .add("functionName='" + functionName + "'");
+    }
+    stringJoiner.add("functionInterface='" + functionInterface + "'");
+    return stringJoiner.toString();
+  }
 }

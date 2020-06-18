@@ -12,18 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_TEST_UTIL_H
-#define RAY_GCS_TEST_UTIL_H
+#pragma once
 
 #include <memory>
 #include <utility>
 
 #include "gmock/gmock.h"
-#include "src/ray/common/task/task.h"
-#include "src/ray/common/task/task_util.h"
-#include "src/ray/common/test_util.h"
-#include "src/ray/protobuf/gcs_service.grpc.pb.h"
-#include "src/ray/util/asio_util.h"
+#include "ray/common/task/task.h"
+#include "ray/common/task/task_util.h"
+#include "ray/common/test_util.h"
+#include "ray/protobuf/gcs_service.grpc.pb.h"
+#include "ray/util/asio_util.h"
 
 namespace ray {
 
@@ -136,5 +135,3 @@ struct Mocker {
 };
 
 }  // namespace ray
-
-#endif  // RAY_GCS_TEST_UTIL_H

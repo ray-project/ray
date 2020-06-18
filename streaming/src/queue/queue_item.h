@@ -1,5 +1,5 @@
-#ifndef _STREAMING_QUEUE_ITEM_H_
-#define _STREAMING_QUEUE_ITEM_H_
+#pragma once
+
 #include <iterator>
 #include <list>
 #include <thread>
@@ -106,4 +106,3 @@ typedef std::shared_ptr<QueueItem> QueueItemPtr;
 
 }  // namespace streaming
 }  // namespace ray
-#endif

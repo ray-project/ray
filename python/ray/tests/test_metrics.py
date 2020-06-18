@@ -113,9 +113,9 @@ def test_worker_stats(shutdown_only):
         ]
         for process in processes:
             # TODO(ekl) why does travis/mi end up in the process list
-            assert ("python" in process or "conda" in process
-                    or "travis" in process or "runner" in process
-                    or "ray" in process)
+            assert ("python" in process or "mini" in process
+                    or "conda" in process or "travis" in process
+                    or "runner" in process or "ray" in process)
         break
 
     # Test kill_actor.
@@ -405,11 +405,6 @@ def test_memory_dashboard(shutdown_only):
         """Wait until the new fresh memory table is ready."""
         global prev_memory_table
         memory_table = get_memory_table()
-        from pprint import pprint
-        print("Current")
-        pprint(memory_table)
-        print("Prev")
-        pprint(prev_memory_table)
         is_ready = memory_table["group"] != prev_memory_table
         prev_memory_table = memory_table["group"]
         return is_ready

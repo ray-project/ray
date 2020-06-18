@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_OBJECT_MANAGER_H
-#define RAY_GCS_OBJECT_MANAGER_H
+#pragma once
 
 #include "gcs_node_manager.h"
 #include "gcs_table_storage.h"
@@ -53,6 +52,12 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   void HandleRemoveObjectLocation(const rpc::RemoveObjectLocationRequest &request,
                                   rpc::RemoveObjectLocationReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Load initial data from gcs storage to memory cache asynchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param done Callback that will be called when load is complete.
+  void LoadInitialData(const EmptyCallback &done);
 
  protected:
   typedef absl::flat_hash_set<ClientID> LocationSet;
@@ -134,5 +139,3 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_OBJECT_MANAGER_H

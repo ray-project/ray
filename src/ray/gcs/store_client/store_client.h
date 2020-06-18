@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_STORE_CLIENT_STORE_CLIENT_H
-#define RAY_GCS_STORE_CLIENT_STORE_CLIENT_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -65,6 +64,16 @@ class StoreClient {
   virtual Status AsyncGet(const std::string &table_name, const std::string &key,
                           const OptionalItemCallback<std::string> &callback) = 0;
 
+  /// Get data by index from the given table asynchronously.
+  ///
+  /// \param table_name The name of the table to be read.
+  /// \param index_key The secondary key that will be used to get the indexed data.
+  /// \param callback Callback that will be called after read finishes.
+  /// \return Status
+  virtual Status AsyncGetByIndex(
+      const std::string &table_name, const std::string &index_key,
+      const MapCallback<std::string, std::string> &callback) = 0;
+
   /// Get all data from the given table asynchronously.
   ///
   /// \param table_name The name of the table to be read.
@@ -110,5 +119,3 @@ class StoreClient {
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_STORE_CLIENT_STORE_CLIENT_H

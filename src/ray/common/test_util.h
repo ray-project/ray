@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_TEST_UTIL_H
-#define RAY_COMMON_TEST_UTIL_H
+#pragma once
 
 #include <unistd.h>
 
@@ -43,6 +42,11 @@ bool WaitForCondition(std::function<bool()> condition, int timeout_ms);
 
 /// Used to kill process whose pid is stored in `socket_name.id` file.
 void KillProcessBySocketName(std::string socket_name);
+
+/// Kills all processes with the given executable name (similar to killall).
+/// Note: On Windows, this should include the file extension (e.g. ".exe"), if any.
+/// This cannot be done automatically as doing so may be incorrect in some cases.
+int KillAllExecutable(const std::string &executable_with_suffix);
 
 // A helper function to return a random task id.
 TaskID RandomTaskId();
@@ -112,5 +116,3 @@ class TestSetupUtil {
 };
 
 }  // namespace ray
-
-#endif  // RAY_UTIL_TEST_UTIL_H
