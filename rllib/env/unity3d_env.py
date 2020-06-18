@@ -1,7 +1,7 @@
-from gym.spaces import Box, MultiDiscrete, Tuple
+from gym.spaces import Box, MultiDiscrete, Tuple as TupleSpace
 import logging
 import numpy as np
-from typing import Callable
+from typing import Callable, Tuple
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import override
@@ -206,7 +206,7 @@ class Unity3DEnv(MultiAgentEnv):
             "3DBallHard": Box(float("-inf"), float("inf"), (45, )),
             # SoccerStrikersVsGoalie.
             "Goalie": Box(float("-inf"), float("inf"), (738, )),
-            "Striker": Tuple([
+            "Striker": TupleSpace([
                 Box(float("-inf"), float("inf"), (231, )),
                 Box(float("-inf"), float("inf"), (63, )),
             ]),
