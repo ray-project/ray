@@ -12,13 +12,22 @@ import java.util.List;
 
 public abstract class StreamOperator<F extends Function> implements Operator {
   protected final String name;
-  protected final F function;
-  protected final RichFunction richFunction;
+  protected F function;
+  protected RichFunction richFunction;
   protected List<Collector> collectorList;
   protected RuntimeContext runtimeContext;
+  private ChainStrategy chainStrategy = ChainStrategy.ALWAYS;
 
-  public StreamOperator(F function) {
+  protected StreamOperator() {
     this.name = getClass().getSimpleName();
+  }
+
+  protected StreamOperator(F function) {
+    this();
+    setFunction(function);
+  }
+
+  public void setFunction(F function) {
     this.function = function;
     this.richFunction = Functions.wrap(function);
   }
@@ -62,7 +71,17 @@ public abstract class StreamOperator<F extends Function> implements Operator {
     }
   }
 
+  @Override
   public String getName() {
     return name;
+  }
+
+  public void setChainStrategy(ChainStrategy chainStrategy) {
+    this.chainStrategy = chainStrategy;
+  }
+
+  @Override
+  public ChainStrategy getChainStrategy() {
+    return chainStrategy;
   }
 }
