@@ -4,7 +4,6 @@ import ray
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils import try_import_tf
 from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
     vf_preds_fetches, clip_gradients, setup_config, ValueNetworkMixin
@@ -370,9 +369,6 @@ def maml_stats(policy, train_batch):
             "total_loss": policy.loss_obj.loss,
             "policy_loss": policy.loss_obj.mean_policy_loss,
             "vf_loss": policy.loss_obj.mean_vf_loss,
-            "vf_explained_var": explained_variance(
-                train_batch[Postprocessing.VALUE_TARGETS],
-                policy.model.value_function()),
             "kl": policy.loss_obj.mean_kl,
             "inner_kl": policy.loss_obj.mean_inner_kl,
             "entropy": policy.loss_obj.mean_entropy,
