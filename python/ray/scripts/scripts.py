@@ -783,11 +783,6 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
 @cli.command(context_settings={"ignore_unknown_options": True})
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
-    "--docker",
-    is_flag=True,
-    default=False,
-    help="Runs command in the docker container specified in cluster_config.")
-@click.option(
     "--stop",
     is_flag=True,
     default=False,
@@ -824,8 +819,8 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
     type=str,
     help="(deprecated) Use '-- --arg1 --arg2' for script args.")
 @click.argument("script_args", nargs=-1)
-def submit(cluster_config_file, docker, screen, tmux, stop, start,
-           cluster_name, port_forward, script, args, script_args):
+def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
+           port_forward, script, args, script_args):
     """Uploads and runs a script on the specified cluster.
 
     The script is automatically synced to the following location:
@@ -848,8 +843,7 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
         create_or_update_cluster(cluster_config_file, None, None, False, False,
                                  True, cluster_name)
     target = os.path.basename(script)
-    if not docker:
-        target = os.path.join("~", target)
+    target = os.path.join("~", target)
     rsync(cluster_config_file, script, target, cluster_name, down=False)
 
     command_parts = ["python", target]
@@ -863,7 +857,7 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     exec_cluster(
         cluster_config_file,
         cmd,
-        docker,
+        False,
         screen,
         tmux,
         stop,
@@ -876,10 +870,10 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
 @click.argument("cluster_config_file", required=True, type=str)
 @click.argument("cmd", required=True, type=str)
 @click.option(
-    "--docker",
+    "--outside-docker",
     is_flag=True,
     default=False,
-    help="Runs command in the docker container specified in cluster_config.")
+    help="Runs command outside of docker.")
 @click.option(
     "--stop",
     is_flag=True,
@@ -910,12 +904,12 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     multiple=True,
     type=int,
     help="Port to forward. Use this multiple times to forward multiple ports.")
-def exec_cmd(cluster_config_file, cmd, docker, screen, tmux, stop, start,
-             cluster_name, port_forward):
+def exec_cmd(cluster_config_file, cmd, outside_docker, screen, tmux, stop,
+             start, cluster_name, port_forward):
     """Execute a command via SSH on a Ray cluster."""
     port_forward = [(port, port) for port in list(port_forward)]
-    exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, start,
-                 cluster_name, port_forward)
+    exec_cluster(cluster_config_file, cmd, outside_docker, screen, tmux, stop,
+                 start, cluster_name, port_forward)
 
 
 @cli.command()

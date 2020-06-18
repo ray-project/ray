@@ -68,16 +68,9 @@ def with_docker_exec(cmds, container_name, env_vars=None):
         env_str = " ".join(
             ["-e {env}=${env}".format(env=env) for env in env_vars])
     return [
-        "docker exec {} {} /bin/sh -c {} ".format(env_str, container_name,
-                                                  quote(cmd)) for cmd in cmds
+        "docker exec -it {} {} /bin/bash -c {} ".format(
+            env_str, container_name, quote(cmd)) for cmd in cmds
     ]
-
-
-def aptwait_cmd():
-    return ("while sudo fuser"
-            " /var/{lib/{dpkg,apt/lists},cache/apt/archives}/lock"
-            " >/dev/null 2>&1; "
-            "do echo 'Waiting for release of dpkg/apt locks'; sleep 5; done")
 
 
 def check_docker_running_cmd(cname):
@@ -102,6 +95,7 @@ def docker_start_cmds(user, image, mount, cname, user_options):
         ["-e {name}={val}".format(name=k, val=v) for k, v in env_vars.items()])
 
     user_options_str = " ".join(user_options)
+    # TODO(ilr) Check command type
     # docker run command
     docker_check = check_docker_running_cmd(cname) + " || "
     docker_run = [
