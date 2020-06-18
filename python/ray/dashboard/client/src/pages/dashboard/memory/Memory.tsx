@@ -19,6 +19,33 @@ import { Order, stableSort, getComparator } from "../../../common/tableUtils";
 import { MemoryTableRow } from "./MemoryTableRow";
 import SortableTableHead, { HeaderInfo } from "../../../common/SortableTableHead";
 
+const makeGroupedEntries = (memoryTableGroups: MemoryTableGroups) => {
+  return Object.keys(memoryTableGroups).map((group_key, index) => (
+    <MemoryRowGroup
+      key={index}
+      groupKey={group_key}
+      memoryTableGroups={memoryTableGroups}
+      initialExpanded={true}
+    />
+  ));
+}
+
+const makeUngroupedEntries = (memoryTableGroups: MemoryTableGroups, order: Order, orderBy: keyof MemoryTableEntry | null) => {
+  const allEntries = Object.values(memoryTableGroups).reduce(
+                  (allEntries: Array<MemoryTableEntry>, memoryTableGroup) => {
+                    const groupEntries = memoryTableGroup.entries;
+                    return allEntries.concat(groupEntries)
+                  }, []);
+  const sortedEntries = orderBy === null
+    ? allEntries
+    : stableSort(allEntries, getComparator(order, orderBy));
+  return sortedEntries.map((memoryTableEntry, index) => (
+                        <MemoryTableRow
+                          memoryTableEntry={memoryTableEntry}
+                          key={`mem-row-${index}`}
+                        />
+                      ));
+}
 
 const memoryHeaderInfo: HeaderInfo<MemoryTableEntry>[] =
   [{ id: 'node_ip_address', label: "IP Address", numeric: true },
@@ -51,7 +78,7 @@ const memoryInfoSelector = (state: StoreState) => ({
 const MemoryInfo: React.FC<{}> = () => {
   const { memoryTable, shouldObtainMemoryTable } = useSelector(memoryInfoSelector);
   const { setShouldObtainMemoryTable } = useDispatch();
-  const handlePauseMemoryTable = async () => {
+  const toggleMemoryCollection = async () => {
     setShouldObtainMemoryTable(!shouldObtainMemoryTable);
     if (shouldObtainMemoryTable) {
       await stopMemoryTableCollection();
@@ -66,13 +93,13 @@ const MemoryInfo: React.FC<{}> = () => {
   const classes = useMemoryInfoStyles();
   const [isGrouped, setIsGrouped] = useState(true);
   const [order, setOrder] = React.useState<Order>('asc');
-  const toggleOrder = () => setOrder(order === 'asc' ? 'desc' : 'asc')
+  const toggleOrder = () => setOrder(order === 'asc' ? 'desc' : 'asc');
   const [orderBy, setOrderBy] = React.useState<keyof MemoryTableEntry | null>(null);
   return (
     <React.Fragment>
       {memoryTable !== null ? (
         <React.Fragment>
-          <Button color="primary" onClick={handlePauseMemoryTable}>
+          <Button color="primary" onClick={toggleMemoryCollection}>
             {pauseButtonIcon}
             {shouldObtainMemoryTable
               ? "Pause Collection"
@@ -117,32 +144,5 @@ const MemoryInfo: React.FC<{}> = () => {
   );
 };
 
-const makeGroupedEntries = (memoryTableGroups: MemoryTableGroups) => {
-  return Object.keys(memoryTableGroups).map((group_key, index) => (
-    <MemoryRowGroup
-      key={index}
-      groupKey={group_key}
-      memoryTableGroups={memoryTableGroups}
-      initialExpanded={true}
-    />
-  ));
-}
-
-const makeUngroupedEntries = (memoryTableGroups: MemoryTableGroups, order: Order, orderBy: keyof MemoryTableEntry | null) => {
-  const allEntries = Object.values(memoryTableGroups).reduce(
-                  (allEntries: Array<MemoryTableEntry>, memoryTableGroup) => {
-                    const groupEntries = memoryTableGroup.entries;
-                    return allEntries.concat(groupEntries)
-                  }, []);
-  const sortedEntries = orderBy === null
-    ? allEntries
-    : stableSort(allEntries, getComparator(order, orderBy));
-  return sortedEntries.map((memoryTableEntry, index) => (
-                        <MemoryTableRow
-                          memoryTableEntry={memoryTableEntry}
-                          key={`mem-row-${index}`}
-                        />
-                      ));
-}
 
 export default MemoryInfo;
