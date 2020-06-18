@@ -1,4 +1,5 @@
 #include <getopt.h>
+#include <signal.h>
 #include <stdio.h>
 
 #include <chrono>
@@ -10,6 +11,15 @@
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
 #endif
+
+using arrow::util::ArrowLog;
+
+void HandleSignal(int signal) {
+  if (signal == SIGTERM) {
+    ARROW_LOG(INFO) << "SIGTERM Signal received, closing Plasma Server...";
+    plasma::plasma_store_runner->Stop();
+  }
+}
 
 int main(int argc, char *argv[]) {
   std::string socket_name;
@@ -50,11 +60,20 @@ int main(int argc, char *argv[]) {
   }
 
   if (!keep_idle) {
+    ArrowLog::InstallFailureSignalHandler();
     plasma::plasma_store_runner.reset(
         new plasma::PlasmaStoreRunner(socket_name, system_memory, hugepages_enabled,
                                       plasma_directory, external_store_endpoint));
+    // Install signal handler before starting the eventloop.
+#ifndef _WIN32  // TODO(mehrdadn): Is there an equivalent of this we need for Windows?
+    // Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
+    // to a client that has already died, the store could die.
+    signal(SIGPIPE, SIG_IGN);
+#endif
+    signal(SIGTERM, HandleSignal);
     plasma::plasma_store_runner->Start();
     plasma::plasma_store_runner.reset();
+    ArrowLog::UninstallSignalAction();
   } else {
     printf(
         "The Plasma Store is started with the '-z' flag, "

@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_GCS_CLIENT_H
-#define RAY_GCS_GCS_CLIENT_H
+#pragma once
 
 #include <boost/asio.hpp>
 #include <memory>
@@ -159,5 +158,3 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_GCS_CLIENT_H

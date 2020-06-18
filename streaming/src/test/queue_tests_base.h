@@ -1,3 +1,5 @@
+#pragma once
+
 #include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
 

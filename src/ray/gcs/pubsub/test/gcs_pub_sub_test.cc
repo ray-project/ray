@@ -45,9 +45,13 @@ class GcsPubSubTest : public ::testing::Test {
     pub_sub_.reset();
     client_->Disconnect();
     io_service_.stop();
-    client_.reset();
     thread_io_service_->join();
     thread_io_service_.reset();
+
+    // Note: If we immediately reset client_ after io_service_ stop, because client_ still
+    // has thread executing logic, such as unsubscribe's callback, the problem of heap
+    // used after free will occur.
+    client_.reset();
   }
 
   void Subscribe(const std::string &channel, const std::string &id,

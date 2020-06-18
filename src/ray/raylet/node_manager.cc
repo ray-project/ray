@@ -761,9 +761,9 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   remote_resources.SetLoadResources(std::move(remote_load));
 
   if (new_scheduler_enabled_ && client_id != self_node_id_) {
-    new_resource_scheduler_->AddOrUpdateNode(client_id.Binary(),
-                                             remote_total.GetResourceMap(),
-                                             remote_available.GetResourceMap());
+    new_resource_scheduler_->AddOrUpdateNode(
+        client_id.Binary(), remote_total.GetResourceMap(),
+        remote_resources.GetAvailableResources().GetResourceMap());
     NewSchedulerSchedulePendingTasks();
     return;
   }

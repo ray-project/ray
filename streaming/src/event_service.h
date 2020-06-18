@@ -1,5 +1,5 @@
-#ifndef RAY_STREAMING_EVENT_SERVER_H
-#define RAY_STREAMING_EVENT_SERVER_H
+#pragma once
+
 #include <condition_variable>
 #include <mutex>
 #include <queue>
@@ -139,4 +139,3 @@ class EventService {
 };
 }  // namespace streaming
 }  // namespace ray
-#endif  // RAY_STREAMING_EVENT_SERVER_H

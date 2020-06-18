@@ -15,8 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef PLASMA_CLIENT_H
-#define PLASMA_CLIENT_H
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -308,5 +307,3 @@ class ARROW_EXPORT PlasmaClient {
 };
 
 }  // namespace plasma
-
-#endif  // PLASMA_CLIENT_H

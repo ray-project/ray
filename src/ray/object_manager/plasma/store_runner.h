@@ -1,5 +1,4 @@
-#ifndef PLASMA_STORE_RUNNER_H
-#define PLASMA_STORE_RUNNER_H
+#pragma once
 
 #include <memory>
 
@@ -34,5 +33,3 @@ class PlasmaStoreRunner {
 extern std::unique_ptr<PlasmaStoreRunner> plasma_store_runner;
 
 }  // namespace plasma
-
-#endif  // PLASMA_STORE_RUNNER_H

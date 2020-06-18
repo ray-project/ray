@@ -16,6 +16,7 @@ import {
   launchProfiling,
   RayletActorInfo,
 } from "../../../api";
+import { sum } from "../../../common/util";
 import ActorDetailsPane from "./ActorDetailsPane";
 import Actors from "./Actors";
 
@@ -137,7 +138,12 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 Object.entries(actor.usedResources).length > 0 &&
                 Object.entries(actor.usedResources)
                   .sort((a, b) => a[0].localeCompare(b[0]))
-                  .map(([key, value]) => `${value.toLocaleString()} ${key}`)
+                  .map(
+                    ([key, value]) =>
+                      `${sum(
+                        value.resourceSlots.map((slot) => slot.allocation),
+                      )} ${key}`,
+                  )
                   .join(", "),
             },
             {

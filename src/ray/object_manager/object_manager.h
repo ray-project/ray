@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_OBJECT_MANAGER_OBJECT_MANAGER_H
-#define RAY_OBJECT_MANAGER_OBJECT_MANAGER_H
+#pragma once
 
 #include <algorithm>
 #include <cstdint>
@@ -184,6 +183,10 @@ class ObjectManager : public ObjectManagerInterface,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory);
 
   ~ObjectManager();
+
+  /// Stop the Plasma Store eventloop. Currently it is only used to handle
+  /// signals from Raylet.
+  void Stop();
 
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that
@@ -454,5 +457,3 @@ class ObjectManager : public ObjectManagerInterface,
 };
 
 }  // namespace ray
-
-#endif  // RAY_OBJECT_MANAGER_OBJECT_MANAGER_H

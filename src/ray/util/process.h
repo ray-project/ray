@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_UTIL_PROCESS_H
-#define RAY_UTIL_PROCESS_H
+#pragma once
 
 #ifdef __linux__
 #include <fcntl.h>
@@ -102,5 +101,3 @@ struct hash<ray::Process> {
 };
 
 }  // namespace std
-
-#endif

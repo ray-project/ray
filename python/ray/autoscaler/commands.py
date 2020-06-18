@@ -16,7 +16,7 @@ except ImportError:  # py2
     from pipes import quote
 
 from ray.autoscaler.util import validate_config, hash_runtime_conf, \
-    hash_launch_conf, fillout_defaults
+    hash_launch_conf, prepare_config
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_TYPE_WORKER, NODE_TYPE_HEAD
@@ -44,7 +44,7 @@ def create_or_update_cluster(config_file, override_min_workers,
 
 
 def _bootstrap_config(config):
-    config = fillout_defaults(config)
+    config = prepare_config(config)
 
     hasher = hashlib.sha1()
     hasher.update(json.dumps([config], sort_keys=True).encode("utf-8"))
@@ -74,7 +74,7 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name,
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    config = fillout_defaults(config)
+    config = prepare_config(config)
     validate_config(config)
 
     confirm("This will destroy your cluster", yes)

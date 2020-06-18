@@ -94,6 +94,15 @@ install_miniconda() {
         conda="${miniconda_dir}/bin/conda"
         ;;
     esac
+  else
+    case "${OSTYPE}" in
+      darwin*)
+        # When 'conda' is preinstalled on Mac (as on GitHub Actions), it uses this directory
+        local miniconda_dir="/usr/local/miniconda"
+        sudo mkdir -p -- "${miniconda_dir}"
+        sudo chown -R "${USER}" "${miniconda_dir}"
+        ;;
+    esac
   fi
 
   if [ ! -x "${CONDA_PYTHON_EXE-}" ]; then  # If conda isn't activated, activate it
