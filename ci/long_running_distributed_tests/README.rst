@@ -1,5 +1,5 @@
 Long Running Distributed Tests
-==================
+==============================
 
 This directory contains the long-running multi-node workloads which are intended to run
 forever until they fail. To set up the project you need to run
@@ -27,7 +27,7 @@ available workload options is available in the `ray_projects/project.yaml` file.
 
 
 Debugging
------------------------
+---------
 The primary method to debug the test while it is running is to view the logs and the dashboard from the UI. After the test has failed, you can still view the stdout logs in the UI and also inspect
 the logs under ``/tmp/ray/session*/logs/`` and
 ``/tmp/ray/session*/debug_state.txt``.
