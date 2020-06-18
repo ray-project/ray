@@ -11,8 +11,9 @@ import ray
 from ray import tune
 from ray.autoscaler.commands import kill_node
 from ray.tune import CLIReporter
-from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.schedulers import PopulationBasedTraining
+from ray.tune.utils.util import merge_dicts
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.resnet import ResNet18
 from ray.util.sgd.utils import BATCH_SIZE
@@ -100,6 +101,13 @@ TorchTrainable = TorchTrainer.as_trainable(
     },
     use_gpu=True)
 
+class NoFaultToleranceTrainable(TorchTrainable):
+    def _train(self):
+        train_stats = self.trainer.train(max_retries=0, profile=True)
+        validation_stats = self.trainer.validate(profile=True)
+        stats = merge_dicts(train_stats, validation_stats)
+        return stats
+
 pbt_scheduler = PopulationBasedTraining(
     time_attr="training_iteration",
     metric="val_loss",
@@ -117,7 +125,7 @@ reporter.add_metric_column("val_loss", "loss")
 reporter.add_metric_column("val_accuracy", "acc")
 
 analysis = tune.run(
-    TorchTrainable,
+    NoFaultToleranceTrainable,
     num_samples=4,
     config={
         "lr": tune.choice([0.001, 0.01, 0.1]),
