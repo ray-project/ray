@@ -1056,7 +1056,7 @@ def _validate_multiagent_config(policy: MultiAgentPolicyConfigDict,
                              "got {}".format(type(v[3])))
 
 
-def _validate_env(env):
+def _validate_env(env: Any) -> EnvType:
     # allow this as a special case (assumed gym.Env)
     if hasattr(env, "observation_space") and hasattr(env, "action_space"):
         return env
@@ -1070,7 +1070,7 @@ def _validate_env(env):
     return env
 
 
-def _has_tensorflow_graph(policy_dict):
+def _has_tensorflow_graph(policy_dict: MultiAgentPolicyConfigDict) -> bool:
     for policy, _, _, _ in policy_dict.values():
         if issubclass(policy, TFPolicy):
             return True
