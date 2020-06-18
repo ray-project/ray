@@ -165,13 +165,10 @@ class SSHCommandRunner:
         self.ssh_user = auth_config["ssh_user"]
         self.ssh_control_path = ssh_control_path
         self.ssh_ip = None
-
-    def get_default_ssh_options(self, connect_timeout):
-        OPTS = [
-            ("ConnectTimeout", "{}s".format(connect_timeout)),
+        self.OPTS = [
             ("StrictHostKeyChecking", "no"),
             ("ControlMaster", "auto"),
-            ("ControlPath", "{}/%C".format(self.ssh_control_path)),
+            ("ControlPath", "{}/%C".format(ssh_control_path)),
             ("ControlPersist", "10s"),
             # Try fewer extraneous key pairs.
             ("IdentitiesOnly", "yes"),
@@ -184,6 +181,8 @@ class SSHCommandRunner:
             ("ServerAliveCountMax", 3),
         ]
 
+    def get_default_ssh_options(self, connect_timeout):
+        OPTS = [("ConnectTimeout", "{}s".format(connect_timeout))] + self.OPTS
         return ["-i", self.ssh_private_key] + [
             x for y in (["-o", "{}={}".format(k, v)] for k, v in OPTS)
             for x in y
@@ -301,6 +300,7 @@ class DockerCommandRunner(SSHCommandRunner):
         self.docker_name = docker_config["container_name"]
         self.docker_config = docker_config
         self.home_dir = None
+        self.ensure_docker_installed()
 
     def run(self,
             cmd,
@@ -315,6 +315,31 @@ class DockerCommandRunner(SSHCommandRunner):
             exit_on_fail=exit_on_fail,
             port_forward=None,
             with_output=False)
+
+    def ensure_docker_installed(self):
+        try:
+            self.ssh_command_runner.run("command -v docker")
+            return
+        except Exception as e:
+            logger.info("Docker not installed, installing now")
+
+        # Disable session reuse to allow for group changes to be
+        # correctly reflected.
+        old_opts = self.ssh_command_runner.OPTS
+        new_opts = [opt for opt in old_opts if 'Control' not in opt[0]]
+        self.ssh_command_runner.OPTS = new_opts
+
+        install_commands = [
+            "curl -fsSL https://get.docker.com -o get-docker.sh",
+            "sudo sh get-docker.sh", "sudo usermod -aG docker $USER",
+            "sudo systemctl restart docker -f"
+        ]
+        self.ssh_command_runner.run(cmd)
+
+        logger.info("Docker install finished!")
+
+        # Restore initial SSH options.
+        self.ssh_command_runner.OPTS = old_opts
 
     def check_container_status(self):
         no_exist = "not_present"
