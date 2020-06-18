@@ -1,7 +1,5 @@
 from gym.spaces import Box, MultiDiscrete, Tuple
 import logging
-import mlagents_envs
-from mlagents_envs.environment import UnityEnvironment
 import numpy as np
 from typing import Callable
 
@@ -67,6 +65,9 @@ class Unity3DEnv(MultiAgentEnv):
                 "No game binary provided, will use a running Unity editor "
                 "instead.\nMake sure you are pressing the Play (|>) button in "
                 "your editor to start.")
+
+        import mlagents_envs
+        from mlagents_envs.environment import UnityEnvironment
 
         # Try connecting to the Unity3D game instance. If a port
         while True:
