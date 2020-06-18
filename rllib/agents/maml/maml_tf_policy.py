@@ -73,6 +73,7 @@ def PPOLoss(dist_class,
     return total_loss, surr_loss, kl_loss, vf_loss, entropy_loss
 
 
+# This is the computation graph for workers (inner adaptation steps)
 class WorkerLoss(object):
     def __init__(self,
                  dist_class,
@@ -107,7 +108,7 @@ class WorkerLoss(object):
         self.loss = tf.Print(self.loss, ["Worker Adapt Loss", self.loss])
 
 
-# This is the Meta-Update computation graph for master worker
+# This is the Meta-Update computation graph for main (meta-update step)
 class MAMLLoss(object):
     def __init__(self,
                  model,

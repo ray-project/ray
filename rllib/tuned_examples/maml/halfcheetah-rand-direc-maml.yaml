@@ -1,5 +1,5 @@
 halfcheetah-rand-direc-maml:
-    env: HalfCheetahRandDirec-v2
+    env: ray.rllib.examples.env.halfcheetah_rand_direc.HalfCheetahRandDirecEnv
     run: MAML
     stop:
         training_iteration: 2001    
@@ -14,13 +14,11 @@ halfcheetah-rand-direc-maml:
         lr: 0.001
         vf_loss_coeff: 0.5
         clip_param: 0.3
-        use_kl_loss: True
         kl_target: 0.01
         kl_coeff: 0.0005
         num_workers: 31
         num_gpus: 1
         inner_lr: 0.1
-        explore: True
         clip_actions: False
         model:
             fcnet_hiddens: [64, 64]

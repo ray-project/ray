@@ -33,7 +33,7 @@ DEFAULT_CONFIG = with_common_config({
     # Share layers for value function
     "vf_share_layers": False,
     # Coefficient of the value function loss
-    "vf_loss_coeff": 1.0,
+    "vf_loss_coeff": 0.5,
     # Coefficient of the entropy regularizer
     "entropy_coeff": 0.0,
     # PPO clip parameter
@@ -49,24 +49,17 @@ DEFAULT_CONFIG = with_common_config({
     "batch_mode": "complete_episodes",
     # Which observation filter to apply to the observation
     "observation_filter": "NoFilter",
-    # Number of Inner adaptation steps for Workers
+    # Number of Inner adaptation steps for the MAML algorithm
     "inner_adaptation_steps": 1,
-    # Number of ProMP steps per meta-update iteration (PPO steps)
+    # Number of MAML steps per meta-update iteration (PPO steps)
     "maml_optimizer_steps": 5,
     # Inner Adaptation Step size
     "inner_lr": 0.1,
-    # Use PPO KL Loss
-    "use_kl_loss": True,
-    # Grad Clipping
-    "grad_clip": None,
-    # Batch Mode
-    "batch_mode": "complete_episodes",
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
-# @mluo: TODO
 def set_worker_tasks(workers):
     n_tasks = len(workers.remote_workers())
     tasks = workers.local_worker().foreach_env(lambda x: x)[0].sample_tasks(
@@ -215,7 +208,11 @@ def validate_config(config):
     if config["maml_optimizer_steps"] <= 0:
         raise ValueError("")
     if config["entropy_coeff"] < 0:
-        raise DeprecationWarning("entropy_coeff must be >= 0")
+        raise ValueError("entropy_coeff must be >= 0")
+    if config["batch_mode"] != "complete_episodes":
+        raise ValueError("truncate_episodes not supported")
+    if config["num_workers"] <= 0:
+        raise ValueError("Must have at least 1 worker/task.")
     if (config["batch_mode"] == "truncate_episodes" and not config["use_gae"]):
         raise ValueError(
             "Episode truncation is not supported without a value "
