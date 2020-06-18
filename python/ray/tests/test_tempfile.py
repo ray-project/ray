@@ -5,7 +5,7 @@ import sys
 import time
 
 import pytest
-import rays
+import ray
 from ray.cluster_utils import Cluster
 
 
