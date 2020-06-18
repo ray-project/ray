@@ -320,13 +320,13 @@ class DockerCommandRunner(SSHCommandRunner):
         try:
             self.ssh_command_runner.run("command -v docker")
             return
-        except Exception as e:
+        except Exception:
             logger.info("Docker not installed, installing now")
 
         # Disable session reuse to allow for group changes to be
         # correctly reflected.
         old_opts = self.ssh_command_runner.OPTS
-        new_opts = [opt for opt in old_opts if 'Control' not in opt[0]]
+        new_opts = [opt for opt in old_opts if "Control" not in opt[0]]
         self.ssh_command_runner.OPTS = new_opts
 
         install_commands = [
@@ -334,7 +334,8 @@ class DockerCommandRunner(SSHCommandRunner):
             "sudo sh get-docker.sh", "sudo usermod -aG docker $USER",
             "sudo systemctl restart docker -f"
         ]
-        self.ssh_command_runner.run(cmd)
+        for cmd in install_commands:
+            self.ssh_command_runner.run(cmd)
 
         logger.info("Docker install finished!")
 
