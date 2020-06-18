@@ -177,21 +177,37 @@ def unpack_future(src: asyncio.Future, num_items: int) -> List[asyncio.Future]:
     return dest_futures
 
 
-class MockScheduler:
-    def __init__(self, ray_nodes=None):
-        if ray_nodes is None:
-            ray_nodes = ray.nodes()
+def try_schedule_resources_on_nodes(
+        requirements: List[dict],
+        ray_nodes: List = None,
+) -> List[bool]:
+    """Test given resource requirements can be scheduled on ray nodes.
 
-        self.node_to_resources = {
-            node["NodeID"]: node["Resources"]
-            for node in ray_nodes if node["Alive"]
-        }
+    Args:
+        requirements(List[dict]): The list of resource requirements.
+        ray_nodes(Optional[List]): The list of nodes. By default it reads from
+            ``ray.nodes()``.
+    Returns:
+        successfully_scheduled(List[bool]): A list with the same length as
+            requirements. Each element indicates whether or not the requirement
+            can be satisied.
+    """
 
-    def try_schedule(self, resource_dict) -> bool:
+    if ray_nodes is None:
+        ray_nodes = ray.nodes()
+
+    node_to_resources = {
+        node["NodeID"]: node["Resources"]
+        for node in ray_nodes if node["Alive"]
+    }
+
+    successfully_scheduled = []
+
+    for resource_dict in requirements:
         # Filter out zero value
         resource_dict = {k: v for k, v in resource_dict.items() if v > 0}
 
-        for node_id, node_resource in self.node_to_resources.items():
+        for node_id, node_resource in node_to_resources.items():
             # Check if we can schedule on this node
             feasible = True
             for key, count in resource_dict.items():
@@ -200,11 +216,13 @@ class MockScheduler:
 
             # If we can, schedule it on this node
             if feasible:
-                self._substract_resource(resource_dict, node_id)
-                return True
-        return False
+                node_resource = node_to_resources[node_id]
+                for key, count in resource_dict.items():
+                    node_resource[key] -= count
 
-    def _substract_resource(self, resource_dict, node_id):
-        node_resource = self.node_to_resources[node_id]
-        for key, count in resource_dict.items():
-            node_resource[key] -= count
+                successfully_scheduled.append(True)
+                break
+        else:
+            successfully_scheduled.append(False)
+
+    return successfully_scheduled

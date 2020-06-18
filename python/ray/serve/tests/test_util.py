@@ -1,11 +1,12 @@
 import asyncio
 import json
+from copy import deepcopy
 
 import numpy as np
 import pytest
 
 from ray.serve.utils import (ServeEncoder, chain_future, unpack_future,
-                             MockScheduler)
+                             try_schedule_resources_on_nodes)
 
 
 def test_bytes_encoder():
@@ -82,11 +83,35 @@ def test_mock_scheduler():
             "CPU": 4.0,
         }
     }]
-    sched = MockScheduler(ray_nodes=ray_nodes)
-    assert sched.try_schedule({"CPU": 4})
-    assert sched.try_schedule({"CPU": 2, "GPU": 2})
-    assert not sched.try_schedule({"CPU": 100})
-    assert not sched.try_schedule({"CPU": 2})
+
+    assert try_schedule_resources_on_nodes(
+        [
+            {
+                "CPU": 2,
+                "GPU": 2
+            },  # node 1
+            {
+                "CPU": 4
+            }  # node 2
+        ],
+        deepcopy(ray_nodes)) == [True, True]
+
+    assert try_schedule_resources_on_nodes([
+        {
+            "CPU": 100
+        },
+        {
+            "GPU": 1
+        },
+    ], deepcopy(ray_nodes)) == [False, True]
+
+    assert try_schedule_resources_on_nodes(
+        [
+            {
+                "CPU": 6
+            },  # Equals to the sum of cpus but shouldn't be scheduable.
+        ],
+        deepcopy(ray_nodes)) == [False]
 
 
 if __name__ == "__main__":

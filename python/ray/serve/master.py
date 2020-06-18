@@ -15,7 +15,7 @@ from ray.serve.metric.exporter import MetricExporterActor
 from ray.serve.router import Router
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (format_actor_name, get_random_letters, logger,
-                             MockScheduler)
+                             try_schedule_resources_on_nodes)
 
 import numpy as np
 
@@ -426,15 +426,14 @@ class ServeMaster:
         current_num_replicas = len(self.replicas[backend_tag])
         delta_num_replicas = num_replicas - current_num_replicas
 
-        _, _, replicas_config = self.backends[backend_tag]
-        resource_per_replica = replicas_config.resource_dict
-
+        _, _, replica_config = self.backends[backend_tag]
         if delta_num_replicas > 0:
-            scheduler = MockScheduler()
-            can_schedule = [
-                scheduler.try_schedule(resource_per_replica)
-                for _ in range(delta_num_replicas)
-            ]
+            can_schedule = try_schedule_resources_on_nodes(
+                requirements=[
+                    replica_config.resource_dict
+                    for _ in range(delta_num_replicas)
+                ],
+                ray_nodes=ray.nodes())
             if not all(can_schedule):
                 num_possible = sum(can_schedule)
                 raise RayServeException(
