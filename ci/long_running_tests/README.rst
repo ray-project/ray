@@ -34,6 +34,12 @@ The primary method to debug the test while it is running is to view the logs and
 the logs under ``/tmp/ray/session*/logs/`` and
 ``/tmp/ray/session*/debug_state.txt``.
 
+.. To check up on the workloads, run either
+.. ``anyscale session --name="*" execute check-load``, which
+.. will print the load on each machine, or
+.. ``anyscale session --name="*" execute show-output``, which
+.. will print the tail of the output for each workload.
+
 Shut Down the Workloads
 -----------------------
 
