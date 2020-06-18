@@ -27,7 +27,8 @@ from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray, \
     unbatch
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.types import SampleBatchType, AgentID, PolicyID, \
-    EnvObsType, EnvInfoDict, EnvID, MultiEnvDict, EnvActionType
+    EnvObsType, EnvInfoDict, EnvID, MultiEnvDict, EnvActionType, \
+    TensorStructType
 
 if TYPE_CHECKING:
     from ray.rllib.agents.callbacks import DefaultCallbacks
@@ -42,6 +43,9 @@ PolicyEvalData = namedtuple("PolicyEvalData", [
     "env_id", "agent_id", "obs", "info", "rnn_state", "prev_action",
     "prev_reward"
 ])
+
+# A batch of RNN states with dimensions [state_index, batch, state_object].
+StateBatch = List[List[Any]]
 
 
 class _PerfStats:
@@ -514,8 +518,8 @@ def _env_runner(
 
         # Do batched policy eval (accross vectorized envs).
         t2 = time.time()
-        eval_results: Dict[PolicyID, Tuple[np.ndarray, List[Any], dict]] = \
-            _do_policy_eval(
+        # type: Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]
+        eval_results = _do_policy_eval(
             to_eval=to_eval,
             policies=policies,
             active_episodes=active_episodes,
@@ -674,13 +678,14 @@ def _process_observations(
         # type: AgentID, EnvObsType
         for agent_id, raw_obs in agent_obs.items():
             assert agent_id != "__all__"
-            policy_id = episode.policy_for(agent_id)
-            prep_obs = _get_or_raise(preprocessors,
-                                     policy_id).transform(raw_obs)
+            policy_id: PolicyID = episode.policy_for(agent_id)
+            prep_obs: EnvObsType = _get_or_raise(preprocessors,
+                                                 policy_id).transform(raw_obs)
             if log_once("prep_obs"):
                 logger.info("Preprocessed obs: {}".format(summarize(prep_obs)))
 
-            filtered_obs = _get_or_raise(obs_filters, policy_id)(prep_obs)
+            filtered_obs: EnvObsType = _get_or_raise(obs_filters,
+                                                     policy_id)(prep_obs)
             if log_once("filtered_obs"):
                 logger.info("Filtered obs: {}".format(summarize(filtered_obs)))
 
@@ -804,27 +809,33 @@ def _process_observations(
     return active_envs, to_eval, outputs
 
 
-def _do_policy_eval(*, to_eval, policies, active_episodes, tf_sess=None):
+def _do_policy_eval(
+        *,
+        to_eval: Dict[PolicyID, List[PolicyEvalData]],
+        policies: Dict[PolicyID, Policy],
+        active_episodes: Dict[str, MultiAgentEpisode],
+        tf_sess=None
+) -> Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]:
     """Call compute_actions on collected episode/model data to get next action.
 
     Args:
         tf_sess (Optional[tf.Session]): Optional tensorflow session to use for
             batching TF policy evaluations.
-        to_eval (Dict[str,List[PolicyEvalData]]): Mapping of policy IDs to
-            lists of PolicyEvalData objects.
-        policies (Dict[str,Policy]): Mapping from policy ID to Policy obj.
-        active_episodes (defaultdict[str,MultiAgentEpisode]): Mapping from
+        to_eval (Dict[PolicyID, List[PolicyEvalData]]): Mapping of policy IDs
+            to lists of PolicyEvalData objects.
+        policies (Dict[PolicyID, Policy]): Mapping from policy ID to Policy.
+        active_episodes (Dict[str, MultiAgentEpisode]): Mapping from
             episode ID to currently ongoing MultiAgentEpisode object.
 
     Returns:
         eval_results: dict of policy to compute_action() outputs.
     """
 
-    eval_results = {}
+    eval_results: Dict[PolicyID, TensorStructType] = {}
 
     if tf_sess:
         builder = TFRunBuilder(tf_sess, "policy_eval")
-        pending_fetches = {}
+        pending_fetches: Dict[PolicyID, Any] = {}
     else:
         builder = None
 
@@ -832,16 +843,17 @@ def _do_policy_eval(*, to_eval, policies, active_episodes, tf_sess=None):
         logger.info("Inputs to compute_actions():\n\n{}\n".format(
             summarize(to_eval)))
 
+    # type: PolicyID, PolicyEvalData
     for policy_id, eval_data in to_eval.items():
-        rnn_in = [t.rnn_state for t in eval_data]
-        policy = _get_or_raise(policies, policy_id)
+        rnn_in: List[List[Any]] = [t.rnn_state for t in eval_data]
+        policy: Policy = _get_or_raise(policies, policy_id)
         # If tf (non eager) AND TFPolicy's compute_action method has not been
         # overridden -> Use `policy._build_compute_actions()`.
         if builder and (policy.compute_actions.__code__ is
                         TFPolicy.compute_actions.__code__):
 
-            obs_batch = [t.obs for t in eval_data]
-            state_batches = _to_column_format(rnn_in)
+            obs_batch: List[EnvObsType] = [t.obs for t in eval_data]
+            state_batches: StateBatch = _to_column_format(rnn_in)
             # TODO(ekl): how can we make info batch available to TF code?
             prev_action_batch = [t.prev_action for t in eval_data]
             prev_reward_batch = [t.prev_reward for t in eval_data]
@@ -854,7 +866,7 @@ def _do_policy_eval(*, to_eval, policies, active_episodes, tf_sess=None):
                 prev_reward_batch=prev_reward_batch,
                 timestep=policy.global_timestep)
         else:
-            rnn_in_cols = [
+            rnn_in_cols: StateBatch = [
                 np.stack([row[i] for row in rnn_in])
                 for i in range(len(rnn_in[0]))
             ]
@@ -867,6 +879,7 @@ def _do_policy_eval(*, to_eval, policies, active_episodes, tf_sess=None):
                 episodes=[active_episodes[t.env_id] for t in eval_data],
                 timestep=policy.global_timestep)
     if builder:
+        # type: PolicyID, Tuple[TensorStructType, StateBatch, dict]
         for pid, v in pending_fetches.items():
             eval_results[pid] = builder.get(v)
 
@@ -877,25 +890,28 @@ def _do_policy_eval(*, to_eval, policies, active_episodes, tf_sess=None):
     return eval_results
 
 
-def _process_policy_eval_results(*, to_eval, eval_results, active_episodes,
-                                 active_envs, off_policy_actions, policies,
-                                 clip_actions):
+def _process_policy_eval_results(
+        *, to_eval: Dict[PolicyID, List[PolicyEvalData]], eval_results: Dict[
+            PolicyID, Tuple[TensorStructType, StateBatch, dict]],
+        active_episodes: Dict[str, MultiAgentEpisode], active_envs: Set[int],
+        off_policy_actions: MultiEnvDict, policies: Dict[PolicyID, Policy],
+        clip_actions: bool) -> Dict[EnvID, Dict[AgentID, EnvActionType]]:
     """Process the output of policy neural network evaluation.
 
     Records policy evaluation results into the given episode objects and
     returns replies to send back to agents in the env.
 
     Args:
-        to_eval (Dict[str,List[PolicyEvalData]]): Mapping of policy IDs to
-            lists of PolicyEvalData objects.
-        eval_results (Dict[str,List]): Mapping of policy IDs to list of
+        to_eval (Dict[PolicyID, List[PolicyEvalData]]): Mapping of policy IDs
+            to lists of PolicyEvalData objects.
+        eval_results (Dict[PolicyID, List]): Mapping of policy IDs to list of
             actions, rnn-out states, extra-action-fetches dicts.
-        active_episodes (defaultdict[str,MultiAgentEpisode]): Mapping from
+        active_episodes (Dict[str, MultiAgentEpisode]): Mapping from
             episode ID to currently ongoing MultiAgentEpisode object.
         active_envs (Set[int]): Set of non-terminated env ids.
         off_policy_actions (dict): Doubly keyed dict of env-ids -> agent ids ->
             off-policy-action, returned by a `BaseEnv.poll()` call.
-        policies (Dict[str,Policy]): Mapping from policy ID to Policy obj.
+        policies (Dict[PolicyID, Policy]): Mapping from policy ID to Policy.
         clip_actions (bool): Whether to clip actions to the action space's
             bounds.
 
@@ -903,16 +919,21 @@ def _process_policy_eval_results(*, to_eval, eval_results, active_episodes,
         actions_to_send: Nested dict of env id -> agent id -> agent replies.
     """
 
-    actions_to_send = defaultdict(dict)
+    actions_to_send: Dict[EnvID, Dict[AgentID, EnvActionType]] = \
+        defaultdict(dict)
+
+    # type: int
     for env_id in active_envs:
         actions_to_send[env_id] = {}  # at minimum send empty dict
 
+    # type: PolicyID, List[PolicyEvalData]
     for policy_id, eval_data in to_eval.items():
-        rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
+        rnn_in_cols: StateBatch = _to_column_format(
+            [t.rnn_state for t in eval_data])
 
-        actions = eval_results[policy_id][0]
-        rnn_out_cols = eval_results[policy_id][1]
-        pi_info_cols = eval_results[policy_id][2]
+        actions: TensorStructType = eval_results[policy_id][0]
+        rnn_out_cols: StateBatch = eval_results[policy_id][1]
+        pi_info_cols: dict = eval_results[policy_id][2]
 
         # In case actions is a list (representing the 0th dim of a batch of
         # primitive actions), try to convert it first.
@@ -928,12 +949,13 @@ def _process_policy_eval_results(*, to_eval, eval_results, active_episodes,
         for f_i, column in enumerate(rnn_out_cols):
             pi_info_cols["state_out_{}".format(f_i)] = column
 
-        policy = _get_or_raise(policies, policy_id)
+        policy: Policy = _get_or_raise(policies, policy_id)
         # Split action-component batches into single action rows.
-        actions = unbatch(actions)
+        actions: List[EnvActionType] = unbatch(actions)
+        # type: int, EnvActionType
         for i, action in enumerate(actions):
-            env_id = eval_data[i].env_id
-            agent_id = eval_data[i].agent_id
+            env_id: int = eval_data[i].env_id
+            agent_id: AgentID = eval_data[i].agent_id
             # Clip if necessary.
             if clip_actions:
                 clipped_action = clip_action(action,
@@ -941,7 +963,7 @@ def _process_policy_eval_results(*, to_eval, eval_results, active_episodes,
             else:
                 clipped_action = action
             actions_to_send[env_id][agent_id] = clipped_action
-            episode = active_episodes[env_id]
+            episode: MultiAgentEpisode = active_episodes[env_id]
             episode._set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
             episode._set_last_pi_info(
                 agent_id, {k: v[i]
@@ -956,7 +978,7 @@ def _process_policy_eval_results(*, to_eval, eval_results, active_episodes,
     return actions_to_send
 
 
-def _fetch_atari_metrics(base_env):
+def _fetch_atari_metrics(base_env: BaseEnv) -> List[RolloutMetrics]:
     """Atari games have multiple logical episodes, one per life.
 
     However, for metrics reporting we count full episodes, all lives included.
@@ -974,12 +996,13 @@ def _fetch_atari_metrics(base_env):
     return atari_out
 
 
-def _to_column_format(rnn_state_rows):
+def _to_column_format(rnn_state_rows: List[List[Any]]) -> StateBatch:
     num_cols = len(rnn_state_rows[0])
     return [[row[i] for row in rnn_state_rows] for i in range(num_cols)]
 
 
-def _get_or_raise(mapping, policy_id):
+def _get_or_raise(mapping: Dict[PolicyID, Policy],
+                  policy_id: PolicyID) -> Policy:
     """Returns a Policy object under key `policy_id` in `mapping`.
 
     Args:
