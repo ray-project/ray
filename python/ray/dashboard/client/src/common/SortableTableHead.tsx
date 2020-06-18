@@ -33,7 +33,6 @@ export type HeaderInfo<T> = {
 };
 
 type SortableTableHeadProps<T> = {
-  // TODO (mfitton) parameterize this type to work with other types besides MemoryTableEntry
   onRequestSort: (event: React.MouseEvent<unknown>, property: keyof T) => void;
   order: Order;
   orderBy: string | null;
