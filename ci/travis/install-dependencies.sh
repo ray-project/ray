@@ -97,7 +97,7 @@ install_miniconda() {
   else
     case "${OSTYPE}" in
       darwin*)
-        # This is the default Miniconda directory on Mac
+        # When 'conda' is preinstalled on Mac (as on GitHub Actions), it uses this directory
         local miniconda_dir="/usr/local/miniconda"
         sudo mkdir -p -- "${miniconda_dir}"
         sudo chown -R "${USER}" "${miniconda_dir}"
