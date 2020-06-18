@@ -7,7 +7,6 @@ pendulum-mass-maml:
         horizon: 200
         rollout_fragment_length: 200
         num_envs_per_worker: 10
-        batch_mode: complete_episodes
         inner_adaptation_steps: 1
         maml_optimizer_steps: 5
         gamma: 0.99
