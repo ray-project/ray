@@ -8,12 +8,12 @@ import tempfile
 from ray.autoscaler.util import prepare_config, validate_config
 from ray.test_utils import recursive_fnmatch
 
-RAY_PATH = os.path.abspath(os.path.join(__file__, "../../"))
+RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 CONFIG_PATHS = recursive_fnmatch(
     os.path.join(RAY_PATH, "autoscaler"), "*.yaml")
 
 CONFIG_PATHS += recursive_fnmatch(
-    os.path.join(RAY_PATH, "tune/examples/"), "*.yaml")
+    os.path.join(RAY_PATH, "tune", "examples"), "*.yaml")
 
 
 class AutoscalingConfigTest(unittest.TestCase):
@@ -52,7 +52,8 @@ class AutoscalingConfigTest(unittest.TestCase):
             pass
 
     def testInvalidConfig(self):
-        self._test_invalid_config("tests/additional_property.yaml")
+        self._test_invalid_config(
+            os.path.join("tests", "additional_property.yaml"))
 
 
 if __name__ == "__main__":
