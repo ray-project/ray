@@ -338,8 +338,9 @@ COMMON_CONFIG = {
 
     # === Settings for Multi-Agent Environments ===
     "multiagent": {
-        # Map from policy ids to tuples of (policy_cls, obs_space,
-        # act_space, config). See rollout_worker.py for more info.
+        # Map of type MultiAgentPolicyConfigDict from policy ids to tuples
+        # of (policy_cls, obs_space, act_space, config). This defines the
+        # observation and action spaces of the policies and any extra config.
         "policies": {},
         # Function mapping agent ids to policy ids.
         "policy_mapping_fn": None,

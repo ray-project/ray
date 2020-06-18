@@ -1,4 +1,5 @@
-from typing import Any, Dict, Union
+from typing import Any, Dict, Union, Tuple
+import gym
 
 # Represents a fully filled out config of a Trainer class.
 TrainerConfigDict = dict
@@ -11,6 +12,10 @@ PartialTrainerConfigDict = dict
 # the env constructor.
 EnvConfigDict = dict
 
+# Represents the model config sub-dict of the trainer config that is passed to
+# the model catalog.
+ModelConfigDict = dict
+
 # Represents a BaseEnv, MultiAgentEnv, ExternalEnv, ExternalMultiAgentEnv,
 # VectorEnv, or gym.Env.
 EnvType = Any
@@ -20,6 +25,10 @@ AgentID = Any
 
 # Represents a generic identifier for a policy (e.g., "pol1").
 PolicyID = str
+
+# Type of the config["multiagent"]["policies"] dict for multi-agent training.
+MultiAgentPolicyConfigDict = Dict[PolicyID, Tuple[type, gym.Space, gym.Space,
+                                                  PartialTrainerConfigDict]]
 
 # Represents an environment id.
 EnvID = int
@@ -55,7 +64,10 @@ GradInfoDict = dict
 LearnerStatsDict = dict
 
 # Type of dict returned by compute_gradients() representing model gradients.
-GradientType = dict
+ModelGradients = dict
+
+# Type of dict returned by get_weights() representing model weights.
+ModelWeights = dict
 
 # Some kind of sample batch.
 SampleBatchType = Union["SampleBatch", "MultiAgentBatch"]

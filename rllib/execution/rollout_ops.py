@@ -13,7 +13,7 @@ from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, LEARNER_INFO, \
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.sgd import standardized
-from ray.rllib.utils.types import PolicyID, SampleBatchType, GradientType
+from ray.rllib.utils.types import PolicyID, SampleBatchType, ModelGradients
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
 
 
 def AsyncGradients(
-        workers: WorkerSet) -> LocalIterator[Tuple[GradientType, int]]:
+        workers: WorkerSet) -> LocalIterator[Tuple[ModelGradients, int]]:
     """Operator to compute gradients in parallel from rollout workers.
 
     Arguments:
