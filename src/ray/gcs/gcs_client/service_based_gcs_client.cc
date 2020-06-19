@@ -44,10 +44,10 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
         redis_gcs_client_->primary_context()->sync_context(), address);
   };
   std::pair<std::string, int> address;
-  GetGcsServerAddressFromRedis(redis_gcs_client_->primary_context()->sync_context(),
-                               &address,
-                               RayConfig::instance().gcs_service_connect_retries());
-  RAY_CHECK(!address.first.empty()) << "Failed to get gcs server address.";
+  RAY_CHECK(GetGcsServerAddressFromRedis(
+      redis_gcs_client_->primary_context()->sync_context(), &address,
+      RayConfig::instance().gcs_service_connect_retries()))
+      << "Failed to get gcs server address when init gcs client.";
 
   resubscribe_func_ = [this](bool is_pubsub_server_restarted) {
     job_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
