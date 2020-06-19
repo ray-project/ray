@@ -19,7 +19,7 @@ commands:
         help: "Name of workload to run."
         choices:
           [
-            "cifar_pytorch_pbt"
+            "pytorch_pbt_failure"
           ]
   
 # Pathnames for files and directories that should be saved
