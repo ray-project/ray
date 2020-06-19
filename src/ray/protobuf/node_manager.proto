@@ -37,6 +37,22 @@ message RequestWorkerLeaseReply {
   bool canceled = 4;
 }
 
+message RequestResourceReserveRequest {
+  // Bundle containing the requested resources.
+  Bundle bundle_spec = 1;
+}
+
+message RequestResourceReserveReply {
+}
+
+message CancelResourceReturnRequest {
+  // Bundle containing the requested resources.
+  Bundle bundle_spec = 1;
+}
+
+message CancelResourceReturnReply {
+}
+
 // Release a worker back to its raylet.
 message ReturnWorkerRequest {
   // Port of the leased worker that we are now returning.
@@ -131,6 +147,10 @@ service NodeManagerService {
   rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
   // Release a worker back to its raylet.
   rpc ReturnWorker(ReturnWorkerRequest) returns (ReturnWorkerReply);
+  // Request resource from the raylet for a bundle.
+  rpc RequestResourceReserve(RequestResourceReserveRequest) returns (RequestResourceReserveReply);
+  // Return resource for the raylet.
+  rpc CancelResourceReturn(CancelResourceReturnRequest) returns (CancelResourceReturnReply);
   // Cancel a pending lease request. This only returns success if the
   // lease request was not yet granted.
   rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);

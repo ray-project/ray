@@ -339,6 +339,12 @@ class ClusterResourceScheduler {
   std::string GetBestSchedulableNode(
       const std::unordered_map<std::string, double> &task_request, int64_t *violations);
 
+  /// Check the node if we can schedule the bundle on it.
+  ///
+  ///  \return If the node can schedule the current resource, return True; else return
+  ///  false.
+  bool CheckIfSchedulable(const std::unordered_map<std::string, double> &unit_resource);
+
   /// Decrease the available resources of a node when a task request is
   /// scheduled on the given node.
   ///

@@ -345,6 +345,38 @@ class ObjectID : public BaseID<ObjectID> {
   uint8_t id_[kLength];
 };
 
+class PlacementGroupID : public BaseID<PlacementGroupID> {
+ public:
+  static constexpr size_t kLength = 20;
+
+  /// Size of `PlacementGroupID` in bytes.
+  ///
+  /// \return Size of `PlacementGroupID` in bytes.
+  static size_t Size() { return kLength; }
+
+  /// Constructor of `PlacementGroupID`.
+  PlacementGroupID() : BaseID() {}
+
+  MSGPACK_DEFINE(id_);
+
+ private:
+  uint8_t id_[kLength];
+};
+
+class BundleID : public BaseID<BundleID> {
+ public:
+  static constexpr int64_t kLength = 16;
+
+  static size_t Size() { return kLength; }
+
+  BundleID() : BaseID() {}
+
+  MSGPACK_DEFINE(id_);
+
+ private:
+  uint8_t id_[kLength];
+};
+
 static_assert(sizeof(JobID) == JobID::kLength + sizeof(size_t),
               "JobID size is not as expected");
 static_assert(sizeof(ActorID) == ActorID::kLength + sizeof(size_t),
@@ -353,12 +385,18 @@ static_assert(sizeof(TaskID) == TaskID::kLength + sizeof(size_t),
               "TaskID size is not as expected");
 static_assert(sizeof(ObjectID) == ObjectID::kLength + sizeof(size_t),
               "ObjectID size is not as expected");
+static_assert(sizeof(PlacementGroupID) == PlacementGroupID::kLength + sizeof(size_t),
+              "PlacementGroupID size is not as expected");
+static_assert(sizeof(BundleID) == BundleID::kLength + sizeof(size_t),
+              "BundleID size is not as expected");
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
 std::ostream &operator<<(std::ostream &os, const JobID &id);
 std::ostream &operator<<(std::ostream &os, const ActorID &id);
 std::ostream &operator<<(std::ostream &os, const TaskID &id);
 std::ostream &operator<<(std::ostream &os, const ObjectID &id);
+std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
+std::ostream &operator<<(std::ostream &os, const BundleID &id);
 
 #define DEFINE_UNIQUE_ID(type)                                                 \
   class RAY_EXPORT type : public UniqueID {                                    \
@@ -489,6 +527,8 @@ DEFINE_UNIQUE_ID(JobID);
 DEFINE_UNIQUE_ID(ActorID);
 DEFINE_UNIQUE_ID(TaskID);
 DEFINE_UNIQUE_ID(ObjectID);
+DEFINE_UNIQUE_ID(PlacementGroupID);
+DEFINE_UNIQUE_ID(BundleID);
 #include "id_def.h"
 
 #undef DEFINE_UNIQUE_ID

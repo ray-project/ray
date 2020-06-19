@@ -59,6 +59,15 @@ class NodeManagerServiceHandler {
                                        rpc::CancelWorkerLeaseReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleRequestResourceReserve(
+      const rpc::RequestResourceReserveRequest &request,
+      rpc::RequestResourceReserveReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleCancelResourceReturn(const rpc::CancelResourceReturnRequest &request,
+                                          rpc::CancelResourceReturnReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleForwardTask(const ForwardTaskRequest &request,
                                  ForwardTaskReply *reply,
                                  SendReplyCallback send_reply_callback) = 0;
