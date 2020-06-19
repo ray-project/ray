@@ -25,14 +25,16 @@ void MetricExporter::ExportToPoints(
         &view_data,
     const std::string &metric_name, std::vector<std::string> &keys,
     MetricPoints &points) {
+  // Return if no raw data found in view map.
   if (view_data.size() == 0) {
     return;
   }
-  // Note(lingxuan.zlx): No sampling in histgram data, so all points all be filled in.
+  // NOTE(lingxuan.zlx): No sampling in histogram data, so all points all be filled in.
   std::unordered_map<std::string, std::string> tags;
   for (size_t i = 0; i < view_data.begin()->first.size(); ++i) {
     tags[keys[i]] = view_data.begin()->first[i];
   }
+  // Histogram metric will be append suffix with mean/max/min.
   for (const auto &row : view_data) {
     MetricPoint mean_point{.metric_name = metric_name + ".mean",
                            .timestamp = current_sys_time_ms(),

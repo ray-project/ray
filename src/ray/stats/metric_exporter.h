@@ -47,6 +47,12 @@ class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
 
  private:
   template <class DTYPE>
+  /// Extract raw data from view data, then metric exporter clients can use them
+  /// in points schema.
+  /// \param view_data, raw data in map
+  /// \param metric_name, metric name of view data
+  /// \param keys, metric tags map
+  /// \param points, memory metric vector instance
   void ExportToPoints(const opencensus::stats::ViewData::DataMap<DTYPE> &view_data,
                       const std::string &metric_name, std::vector<std::string> &keys,
                       MetricPoints &points) {
@@ -57,7 +63,6 @@ class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
       }
       // Current timestamp is used for point not view data time.
       MetricPoint point{.metric_name = metric_name,
-                        //.timestamp = absl::ToUnixMillis(view_data.end_time()),
                         .timestamp = current_sys_time_ms(),
                         .value = static_cast<double>(row.second),
                         .tags = tags};
@@ -73,6 +78,7 @@ class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
 
  private:
   std::shared_ptr<MetricExporterClient> metric_exporter_client_;
+  /// Auto minbatch for reporting metrics to external components.
   static constexpr size_t kMaxBatchSize = 100;
 };
 
