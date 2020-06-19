@@ -29,6 +29,34 @@ SETUP_TIME_THRESHOLD = 10
 
 class TrainableUtil:
     @staticmethod
+    def process_checkpoint(checkpoint, parent_dir, trainable_state):
+        saved_as_dict = False
+        if isinstance(checkpoint, string_types):
+            if not checkpoint.startswith(parent_dir):
+                raise ValueError(
+                    "The returned checkpoint path must be within the "
+                    "given checkpoint dir {}: {}".format(
+                        parent_dir, checkpoint))
+            checkpoint_path = checkpoint
+            if os.path.isdir(checkpoint_path):
+                # Add trailing slash to prevent tune metadata from
+                # being written outside the directory.
+                checkpoint_path = os.path.join(checkpoint_path, "")
+        elif isinstance(checkpoint, dict):
+            saved_as_dict = True
+            checkpoint_path = os.path.join(parent_dir, "checkpoint")
+            with open(checkpoint_path, "wb") as f:
+                pickle.dump(checkpoint, f)
+        else:
+            raise ValueError("Returned unexpected type {}. "
+                             "Expected str or dict.".format(type(checkpoint)))
+
+        with open(checkpoint_path + ".tune_metadata", "wb") as f:
+            trainable_state["saved_as_dict"] = saved_as_dict
+            pickle.dump(trainable_state, f)
+        return checkpoint_path
+
+    @staticmethod
     def pickle_checkpoint(checkpoint_path):
         """Pickles checkpoint data."""
         checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
@@ -39,7 +67,8 @@ class TrainableUtil:
                 with open(path, "rb") as f:
                     data[os.path.relpath(path, checkpoint_dir)] = f.read()
         # Use normpath so that a directory path isn't mapped to empty string.
-        name = os.path.basename(os.path.normpath(checkpoint_path))
+        name = os.path.relpath(
+            os.path.normpath(checkpoint_path), checkpoint_dir)
         name += os.path.sep if os.path.isdir(checkpoint_path) else ""
         data_dict = pickle.dumps({
             "checkpoint_name": name,
@@ -70,11 +99,38 @@ class TrainableUtil:
         return checkpoint_dir
 
     @staticmethod
-    def make_checkpoint_dir(checkpoint_dir):
-        """Creates a checkpoint directory at the provided path."""
+    def make_checkpoint_dir(checkpoint_dir, index):
+        """Creates a checkpoint directory within the provided path.
+
+        Args:
+            checkpoint_dir (str): Path to checkpoint directory.
+            index (str): A subdirectory will be created
+                at the checkpoint directory named 'checkpoint_{index}'.
+        """
+        suffix = "checkpoint"
+        if index is not None:
+            suffix += "_{}".format(index)
+        checkpoint_dir = os.path.join(checkpoint_dir, suffix)
+
         os.makedirs(checkpoint_dir, exist_ok=True)
         # Drop marker in directory to identify it as a checkpoint dir.
         open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
+        return checkpoint_dir
+
+    @staticmethod
+    def create_from_pickle(obj, tmpdir):
+        info = pickle.loads(obj)
+        data = info["data"]
+        checkpoint_path = os.path.join(tmpdir, info["checkpoint_name"])
+
+        for relpath_name, file_contents in data.items():
+            path = os.path.join(tmpdir, relpath_name)
+
+            # This may be a subdirectory, hence not just using tmpdir
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as f:
+                f.write(file_contents)
+        return checkpoint_path
 
     @staticmethod
     def get_checkpoints_paths(logdir):
@@ -324,6 +380,16 @@ class Trainable:
 
         return result
 
+    def get_state(self):
+        return {
+            "experiment_id": self._experiment_id,
+            "iteration": self._iteration,
+            "timesteps_total": self._timesteps_total,
+            "time_total": self._time_total,
+            "episodes_total": self._episodes_total,
+            "ray_version": ray.__version__,
+        }
+
     def save(self, checkpoint_dir=None):
         """Saves the current model state to a checkpoint.
 
@@ -336,41 +402,14 @@ class Trainable:
         Returns:
             str: Checkpoint path or prefix that may be passed to restore().
         """
-        checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
-                                      "checkpoint_{}".format(self._iteration))
-        TrainableUtil.make_checkpoint_dir(checkpoint_dir)
+        checkpoint_dir = TrainableUtil.make_checkpoint_dir(
+            checkpoint_dir or self.logdir, index=self.iteration)
         checkpoint = self._save(checkpoint_dir)
-        saved_as_dict = False
-        if isinstance(checkpoint, string_types):
-            if not checkpoint.startswith(checkpoint_dir):
-                raise ValueError(
-                    "The returned checkpoint path must be within the "
-                    "given checkpoint dir {}: {}".format(
-                        checkpoint_dir, checkpoint))
-            checkpoint_path = checkpoint
-            if os.path.isdir(checkpoint_path):
-                # Add trailing slash to prevent tune metadata from
-                # being written outside the directory.
-                checkpoint_path = os.path.join(checkpoint_path, "")
-        elif isinstance(checkpoint, dict):
-            saved_as_dict = True
-            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
-            with open(checkpoint_path, "wb") as f:
-                pickle.dump(checkpoint, f)
-        else:
-            raise ValueError("Returned unexpected type {}. "
-                             "Expected str or dict.".format(type(checkpoint)))
-
-        with open(checkpoint_path + ".tune_metadata", "wb") as f:
-            pickle.dump({
-                "experiment_id": self._experiment_id,
-                "iteration": self._iteration,
-                "timesteps_total": self._timesteps_total,
-                "time_total": self._time_total,
-                "episodes_total": self._episodes_total,
-                "saved_as_dict": saved_as_dict,
-                "ray_version": ray.__version__,
-            }, f)
+        trainable_state = self.get_state()
+        checkpoint_path = TrainableUtil.process_checkpoint(
+            checkpoint,
+            parent_dir=checkpoint_dir,
+            trainable_state=trainable_state)
         return checkpoint_path
 
     def save_to_object(self):
@@ -434,19 +473,8 @@ class Trainable:
 
         These checkpoints are returned from calls to save_to_object().
         """
-        info = pickle.loads(obj)
-        data = info["data"]
         tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
-        checkpoint_path = os.path.join(tmpdir, info["checkpoint_name"])
-
-        for relpath_name, file_contents in data.items():
-            path = os.path.join(tmpdir, relpath_name)
-
-            # This may be a subdirectory, hence not just using tmpdir
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "wb") as f:
-                f.write(file_contents)
-
+        checkpoint_path = TrainableUtil.create_from_pickle(obj, tmpdir)
         self.restore(checkpoint_path)
         shutil.rmtree(tmpdir)
 
@@ -531,7 +559,10 @@ class Trainable:
 
             name = self.trial_name
         """
-        return self._trial_info.trial_name
+        if self._trial_info:
+            return self._trial_info.trial_name
+        else:
+            return "default"
 
     @property
     def trial_id(self):
@@ -543,7 +574,10 @@ class Trainable:
 
             trial_id = self.trial_id
         """
-        return self._trial_info.trial_id
+        if self._trial_info:
+            return self._trial_info.trial_id
+        else:
+            return "default"
 
     @property
     def iteration(self):

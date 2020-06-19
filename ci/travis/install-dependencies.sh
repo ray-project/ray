@@ -94,6 +94,15 @@ install_miniconda() {
         conda="${miniconda_dir}/bin/conda"
         ;;
     esac
+  else
+    case "${OSTYPE}" in
+      darwin*)
+        # When 'conda' is preinstalled on Mac (as on GitHub Actions), it uses this directory
+        local miniconda_dir="/usr/local/miniconda"
+        sudo mkdir -p -- "${miniconda_dir}"
+        sudo chown -R "${USER}" "${miniconda_dir}"
+        ;;
+    esac
   fi
 
   if [ ! -x "${CONDA_PYTHON_EXE-}" ]; then  # If conda isn't activated, activate it
@@ -162,7 +171,7 @@ install_pip() {
     "${python}" -m pip install --upgrade --quiet pip
 
     # If we're in a CI environment, do some configuration
-    if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
+    if [ "${CI-}" = true ]; then
       "${python}" -W ignore -m pip config -q --user set global.disable-pip-version-check True
       "${python}" -W ignore -m pip config -q --user set global.no-color True
       "${python}" -W ignore -m pip config -q --user set global.progress_bar off

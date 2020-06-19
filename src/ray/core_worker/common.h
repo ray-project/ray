@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_COMMON_H
-#define RAY_CORE_WORKER_COMMON_H
+#pragma once
 
 #include <string>
 
@@ -156,5 +155,3 @@ struct ActorCreationOptions {
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_COMMON_H

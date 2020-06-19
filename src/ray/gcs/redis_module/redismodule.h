@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef REDISMODULE_H
-#define REDISMODULE_H
+#pragma once
 
 #include <stdint.h>
 #include <stdio.h>
@@ -415,4 +414,3 @@ static int RedisModule_Init(RedisModuleCtx *ctx, const char *name, int ver, int 
 #define RedisModuleString robj
 
 #endif /* REDISMODULE_CORE */
-#endif /* REDISMOUDLE_H */

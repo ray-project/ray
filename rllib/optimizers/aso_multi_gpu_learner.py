@@ -12,8 +12,8 @@ from ray.rllib.optimizers.aso_learner import LearnerThread
 from ray.rllib.optimizers.aso_minibatch_buffer import MinibatchBuffer
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
 

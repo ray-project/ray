@@ -78,6 +78,12 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const ClientID &sel
 
 ObjectManager::~ObjectManager() { StopRpcService(); }
 
+void ObjectManager::Stop() {
+  if (plasma::plasma_store_runner != nullptr) {
+    plasma::plasma_store_runner->Stop();
+  }
+}
+
 void ObjectManager::RunRpcService() { rpc_service_.run(); }
 
 void ObjectManager::StartRpcService() {

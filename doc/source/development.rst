@@ -23,7 +23,7 @@ changes you make to files in the Ray directory will not have any effect.
 
 If you run into **Permission Denied** errors when running ``pip install``,
 you can try adding ``--user``. You may also need to run something like ``sudo
-chown -R $USER $HOME/anaconda3`` (substituting in the appropriate path).
+chown -R "$USER" ~/anaconda3`` (substituting in the appropriate path).
 
 If you make changes to the C++ or Python files, you will need to run the
 build so C++ code is recompiled and/or Python files are redeployed in
@@ -37,6 +37,35 @@ the following:
 
 This command is not enough to recompile all C++ unit tests. To do so, see
 `Testing locally`_.
+
+Fast, Debug, and Optimized Builds
+---------------------------------
+
+Currently, Ray is built with optimizations, which can take a long time and
+interfere with debugging. To perform fast, debug, or optimized builds, you can
+run the following (via ``-c`` ``fastbuild``/``dbg``/``opt``, respectively):
+
+.. code-block:: shell
+
+ bazel build -c fastbuild //:ray_pkg
+
+This will rebuild Ray with the appropriate options (which may take a while).
+If you need to build all targets, you can use ``"//:*"`` instead of
+``//:ray_pkg``.
+
+To make this change permanent, you can add an option such as the following
+line to your user-level ``~/.bazelrc`` file (not to be confused with the
+workspace-level ``.bazelrc`` file):
+
+.. code-block:: shell
+
+ build --compilation_mode=fastbuild
+
+If you do so, remember to revert this change, unless you want it to affect
+all of your development in the future.
+
+Using ``dbg`` instead of ``fastbuild`` generates more debug information,
+which can make it easier to debug with a debugger like ``gdb``.
 
 .. _python-develop:
 

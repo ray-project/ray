@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COMMON_PROTOCOL_H
-#define COMMON_PROTOCOL_H
+#pragma once
 
 #include <flatbuffers/flatbuffers.h>
 #include <unordered_set>
@@ -201,5 +200,3 @@ to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, const std::unordered_set<ID> &id
   }
   return fbb.CreateVector(results);
 }
-
-#endif

@@ -1,4 +1,5 @@
 from datetime import datetime
+import numpy as np
 import copy
 import logging
 import math
@@ -20,6 +21,7 @@ from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
+from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
@@ -341,7 +343,7 @@ COMMON_CONFIG = {
         "policies": {},
         # Function mapping agent ids to policy ids.
         "policy_mapping_fn": None,
-        # Optional whitelist of policies to train, or None for all policies.
+        # Optional list of policies to train, or None for all policies.
         "policies_to_train": None,
         # Optional function that can be used to enhance the local agent
         # observations to include more state.
@@ -826,6 +828,95 @@ class Trainer(Trainable):
         else:
             return result[0]  # backwards compatibility
 
+    def compute_actions(self,
+                        observations,
+                        state=None,
+                        prev_action=None,
+                        prev_reward=None,
+                        info=None,
+                        policy_id=DEFAULT_POLICY_ID,
+                        full_fetch=False,
+                        explore=None):
+        """Computes an action for the specified policy on the local Worker.
+
+        Note that you can also access the policy object through
+        self.get_policy(policy_id) and call compute_actions() on it directly.
+
+        Arguments:
+            observation (obj): observation from the environment.
+            state (dict): RNN hidden state, if any. If state is not None,
+                then all of compute_single_action(...) is returned
+                (computed action, rnn state(s), logits dictionary).
+                Otherwise compute_single_action(...)[0] is returned
+                (computed action).
+            prev_action (obj): previous action value, if any
+            prev_reward (int): previous reward, if any
+            info (dict): info object, if any
+            policy_id (str): Policy to query (only applies to multi-agent).
+            full_fetch (bool): Whether to return extra action fetch results.
+                This is always set to True if RNN state is specified.
+            explore (bool): Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
+
+        Returns:
+            any: The computed action if full_fetch=False, or
+            tuple: The full output of policy.compute_actions() if
+                full_fetch=True or we have an RNN-based Policy.
+        """
+        # Preprocess obs and states
+        stateDefined = state is not None
+        policy = self.get_policy(policy_id)
+        filtered_obs, filtered_state = [], []
+        for agent_id, ob in observations.items():
+            worker = self.workers.local_worker()
+            preprocessed = worker.preprocessors[policy_id].transform(ob)
+            filtered = worker.filters[policy_id](preprocessed, update=False)
+            filtered_obs.append(filtered)
+            if state is None:
+                continue
+            elif agent_id in state:
+                filtered_state.append(state[agent_id])
+            else:
+                filtered_state.append(policy.get_initial_state())
+
+        # Batch obs and states
+        obs_batch = np.stack(filtered_obs)
+        if state is None:
+            state = []
+        else:
+            state = list(zip(*filtered_state))
+            state = [np.stack(s) for s in state]
+
+        # Figure out the current (sample) time step and pass it into Policy.
+        self.global_vars["timestep"] += 1
+
+        # Batch compute actions
+        actions, states, infos = policy.compute_actions(
+            obs_batch,
+            state,
+            prev_action,
+            prev_reward,
+            info,
+            clip_actions=self.config["clip_actions"],
+            explore=explore,
+            timestep=self.global_vars["timestep"])
+
+        # Unbatch actions for the environment
+        atns, actions = space_utils.unbatch(actions), {}
+        for key, atn in zip(observations, atns):
+            actions[key] = atn
+
+        # Unbatch states into a dict
+        unbatched_states = {}
+        for idx, agent_id in enumerate(observations):
+            unbatched_states[agent_id] = [s[idx] for s in states]
+
+        # Return only actions or full tuple
+        if stateDefined or full_fetch:
+            return actions, unbatched_states, infos
+        else:
+            return actions
+
     @property
     def _name(self) -> str:
         """Subclasses should override this to declare their name."""
@@ -987,11 +1078,11 @@ class Trainer(Trainable):
                     config["input_evaluation"]))
 
     def _try_recover(self):
-        """Try to identify and blacklist any unhealthy workers.
+        """Try to identify and remove any unhealthy workers.
 
         This method is called after an unexpected remote error is encountered
         from a worker. It issues check requests to all current workers and
-        blacklists any that respond with error. If no healthy workers remain,
+        removes any that respond with error. If no healthy workers remain,
         an error is raised.
         """
 
@@ -1019,7 +1110,7 @@ class Trainer(Trainable):
                 healthy_workers.append(w)
                 logger.info("Worker {} looks healthy".format(i + 1))
             except RayError:
-                logger.exception("Blacklisting worker {}".format(i + 1))
+                logger.exception("Removing unhealthy worker {}".format(i + 1))
                 try:
                     w.__ray_terminate__.remote()
                 except Exception:

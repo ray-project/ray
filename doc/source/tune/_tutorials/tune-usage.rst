@@ -147,46 +147,39 @@ When running a hyperparameter search, Tune can automatically and periodically sa
  * fault-tolerance when using pre-emptible machines.
  * Pausing trials when using Trial Schedulers such as HyperBand and PBT.
 
-To enable checkpointing, you must implement a :ref:`Trainable class <trainable-docs>` (the function-based API are not checkpointable, since they never return control back to their caller).
+Checkpointing assumes that the model state will be saved to disk on whichever node the Trainable is running on.
 
-Checkpointing assumes that the model state will be saved to disk on whichever node the Trainable is running on. You can checkpoint with three different mechanisms: manually, periodically, and at termination.
-
-**Manual Checkpointing**: A custom Trainable can manually trigger checkpointing by returning ``should_checkpoint: True`` (or ``tune.result.SHOULD_CHECKPOINT: True``) in the result dictionary of `_train`. This can be especially helpful in spot instances:
+To use Tune's checkpointing features, you must expose a ``checkpoint`` argument in the function signature, and call ``tune.make_checkpoint_dir`` and ``tune.save_checkpoint``:
 
 .. code-block:: python
 
-    def _train(self):
-        # training code
-        result = {"mean_accuracy": accuracy}
-        if detect_instance_preemption():
-            result.update(should_checkpoint=True)
-        return result
+        import time
+        from ray import tune
 
+        def train_func(config, checkpoint=None):
+            start = 0
+            if checkpoint:
+                with open(checkpoint) as f:
+                    state = json.loads(f.read())
+                    start = state["step"] + 1
 
-**Periodic Checkpointing**: periodic checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq=<int>`` and ``max_failures=<int>`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
+            for iter in range(start, 100):
+                time.sleep(1)
 
-.. code-block:: python
+                # Obtain a checkpoint directory
+                checkpoint_dir = tune.make_checkpoint_dir(step=step)
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(json.dumps({"step": start}))
+                tune.save_checkpoint(path)
 
-    tune.run(
-        my_trainable,
-        checkpoint_freq=10,
-        max_failures=5,
-    )
+                tune.report(hello="world", ray="tune")
 
-**Checkpointing at Termination**: The checkpoint_freq may not coincide with the exact end of an experiment. If you want a checkpoint to be created at the end
-of a trial, you can additionally set the ``checkpoint_at_end=True``:
+        tune.run(train_func)
 
-.. code-block:: python
-   :emphasize-lines: 5
+In this example, checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<step>``.
 
-    tune.run(
-        my_trainable,
-        checkpoint_freq=10,
-        checkpoint_at_end=True,
-        max_failures=5,
-    )
-
-The checkpoint will be saved at a path that looks like ``local_dir/exp_name/trial_name/checkpoint_x/``, where the x is the number of iterations so far when the checkpoint is saved. To restore the checkpoint, you can use the ``restore`` argument and specify a checkpoint file. By doing this, you can change whatever experiments' configuration such as the experiment's name, the training iteration or so:
+You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)`` By doing this, you can change whatever experiments' configuration such as the experiment's name:
 
 .. code-block:: python
 
