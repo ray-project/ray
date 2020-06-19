@@ -444,7 +444,6 @@ class ServeMaster:
                                  num_possible,
                                  current_num_replicas + num_possible))
 
-        if delta_num_replicas > 0:
             logger.debug("Adding {} replicas to backend {}".format(
                 delta_num_replicas, backend_tag))
             for _ in range(delta_num_replicas):
