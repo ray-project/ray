@@ -2,6 +2,7 @@ package io.ray.runtime.task;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
@@ -37,6 +38,11 @@ public class NativeTaskSubmitter implements TaskSubmitter {
     List<byte[]> returnIds = nativeSubmitActorTask(actor.getId().getBytes(),
         functionDescriptor, args, numReturns, options);
     return returnIds.stream().map(ObjectId::new).collect(Collectors.toList());
+  }
+
+  @Override
+  public BaseActorHandle getActor(ActorId actorId) {
+    return NativeActorHandle.create(actorId.getBytes());
   }
 
   private static native List<byte[]> nativeSubmitTask(FunctionDescriptor functionDescriptor,

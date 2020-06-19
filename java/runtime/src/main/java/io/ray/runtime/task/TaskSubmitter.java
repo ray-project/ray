@@ -1,6 +1,7 @@
 package io.ray.runtime.task;
 
 import io.ray.api.BaseActorHandle;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
@@ -44,4 +45,7 @@ public interface TaskSubmitter {
    */
   List<ObjectId> submitActorTask(BaseActorHandle actor, FunctionDescriptor functionDescriptor,
                                  List<FunctionArg> args, int numReturns, CallOptions options);
+
+  BaseActorHandle getActor(ActorId actorId);
+
 }

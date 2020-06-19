@@ -7,6 +7,7 @@ import io.ray.api.runtime.RayRuntimeFactory;
 import io.ray.api.runtimecontext.RuntimeContext;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 
 /**
@@ -135,6 +136,20 @@ public final class Ray extends RayCall {
    */
   public static <T> WaitResult<T> wait(List<ObjectRef<T>> waitList) {
     return runtime.wait(waitList, waitList.size(), Integer.MAX_VALUE);
+  }
+
+  /**
+   * Get a handle to a named actor.
+   * <p>
+   * Gets a handle to a named actor with the given name. The actor must
+   * have been created with name specified.
+   *
+   * @param name The name of the named actor.
+   * @return and ActorHandle to the actor if the actor of specified name exists or
+   * @throws IllegalArgumentException if the named actor does not exist.
+   */
+  public static Optional<BaseActorHandle> getActor(String name) {
+    return runtime.getActor(name);
   }
 
   /**

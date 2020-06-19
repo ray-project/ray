@@ -37,10 +37,10 @@ public class ActorCreator<A> extends BaseActorCreator<ActorCreator<A>> {
    *
    * @param name The name of the named actor.
    * @return self
-   * @see io.ray.api.options.ActorCreationOptions.Builder#setName(java.lang.String)
+   * @see io.ray.api.options.ActorCreationOptions.Builder#setName(String, boolean)
    */
-  public ActorCreator<A> setName(String name) {
-    builder.setName(name);
+  public ActorCreator<A> setName(String name, boolean global) {
+    builder.setName(name, global);
     return this;
   }
 

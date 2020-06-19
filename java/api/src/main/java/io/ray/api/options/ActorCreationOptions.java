@@ -1,5 +1,6 @@
 package io.ray.api.options;
 
+import io.ray.api.Ray;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -35,10 +36,15 @@ public class ActorCreationOptions extends BaseTaskOptions {
      * Set the actor name of a named actor.
      *
      * @param name The name of the named actor.
+     * @param global Whether this actor is a global actor
      * @return self
      */
-    public Builder setName(String name) {
-      this.name = name;
+    public Builder setName(String name, boolean global) {
+      if (global) {
+        this.name = String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), name);
+      } else {
+        this.name = name;
+      }
       return this;
     }
 

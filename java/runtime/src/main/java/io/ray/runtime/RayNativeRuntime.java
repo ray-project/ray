@@ -2,6 +2,7 @@ package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.config.RayConfig;
@@ -19,6 +20,7 @@ import io.ray.runtime.util.JniUtils;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -132,6 +134,24 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   }
 
   @Override
+  public Optional<BaseActorHandle> getActor(String name) throws IllegalArgumentException {
+    Preconditions.checkState(rayConfig.gcsServiceEnabled);
+    String fullName = String.format("%s-%s", getRuntimeContext().getCurrentJobId(), name);
+    Optional<BaseActorHandle> actor = getActorInternal(fullName);
+    return actor.isPresent() ? actor : getActorInternal(name);
+  }
+
+  private Optional<BaseActorHandle> getActorInternal(String name) throws IllegalArgumentException {
+    byte[] actorIdBytes = nativeGetActorIdOfNamedActor(name);
+    ActorId actorId = ActorId.fromBytes(actorIdBytes);
+    if (actorId.isNil()) {
+      return Optional.empty();
+    } else {
+      return Optional.of(getActorHandle(actorId));
+    }
+  }
+
+  @Override
   public void killActor(BaseActorHandle actor, boolean noRestart) {
     nativeKillActor(actor.getId().getBytes(), noRestart);
   }
@@ -167,6 +187,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private static native void nativeSetResource(String resourceName, double capacity, byte[] nodeId);
 
   private static native void nativeKillActor(byte[] actorId, boolean noRestart);
+
+  private static native byte[] nativeGetActorIdOfNamedActor(String actorName);
 
   private static native void nativeSetCoreWorker(byte[] workerId);
 

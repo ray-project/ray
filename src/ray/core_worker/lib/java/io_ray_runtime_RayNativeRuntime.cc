@@ -155,6 +155,19 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetResource(
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(
+    JNIEnv *, jclass, jstring actor_name) {
+  const char *native_actor_name = env->GetStringUTFChars(actor_name, JNI_FALSE);
+  ActorHandle *actor_handle;
+  RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker()
+                   .GetNamedActorHandle(native_actor_name, actor_handle));
+  auto actor_id = actor_handle->GetActorID();
+  jbyteArray bytes = env->NewByteArray(actor_id.Size());
+  env->SetByteArrayRegion(bytes, 0, actor_id.Size(),
+                          reinterpret_cast<const jbyte *>(actor_id.Data()));
+  return bytes;
+}
+
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(
     JNIEnv *env, jclass, jbyteArray actorId, jboolean noRestart) {
   auto status = ray::CoreWorkerProcess::GetCoreWorker().KillActor(

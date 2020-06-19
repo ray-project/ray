@@ -3,6 +3,7 @@ package io.ray.runtime.task;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
+import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
@@ -31,6 +32,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -38,6 +40,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -60,6 +63,9 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   /// The thread pool to execute normal tasks.
   private final ExecutorService normalTaskExecutorService;
 
+  private final Map<ActorId, LocalModeActorHandle> actorHandles = new ConcurrentHashMap<>();
+
+  private final Map<String, ActorHandle> namedActors = new ConcurrentHashMap<>();
 
   private final Map<ActorId, TaskExecutor.ActorContext> actorContexts = new ConcurrentHashMap<>();
 
@@ -159,7 +165,15 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
             .build())
         .build();
     submitTaskSpec(taskSpec);
-    return new LocalModeActorHandle(actorId, getReturnIds(taskSpec).get(0));
+    final LocalModeActorHandle actorHandle
+        = new LocalModeActorHandle(actorId, getReturnIds(taskSpec).get(0));
+    actorHandles.put(actorId, actorHandle.copy());
+    if (StringUtils.isNotBlank(options.name)) {
+      Preconditions.checkArgument(!namedActors.containsKey(options.name),
+          String.format("Actor of name %s exists", options.name));
+      namedActors.put(options.name, actorHandle);
+    }
+    return actorHandle;
   }
 
   @Override
@@ -185,6 +199,19 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       return ImmutableList.of();
     } else {
       return ImmutableList.of(returnIds.get(0));
+    }
+  }
+
+  @Override
+  public BaseActorHandle getActor(ActorId actorId) {
+    return actorHandles.get(actorId).copy();
+  }
+
+  public Optional<BaseActorHandle> getActor(String name) {
+    if (namedActors.containsKey(name)) {
+      return Optional.of(namedActors.get(name));
+    } else {
+      return Optional.empty();
     }
   }
 
