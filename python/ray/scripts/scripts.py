@@ -857,7 +857,7 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     exec_cluster(
         cluster_config_file,
         cmd,
-        'docker',
+        "docker",
         screen,
         tmux,
         stop,

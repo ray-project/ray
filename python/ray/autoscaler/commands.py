@@ -166,7 +166,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
 def monitor_cluster(cluster_config_file, num_lines, override_cluster_name):
     """Tails the autoscaler logs of a Ray cluster."""
     cmd = "tail -n {} -f /tmp/ray/session_*/logs/monitor*".format(num_lines)
-    exec_cluster(cluster_config_file, cmd, 'auto', False, False, False, False,
+    exec_cluster(cluster_config_file, cmd, "auto", False, False, False, False,
                  override_cluster_name, None)
 
 
@@ -354,13 +354,13 @@ def attach_cluster(config_file, start, use_screen, use_tmux,
                 "--new only makes sense if passing --screen or --tmux")
         cmd = "$SHELL"
 
-    exec_cluster(config_file, cmd, 'auto', False, False, False, start,
+    exec_cluster(config_file, cmd, "auto", False, False, False, start,
                  override_cluster_name, port_forward)
 
 
 def exec_cluster(config_file,
                  cmd=None,
-                 run_env='auto',
+                 run_env="auto",
                  screen=False,
                  tmux=False,
                  stop=False,
@@ -373,7 +373,7 @@ def exec_cluster(config_file,
     Arguments:
         config_file: path to the cluster yaml
         cmd: command to run
-        run_env: whether to run the command on the host or optionally in a container
+        run_env: whether to run the command on the host or in a container
         screen: whether to run in a screen
         tmux: whether to run in a tmux session
         stop: whether to stop the cluster after command run
@@ -451,7 +451,7 @@ def _exec(updater,
           tmux,
           port_forward=None,
           with_output=False,
-          run_env='auto'):
+          run_env="auto"):
     if cmd:
         if screen:
             cmd = [
