@@ -33,7 +33,8 @@ class TestMAML(unittest.TestCase):
                 env="ray.rllib.examples.env.pendulum_mass.PendulumMassEnv")
             for i in range(num_iterations):
                 trainer.train()
-            check_compute_single_action(trainer, include_prev_action_reward=True)
+            check_compute_single_action(
+                trainer, include_prev_action_reward=True)
             trainer.stop()
 
 
