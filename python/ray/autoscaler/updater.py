@@ -147,7 +147,8 @@ class KubernetesCommandRunner:
 
 
 class SSHOptions:
-    def __init__(self, control_path=None, **kwargs):
+    def __init__(self, ssh_key, control_path=None, **kwargs):
+        self.ssh_key = ssh_key
         self.arg_dict = {
             "StrictHostKeyChecking": "no",
             # Try fewer extraneous key pairs.
@@ -168,9 +169,9 @@ class SSHOptions:
             })
         self.arg_dict.update(kwargs)
 
-    def get_ssh_options(self, ssh_key, timeout):
+    def get_ssh_options(self, timeout):
         self.arg_dict["ConnectTimeout"] = "{}s".format(timeout)
-        return ["-i", ssh_key] + [
+        return ["-i", self.ssh_key] + [
             x for y in (["-o", "{}={}".format(k, v)]
                         for k, v in self.arg_dict.items()) for x in y
         ]
@@ -195,7 +196,8 @@ class SSHCommandRunner:
         self.ssh_user = auth_config["ssh_user"]
         self.ssh_control_path = ssh_control_path
         self.ssh_ip = None
-        self.default_ssh_options = SSHOptions(self.ssh_control_path)
+        self.default_ssh_options = SSHOptions(self.ssh_private_key,
+                                              self.ssh_control_path)
 
     def get_node_ip(self):
         if self.use_internal_ip:
@@ -256,9 +258,9 @@ class SSHCommandRunner:
                             "{} -> localhost:{}".format(local, remote))
                 ssh += ["-L", "{}:localhost:{}".format(remote, local)]
 
-        final_cmd = ssh + ssh_options.get_ssh_options(
-            self.ssh_private_key,
-            timeout) + ["{}@{}".format(self.ssh_user, self.ssh_ip)]
+        final_cmd = ssh + ssh_options.get_ssh_options(timeout) + [
+            "{}@{}".format(self.ssh_user, self.ssh_ip)
+        ]
         if cmd:
             logger.info(self.log_prefix +
                         "Running {} on {}...".format(cmd, self.ssh_ip))
@@ -288,18 +290,18 @@ class SSHCommandRunner:
         self.set_ssh_ip_if_required()
         self.process_runner.check_call([
             "rsync", "--rsh",
-            " ".join(["ssh"] + self.default_ssh_options.get_ssh_options(
-                self.ssh_private_key, 120)), "-avz", source, "{}@{}:{}".format(
-                    self.ssh_user, self.ssh_ip, target)
+            " ".join(["ssh"] + self.default_ssh_options.get_ssh_options(120)),
+            "-avz", source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip,
+                                              target)
         ])
 
     def run_rsync_down(self, source, target):
         self.set_ssh_ip_if_required()
         self.process_runner.check_call([
             "rsync", "--rsh",
-            " ".join(["ssh"] + self.default_ssh_options.get_ssh_options(
-                self.ssh_private_key, 120)), "-avz", "{}@{}:{}".format(
-                    self.ssh_user, self.ssh_ip, source), target
+            " ".join(["ssh"] + self.default_ssh_options.get_ssh_options(120)),
+            "-avz", "{}@{}:{}".format(self.ssh_user, self.ssh_ip,
+                                      source), target
         ])
 
     def remote_shell_command_str(self):
@@ -342,7 +344,10 @@ class DockerCommandRunner(SSHCommandRunner):
             "sudo systemctl restart docker -f"
         ]
         for cmd in install_commands:
-            self.ssh_command_runner.run(cmd, ssh_options=SSHOptions())
+            self.ssh_command_runner.run(
+                cmd,
+                ssh_options=SSHOptions(
+                    self.ssh_command_runner.ssh_private_key))
 
         logger.info("Docker install finished!")
 
