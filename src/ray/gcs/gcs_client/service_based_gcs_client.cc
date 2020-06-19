@@ -49,8 +49,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
                                RayConfig::instance().gcs_service_connect_retries());
   RAY_CHECK(!address.first.empty()) << "Failed to get gcs server address.";
 
-  resubscribe_func_ = [this](bool is_pubsub_server_restarted,
-                             const std::pair<std::string, int> &address) {
+  resubscribe_func_ = [this](bool is_pubsub_server_restarted) {
     job_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     actor_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     node_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
@@ -138,7 +137,7 @@ void ServiceBasedGcsClient::Tick() {
     // server address.
     if (address != current_gcs_server_address_) {
       current_gcs_server_address_ = address;
-      resubscribe_func_(false, address);
+      resubscribe_func_(false);
     }
   }
 
