@@ -362,13 +362,17 @@ export type MemoryTableEntry = {
   call_site: string;
 };
 
+export type MemoryTableGroups = {
+  [groupKey: string]: MemoryTableGroup;
+};
+
+export type MemoryTableGroup = {
+  entries: MemoryTableEntry[];
+  summary: MemoryTableSummary;
+}
+
 export type MemoryTableResponse = {
-  group: {
-    [groupKey: string]: {
-      entries: MemoryTableEntry[];
-      summary: MemoryTableSummary;
-    };
-  };
+  group: MemoryTableGroups;
   summary: MemoryTableSummary;
 };
 
