@@ -101,18 +101,24 @@ def generate_rsa_key_pair():
 
     return public_key, pem
 
+
 def create_crm_client(config, gcp_credentials):
-    return discovery.build("cloudresourcemanager", "v1", credentials=gcp_credentials)
+    return discovery.build(
+        "cloudresourcemanager", "v1", credentials=gcp_credentials)
+
 
 def create_iam_client(config, gcp_credentials):
     return discovery.build("iam", "v1", credentials=gcp_credentials)
 
+
 def create_compute_client(config, gcp_credentials):
     return discovery.build("compute", "v1", credentials=gcp_credentials)
 
+
 def bootstrap_gcp(config):
     service_account_info = config["provider"].get("gcp_credentials")
-    gcp_credentials = service_account.Credentials.from_service_account_info(service_account_info)
+    gcp_credentials = service_account.Credentials.from_service_account_info(
+        service_account_info)
 
     crm_client = create_crm_client(config, gcp_credentials)
     iam_client = create_iam_client(config, gcp_credentials)
@@ -175,11 +181,13 @@ def _configure_iam_role(config, crm_client, iam_client):
                         DEFAULT_SERVICE_ACCOUNT_ID))
 
         service_account = _create_service_account(
-            DEFAULT_SERVICE_ACCOUNT_ID, DEFAULT_SERVICE_ACCOUNT_CONFIG, config, iam_client)
+            DEFAULT_SERVICE_ACCOUNT_ID, DEFAULT_SERVICE_ACCOUNT_CONFIG, config,
+            iam_client)
 
     assert service_account is not None, "Failed to create service account"
 
-    _add_iam_policy_binding(service_account, DEFAULT_SERVICE_ACCOUNT_ROLES, crm_client)
+    _add_iam_policy_binding(service_account, DEFAULT_SERVICE_ACCOUNT_ROLES,
+                            crm_client)
 
     config["head_node"]["serviceAccounts"] = [{
         "email": service_account["email"],
@@ -248,7 +256,8 @@ def _configure_key_pair(config, compute_client):
                         "Creating new key pair {}".format(key_name))
             public_key, private_key = generate_rsa_key_pair()
 
-            _create_project_ssh_key_pair(project, public_key, ssh_user, compute_client)
+            _create_project_ssh_key_pair(project, public_key, ssh_user,
+                                         compute_client)
 
             # We need to make sure to _create_ the file with the right
             # permissions. In order to do that we need to change the default
@@ -433,7 +442,8 @@ def _add_iam_policy_binding(service_account, roles, crm_client):
     return result
 
 
-def _create_project_ssh_key_pair(project, public_key, ssh_user, compute_client):
+def _create_project_ssh_key_pair(project, public_key, ssh_user,
+                                 compute_client):
     """Inserts an ssh-key into project commonInstanceMetadata"""
 
     key_parts = public_key.split(" ")
@@ -463,6 +473,7 @@ def _create_project_ssh_key_pair(project, public_key, ssh_user, compute_client):
     operation = compute_client.projects().setCommonInstanceMetadata(
         project=project["name"], body=common_instance_metadata).execute()
 
-    response = wait_for_compute_global_operation(project["name"], operation, compute_client)
+    response = wait_for_compute_global_operation(project["name"], operation,
+                                                 compute_client)
 
     return response

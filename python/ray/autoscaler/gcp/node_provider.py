@@ -45,9 +45,11 @@ class GCPNodeProvider(NodeProvider):
 
         self.lock = RLock()
         service_account_info = provider_config.get("gcp_credentials")
-        gcp_credentials = service_account.Credentials.from_service_account_info(service_account_info)
+        gcp_credentials = service_account.Credentials.from_service_account_info(
+            service_account_info)
 
-        self.compute = discovery.build("compute", "v1", credentials=gcp_credentials)
+        self.compute = discovery.build(
+            "compute", "v1", credentials=gcp_credentials)
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
