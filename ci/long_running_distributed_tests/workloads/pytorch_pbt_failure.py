@@ -20,8 +20,13 @@ from ray.util.sgd.torch.resnet import ResNet18
 from ray.util.sgd.utils import BATCH_SIZE
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--smoke-test", action="store_true", default=False, help="Finish quickly for training.")
+parser.add_argument(
+    "--smoke-test",
+    action="store_true",
+    default=False,
+    help="Finish quickly for training.")
 args = parser.parse_args()
+
 
 class FailureInjectorExecutor(RayTrialExecutor):
     """Adds random failure injection to the TrialExecutor."""
@@ -106,12 +111,14 @@ TorchTrainable = TorchTrainer.as_trainable(
     },
     use_gpu=not args.smoke_test)
 
+
 class NoFaultToleranceTrainable(TorchTrainable):
     def _train(self):
         train_stats = self.trainer.train(max_retries=0, profile=True)
         validation_stats = self.trainer.validate(profile=True)
         stats = merge_dicts(train_stats, validation_stats)
         return stats
+
 
 pbt_scheduler = PopulationBasedTraining(
     time_attr="training_iteration",
