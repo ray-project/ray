@@ -20,7 +20,7 @@ public class NativeTaskSubmitter implements TaskSubmitter {
   public List<ObjectId> submitTask(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
                                    int numReturns, CallOptions options) {
     List<byte[]> returnIds = nativeSubmitTask(functionDescriptor, functionDescriptor.hashCode(),
-      args, numReturns, options);
+        args, numReturns, options);
     if (returnIds == null) {
       return ImmutableList.of();
     }
@@ -30,7 +30,8 @@ public class NativeTaskSubmitter implements TaskSubmitter {
   @Override
   public BaseActorHandle createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
                                      ActorCreationOptions options) {
-    byte[] actorId = nativeCreateActor(functionDescriptor, functionDescriptor.hashCode(), args, options);
+    byte[] actorId = nativeCreateActor(functionDescriptor, functionDescriptor.hashCode(), args,
+        options);
     return NativeActorHandle.create(actorId, functionDescriptor.getLanguage());
   }
 
@@ -47,14 +48,14 @@ public class NativeTaskSubmitter implements TaskSubmitter {
     return returnIds.stream().map(ObjectId::new).collect(Collectors.toList());
   }
 
-  private static native List<byte[]> nativeSubmitTask(FunctionDescriptor functionDescriptor, int functionDescriptorHash,
-      List<FunctionArg> args, int numReturns, CallOptions callOptions);
+  private static native List<byte[]> nativeSubmitTask(FunctionDescriptor functionDescriptor,
+      int functionDescriptorHash, List<FunctionArg> args, int numReturns, CallOptions callOptions);
 
-  private static native byte[] nativeCreateActor(FunctionDescriptor functionDescriptor, int functionDescriptorHash,
-      List<FunctionArg> args, ActorCreationOptions actorCreationOptions);
+  private static native byte[] nativeCreateActor(FunctionDescriptor functionDescriptor,
+      int functionDescriptorHash, List<FunctionArg> args,
+      ActorCreationOptions actorCreationOptions);
 
   private static native List<byte[]> nativeSubmitActorTask(byte[] actorId,
-                                                           FunctionDescriptor functionDescriptor, int functionDescriptorHash,
-                                                           List<FunctionArg> args, int numReturns,
-      CallOptions callOptions);
+      FunctionDescriptor functionDescriptor, int functionDescriptorHash, List<FunctionArg> args,
+      int numReturns, CallOptions callOptions);
 }
