@@ -62,14 +62,21 @@ def dockerize_if_needed(config):
     return config
 
 
-def with_docker_exec(cmds, container_name, env_vars=None):
+def with_docker_exec(cmds,
+                     container_name,
+                     env_vars=None,
+                     with_interactive=False):
     env_str = ""
     if env_vars:
         env_str = " ".join(
             ["-e {env}=${env}".format(env=env) for env in env_vars])
     return [
-        "docker exec -it {} {} /bin/bash -c {} ".format(
-            env_str, container_name, quote(cmd)) for cmd in cmds
+        "docker exec {interactive} {env} {container} /bin/bash -c {cmd} ".
+        format(
+            interactive="-it" if with_interactive else "",
+            env=env_str,
+            container=container_name,
+            cmd=quote(cmd)) for cmd in cmds
     ]
 
 

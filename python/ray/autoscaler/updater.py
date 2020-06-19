@@ -318,7 +318,9 @@ class DockerCommandRunner(SSHCommandRunner):
 
         if run_env == "docker":
             cmd = self.docker_expand_user(cmd, any_char=True)
-            cmd = with_docker_exec([cmd], container_name=self.docker_name)[0]
+            cmd = with_docker_exec(
+                [cmd], container_name=self.docker_name,
+                with_interactive=True)[0]
 
         if self.shutdown:
             cmd += "; sudo shutdown -h now"
