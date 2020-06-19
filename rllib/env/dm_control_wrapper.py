@@ -1,3 +1,29 @@
+"""
+DeepMind Control Suite Wrapper directly sourced from:
+https://github.com/denisyarats/dmc2gym
+
+MIT License
+
+Copyright (c) 2020 Denis Yarats
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"""
 from gym import core, spaces
 from dm_control import suite
 from dm_env import specs
@@ -5,12 +31,6 @@ import numpy as np
 import gym
 from gym.envs.registration import register
 
-"""
-DeepMind Control Suite Wrapper directly sourced from:
-https://github.com/denisyarats/dmc2gym
-
-Actions are normalized [-1, 1]
-"""
 
 def _spec_to_box(spec):
     def extract_min_max(s):
@@ -43,21 +63,19 @@ def _flatten_obs(obs):
 
 
 class DMCWrapper(core.Env):
-    def __init__(
-        self,
-        domain_name,
-        task_name,
-        task_kwargs=None,
-        visualize_reward={},
-        from_pixels=False,
-        height=84,
-        width=84,
-        camera_id=0,
-        frame_skip=1,
-        environment_kwargs=None,
-        channels_first=True
-    ):
-        assert 'random' in task_kwargs, 'please specify a seed, for deterministic behaviour'
+    def __init__(self,
+                 domain_name,
+                 task_name,
+                 task_kwargs=None,
+                 visualize_reward={},
+                 from_pixels=False,
+                 height=84,
+                 width=84,
+                 camera_id=0,
+                 frame_skip=1,
+                 environment_kwargs=None,
+                 channels_first=False):
+        assert "random" in task_kwargs, "Seed for deterministic behaviour"
         self._from_pixels = from_pixels
         self._height = height
         self._width = width
@@ -71,8 +89,7 @@ class DMCWrapper(core.Env):
             task_name=task_name,
             task_kwargs=task_kwargs,
             visualize_reward=visualize_reward,
-            environment_kwargs=environment_kwargs
-        )
+            environment_kwargs=environment_kwargs)
 
         # true and normalized action spaces
         self._true_action_space = _spec_to_box([self._env.action_spec()])
@@ -80,28 +97,24 @@ class DMCWrapper(core.Env):
             low=-1.0,
             high=1.0,
             shape=self._true_action_space.shape,
-            dtype=np.float32
-        )
+            dtype=np.float32)
 
         # create observation space
         if from_pixels:
-            shape = [3, height, width] if channels_first else [height, width, 3]
+            shape = [3, height,
+                     width] if channels_first else [height, width, 3]
             self._observation_space = spaces.Box(
-                low=0, high=255, shape=shape, dtype=np.uint8
-            )
+                low=0, high=255, shape=shape, dtype=np.uint8)
         else:
             self._observation_space = _spec_to_box(
-                self._env.observation_spec().values()
-            )
-            
-        self._state_space = _spec_to_box(
-                self._env.observation_spec().values()
-        )
-        
+                self._env.observation_spec().values())
+
+        self._state_space = _spec_to_box(self._env.observation_spec().values())
+
         self.current_state = None
 
         # set seed
-        self.seed(seed=task_kwargs.get('random', 1))
+        self.seed(seed=task_kwargs.get("random", 1))
 
     def __getattr__(self, name):
         return getattr(self._env, name)
@@ -111,8 +124,7 @@ class DMCWrapper(core.Env):
             obs = self.render(
                 height=self._height,
                 width=self._width,
-                camera_id=self._camera_id
-            )
+                camera_id=self._camera_id)
             if self._channels_first:
                 obs = obs.transpose(2, 0, 1).copy()
         else:
@@ -150,7 +162,7 @@ class DMCWrapper(core.Env):
         action = self._convert_action(action)
         assert self._true_action_space.contains(action)
         reward = 0
-        extra = {'internal_state': self._env.physics.get_state().copy()}
+        extra = {"internal_state": self._env.physics.get_state().copy()}
 
         for _ in range(self._frame_skip):
             time_step = self._env.step(action)
@@ -160,7 +172,7 @@ class DMCWrapper(core.Env):
                 break
         obs = self._get_obs(time_step)
         self.current_state = _flatten_obs(time_step.observation)
-        extra['discount'] = time_step.discount
+        extra["discount"] = time_step.discount
         return obs, reward, done, extra
 
     def reset(self):
@@ -169,48 +181,45 @@ class DMCWrapper(core.Env):
         obs = self._get_obs(time_step)
         return obs
 
-    def render(self, mode='rgb_array', height=None, width=None, camera_id=0):
-        assert mode == 'rgb_array', 'only support rgb_array mode, given %s' % mode
+    def render(self, mode="rgb_array", height=None, width=None, camera_id=0):
+        assert mode == "rgb_array", "only support for rgb_array mode"
         height = height or self._height
         width = width or self._width
         camera_id = camera_id or self._camera_id
         return self._env.physics.render(
-            height=height, width=width, camera_id=camera_id
-        )
+            height=height, width=width, camera_id=camera_id)
 
 
-def DMCMake(
-        domain_name,
-        task_name,
-        seed=1,
-        visualize_reward=True,
-        from_pixels=False,
-        height=84,
-        width=84,
-        camera_id=0,
-        frame_skip=1,
-        episode_length=1000,
-        environment_kwargs=None,
-        time_limit=None,
-        channels_first=True
-):
-    env_id = 'dmc_%s_%s-v1' % (domain_name, task_name)
+def DMCMake(domain_name,
+            task_name,
+            seed=1,
+            visualize_reward=True,
+            from_pixels=False,
+            height=84,
+            width=84,
+            camera_id=0,
+            frame_skip=1,
+            episode_length=1000,
+            environment_kwargs=None,
+            time_limit=None,
+            channels_first=True):
+    env_id = "dmc_%s_%s-v1" % (domain_name, task_name)
 
-    if from_pixels:
-        assert not visualize_reward, 'cannot use visualize reward when learning from pixels'
+    if from_pixels and visualize_reward:
+        raise ValueError("Cannot visualize reward from pixels")
 
     # shorten episode length
     max_episode_steps = (episode_length + frame_skip - 1) // frame_skip
 
-    if not env_id in gym.envs.registry.env_specs:
+    if env_id not in gym.envs.registry.env_specs:
         task_kwargs = {}
         if seed is not None:
-            task_kwargs['random'] = seed
+            task_kwargs["random"] = seed
         if time_limit is not None:
-            task_kwargs['time_limit'] = time_limit
+            task_kwargs["time_limit"] = time_limit
         register(
             id=env_id,
-            entry_point='ray.rllib.env.dm_control_wrapper:DMCWrapper',
+            entry_point="ray.rllib.env.dm_control_wrapper:DMCWrapper",
             kwargs=dict(
                 domain_name=domain_name,
                 task_name=task_name,

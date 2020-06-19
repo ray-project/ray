@@ -1,7 +1,6 @@
 from ray.rllib.env.dm_control_wrapper import DMCMake
 
-
-env = DMCMake(domain_name = "cheetah", task_name = "run", seed = 42)
+env = DMCMake(domain_name="cheetah", task_name="run", seed=42)
 
 done = False
 obs = env.reset()
