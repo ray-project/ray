@@ -217,6 +217,7 @@ def run(args, parser):
             num_cpus=args.ray_num_cpus,
             num_gpus=args.ray_num_gpus,
             local_mode=args.local_mode)
+
     run_experiments(
         experiments,
         scheduler=_make_scheduler(args),
@@ -224,6 +225,8 @@ def run(args, parser):
         resume=args.resume,
         verbose=verbose,
         concurrent=True)
+
+    ray.shutdown()
 
 
 if __name__ == "__main__":
