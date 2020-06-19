@@ -88,12 +88,6 @@ class GcsPubSub {
   /// \return Status
   Status Unsubscribe(const std::string &channel, const std::string &id);
 
-  /// Unsubscribe to messages with the specified channel.
-  ///
-  /// \param channel The channel to unsubscribe from redis.
-  /// \return Status
-  Status UnsubscribeAll(const std::string &channel);
-
  private:
   /// Represents a caller's command to subscribe or unsubscribe to a given
   /// channel.
@@ -149,9 +143,6 @@ class GcsPubSub {
   Status SubscribeInternal(const std::string &channel_name, const Callback &subscribe,
                            const StatusCallback &done,
                            const boost::optional<std::string> &id = boost::none);
-
-  Status UnsubscribeInternal(const std::string &channel_name,
-                             const boost::optional<std::string> &id = boost::none);
 
   std::string GenChannelPattern(const std::string &channel,
                                 const boost::optional<std::string> &id);

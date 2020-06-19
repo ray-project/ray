@@ -39,35 +39,30 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   gcs_pub_sub_.reset(new GcsPubSub(redis_gcs_client_->GetRedisClient()));
 
   // Get gcs service address.
-  get_server_address_func_ = [this]() {
-    std::pair<std::string, int> address;
-    GetGcsServerAddressFromRedis(redis_gcs_client_->primary_context()->sync_context(),
-                                 &address);
-    return address;
+  get_server_address_func_ = [this](std::pair<std::string, int> *address) {
+    return GetGcsServerAddressFromRedis(
+        redis_gcs_client_->primary_context()->sync_context(), address);
   };
-  std::pair<std::string, int> address = get_server_address_func_();
+  std::pair<std::string, int> address;
+  GetGcsServerAddressFromRedis(redis_gcs_client_->primary_context()->sync_context(),
+                               &address,
+                               RayConfig::instance().gcs_service_connect_retries());
+  RAY_CHECK(!address.first.empty()) << "Failed to get gcs server address.";
 
   resubscribe_func_ = [this](bool is_pubsub_server_restarted,
                              const std::pair<std::string, int> &address) {
-    // Both service discovery and RPC disconnection will call resubscribe if gcs server
-    // restarts. In order to avoid repeated subscriptions, we added a check of current gcs
-    // server address.
-    if (address != current_gcs_server_address_) {
-      current_gcs_server_address_ = address;
-      job_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-      actor_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-      node_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-      task_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-      object_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-      worker_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-    }
+    job_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
+    actor_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
+    node_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
+    task_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
+    object_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
+    worker_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
   };
 
   // Connect to gcs service.
   client_call_manager_.reset(new rpc::ClientCallManager(io_service));
-  gcs_rpc_client_.reset(
-      new rpc::GcsRpcClient(address.first, address.second, *client_call_manager_,
-                            get_server_address_func_, resubscribe_func_));
+  gcs_rpc_client_.reset(new rpc::GcsRpcClient(
+      address.first, address.second, *client_call_manager_, get_server_address_func_));
   job_accessor_.reset(new ServiceBasedJobInfoAccessor(this));
   actor_accessor_.reset(new ServiceBasedActorInfoAccessor(this));
   node_accessor_.reset(new ServiceBasedNodeInfoAccessor(this));
@@ -90,7 +85,6 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
 void ServiceBasedGcsClient::Disconnect() {
   RAY_CHECK(is_connected_);
   is_connected_ = false;
-  is_ready_to_exit_ = true;
   detect_timer_->cancel();
   gcs_pub_sub_.reset();
   redis_gcs_client_->Disconnect();
@@ -98,12 +92,12 @@ void ServiceBasedGcsClient::Disconnect() {
   RAY_LOG(DEBUG) << "ServiceBasedGcsClient Disconnected.";
 }
 
-void ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
-    redisContext *context, std::pair<std::string, int> *address) {
+bool ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
+    redisContext *context, std::pair<std::string, int> *address, int retry_count) {
   // Get gcs server address.
   int num_attempts = 0;
   redisReply *reply = nullptr;
-  while (num_attempts < RayConfig::instance().gcs_service_connect_retries()) {
+  while (num_attempts < retry_count) {
     reply = reinterpret_cast<redisReply *>(redisCommand(context, "GET GcsServerAddress"));
     if (reply && reply->type != REDIS_REPLY_NIL) {
       break;
@@ -111,38 +105,43 @@ void ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
 
     // Sleep for a little, and try again if the entry isn't there yet.
     freeReplyObject(reply);
-    usleep(RayConfig::instance().internal_gcs_service_connect_wait_milliseconds() * 1000);
     num_attempts++;
 
-    // GCS Client is ready to exit.
-    if (!is_ready_to_exit_) {
-      return;
+    if (num_attempts < retry_count) {
+      usleep(RayConfig::instance().internal_gcs_service_connect_wait_milliseconds() *
+             1000);
     }
   }
 
-  RAY_CHECK(num_attempts < RayConfig::instance().gcs_service_connect_retries())
-      << "No entry found for GcsServerAddress";
-  RAY_CHECK(reply) << "Redis did not reply to GcsServerAddress. Is redis running?";
-  RAY_CHECK(reply->type == REDIS_REPLY_STRING)
-      << "Expected string, found Redis type " << reply->type << " for GcsServerAddress";
-  std::string result(reply->str);
-  freeReplyObject(reply);
+  if (num_attempts < retry_count) {
+    RAY_CHECK(reply) << "Redis did not reply to GcsServerAddress. Is redis running?";
+    RAY_CHECK(reply->type == REDIS_REPLY_STRING)
+        << "Expected string, found Redis type " << reply->type << " for GcsServerAddress";
+    std::string result(reply->str);
+    freeReplyObject(reply);
 
-  RAY_CHECK(!result.empty()) << "Gcs service address is empty";
-  size_t pos = result.find(':');
-  RAY_CHECK(pos != std::string::npos)
-      << "Gcs service address format is erroneous: " << result;
-  address->first = result.substr(0, pos);
-  address->second = std::stoi(result.substr(pos + 1));
+    RAY_CHECK(!result.empty()) << "Gcs service address is empty";
+    size_t pos = result.find(':');
+    RAY_CHECK(pos != std::string::npos)
+        << "Gcs service address format is erroneous: " << result;
+    address->first = result.substr(0, pos);
+    address->second = std::stoi(result.substr(pos + 1));
+    return true;
+  }
+  return false;
 }
 
 void ServiceBasedGcsClient::Tick() {
-  auto address = get_server_address_func_();
-  resubscribe_func_(false, address);
-  ScheduleTick();
-}
+  std::pair<std::string, int> address;
+  if (get_server_address_func_(&address)) {
+    // In order to avoid repeated subscriptions, we added a check of current gcs
+    // server address.
+    if (address != current_gcs_server_address_) {
+      current_gcs_server_address_ = address;
+      resubscribe_func_(false, address);
+    }
+  }
 
-void ServiceBasedGcsClient::ScheduleTick() {
   auto check_period = boost::posix_time::milliseconds(
       RayConfig::instance().gcs_service_address_check_interval_milliseconds());
   detect_timer_->expires_from_now(check_period);

@@ -84,14 +84,11 @@ class GcsRpcClient {
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   /// \param[in] get_server_address The function used for getting address when reconnect
   /// rpc server.
-  GcsRpcClient(const std::string &address, const int port,
-               ClientCallManager &client_call_manager,
-               std::function<std::pair<std::string, int>()> get_server_address = nullptr,
-               std::function<void(bool, const std::pair<std::string, int> &)>
-                   reconnected_callback = nullptr)
+  GcsRpcClient(
+      const std::string &address, const int port, ClientCallManager &client_call_manager,
+      std::function<bool(std::pair<std::string, int> *)> get_server_address = nullptr)
       : client_call_manager_(client_call_manager),
-        get_server_address_(std::move(get_server_address)),
-        reconnected_callback_(std::move(reconnected_callback)) {
+        get_server_address_(std::move(get_server_address)) {
     Init(address, port, client_call_manager);
   };
 
@@ -242,25 +239,20 @@ class GcsRpcClient {
       std::pair<std::string, int> address;
       int index = 0;
       for (; index < RayConfig::instance().ping_gcs_rpc_server_max_retries(); ++index) {
-        address = get_server_address_();
-        RAY_LOG(DEBUG) << "Attempt to reconnect to GCS server: " << address.first << ":"
-                       << address.second;
-        if (Ping(address.first, address.second, 100)) {
-          RAY_LOG(INFO) << "Reconnected to GCS server: " << address.first << ":"
-                        << address.second;
-          break;
+        if (get_server_address_(&address)) {
+          RAY_LOG(DEBUG) << "Attempt to reconnect to GCS server: " << address.first << ":"
+                         << address.second;
+          if (Ping(address.first, address.second, 100)) {
+            RAY_LOG(INFO) << "Reconnected to GCS server: " << address.first << ":"
+                          << address.second;
+            break;
+          }
         }
         usleep(RayConfig::instance().ping_gcs_rpc_server_interval_milliseconds() * 1000);
       }
 
       if (index < RayConfig::instance().ping_gcs_rpc_server_max_retries()) {
         Init(address.first, address.second, client_call_manager_);
-        if (reconnected_callback_) {
-          // TODO(ffbin): Once we separate the pubsub server and storage addresses, we can
-          // judge whether pubsub server is restarted. Currently, we only support the
-          // scenario where pubsub server does not restart.
-          reconnected_callback_(false, address);
-        }
       } else {
         RAY_LOG(FATAL) << "Couldn't reconnect to GCS server. The last attempted GCS "
                           "server address was "
@@ -272,14 +264,7 @@ class GcsRpcClient {
   absl::Mutex mutex_;
 
   ClientCallManager &client_call_manager_;
-  std::function<std::pair<std::string, int>()> get_server_address_;
-
-  /// The callback that will be called when we reconnect to GCS server.
-  /// Currently, we use this function to reestablish subscription to GCS.
-  /// Note, we use ping to detect whether the reconnection is successful. If the ping
-  /// succeeds but the RPC connection fails, this function might be called called again.
-  /// So it needs to be idempotent.
-  std::function<void(bool, const std::pair<std::string, int> &)> reconnected_callback_;
+  std::function<bool(std::pair<std::string, int> *)> get_server_address_;
 
   /// The gRPC-generated stub.
   std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;

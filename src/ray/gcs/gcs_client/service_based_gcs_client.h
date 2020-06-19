@@ -41,14 +41,14 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
   ///
   /// \param context The context of redis.
   /// \param address The address of gcs server.
-  void GetGcsServerAddressFromRedis(redisContext *context,
-                                    std::pair<std::string, int> *address);
+  /// \param retry_count The maximum number of retries to get gcs server rpc address.
+  /// \return Returns true if gcs server address is obtained, False otherwise.
+  bool GetGcsServerAddressFromRedis(redisContext *context,
+                                    std::pair<std::string, int> *address,
+                                    int retry_count = 1);
 
   /// A periodic timer that fires on every gcs server address check period.
   void Tick();
-
-  /// Schedule another tick after a short time.
-  void ScheduleTick();
 
   std::unique_ptr<RedisGcsClient> redis_gcs_client_;
 
@@ -60,7 +60,7 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
 
   // A timer used to check if gcs server address changed.
   std::unique_ptr<boost::asio::deadline_timer> detect_timer_;
-  std::function<std::pair<std::string, int>()> get_server_address_func_;
+  std::function<bool(std::pair<std::string, int> *)> get_server_address_func_;
   std::function<void(bool, const std::pair<std::string, int> &)> resubscribe_func_;
   std::pair<std::string, int> current_gcs_server_address_;
 };

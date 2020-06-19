@@ -144,8 +144,6 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   /// Whether this client is connected to GCS.
   bool is_connected_{false};
-  /// Whether this client is ready to exit.
-  bool is_ready_to_exit_{false};
 
   std::unique_ptr<ActorInfoAccessor> actor_accessor_;
   std::unique_ptr<JobInfoAccessor> job_accessor_;
