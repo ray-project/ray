@@ -1983,6 +1983,7 @@ ResourceIdSet NodeManager::ScheduleBundle(
     acquired_resources =
         local_available_resources_.Acquire(bundle_spec.GetRequiredResources());
     for (auto resource : acquired_resources.AvailableResources()) {
+
       std::string resource_name = bundle_id_str + "_" + resource.first;
       local_available_resources_.AddBundleResource(resource_name, resource.second);
     }

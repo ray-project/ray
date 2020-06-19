@@ -51,6 +51,13 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
+
+  //   /*schedule_failure_handler=*/
+
+  // /*schedule_success_handler=*/
+  // [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+  //   success_placement_groups_.emplace_back(std::move(placement_group));
+  // },
 };
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestScheduleFailedWithZeroNode) {
