@@ -64,7 +64,8 @@ struct Mocker {
   }
 
   static PlacementGroupSpecification GenPlacementGroupCreation(
-      const std::string &name, std::vector<rpc::Bundle> &bundles,
+      const std::string &name,
+      std::vector<std::unordered_map<std::string, double>> &bundles,
       rpc::PlacementStrategy strategy) {
     PlacementGroupSpecBuilder builder;
 
@@ -76,9 +77,10 @@ struct Mocker {
   static rpc::CreatePlacementGroupRequest GenCreatePlacementGroupRequest(
       const std::string name = "") {
     rpc::CreatePlacementGroupRequest request;
-    std::vector<rpc::Bundle> bundles;
+    std::vector<std::unordered_map<std::string, double>> bundles;
     rpc::PlacementStrategy strategy = rpc::PlacementStrategy::SPREAD;
-    rpc::Bundle bundle;
+    std::unordered_map<std::string, double> bundle;
+    bundle["CPU"] = 1.0;
     bundles.push_back(bundle);
     bundles.push_back(bundle);
     auto placement_group_creation_spec =
@@ -87,7 +89,6 @@ struct Mocker {
         placement_group_creation_spec.GetMessage());
     return request;
   }
-
   static std::shared_ptr<rpc::GcsNodeInfo> GenNodeInfo(
       uint16_t port = 0, const std::string address = "127.0.0.1") {
     auto node = std::make_shared<rpc::GcsNodeInfo>();

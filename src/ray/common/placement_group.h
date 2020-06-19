@@ -21,11 +21,6 @@
 
 namespace ray {
 
-enum class Strategy {
-  PACK = 0x0,
-  SPREAD = 0x1,
-};
-
 class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpec> {
  public:
   /// Construct from a protobuf message object.
@@ -48,7 +43,7 @@ class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpe
   /// Return the bundles in this placement group.
   std::vector<BundleSpecification> GetBundles() const;
   /// Return the strategy of the placement group.
-  Strategy GetStrategy() const;
+  rpc::PlacementStrategy GetStrategy() const;
   /// Return the bundle by given index.
   BundleSpecification GetBundle(int position) const;
   /// Return the name of this placement group.
@@ -71,18 +66,19 @@ class PlacementGroupSpecBuilder {
   /// \return Reference to the builder object itself.
   PlacementGroupSpecBuilder &SetPlacementGroupSpec(
       const PlacementGroupID &placement_group_id, std::string name,
-      const std::vector<rpc::Bundle> &bundles, const rpc::PlacementStrategy strategy) {
+      const std::vector<std::unordered_map<std::string, double>> &bundles,
+      const rpc::PlacementStrategy strategy) {
     message_->set_placement_group_id(placement_group_id.Binary());
     message_->set_name(name);
     message_->set_strategy(strategy);
     for (int i = 0; i < bundles.size(); i++) {
-      rpc::Bundle bundle = bundles[i];
+      auto resources = bundles[i];
       auto message_bundle = message_->add_bundles();
       auto mutable_bundle_id = message_bundle->mutable_bundle_id();
       mutable_bundle_id->set_bundle_index(i);
       mutable_bundle_id->set_placement_group_id(placement_group_id.Binary());
-      message_bundle->mutable_unit_resources()->insert(bundle.unit_resources().begin(),
-                                                       bundle.unit_resources().end());
+      message_bundle->mutable_unit_resources()->insert(resources.begin(),
+                                                       resources.end());
     }
     return *this;
   }

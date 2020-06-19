@@ -33,12 +33,8 @@ std::vector<BundleSpecification> PlacementGroupSpecification::GetBundles() const
   return bundles_;
 }
 
-Strategy PlacementGroupSpecification::GetStrategy() const {
-  if (message_->strategy() == rpc::PlacementStrategy::PACK) {
-    return Strategy::PACK;
-  } else {
-    return Strategy::SPREAD;
-  }
+rpc::PlacementStrategy PlacementGroupSpecification::GetStrategy() const {
+  return message_->strategy();
 }
 
 BundleSpecification PlacementGroupSpecification::GetBundle(int position) const {

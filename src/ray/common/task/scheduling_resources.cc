@@ -683,7 +683,6 @@ void ResourceIdSet::CancelResourceReserve(const std::string &resource_name) {
     available_resources_.erase(iter_bundle);
   }
 }
-
 void ResourceIdSet::DeleteResource(const std::string &resource_name) {
   available_resources_.erase(resource_name);
 }

@@ -25,6 +25,7 @@
 namespace ray {
 
 using WorkerType = rpc::WorkerType;
+using PlacementOptions = std::pair<PlacementGroupID, int64_t>;
 
 // Return a string representation of the worker type.
 std::string WorkerTypeString(WorkerType type);
@@ -65,12 +66,13 @@ struct TaskOptions {
 /// Options for actor creation tasks.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(int64_t max_restarts, int64_t max_task_retries,
-                       int max_concurrency,
-                       const std::unordered_map<std::string, double> &resources,
-                       const std::unordered_map<std::string, double> &placement_resources,
-                       const std::vector<std::string> &dynamic_worker_options,
-                       bool is_detached, std::string &name, bool is_asyncio)
+  ActorCreationOptions(
+      int64_t max_restarts, int64_t max_task_retries, int max_concurrency,
+      const std::unordered_map<std::string, double> &resources,
+      const std::unordered_map<std::string, double> &placement_resources,
+      const std::vector<std::string> &dynamic_worker_options, bool is_detached,
+      std::string &name, bool is_asyncio,
+      PlacementOptions placement_options = std::make_pair(PlacementGroupID::Nil(), -1))
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -79,7 +81,8 @@ struct ActorCreationOptions {
         dynamic_worker_options(dynamic_worker_options),
         is_detached(is_detached),
         name(name),
-        is_asyncio(is_asyncio){};
+        is_asyncio(is_asyncio),
+        placement_options(placement_options){};
 
   /// Maximum number of times that the actor should be restarted if it dies
   /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
@@ -107,6 +110,27 @@ struct ActorCreationOptions {
   const std::string name;
   /// Whether to use async mode of direct actor call.
   const bool is_asyncio = false;
+  /// The placement_options include placement_group_id and bundle_index.
+  /// If the actor doesn't belong to a placement group, the placement_group_id will be
+  /// nil, and the bundle_index will be -1.
+  PlacementOptions placement_options;
+};
+
+using PlacementStrategy = rpc::PlacementStrategy;
+
+struct PlacementGroupCreationOptions {
+  PlacementGroupCreationOptions() {}
+  PlacementGroupCreationOptions(
+      const std::string &name, PlacementStrategy strategy,
+      const std::vector<std::unordered_map<std::string, double>> &bundles)
+      : name(name), strategy(strategy), bundles(bundles) {}
+
+  /// The strategy to place the bundle in Placement Group.
+  const PlacementStrategy strategy = rpc::PACK;
+  /// The resource bundles in this placement group.
+  const std::vector<std::unordered_map<std::string, double>> bundles;
+  /// The name of the placement group.
+  const std::string name;
 };
 
 }  // namespace ray

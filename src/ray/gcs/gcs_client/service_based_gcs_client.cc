@@ -75,6 +75,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   stats_accessor_.reset(new ServiceBasedStatsInfoAccessor(this));
   error_accessor_.reset(new ServiceBasedErrorInfoAccessor(this));
   worker_accessor_.reset(new ServiceBasedWorkerInfoAccessor(this));
+  placement_group_accessor_.reset(new ServiceBasedPlacementGroupInfoAccessor(this));
 
   // Init gcs service address check timer.
   detect_timer_.reset(new boost::asio::deadline_timer(io_service));

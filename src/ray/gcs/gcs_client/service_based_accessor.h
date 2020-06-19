@@ -409,5 +409,23 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
   ServiceBasedGcsClient *client_impl_;
 };
 
+/// \class ServiceBasedPlacementGroupInfoAccessor
+/// ServiceBasedPlacementGroupInfoAccessor is an implementation of
+/// `PlacementGroupInfoAccessor` that uses GCS Service as the backend.
+
+class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
+  // TODO(AlisaWu):fill the ServiceAccessor.
+ public:
+  explicit ServiceBasedPlacementGroupInfoAccessor(ServiceBasedGcsClient *client_impl);
+
+  virtual ~ServiceBasedPlacementGroupInfoAccessor() = default;
+
+  Status AsyncCreatePlacementGroup(
+      const PlacementGroupSpecification &placement_group_spec) override;
+
+ private:
+  ServiceBasedGcsClient *client_impl_;
+};
+
 }  // namespace gcs
 }  // namespace ray
