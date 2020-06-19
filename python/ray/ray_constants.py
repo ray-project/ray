@@ -197,11 +197,6 @@ NODE_DEFAULT_IP = "127.0.0.1"
 # The Mach kernel page size in bytes.
 MACH_PAGE_SIZE_BYTES = 4096
 
-# RAY_GCS_SERVICE_ENABLED only set in ci job.
-# TODO(ffbin): Once we entirely migrate to service-based GCS, we should
-# remove it.
-GCS_SERVICE_ENABLED = env_bool("RAY_GCS_SERVICE_ENABLED", True)
-
 # Max 64 bit integer value, which is needed to ensure against overflow
 # in C++ when passing integer values cross-language.
 MAX_INT64_VALUE = 9223372036854775807
