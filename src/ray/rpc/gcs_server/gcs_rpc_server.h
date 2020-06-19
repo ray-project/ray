@@ -353,10 +353,6 @@ class StatsGcsServiceHandler {
   virtual void HandleGetAllProfileInfo(const GetAllProfileInfoRequest &request,
                                        GetAllProfileInfoReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleReportMetrics(const ReportMetricsRequest &request,
-                                   ReportMetricsReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `StatsGcsService`.
@@ -377,7 +373,6 @@ class StatsGrpcService : public GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     STATS_SERVICE_RPC_HANDLER(AddProfileData);
     STATS_SERVICE_RPC_HANDLER(GetAllProfileInfo);
-    STATS_SERVICE_RPC_HANDLER(ReportMetrics);
   }
 
  private:

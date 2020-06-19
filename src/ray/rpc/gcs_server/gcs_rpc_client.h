@@ -203,9 +203,6 @@ class GcsRpcClient {
   /// Get information of all profiles from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(StatsGcsService, GetAllProfileInfo, stats_grpc_client_, )
 
-  /// Add report metrics to GCS.
-  VOID_GCS_RPC_CLIENT_METHOD(StatsGcsService, ReportMetrics, stats_grpc_client_, )
-
   /// Report a job error to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ErrorInfoGcsService, ReportJobError,
                              error_info_grpc_client_, )
