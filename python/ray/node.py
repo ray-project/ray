@@ -539,24 +539,25 @@ class Node:
                 process_info,
             ]
 
-    def start_dashboard(self, require_webui):
+    def start_dashboard(self, require_dashboard):
         """Start the dashboard.
 
         Args:
-            require_webui (bool): If true, this will raise an exception if we
-                fail to start the webui. Otherwise it will print a warning if
-                we fail to start the webui.
+            require_dashboard (bool): If true, this will raise an exception
+                if we fail to start the dashboard. Otherwise it will print
+                a warning if we fail to start the dashboard.
         """
         stdout_file, stderr_file = self.new_log_files("dashboard")
         self._webui_url, process_info = ray.services.start_dashboard(
-            require_webui,
-            self._ray_params.webui_host,
+            require_dashboard,
+            self._ray_params.dashboard_host,
             self.redis_address,
             self._temp_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
-            fate_share=self.kernel_fate_share)
+            fate_share=self.kernel_fate_share,
+            port=self._ray_params.dashboard_port)
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
@@ -675,10 +676,10 @@ class Node:
 
         self.start_monitor()
 
-        if self._ray_params.include_webui:
-            self.start_dashboard(require_webui=True)
-        elif self._ray_params.include_webui is None:
-            self.start_dashboard(require_webui=False)
+        if self._ray_params.include_dashboard:
+            self.start_dashboard(require_dashboard=True)
+        elif self._ray_params.include_dashboard is None:
+            self.start_dashboard(require_dashboard=False)
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""

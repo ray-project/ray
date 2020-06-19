@@ -209,7 +209,7 @@ def run(args, parser):
         ray.init(address=cluster.address)
     else:
         ray.init(
-            include_webui=not args.no_ray_ui,
+            include_dashboard=not args.no_ray_ui,
             address=args.ray_address,
             object_store_memory=args.ray_object_store_memory,
             memory=args.ray_memory,
