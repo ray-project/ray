@@ -2167,12 +2167,10 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
 
   if (local_queues_.HasTask(task_id)) {
     RAY_LOG(WARNING)
-        << "Submitted task " << task_id
-        << " is already queued, we will remove it from queue and "
-           "recreate the task, because the dispatch task callback of the old task "
-           "is invalid if the GCS server is restarted.";
-    std::unordered_set<TaskID> task_ids;
-    task_ids.insert(task_id);
+        << "Submitted actor creation task " << task_id
+        << " is already queued. This is most likely due to a GCS restart. We will remove "
+           "the old one from the queue, and enqueue the new one.";
+    std::unordered_set<TaskID> task_ids{task_id};
     local_queues_.RemoveTasks(task_ids);
   }
 

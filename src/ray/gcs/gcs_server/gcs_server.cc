@@ -102,8 +102,10 @@ void GcsServer::Start() {
   auto on_done = [this, load_count, load_completed_count]() {
     ++(*load_completed_count);
 
+    // We will reschedule the unfinished actors, so we have to load the actor data at the
+    // end to make sure the other table data is loaded.
     if (*load_completed_count == load_count) {
-      auto on_done = [this]() {
+      auto actor_manager_load_initial_data_callback = [this]() {
         // Start RPC server when all tables have finished loading initial data.
         rpc_server_.Run();
 
@@ -111,7 +113,7 @@ void GcsServer::Start() {
         StoreGcsServerAddressInRedis();
         is_started_ = true;
       };
-      gcs_actor_manager_->LoadInitialData(on_done);
+      gcs_actor_manager_->LoadInitialData(actor_manager_load_initial_data_callback);
     }
   };
   gcs_object_manager_->LoadInitialData(on_done);

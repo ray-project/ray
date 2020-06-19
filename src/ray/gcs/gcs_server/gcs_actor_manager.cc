@@ -767,7 +767,7 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
     for (auto &item : registered_actors_) {
       auto &actor = item.second;
       if (actor->GetState() != ray::rpc::ActorTableData::ALIVE) {
-        RAY_LOG(DEBUG) << "Reschedule the registered actor, actor id = "
+        RAY_LOG(DEBUG) << "Rescheduling a non-alive actor, actor id = "
                        << actor->GetActorID() << ", state = " << actor->GetState();
         gcs_actor_scheduler_->Reschedule(actor);
       }

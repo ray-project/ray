@@ -40,6 +40,8 @@ GcsActorScheduler::GcsActorScheduler(
 }
 
 void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
+  RAY_CHECK(actor->GetNodeID().IsNil() && actor->GetWorkerID().IsNil());
+
   // Select a node to lease worker for the actor.
   auto node = SelectNodeRandomly();
   if (node == nullptr) {
@@ -49,15 +51,16 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
     return;
   }
 
-  // Update the address of the actor as it is tied to a new node.
+  // Update the address of the actor as it is tied to a node.
   rpc::Address address;
   address.set_raylet_id(node->node_id());
   actor->UpdateAddress(address);
 
-  // If the actor is already tied to a node, then lease worker directly from the node.
   RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
                 .emplace(actor->GetActorID())
                 .second);
+
+  // Lease worker directly from the node.
   LeaseWorkerFromNode(actor, node);
 }
 
@@ -222,7 +225,7 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
     // node, and then try again on the new node.
     RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
     actor->UpdateAddress(retry_at_raylet_address);
-    Schedule(actor);
+    LeaseWorkerFromNode(actor, gcs_node_manager_.GetNode(actor->GetNodeID()));
   } else {
     // The worker is leased successfully from the specified node.
     std::vector<rpc::ResourceMapEntry> resources;

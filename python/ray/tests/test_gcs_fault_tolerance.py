@@ -14,9 +14,7 @@ def increase(x):
     return x + 1
 
 
-def test_gcs_server_restart():
-    ray.init()
-
+def test_gcs_server_restart(ray_start_regular):
     actor1 = Increase.remote()
     result = ray.get(actor1.method.remote(1))
     assert result == 3
@@ -33,16 +31,9 @@ def test_gcs_server_restart():
 
     result = ray.get(increase.remote(1))
     assert result == 2
-    ray.shutdown()
 
 
-def test_gcs_server_re_schedule_actor():
-    ray.init()
-
-    actor1 = Increase.remote()
-    result = ray.get(actor1.method.remote(1))
-    assert result == 3
-
+def test_gcs_server_restart_during_actor_creation(ray_start_regular):
     ids = []
     for i in range(0, 100):
         actor = Increase.remote()
@@ -55,8 +46,6 @@ def test_gcs_server_re_schedule_actor():
     print("Ready objects is {}.".format(ready))
     print("Unready objects is {}.".format(unready))
     assert len(unready) == 0
-
-    ray.shutdown()
 
 
 if __name__ == "__main__":

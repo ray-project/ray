@@ -278,18 +278,18 @@ void CoreWorkerDirectTaskReceiver::Init(
 void CoreWorkerDirectTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto task_id = TaskID::FromBinary(request.task_spec().task_id());
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
 
-  // If GCS server is restarted after sending create actor task to the core worker, the
-  // restarted GCS server will send the same create actor task to the core worker again.
-  // We just need to ignore it and reply ok.
+  // If GCS server is restarted after sending an actor creation task to this core worker,
+  // the restarted GCS server will send the same create actor task to the core worker
+  // again. We just need to ignore it and reply ok.
   if (task_spec.IsActorCreationTask() &&
-      worker_context_.GetCurrentActorID() == task_spec.ActorId()) {
+      worker_context_.GetCurrentActorID() == task_spec.ActorCreationId()) {
     send_reply_callback(Status::OK(), nullptr, nullptr);
-    RAY_LOG(INFO) << "Actor creation task is repeated, reply directly, task id = "
-                  << task_id << ", actor id = " << task_id.ActorId();
+    RAY_LOG(INFO) << "Ignoring duplicate actor creation task for actor "
+                  << task_spec.ActorCreationId()
+                  << ". This is likely due to a GCS server restart.";
     return;
   }
 
