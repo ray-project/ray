@@ -1194,7 +1194,7 @@ Status CoreWorker::CreatePlacementGroup(
   if (RayConfig::instance().gcs_service_enabled() &&
       RayConfig::instance().gcs_placement_group_service_enabled()) {
     RAY_LOG(INFO) << "Submitting Placement Group creation to GCS: "
-                  << placement_group_id.Binary();
+                  << placement_group_id;
     RAY_CHECK_OK(
         gcs_client_->PlacementGroups().AsyncCreatePlacementGroup(placement_group_spec));
   }

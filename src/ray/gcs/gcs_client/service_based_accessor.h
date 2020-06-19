@@ -342,8 +342,6 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
 
  private:
   ServiceBasedGcsClient *client_impl_;
-  Sequencer<PlacementGroupID> sequencer_;
-  Sequencer<BundleID> sequencer_bundler_;
 };
 
 /// \class ServiceBasedErrorInfoAccessor

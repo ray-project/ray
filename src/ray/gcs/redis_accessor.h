@@ -464,6 +464,23 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
   WorkerFailureSubscriptionExecutor worker_failure_sub_executor_;
 };
 
+/// \class RedisPlacementGroupInfoAccessor
+/// RedisPlacementGroupInfoAccessor is an implementation of `PlacementGroupInfoAccessor`
+/// that uses Redis as the backend storage.
+class RedisPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
+ public:
+  explicit RedisPlacementGroupInfoAccessor(RedisGcsClient *client_impl);
+
+  virtual ~RedisPlacementGroupInfoAccessor() = default;
+
+  Status AsyncCreatePlacementGroup(
+      const PlacementGroupSpecification &placement_group_spec) override;
+
+
+ private:
+  RedisGcsClient *client_impl_{nullptr};
+};
+
 }  // namespace gcs
 
 }  // namespace ray

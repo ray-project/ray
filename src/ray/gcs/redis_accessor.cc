@@ -838,6 +838,17 @@ Status RedisWorkerInfoAccessor::AsyncRegisterWorker(
   return status;
 }
 
+RedisPlacementGroupInfoAccessor::RedisPlacementGroupInfoAccessor(RedisGcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status RedisPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
+    const PlacementGroupSpecification &placement_group_spec) {
+  const std::string error_msg =
+      "Unsupported method of AsyncCreatePlacementGroup in RedisLogBasedPlacementGroupInfoAccessor.";
+  RAY_LOG(FATAL) << error_msg;
+  return Status::Invalid(error_msg);
+}
+
 }  // namespace gcs
 
 }  // namespace ray

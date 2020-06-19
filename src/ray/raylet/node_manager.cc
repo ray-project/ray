@@ -1871,8 +1871,7 @@ void NodeManager::HandleRequestResourceReturn(
     std::string resource_name = bundle_id.Binary() + "_" + resource.first;
     local_available_resources_.ReturnBundleReousce(resource_name);
   }
-  cluster_resource_map_[self_node_id_].ReturnBundleResource(bundle_id.Binary(),
-                                                            resource_set);
+  cluster_resource_map_[self_node_id_].ReturnBundleResource(bundle_id.Binary());
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

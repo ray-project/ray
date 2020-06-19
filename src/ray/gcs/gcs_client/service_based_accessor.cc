@@ -1287,10 +1287,14 @@ Status ServiceBasedWorkerInfoAccessor::AsyncRegisterWorker(
   return Status::OK();
 }
 
+ServiceBasedPlacementGroupInfoAccessor::ServiceBasedPlacementGroupInfoAccessor(
+    ServiceBasedGcsClient *client_impl) : client_impl_(client_impl) {}
+
 Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
     const ray::PlacementGroupSpecification &placement_group_spec) {
   rpc::CreatePlacementGroupRequest request;
   request.mutable_placement_group_spec()->CopyFrom(placement_group_spec.GetMessage());
+  RAY_LOG(INFO) << "TEST!";
   client_impl_->GetGcsRpcClient().CreatePlacementGroup(
       request, [placement_group_spec](const Status &,
                                       const rpc::CreatePlacementGroupReply &reply) {
@@ -1303,6 +1307,7 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
                          << placement_group_spec.PlacementGroupId();
         }
       });
+  RAY_LOG(INFO) << "TEST!";
   return Status::OK();
 }
 
