@@ -4,6 +4,7 @@ import time
 import logging
 
 from googleapiclient import discovery
+from google.oauth2 import service_account
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
@@ -43,7 +44,10 @@ class GCPNodeProvider(NodeProvider):
         NodeProvider.__init__(self, provider_config, cluster_name)
 
         self.lock = RLock()
-        self.compute = discovery.build("compute", "v1")
+        service_account_info = provider_config.get("gcp_credentials")
+        gcp_credentials = service_account.Credentials.from_service_account_info(service_account_info)
+
+        self.compute = discovery.build("compute", "v1", credentials=gcp_credentials)
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.

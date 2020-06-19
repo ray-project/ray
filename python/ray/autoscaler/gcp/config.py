@@ -2,12 +2,12 @@ from functools import partial
 import os
 import logging
 import time
-import pdb
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
 from googleapiclient import discovery, errors
+from google.oauth2 import service_account
 
 logger = logging.getLogger(__name__)
 
@@ -101,19 +101,22 @@ def generate_rsa_key_pair():
 
     return public_key, pem
 
-def create_crm_client(config):
-    return discovery.build("cloudresourcemanager", "v1")
+def create_crm_client(config, gcp_credentials):
+    return discovery.build("cloudresourcemanager", "v1", credentials=gcp_credentials)
 
-def create_iam_client(config):
-    return discovery.build("iam", "v1")
+def create_iam_client(config, gcp_credentials):
+    return discovery.build("iam", "v1", credentials=gcp_credentials)
 
-def create_compute_client(config):
-    return discovery.build("compute", "v1")
+def create_compute_client(config, gcp_credentials):
+    return discovery.build("compute", "v1", credentials=gcp_credentials)
 
 def bootstrap_gcp(config):
-    crm_client = create_crm_client(config)
-    iam_client = create_iam_client(config)
-    compute_client = create_compute_client(config)
+    service_account_info = config["provider"].get("gcp_credentials")
+    gcp_credentials = service_account.Credentials.from_service_account_info(service_account_info)
+
+    crm_client = create_crm_client(config, gcp_credentials)
+    iam_client = create_iam_client(config, gcp_credentials)
+    compute_client = create_compute_client(config, gcp_credentials)
 
     config = _configure_project(config, crm_client)
     config = _configure_iam_role(config, crm_client, iam_client)
