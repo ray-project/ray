@@ -2709,9 +2709,6 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
   }
 
   if (task_spec.IsActorCreationTask()) {
-    // This was an actor creation task. Convert the worker to an actor.
-    worker.AssignActorId(actor_id);
-
     if (task_spec.IsDetachedActor()) {
       worker.MarkDetachedActor();
     }
