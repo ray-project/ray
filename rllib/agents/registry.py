@@ -117,7 +117,7 @@ ALGORITHMS = {
 }
 
 
-def get_agent_class(alg):
+def get_agent_class(alg: str) -> type:
     """Returns the class of a known agent given its name."""
 
     try:
@@ -127,7 +127,7 @@ def get_agent_class(alg):
         return _agent_import_failed(traceback.format_exc())
 
 
-def _get_agent_class(alg):
+def _get_agent_class(alg: str) -> type:
     if alg in ALGORITHMS:
         return ALGORITHMS[alg]()
     elif alg in CONTRIBUTED_ALGORITHMS:
