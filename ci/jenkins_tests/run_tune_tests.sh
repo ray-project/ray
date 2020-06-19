@@ -154,7 +154,7 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
     --smoke-test
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
-    python /ray/ci/long_running_distributed_tests/workloads/cifar_pytorch_pbt.py \
+    python /ray/ci/long_running_distributed_tests/workloads/pytorch_pbt_failure.py \
     --smoke-test
 
 # uncomment once statsmodels is updated.
