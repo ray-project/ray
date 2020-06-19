@@ -38,6 +38,13 @@ else
   exit 1
 fi
 
+CXXOPT=
+# Determine machine hardware to decide whether to use c++0x or gnu++0x standard
+machine="$(uname -m)"
+if [[ "$unamestr" == "Linux" && "$machine" == "ppc64le" ]]; then
+  CXXOPT=--cxxopt=-std=gnu++0x
+fi
+
 RAY_BUILD_PYTHON="YES"
 RAY_BUILD_JAVA="NO"
 PYTHON_EXECUTABLE=""
@@ -160,7 +167,7 @@ if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
 
   export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
 
-  "$BAZEL_EXECUTABLE" build //:ray_pkg
+  "$BAZEL_EXECUTABLE" build //:ray_pkg $CXXOPT
 fi
 
 popd
