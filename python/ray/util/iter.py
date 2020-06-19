@@ -440,14 +440,10 @@ class ParallelIterator(Generic[T]):
             for actor_set in self.actor_sets:
                 actor_set.init_actors()
                 active.extend(actor_set.actors)
-            print("Building futures")
             futures = [a.par_iter_next.remote() for a in active]
-            print("Buit futures")
             while active:
                 try:
-                    print("Trying to get futures")
                     yield ray.get(futures, timeout=timeout)
-                    print("Got futures")
                     futures = [a.par_iter_next.remote() for a in active]
                     # Always yield after each round of gets with timeout.
                     if timeout is not None:
