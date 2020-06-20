@@ -34,8 +34,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
         (w, h, in_channels) = obs_space.shape
         in_size = [w, h]
         for out_channels, kernel, stride in filters[:-1]:
-            padding, out_size = same_padding(in_size, kernel,
-                                             [stride, stride])
+            padding, out_size = same_padding(in_size, kernel, [stride, stride])
             layers.append(
                 SlimConv2d(
                     in_channels,
@@ -62,23 +61,24 @@ class VisionNetwork(TorchModelV2, nn.Module):
         # Finish network normally (w/o overriding last layer size with
         # `num_outputs`), then add another linear one of size `num_outputs`.
         else:
-            layers.append(SlimConv2d(
-                in_channels,
-                out_channels,
-                kernel,
-                stride,
-                None,
-                activation_fn=activation))
+            layers.append(
+                SlimConv2d(
+                    in_channels,
+                    out_channels,
+                    kernel,
+                    stride,
+                    None,
+                    activation_fn=activation))
 
             if num_outputs:
                 in_size = [
                     np.ceil((in_size[0] - kernel[0]) / stride),
-                    np.ceil((in_size[1] - kernel[1]) / stride)]
+                    np.ceil((in_size[1] - kernel[1]) / stride)
+                ]
                 padding, _ = same_padding(in_size, [1, 1], [1, 1])
                 self._logits = SlimConv2d(
                     out_channels,
-                    num_outputs,
-                    [1, 1],
+                    num_outputs, [1, 1],
                     1,
                     padding,
                     activation_fn=None)
@@ -98,7 +98,8 @@ class VisionNetwork(TorchModelV2, nn.Module):
 
     @override(TorchModelV2)
     def forward(self, input_dict, state, seq_lens):
-        self._features = self._convs(input_dict["obs"].float().permute(0, 3, 1, 2))  #self._hidden_layers(input_dict["obs"].float())
+        self._features = self._convs(input_dict["obs"].float().permute(
+            0, 3, 1, 2))  #self._hidden_layers(input_dict["obs"].float())
         if not self.last_layer_is_flattened:
             logits = self._logits(self._features)
             logits = logits.squeeze(3)

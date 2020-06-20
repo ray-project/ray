@@ -12,13 +12,6 @@ from ray.util.debug import log_once
 logger = logging.getLogger(__name__)
 
 
-#def to_float_array(v):
-#    arr = np.array(v)
-#    if arr.dtype == np.float64:
-#        return arr.astype(np.float32)  # save some memory
-#    return arr
-
-
 @PublicAPI
 class SampleBatchBuilder:
     """Util to build a SampleBatch incrementally.
@@ -59,9 +52,10 @@ class SampleBatchBuilder:
     def build_and_reset(self):
         """Returns a sample batch including all previously added values."""
 
-        batch = SampleBatch(
-            {k: convert_to_numpy(v, reduce_floats=True)
-             for k, v in self.buffers.items()})
+        batch = SampleBatch({
+            k: convert_to_numpy(v, reduce_floats=True)
+            for k, v in self.buffers.items()
+        })
         if SampleBatch.UNROLL_ID not in batch.data:
             batch.data[SampleBatch.UNROLL_ID] = np.repeat(
                 SampleBatchBuilder._next_unroll_id, batch.count)

@@ -72,17 +72,18 @@ class Policy(metaclass=ABCMeta):
 
     @abstractmethod
     @DeveloperAPI
-    def compute_actions(self,
-                        obs_batch=None,  #TODO: deprecate
-                        state_batches=None,  #TODO: deprecate
-                        prev_action_batch=None,  #TODO: deprecate
-                        prev_reward_batch=None,  #TODO: deprecate
-                        info_batch=None,  #TODO: deprecate
-                        episodes=None,  #TODO: deprecate
-                        explore=None,
-                        timestep=None,
-                        data=None,  #TODO: move this up as the main source
-                        **kwargs):
+    def compute_actions(
+            self,
+            obs_batch=None,  # TODO: deprecate
+            state_batches=None,  # TODO: deprecate
+            prev_action_batch=None,  # TODO: deprecate
+            prev_reward_batch=None,  # TODO: deprecate
+            info_batch=None,  # TODO: deprecate
+            episodes=None,  # TODO: deprecate
+            explore=None,
+            timestep=None,
+            trajectories=None,  # TODO: move this up as the main input source
+            **kwargs):
         """Computes actions for the current policy.
 
         Args:
@@ -100,7 +101,8 @@ class Policy(metaclass=ABCMeta):
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
             timestep (int): The current (sampling) time step.
-            data (dict): The data dict to be used to build a ModelView #TODO
+            trajectories (List[Trajectory]): A List of Trajectory data used
+                to create a view for the Model forward call.
             kwargs: forward compatibility placeholder
 
         Returns:

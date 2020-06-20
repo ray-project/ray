@@ -91,15 +91,6 @@ class RecurrentNetwork(TorchModelV2):
         """
         raise NotImplementedError("You must implement this for an RNN model")
 
-    @override(ModelV2)
-    def get_view_requirements(self):
-        """Returns the view-requirements for RNN-nets.
-
-        TODO
-        """
-        return
-        #TODO
-
 
 class LSTMWrapper(RecurrentNetwork, nn.Module):
     """An LSTM wrapper serving as an interface for ModelV2s that set use_lstm.
@@ -112,7 +103,8 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         super().__init__(obs_space, action_space, None, model_config, name)
 
         self.cell_size = model_config["lstm_cell_size"]
-        self.use_prev_action_reward = model_config["lstm_use_prev_action_reward"]
+        self.use_prev_action_reward = model_config[
+            "lstm_use_prev_action_reward"]
         self.action_dim = int(np.product(action_space.shape))
         # Add prev-action/reward nodes to input to LSTM.
         if self.use_prev_action_reward:
@@ -144,9 +136,8 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
             wrapped_out = torch.cat(
                 [
                     wrapped_out,
-                    torch.reshape(
-                        input_dict[SampleBatch.PREV_ACTIONS].float(),
-                        [-1, self.action_dim]),
+                    torch.reshape(input_dict[SampleBatch.PREV_ACTIONS].float(),
+                                  [-1, self.action_dim]),
                     torch.reshape(input_dict[SampleBatch.PREV_REWARDS],
                                   [-1, 1]),
                 ],
@@ -180,12 +171,12 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         assert self._features is not None, "must call forward() first"
         return torch.reshape(self._value_branch(self._features), [-1])
 
-    @override(ModelV2)
-    def get_view_requirements(self, is_training=False):
-        return [
-            ViewRequirement(SampleBatch.OBS),
-            ViewRequirement("state_h", -1),
-            ViewRequirement("state_c", -1),
-            ViewRequirement(SampleBatch.ACTIONS, -1),
-            ViewRequirement(SampleBatch.REWARDS, -1),
-        ]
+    # @override(ModelV2)
+    # def get_view_requirements(self, is_training=False):
+    #     return [
+    #         ViewRequirement(SampleBatch.OBS),
+    #         ViewRequirement("state_h", -1),
+    #         ViewRequirement("state_c", -1),
+    #         ViewRequirement(SampleBatch.ACTIONS, -1),
+    #         ViewRequirement(SampleBatch.REWARDS, -1),
+    #     ]

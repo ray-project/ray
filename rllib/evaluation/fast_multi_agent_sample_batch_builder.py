@@ -1,15 +1,13 @@
-from collections import defaultdict
-from functools import partial
 import logging
 import numpy as np
 from typing import Union
 
-from ray.rllib.evaluation.fast_sample_batch_builder import \
-    _FastSampleBatchBuilder
+from ray.rllib.evaluation.policy_trajectories import PolicyTrajectories
 from ray.rllib.evaluation.trajectory import Trajectory
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.util.debug import log_once
 
@@ -29,11 +27,8 @@ class _FastMultiAgentSampleBatchBuilder:
     policy.
     """
 
-    def __init__(self,
-                 policy_map,
-                 clip_rewards,
-                 callbacks,
-                 horizon: Union[int,float]):
+    def __init__(self, policy_map, clip_rewards, callbacks,
+                 horizon: Union[int, float]):
         """Initializes a MultiAgentSampleBatchBuilder object.
 
         Args:
@@ -52,14 +47,13 @@ class _FastMultiAgentSampleBatchBuilder:
         self.horizon = horizon
 
         # Build the Policies' SampleBatchBuilders.
-        self.policy_builders = {
-            k: _FastSampleBatchBuilder(horizon=self.horizon)
+        self.policy_trajectories = {
+            k: PolicyTrajectories(horizon=self.horizon)
             for k in policy_map.keys()
         }
         # Whenever we observe a new agent, add a new SampleBatchBuilder for
         # this agent.
-        self.single_agent_trajectories = defaultdict(partial(
-            Trajectory, horizon=self.horizon))
+        self.single_agent_trajectories = {}
         # Internal agent-to-policy map.
         self.agent_to_policy = {}
         # Number of "inference" steps taken in the environment.
@@ -67,14 +61,14 @@ class _FastMultiAgentSampleBatchBuilder:
         self.count = 0
 
     def total(self):
-        """Returns the total number of steps taken in the env (all agents).
+        """Returns total number of steps taken in the env (sum of all agents).
 
         Returns:
             int: The number of steps taken in total in the environment over all
                 agents.
         """
 
-        return sum(a.timestep for a in self.agent_builders.values())
+        return sum(a.timestep for a in self.single_agent_trajectories.values())
 
     def has_pending_agent_data(self):
         """Returns whether there is pending unprocessed data.
@@ -84,10 +78,10 @@ class _FastMultiAgentSampleBatchBuilder:
                 in it).
         """
 
-        return len(self.agent_builders) > 0
+        return self.total() > 0
 
     @DeveloperAPI
-    def add_initial_observation(self, env_id, agent_id, policy_id, obs):
+    def add_init_obs(self, env_id, agent_id, policy_id, obs):
         """Add the given dictionary (row) of values to this batch.
 
         Arguments:
@@ -96,23 +90,33 @@ class _FastMultiAgentSampleBatchBuilder:
             policy_id (obj): Unique id for policy controlling the agent.
             obs (any): Initial observation (after env.reset()).
         """
+        # Make sure our mappings are up to date.
         if agent_id not in self.agent_to_policy:
             self.agent_to_policy[agent_id] = policy_id
         else:
             assert self.agent_to_policy[agent_id] == policy_id
 
-        self.agent_builders[agent_id].add_initial_observation(
-            env_id, agent_id, obs)
+        # We don't have a Trajcetory for this agent ID yet, create a new one.
+        if agent_id not in self.single_agent_trajectories:
+            self.single_agent_trajectories[agent_id] = Trajectory(
+                horizon=self.horizon)
+        # Add initial obs to Trajectory.
+        self.single_agent_trajectories[agent_id].add_init_obs(
+            env_id, agent_id, policy_id, obs)
 
     @DeveloperAPI
-    def add_values(self, agent_id, policy_id, **values):
+    def add_action_reward_next_obs(self, env_id, agent_id, policy_id,
+                                   **values):
         """Add the given dictionary (row) of values to this batch.
 
-        Arguments:
+        Args:
             agent_id (obj): Unique id for the agent we are adding values for.
             policy_id (obj): Unique id for policy controlling the agent.
             values (dict): Row of values to add for this agent.
         """
+        assert agent_id in self.single_agent_trajectories
+
+        # Make sure our mappings are up to date.
         if agent_id not in self.agent_to_policy:
             self.agent_to_policy[agent_id] = policy_id
         else:
@@ -122,26 +126,31 @@ class _FastMultiAgentSampleBatchBuilder:
         if agent_id != _DUMMY_AGENT_ID:
             values["agent_id"] = agent_id
 
-        self.agent_builders[agent_id].add_values(**values)
+        # Add action/reward/next-obs (and other data) to Trajectory.
+        self.single_agent_trajectories[agent_id].add_action_reward_next_obs(
+            env_id, agent_id, policy_id, values)
 
     def postprocess_batch_so_far(self, episode=None):
         """Apply policy postprocessors to any unprocessed rows.
 
-        This pushes the postprocessed per-agent batches onto the per-policy
-        builders, clearing per-agent state.
+        This pushes the postprocessed per-agent data into the
+        per-policy PolicyTrajectories and clears per-agent state so far
+        (only leaving any currently ongoing trajectories still available
+        for (backward) view-generation).
 
         Args:
             episode (Optional[MultiAgentEpisode]): The Episode object that
-                holds this MultiAgentBatchBuilder object.
+                holds this _FastMultiAgentBatchBuilder object.
         """
 
         # Materialize the per-agent batches so far.
         pre_batches = {}
-        for agent_id, builder in self.agent_builders.items():
-            print()
-            pre_batches[agent_id] = (
-                self.policy_map[self.agent_to_policy[agent_id]],
-                builder.build_and_reset())
+        for agent_id, trajectory in self.single_agent_trajectories.items():
+            # Only if this trajectory has any data.
+            if trajectory.timestep > 0:
+                pre_batches[agent_id] = (
+                    self.policy_map[self.agent_to_policy[agent_id]],
+                    trajectory.get_sample_batch_and_reset())
 
         # Apply postprocessor.
         post_batches = {}
@@ -192,16 +201,12 @@ class _FastMultiAgentSampleBatchBuilder:
                 policies=self.policy_map,
                 postprocessed_batch=post_batch,
                 original_batches=pre_batches)
-            print()
-            self.policy_builders[self.agent_to_policy[agent_id]].add_batch(
-                post_batch)
-
-        self.agent_builders.clear()
-        self.agent_to_policy.clear()
+            self.policy_trajectories[self.agent_to_policy[
+                agent_id]].add_sample_batch(agent_id, post_batch)
 
     def check_missing_dones(self):
-        for agent_id, builder in self.agent_builders.items():
-            if not builder.buffers["dones"][builder.timestep - 1]:
+        for agent_id, trajectory in self.single_agent_trajectories.items():
+            if not trajectory.buffers["dones"][trajectory.cursor - 1]:
                 raise ValueError(
                     "The environment terminated for all agents, but we still "
                     "don't have a last observation for "
@@ -212,7 +217,7 @@ class _FastMultiAgentSampleBatchBuilder:
                     "Alternatively, set no_done_at_end=True to allow this.")
 
     @DeveloperAPI
-    def build_and_reset(self, episode=None):
+    def get_multi_agent_batch_and_reset(self, episode=None):
         """Returns the accumulated sample batches for each policy.
 
         Any unprocessed rows will be first postprocessed with a policy
@@ -229,9 +234,15 @@ class _FastMultiAgentSampleBatchBuilder:
 
         self.postprocess_batch_so_far(episode)
         policy_batches = {}
-        for policy_id, builder in self.policy_builders.items():
-            if builder.timestep > 0:
-                policy_batches[policy_id] = builder.build_and_reset()
+        for policy_id, trajectories in self.policy_trajectories.items():
+            if trajectories.cursor > 0:
+                policy_batches[
+                    policy_id] = trajectories.get_sample_batch_and_reset()
         old_count = self.count
         self.count = 0
         return MultiAgentBatch.wrap_as_needed(policy_batches, old_count)
+
+    def build_and_reset(self, episode=None):
+        deprecation_warning(
+            "get_multi_agent_batch_and_reset", "build_and_reset", error=False)
+        return self.get_multi_agent_batch_and_reset(episode)

@@ -107,22 +107,29 @@ class TorchPolicy(Policy):
                         episodes=None,
                         explore=None,
                         timestep=None,
-                        data=None,
+                        trajectories=None,
                         **kwargs):
 
-        assert obs_batch is not None or data is not None
+        # Make sure we either only use passing in trajectories OR "old-style"
+        # obs/state/prev-a/r batches.
+        assert obs_batch is not None or trajectories is not None
 
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
 
         with torch.no_grad():
-            if data is not None:
+            # Trajectories given -> Create a view and pass that to Model as
+            # `input_dict`.
+            if trajectories is not None:
                 assert obs_batch is state_batches is prev_action_batch is \
                        prev_reward_batch is info_batch is episodes is None
                 input_dict = self._lazy_tensor_dict(
-                    get_view(self.model, data, is_training=False))
+                    get_view(self.model, trajectories, is_training=False))
+                # TODO: (sven) support RNNs w/ fast sampling.
                 state_batches = []
                 seq_lens = None
+            # Create old-style input_dict (from given
+            # obs/state/prev-action/etc) and pass that into Model.
             else:
                 input_dict = self._lazy_tensor_dict({
                     SampleBatch.CUR_OBS: obs_batch,
@@ -188,7 +195,7 @@ class TorchPolicy(Policy):
             if dist_inputs is not None:
                 extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
             # _fast_sampling case: Leave everything as is (torch.Tensors).
-            if data is not None:
+            if trajectories is not None:
                 # Action-logp and action-prob.
                 if logp is not None:
                     extra_fetches[SampleBatch.ACTION_PROB] = torch.exp(logp)

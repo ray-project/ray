@@ -10,7 +10,6 @@ from ray.rllib.utils.window_stat import WindowStat
 
 @DeveloperAPI
 class ReplayBuffer(Memory):
-
     @DeveloperAPI
     def __init__(self, record_space, capacity=100000):
         """Initializes a ReplayBuffer object.

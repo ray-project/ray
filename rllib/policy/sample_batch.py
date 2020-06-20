@@ -284,7 +284,13 @@ class SampleBatch:
 
 @PublicAPI
 class MultiAgentBatch:
-    """A batch of experiences from multiple agents in the environment."""
+    """A batch of experiences from multiple agents in the environment.
+
+    Attributes:
+        policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
+            ids to SampleBatches of experiences.
+        count (int): the number of env steps in this batch.
+    """
 
     @PublicAPI
     def __init__(self, policy_batches: Dict[PolicyID, SampleBatch],
@@ -297,11 +303,6 @@ class MultiAgentBatch:
             env_steps (int): The number of timesteps in the environment this
                 batch contains. This will be less than the number of
                 transitions this batch contains across all policies in total.
-
-        Attributes:
-            policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
-                ids to SampleBatches of experiences.
-            count (int): the number of env steps in this batch.
         """
         for v in policy_batches.values():
             assert isinstance(v, SampleBatch)

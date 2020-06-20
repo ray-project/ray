@@ -1,5 +1,3 @@
-import numpy as np
-
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.visionnet_v1 import _get_filter_config
 from ray.rllib.models.tf.misc import normc_initializer
@@ -66,8 +64,7 @@ class VisionNetwork(TFModelV2):
 
             if num_outputs:
                 conv_out = tf.keras.layers.Conv2D(
-                    num_outputs,
-                    [1, 1],
+                    num_outputs, [1, 1],
                     activation=None,
                     padding="same",
                     data_format="channels_last",

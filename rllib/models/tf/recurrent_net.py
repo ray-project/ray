@@ -110,7 +110,8 @@ class LSTMWrapper(RecurrentNetwork):
                                           model_config, name)
 
         self.cell_size = model_config["lstm_cell_size"]
-        self.use_prev_action_reward = model_config["lstm_use_prev_action_reward"]
+        self.use_prev_action_reward = model_config[
+            "lstm_use_prev_action_reward"]
         self.action_dim = int(np.product(action_space.shape))
         # Add prev-action/reward nodes to input to LSTM.
         if self.use_prev_action_reward:
@@ -160,15 +161,16 @@ class LSTMWrapper(RecurrentNetwork):
         # Concat. prev-action/reward if required.
         if self.model_config["lstm_use_prev_action_reward"]:
             if self.model_config["lstm_use_prev_action_reward"]:
-                wrapped_out = tf.concat([
-                    wrapped_out,
-                    tf.reshape(
-                        tf.cast(input_dict[SampleBatch.PREV_ACTIONS],
-                                tf.float32),
-                        [-1, self.action_dim]),
-                    tf.reshape(input_dict[SampleBatch.PREV_REWARDS],
-                               [-1, 1]),
-                ], axis=1)
+                wrapped_out = tf.concat(
+                    [
+                        wrapped_out,
+                        tf.reshape(
+                            tf.cast(input_dict[SampleBatch.PREV_ACTIONS],
+                                    tf.float32), [-1, self.action_dim]),
+                        tf.reshape(input_dict[SampleBatch.PREV_REWARDS],
+                                   [-1, 1]),
+                    ],
+                    axis=1)
 
         # Then through our LSTM.
         input_dict["obs_flat"] = wrapped_out
