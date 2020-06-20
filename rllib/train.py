@@ -209,7 +209,7 @@ def run(args, parser):
         ray.init(address=cluster.address)
     else:
         ray.init(
-            include_webui=not args.no_ray_ui,
+            include_dashboard=not args.no_ray_ui,
             address=args.ray_address,
             object_store_memory=args.ray_object_store_memory,
             memory=args.ray_memory,
@@ -217,6 +217,7 @@ def run(args, parser):
             num_cpus=args.ray_num_cpus,
             num_gpus=args.ray_num_gpus,
             local_mode=args.local_mode)
+
     run_experiments(
         experiments,
         scheduler=_make_scheduler(args),
@@ -224,6 +225,8 @@ def run(args, parser):
         resume=args.resume,
         verbose=verbose,
         concurrent=True)
+
+    ray.shutdown()
 
 
 if __name__ == "__main__":

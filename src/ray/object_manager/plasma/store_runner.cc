@@ -1,7 +1,6 @@
 #include "ray/object_manager/plasma/store_runner.h"
 
 #include <fcntl.h>
-#include <signal.h>
 #include <stdio.h>
 #include <sys/statvfs.h>
 #include <sys/types.h>
@@ -17,20 +16,11 @@ using arrow::util::ArrowLogLevel;
 
 void SetMallocGranularity(int value);
 
-void HandleSignal(int signal) {
-  if (signal == SIGTERM) {
-    ARROW_LOG(INFO) << "SIGTERM Signal received, closing Plasma Server...";
-    plasma_store_runner->Stop();
-  }
-}
-
 PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_memory,
                      bool hugepages_enabled, std::string plasma_directory,
                      const std::string external_store_endpoint):
     hugepages_enabled_(hugepages_enabled), external_store_endpoint_(external_store_endpoint) {
   ArrowLog::StartArrowLog("plasma_store", ArrowLogLevel::ARROW_INFO);
-  ArrowLog::InstallFailureSignalHandler();
-
   // Sanity check.
   if (socket_name.empty()) {
     ARROW_LOG(FATAL) << "please specify socket for incoming connections with -s switch";
@@ -109,13 +99,6 @@ void PlasmaStoreRunner::Start() {
   }
   ARROW_LOG(DEBUG) << "starting server listening on " << socket_name_;
 
-#ifndef _WIN32  // TODO(mehrdadn): Is there an equivalent of this we need for Windows?
-  // Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
-  // to a client that has already died, the store could die.
-  signal(SIGPIPE, SIG_IGN);
-#endif
-  signal(SIGTERM, HandleSignal);
-
   // Create the event loop.
   loop_.reset(new EventLoop);
   store_.reset(new PlasmaStore(loop_.get(), plasma_directory_, hugepages_enabled_,
@@ -147,7 +130,6 @@ void PlasmaStoreRunner::Start() {
 #ifdef _WINSOCKAPI_
   WSACleanup();
 #endif
-  ArrowLog::UninstallSignalAction();
   ArrowLog::ShutDownArrowLog();
 }
 

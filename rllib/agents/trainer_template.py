@@ -1,18 +1,22 @@
+from typing import Callable, Optional, List, Iterable
 import logging
 import time
 
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import TrainOneStep
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.policy import Policy
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.types import TrainerConfigDict, ResultDict
 
 logger = logging.getLogger(__name__)
 
 
-def default_execution_plan(workers, config):
+def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict):
     # Collects experiences in parallel from multiple RolloutWorker actors.
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -30,23 +34,24 @@ def default_execution_plan(workers, config):
 
 @DeveloperAPI
 def build_trainer(
-        name,
-        default_policy,
-        default_config=None,
-        validate_config=None,
+        name: str,
+        default_policy: Optional[Policy],
+        default_config: TrainerConfigDict = None,
+        validate_config: Callable[[TrainerConfigDict], None] = None,
         get_initial_state=None,  # DEPRECATED
-        get_policy_class=None,
-        before_init=None,
+        get_policy_class: Callable[[TrainerConfigDict], Policy] = None,
+        before_init: Callable[[Trainer], None] = None,
         make_workers=None,  # DEPRECATED
         make_policy_optimizer=None,  # DEPRECATED
-        after_init=None,
+        after_init: Callable[[Trainer], None] = None,
         before_train_step=None,  # DEPRECATED
         after_optimizer_step=None,  # DEPRECATED
         after_train_result=None,  # DEPRECATED
         collect_metrics_fn=None,  # DEPRECATED
-        before_evaluate_fn=None,
-        mixins=None,
-        execution_plan=default_execution_plan):
+        before_evaluate_fn: Callable[[Trainer], None] = None,
+        mixins: List[type] = None,
+        execution_plan: Callable[[WorkerSet, TrainerConfigDict], Iterable[
+            ResultDict]] = default_execution_plan):
     """Helper function for defining a custom trainer.
 
     Functions will be run in this order to initialize the trainer:
