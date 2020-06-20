@@ -1,5 +1,9 @@
 /* PLASMA CLIENT: Client library for using the plasma store and manager */
 
+#ifdef _WIN32
+#include <Win32_Interop/win32_types.h>
+#endif
+
 #include <assert.h>
 #include <fcntl.h>
 #include <stdlib.h>
@@ -408,17 +412,13 @@ int64_t plasma_evict(plasma_connection *conn, int64_t num_bytes) {
   return reply.num_bytes;
 }
 
-int plasma_subscribe(plasma_connection *conn, int will_be_added_to_event_loop) {
+int plasma_subscribe(plasma_connection *conn) {
+  int fd[2];
   /* TODO: Just create 1 socket, bind it to port 0 to find a free port, and
    * send the port number instead, and let the client connect. */
   /* Create a non-blocking socket pair. This will only be used to send
    * notifications from the Plasma store to the client. */
-  int fd[2];
-#ifdef _WIN32
-  dumb_socketpair(fd, will_be_added_to_event_loop);
-#else
   socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
-#endif
   /* Make the socket non-blocking. */
   int flags = fcntl(fd[1], F_GETFL, 0);
   CHECK(fcntl(fd[1], F_SETFL, flags | O_NONBLOCK) == 0);
@@ -755,10 +755,8 @@ int plasma_client_wait(plasma_connection *conn,
                        object_id return_object_ids[]) {
   CHECK(conn->manager_conn >= 0);
   CHECK(num_object_ids >= num_returns);
-  int idx_returns;
 
-  object_request *requests =
-      (object_request *) calloc(num_object_ids, sizeof(*requests));
+  object_request requests[num_object_ids];
 
   /* Initialize array of object requests. We only care for the objects to be
    * present in the system, not necessary in the local Plasma Store. Thus, we
@@ -787,7 +785,7 @@ int plasma_client_wait(plasma_connection *conn,
     if (n >= num_returns || remaining_timeout == 0) {
       /* Either (1) num_returns requests are satisfied or (2) timeout expired.
        * In both cases we return. */
-      idx_returns = 0;
+      int idx_returns = 0;
 
       for (int i = 0; i < num_returns; ++i) {
         if (requests[i].status == PLASMA_OBJECT_LOCAL ||
@@ -796,7 +794,7 @@ int plasma_client_wait(plasma_connection *conn,
           idx_returns += 1;
         }
       }
-      break;
+      return idx_returns;
     }
     /* The timeout hasn't expired and we got less than num_returns in the
      * system. Trigger reconstruction of the missing objects. */
@@ -810,16 +808,13 @@ int plasma_client_wait(plasma_connection *conn,
       }
     }
   }
-  free(requests);
-  return idx_returns;
 }
 
 void plasma_client_multiget(plasma_connection *conn,
                             int num_object_ids,
                             object_id object_ids[],
                             object_buffer object_buffers[]) {
-  object_request *requests =
-      (object_request *) calloc(num_object_ids, sizeof(*requests));
+  object_request requests[num_object_ids];
 
   /* Set all request types to PLASMA_OBJECT_LOCAL, as we want to get all objects
    * into the local Plasma Store. */
@@ -846,7 +841,6 @@ void plasma_client_multiget(plasma_connection *conn,
       break;
     }
   }
-  free(requests);
 
   /* Now get the data for every object. */
   for (int i = 0; i < num_object_ids; ++i) {

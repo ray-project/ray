@@ -22,9 +22,7 @@
     <ClCompile Include="..\src\plasma\eviction_policy.c" />
     <ClCompile Include="..\src\plasma\fling.c" />
     <ClCompile Include="..\src\plasma\malloc.c" />
-    <ClCompile Include="..\src\plasma\plasma.c" />
     <ClCompile Include="..\src\plasma\plasma_client.c" />
-    <ClCompile Include="..\src\plasma\thirdparty\xxhash.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\plasma\eviction_policy.h" />
@@ -32,7 +30,6 @@
     <ClInclude Include="..\src\plasma\malloc.h" />
     <ClInclude Include="..\src\plasma\plasma.h" />
     <ClInclude Include="..\src\plasma\plasma_client.h" />
-    <ClInclude Include="..\src\plasma\thirdparty\xxhash.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="common.vcxproj">
@@ -69,7 +66,7 @@
   </ImportGroup>
   <ImportGroup Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="plasma.props" />
+    <Import Project="$(SolutionDir)vsprojects\base.props" Condition="exists('$(SolutionDir)vsprojects\base.props')" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <ItemDefinitionGroup>

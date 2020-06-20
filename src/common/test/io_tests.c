@@ -9,62 +9,10 @@
 
 SUITE(io_tests);
 
-#ifdef _WIN32
-#ifdef __cplusplus
-extern "C" {
-#endif
-intptr_t __cdecl _spawnve(int Mode,
-                          char const *FileName,
-                          char const *const *Arguments,
-                          char const *const *Environment);
-int _getpid(void);
-#ifdef __cplusplus
-}
-#endif
-
-/* Simple, hacky forking that only really works for test processes.
- * Returns 0 if this is the parent process,
- * the PID of the child process if this is the child, or -1 if neither
- * (in which case the caller should immediately return and not do anything).
- */
-pid_t fork_test(char const function_name[]) {
-  pid_t result;
-  char const key[] = "_TEST_FUNCTION";
-  char *const oldv = getenv(key);
-  if (oldv == NULL || strlen(oldv) == 0) {
-    char *kv = calloc(strlen(key) + 1 + (oldv ? strlen(oldv) : 0) +
-                          (function_name ? strlen(function_name) : 0) + 1,
-                      sizeof(*kv));
-    strcpy(kv, key);
-    strcat(kv, "=");
-    strcat(kv, function_name);
-    putenv(kv);
-    result = _spawnve(4, __argv[0], __argv, _environ);
-    if (result != -1) {
-      if (result) {
-        CloseHandle((HANDLE) result);
-      }
-      result = 1;
-    }
-    strcpy(kv, key);
-    strcat(kv, "=");
-    if (oldv) {
-      strcat(kv, oldv);
-    }
-    putenv(kv);
-    free(kv);
-  } else {
-    result = strcmp(oldv, function_name) == 0 ? 0 : -1;
-  }
-  return result;
-}
-
-#define fork() fork_test(__FUNCTION__)
-#endif
-
 TEST ipc_socket_test(void) {
+#ifndef _WIN32
   const char *socket_pathname = "test-socket";
-  int socket_fd = bind_ipc_sock(socket_pathname, true, false);
+  int socket_fd = bind_ipc_sock(socket_pathname, true);
   ASSERT(socket_fd >= 0);
 
   char *test_string = "hello world";
@@ -78,8 +26,9 @@ TEST ipc_socket_test(void) {
     write_message(socket_fd, LOG_MESSAGE, strlen(test_bytes),
                   (uint8_t *) test_bytes);
     close(socket_fd);
-  } else if (pid > 0) {
-    int client_fd = accept_client(socket_fd, false);
+    exit(0);
+  } else {
+    int client_fd = accept_client(socket_fd);
     ASSERT(client_fd >= 0);
     char *message = read_log_message(client_fd);
     ASSERT(message != NULL);
@@ -96,12 +45,14 @@ TEST ipc_socket_test(void) {
     close(socket_fd);
     unlink(socket_pathname);
   }
+#endif
   PASS();
 }
 
 TEST long_ipc_socket_test(void) {
+#ifndef _WIN32
   const char *socket_pathname = "long-test-socket";
-  int socket_fd = bind_ipc_sock(socket_pathname, true, false);
+  int socket_fd = bind_ipc_sock(socket_pathname, true);
   ASSERT(socket_fd >= 0);
 
   UT_string *test_string;
@@ -119,8 +70,9 @@ TEST long_ipc_socket_test(void) {
     write_message(socket_fd, LOG_MESSAGE, strlen(test_bytes),
                   (uint8_t *) test_bytes);
     close(socket_fd);
-  } else if (pid > 0) {
-    int client_fd = accept_client(socket_fd, false);
+    exit(0);
+  } else {
+    int client_fd = accept_client(socket_fd);
     ASSERT(client_fd >= 0);
     char *message = read_log_message(client_fd);
     ASSERT(message != NULL);
@@ -139,6 +91,7 @@ TEST long_ipc_socket_test(void) {
   }
 
   utstring_free(test_string);
+#endif
   PASS();
 }
 
