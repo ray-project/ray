@@ -67,63 +67,9 @@ For example, here are the Ray 0.9.0.dev0 wheels for Python 3.5, MacOS for commit
 
     pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/a0ba4499ac645c9d3e82e68f3a281e48ad57f873/ray-0.9.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
 
-Building Ray from Source
-------------------------
 
-Installing from ``pip`` should be sufficient for most Ray users.
-
-However, should you need to build from source, follow instructions below for
-both Linux and MacOS.
-
-Dependencies
-~~~~~~~~~~~~
-
-To build Ray, first install the following dependencies.
-
-For Ubuntu, run the following commands:
-
-.. code-block:: bash
-
-  sudo apt-get update
-  sudo apt-get install -y build-essential curl unzip psmisc
-
-  pip install cython==0.29.0 pytest
-
-For MacOS, run the following commands:
-
-.. code-block:: bash
-
-  brew update
-  brew install wget
-
-  pip install cython==0.29.0 pytest
-
-
-Install Ray
-~~~~~~~~~~~
-
-Ray can be built from the repository as follows.
-
-.. code-block:: bash
-
-  git clone https://github.com/ray-project/ray.git
-
-  # Install Bazel.
-  ray/ci/travis/install-bazel.sh
-
-  # Optionally build the dashboard (requires Node.js, see below for more information).
-  pushd ray/python/ray/dashboard/client
-  npm ci
-  npm run build
-  popd
-
-  # Install Ray.
-  cd ray/python
-  pip install -e . --verbose  # Add --user if you see a permission denied error.
-
-
-[Optional] Dashboard support
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Installing Dashboard
+--------------------
 
 If you would like to use the dashboard, you will additionally need to install
 `Node.js`_ and build the dashboard before installing Ray. The relevant build
@@ -154,6 +100,14 @@ the dashboard. For example,
   the call to ray.init() to allow direct access from external machines.
   ======================================================================
 
+
+
+Building Ray from Source
+------------------------
+
+Installing from ``pip`` should be sufficient for most Ray users.
+
+However, should you need to build from source, follow :ref:`these instructions for building <building-ray>` Ray.
 
 
 Installing Ray on Arch Linux
@@ -272,8 +226,6 @@ that you've cloned the git repository.
 
 Troubleshooting installing Arrow
 --------------------------------
-
-Some candidate possibilities.
 
 You have a different version of Flatbuffers installed
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -39,20 +39,10 @@ Ray uses Tasks (functions) and Actors (Classes) to allow you to parallelize your
     futures = [c.read.remote() for c in counters]
     print(ray.get(futures)) # [1, 1, 1, 1]
 
-The Ray Community
------------------
-
-Ray is more than a framework for distributed applications but also an active community of developers,
-researchers, and folks that love machine learning.
 
 .. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray! The community is extremely active in helping people succeed in building their ray applications.
 
-You can join (and Star!) us on `on GitHub`_.
-
 You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
-
-.. _`on GitHub`: https://github.com/ray-project/ray
-
 
 More Information
 ================
@@ -137,6 +127,8 @@ Getting Involved
 
    ray-overview/index.rst
    installation.rst
+   development.rst
+   getting-involved.rst
 
 .. toctree::
    :maxdepth: -1
@@ -207,9 +199,8 @@ Getting Involved
 
 .. toctree::
    :maxdepth: -1
-   :caption: Development and Internals
+   :caption: Debugging and Internals
 
-   development.rst
+   debugging.rst
    profiling.rst
    fault-tolerance.rst
-   getting-involved.rst
