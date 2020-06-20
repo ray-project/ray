@@ -1,0 +1,61 @@
+cluster_name: default
+min_workers: 0
+max_workers: 0
+target_utilization_fraction: 0.8
+idle_timeout_minutes: 5
+
+# Cloud-provider specific configuration.
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+auth:
+    ssh_user: ubuntu
+
+head_node:
+    InstanceType: m5.2xlarge
+    ImageId: ami-0888a3b5189309429  # DLAMI 7/1/19
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+              VolumeSize: 150
+
+worker_nodes:
+    InstanceType: m5.large
+    ImageId: ami-0888a3b5189309429  # DLAMI 7/1/19
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+              VolumeSize: 150
+
+    # Run workers on spot by default. Comment this out to use on-demand.
+    InstanceMarketOptions:
+        MarketType: spot
+
+# List of shell commands to run to set up nodes.
+setup_commands:
+    # Install latest TensorFlow
+    - source activate tensorflow_p36 && conda remove -y --force wrapt || true
+    - source activate tensorflow_p36 && pip install --upgrade pip
+    - source activate tensorflow_p36 && pip install -U tensorflow==1.14
+    - echo set-window-option -g mouse on > ~/.tmux.conf
+    - echo 'termcapinfo xterm* ti@:te@' > ~/.screenrc
+
+    # Uncomment the following if you wish to build Ray instead.
+    # - sudo apt-get update
+    # - sudo apt-get install -y build-essential curl unzip
+    # - git clone https://github.com/ray-project/ray || true
+    # - ray/ci/travis/install-bazel.sh
+    # - cd ray/python; git checkout master; git pull; source activate tensorflow_p36 && pip install -e . --verbose
+
+# Custom commands that will be run on the head node after common setup.
+head_setup_commands: []
+
+# Custom commands that will be run on worker nodes after common setup.
+worker_setup_commands: []
+
+# Command to start ray on the head node. You don't need to change this.
+head_start_ray_commands: []
+
+# Command to start ray on worker nodes. You don't need to change this.
+worker_start_ray_commands: []

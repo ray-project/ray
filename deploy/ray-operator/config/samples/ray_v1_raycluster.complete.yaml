@@ -1,0 +1,260 @@
+apiVersion: ray.io/v1alpha1
+kind: RayCluster
+metadata:
+  labels:
+    controller-tools.k8s.io: "1.0"
+    # An unique identifier for the head node and workers of this cluster.
+  name: raycluster-sample
+spec:
+  # An unique identifier for the head node and workers of this cluster.
+  clusterName: raycluster-sample
+  images:
+    defaultImage: rayproject/autoscaler
+  imagePullPolicy: "Always"
+
+  extensions:
+    # the pod replicas in this group typed worker
+    - replicas: 1
+      # logical group name, for this called small-group, also can be functional
+      groupName: small-group
+      # pod type
+      type: worker
+
+      # Command to start ray
+      command: ray start --block --node-ip-address=$MY_POD_IP --address=$CLUSTER_NAME-head:6379 --object-manager-port=12345 --node-manager-port=12346 --object-store-memory=100000000 --num-cpus=1
+
+      # custom labels. NOTE: do not define custom labels start with `raycluster.`, they may be used in controller.
+      # Refer to https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+      labels:
+        raycluster.group.name: small-group
+
+      # annotations for pod
+      annotations:
+        key: value
+
+      # use affinity to select nodes.Optional.
+      # Refer to https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: key1
+                    operator: In
+                    values: ["true"]
+                  - key: key2
+                    operator: In
+                    values: ["true"]
+
+      # use tolerations to select nodes.Optional.
+      # Refer to https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+      tolerations:
+        - key: "key1"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+
+      # resource requirements.
+      # Refer to https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 2Gi
+          ephemeral-storage: 2Gi
+        requests:
+          cpu: 1000m
+          memory: 2Gi
+          ephemeral-storage: 2Gi
+
+      # environment variables to set in the container.Optional.
+      # Refer to https://kubernetes.io/docs/tasks/inject-data-application/define-environment-variable-container/
+      containerEnv:
+        - name: APPNAME
+          value: raycluster-sample
+        - name: MY_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: MY_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+
+      # head service suffix: {namespace}.svc , follows Kubernetes standard
+      headServiceSuffix: "ray-operator.svc"
+
+      # use volumes.Optional.
+      # Refer to https://kubernetes.io/docs/concepts/storage/volumes/
+      volumes:
+        - name: log-volume
+          emptyDir: {}
+
+      # use volumeMounts.Optional.
+      # Refer to https://kubernetes.io/docs/concepts/storage/volumes/
+      volumeMounts:
+        - mountPath: /path/to/log
+          name: log-volume
+
+    # the pod replicas in this group typed worker
+    - replicas: 1
+      # logical group name
+      groupName: medium-group
+      # pod type
+      type: worker
+
+      # custom labels. NOTE: do not define custom labels start with `raycluster.`, they may be used in controller.
+      # Refer to https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+      labels:
+        raycluster.group.name: medium-group
+
+      # annotations for pod
+      annotations:
+        key: value
+
+      # Command to start ray
+      command: ray start --block --node-ip-address=$MY_POD_IP --address=$CLUSTER_NAME-head:6379 --object-manager-port=12345 --node-manager-port=12346 --object-store-memory=100000000 --num-cpus=1
+
+      # use affinity to select nodes.Optional.
+      # Refer to https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: key1
+                    operator: In
+                    values: ["true"]
+                  - key: key2
+                    operator: In
+                    values: ["true"]
+
+      # use tolerations to select nodes.Optional.
+      # Refer to https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+      tolerations:
+        - key: "key1"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+
+      # resource requirements.
+      # Refer to https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
+      resources:
+        limits:
+          cpu: 2000m
+          memory: 4Gi
+          ephemeral-storage: 4Gi
+        requests:
+          cpu: 2000m
+          memory: 4Gi
+          ephemeral-storage: 4Gi
+
+      # environment variables to set in the container.Optional.
+      # Refer to https://kubernetes.io/docs/tasks/inject-data-application/define-environment-variable-container/
+      containerEnv:
+        - name: APPNAME
+          value: raycluster-sample
+        - name: MY_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: MY_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+
+      # head service suffix: {namespace}.svc , follows Kubernetes standard
+      headServiceSuffix: "ray-operator.svc"
+
+      # use volumes.Optional.
+      # Refer to https://kubernetes.io/docs/concepts/storage/volumes/
+      volumes:
+        - name: log-volume
+          emptyDir: {}
+
+      # use volumeMounts.Optional.
+      # Refer to https://kubernetes.io/docs/concepts/storage/volumes/
+      volumeMounts:
+        - mountPath: /path/to/log
+          name: log-volume
+
+    # the pod replicas in this group typed head
+    - replicas: 1
+      # logical group name
+      groupName: headgroup
+      # pod type
+      type: head
+
+      # custom labels. NOTE: do not define custom labels start with `raycluster.`, they may be used in controller.
+      # Refer to https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+      labels:
+        raycluster.group.name: headgroup
+
+      # annotations for pod
+      annotations:
+        key: value
+
+      # Command to start ray
+      command: ray start --head --block --redis-port=6379 --node-ip-address=$MY_POD_IP --object-manager-port=12345 --node-manager-port=12346 --object-store-memory=100000000 --num-cpus=1
+
+      # use affinity to select nodes.Optional.
+      # Refer to https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: key1
+                    operator: In
+                    values: ["true"]
+                  - key: key2
+                    operator: In
+                    values: ["true"]
+
+      # use tolerations to select nodes.Optional.
+      # Refer to https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+      tolerations:
+        - key: "key1"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+
+      # resource requirements.
+      # Refer to https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 1Gi
+          ephemeral-storage: 4Gi
+        requests:
+          cpu: 1000m
+          memory: 1Gi
+          ephemeral-storage: 4Gi
+
+      # environment variables to set in the container.Optional.
+      # Refer to https://kubernetes.io/docs/tasks/inject-data-application/define-environment-variable-container/
+      containerEnv:
+        - name: APPNAME
+          value: raycluster-sample
+        - name: MY_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: MY_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+
+      # head service suffix: {namespace}.svc , follows Kubernetes standard
+      headServiceSuffix: "ray-operator.svc"
+
+      # use volumes.Optional.
+      # Refer to https://kubernetes.io/docs/concepts/storage/volumes/
+      volumes:
+        - name: log-volume
+          emptyDir: {}
+
+      # use volumeMounts.Optional.
+      # Refer to https://kubernetes.io/docs/concepts/storage/volumes/
+      volumeMounts:
+        - mountPath: /path/to/log
+          name: log-volume

@@ -1,0 +1,22 @@
+cartpole-sac:
+    env: CartPole-v0
+    run: SAC
+    stop:
+        episode_reward_mean: 150
+        timesteps_total: 100000
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        gamma: 0.95
+        no_done_at_end: false
+        target_network_update_freq: 32
+        tau: 1.0
+        # initial_alpha: 0.5
+        train_batch_size: 32
+        optimization:
+            actor_learning_rate: 0.005
+            critic_learning_rate: 0.005
+            entropy_learning_rate: 0.0001
+        # grad_norm_clipping: 40.0
+        # evaluation_config:
+        #     explore: true

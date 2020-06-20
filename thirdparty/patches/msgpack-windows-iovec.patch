@@ -1,0 +1,24 @@
+diff --git include/msgpack/v1/vrefbuffer.hpp include/msgpack/v1/vrefbuffer.hpp
+--- include/msgpack/v1/vrefbuffer.hpp
++++ include/msgpack/v1/vrefbuffer.hpp
+@@ -28,4 +28,12 @@
+-struct iovec {
+-    void  *iov_base;
+-    size_t iov_len;
+-};
++#ifndef _WS2DEF_
++#include <Winsock2.h>
++#endif
++#ifndef iovec
++#define iovec _WSABUF
++#endif
++#ifndef iov_base
++#define iov_base buf
++#endif
++#ifndef iov_len
++#define iov_len len
++#endif
+@@ -171,1 +179,1 @@
+-                const_cast<const void *>((m_tail - 1)->iov_base)
++                (m_tail - 1)->iov_base
+--

@@ -1,0 +1,161 @@
+<html>
+<head>
+    <title>AutoMLBoard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    {% load staticfiles %}
+
+    <!-- jquery and bootstrap dependency -->
+    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.11.0/umd/popper.min.js" integrity="sha384-b/U6ypiBEHpOf/4+1nzFpr53nxSS+GLCkfwBdFNTxtclqqenISfwAzpKaMNFNmj4" crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta/js/bootstrap.min.js" integrity="sha384-h0AbiXch4ZDo7tp9hKZ4TsHbi047NrKGLO3SEJAg45jXxnGIfYzk4Si90RDIqNm1" crossorigin="anonymous"></script>
+
+    <!-- bootstrap table dependency -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-table/1.12.1/bootstrap-table.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-table/1.12.1/bootstrap-table.min.js"></script>
+
+    <link rel="stylesheet" href="/static/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/static/css/App.css">
+    <link rel="stylesheet" href="/static/css/HomePage.css">
+    <link rel="stylesheet" href="/static/css/ExperimentView.css">
+    <script src="/static/js/ExperimentList.js"></script>
+    <link rel="stylesheet" href="/static/css/ExperimentList.css">
+
+    <!-- awesome dependency -->
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.2.0/css/all.css" integrity="sha384-hWVjflwFxL6sNzntih27bfxkr27PmbbK/iSvJ+a4+0owXq79v+lsFkW54bOGbiDQ" crossorigin="anonymous">
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary" style="margin-right: auto;margin-left: auto;">
+    <a class="navbar-brand" href="#" style="padding-left: 50px">AutoMLBoard</a>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarColor01" aria-controls="navbarColor01" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="collapse navbar-collapse" id="navbarColor01">
+        <ul class="navbar-nav mr-auto">
+            <li class="nav-item">
+                <a class="nav-link" href="/">Home <span class="sr-only">(current)</span></a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="https://github.com/ray-project/ray">Github</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="http://docs.ray.io/">Document</a>
+            </li>
+        </ul>
+    </div>
+</nav>
+<div class="container" style="max-width: none">
+    <div class="outer-container row" id = "row-main">
+        <div class="HomePage-experiment-list-container col-md-2" id="sidebar">
+            <div>
+                <div class="collapsed-expander-container">
+                    <div class="experiment-list-outer-container">
+                        <div><h1 class="experiments-header">Experiments</h1>
+                            <div class="collapser-container" onclick="collapse_experiment_list()">
+                                <i class="collapser fa fa-chevron-left login-icon"></i>
+                            </div>
+                            <div class="experiment-list-container" style="height: 800px;">
+                                <ul class="nav nav-pills flex-column">
+                                    {% for job in recent_jobs %}
+                                        <tr>
+                                            <li class="nav-item">
+                                                <a class="nav-link" href="job?job_id={{ job.job_id }}">{{ job.job_id }}</a>
+                                            </li>
+                                        </tr>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="experiment-view-container col-md-8" id="content">
+            <div class="ExperimentPage">
+                <div>
+                    <div class="ExperimentView">
+                        <h1>{{ current_job.job_id }}</h1>
+                        <hr class="divider"/>
+                        <div class="metadata" style="max-width: 900px;">
+                            <span class="metadata">
+                                <span class="metadata-header">User:</span>
+                                {{ current_job.user }}
+                            </span>
+                            <span class="metadata" style="margin-right: 0px">
+                                <span class="metadata-header">Progress:
+                                </span>
+                                <span>{{ current_job.total_num }} Trials</span>
+                                <span class="badge badge-pill badge-info" style="margin-left: 10px; border-radius: 0.3em">{{ current_job.running_num }} Running</span>
+                                <span class="badge badge-pill badge-success" style="border-radius: 0.3em">{{ current_job.success_num }} Success</span>
+                                <span class="badge badge-pill badge-danger" style="border-radius: 0.3em">{{ current_job.failed_num }} Failed</span>
+                                <span class="progress"
+                                      style="width: 150px; float: right; margin-right: 120px; margin-top: 5px">
+                                    <span class="progress-bar bg-success" role="progressbar" style="width: {{ current_job.progress }}%;"></span>
+                                </span>
+                            </span>
+                            <span class="metadata" style="line-height: 40px">
+                                <span class="metadata-header">Start Time:</span>
+                                {{ current_job.start_time }}
+                            </span>
+                        </div>
+                        <div class="ExperimentView-runs">
+                            <hr class="divider"/>
+                            <table class="table table-hover"
+                                   id="trial_table"
+                                   data-toggle="table"
+                                   data-show-columns="true"
+                                   data-show-export="true"
+                                   data-minimum-count-columns="2"
+                                   data-id-field="id"
+                                   data-show-pagination-switch="true"
+                                   data-page-list="[10, 25, 50, 100, ALL]"
+                                   data-pagination="true"
+                                   style="border: none; max-height: 800px">
+                                <thead>
+                                <tr>
+                                    <th class="top-row" scope="colgroup" colspan="4">Trials</th>
+                                    <th class="top-row left-border" scope="colgroup" colspan="{{ param_num }}">Parameters</th>
+                                    <th class="top-row left-border" scope="colgroup" colspan="{{ metric_num }}">Metrics</th>
+                                </tr>
+                                <tr>
+                                    <th class="bottom-row" data-field="Trial-ID" data-sortable="true">Trial-ID</th>
+                                    <th class="bottom-row" data-field="Status" data-sortable="true">Status</th>
+                                    <th class="bottom-row" data-field="Start Time" data-sortable="true">Start Time</th>
+                                    <th class="bottom-row" data-field="End Time" data-sortable="true">End Time</th>
+                                    {% for param in param_keys %}
+                                        <th class="bottom-row" data-field="{{ param }}" data-sortable="true">{{ param }}</th>
+                                    {% endfor %}
+                                    {% for metric in metric_keys %}
+                                        <th class="bottom-row" data-field="{{ metric }}"
+                                            data-sortable="true">{{ metric }}</th>
+                                    {% endfor %}
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for trial in recent_trials %}
+                                    <tr>
+                                        <td><a href="/trial?job_id={{ trial.job_id }}&trial_id={{ trial.trial_id }}">{{ trial.trial_id }}</a></td>
+                                        <td>{{ trial.trial_status}} <!--a href="#">(Kill)</a--></td>
+                                        <td>{{ trial.start_time }}</td>
+                                        <td>{{ trial.end_time }}</td>
+                                        {% for param in trial.params.items %}
+                                            <td>{{ param.1 }}</td>
+                                        {% endfor %}
+                                        <td>{{ trial.metrics.episode_reward }}</td>
+                                        <td>{{ trial.metrics.loss }}</td>
+                                        <td>{{ trial.metrics.accuracy }}</td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="experiment-view-right"></div>
+    </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package ray.streaming.queue.protobuf;
+
+enum StreamingQueueMessageType {
+  StreamingQueueDataMsgType = 0;
+  StreamingQueueCheckMsgType = 1;
+  StreamingQueueCheckRspMsgType = 2;
+  StreamingQueueNotificationMsgType = 3;
+  StreamingQueueTestInitMsgType = 4;
+  StreamingQueueTestCheckStatusRspMsgType = 5;
+}
+
+enum StreamingQueueError {
+  OK = 0;
+  QUEUE_NOT_EXIST = 1;
+  NO_VALID_DATA_TO_PULL = 2;
+}
+
+message StreamingQueueDataMsg {
+  bytes src_actor_id = 1;
+  bytes dst_actor_id = 2;
+  bytes queue_id = 3;
+  uint64 seq_id = 4;
+  uint64 length = 5;
+  bool raw = 6;
+}
+
+message StreamingQueueCheckMsg {
+  bytes src_actor_id = 1;
+  bytes dst_actor_id = 2;
+  bytes queue_id = 3;
+}
+
+message StreamingQueueCheckRspMsg {
+  bytes src_actor_id = 1;
+  bytes dst_actor_id = 2;
+  bytes queue_id = 3;
+  StreamingQueueError err_code = 4;
+}
+
+message StreamingQueueNotificationMsg {
+  bytes src_actor_id = 1;
+  bytes dst_actor_id = 2;
+  bytes queue_id = 3;
+  uint64 seq_id = 4;
+}
+
+// for test
+enum StreamingQueueTestRole {
+  WRITER = 0;
+  READER = 1;
+}
+
+message StreamingQueueTestInitMsg {
+  StreamingQueueTestRole role = 1;
+  bytes src_actor_id = 2;
+  bytes dst_actor_id = 3;
+  bytes actor_handle = 4;
+  repeated bytes queue_ids = 5;
+  repeated bytes rescale_queue_ids = 6;
+  string test_suite_name = 7;
+  string test_name = 8;
+  uint64 param = 9;
+}
+
+message StreamingQueueTestCheckStatusRspMsg {
+  string test_name = 1;
+  bool status = 2;
+}

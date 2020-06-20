@@ -1,0 +1,184 @@
+// Copyright 2014 The Bazel Authors. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// proto definitions for the blaze extra_action feature.
+
+syntax = "proto2";
+
+package blaze;
+
+option java_multiple_files = true;
+option java_package = "com.google.devtools.build.lib.actions.extra";
+// option cc_api_version = 2;
+// option java_api_version = 2;
+
+// A list of extra actions and metadata for the print_action command.
+message ExtraActionSummary {
+  repeated DetailedExtraActionInfo action = 1;
+}
+
+// An individual action printed by the print_action command.
+message DetailedExtraActionInfo {
+  // If the given action was included in the output due to a request for a
+  // specific file, then this field contains the name of that file so that the
+  // caller can correctly associate the extra action with that file.
+  //
+  // The data in this message is currently not sufficient to run the action on a
+  // production machine, because not all necessary input files are identified,
+  // especially for C++.
+  //
+  // There is no easy way to fix this; we could require that all header files
+  // are declared and then add all of them here (which would be a huge superset
+  // of the files that are actually required), or we could run the include
+  // scanner and add those files here.
+  optional string triggering_file = 1;
+  // The actual action.
+  required ExtraActionInfo action = 2;
+}
+
+// Provides information to an extra_action on the original action it is
+// shadowing.
+message ExtraActionInfo {
+  extensions 1000 to max;
+
+  // The label of the ActionOwner of the shadowed action.
+  optional string owner = 1;
+
+  // Only set if the owner is an Aspect.
+  // Corresponds to AspectValue.AspectKey.getAspectClass.getName()
+  // This field is deprecated as there might now be
+  // multiple aspects applied to the same target.
+  // This is the aspect name of the last aspect
+  // in 'aspects' (8) field.
+  optional string aspect_name = 6 [deprecated = true];
+
+  // Only set if the owner is an Aspect.
+  // Corresponds to AspectValue.AspectKey.getParameters()
+  // This field is deprecated as there might now be
+  // multiple aspects applied to the same target.
+  // These are the aspect parameters of the last aspect
+  // in 'aspects' (8) field.
+  map<string, StringList> aspect_parameters = 7 [deprecated = true];
+  message StringList {
+    option deprecated = true;
+    repeated string value = 1;
+  }
+
+  message AspectDescriptor {
+    // Corresponds to AspectDescriptor.getName()
+    optional string aspect_name = 1;
+    // Corresponds to AspectDescriptor.getParameters()
+    map<string, StringList> aspect_parameters = 2;
+    message StringList {
+      repeated string value = 1;
+    }
+  }
+
+  // If the owner is an aspect, all aspects applied to the target
+  repeated AspectDescriptor aspects = 8;
+
+  // An id uniquely describing the shadowed action at the ActionOwner level.
+  optional string id = 2;
+
+  // The mnemonic of the shadowed action. Used to distinguish actions with the
+  // same ActionType.
+  optional string mnemonic = 5;
+}
+
+message EnvironmentVariable {
+  // It is possible that this name is not a valid variable identifier.
+  required string name = 1;
+  // The value is unescaped and unquoted.
+  required string value = 2;
+}
+
+// Provides access to data that is specific to spawn actions.
+// Usually provided by actions using the "Spawn" & "Genrule" Mnemonics.
+message SpawnInfo {
+  extend ExtraActionInfo {
+    optional SpawnInfo spawn_info = 1003;
+  }
+
+  repeated string argument = 1;
+  // A list of environment variables and their values. No order is enforced.
+  repeated EnvironmentVariable variable = 2;
+  repeated string input_file = 4;
+  repeated string output_file = 5;
+}
+
+// Provides access to data that is specific to C++ compile actions.
+// Usually provided by actions using the "CppCompile" Mnemonic.
+message CppCompileInfo {
+  extend ExtraActionInfo {
+    optional CppCompileInfo cpp_compile_info = 1001;
+  }
+
+  optional string tool = 1;
+  repeated string compiler_option = 2;
+  optional string source_file = 3;
+  optional string output_file = 4;
+  // Due to header discovery, this won't include headers unless the build is
+  // actually performed. If set, this field will include the value of
+  // "source_file" in addition to the headers.
+  repeated string sources_and_headers = 5;
+  // A list of environment variables and their values. No order is enforced.
+  repeated EnvironmentVariable variable = 6;
+}
+
+// Provides access to data that is specific to C++ link  actions.
+// Usually provided by actions using the "CppLink" Mnemonic.
+message CppLinkInfo {
+  extend ExtraActionInfo {
+    optional CppLinkInfo cpp_link_info = 1002;
+  }
+
+  repeated string input_file = 1;
+  optional string output_file = 2;
+  optional string interface_output_file = 3;
+  optional string link_target_type = 4;
+  optional string link_staticness = 5;
+  repeated string link_stamp = 6;
+  repeated string build_info_header_artifact = 7;
+  // The list of command line options used for running the linking tool.
+  repeated string link_opt = 8;
+}
+
+// Provides access to data that is specific to java compile actions.
+// Usually provided by actions using the "Javac" Mnemonic.
+message JavaCompileInfo {
+  extend ExtraActionInfo {
+    optional JavaCompileInfo java_compile_info = 1000;
+  }
+
+  optional string outputjar = 1;
+  repeated string classpath = 2;
+  repeated string sourcepath = 3;
+  repeated string source_file = 4;
+  repeated string javac_opt = 5;
+  repeated string processor = 6;
+  repeated string processorpath = 7;
+  repeated string bootclasspath = 8;
+  repeated string argument = 9;
+}
+
+// Provides access to data that is specific to python rules.
+// Usually provided by actions using the "Python" Mnemonic.
+message PythonInfo {
+  extend ExtraActionInfo {
+    optional PythonInfo python_info = 1005;
+  }
+
+  repeated string source_file = 1;
+  repeated string dep_file = 2;
+}

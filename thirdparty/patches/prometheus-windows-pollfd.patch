@@ -1,0 +1,22 @@
+Target an older version of Windows SDK so that we don't get a conflicting definition of struct pollfd
+
+Windows Vista and later SDKs define struct pollfd for WSAPoll(), but it has a permanent bug:
+- https://curl.haxx.se/mail/lib-2012-08/0014.html
+- https://curl.haxx.se/mail/lib-2012-10/0038.html
+civetweb provides its own implementation of poll, but it has a conflicting definition for pollfd.
+Hence we block Windows from defining pollfd (which this project doesn't use).
+---
+ bazel/civetweb.BUILD | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git bazel/civetweb.BUILD bazel/civetweb.BUILD
+--- bazel/civetweb.BUILD
++++ bazel/civetweb.BUILD
+@@ -34,5 +34,6 @@ cc_library(
+         "-DNO_CACHING",
+         "-DNO_SSL",
+         "-DNO_FILES",
++        "-D_WIN32_WINNT=0x0502",
+         "-UDEBUG",
+     ],
+-- 

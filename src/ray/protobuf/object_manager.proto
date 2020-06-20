@@ -1,0 +1,63 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc;
+
+message PushRequest {
+  // The push ID to allow the receiver to differentiate different push attempts
+  // from the same sender.
+  bytes push_id = 1;
+  // The object ID being transferred.
+  bytes object_id = 2;
+  // The client ID of client sending this object
+  bytes client_id = 3;
+  // The index of the chunk being transferred.
+  uint32 chunk_index = 4;
+  // The data_size include object_size and metadata_size
+  uint64 data_size = 5;
+  // The metadata size.
+  uint64 metadata_size = 6;
+  // The chunk data
+  bytes data = 7;
+}
+
+message PullRequest {
+  // ID of the requesting client.
+  bytes client_id = 1;
+  // Requested ObjectID.
+  bytes object_id = 2;
+}
+
+message FreeObjectsRequest {
+  repeated bytes object_ids = 1;
+}
+
+// Reply for request
+message PushReply {
+}
+message PullReply {
+}
+message FreeObjectsReply {
+}
+
+service ObjectManagerService {
+  // Push service used to send object chunks
+  rpc Push(PushRequest) returns (PushReply);
+  // Try to pull object from remote object manager
+  rpc Pull(PullRequest) returns (PullReply);
+  // Tell remote object manager to free some objects
+  rpc FreeObjects(FreeObjectsRequest) returns (FreeObjectsReply);
+}

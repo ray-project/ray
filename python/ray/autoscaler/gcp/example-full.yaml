@@ -1,0 +1,163 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: default
+
+# The minimum number of workers nodes to launch in addition to the head
+# node. This number should be >= 0.
+min_workers: 0
+
+# The maximum number of workers nodes to launch in addition to the head
+# node. This takes precedence over min_workers.
+max_workers: 2
+
+# The initial number of worker nodes to launch in addition to the head
+# node. When the cluster is first brought up (or when it is refreshed with a
+# subsequent `ray up`) this number of nodes will be started.
+initial_workers: 0
+
+# Whether or not to autoscale aggressively. If this is enabled, if at any point
+#   we would start more workers, we start at least enough to bring us to
+#   initial_workers.
+autoscaling_mode: default
+
+# This executes all commands on all nodes in the docker container,
+# and opens all the necessary ports to support the Ray cluster.
+# Empty string means disabled.
+docker:
+    image: "" # e.g., tensorflow/tensorflow:1.5.0-py3
+    container_name: "" # e.g. ray_docker
+    # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
+    # if no cached version is present.
+    pull_before_run: True
+    run_options: []  # Extra options to pass into "docker run"
+
+
+# The autoscaler will scale up the cluster to this target fraction of resource
+# usage. For example, if a cluster of 10 nodes is 100% busy and
+# target_utilization is 0.8, it would resize the cluster to 13. This fraction
+# can be decreased to increase the aggressiveness of upscaling.
+# This value must be less than 1.0 for scaling to happen.
+target_utilization_fraction: 0.8
+
+# If a node is idle for this many minutes, it will be removed.
+idle_timeout_minutes: 5
+
+# Cloud-provider specific configuration.
+provider:
+    type: gcp
+    region: us-west1
+    availability_zone: us-west1-a
+    project_id: null # Globally unique project id
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: ubuntu
+# By default Ray creates a new private keypair, but you can also use your own.
+# If you do so, make sure to also set "KeyName" in the head and worker node
+# configurations below. This requires that you have added the key into the
+# project wide meta-data.
+#    ssh_private_key: /path/to/your/key.pem
+
+# Provider-specific config for the head node, e.g. instance type. By default
+# Ray will auto-configure unspecified fields such as subnets and ssh-keys.
+# For more documentation on available fields, see:
+# https://cloud.google.com/compute/docs/reference/rest/v1/instances/insert
+head_node:
+    machineType: n1-standard-2
+    disks:
+      - boot: true
+        autoDelete: true
+        type: PERSISTENT
+        initializeParams:
+          diskSizeGb: 50
+          # See https://cloud.google.com/compute/docs/images for more images
+          sourceImage: projects/deeplearning-platform-release/global/images/family/tf-1-13-cpu
+
+    # Additional options can be found in in the compute docs at
+    # https://cloud.google.com/compute/docs/reference/rest/v1/instances/insert
+
+    # If the network interface is specified as below in both head and worker
+    # nodes, the manual network config is used.  Otherwise an existing subnet is
+    # used.  To use a shared subnet, ask the subnet owner to grant permission
+    # for 'compute.subnetworks.use' to the ray autoscaler account...
+    # networkInterfaces:
+    #   - kind: compute#networkInterface
+    #     subnetwork: path/to/subnet
+    #     aliasIpRanges: []
+
+worker_nodes:
+    machineType: n1-standard-2
+    disks:
+      - boot: true
+        autoDelete: true
+        type: PERSISTENT
+        initializeParams:
+          diskSizeGb: 50
+          # See https://cloud.google.com/compute/docs/images for more images
+          sourceImage: projects/deeplearning-platform-release/global/images/family/tf-1-13-cpu
+    # Run workers on preemtible instance by default.
+    # Comment this out to use on-demand.
+    scheduling:
+      - preemptible: true
+
+    # Additional options can be found in in the compute docs at
+    # https://cloud.google.com/compute/docs/reference/rest/v1/instances/insert
+
+# Files or directories to copy to the head and worker nodes. The format is a
+# dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
+file_mounts: {
+#    "/path1/on/remote/machine": "/path1/on/local/machine",
+#    "/path2/on/remote/machine": "/path2/on/local/machine",
+}
+
+# List of commands that will be run before `setup_commands`. If docker is
+# enabled, these commands will run outside the container and before docker
+# is setup.
+initialization_commands: []
+
+# List of shell commands to run to set up nodes.
+setup_commands:
+    # Note: if you're developing Ray, you probably want to create an AMI that
+    # has your Ray repo pre-cloned. Then, you can replace the pip installs
+    # below with a git checkout <your_sha> (and possibly a recompile).
+    # - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
+
+    # Install Anaconda.
+    - >-
+      wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh -O ~/anaconda3.sh
+      || true
+      && bash ~/anaconda3.sh -b -p ~/anaconda3 || true
+      && rm ~/anaconda3.sh
+      && echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.profile
+
+    # Install ray
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp27-cp27mu-manylinux1_x86_64.whl
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-manylinux1_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
+
+
+# Custom commands that will be run on the head node after common setup.
+head_setup_commands:
+  - pip install google-api-python-client==1.7.8
+
+# Custom commands that will be run on worker nodes after common setup.
+worker_setup_commands: []
+
+# Command to start ray on the head node. You don't need to change this.
+head_start_ray_commands:
+    - ray stop
+    - >-
+      ulimit -n 65536;
+      ray start
+      --head
+      --port=6379
+      --object-manager-port=8076
+      --autoscaling-config=~/ray_bootstrap_config.yaml
+
+# Command to start ray on worker nodes. You don't need to change this.
+worker_start_ray_commands:
+    - ray stop
+    - >-
+      ulimit -n 65536;
+      ray start
+      --address=$RAY_HEAD_IP:6379
+      --object-manager-port=8076

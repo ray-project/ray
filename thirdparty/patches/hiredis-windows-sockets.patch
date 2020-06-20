@@ -1,0 +1,58 @@
+diff --git deps/hiredis/hiredis.c deps/hiredis/hiredis.c
+--- deps/hiredis/hiredis.c
++++ deps/hiredis/hiredis.c
+@@ -620,1 +620,1 @@
+-        close(c->fd);
++        redisContextCloseFd(c);
+@@ -648,1 +648,1 @@
+-        close(c->fd);
++        redisContextCloseFd(c);
+diff --git deps/hiredis/net.h deps/hiredis/net.h
+--- deps/hiredis/net.h
++++ deps/hiredis/net.h
+@@ -44,1 +44,2 @@
++void redisContextCloseFd(redisContext *c);
+ int redisContextConnectTcp(redisContext *c, const char *addr, int port, const struct timeval *timeout);
+diff --git deps/hiredis/net.c deps/hiredis/net.c
+--- deps/hiredis/net.c
++++ deps/hiredis/net.c
+@@ -60,1 +60,1 @@
+-static void redisContextCloseFd(redisContext *c) {
++void redisContextCloseFd(redisContext *c) {
+@@ -102,24 +102,33 @@
+ static int redisSetBlocking(redisContext *c, int blocking) {
+     int flags;
+ 
+-    /* Set the socket nonblocking.
++    /* Set the socket nonblocking. */
++#ifdef _WINSOCKAPI_
++    unsigned long value = !blocking;
++    if (ioctlsocket(c->fd, FIONBIO, &value) == SOCKET_ERROR) {
++        __redisSetErrorFromErrno(c,REDIS_ERR_IO,"ioctlsocket(FIONBIO)");
++        redisContextCloseFd(c);
++        return REDIS_ERR;
++    }
++#else
+-     * Note that fcntl(2) for F_GETFL and F_SETFL can't be
++    /* Note that fcntl(2) for F_GETFL and F_SETFL can't be
+      * interrupted by a signal. */
+     if ((flags = fcntl(c->fd, F_GETFL)) == -1) {
+         __redisSetErrorFromErrno(c,REDIS_ERR_IO,"fcntl(F_GETFL)");
+         redisContextCloseFd(c);
+         return REDIS_ERR;
+     }
+ 
+     if (blocking)
+         flags &= ~O_NONBLOCK;
+     else
+         flags |= O_NONBLOCK;
+ 
+     if (fcntl(c->fd, F_SETFL, flags) == -1) {
+         __redisSetErrorFromErrno(c,REDIS_ERR_IO,"fcntl(F_SETFL)");
+         redisContextCloseFd(c);
+         return REDIS_ERR;
+     }
++#endif
+     return REDIS_OK;
+ }
+-- 

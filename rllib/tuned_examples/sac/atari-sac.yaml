@@ -1,0 +1,48 @@
+# Run e.g. on a g3.16xlarge (4 GPUs) with `num_gpus=1` (1 for each trial;
+# MsPacman torch + tf; Pong torch + tf).
+# Uses the hyperparameters published in [2] (see rllib/agents/sac/README.md).
+atari-sac-tf-and-torch:
+    env:
+        grid_search:
+            - MsPacmanNoFrameskip-v4
+            - PongNoFrameskip-v4
+    run: SAC
+    stop:
+        timesteps_total: 20000000
+    config:
+        # Works for both torch and tf.
+        framework:
+            grid_search: [tf, torch]
+        gamma: 0.99
+        # state-preprocessor=Our default Atari Conv2D-net.
+        use_state_preprocessor: true
+        Q_model:
+            hidden_activation: relu
+            hidden_layer_sizes: [512]
+        policy_model:
+            hidden_activation: relu
+            hidden_layer_sizes: [512]
+        # Do hard syncs.
+        # Soft-syncs seem to work less reliably for discrete action spaces.
+        tau: 1.0
+        target_network_update_freq: 8000
+        # auto = 0.98 * -log(1/|A|)
+        target_entropy: auto
+        clip_rewards: 1.0
+        no_done_at_end: False
+        n_step: 1
+        rollout_fragment_length: 1
+        prioritized_replay: true
+        train_batch_size: 64
+        timesteps_per_iteration: 4
+        # Paper uses 20k random timesteps, which is not exactly the same, but
+        # seems to work nevertheless. We use 100k here for the longer Atari
+        # runs (DQN style: filling up the buffer a bit before learning).
+        learning_starts: 100000
+        optimization:
+            actor_learning_rate: 0.0003
+            critic_learning_rate: 0.0003
+            entropy_learning_rate: 0.0003
+        num_workers: 0
+        num_gpus: 1
+        metrics_smoothing_episodes: 5

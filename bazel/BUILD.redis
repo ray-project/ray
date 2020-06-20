@@ -1,0 +1,63 @@
+COPTS = [] + select({
+    "@bazel_tools//src/conditions:windows": [
+        "-D_CRT_DECLARE_NONSTDC_NAMES=0",  # don't define off_t, to avoid conflicts
+    ],
+    "//conditions:default": [
+    ],
+})
+
+filegroup(
+    name = "files",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "file",
+    srcs = ["Makefile"],
+    visibility = ["//visibility:public"],
+)
+
+# This library is for internal hiredis use, because hiredis assumes a
+# different include prefix for itself than external libraries do.
+cc_library(
+    name = "_hiredis",
+    hdrs = [
+        "deps/hiredis/dict.c",
+    ],
+    copts = COPTS,
+    strip_include_prefix = "deps/hiredis",
+)
+
+cc_library(
+    name = "hiredis",
+    srcs = glob(
+        [
+            "deps/hiredis/*.c",
+            "deps/hiredis/*.h",
+        ],
+        exclude =
+        [
+            "deps/hiredis/test.c",
+        ],
+    ),
+    hdrs = glob([
+        "deps/hiredis/*.h",
+        "deps/hiredis/adapters/*.h",
+    ]),
+    copts = COPTS + select({
+        "@bazel_tools//src/conditions:windows": [
+            "-D" + "WIN32_REPLACE_FD_APIS",
+            "/FI" + "win32fd.h",
+        ],
+        "//conditions:default": [
+        ],
+    }),
+    includes = ["deps/hiredis"],
+    strip_include_prefix = "deps",
+    deps = [
+        ":_hiredis",
+        "@//:platform_shims",
+    ],
+    visibility = ["//visibility:public"],
+)

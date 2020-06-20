@@ -1,14 +1,17 @@
-# Bulding on top of deploy image, this Dockerfile adds libraries needed
-# for running examples.
+# The examples Docker image adds dependencies needed to run the examples
 
-FROM ray-project/ray:deploy
+FROM ray-project/deploy
 
-# Tensorflow
-RUN pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.9.0-cp27-none-linux_x86_64.whl
-
-# SciPy
-RUN pip install scipy
-
-# Gym
-RUN sudo apt-get -y install zlib1g-dev libjpeg-dev xvfb libav-tools xorg-dev python-opengl libsdl2-dev swig wget
-RUN pip install gym[atari]
+# This updates numpy to 1.14 and mutes errors from other libraries
+RUN conda install -y numpy
+# Needed to run Tune example with a 'plot' call - which does not actually render a plot, but throws an error.
+RUN apt-get install -y zlib1g-dev libgl1-mesa-dev
+RUN pip install -U pip
+RUN pip install gym[atari] opencv-python-headless tensorflow lz4 pytest-timeout smart_open tensorflow_probability dm_tree
+RUN pip install -U h5py  # Mutes FutureWarnings
+RUN pip install --upgrade bayesian-optimization hyperopt
+RUN pip install ConfigSpace==0.4.10
+RUN pip install --upgrade sigopt nevergrad scikit-optimize hpbandster lightgbm xgboost torch torchvision tensorboardX dragonfly-opt zoopt
+RUN pip install -U tabulate mlflow
+RUN pip install -U pytest-remotedata>=0.3.1
+RUN pip install -U matplotlib jupyter pandas

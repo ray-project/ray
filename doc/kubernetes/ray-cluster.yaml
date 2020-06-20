@@ -1,0 +1,150 @@
+# Ray head node service, allowing worker pods to discover the head node.
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: ray
+  name: ray-head
+spec:
+  ports:
+    # Redis ports.
+    - name: redis-primary
+      port: 6379
+      targetPort: 6379
+    - name: redis-shard-0
+      port: 6380
+      targetPort: 6380
+    - name: redis-shard-1
+      port: 6381
+      targetPort: 6381
+
+    # Ray internal communication ports.
+    - name: object-manager
+      port: 12345
+      targetPort: 12345
+    - name: node-manager
+      port: 12346
+      targetPort: 12346
+  selector:
+    component: ray-head
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: ray
+  name: ray-head
+spec:
+  # Do not change this - Ray currently only supports one head node per cluster.
+  replicas: 1
+  selector:
+    matchLabels:
+      component: ray-head
+      type: ray
+  template:
+    metadata:
+      labels:
+        component: ray-head
+        type: ray
+    spec:
+      # If the head node goes down, the entire cluster (including all worker
+      # nodes) will go down as well. If you want Kubernetes to bring up a new
+      # head node in this case, set this to "Always," else set it to "Never."
+      restartPolicy: Always
+
+      # This volume allocates shared memory for Ray to use for its plasma
+      # object store. If you do not provide this, Ray will fall back to
+      # /tmp which cause slowdowns if is not a shared memory volume.
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+      containers:
+        - name: ray-head
+          image: rayproject/autoscaler
+          imagePullPolicy: Always
+          command: [ "/bin/bash", "-c", "--" ]
+          args: 
+            - "ray start --head --node-ip-address=$MY_POD_IP --redis-port=6379 --redis-shard-ports=6380,6381 --num-cpus=$MY_CPU_REQUEST --object-manager-port=12345 --node-manager-port=12346 --block"
+          ports:
+            - containerPort: 6379 # Redis port.
+            - containerPort: 6380 # Redis port.
+            - containerPort: 6381 # Redis port.
+            - containerPort: 12345 # Ray internal communication.
+            - containerPort: 12346 # Ray internal communication.
+
+          # This volume allocates shared memory for Ray to use for its plasma
+          # object store. If you do not provide this, Ray will fall back to
+          # /tmp which cause slowdowns if is not a shared memory volume.
+          volumeMounts:
+            - mountPath: /dev/shm
+              name: dshm
+          env:
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+
+            # This is used in the ray start command so that Ray can spawn the
+            # correct number of processes. Omitting this may lead to degraded
+            # performance.
+            - name: MY_CPU_REQUEST
+              valueFrom:
+                resourceFieldRef:
+                  resource: requests.cpu
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: ray
+  name: ray-worker
+spec:
+  # Change this to scale the number of worker nodes started in the Ray cluster.
+  replicas: 3
+  selector:
+    matchLabels:
+      component: ray-worker
+      type: ray
+  template:
+    metadata:
+      labels:
+        component: ray-worker
+        type: ray
+    spec:
+      restartPolicy: Always
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+      containers:
+      - name: ray-worker
+        image: rayproject/autoscaler
+        imagePullPolicy: Always
+        command: ["/bin/bash", "-c", "--"]
+        args:
+          - "ray start --node-ip-address=$MY_POD_IP --num-cpus=$MY_CPU_REQUEST --address=$RAY_HEAD_SERVICE_HOST:$RAY_HEAD_SERVICE_PORT_REDIS_PRIMARY --object-manager-port=12345 --node-manager-port=12346 --block"
+        ports:
+          - containerPort: 12345 # Ray internal communication.
+          - containerPort: 12346 # Ray internal communication.
+        volumeMounts:
+          - mountPath: /dev/shm
+            name: dshm
+        env:
+          - name: MY_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+
+          # This is used in the ray start command so that Ray can spawn the
+          # correct number of processes. Omitting this may lead to degraded
+          # performance.
+          - name: MY_CPU_REQUEST
+            valueFrom:
+              resourceFieldRef:
+                resource: requests.cpu
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi

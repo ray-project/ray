@@ -1,0 +1,148 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc;
+
+import "src/ray/protobuf/common.proto";
+
+// Request a worker from the raylet with the specified resources.
+message RequestWorkerLeaseRequest {
+  // TaskSpec containing the requested resources.
+  TaskSpec resource_spec = 1;
+}
+
+message RequestWorkerLeaseReply {
+  // Address of the leased worker. If this is empty, then the request should be
+  // retried at the provided raylet address.
+  Address worker_address = 1;
+  // Address of the raylet to spill back to, if any.
+  Address retry_at_raylet_address = 2;
+  // Resource mapping ids acquired by the leased worker.
+  repeated ResourceMapEntry resource_mapping = 3;
+  // Whether this lease request was canceled. In this case, the
+  // client should try again if the resources are still required.
+  bool canceled = 4;
+}
+
+// Release a worker back to its raylet.
+message ReturnWorkerRequest {
+  // Port of the leased worker that we are now returning.
+  int32 worker_port = 1;
+  // Unique id of the leased worker we are now returning.
+  bytes worker_id = 2;
+  // If true, there was some unrecoverable error and the raylet should
+  // disconnect the worker.
+  bool disconnect_worker = 3;
+}
+
+message ReturnWorkerReply {
+}
+
+message CancelWorkerLeaseRequest {
+  // The task to cancel.
+  bytes task_id = 1;
+}
+
+message CancelWorkerLeaseReply {
+  // Whether the cancellation request was successful. Cancellation
+  // succeeds if the node manager has the task queued upon receiving
+  // the cancellation request, and the node manager has not yet
+  // granted the lease.
+  bool success = 1;
+}
+
+message ForwardTaskRequest {
+  // The ID of the task to be forwarded.
+  bytes task_id = 1;
+  // The tasks in the uncommitted lineage of the forwarded task. This
+  // should include task_id.
+  repeated Task uncommitted_tasks = 2;
+}
+
+message ForwardTaskReply {
+}
+
+message PinObjectIDsRequest {
+  // Address of the owner to ask when to unpin the objects.
+  Address owner_address = 1;
+  // ObjectIDs to pin.
+  repeated bytes object_ids = 2;
+}
+
+message PinObjectIDsReply {
+}
+
+message GetNodeStatsRequest {
+  // Whether to include memory stats. This could be large since it includes
+  // metadata for all live object references.
+  bool include_memory_info = 1;
+}
+
+message WorkerStats {
+  // PID of the worker process.
+  uint32 pid = 1;
+  // Whether this is a driver.
+  bool is_driver = 2;
+  // Debug information returned from the core worker.
+  CoreWorkerStats core_worker_stats = 3;
+  // Error string if fetching core worker stats failed.
+  string fetch_error = 4;
+}
+
+message GetNodeStatsReply {
+  repeated WorkerStats workers_stats = 1;
+  repeated ViewData view_data = 2;
+  uint32 num_workers = 3;
+  repeated TaskSpec infeasible_tasks = 4;
+  repeated TaskSpec ready_tasks = 5;
+}
+
+message GlobalGCRequest {
+}
+
+message GlobalGCReply {
+}
+
+message FormatGlobalMemoryInfoRequest {
+}
+
+message FormatGlobalMemoryInfoReply {
+  // A tabular summary of the memory stats. To get this data in structured form, you
+  // can instead use GetNodeStats() directly.
+  string memory_summary = 1;
+}
+
+// Service for inter-node-manager communication.
+service NodeManagerService {
+  // Request a worker from the raylet.
+  rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
+  // Release a worker back to its raylet.
+  rpc ReturnWorker(ReturnWorkerRequest) returns (ReturnWorkerReply);
+  // Cancel a pending lease request. This only returns success if the
+  // lease request was not yet granted.
+  rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
+  // Forward a task and its uncommitted lineage to the remote node manager.
+  rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
+  // Pin the provided object IDs.
+  rpc PinObjectIDs(PinObjectIDsRequest) returns (PinObjectIDsReply);
+  // Get the current node stats.
+  rpc GetNodeStats(GetNodeStatsRequest) returns (GetNodeStatsReply);
+  // Trigger garbage collection in all workers across the cluster.
+  rpc GlobalGC(GlobalGCRequest) returns (GlobalGCReply);
+  // Get global object reference stats in formatted form.
+  rpc FormatGlobalMemoryInfo(FormatGlobalMemoryInfoRequest)
+      returns (FormatGlobalMemoryInfoReply);
+}
