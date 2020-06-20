@@ -1,7 +1,6 @@
 import logging
 import json
 import os
-import numpy as np
 
 import ray
 import ray.services
