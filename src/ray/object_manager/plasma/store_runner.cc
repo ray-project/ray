@@ -133,7 +133,11 @@ void PlasmaStoreRunner::Start() {
   ArrowLog::ShutDownArrowLog();
 }
 
-void PlasmaStoreRunner::Stop() { loop_->Stop(); }
+void PlasmaStoreRunner::Stop() {
+  if (loop_) {
+    loop_->Stop();
+  }
+}
 
 void PlasmaStoreRunner::Shutdown() {
   loop_->Shutdown();

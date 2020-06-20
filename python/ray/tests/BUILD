@@ -1,8 +1,8 @@
 SRCS = [] + select({
-    "@bazel_tools//src/conditions:windows": [
+    "@bazel_tools//src/conditions:windows": glob([
         # TODO(mehrdadn): This should be added for all platforms once resulting errors are fixed
-        "conftest.py",
-    ],
+        "**/conftest.py",
+    ]),
     "//conditions:default": [],
 })
 
