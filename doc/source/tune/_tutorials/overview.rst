@@ -34,6 +34,7 @@ Take a look at any of the below tutorials to get started with Tune.
 
    tune-60-seconds.rst
    tune-tutorial.rst
+   tune-xgboost.rst
 
 
 User Guides
@@ -161,6 +162,7 @@ PyTorch Examples
 XGBoost Example
 ~~~~~~~~~~~~~~~
 
+- :ref:`XGBoost tutorial <tune-xgboost>`: A guide to tuning XGBoost parameters with Tune.
 - `xgboost_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/xgboost_example.py>`__: Trains a basic XGBoost model with Tune with the function-based API and an XGBoost callback.
 
 
