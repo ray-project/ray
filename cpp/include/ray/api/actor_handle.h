@@ -13,11 +13,11 @@ namespace api {
 /// \param ActorType The type of the concrete actor class.
 /// Note, the `Call` method is defined in actor_call.generated.h.
 template <typename ActorType>
-class RayActor {
+class ActorHandle {
  public:
-  RayActor();
+  ActorHandle();
 
-  RayActor(const ActorID &id);
+  ActorHandle(const ActorID &id);
 
   /// Get a untyped ID of the actor
   const ActorID &ID() const;
@@ -25,7 +25,7 @@ class RayActor {
   /// Include the `Call` methods for calling remote functions.
 #include <ray/api/generated/actor_call.generated.h>
 
-  /// Make RayActor serializable
+  /// Make ActorHandle serializable
   MSGPACK_DEFINE(id_);
 
  private:
@@ -35,15 +35,15 @@ class RayActor {
 // ---------- implementation ----------
 
 template <typename ActorType>
-RayActor<ActorType>::RayActor() {}
+ActorHandle<ActorType>::ActorHandle() {}
 
 template <typename ActorType>
-RayActor<ActorType>::RayActor(const ActorID &id) {
+ActorHandle<ActorType>::ActorHandle(const ActorID &id) {
   id_ = id;
 }
 
 template <typename ActorType>
-const ActorID &RayActor<ActorType>::ID() const {
+const ActorID &ActorHandle<ActorType>::ID() const {
   return id_;
 }
 
