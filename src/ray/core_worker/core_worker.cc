@@ -1457,7 +1457,7 @@ Status CoreWorker::AllocateReturnObjects(
       RAY_LOG(DEBUG) << "Creating return object " << object_ids[i];
       // Mark this object as containing other object IDs. The ref counter will
       // keep the inner IDs in scope until the outer one is out of scope.
-      if (!contained_object_ids[i].empty()) {
+      if (!contained_object_ids[i].empty() && !options_.is_local_mode) {
         reference_counter_->AddNestedObjectIds(object_ids[i], contained_object_ids[i],
                                                owner_address);
       }
