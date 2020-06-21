@@ -6,8 +6,8 @@ import numpy as np
 import queue
 import threading
 import time
-from typing import List, Dict, Callable, Set, Tuple, Any, Iterable, Union, \
-    TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Iterable, Optional, Set, Tuple,\
+    TYPE_CHECKING, Union
 
 from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import MultiAgentEpisode
@@ -115,7 +115,7 @@ class SyncSampler(SamplerInput):
                  rollout_fragment_length: int,
                  callbacks: "DefaultCallbacks",
                  horizon: int = None,
-                 pack_multiple_episodes_in_batch: bool = False,
+                 multiple_episodes_in_batch: bool = False,
                  tf_sess=None,
                  clip_actions: bool = True,
                  soft_horizon: bool = False,
@@ -143,7 +143,7 @@ class SyncSampler(SamplerInput):
             callbacks (Callbacks): The Callbacks object to use when episode
                 events happen during rollout.
             horizon (Optional[int]): Hard-reset the Env
-            pack_multiple_episodes_in_batch (bool): Whether to pack multiple
+            multiple_episodes_in_batch (bool): Whether to pack multiple
                 episodes into each batch. This guarantees batches will be
                 exactly `rollout_fragment_length` in size.
             tf_sess (Optional[tf.Session]): A tf.Session object to use (only if
@@ -176,9 +176,8 @@ class SyncSampler(SamplerInput):
             worker, self.base_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
-            pack_multiple_episodes_in_batch, callbacks, tf_sess,
-            self.perf_stats, soft_horizon, no_done_at_end, observation_fn,
-            _fast_sampling)
+            multiple_episodes_in_batch, callbacks, tf_sess, self.perf_stats,
+            soft_horizon, no_done_at_end, observation_fn, _fast_sampling)
         self.metrics_queue = queue.Queue()
 
     @override(SamplerInput)
@@ -232,7 +231,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
                  rollout_fragment_length: int,
                  callbacks: "DefaultCallbacks",
                  horizon: int = None,
-                 pack_multiple_episodes_in_batch: bool = False,
+                 multiple_episodes_in_batch: bool = False,
                  tf_sess=None,
                  clip_actions: bool = True,
                  blackhole_outputs: bool = False,
@@ -261,7 +260,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             callbacks (Callbacks): The Callbacks object to use when episode
                 events happen during rollout.
             horizon (Optional[int]): Hard-reset the Env
-            pack_multiple_episodes_in_batch (bool): Whether to pack multiple
+            multiple_episodes_in_batch (bool): Whether to pack multiple
                 episodes into each batch. This guarantees batches will be
                 exactly `rollout_fragment_length` in size.
             tf_sess (Optional[tf.Session]): A tf.Session object to use (only if
@@ -298,7 +297,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.obs_filters = obs_filters
         self.clip_rewards = clip_rewards
         self.daemon = True
-        self.pack_multiple_episodes_in_batch = pack_multiple_episodes_in_batch
+        self.multiple_episodes_in_batch = multiple_episodes_in_batch
         self.tf_sess = tf_sess
         self.callbacks = callbacks
         self.clip_actions = clip_actions
@@ -330,8 +329,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.worker, self.base_env, extra_batches_putter, self.policies,
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, self.clip_rewards,
-            self.clip_actions, self.pack_multiple_episodes_in_batch,
-            self.callbacks, self.tf_sess, self.perf_stats, self.soft_horizon,
+            self.clip_actions, self.multiple_episodes_in_batch, self.callbacks,
+            self.tf_sess, self.perf_stats, self.soft_horizon,
             self.no_done_at_end, self.observation_fn, self._fast_sampling)
         while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
@@ -377,26 +376,25 @@ class AsyncSampler(threading.Thread, SamplerInput):
         return extra
 
 
-def _env_runner(
-        worker: "RolloutWorker",
-        base_env: BaseEnv,
-        extra_batch_callback: Callable[[SampleBatchType], None],
-        policies,
-        policy_mapping_fn: Callable[[AgentID], PolicyID],
-        rollout_fragment_length: int,
-        horizon: int,
-        preprocessors: Dict[PolicyID, Preprocessor],
-        obs_filters: Dict[PolicyID, Filter],
-        clip_rewards: bool,
-        clip_actions: bool,
-        pack_multiple_episodes_in_batch: bool,
-        callbacks: "DefaultCallbacks",
-        tf_sess: Optional["tf.Session"],
-        perf_stats: _PerfStats,
-        soft_horizon: bool,
-        no_done_at_end: bool,
-        observation_fn: "ObservationFunction",
-        _fast_sampling: bool = False) -> Iterable[SampleBatchType]:
+def _env_runner(worker: "RolloutWorker",
+                base_env: BaseEnv,
+                extra_batch_callback: Callable[[SampleBatchType], None],
+                policies,
+                policy_mapping_fn: Callable[[AgentID], PolicyID],
+                rollout_fragment_length: int,
+                horizon: int,
+                preprocessors: Dict[PolicyID, Preprocessor],
+                obs_filters: Dict[PolicyID, Filter],
+                clip_rewards: bool,
+                clip_actions: bool,
+                multiple_episodes_in_batch: bool,
+                callbacks: "DefaultCallbacks",
+                tf_sess: Optional["tf.Session"],
+                perf_stats: _PerfStats,
+                soft_horizon: bool,
+                no_done_at_end: bool,
+                observation_fn: "ObservationFunction",
+                _fast_sampling: bool = False) -> Iterable[SampleBatchType]:
     """This implements the common experience collection logic.
 
     Args:
@@ -416,7 +414,7 @@ def _env_runner(
         obs_filters (dict): Map of policy id to filter used to process
             observations for the policy.
         clip_rewards (bool): Whether to clip rewards before postprocessing.
-        pack_multiple_episodes_in_batch (bool): Whether to pack multiple
+        multiple_episodes_in_batch (bool): Whether to pack multiple
             episodes into each batch. This guarantees batches will be exactly
             `rollout_fragment_length` in size.
         clip_actions (bool): Whether to clip actions to the space range.
@@ -541,7 +539,7 @@ def _env_runner(
                 preprocessors=preprocessors,
                 obs_filters=obs_filters,
                 rollout_fragment_length=rollout_fragment_length,
-                pack_multiple_episodes_in_batch=pack_multiple_episodes_in_batch,
+                multiple_episodes_in_batch=multiple_episodes_in_batch,
                 callbacks=callbacks,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
@@ -584,29 +582,30 @@ def _env_runner(
 
 
 def _process_observations(
-    *,
-    worker: "RolloutWorker",
-    base_env: BaseEnv,
-    policies: Dict[PolicyID, Policy],
-    batch_builder_pool:
-    List[MultiAgentSampleBatchBuilder],
-    active_episodes: Dict[str, MultiAgentEpisode],
-    unfiltered_obs: Dict[EnvID, Dict[AgentID, EnvObsType]],
-    rewards: Dict[EnvID, Dict[AgentID, float]],
-    dones: Dict[EnvID, Dict[AgentID, bool]],
-    infos: Dict[EnvID, Dict[AgentID, EnvInfoDict]],
-    horizon: int,
-    preprocessors: Dict[PolicyID, Preprocessor],
-    obs_filters: Dict[PolicyID, Filter],
-    rollout_fragment_length: int,
-    pack_multiple_episodes_in_batch: bool,
-    callbacks: "DefaultCallbacks",
-    soft_horizon: bool,
-    no_done_at_end: bool,
-    observation_fn: "ObservationFunction",
-    _fast_sampling: bool = False
-) -> Tuple[Set[EnvID], Dict[PolicyID, List[PolicyEvalData]], List[Union[
-        RolloutMetrics, SampleBatchType]]]:
+        *,
+        worker: "RolloutWorker",
+        base_env: BaseEnv,
+        policies: Dict[PolicyID, Policy],
+        batch_builder_pool: List[MultiAgentSampleBatchBuilder],
+        active_episodes: Dict[str, MultiAgentEpisode],
+        prev_policy_outputs: Dict[PolicyID, Tuple[TensorStructType, StateBatch,
+                                                  dict]],
+        prev_eval_idx_map: Dict[PolicyID, Dict[EnvID, Dict[AgentID, int]]],
+        unfiltered_next_obs: Dict[EnvID, Dict[AgentID, EnvObsType]],
+        rewards: Dict[EnvID, Dict[AgentID, float]],
+        dones: Dict[EnvID, Dict[AgentID, bool]],
+        infos: Dict[EnvID, Dict[AgentID, EnvInfoDict]],
+        horizon: int,
+        preprocessors: Dict[PolicyID, Preprocessor],
+        obs_filters: Dict[PolicyID, Filter],
+        rollout_fragment_length: int,
+        multiple_episodes_in_batch: bool,
+        callbacks: "DefaultCallbacks",
+        soft_horizon: bool,
+        no_done_at_end: bool,
+        observation_fn: "ObservationFunction",
+        _fast_sampling: bool = False) -> Tuple[Set[EnvID], Dict[PolicyID, List[
+            PolicyEvalData]], List[Union[RolloutMetrics, SampleBatchType]]]:
     """Record new data from the environment and prepare for policy evaluation.
 
     Args:
@@ -639,7 +638,7 @@ def _process_observations(
         rollout_fragment_length (int): Number of episode steps before
             `SampleBatch` is yielded. Set to infinity to yield complete
             episodes.
-        pack_multiple_episodes_in_batch (bool): Whether to pack multiple
+        multiple_episodes_in_batch (bool): Whether to pack multiple
             episodes into each batch. This guarantees batches will be exactly
             `rollout_fragment_length` in size.
         callbacks (DefaultCallbacks): User callbacks to run on episode events.
@@ -833,7 +832,7 @@ def _process_observations(
             # next episode into the same SampleBatch OR rollout_fragment_length
             # reached -> Build SampleBatch and add it to
             # "sample_batches_or_metrics".
-            if (all_agents_done and not pack_multiple_episodes_in_batch) or \
+            if (all_agents_done and not multiple_episodes_in_batch) or \
                     episode.batch_builder.count >= rollout_fragment_length:
                 # TODO: (sven) Case: rollout_fragment_length reached: Do not
                 #  store any data in `episode` anymore
@@ -927,20 +926,21 @@ def _process_observations(
 
 
 def _compute_actions_with_policies(
-    *,
-    policy_inputs: Dict[PolicyID, List[PolicyEvalData]],
-    policies: Dict[PolicyID, Policy],
-    active_episodes: Dict[str, MultiAgentEpisode],
-    tf_sess=None,
-    _fast_sampling=False
+        *,
+        policy_inputs: Dict[PolicyID, List[PolicyEvalData]],
+        policies: Dict[PolicyID, Policy],
+        active_episodes: Dict[str, MultiAgentEpisode],
+        tf_sess=None,
+        _fast_sampling=False
 ) -> Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]:
     """Call compute_actions on collected episode/model data to get next action.
 
     Args:
-        policy_inputs (Dict[PolicyID, List[PolicyEvalData]]): Mapping of policy IDs to
-            lists of PolicyEvalData objects (items in these lists will be
-            the batch's items for the model forward pass).
-        policies (Dict[PolicyID, Policy]): Mapping from policy ID to Policy obj.
+        policy_inputs (Dict[PolicyID, List[PolicyEvalData]]): Mapping of policy
+            IDs to lists of PolicyEvalData objects (items in these lists will
+            be the batch's items for the model forward pass).
+        policies (Dict[PolicyID, Policy]): Mapping from policy ID to Policy
+            obj.
         active_episodes (defaultdict[str,MultiAgentEpisode]): Mapping from
             episode ID to currently ongoing MultiAgentEpisode object.
         tf_sess (Optional[tf.Session]): Optional tensorflow session to use for
@@ -1016,18 +1016,17 @@ def _compute_actions_with_policies(
     return policy_outputs
 
 
-def _get_actions_for_env(
-        *,
-        policy_inputs: Dict[PolicyID, List[PolicyEvalData]],
-        policy_outputs: Dict[
-            PolicyID, Tuple[TensorStructType, StateBatch, dict]],
-        active_episodes: Dict[str, MultiAgentEpisode],
-        active_envs: Set[int],
-        off_policy_actions: MultiEnvDict,
-        policies: Dict[PolicyID, Policy],
-        clip_actions: bool,
-        _fast_sampling: bool = False
-    ) -> Dict[EnvID, Dict[AgentID, EnvActionType]]:
+def _get_actions_for_env(*,
+                         policy_inputs: Dict[PolicyID, List[PolicyEvalData]],
+                         policy_outputs: Dict[PolicyID, Tuple[
+                             TensorStructType, StateBatch, dict]],
+                         active_episodes: Dict[str, MultiAgentEpisode],
+                         active_envs: Set[int],
+                         off_policy_actions: MultiEnvDict,
+                         policies: Dict[PolicyID, Policy],
+                         clip_actions: bool,
+                         _fast_sampling: bool = False
+                         ) -> Dict[EnvID, Dict[AgentID, EnvActionType]]:
     """Process the output of policy neural network evaluation.
 
     # TODO: (sven) deprecate storing data directly into episode object (we have
