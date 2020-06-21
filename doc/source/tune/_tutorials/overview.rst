@@ -25,6 +25,11 @@ Take a look at any of the below tutorials to get started with Tune.
    :figure: /images/tune.png
    :description: :doc:`A walkthrough to setup your first Tune experiment <tune-tutorial>`
 
+.. customgalleryitem::
+   :tooltip: Tuning XGBoost parameters.
+   :figure: /images/xgboost_tree.png
+   :description: :doc:`A guide to tuning XGBoost parameters with Tune <tune-xgboost>`
+
 .. raw:: html
 
     </div>
