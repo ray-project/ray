@@ -171,7 +171,7 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
         app_name_without_path = app_file_name;
       }
     }
-    google::SetLogFilenameExtension(app_name_without_path.c_str());
+    google::SetLogFilenameExtension((app_name_without_path + ".log.").c_str());
   }
   for (int lvl = 0; lvl < NUM_SEVERITIES; ++lvl) {
     if (log_dir_.empty()) {
