@@ -178,7 +178,8 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
       google::SetStderrLogging(lvl);
       google::base::SetLogger(lvl, &stdout_logger_singleton);
     } else {
-      google::SetLogDestination(lvl, dir_ends_with_slash.c_str());
+      std::string prefix = dir_ends_with_slash + LogSeverityNames[lvl] + '.';
+      google::SetLogDestination(lvl, prefix.c_str());
     }
   }
 #endif
