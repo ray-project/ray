@@ -93,7 +93,11 @@ class TestModules(unittest.TestCase):
         # that the model is learning from the training data.
         self.assertLess(final_loss / init_loss, 0.5)
 
-    def train_tf_model(self, model, inputs, outputs, num_epochs=250,
+    def train_tf_model(self,
+                       model,
+                       inputs,
+                       outputs,
+                       num_epochs=250,
                        minibatch_size=32):
         """Convenience method that trains a Tensorflow model for num_epochs
             epochs and tests whether loss decreased, as expected.
@@ -110,7 +114,10 @@ class TestModules(unittest.TestCase):
         model.compile(optimizer="SGD", loss="mse", metrics=["mae"])
 
         hist = model.fit(
-            inputs, outputs, verbose=0, epochs=num_epochs,
+            inputs,
+            outputs,
+            verbose=0,
+            epochs=num_epochs,
             batch_size=minibatch_size).history
         init_loss = hist["loss"][0]
         final_loss = hist["loss"][-1]
@@ -242,8 +249,7 @@ class TestModules(unittest.TestCase):
                 init_state = [np.tile(s, (B, 1, 1)) for s in init_state]
 
                 self.train_tf_model(
-                    model,
-                    [x] + init_state,
+                    model, [x] + init_state,
                     [y, value_labels, memory_labels, mlp_labels],
                     num_epochs=50,
                     minibatch_size=B)
