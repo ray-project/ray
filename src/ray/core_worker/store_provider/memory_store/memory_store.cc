@@ -131,11 +131,13 @@ void CoreWorkerMemoryStore::GetAsync(
     if (iter != objects_.end()) {
       ptr = iter->second;
     } else {
+      RAY_LOG(INFO) << "Waiting for object. Saving callback!";
       object_async_get_requests_[object_id].push_back(callback);
     }
   }
   // It's important for performance to run the callback outside the lock.
   if (ptr != nullptr) {
+    RAY_LOG(INFO) << "Calling callback immediately";
     callback(ptr);
   }
 }
@@ -158,6 +160,7 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
 }
 
 bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
+  RAY_LOG(INFO) << "Entering put!";
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
   auto object_entry = std::make_shared<RayObject>(object.GetData(), object.GetMetadata(),
                                                   object.GetNestedIds(), true);
@@ -223,6 +226,7 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
 
   // It's important for performance to run the callbacks outside the lock.
   for (const auto &cb : async_callbacks) {
+    RAY_LOG(INFO) << "Calling callback in put";
     cb(object_entry);
   }
 

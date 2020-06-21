@@ -21,6 +21,7 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
+#include "ray/core_worker/task_manager.h"
 
 namespace ray {
 
@@ -92,6 +93,9 @@ class MockTaskFinisher : public TaskFinisherInterface {
   int num_contained_ids = 0;
 };
 
+
+
+
 class MockRayletClient : public WorkerLeaseInterface {
  public:
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
@@ -107,6 +111,7 @@ class MockRayletClient : public WorkerLeaseInterface {
   ray::Status RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
       const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) override {
+    RAY_LOG(INFO) << "called RequestWorkerLease!";
     num_workers_requested += 1;
     callbacks.push_back(callback);
     return Status::OK();
@@ -1026,6 +1031,147 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+}
+
+
+class MockTaskFinisher2 : public TaskFinisherInterface {
+ public:
+  MockTaskFinisher2() {}
+
+  void CompletePendingTask(const TaskID &task_id, const rpc::PushTaskReply &,
+                           const rpc::Address &actor_addr) override {
+    RAY_LOG(INFO) << "CompletePendingTask being called! task1_id: " << task1_id << " task_id: " << task_id;
+    if (task_id == task1_id) {
+      data_ = GenerateRandomObject();
+      RAY_LOG(INFO) << "putting this!";
+      assert(dstore != nullptr);
+      bool res = dstore->Put(*data_, to_put);
+      assert(res == true);
+      printf("res: %d\n", res);
+      bool found = false;
+      assert(dstore->Contains(to_put, &found));
+      assert(found == false);
+      RAY_LOG(INFO) << "found: " << found;
+      elemento = -231;
+    }
+    num_tasks_complete++;
+  }
+
+  bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+                         Status *status) override {
+    num_tasks_failed++;
+    return true;
+  }
+
+  void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
+                                 const std::vector<ObjectID> &contained_ids) override {
+    num_inlined_dependencies += inlined_dependency_ids.size();
+    num_contained_ids += contained_ids.size();
+  }
+
+  bool MarkTaskCanceled(const TaskID &task_id) override { return true; }
+
+  int num_tasks_complete = 0;
+  int num_tasks_failed = 0;
+  int num_inlined_dependencies = 0;
+  int num_contained_ids = 0;
+  
+  ObjectID to_put;
+  TaskID task1_id;
+  std::shared_ptr<CoreWorkerMemoryStore> dstore;
+  std::shared_ptr<RayObject> data_;
+  int elemento;
+
+};
+
+TEST(DirectTaskTransportTest, TestSchedulingTaskAfterResolvingInlinedDependencies) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  //auto store = std::make_shared<CoreWorkerMemoryStore>();
+
+  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto task_finisher = std::make_shared<MockTaskFinisher2>();
+  task_finisher->dstore = std::make_shared<CoreWorkerMemoryStore>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, task_finisher->dstore,
+                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  //LocalDependencyResolver resolver(task_finisher->dstore, task_finisher);
+
+  // create two tasks, with the same resource requirements, but with different names. 
+  std::unordered_map<std::string, double> resources({{"a", 1.0}});
+  ray::FunctionDescriptor descriptor1 =
+      ray::FunctionDescriptorBuilder::BuildPython("f", "", "", "");
+  ray::FunctionDescriptor descriptor2 =
+      ray::FunctionDescriptorBuilder::BuildPython("g", "", "", "");
+  TaskSpecification task1 = BuildTaskSpec(resources, descriptor1);
+  TaskSpecification task2 = BuildTaskSpec(resources, descriptor2);
+
+  // Add a dependency to the task2. This dependency will be resolved and inlined by task1
+  ObjectID obj1 = ObjectID::FromRandom();
+  task2.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
+
+  // Configure the return pattern for task1 (so that its task finished automatically resolves task2's dependency)
+  task1.GetMutableMessage().set_num_returns(1);
+  task_finisher->to_put = obj1;
+  task_finisher->task1_id = task1.TaskId();
+  RAY_LOG(INFO) << "task1 id computed: " << task1.TaskId();
+  
+
+
+  // Resolve task1's dependency (which is trivial because task1 does not have any)
+  // bool ok=false;
+  // resolver.ResolveDependencies(task1, [&ok]() { ok = true; });
+  // ASSERT_TRUE(ok);
+  // ASSERT_EQ(resolver.NumPendingTasks(), 0);
+  ASSERT_EQ(raylet_client->num_workers_requested, 0);
+
+  // submit both tasks. The first one will proceed immediately (by requesting a worker), while the second one will
+  // be left pending (so it won't be queued) until the dependencies are resolved
+  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
+
+  // only one worker is requested because the second task cannot start until the dependencies are resolved
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+
+  // task1 is pushed
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, ClientID::Nil()));  
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+  ASSERT_EQ(worker_client->callbacks.size(), 1);
+
+  // task1 runs successfully and resolves the dependency for task2
+  //auto data_ = GenerateRandomObject();
+  //ASSERT_TRUE(task_finisher->dstore->Put(*data_, obj1));
+  //ASSERT_EQ(raylet_client->num_workers_requested, 1);
+
+  bool found = false;
+  assert(task_finisher->dstore->Contains(obj1, &found) == false);
+  assert(found == false);
+  RAY_LOG(INFO) << "found (outside): " << found;
+  
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+
+  assert(task_finisher->dstore->Contains(obj1, &found) == true);
+  assert(found == false);
+  RAY_LOG(INFO) << "found (outside) 2: " << found;
+
+  //ASSERT_FALSE(task2.ArgByRef(0));
+  //ASSERT_NE(task2.ArgData(0), nullptr);
+      //ASSERT_EQ(resolver.NumPendingTasks(), 0);
+  //ASSERT_EQ(task_finisher->num_inlined_dependencies, 1);
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+
+  // Worker isn't returned because task2 is now queued (in the same queue where task1 was previously).
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  // task2 is pushed
+  ASSERT_EQ(worker_client->callbacks.size(), 1);
+  // same2 runs successfully. Worker is returned.
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  // check that the total number of workers requested is still 1
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+
 }
 
 }  // namespace ray

@@ -94,8 +94,10 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
 
   for (const auto &it : state->local_dependencies) {
     const ObjectID &obj_id = it.first;
+    RAY_LOG(INFO) << "called GetAsync!";
     in_memory_store_->GetAsync(obj_id, [this, state, obj_id,
                                         on_complete](std::shared_ptr<RayObject> obj) {
+      RAY_LOG(INFO) << "returned from getAsync";
       RAY_CHECK(obj != nullptr);
       bool complete = false;
       std::vector<ObjectID> inlined_dependency_ids;

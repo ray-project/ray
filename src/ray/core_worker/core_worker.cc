@@ -758,6 +758,7 @@ Status CoreWorker::Put(const RayObject &object,
 Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        const ObjectID &object_id, bool pin_object) {
+  RAY_LOG(INFO) << "is this the one?";
   bool object_exists;
   if (options_.is_local_mode) {
     RAY_CHECK(memory_store_->Put(object, object_id));
