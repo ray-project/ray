@@ -1,5 +1,6 @@
 import {
   createStyles,
+  makeStyles,
   Table,
   TableBody,
   TableCell,
@@ -7,7 +8,6 @@ import {
   TableRow,
   Theme,
   Typography,
-  makeStyles
 } from "@material-ui/core";
 import React, { useState } from "react";
 import { useSelector } from "react-redux";
@@ -18,7 +18,6 @@ import Errors from "./dialogs/errors/Errors";
 import Logs from "./dialogs/logs/Logs";
 import NodeRowGroup from "./NodeRowGroup";
 import TotalRow from "./TotalRow";
-
 
 const clusterWorkerPids = (
   rayletInfo: RayletInfoResponse,
@@ -50,7 +49,8 @@ const useNodeInfoStyles = makeStyles((theme: Theme) =>
         paddingRight: theme.spacing(1),
       },
     },
-  }));
+  }),
+);
 
 const nodeInfoSelector = (state: StoreState) => ({
   nodeInfo: state.dashboard.nodeInfo,
@@ -110,9 +110,7 @@ const NodeInfo: React.FC<{}> = () => {
     const filteredLogEntries = Object.entries(
       nodeInfo.log_counts[client.ip] || {},
     ).filter(([pid, _]) => clusterWorkerPids.has(pid));
-    const totalLogEntries = sum(
-      filteredLogEntries.map(([_, count]) => count),
-    );
+    const totalLogEntries = sum(filteredLogEntries.map(([_, count]) => count));
     logCounts[client.ip] = {
       perWorker: Object.fromEntries(filteredLogEntries),
       total: totalLogEntries,
@@ -121,9 +119,7 @@ const NodeInfo: React.FC<{}> = () => {
     const filteredErrEntries = Object.entries(
       nodeInfo.error_counts[client.ip] || {},
     ).filter(([pid, _]) => clusterWorkerPids.has(pid));
-    const totalErrEntries = sum(
-      filteredErrEntries.map(([_, count]) => count),
-    );
+    const totalErrEntries = sum(filteredErrEntries.map(([_, count]) => count));
     errorCounts[client.ip] = {
       perWorker: Object.fromEntries(filteredErrEntries),
       total: totalErrEntries,
@@ -178,8 +174,12 @@ const NodeInfo: React.FC<{}> = () => {
                 }
                 logCounts={logCounts[client.ip]}
                 errorCounts={errorCounts[client.ip]}
-                setLogDialog={(hostname, pid) => setLogDialog({ hostname, pid })}
-                setErrorDialog={(hostname, pid) => setErrorDialog({ hostname, pid })}
+                setLogDialog={(hostname, pid) =>
+                  setLogDialog({ hostname, pid })
+                }
+                setErrorDialog={(hostname, pid) =>
+                  setErrorDialog({ hostname, pid })
+                }
                 initialExpanded={nodeInfo.clients.length <= 1}
               />
             );
@@ -208,6 +208,6 @@ const NodeInfo: React.FC<{}> = () => {
       )}
     </React.Fragment>
   );
-}
+};
 
 export default NodeInfo;
