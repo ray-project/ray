@@ -24,6 +24,10 @@ import numpy as np
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.0
 CHECKPOINT_KEY = "serve-master-checkpoint"
 
+# Feature flag for master actor resource checking. If true, master actor will
+# error if the desired replicas exceed current resource availability.
+_RESOURCE_CHECK_ENABLED = True
+
 
 @ray.remote
 class ServeMaster:
@@ -434,15 +438,16 @@ class ServeMaster:
                     for _ in range(delta_num_replicas)
                 ],
                 ray_nodes=ray.nodes())
-            if not all(can_schedule):
+            if _RESOURCE_CHECK_ENABLED and not all(can_schedule):
                 num_possible = sum(can_schedule)
                 raise RayServeException(
                     "Cannot scale backend {} to {} replicas. Ray Serve tried "
                     "to add {} replicas but the resources only allows {} "
                     "to be added. To fix this, consider scaling to replica to "
-                    "{}.".format(backend_tag, num_replicas, delta_num_replicas,
-                                 num_possible,
-                                 current_num_replicas + num_possible))
+                    "{} or add more resources to the cluster. You can check "
+                    "avaiable resources with ray.nodes().".format(
+                        backend_tag, num_replicas, delta_num_replicas,
+                        num_possible, current_num_replicas + num_possible))
 
             logger.debug("Adding {} replicas to backend {}".format(
                 delta_num_replicas, backend_tag))
