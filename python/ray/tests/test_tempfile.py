@@ -6,7 +6,6 @@ import time
 
 import pytest
 import ray
-import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
 
 
@@ -154,10 +153,7 @@ def test_raylet_tempfiles(shutdown_only):
         "raylet.err"
     }
 
-    if ray_constants.GCS_SERVICE_ENABLED:
-        log_files_expected.update({"gcs_server.out", "gcs_server.err"})
-    else:
-        log_files_expected.update({"raylet_monitor.out", "raylet_monitor.err"})
+    log_files_expected.update({"gcs_server.out", "gcs_server.err"})
 
     assert log_files.issuperset(log_files_expected)
 

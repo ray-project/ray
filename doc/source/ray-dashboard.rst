@@ -18,6 +18,9 @@ Getting Started
 ---------------
 You can access the dashboard through its default URL, **localhost:8265**.
 (Note that the port number increases if the default port is not available).
+If you prefer to explicitly set the port on which the dashboard will run, you can pass
+the ``--dashboard-port`` argument with ``ray start`` in the command line, or you can pass the 
+keyword argument ``dashboard_port`` in your call to ``ray.init()``.
 
 The URL is printed when ``ray.init()`` is called.
 

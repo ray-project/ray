@@ -29,6 +29,8 @@
 #include "glog/logging.h"
 #endif
 
+#include "ray/util/filesystem.h"
+
 namespace ray {
 
 #ifdef RAY_USE_GLOG
@@ -153,29 +155,31 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   log_dir_ = log_dir;
 #ifdef RAY_USE_GLOG
   google::InitGoogleLogging(app_name_.c_str());
-  if (log_dir_.empty()) {
-    google::SetStderrLogging(GetMappedSeverity(RayLogLevel::ERROR));
-    int level = GetMappedSeverity(severity_threshold_);
-    google::base::SetLogger(level, &stdout_logger_singleton);
-  } else {
-    // Enable log file if log_dir_ is not empty.
-    auto dir_ends_with_slash = log_dir_;
-    if (log_dir_[log_dir_.length() - 1] != '/') {
-      dir_ends_with_slash += "/";
-    }
-    auto app_name_without_path = app_name;
+  // Enable log file if log_dir_ is not empty.
+  std::string dir_ends_with_slash = log_dir_;
+  if (!ray::IsDirSep(log_dir_[log_dir_.length() - 1])) {
+    dir_ends_with_slash += ray::GetDirSep();
+  }
+  if (!log_dir_.empty()) {
+    std::string app_name_without_path = app_name;
     if (app_name.empty()) {
       app_name_without_path = "DefaultApp";
     } else {
       // Find the app name without the path.
-      size_t pos = app_name.rfind('/');
-      if (pos != app_name.npos && pos + 1 < app_name.length()) {
-        app_name_without_path = app_name.substr(pos + 1);
+      std::string app_file_name = ray::GetFileName(app_name);
+      if (!app_file_name.empty()) {
+        app_name_without_path = app_file_name;
       }
     }
     google::SetLogFilenameExtension(app_name_without_path.c_str());
-    int level = GetMappedSeverity(severity_threshold_);
-    google::SetLogDestination(level, dir_ends_with_slash.c_str());
+  }
+  for (int lvl = 0; lvl < NUM_SEVERITIES; ++lvl) {
+    if (log_dir_.empty()) {
+      google::SetStderrLogging(lvl);
+      google::base::SetLogger(lvl, &stdout_logger_singleton);
+    } else {
+      google::SetLogDestination(lvl, dir_ends_with_slash.c_str());
+    }
   }
 #endif
 }
