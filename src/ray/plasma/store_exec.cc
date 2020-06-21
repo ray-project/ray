@@ -28,7 +28,7 @@ DEFINE_bool(z, false, "Run idle as a placeholder, optional");
 // Function to use (instead of ARROW_LOG(FATAL)) for usage, etc. errors before
 // the main server loop starts, so users don't get a backtrace if they
 // simply forgot a command-line switch.
-void ExitWithUsageError(const char* error_msg) {
+void ExitWithUsageError(const char *error_msg) {
   std::cerr << gflags::ProgramInvocationShortName() << ": " << error_msg << std::endl;
   exit(1);
 }
@@ -50,8 +50,8 @@ int main(int argc, char *argv[]) {
                                          /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler();
   // Directory where plasma memory mapped files are stored.
-  std::string plasma_directory=FLAGS_d;
-  std::string external_store_endpoint=FLAGS_e;
+  std::string plasma_directory = FLAGS_d;
+  std::string external_store_endpoint = FLAGS_e;
   bool hugepages_enabled = FLAGS_h;
   std::string socket_name = FLAGS_s;
   int64_t system_memory = FLAGS_m;
@@ -59,16 +59,15 @@ int main(int argc, char *argv[]) {
 
   if (!keep_idle) {
     if (socket_name.empty() || system_memory == -1) {
-    // Nicer error message for the case where the user ran the program without
-    // any of the required command-line switches.
-    ExitWithUsageError(
-        "please specify socket for incoming connections with -s, "
-        "and the amount of memory (in bytes) to use with -m");
+      // Nicer error message for the case where the user ran the program without
+      // any of the required command-line switches.
+      ExitWithUsageError(
+          "please specify socket for incoming connections with -s, "
+          "and the amount of memory (in bytes) to use with -m");
     } else if (socket_name.empty()) {
       ExitWithUsageError("please specify socket for incoming connections with -s");
     } else if (system_memory == -1) {
-      ExitWithUsageError(
-          "please specify the amount of memory (in bytes) to use with -m");
+      ExitWithUsageError("please specify the amount of memory (in bytes) to use with -m");
     }
     ARROW_CHECK(!plasma_directory.empty());
 
