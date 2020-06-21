@@ -75,11 +75,11 @@ def make_parser(parser_creator=None, **kwargs):
     parser.add_argument(
         "--sync-on-checkpoint",
         action="store_true",
-        help="Disable sync-down of trial checkpoint, which is enabled by "
-        "default to guarantee recoverability. If set, checkpoint syncing from "
-        "worker to driver is asynchronous. Set this only if synchronous "
-        "checkpointing is too slow and trial restoration failures can be "
-        "tolerated")
+        help="Enable sync-down of trial checkpoint to guarantee "
+        "recoverability. If unset, checkpoint syncing from worker "
+        "to driver is asynchronous, so unset this only if synchronous "
+        "checkpointing is too slow and trial restoration failures "
+        "can be tolerated.")
     parser.add_argument(
         "--keep-checkpoints-num",
         default=None,
