@@ -228,7 +228,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         start = time.time()
         head_node = None
         while True:
-            if time.time() - start > 5:
+            if time.time() - start > 50:
                 raise RuntimeError("Failed to create head node.")
             nodes = provider.non_terminated_nodes(head_node_tags)
             if len(nodes) == 1:
