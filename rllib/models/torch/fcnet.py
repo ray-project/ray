@@ -90,17 +90,16 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         if not self.vf_share_layers:
             # Build a parallel set of hidden layers for the value net.
             prev_vf_layer_size = int(np.product(obs_space.shape))
-            self._value_branch_separate = []
+            vf_layers = []
             for size in hiddens:
-                self._value_branch_separate.append(
+                vf_layers.append(
                     SlimFC(
                         in_size=prev_vf_layer_size,
                         out_size=size,
                         activation_fn=activation,
                         initializer=normc_initializer(1.0)))
                 prev_vf_layer_size = size
-            self._value_branch_separate = nn.Sequential(
-                *self._value_branch_separate)
+            self._value_branch_separate = nn.Sequential(*vf_layers)
 
         self._value_branch = SlimFC(
             in_size=prev_layer_size,

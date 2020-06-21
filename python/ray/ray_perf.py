@@ -1,11 +1,14 @@
 """This is the script for `ray microbenchmark`."""
 
 import asyncio
+import logging
 import os
 import time
 import numpy as np
 import multiprocessing
 import ray
+
+logger = logging.getLogger(__name__)
 
 # Only run tests matching this filter pattern.
 filter_pattern = os.environ.get("TESTS_TO_RUN", "")
@@ -89,7 +92,21 @@ def timeit(name, fn, multiplier=1):
           round(np.std(stats), 2))
 
 
+def check_optimized_build():
+    if not ray._raylet.OPTIMIZED:
+        msg = ("WARNING: Unoptimized build! "
+               "To benchmark an optimized build, try:\n"
+               "\tbazel build -c opt //:ray_pkg\n"
+               "You can also make this permanent by adding\n"
+               "\tbuild --compilation_mode=opt\n"
+               "to your user-wide ~/.bazelrc file. "
+               "(Do not add this to the project-level .bazelrc file.)")
+        logger.warning(msg)
+
+
 def main():
+    check_optimized_build()
+
     print("Tip: set TESTS_TO_RUN='pattern' to run a subset of benchmarks")
     ray.init()
 

@@ -306,7 +306,7 @@ class AutoscalingTest(unittest.TestCase):
         return self.provider
 
     def write_config(self, config):
-        path = self.tmpdir + "/simple.yaml"
+        path = os.path.join(self.tmpdir, "simple.yaml")
         with open(path, "w") as f:
             f.write(yaml.dump(config))
         return path

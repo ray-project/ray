@@ -15,7 +15,7 @@ def normc_initializer(std=1.0):
     return initializer
 
 
-def valid_padding(in_size, filter_size, stride_size):
+def same_padding(in_size, filter_size, stride_size):
     """Note: Padding is added to match TF conv2d `same` padding. See
     www.tensorflow.org/versions/r0.12/api_docs/python/nn/convolution
 
@@ -25,8 +25,8 @@ def valid_padding(in_size, filter_size, stride_size):
         filter_size (tuple): Rows (Height), Column (Width) for filter
 
     Output:
-        padding (tuple): For input into torch.nn.ZeroPad2d
-        output (tuple): Output shape after padding and convolution
+        padding (tuple): For input into torch.nn.ZeroPad2d.
+        output (tuple): Output shape after padding and convolution.
     """
     in_height, in_width = in_size
     filter_height, filter_width = filter_size

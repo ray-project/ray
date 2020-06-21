@@ -95,7 +95,7 @@ class RunExperimentTest(unittest.TestCase):
                 return {"timesteps_this_iter": 1, "done": True}
 
             def _save(self, path):
-                checkpoint = path + "/checkpoint"
+                checkpoint = os.path.join(path, "checkpoint")
                 with open(checkpoint, "w") as f:
                     f.write("OK")
                 return checkpoint
@@ -116,7 +116,7 @@ class RunExperimentTest(unittest.TestCase):
                 return {"timesteps_this_iter": 1, "done": True}
 
             def _export_model(self, export_formats, export_dir):
-                path = export_dir + "/exported"
+                path = os.path.join(export_dir, "exported")
                 with open(path, "w") as f:
                     f.write("OK")
                 return {export_formats[0]: path}

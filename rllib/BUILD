@@ -296,7 +296,7 @@ py_test(
 py_test(
     name = "run_regression_tests_repeat_after_me_torch",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_tf"],
+    tags = ["learning_tests_torch"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/repeatafterme-ppo-lstm.yaml"],
@@ -900,19 +900,6 @@ py_test(
 )
 
 py_test(
-    name = "test_ppo_tf_cartpole_v1_lstm",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "CartPole-v1",
-        "--run", "PPO",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"simple_optimizer\": false, \"num_sgd_iter\": 2, \"model\": {\"use_lstm\": true}}'",
-        "--ray-num-cpus", "4"
-        ]
-)
-
-py_test(
     name = "test_ppo_tf_cartpole_v1_lstm_simple_optimizer",
     main = "train.py", srcs = ["train.py"],
     tags = ["quick_train"],
@@ -924,19 +911,6 @@ py_test(
         "--ray-num-cpus", "4"
         ]
 )
-
-# TODO(sven): Fix LSTM auto-wrapping for torch models. This test case did not(!) exist in Jenkins.
-#py_test(
-#    name = "test_ppo_torch_cartpole_v1_lstm_simple_optimizer",
-#    main = "train.py", srcs = ["train.py"],
-#    args = [
-#        "--env", "CartPole-v1",
-#        "--run", "PPO",
-#        "--stop", "'{\"training_iteration\": 1}'",
-#        "--config", "'{\"framework\": \"torch\", \"simple_optimizer\": true, \"num_sgd_iter\": 2, \"model\": {\"use_lstm\": true}}'",
-#        "--ray-num-cpus", "4"
-#        ]
-#)
 
 py_test(
     name = "test_ppo_tf_cartpole_v1_complete_episode_batches",
@@ -971,30 +945,6 @@ py_test(
         "--run", "PPO",
         "--stop", "'{\"training_iteration\": 2}'",
         "--config", "'{\"framework\": \"tf\", \"remote_worker_envs\": true, \"num_envs_per_worker\": 2, \"num_workers\": 1, \"train_batch_size\": 100, \"sgd_minibatch_size\": 50}'"
-        ]
-)
-
-py_test(
-    name = "test_ppo_tf_montezuma_revenge_v0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "MontezumaRevenge-v0",
-        "--run", "PPO",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"kl_coeff\": 1.0, \"num_sgd_iter\": 10, \"lr\": 1e-4, \"sgd_minibatch_size\": 64, \"train_batch_size\": 2000, \"num_workers\": 1, \"model\": {\"dim\": 40, \"conv_filters\": [[16, [8, 8], 4], [32, [4, 4], 2], [512, [5, 5], 1]]}}'"
-        ]
-)
-
-py_test(
-    name = "test_ppo_torch_montezuma_revenge_v0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "MontezumaRevenge-v0",
-        "--run", "PPO",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"torch\", \"kl_coeff\": 1.0, \"num_sgd_iter\": 10, \"lr\": 1e-4, \"sgd_minibatch_size\": 64, \"train_batch_size\": 2000, \"num_workers\": 1, \"model\": {\"dim\": 40, \"conv_filters\": [[16, [8, 8], 4], [32, [4, 4], 2], [512, [5, 5], 1]]}}'"
         ]
 )
 
