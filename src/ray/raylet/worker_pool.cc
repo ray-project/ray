@@ -394,9 +394,9 @@ void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
     // The worker is not used for the actor creation task without dynamic options.
     // Put the worker to the corresponding idle pool.
     if (worker->GetActorId().IsNil()) {
-      state.idle.insert(std::move(worker));
+      state.idle.insert(worker);
     } else {
-      state.idle_actor[worker->GetActorId()] = std::move(worker);
+      state.idle_actor[worker->GetActorId()] = worker;
     }
   }
 }
