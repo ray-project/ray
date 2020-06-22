@@ -251,12 +251,7 @@ class SSHCommandRunner:
         ]
         if cmd:
             logger.info(self.log_prefix +
-<<<<<<< HEAD
                         "Running {}".format(" ".join(final_cmd)))
-=======
-                        "Running {} on {}...".format(cmd, self.ssh_ip))
-            logger.info("Begin remote output from {}".format(self.ssh_ip))
->>>>>>> be9aa646f66bc55978c1c1ca6a32cfff6188f426
             final_cmd += with_interactive(cmd)
         else:
             # We do this because `-o ControlMaster` causes the `-N` flag to
