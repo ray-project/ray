@@ -15,8 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef PLASMA_COMPAT_H
-#define PLASMA_COMPAT_H
+#pragma once
 
 // Workaround for multithreading on XCode 9, see
 // https://issues.apache.org/jira/browse/ARROW-1622 and
@@ -31,5 +30,3 @@ typedef __darwin_mach_port_t mach_port_t;
 mach_port_t pthread_mach_thread_np(pthread_t);
 #endif /* _MACH_PORT_T */
 #endif /* __APPLE__ */
-
-#endif  // PLASMA_COMPAT_H

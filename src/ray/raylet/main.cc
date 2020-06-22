@@ -114,11 +114,8 @@ int main(int argc, char *argv[]) {
   ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
 
-  if (RayConfig::instance().gcs_service_enabled()) {
-    gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
-  } else {
-    gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);
-  }
+  gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
+
   RAY_CHECK_OK(gcs_client->Connect(main_service));
 
   // The internal_config is only set on the head node--other nodes get it from GCS.

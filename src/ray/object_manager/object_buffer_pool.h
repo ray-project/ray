@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_OBJECT_MANAGER_OBJECT_BUFFER_POOL_H
-#define RAY_OBJECT_MANAGER_OBJECT_BUFFER_POOL_H
+#pragma once
 
 #include <list>
 #include <memory>
@@ -211,5 +210,3 @@ class ObjectBufferPool {
 };
 
 }  // namespace ray
-
-#endif  // RAY_OBJECT_MANAGER_OBJECT_BUFFER_POOL_H

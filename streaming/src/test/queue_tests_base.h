@@ -1,3 +1,5 @@
+#pragma once
+
 #include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
 
@@ -18,9 +20,6 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
  public:
   StreamingQueueTestBase(int num_nodes, int port)
       : gcs_options_("127.0.0.1", 6379, ""), node_manager_port_(port) {
-#ifdef _WIN32
-    RAY_CHECK(false) << "port system() calls to Windows before running this test";
-#endif
     TestSetupUtil::StartUpRedisServers(std::vector<int>{6379, 6380});
 
     // flush redis first.

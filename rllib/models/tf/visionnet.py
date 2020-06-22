@@ -24,6 +24,9 @@ class VisionNetwork(TFModelV2):
         inputs = tf.keras.layers.Input(
             shape=obs_space.shape, name="observations")
         last_layer = inputs
+        # Whether the last layer is the output of a Flattened (rather than
+        # a n x (1,1) Conv2D).
+        self.last_layer_is_flattened = False
 
         # Build the action layers
         for i, (out_size, kernel, stride) in enumerate(filters[:-1], 1):
@@ -35,10 +38,11 @@ class VisionNetwork(TFModelV2):
                 padding="same",
                 data_format="channels_last",
                 name="conv{}".format(i))(last_layer)
+
         out_size, kernel, stride = filters[-1]
 
         # No final linear: Last layer is a Conv2D and uses num_outputs.
-        if no_final_linear:
+        if no_final_linear and num_outputs:
             last_layer = tf.keras.layers.Conv2D(
                 num_outputs,
                 kernel,
@@ -59,12 +63,23 @@ class VisionNetwork(TFModelV2):
                 padding="valid",
                 data_format="channels_last",
                 name="conv{}".format(i + 1))(last_layer)
-            conv_out = tf.keras.layers.Conv2D(
-                num_outputs, [1, 1],
-                activation=None,
-                padding="same",
-                data_format="channels_last",
-                name="conv_out")(last_layer)
+
+            # num_outputs defined. Use that to create an exact
+            # `num_output`-sized (1,1)-Conv2D.
+            if num_outputs:
+                conv_out = tf.keras.layers.Conv2D(
+                    num_outputs, [1, 1],
+                    activation=None,
+                    padding="same",
+                    data_format="channels_last",
+                    name="conv_out")(last_layer)
+            # num_outputs not known -> Flatten, then set self.num_outputs
+            # to the resulting number of nodes.
+            else:
+                self.last_layer_is_flattened = True
+                conv_out = tf.keras.layers.Flatten(
+                    data_format="channels_last")(last_layer)
+                self.num_outputs = conv_out.shape[1]
 
         # Build the value layers
         if vf_share_layers:
@@ -109,10 +124,15 @@ class VisionNetwork(TFModelV2):
         self.register_variables(self.base_model.variables)
 
     def forward(self, input_dict, state, seq_lens):
-        # explicit cast to float32 needed in eager
+        # Explicit cast to float32 needed in eager.
         model_out, self._value_out = self.base_model(
             tf.cast(input_dict["obs"], tf.float32))
-        return tf.squeeze(model_out, axis=[1, 2]), state
+        # Our last layer is already flat.
+        if self.last_layer_is_flattened:
+            return model_out, state
+        # Last layer is a n x [1,1] Conv2D -> Flatten.
+        else:
+            return tf.squeeze(model_out, axis=[1, 2]), state
 
     def value_function(self):
         return tf.reshape(self._value_out, [-1])

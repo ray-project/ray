@@ -169,7 +169,9 @@ Status RedisStoreClient::AsyncDeleteByIndex(const std::string &table_name,
       };
       RAY_CHECK_OK(AsyncBatchDelete(table_name, keys, batch_delete_callback));
     } else {
-      callback(status);
+      if (callback) {
+        callback(status);
+      }
     }
   };
 
@@ -203,7 +205,9 @@ Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
                             callback](const std::shared_ptr<CallbackReply> &reply) {
       ++(*finished_count);
       if (*finished_count == size) {
-        callback(Status::OK());
+        if (callback) {
+          callback(Status::OK());
+        }
       }
     };
     RAY_CHECK_OK(item.first->RunArgvAsync(item.second, delete_callback));

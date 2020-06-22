@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_DIRECT_TASK_H
-#define RAY_CORE_WORKER_DIRECT_TASK_H
+#pragma once
 
 #include <google/protobuf/repeated_field.h>
 
@@ -203,5 +202,3 @@ class CoreWorkerDirectTaskSubmitter {
 };
 
 };  // namespace ray
-
-#endif  // RAY_CORE_WORKER_DIRECT_TASK_H

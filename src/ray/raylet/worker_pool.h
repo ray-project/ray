@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RAYLET_WORKER_POOL_H
-#define RAY_RAYLET_WORKER_POOL_H
+#pragma once
 
 #include <inttypes.h>
 
@@ -290,5 +289,3 @@ class WorkerPool {
 }  // namespace raylet
 
 }  // namespace ray
-
-#endif  // RAY_RAYLET_WORKER_POOL_H

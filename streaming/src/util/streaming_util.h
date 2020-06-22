@@ -1,5 +1,5 @@
-#ifndef RAY_STREAMING_UTIL_H
-#define RAY_STREAMING_UTIL_H
+#pragma once
+
 #include <boost/any.hpp>
 #include <string>
 #include <unordered_map>
@@ -95,5 +95,3 @@ class Util {
 };
 }  // namespace streaming
 }  // namespace ray
-
-#endif  // RAY_STREAMING_UTIL_H
