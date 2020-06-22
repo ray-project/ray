@@ -11,6 +11,8 @@ import os
 
 import requests
 from pygments import formatters, highlight, lexers
+
+import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
 from ray.serve.context import FakeFlaskRequest, TaskContext
 from ray.serve.http_util import build_flask_request
@@ -173,3 +175,54 @@ def unpack_future(src: asyncio.Future, num_items: int) -> List[asyncio.Future]:
     src.add_done_callback(unwrap_callback)
 
     return dest_futures
+
+
+def try_schedule_resources_on_nodes(
+        requirements: List[dict],
+        ray_nodes: List = None,
+) -> List[bool]:
+    """Test given resource requirements can be scheduled on ray nodes.
+
+    Args:
+        requirements(List[dict]): The list of resource requirements.
+        ray_nodes(Optional[List]): The list of nodes. By default it reads from
+            ``ray.nodes()``.
+    Returns:
+        successfully_scheduled(List[bool]): A list with the same length as
+            requirements. Each element indicates whether or not the requirement
+            can be satisied.
+    """
+
+    if ray_nodes is None:
+        ray_nodes = ray.nodes()
+
+    node_to_resources = {
+        node["NodeID"]: node["Resources"]
+        for node in ray_nodes if node["Alive"]
+    }
+
+    successfully_scheduled = []
+
+    for resource_dict in requirements:
+        # Filter out zero value
+        resource_dict = {k: v for k, v in resource_dict.items() if v > 0}
+
+        for node_id, node_resource in node_to_resources.items():
+            # Check if we can schedule on this node
+            feasible = True
+            for key, count in resource_dict.items():
+                if node_resource.get(key, 0) - count < 0:
+                    feasible = False
+
+            # If we can, schedule it on this node
+            if feasible:
+                node_resource = node_to_resources[node_id]
+                for key, count in resource_dict.items():
+                    node_resource[key] -= count
+
+                successfully_scheduled.append(True)
+                break
+        else:
+            successfully_scheduled.append(False)
+
+    return successfully_scheduled
