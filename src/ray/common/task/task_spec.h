@@ -17,7 +17,7 @@ extern "C" {
 }
 
 namespace ray {
-typedef std::pair<ResourceSet, ray::FunctionDescriptor> SchedulingClassDescriptor;
+typedef ResourceSet SchedulingClassDescriptor;
 typedef int SchedulingClass;
 
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
@@ -195,15 +195,3 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 };
 
 }  // namespace ray
-
-/// We must define the hash since it's not auto-defined for vectors.
-namespace std {
-template <>
-struct hash<ray::SchedulingClassDescriptor> {
-  size_t operator()(ray::SchedulingClassDescriptor const &k) const {
-    size_t seed = std::hash<ray::ResourceSet>()(k.first);
-    seed ^= k.second->Hash();
-    return seed;
-  }
-};
-}  // namespace std

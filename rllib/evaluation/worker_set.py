@@ -1,5 +1,6 @@
 import logging
 from types import FunctionType
+from typing import TypeVar, Callable, List, Union
 
 import ray
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -7,12 +8,18 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker, \
     _validate_multiagent_config
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
     ShuffledInput
+from ray.rllib.env.env_context import EnvContext
+from ray.rllib.policy import Policy
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.types import PolicyID, TrainerConfigDict, EnvType
 
 tf = try_import_tf()
 
 logger = logging.getLogger(__name__)
+
+# Generic type var for foreach_* methods.
+T = TypeVar("T")
 
 
 @DeveloperAPI
@@ -23,12 +30,12 @@ class WorkerSet:
     """
 
     def __init__(self,
-                 env_creator,
-                 policy,
-                 trainer_config=None,
-                 num_workers=0,
-                 logdir=None,
-                 _setup=True):
+                 env_creator: Callable[[EnvContext], EnvType],
+                 policy: type,
+                 trainer_config: TrainerConfigDict = None,
+                 num_workers: int = 0,
+                 logdir: str = None,
+                 _setup: bool = True):
         """Create a new WorkerSet and initialize its workers.
 
         Arguments:
@@ -63,22 +70,22 @@ class WorkerSet:
             self._remote_workers = []
             self.add_workers(num_workers)
 
-    def local_worker(self):
+    def local_worker(self) -> RolloutWorker:
         """Return the local rollout worker."""
         return self._local_worker
 
-    def remote_workers(self):
+    def remote_workers(self) -> List["ActorHandle"]:
         """Return a list of remote rollout workers."""
         return self._remote_workers
 
-    def sync_weights(self):
+    def sync_weights(self) -> None:
         """Syncs weights of remote workers with the local worker."""
         if self.remote_workers():
             weights = ray.put(self.local_worker().get_weights())
             for e in self.remote_workers():
                 e.set_weights.remote(weights)
 
-    def add_workers(self, num_workers):
+    def add_workers(self, num_workers: int) -> None:
         """Creates and add a number of remote workers to this worker set.
 
         Args:
@@ -99,11 +106,11 @@ class WorkerSet:
                               self._remote_config) for i in range(num_workers)
         ])
 
-    def reset(self, new_remote_workers):
+    def reset(self, new_remote_workers: List["ActorHandle"]) -> None:
         """Called to change the set of remote workers."""
         self._remote_workers = new_remote_workers
 
-    def stop(self):
+    def stop(self) -> None:
         """Stop all rollout workers."""
         self.local_worker().stop()
         for w in self.remote_workers():
@@ -111,7 +118,7 @@ class WorkerSet:
             w.__ray_terminate__.remote()
 
     @DeveloperAPI
-    def foreach_worker(self, func):
+    def foreach_worker(self, func: Callable[[RolloutWorker], T]) -> List[T]:
         """Apply the given function to each worker instance."""
 
         local_result = [func(self.local_worker())]
@@ -120,7 +127,8 @@ class WorkerSet:
         return local_result + remote_results
 
     @DeveloperAPI
-    def foreach_worker_with_index(self, func):
+    def foreach_worker_with_index(
+            self, func: Callable[[RolloutWorker, int], T]) -> List[T]:
         """Apply the given function to each worker instance.
 
         The index will be passed as the second arg to the given function.
@@ -133,7 +141,7 @@ class WorkerSet:
         return local_result + remote_results
 
     @DeveloperAPI
-    def foreach_policy(self, func):
+    def foreach_policy(self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
         """Apply the given function to each worker's (policy, policy_id) tuple.
 
         Args:
@@ -153,12 +161,13 @@ class WorkerSet:
         return local_results + remote_results
 
     @DeveloperAPI
-    def trainable_policies(self):
+    def trainable_policies(self) -> List[PolicyID]:
         """Return the list of trainable policy ids."""
         return self.local_worker().foreach_trainable_policy(lambda _, pid: pid)
 
     @DeveloperAPI
-    def foreach_trainable_policy(self, func):
+    def foreach_trainable_policy(
+            self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
         """Apply `func` to all workers' Policies iff in `policies_to_train`.
 
         Args:
@@ -179,13 +188,17 @@ class WorkerSet:
         return local_results + remote_results
 
     @staticmethod
-    def _from_existing(local_worker, remote_workers=None):
+    def _from_existing(local_worker: RolloutWorker,
+                       remote_workers: List["ActorHandle"] = None):
         workers = WorkerSet(None, None, {}, _setup=False)
         workers._local_worker = local_worker
         workers._remote_workers = remote_workers or []
         return workers
 
-    def _make_worker(self, cls, env_creator, policy, worker_index, config):
+    def _make_worker(
+            self, cls: Callable, env_creator: Callable[[EnvContext], EnvType],
+            policy: Policy, worker_index: int,
+            config: TrainerConfigDict) -> Union[RolloutWorker, "ActorHandle"]:
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))

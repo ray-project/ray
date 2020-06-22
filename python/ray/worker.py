@@ -481,8 +481,9 @@ def init(address=None,
          plasma_directory=None,
          huge_pages=False,
          include_java=False,
-         include_webui=None,
-         webui_host="localhost",
+         include_dashboard=None,
+         dashboard_host="localhost",
+         dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
          job_id=None,
          configure_logging=True,
          logging_level=logging.INFO,
@@ -574,14 +575,16 @@ def init(address=None,
             Store with hugetlbfs support. Requires plasma_directory.
         include_java: Boolean flag indicating whether or not to enable java
             workers.
-        include_webui: Boolean flag indicating whether or not to start the web
-            UI for the Ray dashboard, which displays the status of the Ray
+        include_dashboard: Boolean flag indicating whether or not to start the
+            Ray dashboard, which displays the status of the Ray
             cluster. If this argument is None, then the UI will be started if
             the relevant dependencies are present.
-        webui_host: The host to bind the web UI server to. Can either be
+        dashboard_host: The host to bind the dashboard server to. Can either be
             localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
             By default, this is set to localhost to prevent access from
             external machines.
+        dashboard_port: The port to bind the dashboard server to. Defaults to
+            8265.
         job_id: The ID of this job.
         configure_logging: True (default) if configuration of logging is
             allowed here. Otherwise, the user may want to configure it
@@ -700,8 +703,9 @@ def init(address=None,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             include_java=include_java,
-            include_webui=include_webui,
-            webui_host=webui_host,
+            include_dashboard=include_dashboard,
+            dashboard_host=dashboard_host,
+            dashboard_port=dashboard_port,
             memory=memory,
             object_store_memory=object_store_memory,
             redis_max_memory=redis_max_memory,

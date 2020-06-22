@@ -1145,7 +1145,7 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
                 return {"mean_accuracy": self.training_iteration}
 
             def _save(self, path):
-                checkpoint = path + "/checkpoint"
+                checkpoint = os.path.join(path, "checkpoint")
                 with open(checkpoint, "w") as f:
                     f.write("OK")
                 return checkpoint

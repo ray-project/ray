@@ -6,7 +6,7 @@ from ray.rllib.agents.dqn.dqn import DQNTrainer, \
     DEFAULT_CONFIG as DQN_CONFIG, calculate_rr_weights
 from ray.rllib.agents.dqn.learner_thread import LearnerThread
 from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, \
-    SampleBatchType, _get_shared_metrics, _get_global_vars
+    _get_shared_metrics, _get_global_vars
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
@@ -16,6 +16,7 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_buffer import ReplayActor
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.actors import create_colocated
+from ray.rllib.utils.types import SampleBatchType
 
 # yapf: disable
 # __sphinx_doc_begin__
