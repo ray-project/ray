@@ -6,7 +6,6 @@ import shutil
 import json
 import sys
 import socket
-import subprocess
 import tempfile
 import time
 
@@ -20,7 +19,7 @@ import ray.cluster_utils
 import ray.test_utils
 import setproctitle
 
-from ray.test_utils import RayTestTimeoutException
+from ray.test_utils import check_call_ray, RayTestTimeoutException
 
 logger = logging.getLogger(__name__)
 
@@ -413,7 +412,8 @@ def test_ray_stack(ray_start_2_cpus):
     start_time = time.time()
     while time.time() - start_time < 30:
         # Attempt to parse the "ray stack" call.
-        output = ray.utils.decode(subprocess.check_output(["ray", "stack"]))
+        output = ray.utils.decode(
+            check_call_ray(["stack"], capture_stdout=True))
         if ("unique_name_1" in output and "unique_name_2" in output
                 and "unique_name_3" in output):
             success = True
