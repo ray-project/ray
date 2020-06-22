@@ -103,16 +103,16 @@ def generate_rsa_key_pair():
     return public_key, pem
 
 
-def _create_crm(config, gcp_credentials):
+def _create_crm(gcp_credentials):
     return discovery.build(
         "cloudresourcemanager", "v1", credentials=gcp_credentials)
 
 
-def _create_iam(config, gcp_credentials):
+def _create_iam(gcp_credentials):
     return discovery.build("iam", "v1", credentials=gcp_credentials)
 
 
-def _create_compute(config, gcp_credentials):
+def _create_compute(gcp_credentials):
     return discovery.build("compute", "v1", credentials=gcp_credentials)
 
 
@@ -129,29 +129,26 @@ def fetch_gcp_credentials_from_provider_config(provider_config):
         # If gcp_credentials is None, then discovery.build will search for
         # credentials in the local environment.
         return None
-    else:
-        # If parsing the gcp_credentials failed, then the user likely made a
-        # mistake in copying the credentials into the config yaml.
-        try:
-            service_account_info = json.loads(service_account_info_string)
-        except json.decoder.JSONDecodeError:
-            logger.warning(
-                "gcp_credentials found in cluster yaml file but "
-                "formatted improperly. Falling back to "
-                "GOOGLE_APPLICATION_CREDENTIALS environment variable.")
-            return None
-        gcp_credentials = service_account.Credentials.from_service_account_info(
-            service_account_info)
-        return gcp_credentials
+
+    # If parsing the gcp_credentials failed, then the user likely made a
+    # mistake in copying the credentials into the config yaml.
+    try:
+        service_account_info = json.loads(service_account_info_string)
+    except json.decoder.JSONDecodeError:
+        raise RuntimeError("gcp_credentials found in cluster yaml file but "
+                           "formatted improperly.")
+    gcp_credentials = service_account.Credentials.from_service_account_info(
+        service_account_info)
+    return gcp_credentials
 
 
 def bootstrap_gcp(config):
     gcp_credentials = fetch_gcp_credentials_from_provider_config(
         config["provider"])
 
-    crm = _create_crm(config, gcp_credentials)
-    iam = _create_iam(config, gcp_credentials)
-    compute = _create_compute(config, gcp_credentials)
+    crm = _create_crm(gcp_credentials)
+    iam = _create_iam(gcp_credentials)
+    compute = _create_compute(gcp_credentials)
 
     config = _configure_project(config, crm)
     config = _configure_iam_role(config, crm, iam)

@@ -7,7 +7,8 @@ from googleapiclient import discovery
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
-from ray.autoscaler.gcp.config import MAX_POLLS, POLL_INTERVAL, fetch_gcp_credentials_from_provider_config
+from ray.autoscaler.gcp.config import MAX_POLLS, POLL_INTERVAL, \
+        fetch_gcp_credentials_from_provider_config, _create_compute
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +47,7 @@ class GCPNodeProvider(NodeProvider):
         gcp_credentials = fetch_gcp_credentials_from_provider_config(
             provider_config)
 
-        self.compute = discovery.build(
-            "compute", "v1", credentials=gcp_credentials)
+        self.compute = _create_compute(gcp_credentials)
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
