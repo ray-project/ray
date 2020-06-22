@@ -1203,16 +1203,17 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   return_ids->pop_back();
 
   // Submit task.
-  Status status;
   TaskSpecification task_spec = builder.Build();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec, actor_id);
   } else {
     task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
                                   CurrentCallSite(), actor_handle->MaxTaskRetries());
-    status = direct_actor_submitter_->SubmitTask(task_spec);
+    io_service_.post([this, task_spec]() {
+      RAY_UNUSED(direct_actor_submitter_->SubmitTask(task_spec));
+    });
   }
-  return status;
+  return Status::OK();
 }
 
 Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill) {
