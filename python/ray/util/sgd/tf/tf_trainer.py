@@ -154,14 +154,6 @@ class TFTrainer:
 
         model = self.model_creator(self.config)
         model.set_weights(state["weights"])
-
-        # This part is due to ray.get() changing scalar np.int64 object to int
-        # state["optimizer_weights"][0] = np.array(
-        #     state["optimizer_weights"][0], dtype=np.int64)
-
-        # model.make_train_function()
-        # model.optimizer.set_weights(state["optimizer_weights"])
-
         return model
 
 
