@@ -1,7 +1,7 @@
 package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.BaseActor;
+import io.ray.api.BaseActorHandle;
 import io.ray.api.id.JobId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.config.RayConfig;
@@ -132,7 +132,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   }
 
   @Override
-  public void killActor(BaseActor actor, boolean noRestart) {
+  public void killActor(BaseActorHandle actor, boolean noRestart) {
     nativeKillActor(actor.getId().getBytes(), noRestart);
   }
 

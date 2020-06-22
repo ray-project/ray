@@ -17,6 +17,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
 from ray.autoscaler.log_timer import LogTimer
+from ray.autoscaler.docker import check_docker_running_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,6 @@ class KubernetesCommandRunner:
     def run(self,
             cmd=None,
             timeout=120,
-            allocate_tty=False,
             exit_on_fail=False,
             port_forward=None,
             with_output=False):
@@ -77,12 +77,12 @@ class KubernetesCommandRunner:
             raise Exception(exception_str)
         else:
             logger.info(self.log_prefix + "Running {}...".format(cmd))
-            final_cmd = self.kubectl + [
-                "exec",
-                "-it" if allocate_tty else "-i",
+            final_cmd = self.kubectl + ["exec", "-it"]
+            final_cmd += [
                 self.node_id,
                 "--",
-            ] + with_interactive(cmd)
+            ]
+            final_cmd += with_interactive(cmd)
             try:
                 if with_output:
                     return self.process_runner.check_output(
@@ -230,16 +230,13 @@ class SSHCommandRunner:
     def run(self,
             cmd,
             timeout=120,
-            allocate_tty=False,
             exit_on_fail=False,
             port_forward=None,
             with_output=False):
 
         self.set_ssh_ip_if_required()
 
-        ssh = ["ssh"]
-        if allocate_tty:
-            ssh.append("-tt")
+        ssh = ["ssh", "-tt"]
 
         if port_forward:
             if not isinstance(port_forward, list):
@@ -255,11 +252,13 @@ class SSHCommandRunner:
         if cmd:
             logger.info(self.log_prefix +
                         "Running {} on {}...".format(cmd, self.ssh_ip))
+            logger.info("Begin remote output from {}".format(self.ssh_ip))
             final_cmd += with_interactive(cmd)
         else:
             # We do this because `-o ControlMaster` causes the `-N` flag to
             # still create an interactive shell in some ssh versions.
-            final_cmd.append("while true; do sleep 86400; done")
+            final_cmd.append(quote("while true; do sleep 86400; done"))
+
         try:
             if with_output:
                 return self.process_runner.check_output(final_cmd)
@@ -269,9 +268,11 @@ class SSHCommandRunner:
             if exit_on_fail:
                 quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
                 raise click.ClickException(
-                    "Command failed: \n\n  {}\n".format(quoted_cmd))
+                    "Command failed: \n\n  {}\n".format(quoted_cmd)) from None
             else:
-                raise
+                raise click.ClickException(
+                    "SSH command Failed. See above for the output from the"
+                    " failure.") from None
 
     def run_rsync_up(self, source, target):
         self.set_ssh_ip_if_required()
@@ -294,6 +295,66 @@ class SSHCommandRunner:
             self.ssh_private_key, self.ssh_user, self.ssh_ip)
 
 
+class DockerCommandRunner(SSHCommandRunner):
+    def __init__(self, docker_config, **common_args):
+        self.ssh_command_runner = SSHCommandRunner(**common_args)
+        self.docker_name = docker_config["container_name"]
+        self.docker_config = docker_config
+        self.home_dir = None
+
+    def run(self,
+            cmd,
+            timeout=120,
+            exit_on_fail=False,
+            port_forward=None,
+            with_output=False):
+
+        return self.ssh_command_runner.run(
+            cmd,
+            timeout=timeout,
+            exit_on_fail=exit_on_fail,
+            port_forward=None,
+            with_output=False)
+
+    def check_container_status(self):
+        no_exist = "not_present"
+        cmd = check_docker_running_cmd(self.docker_name) + " ".join(
+            ["||", "echo", quote(no_exist)])
+        output = self.ssh_command_runner.run(
+            cmd, with_output=True).decode("utf-8").strip()
+        if no_exist in output:
+            return False
+        return output
+
+    def run_rsync_up(self, source, target):
+        self.ssh_command_runner.run_rsync_up(source, target)
+        if self.check_container_status():
+            self.ssh_command_runner.run("docker cp {} {}:{}".format(
+                target, self.docker_name, self.docker_expand_user(target)))
+
+    def run_rsync_down(self, source, target):
+        self.ssh_command_runner.run("docker cp {}:{} {}".format(
+            self.docker_name, self.docker_expand_user(source), source))
+        self.ssh_command_runner.run_rsync_down(source, target)
+
+    def remote_shell_command_str(self):
+        inner_str = self.ssh_command_runner.remote_shell_command_str().replace(
+            "ssh", "ssh -tt", 1).strip("\n")
+        return inner_str + " docker exec -it {} /bin/bash\n".format(
+            self.docker_name)
+
+    def docker_expand_user(self, string):
+        if string.find("~") == 0:
+            if self.home_dir is None:
+                self.home_dir = self.ssh_command_runner.run(
+                    "docker exec {} env | grep HOME | cut -d'=' -f2".format(
+                        self.docker_name),
+                    with_output=True).decode("utf-8").strip()
+            return string.replace("~", self.home_dir)
+        else:
+            return string
+
+
 class NodeUpdater:
     """A process for syncing files and running init commands on a node."""
 
@@ -309,19 +370,15 @@ class NodeUpdater:
                  ray_start_commands,
                  runtime_hash,
                  process_runner=subprocess,
-                 use_internal_ip=False):
+                 use_internal_ip=False,
+                 docker_config=None):
 
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
-        if provider_config["type"] == "kubernetes":
-            self.cmd_runner = KubernetesCommandRunner(
-                self.log_prefix, provider.namespace, node_id, auth_config,
-                process_runner)
-        else:
-            use_internal_ip = (use_internal_ip or provider_config.get(
-                "use_internal_ips", False))
-            self.cmd_runner = SSHCommandRunner(
-                self.log_prefix, node_id, provider, auth_config, cluster_name,
-                process_runner, use_internal_ip)
+        use_internal_ip = (use_internal_ip
+                           or provider_config.get("use_internal_ips", False))
+        self.cmd_runner = provider.get_command_runner(
+            self.log_prefix, node_id, auth_config, cluster_name,
+            process_runner, use_internal_ip, docker_config)
 
         self.daemon = True
         self.process_runner = process_runner
@@ -348,11 +405,13 @@ class NodeUpdater:
             if hasattr(e, "cmd"):
                 error_str = "(Exit Status {}) {}".format(
                     e.returncode, " ".join(e.cmd))
-            logger.error(self.log_prefix +
-                         "Error updating {}".format(error_str))
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
-            raise e
+            logger.error(self.log_prefix +
+                         "Error executing: {}".format(error_str) + "\n")
+            if isinstance(e, click.ClickException):
+                return
+            raise
 
         self.provider.set_node_tags(
             self.node_id, {
@@ -423,16 +482,19 @@ class NodeUpdater:
             # Run init commands
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})
-            with LogTimer(self.log_prefix +
-                          "Initialization commands completed"):
+            with LogTimer(
+                    self.log_prefix + "Initialization commands",
+                    show_status=True):
                 for cmd in self.initialization_commands:
                     self.cmd_runner.run(cmd)
 
-            with LogTimer(self.log_prefix + "Setup commands completed"):
+            with LogTimer(
+                    self.log_prefix + "Setup commands", show_status=True):
                 for cmd in self.setup_commands:
                     self.cmd_runner.run(cmd)
 
-        with LogTimer(self.log_prefix + "Ray start commands completed"):
+        with LogTimer(
+                self.log_prefix + "Ray start commands", show_status=True):
             for cmd in self.ray_start_commands:
                 self.cmd_runner.run(cmd)
 

@@ -1,6 +1,6 @@
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils import try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 
 _, nn = try_import_torch()
 
@@ -30,7 +30,7 @@ class TorchModelV2(ModelV2):
         if not isinstance(self, nn.Module):
             raise ValueError(
                 "Subclasses of TorchModelV2 must also inherit from "
-                "nn.Module, e.g., MyModel(TorchModel, nn.Module)")
+                "nn.Module, e.g., MyModel(TorchModelV2, nn.Module)")
 
         ModelV2.__init__(
             self,

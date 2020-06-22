@@ -152,6 +152,11 @@ void CoreWorkerProcess::EnsureInitialized() {
 CoreWorker &CoreWorkerProcess::GetCoreWorker() {
   EnsureInitialized();
   if (instance_->options_.num_workers == 1) {
+    // TODO(mehrdadn): Remove this when the bug is resolved.
+    // Somewhat consistently reproducible via
+    // python/ray/tests/test_basic.py::test_background_tasks_with_max_calls
+    // with -c opt on Windows.
+    RAY_CHECK(instance_->global_worker_) << "global_worker_ must not be NULL";
     return *instance_->global_worker_;
   }
   auto ptr = current_core_worker_.lock();
@@ -315,11 +320,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                 << ", raylet " << local_raylet_id;
 
   // Initialize gcs client.
-  if (RayConfig::instance().gcs_service_enabled()) {
-    gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(options_.gcs_options);
-  } else {
-    gcs_client_ = std::make_shared<ray::gcs::RedisGcsClient>(options_.gcs_options);
-  }
+  gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(options_.gcs_options);
+
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs();
 
@@ -368,6 +370,16 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       options_.ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
       options_.check_signals));
 
+  auto check_node_alive_fn = [this](const ClientID &node_id) {
+    auto node = gcs_client_->Nodes().Get(node_id);
+    RAY_CHECK(node.has_value());
+    return node->state() == rpc::GcsNodeInfo::ALIVE;
+  };
+  auto reconstruct_object_callback = [this](const ObjectID &object_id) {
+    io_service_.post([this, object_id]() {
+      RAY_CHECK_OK(object_recovery_manager_->RecoverObject(object_id));
+    });
+  };
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_, actor_manager_,
       [this](const TaskSpecification &spec, bool delay) {
@@ -382,7 +394,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         } else {
           RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
         }
-      }));
+      },
+      check_node_alive_fn, reconstruct_object_callback));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -418,8 +431,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   std::function<Status(const TaskSpecification &, const gcs::StatusCallback &)>
       actor_create_callback = nullptr;
-  if (RayConfig::instance().gcs_service_enabled() &&
-      RayConfig::instance().gcs_actor_service_enabled()) {
+  if (RayConfig::instance().gcs_actor_service_enabled()) {
     actor_create_callback = [this](const TaskSpecification &task_spec,
                                    const gcs::StatusCallback &callback) {
       return gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
@@ -1316,8 +1328,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
             // If we own the actor and the actor handle is no longer in scope,
             // terminate the actor. We do not do this if the GCS service is
             // enabled since then the GCS will terminate the actor for us.
-            if (!(RayConfig::instance().gcs_service_enabled() &&
-                  RayConfig::instance().gcs_actor_service_enabled())) {
+            if (!RayConfig::instance().gcs_actor_service_enabled()) {
               RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id
                             << " has gone out of scope, sending message to actor "
                             << actor_id << " to do a clean exit.";
@@ -1357,7 +1368,6 @@ Status CoreWorker::GetActorHandle(const ActorID &actor_id,
 
 Status CoreWorker::GetNamedActorHandle(const std::string &name,
                                        ActorHandle **actor_handle) {
-  RAY_CHECK(RayConfig::instance().gcs_service_enabled());
   RAY_CHECK(RayConfig::instance().gcs_actor_service_enabled());
   RAY_CHECK(!name.empty());
 
@@ -1375,15 +1385,14 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
   RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
       name, [this, &actor_id, name, ready, m, cv](
                 Status status, const boost::optional<gcs::ActorTableData> &result) {
-        if (!status.ok()) {
-          RAY_LOG(INFO) << "Failed to look up actor with name: " << name;
-          // Use a NIL actor ID to signal that the actor wasn't found.
-          actor_id = ActorID::Nil();
-        } else {
-          RAY_CHECK(result);
+        if (status.ok() && result) {
           auto actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(*result));
           actor_id = actor_handle->GetActorID();
           AddActorHandle(std::move(actor_handle), /*is_owner_handle=*/false);
+        } else {
+          RAY_LOG(INFO) << "Failed to look up actor with name: " << name;
+          // Use a NIL actor ID to signal that the actor wasn't found.
+          actor_id = ActorID::Nil();
         }
 
         // Notify the main thread that the RPC has finished.
@@ -1404,7 +1413,10 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
   Status status;
   if (actor_id.IsNil()) {
     std::stringstream stream;
-    stream << "Failed to look up actor with name '" << name << "'.";
+    stream
+        << "Failed to look up actor with name '" << name
+        << "'. It is either you look up the named actor you didn't create or the named "
+           "actor hasn't been created because named actor creation is asynchronous.";
     status = Status::NotFound(stream.str());
   } else {
     status = GetActorHandle(actor_id, actor_handle);
@@ -1445,7 +1457,7 @@ Status CoreWorker::AllocateReturnObjects(
       RAY_LOG(DEBUG) << "Creating return object " << object_ids[i];
       // Mark this object as containing other object IDs. The ref counter will
       // keep the inner IDs in scope until the outer one is out of scope.
-      if (!contained_object_ids[i].empty()) {
+      if (!contained_object_ids[i].empty() && !options_.is_local_mode) {
         reference_counter_->AddNestedObjectIds(object_ids[i], contained_object_ids[i],
                                                owner_address);
       }
@@ -1584,6 +1596,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   {
     absl::MutexLock lock(&mutex_);
     current_task_ = TaskSpecification();
+    if (task_spec.IsNormalTask()) {
+      resource_ids_.reset(new ResourceMappingType());
+    }
   }
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId();
 
@@ -1944,11 +1959,13 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_actor_id(actor_id_.Binary());
   auto used_resources_map = stats->mutable_used_resources();
   for (auto const &it : *resource_ids_) {
-    double quantity = 0;
+    rpc::ResourceAllocations allocations;
     for (auto const &pair : it.second) {
-      quantity += pair.second;
+      auto resource_slot = allocations.add_resource_slots();
+      resource_slot->set_slot(pair.first);
+      resource_slot->set_allocation(pair.second);
     }
-    (*used_resources_map)[it.first] = quantity;
+    (*used_resources_map)[it.first] = allocations;
   }
   stats->set_actor_title(actor_title_);
   google::protobuf::Map<std::string, std::string> webui_map(webui_display_.begin(),

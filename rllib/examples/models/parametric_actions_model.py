@@ -63,7 +63,7 @@ class ParametricActionsModel(DistributionalQTFModel):
         return self.action_embed_model.value_function()
 
 
-class TorchParametricActionsModel(DQNTorchModel, nn.Module):
+class TorchParametricActionsModel(DQNTorchModel):
     """PyTorch version of above ParametricActionsModel."""
 
     def __init__(self,
@@ -75,7 +75,6 @@ class TorchParametricActionsModel(DQNTorchModel, nn.Module):
                  true_obs_shape=(4, ),
                  action_embed_size=2,
                  **kw):
-        nn.Module.__init__(self)
         DQNTorchModel.__init__(self, obs_space, action_space, num_outputs,
                                model_config, name, **kw)
 

@@ -98,6 +98,9 @@ type Extension struct {
 	// but do not directly imply semantics to the core system. Labels can be used to organize and to select subsets of objects.
 	Labels map[string]string `json:"labels,omitempty"`
 
+	// The service acccount name.
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+
 	// NodeSelector specifies a map of key-value pairs. For the pod to be eligible
 	// to run on a node, the node must have each of the indicated key-value pairs as
 	// labels. Optional.

@@ -116,6 +116,13 @@ RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 // limit in Ray to avoid crashing with many small inlined task arguments.
 RAY_CONFIG(int64_t, max_grpc_message_size, 100 * 1024 * 1024)
 
+// Number of times to retry creating a gRPC server.
+RAY_CONFIG(int64_t, grpc_server_num_retries, 1)
+
+// Retry timeout for trying to create a gRPC server. Only applies if the number
+// of retries is non zero.
+RAY_CONFIG(int64_t, grpc_server_retry_timeout_milliseconds, 1000)
+
 // The min number of retries for direct actor creation tasks. The actual number
 // of creation retries will be MAX(actor_creation_min_retries, max_restarts).
 RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
@@ -290,14 +297,8 @@ RAY_CONFIG(int64_t, ping_gcs_rpc_server_interval_milliseconds, 1000)
 /// Maximum number of times to retry ping gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 600)
 
-/// Whether to enable gcs service.
-/// RAY_GCS_SERVICE_ENABLED is an env variable which only set in ci job.
-/// If the value of RAY_GCS_SERVICE_ENABLED is false, we will disable gcs service,
-/// otherwise gcs service is enabled.
-/// TODO(ffbin): Once we entirely migrate to service-based GCS, we should remove it.
-RAY_CONFIG(bool, gcs_service_enabled,
-           getenv("RAY_GCS_SERVICE_ENABLED") == nullptr ||
-               getenv("RAY_GCS_SERVICE_ENABLED") == std::string("true"))
+// Whether start the Plasma Store as a Raylet thread.
+RAY_CONFIG(bool, plasma_store_as_thread, false)
 
 RAY_CONFIG(bool, gcs_actor_service_enabled,
            getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") != nullptr &&

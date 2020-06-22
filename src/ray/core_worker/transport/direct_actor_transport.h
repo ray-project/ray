@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H
-#define RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H
+#pragma once
 
 #include <boost/asio/thread_pool.hpp>
 #include <boost/thread.hpp>
@@ -504,5 +503,3 @@ class CoreWorkerDirectTaskReceiver {
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H

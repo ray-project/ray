@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_STATS_TAG_DEFS_H
-#define RAY_STATS_TAG_DEFS_H
+#pragma once
 
 /// The definitions of tag keys that you can use every where.
 /// You can follow these examples to define and register your tag keys.
@@ -38,5 +37,3 @@ static const TagKeyType DriverPidKey = TagKeyType::Register("DriverPid");
 static const TagKeyType ResourceNameKey = TagKeyType::Register("ResourceName");
 
 static const TagKeyType ValueTypeKey = TagKeyType::Register("ValueType");
-
-#endif  // RAY_STATS_TAG_DEFS_H

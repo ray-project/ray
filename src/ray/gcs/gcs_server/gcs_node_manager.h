@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_NODE_MANAGER_H
-#define RAY_GCS_NODE_MANAGER_H
+#pragma once
 
 #include <ray/common/id.h>
 #include <ray/gcs/accessor.h>
@@ -36,13 +35,11 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Create a GcsNodeManager.
   ///
   /// \param io_service The event loop to run the monitor on.
-  /// \param node_info_accessor The node info accessor.
   /// \param error_info_accessor The error info accessor, which is used to report error.
-  /// \param gcs_pub_sub GCS message pushlisher.
+  /// \param gcs_pub_sub GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
   /// when detecting the death of nodes.
   explicit GcsNodeManager(boost::asio::io_service &io_service,
-                          gcs::NodeInfoAccessor &node_info_accessor,
                           gcs::ErrorInfoAccessor &error_info_accessor,
                           std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
                           std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
@@ -127,15 +124,25 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     node_added_listeners_.emplace_back(std::move(listener));
   }
 
+  /// Load initial data from gcs storage to memory cache asynchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param done Callback that will be called when load is complete.
+  void LoadInitialData(const EmptyCallback &done);
+
  protected:
   class NodeFailureDetector {
    public:
     /// Create a NodeFailureDetector.
     ///
     /// \param io_service The event loop to run the monitor on.
-    /// \param node_info_accessor The node info accessor.
+    /// \param gcs_table_storage GCS table external storage accessor.
+    /// \param gcs_pub_sub GCS message publisher.
+    /// \param on_node_death_callback Callback that will be called when node death is
+    /// detected.
     explicit NodeFailureDetector(
-        boost::asio::io_service &io_service, gcs::NodeInfoAccessor &node_info_accessor,
+        boost::asio::io_service &io_service,
+        std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
         std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
         std::function<void(const ClientID &)> on_node_death_callback);
 
@@ -169,8 +176,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     void ScheduleTick();
 
    protected:
-    /// Node info accessor.
-    gcs::NodeInfoAccessor &node_info_accessor_;
+    /// Storage for GCS tables.
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
     /// The callback of node death.
     std::function<void(const ClientID &)> on_node_death_callback_;
     /// The number of heartbeats that can be missed before a node is removed.
@@ -187,8 +194,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   };
 
  private:
-  /// Node info accessor.
-  gcs::NodeInfoAccessor &node_info_accessor_;
   /// Error info accessor.
   gcs::ErrorInfoAccessor &error_info_accessor_;
   /// Detector to detect the failure of node.
@@ -213,5 +218,3 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif  // RAY_GCS_NODE_MANAGER_H

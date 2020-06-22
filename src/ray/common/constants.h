@@ -12,17 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CONSTANTS_H_
-#define RAY_CONSTANTS_H_
+#pragma once
 
 #include <limits.h>
 #include <stdint.h>
 
 /// Length of Ray full-length IDs in bytes.
 constexpr size_t kUniqueIDSize = 20;
-
-/// Length of plasma ID in bytes.
-constexpr size_t kPlasmaIdSize = 20;
 
 /// An ObjectID's bytes are split into the task ID itself and the index of the
 /// object's creation. This is the maximum width of the object index in bits.
@@ -46,5 +42,3 @@ constexpr char kWorkerRayletConfigPlaceholder[] = "RAY_WORKER_RAYLET_CONFIG_PLAC
 /// Public DNS address which is is used to connect and get local IP.
 constexpr char kPublicDNSServerIp[] = "8.8.8.8";
 constexpr int kPublicDNSServerPort = 53;
-
-#endif  // RAY_CONSTANTS_H_

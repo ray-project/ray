@@ -6,7 +6,6 @@ import requests
 
 import ray
 from ray import serve
-from ray.serve.utils import retry_actor_failures
 from ray.cluster_utils import Cluster
 
 num_redis_shards = 1
@@ -24,13 +23,10 @@ for i in range(num_nodes):
         resources={str(i): 2},
         object_store_memory=object_store_memory,
         redis_max_memory=redis_max_memory,
-        webui_host="0.0.0.0")
+        dashboard_host="0.0.0.0")
 
 ray.init(
-    address=cluster.address,
-    include_webui=True,
-    webui_host="0.0.0.0",
-    log_to_driver=False)
+    address=cluster.address, dashboard_host="0.0.0.0", log_to_driver=False)
 serve.init()
 
 
@@ -42,11 +38,10 @@ class RandomKiller:
 
     def _get_all_serve_actors(self):
         master = serve.api._get_master_actor()
-        [router] = retry_actor_failures(master.get_router)
-        [http_proxy] = retry_actor_failures(master.get_http_proxy)
+        [router] = ray.get(master.get_router.remote())
+        [http_proxy] = ray.get(master.get_http_proxy.remote())
         all_handles = [master, router, http_proxy]
-        worker_handle_dict = retry_actor_failures(
-            master.get_all_worker_handles)
+        worker_handle_dict = ray.get(master.get_all_worker_handles.remote())
         for _, replica_dict in worker_handle_dict.items():
             all_handles.extend(list(replica_dict.values()))
 
@@ -54,7 +49,8 @@ class RandomKiller:
 
     def run(self):
         while True:
-            ray.kill(random.choice(self._get_all_serve_actors()))
+            ray.kill(
+                random.choice(self._get_all_serve_actors()), no_restart=False)
             time.sleep(self.kill_period_s)
 
 
@@ -82,8 +78,8 @@ class RandomTest:
             return new_endpoint
 
         serve.create_backend(new_endpoint, handler)
-        serve.create_endpoint(new_endpoint, "/" + new_endpoint)
-        serve.set_traffic(new_endpoint, {new_endpoint: 1.0})
+        serve.create_endpoint(
+            new_endpoint, backend=new_endpoint, route="/" + new_endpoint)
 
         self.endpoints.append(new_endpoint)
 

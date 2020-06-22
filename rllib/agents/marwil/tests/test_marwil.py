@@ -3,7 +3,8 @@ import unittest
 import ray
 import ray.rllib.agents.marwil as marwil
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import framework_iterator, check_compute_action
+from ray.rllib.utils.test_utils import check_compute_single_action, \
+    framework_iterator
 
 tf = try_import_tf()
 
@@ -28,7 +29,8 @@ class TestMARWIL(unittest.TestCase):
             trainer = marwil.MARWILTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 trainer.train()
-            check_compute_action(trainer, include_prev_action_reward=True)
+            check_compute_single_action(
+                trainer, include_prev_action_reward=True)
             trainer.stop()
 
 

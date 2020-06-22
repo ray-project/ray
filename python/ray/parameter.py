@@ -60,14 +60,16 @@ class RayParams:
             worker.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
-        include_webui: Boolean flag indicating whether to start the web
+        include_dashboard: Boolean flag indicating whether to start the web
             UI, which displays the status of the Ray cluster. If this value is
             None, then the UI will be started if the relevant dependencies are
             present.
-        webui_host: The host to bind the web UI server to. Can either be
+        dashboard_host: The host to bind the web UI server to. Can either be
             localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
             By default, this is set to localhost to prevent access from
             external machines.
+        dashboard_port: The port to bind the dashboard server to.
+            Defaults to 8265.
         logging_level: Logging level, default will be logging.INFO.
         logging_format: Logging format, default contains a timestamp,
             filename, line number, and message. See ray_constants.py.
@@ -115,8 +117,9 @@ class RayParams:
                  plasma_directory=None,
                  worker_path=None,
                  huge_pages=False,
-                 include_webui=None,
-                 webui_host="localhost",
+                 include_dashboard=None,
+                 dashboard_host="localhost",
+                 dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
                  logging_level=logging.INFO,
                  logging_format=ray_constants.LOGGER_FORMAT,
                  plasma_store_socket_name=None,
@@ -153,8 +156,9 @@ class RayParams:
         self.plasma_directory = plasma_directory
         self.worker_path = worker_path
         self.huge_pages = huge_pages
-        self.include_webui = include_webui
-        self.webui_host = webui_host
+        self.include_dashboard = include_dashboard
+        self.dashboard_host = dashboard_host
+        self.dashboard_port = dashboard_port
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir

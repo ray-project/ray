@@ -32,6 +32,8 @@ install_bazel() {
 install_base() {
   case "${OSTYPE}" in
     linux*)
+      # Expired apt key error: https://github.com/bazelbuild/bazel/issues/11470#issuecomment-633205152
+      curl -f -s -L -R https://bazel.build/bazel-release.pub.gpg | sudo apt-key add - || true
       sudo apt-get update -qq
       pkg_install_helper build-essential curl unzip libunwind-dev python3-pip python3-setuptools \
         tmux gdb
@@ -88,9 +90,17 @@ install_miniconda() {
         mkdir -p -- "${miniconda_dir}"
         # We're forced to pass -b for non-interactive mode.
         # Unfortunately it inhibits PATH modifications as a side effect.
-        "${miniconda_target}" -f -b -p "${miniconda_dir}" | grep --line-buffered -v \
-          '^\(reinstalling: \|installing: \|using -f (force) option\|installation finished\.\|$\)'
+        "${WORKSPACE_DIR}"/ci/suppress_output "${miniconda_target}" -f -b -p "${miniconda_dir}"
         conda="${miniconda_dir}/bin/conda"
+        ;;
+    esac
+  else
+    case "${OSTYPE}" in
+      darwin*)
+        # When 'conda' is preinstalled on Mac (as on GitHub Actions), it uses this directory
+        local miniconda_dir="/usr/local/miniconda"
+        sudo mkdir -p -- "${miniconda_dir}"
+        sudo chown -R "${USER}" "${miniconda_dir}"
         ;;
     esac
   fi
@@ -113,7 +123,7 @@ install_miniconda() {
     (
       set +x
       echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
-      conda install -q -y python="${PYTHON}"
+      "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
     )
   fi
 
@@ -161,7 +171,7 @@ install_pip() {
     "${python}" -m pip install --upgrade --quiet pip
 
     # If we're in a CI environment, do some configuration
-    if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
+    if [ "${CI-}" = true ]; then
       "${python}" -W ignore -m pip config -q --user set global.disable-pip-version-check True
       "${python}" -W ignore -m pip config -q --user set global.no-color True
       "${python}" -W ignore -m pip config -q --user set global.progress_bar off
@@ -219,7 +229,7 @@ install_dependencies() {
       *) tf_version="${TF_VERSION:-2.1.0}";;
     esac
     pip_packages+=(scipy tensorflow=="${tf_version}" cython==0.29.0 gym \
-      opencv-python-headless pyyaml pandas==0.24.2 requests feather-format lxml openpyxl xlrd \
+      opencv-python-headless pyyaml pandas==1.0.5 requests feather-format lxml openpyxl xlrd \
       py-spy pytest pytest-timeout networkx tabulate aiohttp uvicorn dataclasses pygments werkzeug \
       kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio scikit-learn==0.22.2 numba \
       Pillow prometheus_client boto3)
