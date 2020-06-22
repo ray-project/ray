@@ -501,7 +501,6 @@ class RolloutWorker(ParallelIteratorWorker):
             # Start the Sampler thread.
             self.sampler.start()
         else:
-            print()
             self.sampler = SyncSampler(
                 worker=self,
                 env=self.async_env,

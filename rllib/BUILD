@@ -437,7 +437,7 @@ py_test(
 py_test(
     name = "test_dyna",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/dyna/tests/test_dyna.py"]
 )
 

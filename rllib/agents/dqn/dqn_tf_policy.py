@@ -41,6 +41,8 @@ class QLoss:
                  v_min=-10.0,
                  v_max=10.0):
 
+        rewards = tf.cast(rewards, tf.float32)
+
         if num_atoms > 1:
             # Distributional Q-learning which corresponds to an entropy loss
 
@@ -49,7 +51,7 @@ class QLoss:
 
             # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
             r_tau = tf.expand_dims(
-                rewards, -1) + gamma**n_step * tf.expand_dims(
+                rewards, -1) + gamma ** n_step * tf.expand_dims(
                     1.0 - done_mask, -1) * tf.expand_dims(z, 0)
             r_tau = tf.clip_by_value(r_tau, v_min, v_max)
             b = (r_tau - v_min) / ((v_max - v_min) / float(num_atoms - 1))
@@ -88,7 +90,7 @@ class QLoss:
             q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
             # compute RHS of bellman equation
-            q_t_selected_target = rewards + gamma**n_step * q_tp1_best_masked
+            q_t_selected_target = rewards + gamma ** n_step * q_tp1_best_masked
 
             # compute the error (potentially clipped)
             self.td_error = (
