@@ -5,8 +5,7 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import SlimFC, AppendBiasLayer, \
     normc_initializer
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import get_activation_fn
-from ray.rllib.utils import try_import_torch
+from ray.rllib.utils.framework import get_activation_fn, try_import_torch
 
 torch, nn = try_import_torch()
 
@@ -26,22 +25,19 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
             model_config.get("fcnet_activation"), framework="torch")
         hiddens = model_config.get("fcnet_hiddens")
         no_final_linear = model_config.get("no_final_linear")
+        self.vf_share_layers = model_config.get("vf_share_layers")
         self.free_log_std = model_config.get("free_log_std")
 
-        # TODO(sven): implement case: vf_shared_layers = False.
-        # vf_share_layers = model_config.get("vf_share_layers")
-
-        logger.debug("Constructing fcnet {} {}".format(hiddens, activation))
-        layers = []
-        prev_layer_size = int(np.product(obs_space.shape))
-        self._logits = None
-
-        # Maybe generate free-floating bias variables for the second half of
+        # Generate free-floating bias variables for the second half of
         # the outputs.
         if self.free_log_std:
             assert num_outputs % 2 == 0, (
                 "num_outputs must be divisible by two", num_outputs)
             num_outputs = num_outputs // 2
+
+        layers = []
+        prev_layer_size = int(np.product(obs_space.shape))
+        self._logits = None
 
         # Create layers 0 to second-last.
         for size in hiddens[:-1]:
@@ -82,15 +78,29 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                     activation_fn=None)
             else:
                 self.num_outputs = (
-                    [np.product(obs_space.shape)] + hiddens[-1:-1])[-1]
+                    [np.product(obs_space.shape)] + hiddens[-1:])[-1]
 
         # Layer to add the log std vars to the state-dependent means.
-        if self.free_log_std:
+        if self.free_log_std and self._logits:
             self._append_free_log_std = AppendBiasLayer(num_outputs)
 
         self._hidden_layers = nn.Sequential(*layers)
 
-        # TODO(sven): Implement non-shared value branch.
+        self._value_branch_separate = None
+        if not self.vf_share_layers:
+            # Build a parallel set of hidden layers for the value net.
+            prev_vf_layer_size = int(np.product(obs_space.shape))
+            vf_layers = []
+            for size in hiddens:
+                vf_layers.append(
+                    SlimFC(
+                        in_size=prev_vf_layer_size,
+                        out_size=size,
+                        activation_fn=activation,
+                        initializer=normc_initializer(1.0)))
+                prev_vf_layer_size = size
+            self._value_branch_separate = nn.Sequential(*vf_layers)
+
         self._value_branch = SlimFC(
             in_size=prev_layer_size,
             out_size=1,
@@ -98,11 +108,14 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
             activation_fn=None)
         # Holds the current "base" output (before logits layer).
         self._features = None
+        # Holds the last input, in case value branch is separate.
+        self._last_flat_in = None
 
     @override(TorchModelV2)
     def forward(self, input_dict, state, seq_lens):
         obs = input_dict["obs_flat"].float()
-        self._features = self._hidden_layers(obs.reshape(obs.shape[0], -1))
+        self._last_flat_in = obs.reshape(obs.shape[0], -1)
+        self._features = self._hidden_layers(self._last_flat_in)
         logits = self._logits(self._features) if self._logits else \
             self._features
         if self.free_log_std:
@@ -112,4 +125,8 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
     @override(TorchModelV2)
     def value_function(self):
         assert self._features is not None, "must call forward() first"
-        return self._value_branch(self._features).squeeze(1)
+        if self._value_branch_separate:
+            return self._value_branch(
+                self._value_branch_separate(self._last_flat_in)).squeeze(1)
+        else:
+            return self._value_branch(self._features).squeeze(1)

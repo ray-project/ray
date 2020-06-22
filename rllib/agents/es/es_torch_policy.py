@@ -8,16 +8,20 @@ import ray
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
+from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.space_utils import unbatch
+from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
+    unbatch
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
 torch, _ = try_import_torch()
+tree = try_import_tree()
 
 
 def before_init(policy, observation_space, action_space, config):
     policy.action_noise_std = config["action_noise_std"]
+    policy.action_space_struct = get_base_struct_from_space(action_space)
     policy.preprocessor = ModelCatalog.get_preprocessor_for_space(
         observation_space)
     policy.observation_filter = get_filter(config["observation_filter"],
@@ -50,7 +54,14 @@ def before_init(policy, observation_space, action_space, config):
     type(policy).set_flat_weights = _set_flat_weights
     type(policy).get_flat_weights = _get_flat_weights
 
-    def _compute_actions(policy, obs_batch, add_noise=False, update=True):
+    def _compute_actions(policy,
+                         obs_batch,
+                         add_noise=False,
+                         update=True,
+                         **kwargs):
+        # Batch is given as list -> Try converting to numpy first.
+        if isinstance(obs_batch, list) and len(obs_batch) == 1:
+            obs_batch = obs_batch[0]
         observation = policy.preprocessor.transform(obs_batch)
         observation = policy.observation_filter(
             observation[None], update=update)
@@ -60,10 +71,18 @@ def before_init(policy, observation_space, action_space, config):
             SampleBatch.CUR_OBS: observation
         }, [], None)
         dist = policy.dist_class(dist_inputs, policy.model)
-        action = dist.sample().detach().numpy()
+        action = dist.sample()
+
+        def _add_noise(single_action, single_action_space):
+            single_action = single_action.detach().numpy()
+            if add_noise and isinstance(single_action_space, gym.spaces.Box):
+                single_action += np.random.randn(*single_action.shape) * \
+                                 policy.action_noise_std
+            return single_action
+
+        action = tree.map_structure(_add_noise, action,
+                                    policy.action_space_struct)
         action = unbatch(action)
-        if add_noise and isinstance(policy.action_space, gym.spaces.Box):
-            action += np.random.randn(*action.shape) * policy.action_noise_std
         return action
 
     type(policy).compute_actions = _compute_actions
@@ -87,7 +106,7 @@ def make_model_and_action_dist(policy, observation_space, action_space,
         dist_type="deterministic",
         framework="torch")
     model = ModelCatalog.get_model_v2(
-        observation_space,
+        policy.preprocessor.observation_space,
         action_space,
         num_outputs=dist_dim,
         model_config=config["model"],

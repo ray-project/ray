@@ -226,6 +226,7 @@ class TrialRunner:
             #  which may also contain trial checkpoints. We should selectively
             #  sync the necessary files instead.
             self._syncer.sync_down_if_needed()
+            self._syncer.wait()
 
             if not self.checkpoint_exists(self._local_checkpoint_dir):
                 raise ValueError("Called resume when no checkpoint exists "
@@ -390,10 +391,14 @@ class TrialRunner:
         self.trial_executor.try_checkpoint_metadata(trial)
 
     def debug_string(self, delim="\n"):
+        result_keys = [
+            list(t.last_result) for t in self.get_trials() if t.last_result
+        ]
+        metrics = set().union(*result_keys)
         messages = [
             self._scheduler_alg.debug_string(),
             self.trial_executor.debug_string(),
-            trial_progress_str(self.get_trials()),
+            trial_progress_str(self.get_trials(), metrics),
         ]
         return delim.join(messages)
 
@@ -473,6 +478,7 @@ class TrialRunner:
             result = self.trial_executor.fetch_result(trial)
 
             is_duplicate = RESULT_DUPLICATE in result
+            force_checkpoint = result.get(SHOULD_CHECKPOINT, False)
             # TrialScheduler and SearchAlgorithm still receive a
             # notification because there may be special handling for
             # the `on_trial_complete` hook.
@@ -511,8 +517,7 @@ class TrialRunner:
             # the scheduler decision is STOP or PAUSE. Note that
             # PAUSE only checkpoints to memory and does not update
             # the global checkpoint state.
-            self._checkpoint_trial_if_needed(
-                trial, force=result.get(SHOULD_CHECKPOINT, False))
+            self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
 
             if trial.is_saving:
                 # Cache decision to execute on after the save is processed.

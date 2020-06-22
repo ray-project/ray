@@ -11,8 +11,8 @@ import ray
 from ray.rllib.agents import Trainer, with_common_config
 
 from ray.rllib.agents.ars.ars_tf_policy import ARSTFPolicy
-from ray.rllib.agents.es import optimizers
-from ray.rllib.agents.es import utils
+from ray.rllib.agents.es import optimizers, utils
+from ray.rllib.agents.es.es import validate_config
 from ray.rllib.agents.es.es_tf_policy import rollout
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -163,7 +163,7 @@ class Worker:
 
 
 def get_policy_class(config):
-    if config["use_pytorch"]:
+    if config["framework"] == "torch":
         from ray.rllib.agents.ars.ars_torch_policy import ARSTorchPolicy
         policy_cls = ARSTorchPolicy
     else:
@@ -179,6 +179,7 @@ class ARSTrainer(Trainer):
 
     @override(Trainer)
     def _init(self, config, env_creator):
+        validate_config(config)
         env_context = EnvContext(config["env_config"] or {}, worker_index=0)
         env = env_creator(env_context)
 
@@ -206,6 +207,13 @@ class ARSTrainer(Trainer):
         self.episodes_so_far = 0
         self.reward_list = []
         self.tstart = time.time()
+
+    @override(Trainer)
+    def get_policy(self, policy=DEFAULT_POLICY_ID):
+        if policy != DEFAULT_POLICY_ID:
+            raise ValueError("ARS has no policy '{}'! Use {} "
+                             "instead.".format(policy, DEFAULT_POLICY_ID))
+        return self.policy
 
     @override(Trainer)
     def _train(self):

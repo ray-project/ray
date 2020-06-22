@@ -13,14 +13,13 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.postprocessing import compute_advantages
-from ray.rllib.utils import try_import_tf
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule, TFPolicy
 from ray.rllib.agents.ppo.ppo_tf_policy import KLCoeffMixin, ValueNetworkMixin
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.explained_variance import explained_variance
-from ray.rllib.utils.tf_ops import make_tf_callable
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
 
 tf = try_import_tf()
 
@@ -209,7 +208,7 @@ def build_appo_model(policy, obs_space, action_space, config):
         logit_dim,
         config["model"],
         name=POLICY_SCOPE,
-        framework="torch" if config["use_pytorch"] else "tf")
+        framework="torch" if config["framework"] == "torch" else "tf")
     policy.model_variables = policy.model.variables()
 
     policy.target_model = ModelCatalog.get_model_v2(
@@ -218,7 +217,7 @@ def build_appo_model(policy, obs_space, action_space, config):
         logit_dim,
         config["model"],
         name=TARGET_POLICY_SCOPE,
-        framework="torch" if config["use_pytorch"] else "tf")
+        framework="torch" if config["framework"] == "torch" else "tf")
     policy.target_model_variables = policy.target_model.variables()
 
     return policy.model

@@ -34,10 +34,9 @@ from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
 from ray.rllib.policy.torch_policy import LearningRateSchedule as TorchLR, \
     EntropyCoeffSchedule as TorchEntropyCoeffSchedule
-from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.rllib.utils.tf_ops import make_tf_callable
+from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
 tf = try_import_tf()
@@ -58,7 +57,7 @@ class CentralizedValueMixin:
     """Add method to evaluate the central value function from the model."""
 
     def __init__(self):
-        if not self.config["use_pytorch"]:
+        if self.config["framework"] != "torch":
             self.compute_central_vf = make_tf_callable(self.get_session())(
                 self.model.central_value_function)
         else:
@@ -71,7 +70,7 @@ def centralized_critic_postprocessing(policy,
                                       sample_batch,
                                       other_agent_batches=None,
                                       episode=None):
-    pytorch = policy.config["use_pytorch"]
+    pytorch = policy.config["framework"] == "torch"
     if (pytorch and hasattr(policy, "compute_central_vf")) or \
             (not pytorch and policy.loss_initialized()):
         assert other_agent_batches is not None
@@ -126,9 +125,9 @@ def loss_with_central_critic(policy, model, dist_class, train_batch):
         train_batch[SampleBatch.CUR_OBS], train_batch[OPPONENT_OBS],
         train_batch[OPPONENT_ACTION])
 
-    func = TFLoss if not policy.config["use_pytorch"] else TorchLoss
+    func = TFLoss if not policy.config["framework"] == "torch" else TorchLoss
     adv = tf.ones_like(train_batch[Postprocessing.ADVANTAGES], dtype=tf.bool) \
-        if not policy.config["use_pytorch"] else \
+        if policy.config["framework"] != "torch" else \
         torch.ones_like(train_batch[Postprocessing.ADVANTAGES],
                         dtype=torch.bool)
 
@@ -194,7 +193,8 @@ CCPPOTorchPolicy = PPOTorchPolicy.with_updates(
 
 
 def get_policy_class(config):
-    return CCPPOTorchPolicy if config["use_pytorch"] else CCPPOTFPolicy
+    return CCPPOTorchPolicy if config["framework"] == "torch" \
+        else CCPPOTFPolicy
 
 
 CCTrainer = PPOTrainer.with_updates(
@@ -214,15 +214,14 @@ if __name__ == "__main__":
     config = {
         "env": TwoStepGame,
         "batch_mode": "complete_episodes",
-        "eager": False,
         "num_workers": 0,
         "multiagent": {
             "policies": {
                 "pol1": (None, Discrete(6), TwoStepGame.action_space, {
-                    "use_pytorch": args.torch
+                    "framework": "torch" if args.torch else "tf",
                 }),
                 "pol2": (None, Discrete(6), TwoStepGame.action_space, {
-                    "use_pytorch": args.torch
+                    "framework": "torch" if args.torch else "tf",
                 }),
             },
             "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
@@ -230,7 +229,7 @@ if __name__ == "__main__":
         "model": {
             "custom_model": "cc_model",
         },
-        "use_pytorch": args.torch,
+        "framework": "torch" if args.torch else "tf",
     }
 
     stop = {

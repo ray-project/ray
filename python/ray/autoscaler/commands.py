@@ -103,7 +103,7 @@ def create_or_update_cluster(config_file, override_min_workers,
 
 
 def _bootstrap_config(config):
-    config = fillout_defaults(config)
+    config = prepare_config(config)
 
     hasher = hashlib.sha1()
     hasher.update(json.dumps([config], sort_keys=True).encode("utf-8"))
@@ -133,10 +133,14 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name,
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    config = fillout_defaults(config)
+    config = prepare_config(config)
     validate_config(config)
 
     confirm("This will destroy your cluster", yes)
+
+    if not workers_only:
+        exec_cluster(config_file, "ray stop", False, False, False, False,
+                     False, override_cluster_name, None, False)
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
@@ -206,7 +210,8 @@ def kill_node(config_file, yes, hard, override_cluster_name):
                 initialization_commands=[],
                 setup_commands=[],
                 ray_start_commands=[],
-                runtime_hash="")
+                runtime_hash="",
+                docker_config=config["docker"])
 
             _exec(updater, "ray stop", False, False)
 
@@ -227,6 +232,20 @@ def monitor_cluster(cluster_config_file, num_lines, override_cluster_name):
     cmd = "tail -n {} -f /tmp/ray/session_*/logs/monitor*".format(num_lines)
     exec_cluster(cluster_config_file, cmd, False, False, False, False, False,
                  override_cluster_name, None)
+
+
+def warn_about_bad_start_command(start_commands):
+    ray_start_cmd = list(filter(lambda x: "ray start" in x, start_commands))
+    if len(ray_start_cmd) == 0:
+        logger.warning(
+            "Ray start is not included in the head_start_ray_commands section."
+        )
+    if not any("autoscaling-config" in x for x in ray_start_cmd):
+        logger.warning(
+            "Ray start on the head node does not have the flag"
+            "--autoscaling-config set. The head node will not launch"
+            "workers. Add --autoscaling-config=~/ray_bootstrap_config.yaml"
+            "to ray start in the head_start_ray_commands section.")
 
 
 def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
@@ -268,7 +287,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         start = time.time()
         head_node = None
         while True:
-            if time.time() - start > 5:
+            if time.time() - start > 50:
                 raise RuntimeError("Failed to create head node.")
             nodes = provider.non_terminated_nodes(head_node_tags)
             if len(nodes) == 1:
@@ -317,6 +336,9 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             init_commands = config["head_setup_commands"]
             ray_start_commands = config["head_start_ray_commands"]
 
+        if not no_restart:
+            warn_about_bad_start_command(ray_start_commands)
+
         updater = NodeUpdaterThread(
             node_id=head_node,
             provider_config=config["provider"],
@@ -328,7 +350,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             setup_commands=init_commands,
             ray_start_commands=ray_start_commands,
             runtime_hash=runtime_hash,
-        )
+            docker_config=config["docker"])
         updater.start()
         updater.join()
 
@@ -449,7 +471,7 @@ def exec_cluster(config_file,
             setup_commands=[],
             ray_start_commands=[],
             runtime_hash="",
-        )
+            docker_config=config["docker"])
 
         def wrap_docker(command):
             container_name = config["docker"]["container_name"]
@@ -513,7 +535,6 @@ def _exec(updater, cmd, screen, tmux, port_forward=None, with_output=False):
             cmd = " ".join(cmd)
     return updater.cmd_runner.run(
         cmd,
-        allocate_tty=True,
         exit_on_fail=True,
         port_forward=port_forward,
         with_output=with_output)
@@ -572,7 +593,7 @@ def rsync(config_file,
                 setup_commands=[],
                 ray_start_commands=[],
                 runtime_hash="",
-            )
+                docker_config=config["docker"])
             if down:
                 rsync = updater.rsync_down
             else:

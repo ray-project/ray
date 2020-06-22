@@ -7,7 +7,7 @@ from ray.rllib.utils import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, \
     SMALL_NUMBER, try_import_tree
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-from ray.rllib.utils.space_utils import get_base_struct_from_space
+from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 
 tf = try_import_tf()
 tfp = try_import_tfp()
@@ -230,7 +230,7 @@ class DiagGaussian(TFActionDistribution):
     @override(ActionDistribution)
     def logp(self, x):
         return -0.5 * tf.reduce_sum(
-            tf.square((x - self.mean) / self.std), axis=1) - \
+            tf.square((tf.to_float(x) - self.mean) / self.std), axis=1) - \
             0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) - \
             tf.reduce_sum(self.log_std, axis=1)
 

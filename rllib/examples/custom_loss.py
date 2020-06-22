@@ -19,7 +19,7 @@ from ray import tune
 from ray.rllib.examples.models.custom_loss_model import CustomLossModel, \
     TorchCustomLossModel
 from ray.rllib.models import ModelCatalog
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()
 
@@ -53,11 +53,11 @@ if __name__ == "__main__":
         "num_workers": 0,
         "model": {
             "custom_model": "custom_loss",
-            "custom_options": {
+            "custom_model_config": {
                 "input_files": args.input_files,
             },
         },
-        "use_pytorch": args.torch,
+        "framework": "torch" if args.torch else "tf",
     }
 
     stop = {

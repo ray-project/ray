@@ -3,8 +3,8 @@ import unittest
 
 import ray
 import ray.rllib.agents.ddpg.apex as apex_ddpg
-from ray.rllib.utils.test_utils import check, framework_iterator, \
-    check_compute_action
+from ray.rllib.utils.test_utils import check, check_compute_single_action, \
+    framework_iterator
 
 
 class TestApexDDPG(unittest.TestCase):
@@ -17,7 +17,7 @@ class TestApexDDPG(unittest.TestCase):
     def test_apex_ddpg_compilation_and_per_worker_epsilon_values(self):
         """Test whether an APEX-DDPGTrainer can be built on all frameworks."""
         config = apex_ddpg.APEX_DDPG_DEFAULT_CONFIG.copy()
-        config["num_workers"] = 3
+        config["num_workers"] = 2
         config["prioritized_replay"] = True
         config["timesteps_per_iteration"] = 100
         config["min_iter_time_s"] = 1
@@ -41,7 +41,7 @@ class TestApexDDPG(unittest.TestCase):
 
             for _ in range(num_iterations):
                 print(trainer.train())
-            check_compute_action(trainer)
+            check_compute_single_action(trainer)
 
             # Test again per-worker scale distribution
             # (should not have changed).

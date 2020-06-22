@@ -17,106 +17,6 @@ from ray._raylet import GlobalStateAccessor
 logger = logging.getLogger(__name__)
 
 
-def _parse_client_table(redis_client):
-    """Read the client table.
-
-    Args:
-        redis_client: A client to the primary Redis shard.
-
-    Returns:
-        A list of information about the nodes in the cluster.
-    """
-    NIL_CLIENT_ID = ray.ClientID.nil().binary()
-    message = redis_client.execute_command(
-        "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("CLIENT"), "",
-        NIL_CLIENT_ID)
-
-    # Handle the case where no clients are returned. This should only
-    # occur potentially immediately after the cluster is started.
-    if message is None:
-        return []
-
-    node_info = {}
-    gcs_entry = gcs_utils.GcsEntry.FromString(message)
-
-    ordered_node_ids = []
-
-    # Since GCS entries are append-only, we override so that
-    # only the latest entries are kept.
-    for entry in gcs_entry.entries:
-        item = gcs_utils.GcsNodeInfo.FromString(entry)
-
-        node_id = ray.utils.binary_to_hex(item.node_id)
-
-        if item.state == gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE"):
-            ordered_node_ids.append(node_id)
-            node_info[node_id] = {
-                "NodeID": node_id,
-                "Alive": True,
-                "NodeManagerAddress": item.node_manager_address,
-                "NodeManagerHostname": item.node_manager_hostname,
-                "NodeManagerPort": item.node_manager_port,
-                "ObjectManagerPort": item.object_manager_port,
-                "ObjectStoreSocketName": item.object_store_socket_name,
-                "RayletSocketName": item.raylet_socket_name
-            }
-
-        # If this node is being removed, then it must
-        # have previously been inserted, and
-        # it cannot have previously been removed.
-        else:
-            assert node_id in node_info, "node not found!"
-            assert node_info[node_id]["Alive"], (
-                "Unexpected duplicate removal of node.")
-            node_info[node_id]["Alive"] = False
-    # Fill resource info.
-    for node_id in ordered_node_ids:
-        if node_info[node_id]["Alive"]:
-            resources = _parse_resource_table(redis_client, node_id)
-        else:
-            resources = {}
-        node_info[node_id]["Resources"] = resources
-    # NOTE: We return the list comprehension below instead of simply doing
-    # 'list(node_info.values())' in order to have the nodes appear in the order
-    # that they joined the cluster. Python dictionaries do not preserve
-    # insertion order. We could use an OrderedDict, but then we'd have to be
-    # sure to only insert a given node a single time (clients that die appear
-    # twice in the GCS log).
-    return [node_info[node_id] for node_id in ordered_node_ids]
-
-
-def _parse_resource_table(redis_client, client_id):
-    """Read the resource table with given client id.
-
-    Args:
-        redis_client: A client to the primary Redis shard.
-        client_id: The client ID of the node in hex.
-
-    Returns:
-        A dict of resources about this node.
-    """
-    message = redis_client.execute_command(
-        "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("NODE_RESOURCE"), "",
-        ray.utils.hex_to_binary(client_id))
-
-    if message is None:
-        return {}
-
-    resources = {}
-    gcs_entry = gcs_utils.GcsEntry.FromString(message)
-    entries_len = len(gcs_entry.entries)
-    if entries_len % 2 != 0:
-        raise ValueError("Invalid entry size for resource lookup: " +
-                         str(entries_len))
-
-    for i in range(0, entries_len, 2):
-        resource_table_data = gcs_utils.ResourceTableData.FromString(
-            gcs_entry.entries[i + 1])
-        resources[decode(
-            gcs_entry.entries[i])] = resource_table_data.resource_capacity
-    return resources
-
-
 class GlobalState:
     """A class used to interface with the Ray control state.
 
@@ -302,27 +202,44 @@ class GlobalState:
         }
         return object_info
 
-    def _actor_table(self, actor_id):
+    def actor_table(self, actor_id):
         """Fetch and parse the actor table information for a single actor ID.
 
         Args:
-            actor_id: A actor ID to get information about.
+            actor_id: A hex string of the actor ID to fetch information about.
+                If this is None, then the actor table is fetched.
 
         Returns:
-            A dictionary with information about the actor ID in question.
+            Information from the actor table.
         """
-        assert isinstance(actor_id, ray.ActorID)
-        message = self.redis_client.execute_command(
-            "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("ACTOR"), "",
-            actor_id.binary())
-        if message is None:
-            return {}
-        gcs_entries = gcs_utils.GcsEntry.FromString(message)
+        self._check_connected()
 
-        assert len(gcs_entries.entries) > 0
-        actor_table_data = gcs_utils.ActorTableData.FromString(
-            gcs_entries.entries[-1])
+        if actor_id is not None:
+            actor_id = ray.ActorID(hex_to_binary(actor_id))
+            actor_info = self.global_state_accessor.get_actor_info(actor_id)
+            if actor_info is None:
+                return {}
+            else:
+                actor_table_data = gcs_utils.ActorTableData.FromString(
+                    actor_info)
+                return self._gen_actor_info(actor_table_data)
+        else:
+            actor_table = self.global_state_accessor.get_actor_table()
+            results = {}
+            for i in range(len(actor_table)):
+                actor_table_data = gcs_utils.ActorTableData.FromString(
+                    actor_table[i])
+                results[binary_to_hex(actor_table_data.actor_id)] = \
+                    self._gen_actor_info(actor_table_data)
 
+            return results
+
+    def _gen_actor_info(self, actor_table_data):
+        """Parse actor table data.
+
+        Returns:
+            Information from actor table.
+        """
         actor_info = {
             "ActorID": binary_to_hex(actor_table_data.actor_id),
             "JobID": binary_to_hex(actor_table_data.job_id),
@@ -337,51 +254,61 @@ class GlobalState:
             "State": actor_table_data.state,
             "Timestamp": actor_table_data.timestamp,
         }
-
         return actor_info
 
-    def actor_table(self, actor_id=None):
-        """Fetch and parse the actor table information for one or more actor IDs.
+    def node_resource_table(self, node_id=None):
+        """Fetch and parse the node resource table info for one.
 
         Args:
-            actor_id: A hex string of the actor ID to fetch information about.
-                If this is None, then the actor table is fetched.
+            node_id: An node ID to fetch information about.
 
         Returns:
-            Information from the actor table.
+            Information from the node resource table.
         """
         self._check_connected()
-        if actor_id is not None:
-            actor_id = ray.ActorID(hex_to_binary(actor_id))
-            return self._actor_table(actor_id)
+
+        node_id = ray.ClientID(hex_to_binary(node_id))
+        node_resource_bytes = \
+            self.global_state_accessor.get_node_resource_info(node_id)
+        if node_resource_bytes is None:
+            return {}
         else:
-            actor_table_keys = list(
-                self.redis_client.scan_iter(
-                    match=gcs_utils.TablePrefix_ACTOR_string + "*"))
-            actor_ids_binary = [
-                key[len(gcs_utils.TablePrefix_ACTOR_string):]
-                for key in actor_table_keys
-            ]
+            node_resource_info = gcs_utils.ResourceMap.FromString(
+                node_resource_bytes)
+            return {
+                key: value.resource_capacity
+                for key, value in node_resource_info.items.items()
+            }
 
-            results = {}
-            for actor_id_binary in actor_ids_binary:
-                results[binary_to_hex(actor_id_binary)] = self._actor_table(
-                    ray.ActorID(actor_id_binary))
-            return results
-
-    def client_table(self):
-        """Fetch and parse the Redis DB client table.
+    def node_table(self):
+        """Fetch and parse the Gcs node info table.
 
         Returns:
-            Information about the Ray clients in the cluster.
+            Information about the node in the cluster.
         """
         self._check_connected()
-        client_table = _parse_client_table(self.redis_client)
 
-        for client in client_table:
-            # These are equivalent and is better for application developers.
-            client["alive"] = client["Alive"]
-        return client_table
+        node_table = self.global_state_accessor.get_node_table()
+
+        results = []
+        for node_info_item in node_table:
+            item = gcs_utils.GcsNodeInfo.FromString(node_info_item)
+            node_info = {
+                "NodeID": ray.utils.binary_to_hex(item.node_id),
+                "Alive": item.state ==
+                gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE"),
+                "NodeManagerAddress": item.node_manager_address,
+                "NodeManagerHostname": item.node_manager_hostname,
+                "NodeManagerPort": item.node_manager_port,
+                "ObjectManagerPort": item.object_manager_port,
+                "ObjectStoreSocketName": item.object_store_socket_name,
+                "RayletSocketName": item.raylet_socket_name
+            }
+            node_info["alive"] = node_info["Alive"]
+            node_info["Resources"] = self.node_resource_table(
+                node_info["NodeID"]) if node_info["Alive"] else {}
+            results.append(node_info)
+        return results
 
     def job_table(self):
         """Fetch and parse the Redis job table.
@@ -597,7 +524,7 @@ class GlobalState:
         self._check_connected()
 
         node_id_to_address = {}
-        for node_info in self.client_table():
+        for node_info in self.node_table():
             node_id_to_address[node_info["NodeID"]] = "{}:{}".format(
                 node_info["NodeManagerAddress"],
                 node_info["ObjectManagerPort"])
@@ -728,7 +655,7 @@ class GlobalState:
         self._check_connected()
 
         resources = defaultdict(int)
-        clients = self.client_table()
+        clients = self.node_table()
         for client in clients:
             # Only count resources from latest entries of live clients.
             if client["Alive"]:
@@ -740,7 +667,7 @@ class GlobalState:
         """Returns a set of client IDs corresponding to clients still alive."""
         return {
             client["NodeID"]
-            for client in self.client_table() if (client["Alive"])
+            for client in self.node_table() if (client["Alive"])
         }
 
     def available_resources(self):
@@ -759,44 +686,39 @@ class GlobalState:
 
         available_resources_by_id = {}
 
-        subscribe_clients = [
-            redis_client.pubsub(ignore_subscribe_messages=True)
-            for redis_client in self.redis_clients
-        ]
-        for subscribe_client in subscribe_clients:
-            subscribe_client.subscribe(gcs_utils.XRAY_HEARTBEAT_CHANNEL)
+        subscribe_client = self.redis_client.pubsub(
+            ignore_subscribe_messages=True)
+        subscribe_client.psubscribe(gcs_utils.XRAY_HEARTBEAT_PATTERN)
 
         client_ids = self._live_client_ids()
 
         while set(available_resources_by_id.keys()) != client_ids:
-            for subscribe_client in subscribe_clients:
-                # Parse client message
-                raw_message = subscribe_client.get_message()
-                if (raw_message is None or raw_message["channel"] !=
-                        gcs_utils.XRAY_HEARTBEAT_CHANNEL):
-                    continue
-                data = raw_message["data"]
-                gcs_entries = gcs_utils.GcsEntry.FromString(data)
-                heartbeat_data = gcs_entries.entries[0]
-                message = gcs_utils.HeartbeatTableData.FromString(
-                    heartbeat_data)
-                # Calculate available resources for this client
-                num_resources = len(message.resources_available_label)
-                dynamic_resources = {}
-                for i in range(num_resources):
-                    resource_id = message.resources_available_label[i]
-                    dynamic_resources[resource_id] = (
-                        message.resources_available_capacity[i])
+            # Parse client message
+            raw_message = subscribe_client.get_message()
+            if (raw_message is None or raw_message["pattern"] !=
+                    gcs_utils.XRAY_HEARTBEAT_PATTERN):
+                continue
+            data = raw_message["data"]
+            pub_message = gcs_utils.PubSubMessage.FromString(data)
+            heartbeat_data = pub_message.data
+            message = gcs_utils.HeartbeatTableData.FromString(heartbeat_data)
+            # Calculate available resources for this client
+            num_resources = len(message.resources_available_label)
+            dynamic_resources = {}
+            for i in range(num_resources):
+                resource_id = message.resources_available_label[i]
+                dynamic_resources[resource_id] = (
+                    message.resources_available_capacity[i])
 
-                # Update available resources for this client
-                client_id = ray.utils.binary_to_hex(message.client_id)
-                available_resources_by_id[client_id] = dynamic_resources
+            # Update available resources for this client
+            client_id = ray.utils.binary_to_hex(message.client_id)
+            available_resources_by_id[client_id] = dynamic_resources
 
             # Update clients in cluster
             client_ids = self._live_client_ids()
 
             # Remove disconnected clients
-            for client_id in available_resources_by_id.keys():
+            for client_id in list(available_resources_by_id.keys()):
                 if client_id not in client_ids:
                     del available_resources_by_id[client_id]
 
@@ -807,8 +729,7 @@ class GlobalState:
                 total_available_resources[resource_id] += num_available
 
         # Close the pubsub clients to avoid leaking file descriptors.
-        for subscribe_client in subscribe_clients:
-            subscribe_client.close()
+        subscribe_client.close()
 
         return dict(total_available_resources)
 
@@ -929,7 +850,7 @@ def nodes():
     Returns:
         Information about the Ray clients in the cluster.
     """
-    return state.client_table()
+    return state.node_table()
 
 
 def current_node_id():

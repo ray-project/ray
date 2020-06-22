@@ -13,8 +13,8 @@ from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, relu
-from ray.rllib.utils.test_utils import check, framework_iterator, \
-    check_compute_action
+from ray.rllib.utils.test_utils import check, check_compute_single_action, \
+    framework_iterator
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
 tf = try_import_tf()
@@ -67,7 +67,7 @@ class TestSAC(unittest.TestCase):
                 for i in range(num_iterations):
                     results = trainer.train()
                     print(results)
-                check_compute_action(trainer)
+                check_compute_single_action(trainer)
 
     def test_sac_loss_function(self):
         """Tests SAC loss function results across all frameworks."""

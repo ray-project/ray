@@ -7,7 +7,8 @@ atari-ddppo:
             - BreakoutNoFrameskip-v4
     run: DDPPO
     config:
-        use_pytorch: true  # DDPPO only supports PyTorch so far
+        # DDPPO only supports PyTorch so far.
+        framework: torch
         # Worker config: 10 workers, each of which requires a GPU.
         num_workers: 10
         num_gpus_per_worker: 1

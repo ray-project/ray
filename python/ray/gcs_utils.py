@@ -13,8 +13,10 @@ from ray.core.generated.gcs_pb2 import (
     TablePrefix,
     TablePubsub,
     TaskTableData,
+    ResourceMap,
     ResourceTableData,
     ObjectLocationInfo,
+    PubSubMessage,
 )
 
 __all__ = [
@@ -32,9 +34,11 @@ __all__ = [
     "TablePrefix",
     "TablePubsub",
     "TaskTableData",
+    "ResourceMap",
     "ResourceTableData",
     "construct_error_message",
     "ObjectLocationInfo",
+    "PubSubMessage",
 ]
 
 FUNCTION_PREFIX = "RemoteFunction:"
@@ -42,13 +46,17 @@ LOG_FILE_CHANNEL = "RAY_LOG_CHANNEL"
 REPORTER_CHANNEL = "RAY_REPORTER"
 
 # xray heartbeats
-XRAY_HEARTBEAT_CHANNEL = str(
-    TablePubsub.Value("HEARTBEAT_PUBSUB")).encode("ascii")
-XRAY_HEARTBEAT_BATCH_CHANNEL = str(
-    TablePubsub.Value("HEARTBEAT_BATCH_PUBSUB")).encode("ascii")
+XRAY_HEARTBEAT_PATTERN = "HEARTBEAT:*".encode("ascii")
+XRAY_HEARTBEAT_BATCH_PATTERN = "HEARTBEAT_BATCH:".encode("ascii")
 
 # xray job updates
-XRAY_JOB_CHANNEL = "JOB".encode("ascii")
+XRAY_JOB_PATTERN = "JOB:*".encode("ascii")
+
+# Actor pub/sub updates
+RAY_ACTOR_PUBSUB_PATTERN = "ACTOR:*".encode("ascii")
+
+# Reporter pub/sub updates
+RAY_REPORTER_PUBSUB_PATTERN = "RAY_REPORTER.*".encode("ascii")
 
 # These prefixes must be kept up-to-date with the TablePrefix enum in
 # gcs.proto.

@@ -2,8 +2,8 @@ import os
 
 import pytest
 
+import ray
 from ray import serve
-from ray.serve.utils import retry_actor_failures
 
 if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False):
     serve.master._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.5
@@ -11,7 +11,8 @@ if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False):
 
 @pytest.fixture(scope="session")
 def _shared_serve_instance():
-    serve.init(blocking=True, ray_init_kwargs={"num_cpus": 36})
+    ray.init(num_cpus=36)
+    serve.init()
     yield
 
 
@@ -21,7 +22,7 @@ def serve_instance(_shared_serve_instance):
     yield
     master = serve.api._get_master_actor()
     # Clear all state between tests to avoid naming collisions.
-    for endpoint in retry_actor_failures(master.get_all_endpoints):
+    for endpoint in ray.get(master.get_all_endpoints.remote()):
         serve.delete_endpoint(endpoint)
-    for backend in retry_actor_failures(master.get_all_backends):
+    for backend in ray.get(master.get_all_backends.remote()):
         serve.delete_backend(backend)

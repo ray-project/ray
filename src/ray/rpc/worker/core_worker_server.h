@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RPC_CORE_WORKER_SERVER_H
-#define RAY_RPC_CORE_WORKER_SERVER_H
+#pragma once
 
+#include "ray/protobuf/core_worker.grpc.pb.h"
+#include "ray/protobuf/core_worker.pb.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
-#include "src/ray/protobuf/core_worker.grpc.pb.h"
-#include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 
@@ -103,5 +102,3 @@ class CoreWorkerGrpcService : public GrpcService {
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif  // RAY_RPC_CORE_WORKER_SERVER_H

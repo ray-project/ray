@@ -19,9 +19,9 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import global_norm, sequence_mask
+from ray.rllib.utils.torch_ops import explained_variance, global_norm, \
+    sequence_mask
 
 torch, nn = try_import_torch()
 
@@ -241,11 +241,20 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
     target_model_out, _ = policy.target_model.from_batch(train_batch)
     old_policy_behaviour_logits = target_model_out.detach()
 
-    unpacked_behaviour_logits = torch.split(
-        behaviour_logits, output_hidden_shape, dim=1)
-    unpacked_old_policy_behaviour_logits = torch.split(
-        old_policy_behaviour_logits, output_hidden_shape, dim=1)
-    unpacked_outputs = torch.split(model_out, output_hidden_shape, dim=1)
+    if isinstance(output_hidden_shape, (list, tuple, np.ndarray)):
+        unpacked_behaviour_logits = torch.split(
+            behaviour_logits, list(output_hidden_shape), dim=1)
+        unpacked_old_policy_behaviour_logits = torch.split(
+            old_policy_behaviour_logits, list(output_hidden_shape), dim=1)
+        unpacked_outputs = torch.split(
+            model_out, list(output_hidden_shape), dim=1)
+    else:
+        unpacked_behaviour_logits = torch.chunk(
+            behaviour_logits, output_hidden_shape, dim=1)
+        unpacked_old_policy_behaviour_logits = torch.chunk(
+            old_policy_behaviour_logits, output_hidden_shape, dim=1)
+        unpacked_outputs = torch.chunk(model_out, output_hidden_shape, dim=1)
+
     old_policy_action_dist = dist_class(old_policy_behaviour_logits, model)
     prev_action_dist = dist_class(behaviour_logits, policy.model)
     values = policy.model.value_function()
@@ -269,7 +278,7 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
 
         # Prepare KL for Loss
         mean_kl = _make_time_major(
-            old_policy_action_dist.multi_kl(action_dist), drop_last=True)
+            old_policy_action_dist.kl(action_dist), drop_last=True)
 
         policy.loss = VTraceSurrogateLoss(
             actions=_make_time_major(loss_actions, drop_last=True),
@@ -279,10 +288,9 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
                 action_dist.logp(actions), drop_last=True),
             old_policy_actions_logp=_make_time_major(
                 old_policy_action_dist.logp(actions), drop_last=True),
-            action_kl=torch.mean(mean_kl, dim=0)
-            if is_multidiscrete else mean_kl,
+            action_kl=mean_kl,
             actions_entropy=_make_time_major(
-                action_dist.multi_entropy(), drop_last=True),
+                action_dist.entropy(), drop_last=True),
             dones=_make_time_major(dones, drop_last=True),
             behaviour_logits=_make_time_major(
                 unpacked_behaviour_logits, drop_last=True),
@@ -308,14 +316,13 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
         logger.debug("Using PPO surrogate loss (vtrace=False)")
 
         # Prepare KL for Loss
-        mean_kl = _make_time_major(prev_action_dist.multi_kl(action_dist))
+        mean_kl = _make_time_major(prev_action_dist.kl(action_dist))
 
         policy.loss = PPOSurrogateLoss(
             prev_actions_logp=_make_time_major(prev_action_dist.logp(actions)),
             actions_logp=_make_time_major(action_dist.logp(actions)),
-            action_kl=torch.mean(mean_kl, dim=0)
-            if is_multidiscrete else mean_kl,
-            actions_entropy=_make_time_major(action_dist.multi_entropy()),
+            action_kl=mean_kl,
+            actions_entropy=_make_time_major(action_dist.entropy()),
             values=_make_time_major(values),
             valid_mask=_make_time_major(mask),
             advantages=_make_time_major(
@@ -346,8 +353,7 @@ def stats(policy, train_batch):
         "vf_loss": policy.loss.vf_loss,
         "vf_explained_var": explained_variance(
             torch.reshape(policy.loss.value_targets, [-1]),
-            torch.reshape(values_batched, [-1]),
-            framework="torch"),
+            torch.reshape(values_batched, [-1])),
     }
 
     if policy.config["vtrace"]:

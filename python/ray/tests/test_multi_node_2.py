@@ -58,8 +58,8 @@ def test_internal_config(ray_start_cluster_head):
 def setup_monitor(address):
     monitor = Monitor(
         address, None, redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
-    monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
-    monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)  # TODO: Remove?
+    monitor.psubscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN)
+    monitor.psubscribe(ray.gcs_utils.XRAY_JOB_PATTERN)  # TODO: Remove?
     monitor.update_raylet_map(_append_port=True)
     return monitor
 
@@ -182,18 +182,6 @@ def test_wait_for_nodes(ray_start_cluster_head):
     cluster.remove_node(worker2)
     cluster.wait_for_nodes()
     assert ray.cluster_resources()["CPU"] == 1
-
-
-def test_worker_plasma_store_failure(ray_start_cluster_head):
-    cluster = ray_start_cluster_head
-    worker = cluster.add_node()
-    cluster.wait_for_nodes()
-    worker.kill_reporter()
-    worker.kill_plasma_store()
-    if ray_constants.PROCESS_TYPE_REAPER in worker.all_processes:
-        worker.kill_reaper()
-    worker.all_processes[ray_constants.PROCESS_TYPE_RAYLET][0].process.wait()
-    assert not worker.any_processes_alive(), worker.live_processes()
 
 
 if __name__ == "__main__":

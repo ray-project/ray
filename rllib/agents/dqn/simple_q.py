@@ -79,7 +79,7 @@ DEFAULT_CONFIG = with_common_config({
 
 
 def get_policy_class(config):
-    if config["use_pytorch"]:
+    if config["framework"] == "torch":
         from ray.rllib.agents.dqn.simple_q_torch_policy import \
             SimpleQTorchPolicy
         return SimpleQTorchPolicy
@@ -92,7 +92,9 @@ def execution_plan(workers, config):
         num_shards=1,
         learning_starts=config["learning_starts"],
         buffer_size=config["buffer_size"],
-        replay_batch_size=config["train_batch_size"])
+        replay_batch_size=config["train_batch_size"],
+        replay_mode=config["multiagent"]["replay_mode"],
+        replay_sequence_length=config["replay_sequence_length"])
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 

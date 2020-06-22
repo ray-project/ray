@@ -1,7 +1,7 @@
 package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.BaseActor;
+import io.ray.api.BaseActorHandle;
 import io.ray.api.id.JobId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.config.RayConfig;
@@ -96,7 +96,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     objectStore = new NativeObjectStore(workerContext);
     taskSubmitter = new NativeTaskSubmitter();
 
-    LOGGER.info("RayNativeRuntime started with store {}, raylet {}",
+    LOGGER.debug("RayNativeRuntime started with store {}, raylet {}",
         rayConfig.objectStoreSocketName, rayConfig.rayletSocketName);
   }
 
@@ -108,9 +108,13 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         manager.cleanup();
         manager = null;
       }
-      RayConfig.reset();
     }
-    LOGGER.info("RayNativeRuntime shutdown");
+    if (null != gcsClient) {
+      gcsClient.destroy();
+      gcsClient = null;
+    }
+    RayConfig.reset();
+    LOGGER.debug("RayNativeRuntime shutdown");
   }
 
   // For test purpose only
@@ -128,7 +132,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   }
 
   @Override
-  public void killActor(BaseActor actor, boolean noRestart) {
+  public void killActor(BaseActorHandle actor, boolean noRestart) {
     nativeKillActor(actor.getId().getBytes(), noRestart);
   }
 

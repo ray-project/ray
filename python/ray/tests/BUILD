@@ -1,8 +1,8 @@
 SRCS = [] + select({
-    "@bazel_tools//src/conditions:windows": [
+    "@bazel_tools//src/conditions:windows": glob([
         # TODO(mehrdadn): This should be added for all platforms once resulting errors are fixed
-        "conftest.py",
-    ],
+        "**/conftest.py",
+    ]),
     "//conditions:default": [],
 })
 
@@ -187,6 +187,14 @@ py_test(
     name = "test_autoscaler",
     size = "small",
     srcs = SRCS + ["test_autoscaler.py"],
+    deps = ["//:ray_lib"],
+)
+
+
+py_test(
+    name = "test_autoscaler_aws",
+    size = "small",
+    srcs = ["aws/test_autoscaler_aws.py"],
     deps = ["//:ray_lib"],
 )
 
@@ -444,5 +452,14 @@ py_test(
     size = "medium",
     srcs = SRCS + ["test_cancel.py"],
     tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_gcs_fault_tolerance",
+    size = "medium",
+    srcs = SRCS + ["test_gcs_fault_tolerance.py"],
+    # TODO(swang): Enable again once pubsub client supports GCS server restart.
+    tags = ["exclusive", "manual"],
     deps = ["//:ray_lib"],
 )

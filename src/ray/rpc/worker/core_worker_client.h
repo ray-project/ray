@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RPC_CORE_WORKER_CLIENT_H
-#define RAY_RPC_CORE_WORKER_CLIENT_H
+#pragma once
 
 #include <grpcpp/grpcpp.h>
 
@@ -25,10 +24,10 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/hash/hash.h"
 #include "ray/common/status.h"
+#include "ray/protobuf/core_worker.grpc.pb.h"
+#include "ray/protobuf/core_worker.pb.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
-#include "src/ray/protobuf/core_worker.grpc.pb.h"
-#include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 namespace rpc {
@@ -341,5 +340,3 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif  // RAY_RPC_CORE_WORKER_CLIENT_H

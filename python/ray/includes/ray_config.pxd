@@ -33,9 +33,9 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int64_t actor_max_dummy_objects() const
 
-        int64_t num_connect_attempts() const
+        int64_t raylet_client_num_connect_attempts() const
 
-        int64_t connect_timeout_milliseconds() const
+        int64_t raylet_client_connect_timeout_milliseconds() const
 
         int64_t raylet_fetch_timeout_milliseconds() const
 
@@ -84,7 +84,5 @@ cdef extern from "ray/common/ray_config.h" nogil:
         uint32_t maximum_gcs_deletion_batch_size() const
 
         int64_t max_direct_call_object_size() const
-
-        c_bool gcs_service_enabled() const
 
         c_bool gcs_actor_service_enabled() const

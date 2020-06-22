@@ -81,6 +81,41 @@ provider:
             name: autoscaler
             apiGroup: rbac.authorization.k8s.io
 
+    services:
+      # Service that maps to the head node of the Ray cluster.
+      - apiVersion: v1
+        kind: Service
+        metadata:
+            # NOTE: If you're running multiple Ray clusters with services
+            # on one Kubernetes cluster, they must have unique service
+            # names.
+            name: ray-head
+        spec:
+            # This selector must match the head node pod's selector below.
+            selector:
+                component: ray-head
+            ports:
+                - protocol: TCP
+                  port: 8000
+                  targetPort: 8000
+
+      # Service that maps to the worker nodes of the Ray cluster.
+      - apiVersion: v1
+        kind: Service
+        metadata:
+            # NOTE: If you're running multiple Ray clusters with services
+            # on one Kubernetes cluster, they must have unique service
+            # names.
+            name: ray-workers
+        spec:
+            # This selector must match the worker node pods' selector below.
+            selector:
+                component: ray-worker
+            ports:
+                - protocol: TCP
+                  port: 8000
+                  targetPort: 8000
+
 # Kubernetes pod config for the head node pod.
 head_node:
     apiVersion: v1
@@ -88,6 +123,11 @@ head_node:
     metadata:
         # Automatically generates a name for the pod with this prefix.
         generateName: ray-head-
+
+        # Must match the head node service selector above if a head node
+        # service is required.
+        labels:
+            component: ray-head
     spec:
         # Change this if you altered the autoscaler_service_account above
         # or want to provide your own.
@@ -160,6 +200,11 @@ worker_nodes:
     metadata:
         # Automatically generates a name for the pod with this prefix.
         generateName: ray-worker-
+
+        # Must match the worker node service selector above if a worker node
+        # service is required.
+        labels:
+            component: ray-worker
     spec:
         serviceAccountName: default
 

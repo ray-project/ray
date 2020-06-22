@@ -1,5 +1,4 @@
-#ifndef RAY_MESSAGE_BUNDLE_H
-#define RAY_MESSAGE_BUNDLE_H
+#pragma once
 
 #include <ctime>
 #include <list>
@@ -178,5 +177,3 @@ class StreamingMessageBundle : public StreamingMessageBundleMeta {
 };
 }  // namespace streaming
 }  // namespace ray
-
-#endif  // RAY_MESSAGE_BUNDLE_H

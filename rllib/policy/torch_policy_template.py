@@ -99,7 +99,9 @@ def build_torch_policy(name,
 
             # Model is customized (use default action dist class).
             if make_model:
-                assert make_model_and_action_dist is None
+                assert make_model_and_action_dist is None, \
+                    "Either `make_model` or `make_model_and_action_dist`" \
+                    " must be None!"
                 self.model = make_model(self, obs_space, action_space, config)
                 dist_class, _ = ModelCatalog.get_action_dist(
                     action_space, self.config["model"], framework="torch")
@@ -117,7 +119,7 @@ def build_torch_policy(name,
                     num_outputs=logit_dim,
                     model_config=self.config["model"],
                     framework="torch",
-                    **self.config["model"].get("custom_options", {}))
+                    **self.config["model"].get("custom_model_config", {}))
 
             # Make sure, we passed in a correct Model factory.
             assert isinstance(self.model, TorchModelV2), \

@@ -369,8 +369,13 @@ class TestMultiAgentEnv(unittest.TestCase):
         n = 10
         register_env("multi_agent_cartpole",
                      lambda _: MultiAgentCartPole({"num_agents": n}))
-        pg = PGTrainer(env="multi_agent_cartpole", config={"num_workers": 0})
-        for i in range(100):
+        pg = PGTrainer(
+            env="multi_agent_cartpole",
+            config={
+                "num_workers": 0,
+                "framework": "tf",
+            })
+        for i in range(50):
             result = pg.train()
             print("Iteration {}, reward {}, timesteps {}".format(
                 i, result["episode_reward_mean"], result["timesteps_total"]))
@@ -404,6 +409,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                     },
                     "policy_mapping_fn": lambda agent_id: "policy_1",
                 },
+                "framework": "tf",
             })
 
         # Just check that it runs without crashing

@@ -10,7 +10,7 @@ from jsonschema.exceptions import ValidationError
 
 import ray
 import ray.services as services
-from ray.autoscaler.util import fillout_defaults, validate_config
+from ray.autoscaler.util import prepare_config, validate_config
 from ray.autoscaler.load_metrics import LoadMetrics
 from ray.autoscaler.autoscaler import StandardAutoscaler
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_NODE_STATUS, \
@@ -312,7 +312,7 @@ class AutoscalingTest(unittest.TestCase):
         return self.provider
 
     def write_config(self, config):
-        path = self.tmpdir + "/simple.yaml"
+        path = os.path.join(self.tmpdir, "simple.yaml")
         with open(path, "w") as f:
             f.write(yaml.dump(config))
         return path
@@ -347,7 +347,7 @@ class AutoscalingTest(unittest.TestCase):
             "region": "us-east-1",
             "availability_zone": "us-east-1a",
         }
-        config = fillout_defaults(config)
+        config = prepare_config(config)
         try:
             validate_config(config)
         except ValidationError:
@@ -590,10 +590,7 @@ class AutoscalingTest(unittest.TestCase):
         rtc1.clear()
         autoscaler.update()
         # Synchronization: wait for launchy thread to be blocked on rtc1
-        if hasattr(rtc1, "_cond"):  # Python 3.5
-            waiters = rtc1._cond._waiters
-        else:  # Python 2.7
-            waiters = rtc1._Event__cond._Condition__waiters
+        waiters = rtc1._cond._waiters
         self.waitFor(lambda: len(waiters) == 1)
         assert autoscaler.pending_launches.value == 5
         assert len(self.provider.non_terminated_nodes({})) == 0
@@ -756,7 +753,7 @@ class AutoscalingTest(unittest.TestCase):
     def testReportsConfigFailures(self):
         config = copy.deepcopy(SMALL_CLUSTER)
         config["provider"]["type"] = "external"
-        config = fillout_defaults(config)
+        config = prepare_config(config)
         config["provider"]["type"] = "mock"
         config_path = self.write_config(config)
         self.provider = MockProvider()

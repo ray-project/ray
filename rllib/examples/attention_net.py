@@ -2,12 +2,12 @@ import argparse
 
 import ray
 from ray import tune
-from ray.rllib.utils import try_import_tf
 from ray.rllib.models.tf.attention_net import GTrXLNet
 from ray.rllib.examples.env.look_and_push import LookAndPush, OneHot
 from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.env.repeat_initial_obs_env import RepeatInitialObsEnv
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune import registry
 
@@ -28,7 +28,7 @@ if __name__ == "__main__":
 
     assert not args.torch, "PyTorch not supported for AttentionNets yet!"
 
-    ray.init(num_cpus=args.num_cpus or None, local_mode=True)
+    ray.init(num_cpus=args.num_cpus or None)
 
     registry.register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
     registry.register_env("RepeatInitialObsEnv",
@@ -50,7 +50,7 @@ if __name__ == "__main__":
         "model": {
             "custom_model": GTrXLNet,
             "max_seq_len": 50,
-            "custom_options": {
+            "custom_model_config": {
                 "num_transformer_units": 1,
                 "attn_dim": 64,
                 "num_heads": 2,
@@ -59,7 +59,7 @@ if __name__ == "__main__":
                 "ff_hidden_dim": 32,
             },
         },
-        "use_pytorch": args.torch,
+        "framework": "torch" if args.torch else "tf",
     }
 
     stop = {

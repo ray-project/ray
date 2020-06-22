@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_CALLBACK_H
-#define RAY_GCS_CALLBACK_H
+#pragma once
 
 #include <boost/optional/optional.hpp>
 #include <unordered_map>
@@ -24,6 +23,9 @@
 namespace ray {
 
 namespace gcs {
+
+/// This callback is used to notify when a operation completes.
+using EmptyCallback = std::function<void()>;
 
 /// This callback is used to notify when a write/subscribe to GCS completes.
 /// \param status Status indicates whether the write/subscribe was successful.
@@ -63,5 +65,3 @@ using MapCallback = std::function<void(const std::unordered_map<Key, Value> &res
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_CALLBACK_H
