@@ -201,20 +201,20 @@ class _DummyActor:
 # This is a bit of a hack. It prevents the reassignment of CUDA_VISIBLE_DEVICES
 # during a trainer resize. We won't need this if we don't shutdown
 # all the actors.
-_dummy_gpu_actor = None
+_dummy_cuda_actor = None
 # used to reserve CPU resources
 _dummy_cpu_actor = None
 
 
 def clear_dummy_actor():
-    global _dummy_gpu_actor
-    if _dummy_gpu_actor:
+    global _dummy_cuda_actor
+    if _dummy_cuda_actor:
         try:
-            _dummy_gpu_actor.__ray_terminate__.remote()
+            _dummy_cuda_actor.__ray_terminate__.remote()
         except Exception as exc:
             logger.info("Tried to clear dummy actor: %s", str(exc))
 
-    _dummy_gpu_actor = None
+    _dummy_cuda_actor = None
 
     global _dummy_cpu_actor
     if _dummy_cpu_actor:
@@ -250,23 +250,23 @@ def reserve_resources(num_cpus, num_gpus, retries=20):
         assert isinstance(cuda_devices, str)
         cuda_device_set = set(cuda_devices.split(","))
 
-    global _dummy_gpu_actor
+    global _dummy_cuda_actor
     unused_actors = []
 
     success = False
     for _ in range(retries):
-        if _dummy_gpu_actor is None:
-            _dummy_gpu_actor = ray.remote(
+        if _dummy_cuda_actor is None:
+            _dummy_cuda_actor = ray.remote(
                 num_gpus=num_gpus,
                 resources={"node:" + ip: 0.1})(_DummyActor).remote()
 
-        reserved_cuda_device = ray.get(_dummy_gpu_actor.cuda_devices.remote())
+        reserved_cuda_device = ray.get(_dummy_cuda_actor.cuda_devices.remote())
 
         if match_devices and reserved_cuda_device not in cuda_device_set:
             logger.debug("Device %s not in list of visible devices %s",
                          reserved_cuda_device, cuda_device_set)
-            unused_actors.append(_dummy_gpu_actor)
-            _dummy_gpu_actor = None
+            unused_actors.append(_dummy_cuda_actor)
+            _dummy_cuda_actor = None
         else:
             logger.debug("Found matching device %s", reserved_cuda_device)
             success = True
@@ -356,11 +356,11 @@ class LocalDistributedRunner(DistributedTorchRunner):
         _init_cuda_context()
         assert isinstance(device_str, str)
         self.local_cuda_device = device_str
-        logger.debug("Setting local GPU device: %s", self.local_cuda_device)
+        logger.debug("Setting local CUDA device: %s", self.local_cuda_device)
         try:
             torch.cuda.set_device(int(self.local_cuda_device))
         except RuntimeError:
-            logger.error("Failed to set local GPU device.")
+            logger.error("Failed to set local CUDA device.")
             raise
 
     def get_device_ids(self):
@@ -369,17 +369,17 @@ class LocalDistributedRunner(DistributedTorchRunner):
     def shutdown(self, cleanup=True):
         super(LocalDistributedRunner, self).shutdown()
         global _dummy_cpu_actor
-        global _dummy_gpu_actor
+        global _dummy_cuda_actor
         if cleanup:
-            if _dummy_cpu_actor or _dummy_gpu_actor:
+            if _dummy_cpu_actor or _dummy_cuda_actor:
                 assert not self.is_actor(), ("Actor shouldn't have a "
                                              "dummy actor.")
             if _dummy_cpu_actor:
                 ray.kill(_dummy_cpu_actor)
-            if _dummy_gpu_actor:
-                ray.kill(_dummy_gpu_actor)
+            if _dummy_cuda_actor:
+                ray.kill(_dummy_cuda_actor)
             _dummy_cpu_actor = None
-            _dummy_gpu_actor = None
+            _dummy_cuda_actor = None
 
     def is_actor(self):
         actor_id = ray.worker.global_worker.actor_id
