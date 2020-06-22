@@ -389,7 +389,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
     // The worker is used for the actor creation task with dynamic options.
     // Put it into idle dedicated worker pool.
     const auto task_id = it->second;
-    state.idle_dedicated_workers[task_id] = std::move(worker);
+    state.idle_dedicated_workers[task_id] = worker;
   } else {
     // The worker is not used for the actor creation task without dynamic options.
     // Put the worker to the corresponding idle pool.
