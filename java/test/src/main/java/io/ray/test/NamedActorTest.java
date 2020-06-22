@@ -24,9 +24,24 @@ public class NamedActorTest extends BaseTest {
     // Create an actor.
     ActorHandle<Counter> actor = Ray.actor(Counter::new).setName(name).remote();
     Assert.assertEquals(actor.task(Counter::increment).remote().get(), Integer.valueOf(1));
-    Assert.assertTrue(Ray.getActor(name).isPresent());
     // Get the named actor.
+    Assert.assertTrue(Ray.getActor(name).isPresent());
     Optional<ActorHandle<Counter>> namedActor = Ray.getActor(name);
+    Assert.assertTrue(namedActor.isPresent());
+    // Verify that this handle is correct.
+    Assert.assertEquals(namedActor.get().task(Counter::increment).remote().get(),
+        Integer.valueOf(2));
+  }
+
+  @Test
+  public void testGlobalActor() {
+    String name = "global-actor-counter";
+    // Create an actor.
+    ActorHandle<Counter> actor = Ray.actor(Counter::new).setName(name, true).remote();
+    Assert.assertEquals(actor.task(Counter::increment).remote().get(), Integer.valueOf(1));
+    Assert.assertFalse(Ray.getActor(name).isPresent());
+    // Get the named actor.
+    Optional<ActorHandle<Counter>> namedActor = Ray.getActor(name, true);
     Assert.assertTrue(namedActor.isPresent());
     // Verify that this handle is correct.
     Assert.assertEquals(namedActor.get().task(Counter::increment).remote().get(),
