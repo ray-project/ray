@@ -18,8 +18,8 @@ except ImportError:  # py2
 from ray.experimental.internal_kv import _internal_kv_get
 import ray.services as services
 from ray.autoscaler.util import validate_config, hash_runtime_conf, \
-    hash_launch_conf, fillout_defaults, TRIM_NODES_COMMAND, \
-    DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
+    hash_launch_conf, prepare_config, DEBUG_AUTOSCALING_ERROR, \
+    DEBUG_AUTOSCALING_STATUS
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_TYPE_WORKER, NODE_TYPE_HEAD
@@ -55,13 +55,6 @@ def debug_status():
         status += "\n"
         status += error.decode("utf-8")
     return status
-
-
-def trim_nodes():
-    """Tell the autoscaler to delete idle nodes immediately."""
-    r = _redis()
-    r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
-              json.dumps(TRIM_NODES_COMMAND))
 
 
 def request_resources(num_cpus=None, bundles=None):

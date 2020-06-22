@@ -8,7 +8,6 @@ import traceback
 import types
 
 import ray.cloudpickle as cloudpickle
-from ray.autoscaler.commands import request_resources
 from ray.tune import TuneError
 from ray.tune.stopper import NoopStopper
 from ray.tune.progress_reporter import trial_progress_str
@@ -329,10 +328,6 @@ class TrialRunner:
         Callers should typically run this method repeatedly in a loop. They
         may inspect or modify the runner's state in between calls to step().
         """
-
-        # TODO(ekl) this is a hack
-        bundles = [t.resources.as_dict() for t in self._trials]
-        request_resources(bundles=bundles)
 
         if self.is_finished():
             raise TuneError("Called step when all trials finished?")

@@ -1,6 +1,5 @@
-# This is an example of configuring a mixed-worker cluster. Currently this only
-# works if you are using Tune. When using Tune, Tune will tell the scheduler
-# the resource demands of experiments to request the right types of workers.
+# EXPERIMENTAL: an example of configuring a mixed-worker cluster. Currently
+# multi-worker autoscaling only works if you use the request_resources() call.
 cluster_name: auto_instance_type
 min_workers: 1
 max_workers: 40

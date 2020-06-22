@@ -1,6 +1,5 @@
 from collections import defaultdict
 import copy
-import json
 import logging
 import math
 import numpy as np
@@ -21,7 +20,7 @@ from ray.autoscaler.node_launcher import NodeLauncher
 from ray.autoscaler.resource_demand_scheduler import ResourceDemandScheduler
 from ray.autoscaler.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
-    TRIM_NODES_COMMAND, DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
+    DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
     AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
@@ -114,8 +113,6 @@ class StandardAutoscaler:
         self.resource_requests = defaultdict(int)
         # List of resource bundles the user is requesting of the cluster.
         self.resource_demand_vector = None
-        # Delete nodes idle from behind this horizon.
-        self.trim_horizon = 0
 
         logger.info("StandardAutoscaler: {}".format(self.config))
 
@@ -158,7 +155,6 @@ class StandardAutoscaler:
         # Terminate any idle or out of date nodes
         last_used = self.load_metrics.last_used_time_by_ip
         horizon = now - (60 * self.config["idle_timeout_minutes"])
-        horizon = max(self.trim_horizon, horizon)
 
         nodes_to_terminate = []
         for node_id in nodes:
@@ -449,9 +445,7 @@ class StandardAutoscaler:
     def request_resources(self, resources):
         logger.info(
             "StandardAutoscaler: resource_requests={}".format(resources))
-        if resources == TRIM_NODES_COMMAND:
-            self.trim_horizon = time.time() - 5  # a bit of buffer room
-        elif isinstance(resources, list):
+        if isinstance(resources, list):
             self.resource_demand_vector = resources
         else:
             for resource, count in resources.items():
