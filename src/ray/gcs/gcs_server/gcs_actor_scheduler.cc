@@ -56,6 +56,10 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   address.set_raylet_id(node->node_id());
   actor->UpdateAddress(address);
 
+  RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
+                .emplace(actor->GetActorID())
+                .second);
+
   // Lease worker directly from the node.
   LeaseWorkerFromNode(actor, node);
 }
@@ -147,10 +151,6 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   RAY_LOG(INFO) << "Start leasing worker from node " << node_id << " for actor "
                 << actor->GetActorID();
 
-  RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
-                .emplace(actor->GetActorID())
-                .second);
-
   rpc::Address remote_address;
   remote_address.set_raylet_id(node->node_id());
   remote_address.set_ip_address(node->node_manager_address());
@@ -225,6 +225,9 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
     // node, and then try again on the new node.
     RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
     actor->UpdateAddress(retry_at_raylet_address);
+    RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
+                  .emplace(actor->GetActorID())
+                  .second);
     LeaseWorkerFromNode(actor, gcs_node_manager_.GetNode(actor->GetNodeID()));
   } else {
     // The worker is leased successfully from the specified node.
