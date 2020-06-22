@@ -1,4 +1,5 @@
 from functools import partial
+import json
 import os
 import logging
 import time
@@ -27,13 +28,13 @@ MAX_POLLS = 12
 POLL_INTERVAL = 5
 
 
-def wait_for_crm_operation(operation, crm_client):
+def wait_for_crm_operation(operation, crm):
     """Poll for cloud resource manager operation until finished."""
     logger.info("wait_for_crm_operation: "
                 "Waiting for operation {} to finish...".format(operation))
 
     for _ in range(MAX_POLLS):
-        result = crm_client.operations().get(name=operation["name"]).execute()
+        result = crm.operations().get(name=operation["name"]).execute()
         if "error" in result:
             raise Exception(result["error"])
 
@@ -46,14 +47,14 @@ def wait_for_crm_operation(operation, crm_client):
     return result
 
 
-def wait_for_compute_global_operation(project_name, operation, compute_client):
+def wait_for_compute_global_operation(project_name, operation, compute):
     """Poll for global compute operation until finished."""
     logger.info("wait_for_compute_global_operation: "
                 "Waiting for operation {} to finish...".format(
                     operation["name"]))
 
     for _ in range(MAX_POLLS):
-        result = compute_client.globalOperations().get(
+        result = compute.globalOperations().get(
             project=project_name,
             operation=operation["name"],
         ).execute()
@@ -72,8 +73,8 @@ def wait_for_compute_global_operation(project_name, operation, compute_client):
 
 def key_pair_name(i, region, project_id, ssh_user):
     """Returns the ith default gcp_key_pair_name."""
-    # TODO: Figure out why this doesn't actually use i
-    key_name = "{}_gcp_{}_{}_{}".format(RAY, region, project_id, ssh_user, i)
+    key_name = "{}_gcp_{}_{}_{}_{}".format(RAY, region, project_id, ssh_user,
+                                           i)
     return key_name
 
 
@@ -102,37 +103,65 @@ def generate_rsa_key_pair():
     return public_key, pem
 
 
-def create_crm_client(config, gcp_credentials):
+def _create_crm(config, gcp_credentials):
     return discovery.build(
         "cloudresourcemanager", "v1", credentials=gcp_credentials)
 
 
-def create_iam_client(config, gcp_credentials):
+def _create_iam(config, gcp_credentials):
     return discovery.build("iam", "v1", credentials=gcp_credentials)
 
 
-def create_compute_client(config, gcp_credentials):
+def _create_compute(config, gcp_credentials):
     return discovery.build("compute", "v1", credentials=gcp_credentials)
 
 
+def fetch_gcp_credentials_from_provider_config(provider_config):
+    """
+    Attempt to fetch and parse the JSON GCP credentials from the provider
+    config yaml file.
+    """
+    service_account_info_string = provider_config.get("gcp_credentials")
+    if service_account_info_string is None:
+        logger.info("gcp_credentials not found in cluster yaml file. "
+                    "Falling back to GOOGLE_APPLICATION_CREDENTIALS "
+                    "environment variable.")
+        # If gcp_credentials is None, then discovery.build will search for
+        # credentials in the local environment.
+        return None
+    else:
+        # If parsing the gcp_credentials failed, then the user likely made a
+        # mistake in copying the credentials into the config yaml.
+        try:
+            service_account_info = json.loads(service_account_info_string)
+        except json.decoder.JSONDecodeError:
+            logger.warning(
+                "gcp_credentials found in cluster yaml file but "
+                "formatted improperly. Falling back to "
+                "GOOGLE_APPLICATION_CREDENTIALS environment variable.")
+            return None
+        gcp_credentials = service_account.Credentials.from_service_account_info(
+            service_account_info)
+        return gcp_credentials
+
+
 def bootstrap_gcp(config):
-    service_account_info = config["provider"].get("gcp_credentials")
-    gcp_credentials = service_account.Credentials.from_service_account_info(
-        service_account_info)
+    gcp_credentials = fetch_gcp_credentials_from_provider_config(
+        config["provider"])
 
-    crm_client = create_crm_client(config, gcp_credentials)
-    iam_client = create_iam_client(config, gcp_credentials)
-    compute_client = create_compute_client(config, gcp_credentials)
+    crm = _create_crm(config, gcp_credentials)
+    iam = _create_iam(config, gcp_credentials)
+    compute = _create_compute(config, gcp_credentials)
 
-    config = _configure_project(config, crm_client)
-    config = _configure_iam_role(config, crm_client, iam_client)
-    config = _configure_key_pair(config, compute_client)
-    config = _configure_subnet(config, compute_client)
+    config = _configure_project(config, crm)
+    config = _configure_iam_role(config, crm, iam)
+    config = _configure_key_pair(config, compute)
+    config = _configure_subnet(config, compute)
 
     return config
 
 
-def _configure_project(config, crm_client):
+def _configure_project(config, crm):
     """Setup a Google Cloud Platform Project.
 
     Google Compute Platform organizes all the resources, such as storage
@@ -143,12 +172,12 @@ def _configure_project(config, crm_client):
     assert config["provider"]["project_id"] is not None, (
         "'project_id' must be set in the 'provider' section of the autoscaler"
         " config. Notice that the project id must be globally unique.")
-    project = _get_project(project_id, crm_client)
+    project = _get_project(project_id, crm)
 
     if project is None:
         #  Project not found, try creating it
-        _create_project(project_id, crm_client)
-        project = _get_project(project_id, crm_client)
+        _create_project(project_id, crm)
+        project = _get_project(project_id, crm)
 
     assert project is not None, "Failed to create project"
     assert project["lifecycleState"] == "ACTIVE", (
@@ -160,7 +189,7 @@ def _configure_project(config, crm_client):
     return config
 
 
-def _configure_iam_role(config, crm_client, iam_client):
+def _configure_iam_role(config, crm, iam):
     """Setup a gcp service account with IAM roles.
 
     Creates a gcp service acconut and binds IAM roles which allow it to control
@@ -173,7 +202,7 @@ def _configure_iam_role(config, crm_client, iam_client):
     email = SERVICE_ACCOUNT_EMAIL_TEMPLATE.format(
         account_id=DEFAULT_SERVICE_ACCOUNT_ID,
         project_id=config["provider"]["project_id"])
-    service_account = _get_service_account(email, config, iam_client)
+    service_account = _get_service_account(email, config, iam)
 
     if service_account is None:
         logger.info("_configure_iam_role: "
@@ -182,12 +211,12 @@ def _configure_iam_role(config, crm_client, iam_client):
 
         service_account = _create_service_account(
             DEFAULT_SERVICE_ACCOUNT_ID, DEFAULT_SERVICE_ACCOUNT_CONFIG, config,
-            iam_client)
+            iam)
 
     assert service_account is not None, "Failed to create service account"
 
     _add_iam_policy_binding(service_account, DEFAULT_SERVICE_ACCOUNT_ROLES,
-                            crm_client)
+                            crm)
 
     config["head_node"]["serviceAccounts"] = [{
         "email": service_account["email"],
@@ -201,7 +230,7 @@ def _configure_iam_role(config, crm_client, iam_client):
     return config
 
 
-def _configure_key_pair(config, compute_client):
+def _configure_key_pair(config, compute):
     """Configure SSH access, using an existing key pair if possible.
 
     Creates a project-wide ssh key that can be used to access all the instances
@@ -222,7 +251,7 @@ def _configure_key_pair(config, compute_client):
 
     ssh_user = config["auth"]["ssh_user"]
 
-    project = compute_client.projects().get(
+    project = compute.projects().get(
         project=config["provider"]["project_id"]).execute()
 
     # Key pairs associated with project meta data. The key pairs are general,
@@ -257,7 +286,7 @@ def _configure_key_pair(config, compute_client):
             public_key, private_key = generate_rsa_key_pair()
 
             _create_project_ssh_key_pair(project, public_key, ssh_user,
-                                         compute_client)
+                                         compute)
 
             # We need to make sure to _create_ the file with the right
             # permissions. In order to do that we need to change the default
@@ -294,7 +323,7 @@ def _configure_key_pair(config, compute_client):
     return config
 
 
-def _configure_subnet(config, compute_client):
+def _configure_subnet(config, compute):
     """Pick a reasonable subnet if not specified by the config."""
 
     # Rationale: avoid subnet lookup if the network is already
@@ -303,13 +332,13 @@ def _configure_subnet(config, compute_client):
             and "networkInterfaces" in config["worker_nodes"]):
         return config
 
-    subnets = _list_subnets(config, compute_client)
+    subnets = _list_subnets(config, compute)
 
     if not subnets:
         raise NotImplementedError("Should be able to create subnet.")
 
     # TODO: make sure that we have usable subnet. Maybe call
-    # compute_client.subnetworks().listUsable? For some reason it didn't
+    # compute.subnetworks().listUsable? For some reason it didn't
     # work out-of-the-box
     default_subnet = subnets[0]
 
@@ -334,16 +363,16 @@ def _configure_subnet(config, compute_client):
     return config
 
 
-def _list_subnets(config, compute_client):
-    response = compute_client.subnetworks().list(
+def _list_subnets(config, compute):
+    response = compute.subnetworks().list(
         project=config["provider"]["project_id"],
         region=config["provider"]["region"]).execute()
 
     return response["items"]
 
 
-def _get_subnet(config, subnet_id, compute_client):
-    subnet = compute_client.subnetworks().get(
+def _get_subnet(config, subnet_id, compute):
+    subnet = compute.subnetworks().get(
         project=config["provider"]["project_id"],
         region=config["provider"]["region"],
         subnetwork=subnet_id,
@@ -352,9 +381,9 @@ def _get_subnet(config, subnet_id, compute_client):
     return subnet
 
 
-def _get_project(project_id, crm_client):
+def _get_project(project_id, crm):
     try:
-        project = crm_client.projects().get(projectId=project_id).execute()
+        project = crm.projects().get(projectId=project_id).execute()
     except errors.HttpError as e:
         if e.resp.status != 403:
             raise
@@ -363,23 +392,23 @@ def _get_project(project_id, crm_client):
     return project
 
 
-def _create_project(project_id, crm_client):
-    operation = crm_client.projects().create(body={
+def _create_project(project_id, crm):
+    operation = crm.projects().create(body={
         "projectId": project_id,
         "name": project_id
     }).execute()
 
-    result = wait_for_crm_operation(operation, crm_client)
+    result = wait_for_crm_operation(operation, crm)
 
     return result
 
 
-def _get_service_account(account, config, iam_client):
+def _get_service_account(account, config, iam):
     project_id = config["provider"]["project_id"]
     full_name = ("projects/{project_id}/serviceAccounts/{account}"
                  "".format(project_id=project_id, account=account))
     try:
-        service_account = iam_client.projects().serviceAccounts().get(
+        service_account = iam.projects().serviceAccounts().get(
             name=full_name).execute()
     except errors.HttpError as e:
         if e.resp.status != 404:
@@ -389,10 +418,10 @@ def _get_service_account(account, config, iam_client):
     return service_account
 
 
-def _create_service_account(account_id, account_config, config, iam_client):
+def _create_service_account(account_id, account_config, config, iam):
     project_id = config["provider"]["project_id"]
 
-    service_account = iam_client.projects().serviceAccounts().create(
+    service_account = iam.projects().serviceAccounts().create(
         name="projects/{project_id}".format(project_id=project_id),
         body={
             "accountId": account_id,
@@ -402,13 +431,13 @@ def _create_service_account(account_id, account_config, config, iam_client):
     return service_account
 
 
-def _add_iam_policy_binding(service_account, roles, crm_client):
+def _add_iam_policy_binding(service_account, roles, crm):
     """Add new IAM roles for the service account."""
     project_id = service_account["projectId"]
     email = service_account["email"]
     member_id = "serviceAccount:" + email
 
-    policy = crm_client.projects().getIamPolicy(
+    policy = crm.projects().getIamPolicy(
         resource=project_id, body={}).execute()
 
     already_configured = True
@@ -434,7 +463,7 @@ def _add_iam_policy_binding(service_account, roles, crm_client):
         # roles, so only call setIamPolicy if needed.
         return
 
-    result = crm_client.projects().setIamPolicy(
+    result = crm.projects().setIamPolicy(
         resource=project_id, body={
             "policy": policy,
         }).execute()
@@ -442,8 +471,7 @@ def _add_iam_policy_binding(service_account, roles, crm_client):
     return result
 
 
-def _create_project_ssh_key_pair(project, public_key, ssh_user,
-                                 compute_client):
+def _create_project_ssh_key_pair(project, public_key, ssh_user, compute):
     """Inserts an ssh-key into project commonInstanceMetadata"""
 
     key_parts = public_key.split(" ")
@@ -470,10 +498,10 @@ def _create_project_ssh_key_pair(project, public_key, ssh_user,
 
     common_instance_metadata["items"] = items
 
-    operation = compute_client.projects().setCommonInstanceMetadata(
+    operation = compute.projects().setCommonInstanceMetadata(
         project=project["name"], body=common_instance_metadata).execute()
 
     response = wait_for_compute_global_operation(project["name"], operation,
-                                                 compute_client)
+                                                 compute)
 
     return response
