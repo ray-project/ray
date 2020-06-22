@@ -239,37 +239,6 @@ class Trainable:
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
 
-    @classmethod
-    def default_resource_request(cls, config):
-        """Provides a static resource requirement for the given configuration.
-
-        This can be overridden by sub-classes to set the correct trial resource
-        allocation, so the user does not need to.
-
-        .. code-block:: python
-
-            @classmethod
-            def default_resource_request(cls, config):
-                return Resources(
-                    cpu=0,
-                    gpu=0,
-                    extra_cpu=config["workers"],
-                    extra_gpu=int(config["use_gpu"]) * config["workers"])
-
-        Returns:
-            Resources: A Resources object consumed by Tune for queueing.
-        """
-        return None
-
-    @classmethod
-    def resource_help(cls, config):
-        """Returns a help string for configuring this trainable's resources.
-
-        Args:
-            config (dict): The Trainer's config dict.
-        """
-        return ""
-
     def get_current_ip(self):
         self._local_ip = ray.services.get_node_ip_address()
         return self._local_ip
@@ -656,56 +625,7 @@ class Trainable:
         raise NotImplementedError
 
     def _restore(self, checkpoint):
-        """Subclasses should override this to implement restore().
-
-        Warning:
-            In this method, do not rely on absolute paths. The absolute
-            path of the checkpoint_dir used in ``_save`` may be changed.
-
-        If ``_save`` returned a prefixed string, the prefix of the checkpoint
-        string returned by ``_save`` may be changed. This is because trial
-        pausing depends on temporary directories.
-
-        The directory structure under the checkpoint_dir provided to ``_save``
-        is preserved.
-
-        See the example below.
-
-        .. code-block:: python
-
-            class Example(Trainable):
-                def _save(self, checkpoint_path):
-                    print(checkpoint_path)
-                    return os.path.join(checkpoint_path, "my/check/point")
-
-                def _restore(self, checkpoint):
-                    print(checkpoint)
-
-            >>> trainer = Example()
-            >>> obj = trainer.save_to_object()  # This is used when PAUSED.
-            <logdir>/tmpc8k_c_6hsave_to_object/checkpoint_0/my/check/point
-            >>> trainer.restore_from_object(obj)  # Note the different prefix.
-            <logdir>/tmpb87b5axfrestore_from_object/checkpoint_0/my/check/point
-
-
-        Args:
-            checkpoint (str|dict): If dict, the return value is as
-                returned by `_save`. If a string, then it is a checkpoint path
-                that may have a different prefix than that returned by `_save`.
-                The directory structure underneath the `checkpoint_dir`
-                `_save` is preserved.
-        """
-
         raise NotImplementedError
-
-    def _setup(self, config):
-        """Subclasses should override this for custom initialization.
-
-        Args:
-            config (dict): Hyperparameters and other configs given.
-                Copy of `self.config`.
-        """
-        pass
 
     def _log_result(self, result):
         """Subclasses can optionally override this to customize logging.
@@ -718,17 +638,6 @@ class Trainable:
             result (dict): Training result returned by _train().
         """
         self._result_logger.on_result(result)
-
-    def _stop(self):
-        """Subclasses should override this for any cleanup on stop.
-
-        If any Ray actors are launched in the Trainable (i.e., with a RLlib
-        trainer), be sure to kill the Ray actor process here.
-
-        You can kill a Ray actor by calling `actor.__ray_terminate__.remote()`
-        on the actor.
-        """
-        pass
 
     def _export_model(self, export_formats, export_dir):
         """Subclasses should override this to export model.
