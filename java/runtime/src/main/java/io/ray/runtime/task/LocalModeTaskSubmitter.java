@@ -5,6 +5,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
+import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.TaskId;
@@ -207,9 +208,11 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     return actorHandles.get(actorId).copy();
   }
 
-  public Optional<BaseActorHandle> getActor(String name) {
-    if (namedActors.containsKey(name)) {
-      return Optional.of(namedActors.get(name));
+  public Optional<BaseActorHandle> getActor(String name, boolean global) {
+    String fullName = global ? name :
+      String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), name);
+    if (namedActors.containsKey(fullName)) {
+      return Optional.of(namedActors.get(fullName));
     } else {
       return Optional.empty();
     }

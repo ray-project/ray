@@ -139,17 +139,30 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Get a handle to a named actor.
+   * Get a handle to a named actor of current job.
    * <p>
    * Gets a handle to a named actor with the given name. The actor must
    * have been created with name specified.
    *
    * @param name The name of the named actor.
    * @return and ActorHandle to the actor if the actor of specified name exists or
-   * @throws IllegalArgumentException if the named actor does not exist.
    */
   public static <T extends BaseActorHandle> Optional<T> getActor(String name) {
-    return runtime.getActor(name);
+    return runtime.getActor(name, false);
+  }
+
+  /**
+   * Get a handle to a named actor.
+   * <p>
+   * Gets a handle to a named actor with the given name. The actor must
+   * have been created with name specified.
+   *
+   * @param name The name of the named actor.
+   * @param global Whether the named actor is a global actor
+   * @return and ActorHandle to the actor if the actor of specified name exists or
+   */
+  public static <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global) {
+    return runtime.getActor(name, global);
   }
 
   /**

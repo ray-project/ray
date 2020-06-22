@@ -135,19 +135,15 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   @SuppressWarnings("unchecked")
   @Override
-  public <T extends BaseActorHandle> Optional<T> getActor(String name) {
-    String fullName = String.format("%s-%s", getRuntimeContext().getCurrentJobId(), name);
-    Optional<BaseActorHandle> actor = getActorInternal(fullName);
-    return (Optional<T>) (actor.isPresent() ? actor : getActorInternal(name));
-  }
-
-  private Optional<BaseActorHandle> getActorInternal(String name) throws IllegalArgumentException {
-    byte[] actorIdBytes = nativeGetActorIdOfNamedActor(name);
+  public <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global) {
+    String fullName = global ? name :
+      String.format("%s-%s", getRuntimeContext().getCurrentJobId(), name);
+    byte[] actorIdBytes = nativeGetActorIdOfNamedActor(fullName);
     ActorId actorId = ActorId.fromBytes(actorIdBytes);
     if (actorId.isNil()) {
       return Optional.empty();
     } else {
-      return Optional.of(getActorHandle(actorId));
+      return Optional.of((T) getActorHandle(actorId));
     }
   }
 

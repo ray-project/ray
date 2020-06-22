@@ -93,9 +93,10 @@ public interface RayRuntime {
    * have been created with name specified.
    *
    * @param name The name of the named actor.
+   * @param global Whether the named actor is global.
    * @return ActorHandle to the actor.
    */
-  <T extends BaseActorHandle> Optional<T> getActor(String name);
+  <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global);
 
   /**
    * Kill the actor immediately.
