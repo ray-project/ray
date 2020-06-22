@@ -28,7 +28,7 @@ if __name__ == "__main__":
     _, tmp4 = tempfile.mkstemp("test_env_with_subprocess")
     register_env("subproc", lambda c: EnvWithSubprocess(c))
 
-    ray.init()
+    ray.init(local_mode=True)
     # Check whether everything is ok.
     assert os.path.exists(tmp1)
     assert os.path.exists(tmp2)

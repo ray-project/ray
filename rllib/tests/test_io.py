@@ -224,12 +224,16 @@ class AgentIOTest(unittest.TestCase):
 
 
 class JsonIOTest(unittest.TestCase):
-    def setUp(self):
-        ray.init(num_cpus=1)
-        self.test_dir = tempfile.mkdtemp()
+    test_dir = None
 
-    def tearDown(self):
-        shutil.rmtree(self.test_dir)
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init(num_cpus=1)
+        cls.test_dir = tempfile.mkdtemp()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        shutil.rmtree(cls.test_dir)
         ray.shutdown()
 
     def test_write_simple(self):

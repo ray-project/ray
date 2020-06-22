@@ -3,9 +3,13 @@ import unittest
 import ray
 from ray import tune
 from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.utils.framework import try_import_tf
+
+_, tfv = try_import_tf()
 
 
 def check_support(alg, config, test_trace=True):
+    print("Checking algo={}".format(alg))
     config["framework"] = "tfe"
     # Test both continuous and discrete actions.
     for cont in [True, False]:
@@ -44,15 +48,15 @@ class TestEagerSupport(unittest.TestCase):
     def test_dqn(self):
         check_support("DQN", {"num_workers": 0, "learning_starts": 0})
 
-    # TODO(sven): Add these once DDPG supports eager.
-    # def test_ddpg(self):
-    #     check_support("DDPG", {"num_workers": 0})
+    def test_ddpg(self):
+        check_support("DDPG", {"num_workers": 0})
 
+    # TODO(sven): Add these once APEX_DDPG supports eager.
     # def test_apex_ddpg(self):
     #     check_support("APEX_DDPG", {"num_workers": 1})
 
-    # def test_td3(self):
-    #     check_support("TD3", {"num_workers": 0})
+    def test_td3(self):
+        check_support("TD3", {"num_workers": 0})
 
     def test_a2c(self):
         check_support("A2C", {"num_workers": 0})
@@ -85,12 +89,16 @@ class TestEagerSupport(unittest.TestCase):
                 },
             })
 
-    # TODO(sven): Add this once SAC supports eager.
-    # def test_sac(self):
-    #    check_support("SAC", {"num_workers": 0, "learning_starts": 0})
+    def test_sac(self):
+        check_support("SAC", {"num_workers": 0, "learning_starts": 0})
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+    # Don't test anything for version 2.x (all tests are eager anyways).
+    if tfv == 2:
+        print("\tskip due to tf==2.x")
+        sys.exit(0)
+
+    import pytest
     sys.exit(pytest.main(["-v", __file__]))

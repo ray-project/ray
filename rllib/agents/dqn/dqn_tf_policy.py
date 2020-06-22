@@ -54,7 +54,7 @@ class QLoss:
             r_tau = tf.clip_by_value(r_tau, v_min, v_max)
             b = (r_tau - v_min) / ((v_max - v_min) / float(num_atoms - 1))
             lb = tf.floor(b)
-            ub = tf.ceil(b)
+            ub = tf.math.ceil(b)
             # indispensable judgement which is missed in most implementations
             # when b happens to be an integer, lb == ub, so pr_j(s', a*) will
             # be discarded because (ub-b) == (b-lb) == 0
@@ -253,8 +253,12 @@ def build_q_losses(policy, model, _, train_batch):
 
 
 def adam_optimizer(policy, config):
-    return tf.train.AdamOptimizer(
-        learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
+    if tfv == 2:
+        return tf.keras.optimizers.Adam(
+            learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
+    else:
+        return tf.train.AdamOptimizer(
+            learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
 
 
 def clip_gradients(policy, optimizer, loss):
