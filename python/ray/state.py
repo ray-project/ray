@@ -10,7 +10,7 @@ from ray import (
     gcs_utils,
     services,
 )
-from ray.utils import (decode, binary_to_hex, hex_to_binary)
+from ray.utils import (decode, binary_to_hex, hex_to_binary, format_resource)
 
 from ray._raylet import GlobalStateAccessor
 
@@ -661,6 +661,8 @@ class GlobalState:
             if client["Alive"]:
                 for key, value in client["Resources"].items():
                     resources[key] += value
+        for k, v in resources.items():
+            resources[k] = format_resource(k, v)
         return dict(resources)
 
     def _live_client_ids(self):
@@ -731,6 +733,8 @@ class GlobalState:
         # Close the pubsub clients to avoid leaking file descriptors.
         subscribe_client.close()
 
+        for k, v in total_available_resources.items():
+            total_available_resources[k] = format_resource(k, v)
         return dict(total_available_resources)
 
     def _error_messages(self, job_id):

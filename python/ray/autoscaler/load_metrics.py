@@ -3,7 +3,7 @@ import time
 
 import numpy as np
 import ray.services as services
-from ray.ray_constants import MEMORY_RESOURCE_UNIT_BYTES
+from ray.utils import format_resource
 
 logger = logging.getLogger(__name__)
 
@@ -146,13 +146,6 @@ class LoadMetrics:
             ip: (now - t)
             for ip, t in most_delayed_heartbeats
         }
-
-        def format_resource(key, value):
-            if key in ["object_store_memory", "memory"]:
-                return "{} GiB".format(
-                    round(value * MEMORY_RESOURCE_UNIT_BYTES / 1e9, 2))
-            else:
-                return round(value, 2)
 
         return {
             "ResourceUsage": ", ".join([

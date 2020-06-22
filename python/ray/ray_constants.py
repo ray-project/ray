@@ -72,7 +72,7 @@ MIN_RESOURCE_GRANULARITY = 0.0001
 PLASMA_RESERVABLE_MEMORY_FRACTION = 0.69
 
 
-def round_to_memory_units(memory_bytes, round_up):
+def round_bytes(memory_bytes, round_up):
     """Round bytes to the nearest memory unit."""
     return from_memory_units(to_memory_units(memory_bytes, round_up))
 

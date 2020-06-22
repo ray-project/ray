@@ -35,7 +35,8 @@ from ray.dashboard.memory import construct_memory_table, MemoryTable
 from ray.dashboard.metrics_exporter.client import Exporter
 from ray.dashboard.metrics_exporter.client import MetricsExportClient
 from ray.dashboard.node_stats import NodeStats
-from ray.dashboard.util import to_unix_time, measures_to_dict, format_resource
+from ray.dashboard.util import to_unix_time, measures_to_dict
+from ray.utils import format_resource
 
 try:
     from ray.tune import Analysis
