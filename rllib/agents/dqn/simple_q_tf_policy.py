@@ -118,8 +118,9 @@ def build_q_losses(policy, model, dist_class, train_batch):
     q_tp1_best_masked = (1.0 - dones) * q_tp1_best
 
     # compute RHS of bellman equation
-    q_t_selected_target = (train_batch[SampleBatch.REWARDS] +
-                           policy.config["gamma"] * q_tp1_best_masked)
+    q_t_selected_target = \
+        tf.cast(train_batch[SampleBatch.REWARDS], tf.float32) + \
+        policy.config["gamma"] * q_tp1_best_masked
 
     # compute the error (potentially clipped)
     td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)

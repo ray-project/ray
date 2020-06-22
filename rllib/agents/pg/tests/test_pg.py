@@ -7,8 +7,9 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import check, check_compute_single_action, fc, \
+from ray.rllib.utils import check, check_compute_single_action, \
     framework_iterator
+from ray.rllib.utils.numpy import fc
 
 
 class TestPG(unittest.TestCase):
