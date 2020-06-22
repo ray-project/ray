@@ -56,10 +56,6 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   address.set_raylet_id(node->node_id());
   actor->UpdateAddress(address);
 
-  RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
-                .emplace(actor->GetActorID())
-                .second);
-
   // Lease worker directly from the node.
   LeaseWorkerFromNode(actor, node);
 }
@@ -150,6 +146,10 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   auto node_id = ClientID::FromBinary(node->node_id());
   RAY_LOG(INFO) << "Start leasing worker from node " << node_id << " for actor "
                 << actor->GetActorID();
+
+  RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
+                .emplace(actor->GetActorID())
+                .second);
 
   rpc::Address remote_address;
   remote_address.set_raylet_id(node->node_id());
