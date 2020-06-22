@@ -71,7 +71,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   private final Map<ActorId, TaskExecutor.ActorContext> actorContexts = new ConcurrentHashMap<>();
 
   public LocalModeTaskSubmitter(RayRuntimeInternal runtime, TaskExecutor taskExecutor,
-      LocalModeObjectStore objectStore) {
+                                LocalModeObjectStore objectStore) {
     this.runtime = runtime;
     this.taskExecutor = taskExecutor;
     this.objectStore = objectStore;
@@ -131,11 +131,11 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
             ByteString.copyFrom(runtime.getRayConfig().getJobId().getBytes()))
         .setTaskId(ByteString.copyFrom(taskIdBytes))
         .setFunctionDescriptor(Common.FunctionDescriptor.newBuilder()
-                .setJavaFunctionDescriptor(
-                        Common.JavaFunctionDescriptor.newBuilder()
-                        .setClassName(functionDescriptorList.get(0))
-                        .setFunctionName(functionDescriptorList.get(1))
-                        .setSignature(functionDescriptorList.get(2))))
+            .setJavaFunctionDescriptor(
+                Common.JavaFunctionDescriptor.newBuilder()
+                    .setClassName(functionDescriptorList.get(0))
+                    .setFunctionName(functionDescriptorList.get(1))
+                    .setSignature(functionDescriptorList.get(2))))
         .addAllArgs(args.stream().map(arg -> arg.id != null ? TaskArg.newBuilder()
             .addObjectIds(ByteString.copyFrom(arg.id.getBytes())).build()
             : TaskArg.newBuilder().setData(ByteString.copyFrom(arg.value.data))
@@ -210,7 +210,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
   public Optional<BaseActorHandle> getActor(String name, boolean global) {
     String fullName = global ? name :
-      String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), name);
+        String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), name);
     if (namedActors.containsKey(fullName)) {
       return Optional.of(namedActors.get(fullName));
     } else {
@@ -327,7 +327,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         // If the task is an actor task or an actor creation task,
         // put the dummy object in object store, so those tasks which depends on it
         // can be executed.
-        putObject = new NativeRayObject(new byte[]{1}, null);
+        putObject = new NativeRayObject(new byte[] {1}, null);
       } else {
         putObject = returnObjects.get(i);
       }
@@ -337,13 +337,13 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
   private static JavaFunctionDescriptor getJavaFunctionDescriptor(TaskSpec taskSpec) {
     Common.FunctionDescriptor functionDescriptor =
-            taskSpec.getFunctionDescriptor();
+        taskSpec.getFunctionDescriptor();
     if (functionDescriptor.getFunctionDescriptorCase() ==
-            Common.FunctionDescriptor.FunctionDescriptorCase.JAVA_FUNCTION_DESCRIPTOR) {
+        Common.FunctionDescriptor.FunctionDescriptorCase.JAVA_FUNCTION_DESCRIPTOR) {
       return new JavaFunctionDescriptor(
-              functionDescriptor.getJavaFunctionDescriptor().getClassName(),
-              functionDescriptor.getJavaFunctionDescriptor().getFunctionName(),
-              functionDescriptor.getJavaFunctionDescriptor().getSignature());
+          functionDescriptor.getJavaFunctionDescriptor().getClassName(),
+          functionDescriptor.getJavaFunctionDescriptor().getFunctionName(),
+          functionDescriptor.getJavaFunctionDescriptor().getSignature());
     } else {
       throw new RuntimeException("Can't build non java function descriptor");
     }

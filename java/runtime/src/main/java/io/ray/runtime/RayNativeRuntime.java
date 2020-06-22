@@ -137,7 +137,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   @Override
   public <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global) {
     String fullName = global ? name :
-      String.format("%s-%s", getRuntimeContext().getCurrentJobId(), name);
+        String.format("%s-%s", getRuntimeContext().getCurrentJobId(), name);
     byte[] actorIdBytes = nativeGetActorIdOfNamedActor(fullName);
     ActorId actorId = ActorId.fromBytes(actorIdBytes);
     if (actorId.isNil()) {
@@ -171,7 +171,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     nativeRunTaskExecutor(taskExecutor);
   }
 
-  private static native void nativeInitialize(int workerMode, String ndoeIpAddress,
+  private static native void nativeInitialize(
+      int workerMode, String ndoeIpAddress,
       int nodeManagerPort, String driverName, String storeSocket, String rayletSocket,
       byte[] jobId, GcsClientOptions gcsClientOptions, int numWorkersPerProcess,
       String logDir, Map<String, String> rayletConfigParameters);
