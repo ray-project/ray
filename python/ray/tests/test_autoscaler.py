@@ -139,6 +139,9 @@ class MockProvider(NodeProvider):
         return self.create_node(
             node_config, tags, count, instance_type=instance_type)
 
+    def get_instance_type(self, node_config):
+        return "m4.large"
+
     def set_node_tags(self, node_id, tags):
         self.mock_nodes[node_id].tags.update(tags)
 
