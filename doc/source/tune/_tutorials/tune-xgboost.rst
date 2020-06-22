@@ -111,8 +111,8 @@ simple example, the only parameter we passed is the ``objective`` parameter. The
 a binary classification task. You can find an overview over all valid objectives
 `here in the XGBoost documentation <https://xgboost.readthedocs.io/en/latest/parameter.html#learning-task-parameters>`_.
 
-Configuring XGBoost
--------------------
+XGBoost Hyperparameters
+-----------------------
 Even with the default settings, XGBoost was able to get to a good accuracy on the
 breast cancer dataset. However, as in many machine learning algorithms, there are
 many knobs to tune which might lead to even better performance. Let's explore some of
@@ -243,7 +243,7 @@ Unfortunately, there are infinitely many combinations of hyperparameters we coul
 out. Should we combine ``max_depth=3`` with ``subsample=0.8`` or with ``subsample=0.9``?
 What about the other parameters?
 
-This is where hyperparameter tuning comes into play. Using tuning libraries such as
+This is where hyperparameter tuning comes into play. By using tuning libraries such as
 Ray Tune we can try out combinations of hyperparameters. Using sophisticated search
 strategies, these parameters can be selected so that they are likely to lead to good
 results (avoiding an expensive *exhaustive search*). Also, trials that do not perform
@@ -502,3 +502,14 @@ Tuning the parameters didn't make a huge difference for the accuracy.
 But in larger applications, intelligent hyperparameter tuning can make the
 difference between a model that doesn't seem to learn at all, and a model
 that outperforms all the other ones.
+
+Further References
+------------------
+
+(Need to format the below into links)
+XGBoost Hyperparameter Tuning - A Visual Guide https://kevinvecmanis.io/machine%20learning/hyperparameter%20tuning/dataviz/python/2019/05/11/XGBoost-Tuning-Visual-Guide.html
+
+Notes on XGBoost Parameter Tuning https://xgboost.readthedocs.io/en/latest/tutorials/param_tuning.html
+
+Doing XGBoost Hyperparameter Tuning the smart way
+https://towardsdatascience.com/doing-xgboost-hyper-parameter-tuning-the-smart-way-part-1-of-2-f6d255a45dde
