@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_STATS_METRIC_DEFS_H
-#define RAY_STATS_METRIC_DEFS_H
+#pragma once
 
 /// The definitions of metrics that you can use everywhere.
 ///
@@ -75,5 +74,3 @@ static Gauge ReconstructionPolicyStats(
 static Gauge ConnectionPoolStats("connection_pool_stats",
                                  "Stats the connection pool metrics.", "pcs",
                                  {ValueTypeKey});
-
-#endif  // RAY_STATS_METRIC_DEFS_H

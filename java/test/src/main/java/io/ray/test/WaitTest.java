@@ -28,8 +28,8 @@ public class WaitTest extends BaseTest {
     // Call a task in advance to warm up the cluster to avoid being too slow to start workers.
     TestUtils.warmUpCluster();
 
-    ObjectRef<String> obj1 = Ray.call(WaitTest::hi);
-    ObjectRef<String> obj2 = Ray.call(WaitTest::delayedHi);
+    ObjectRef<String> obj1 = Ray.task(WaitTest::hi).remote();
+    ObjectRef<String> obj2 = Ray.task(WaitTest::delayedHi).remote();
 
     List<ObjectRef<String>> waitList = ImmutableList.of(obj1, obj2);
     WaitResult<String> waitResult = Ray.wait(waitList, 2, 2 * 1000);
@@ -53,7 +53,7 @@ public class WaitTest extends BaseTest {
 
   @Test
   public void testWaitInWorker() {
-    ObjectRef<Object> res = Ray.call(WaitTest::waitInWorker);
+    ObjectRef<Object> res = Ray.task(WaitTest::waitInWorker).remote();
     res.get();
   }
 

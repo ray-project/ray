@@ -68,7 +68,7 @@ class DragonflySearch(Searcher):
 
         algo = DragonflySearch(optimizer, metric="objective", mode="max")
 
-        tune.run(my_func, algo=algo)
+        tune.run(my_func, search_alg=algo)
 
     Parameters:
         optimizer (dragonfly.opt.BlackboxOptimiser): Optimizer provided

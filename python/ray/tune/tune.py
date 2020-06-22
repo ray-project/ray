@@ -110,7 +110,10 @@ def run(run_or_experiment,
             function or class, or the string identifier of a
             trainable function or class registered in the tune registry.
             If Experiment, then Tune will execute training based on
-            Experiment.spec.
+            Experiment.spec. If you want to pass in a Python lambda, you
+            will need to first register the function:
+            ``tune.register_trainable("lambda_id", lambda x: ...)``. You can
+            then use ``tune.run("lambda_id")``.
         name (str): Name of experiment.
         stop (dict | callable | :class:`Stopper`): Stopping criteria. If dict,
             the keys may be any field in the return result of 'train()',
@@ -154,8 +157,10 @@ def run(run_or_experiment,
             syncing to driver is disabled.
         checkpoint_freq (int): How many training iterations between
             checkpoints. A value of 0 (default) disables checkpointing.
+            This has no effect when using the Functional Training API.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
+            This has no effect when using the Functional Training API.
         sync_on_checkpoint (bool): Force sync-down of trial checkpoint to
             driver. If set to False, checkpoint syncing from worker to driver
             is asynchronous and best-effort. This does not affect persistent
@@ -213,6 +218,8 @@ def run(run_or_experiment,
         ray_auto_init (bool): Automatically starts a local Ray cluster
             if using a RayTrialExecutor (which is the default) and
             if Ray is not initialized. Defaults to True.
+
+
 
     Returns:
         ExperimentAnalysis: Object for experiment analysis.

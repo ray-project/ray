@@ -32,9 +32,6 @@ class TestObjectManagerBase : public ::testing::Test {
  public:
   TestObjectManagerBase() {
     RAY_LOG(INFO) << "TestObjectManagerBase: started.";
-#ifdef _WIN32
-    RAY_CHECK(false) << "port system() calls to Windows before running this test";
-#endif
   }
 
   NodeManagerConfig GetNodeManagerConfig(std::string raylet_socket_name,
@@ -95,14 +92,11 @@ class TestObjectManagerBase : public ::testing::Test {
     this->server1.reset();
     this->server2.reset();
 
-    int s = system("killall plasma_store_server &");
-    ASSERT_TRUE(!s);
+    ASSERT_EQ(TestSetupUtil::KillAllExecutable(plasma_store_server + GetExeSuffix()), 0);
 
     std::string cmd_str = test_executable.substr(0, test_executable.find_last_of("/"));
-    s = system(("rm " + cmd_str + "/raylet_1").c_str());
-    ASSERT_TRUE(!s);
-    s = system(("rm " + cmd_str + "/raylet_2").c_str());
-    ASSERT_TRUE(!s);
+    ASSERT_EQ(unlink((cmd_str + "/raylet_1").c_str()), 0);
+    ASSERT_EQ(unlink((cmd_str + "/raylet_2").c_str()), 0);
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {

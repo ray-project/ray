@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_TASK_MANAGER_H
-#define RAY_CORE_WORKER_TASK_MANAGER_H
+#pragma once
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -279,5 +278,3 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_TASK_MANAGER_H

@@ -23,13 +23,10 @@ for i in range(num_nodes):
         resources={str(i): 2},
         object_store_memory=object_store_memory,
         redis_max_memory=redis_max_memory,
-        webui_host="0.0.0.0")
+        dashboard_host="0.0.0.0")
 
 ray.init(
-    address=cluster.address,
-    include_webui=True,
-    webui_host="0.0.0.0",
-    log_to_driver=False)
+    address=cluster.address, dashboard_host="0.0.0.0", log_to_driver=False)
 serve.init()
 
 
@@ -52,7 +49,8 @@ class RandomKiller:
 
     def run(self):
         while True:
-            ray.kill(random.choice(self._get_all_serve_actors()))
+            ray.kill(
+                random.choice(self._get_all_serve_actors()), no_restart=False)
             time.sleep(self.kill_period_s)
 
 

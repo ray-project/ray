@@ -15,8 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef PLASMA_EVENTS
-#define PLASMA_EVENTS
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -107,5 +106,3 @@ class EventLoop {
 };
 
 }  // namespace plasma
-
-#endif  // PLASMA_EVENTS

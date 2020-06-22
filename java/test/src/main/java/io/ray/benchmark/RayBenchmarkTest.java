@@ -135,7 +135,7 @@ public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializab
       // defect of the Java compiler.
       // TODO(hchen): Figure out how to avoid manually declaring `RayFunc` type in this case.
       RayFunc1<PressureTestParameter, List<Long>> func = RayBenchmarkTest::singleClient;
-      objectRefs[i] = Ray.call(func, pressureTestParameter);
+      objectRefs[i] = Ray.task(func, pressureTestParameter).remote();
     }
     for (int i = 0; i < clientNum; i++) {
       List<Long> subCounterList = objectRefs[i].get();

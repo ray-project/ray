@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_REF_COUNT_H
-#define RAY_CORE_WORKER_REF_COUNT_H
+#pragma once
 
 #include <boost/bind.hpp>
 
@@ -650,5 +649,3 @@ class ReferenceCounter : public ReferenceCounterInterface {
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_REF_COUNT_H

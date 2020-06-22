@@ -1,7 +1,10 @@
 import uuid
+import gym
+from typing import Optional
 
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.env.external_env import ExternalEnv, _ExternalEnvEpisode
+from ray.rllib.utils.types import MultiAgentDict
 
 
 @PublicAPI
@@ -9,7 +12,10 @@ class ExternalMultiAgentEnv(ExternalEnv):
     """This is the multi-agent version of ExternalEnv."""
 
     @PublicAPI
-    def __init__(self, action_space, observation_space, max_concurrent=100):
+    def __init__(self,
+                 action_space: gym.Space,
+                 observation_space: gym.Space,
+                 max_concurrent: int = 100):
         """Initialize a multi-agent external env.
 
         ExternalMultiAgentEnv subclasses must call this during their __init__.
@@ -51,7 +57,9 @@ class ExternalMultiAgentEnv(ExternalEnv):
 
     @PublicAPI
     @override(ExternalEnv)
-    def start_episode(self, episode_id=None, training_enabled=True):
+    def start_episode(self,
+                      episode_id: Optional[str] = None,
+                      training_enabled: bool = True) -> str:
         if episode_id is None:
             episode_id = uuid.uuid4().hex
 
@@ -73,7 +81,8 @@ class ExternalMultiAgentEnv(ExternalEnv):
 
     @PublicAPI
     @override(ExternalEnv)
-    def get_action(self, episode_id, observation_dict):
+    def get_action(self, episode_id: str,
+                   observation_dict: MultiAgentDict) -> MultiAgentDict:
         """Record an observation and get the on-policy action.
         observation_dict is expected to contain the observation
         of all agents acting in this episode step.
@@ -91,7 +100,8 @@ class ExternalMultiAgentEnv(ExternalEnv):
 
     @PublicAPI
     @override(ExternalEnv)
-    def log_action(self, episode_id, observation_dict, action_dict):
+    def log_action(self, episode_id: str, observation_dict: MultiAgentDict,
+                   action_dict: MultiAgentDict) -> None:
         """Record an observation and (off-policy) action taken.
 
         Arguments:
@@ -106,10 +116,10 @@ class ExternalMultiAgentEnv(ExternalEnv):
     @PublicAPI
     @override(ExternalEnv)
     def log_returns(self,
-                    episode_id,
-                    reward_dict,
-                    info_dict=None,
-                    multiagent_done_dict=None):
+                    episode_id: str,
+                    reward_dict: MultiAgentDict,
+                    info_dict: MultiAgentDict = None,
+                    multiagent_done_dict: MultiAgentDict = None) -> None:
         """Record returns from the environment.
 
         The reward will be attributed to the previous action taken by the
@@ -142,7 +152,8 @@ class ExternalMultiAgentEnv(ExternalEnv):
 
     @PublicAPI
     @override(ExternalEnv)
-    def end_episode(self, episode_id, observation_dict):
+    def end_episode(self, episode_id: str,
+                    observation_dict: MultiAgentDict) -> None:
         """Record the end of an episode.
 
         Arguments:

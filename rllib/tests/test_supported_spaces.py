@@ -66,11 +66,14 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
                     p_done=1.0,
                     check_action_bounds=check_bounds)))
         stat = "ok"
-        a = None
+        if alg == "SAC":
+            config["use_state_preprocessor"] = o_name in ["atari", "image"]
+
         try:
-            if alg == "SAC":
-                config["use_state_preprocessor"] = o_name in ["atari", "image"]
             a = get_agent_class(alg)(config=config, env=RandomEnv)
+        except UnsupportedSpaceException:
+            stat = "unsupported"
+        else:
             if alg not in ["DDPG", "ES", "ARS", "SAC"]:
                 if o_name in ["atari", "image"]:
                     if fw == "torch":
@@ -85,18 +88,14 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
                         assert isinstance(a.get_policy().model, FCNetV2)
             if train:
                 a.train()
-        except UnsupportedSpaceException:
-            stat = "unsupported"
-        finally:
-            if a:
-                try:
-                    a.stop()
-                except Exception as e:
-                    print("Ignoring error stopping agent", e)
-                    pass
+            try:
+                a.stop()
+            except Exception as e:
+                print("Ignoring error stopping agent", e)
+                pass
         print(stat)
 
-    frameworks = ("tf", "torch")
+    frameworks = ("torch", "tf")
     if tfe:
         frameworks += ("tfe", )
     for _ in framework_iterator(config, frameworks=frameworks):

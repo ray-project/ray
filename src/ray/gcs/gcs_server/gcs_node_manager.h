@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_NODE_MANAGER_H
-#define RAY_GCS_NODE_MANAGER_H
+#pragma once
 
 #include <ray/common/id.h>
 #include <ray/gcs/accessor.h>
@@ -219,5 +218,3 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif  // RAY_GCS_NODE_MANAGER_H
