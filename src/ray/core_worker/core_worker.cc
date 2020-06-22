@@ -1175,12 +1175,12 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   return status;
 }
 
-Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
-                                   const std::vector<TaskArg> &args,
-                                   const TaskOptions &task_options,
-                                   std::vector<ObjectID> *return_ids) {
+void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
+                                 const std::vector<TaskArg> &args,
+                                 const TaskOptions &task_options,
+                                 std::vector<ObjectID> *return_ids) {
   ActorHandle *actor_handle = nullptr;
-  RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
+  RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
 
   // Add one for actor cursor object id for tasks.
   const int num_returns = task_options.num_returns + 1;
@@ -1213,7 +1213,6 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
       RAY_UNUSED(direct_actor_submitter_->SubmitTask(task_spec));
     });
   }
-  return Status::OK();
 }
 
 Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill) {
