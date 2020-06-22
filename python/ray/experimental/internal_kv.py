@@ -5,7 +5,7 @@ _local = {}  # dict for local mode
 
 def _internal_kv_initialized():
     worker = ray.worker.global_worker
-    return hasattr(worker, "mode") and worker.mode is not None
+    return hasattr(worker, "redis_client") and worker.redis_client is not None
 
 
 def _internal_kv_get(key):

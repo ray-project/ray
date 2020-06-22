@@ -15,16 +15,75 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
+from ray.experimental.internal_kv import _internal_kv_get
+import ray.services as services
 from ray.autoscaler.util import validate_config, hash_runtime_conf, \
-    hash_launch_conf, prepare_config
+    hash_launch_conf, fillout_defaults, TRIM_NODES_COMMAND, \
+    DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_TYPE_WORKER, NODE_TYPE_HEAD
+from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.log_timer import LogTimer
 from ray.autoscaler.docker import with_docker_exec
+from ray.worker import global_worker
 
 logger = logging.getLogger(__name__)
+
+redis_client = None
+
+
+def _redis():
+    global redis_client
+    if redis_client is None:
+        redis_client = services.create_redis_client(
+            global_worker.node.redis_address,
+            password=global_worker.node.redis_password)
+    return redis_client
+
+
+def debug_status():
+    """Return a debug string for the autoscaler."""
+    status = _internal_kv_get(DEBUG_AUTOSCALING_STATUS)
+    error = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
+    if not status:
+        status = "No cluster status."
+    else:
+        status = status.decode("utf-8")
+    if error:
+        status += "\n"
+        status += error.decode("utf-8")
+    return status
+
+
+def trim_nodes():
+    """Tell the autoscaler to delete idle nodes immediately."""
+    r = _redis()
+    r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
+              json.dumps(TRIM_NODES_COMMAND))
+
+
+def request_resources(num_cpus=None, bundles=None):
+    """Remotely request some CPU or GPU resources from the autoscaler.
+
+    This function is to be called e.g. on a node before submitting a bunch of
+    ray.remote calls to ensure that resources rapidly become available.
+
+    This function is non blocking.
+
+    Args:
+        num_cpus: int -- the number of CPU cores to request
+        bundles: List[dict] -- list of resource bundles (Experimental)
+    """
+    r = _redis()
+    if num_cpus is not None and num_cpus > 0:
+        r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
+                  json.dumps({
+                      "CPU": num_cpus
+                  }))
+    if bundles:
+        r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(bundles))
 
 
 def create_or_update_cluster(config_file, override_min_workers,
