@@ -397,9 +397,6 @@ class StandardAutoscaler:
         tmp += "\n"
         tmp += self.load_metrics.info_string()
         tmp += "\n"
-        if self.resource_demand_scheduler:
-            tmp += self.resource_demand_scheduler.debug_string(
-                nodes, self.pending_launches.breakdown())
         if _internal_kv_initialized():
             _internal_kv_put(DEBUG_AUTOSCALING_STATUS, tmp, overwrite=True)
         logger.info(tmp)
