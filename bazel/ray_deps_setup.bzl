@@ -199,6 +199,7 @@ def ray_deps_setup():
         url = "https://github.com/jupp0r/prometheus-cpp/archive/60eaa4ea47b16751a8e8740b05fe70914c68a480.tar.gz",
         sha256 = "ec825b802487ac18b0d98e2e8b7961487b12562f8f82e424521d0a891d9e1373",
         patches = [
+            "//thirdparty/patches:prometheus-windows-headers.patch",
             # https://github.com/jupp0r/prometheus-cpp/pull/225
             "//thirdparty/patches:prometheus-windows-zlib.patch",
             "//thirdparty/patches:prometheus-windows-pollfd.patch",

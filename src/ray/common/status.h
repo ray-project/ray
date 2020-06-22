@@ -26,8 +26,7 @@
 
 // Adapted from Apache Arrow, Apache Kudu, TensorFlow
 
-#ifndef RAY_STATUS_H_
-#define RAY_STATUS_H_
+#pragma once
 
 #include <cstring>
 #include <iosfwd>
@@ -258,5 +257,3 @@ inline void Status::operator=(const Status &s) {
 Status boost_to_ray_status(const boost::system::error_code &error);
 
 }  // namespace ray
-
-#endif  // RAY_STATUS_H_

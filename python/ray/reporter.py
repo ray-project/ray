@@ -10,7 +10,6 @@ import platform
 import subprocess
 import sys
 from concurrent import futures
-
 import ray
 import psutil
 import ray.ray_constants as ray_constants
@@ -23,6 +22,13 @@ from ray.core.generated import reporter_pb2_grpc
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
+
+try:
+    import gpustat.core as gpustat
+except ImportError:
+    gpustat = None
+    logger.warning(
+        "Install gpustat with 'pip install gpustat' to enable GPU monitoring.")
 
 
 class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
@@ -108,6 +114,27 @@ class Reporter:
         return psutil.cpu_percent()
 
     @staticmethod
+    def get_gpu_usage():
+        if gpustat is None:
+            return []
+        gpu_utilizations = []
+        gpus = []
+        try:
+            gpus = gpustat.new_query().gpus
+        except Exception as e:
+            logger.debug(
+                "gpustat failed to retrieve GPU information: {}".format(e))
+        for gpu in gpus:
+            # Note the keys in this dict have periods which throws
+            # off javascript so we change .s to _s
+            gpu_data = {
+                "_".join(key.split(".")): val
+                for key, val in gpu.entry.items()
+            }
+            gpu_utilizations.append(gpu_data)
+        return gpu_utilizations
+
+    @staticmethod
     def get_boot_time():
         return psutil.boot_time()
 
@@ -179,6 +206,7 @@ class Reporter:
             "boot_time": self.get_boot_time(),
             "load_avg": self.get_load_avg(),
             "disk": self.get_disk_usage(),
+            "gpus": self.get_gpu_usage(),
             "net": netstats,
         }
 

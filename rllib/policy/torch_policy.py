@@ -1,6 +1,8 @@
+import functools
 import numpy as np
 import time
 
+from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
@@ -149,6 +151,13 @@ class TorchPolicy(Policy):
                     dist_class = self.dist_class
                     dist_inputs, state_out = self.model(
                         input_dict, state_batches, seq_lens)
+                if not (isinstance(dist_class, functools.partial)
+                        or issubclass(dist_class, TorchDistributionWrapper)):
+                    raise ValueError(
+                        "`dist_class` ({}) not a TorchDistributionWrapper "
+                        "subclass! Make sure your `action_distribution_fn` or "
+                        "`make_model_and_action_dist` return a correct "
+                        "distribution class.".format(dist_class.__name__))
                 action_dist = dist_class(dist_inputs, self.model)
 
                 # Get the exploration action from the forward results.

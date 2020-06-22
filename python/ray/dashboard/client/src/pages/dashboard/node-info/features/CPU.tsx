@@ -1,29 +1,11 @@
 import React from "react";
 import UsageBar from "../../../../common/UsageBar";
+import { getWeightedAverage } from "../../../../common/util";
 import {
   ClusterFeatureComponent,
   NodeFeatureComponent,
   WorkerFeatureComponent,
 } from "./types";
-
-const getWeightedAverage = (
-  input: {
-    weight: number;
-    value: number;
-  }[],
-) => {
-  if (input.length === 0) {
-    return 0;
-  }
-
-  let totalWeightTimesValue = 0;
-  let totalWeight = 0;
-  for (const { weight, value } of input) {
-    totalWeightTimesValue += weight * value;
-    totalWeight += weight;
-  }
-  return totalWeightTimesValue / totalWeight;
-};
 
 export const ClusterCPU: ClusterFeatureComponent = ({ nodes }) => {
   const cpuWeightedAverage = getWeightedAverage(

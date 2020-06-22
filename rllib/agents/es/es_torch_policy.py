@@ -54,7 +54,14 @@ def before_init(policy, observation_space, action_space, config):
     type(policy).set_flat_weights = _set_flat_weights
     type(policy).get_flat_weights = _get_flat_weights
 
-    def _compute_actions(policy, obs_batch, add_noise=False, update=True):
+    def _compute_actions(policy,
+                         obs_batch,
+                         add_noise=False,
+                         update=True,
+                         **kwargs):
+        # Batch is given as list -> Try converting to numpy first.
+        if isinstance(obs_batch, list) and len(obs_batch) == 1:
+            obs_batch = obs_batch[0]
         observation = policy.preprocessor.transform(obs_batch)
         observation = policy.observation_filter(
             observation[None], update=update)
