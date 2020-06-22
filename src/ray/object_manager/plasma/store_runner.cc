@@ -136,6 +136,8 @@ void PlasmaStoreRunner::Start() {
 void PlasmaStoreRunner::Stop() {
   if (loop_) {
     loop_->Stop();
+  } else {
+    ARROW_LOG(ERROR) << "Expected loop_ to be non-NULL; this may be a bug";
   }
 }
 
