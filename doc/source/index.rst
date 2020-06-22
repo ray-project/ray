@@ -163,7 +163,7 @@ Getting Involved
 
 .. toctree::
    :maxdepth: -1
-   :caption: Tune
+   :caption: Ray Tune
 
    tune.rst
    Tutorials, Guides, Examples <tune/tutorials/overview.rst>
