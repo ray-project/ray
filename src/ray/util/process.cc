@@ -405,6 +405,14 @@ void Process::Kill() {
       HANDLE handle = fd != -1 ? reinterpret_cast<HANDLE>(fd) : NULL;
       if (!::TerminateProcess(handle, ERROR_PROCESS_ABORTED)) {
         error = std::error_code(GetLastError(), std::system_category());
+        if (error.value() == ERROR_ACCESS_DENIED) {
+          // This can occur under some circumstances if the process is already terminating
+          DWORD exit_code;
+          if (GetExitCodeProcess(handle, &exit_code) && exit_code != STILL_ACTIVE) {
+            // The process is already terminating, so consider the killing successful
+            error = std::error_code();
+          }
+        }
       }
 #else
       (void)fd;
