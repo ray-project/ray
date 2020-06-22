@@ -19,6 +19,7 @@
 #include <sstream>
 
 #include "ray/common/id.h"
+#include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/lib/java/jni_utils.h"
 
@@ -155,12 +156,13 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetResource(
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
-JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(
-    JNIEnv *, jclass, jstring actor_name) {
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, jclass,
+                                                                  jstring actor_name) {
   const char *native_actor_name = env->GetStringUTFChars(actor_name, JNI_FALSE);
-  ActorHandle *actor_handle;
-  RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker()
-                   .GetNamedActorHandle(native_actor_name, actor_handle));
+  ray::ActorHandle *actor_handle;
+  RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(
+      native_actor_name, &actor_handle));
   auto actor_id = actor_handle->GetActorID();
   jbyteArray bytes = env->NewByteArray(actor_id.Size());
   env->SetByteArrayRegion(bytes, 0, actor_id.Size(),

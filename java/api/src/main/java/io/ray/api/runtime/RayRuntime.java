@@ -95,7 +95,7 @@ public interface RayRuntime {
    * @param name The name of the named actor.
    * @return ActorHandle to the actor.
    */
-  Optional<BaseActorHandle> getActor(String name) throws IllegalArgumentException;
+  <T extends BaseActorHandle> Optional<T> getActor(String name);
 
   /**
    * Kill the actor immediately.

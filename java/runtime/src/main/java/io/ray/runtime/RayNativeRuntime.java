@@ -133,12 +133,12 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     nativeSetResource(resourceName, capacity, nodeId.getBytes());
   }
 
+  @SuppressWarnings("unchecked")
   @Override
-  public Optional<BaseActorHandle> getActor(String name) throws IllegalArgumentException {
-    Preconditions.checkState(rayConfig.gcsServiceEnabled);
+  public <T extends BaseActorHandle> Optional<T> getActor(String name) {
     String fullName = String.format("%s-%s", getRuntimeContext().getCurrentJobId(), name);
     Optional<BaseActorHandle> actor = getActorInternal(fullName);
-    return actor.isPresent() ? actor : getActorInternal(name);
+    return (Optional<T>) (actor.isPresent() ? actor : getActorInternal(name));
   }
 
   private Optional<BaseActorHandle> getActorInternal(String name) throws IllegalArgumentException {

@@ -148,7 +148,7 @@ public final class Ray extends RayCall {
    * @return and ActorHandle to the actor if the actor of specified name exists or
    * @throws IllegalArgumentException if the named actor does not exist.
    */
-  public static Optional<BaseActorHandle> getActor(String name) {
+  public static <T extends BaseActorHandle> Optional<T> getActor(String name) {
     return runtime.getActor(name);
   }
 

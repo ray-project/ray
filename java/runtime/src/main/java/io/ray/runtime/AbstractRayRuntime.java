@@ -37,7 +37,6 @@ import io.ray.runtime.task.TaskSubmitter;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

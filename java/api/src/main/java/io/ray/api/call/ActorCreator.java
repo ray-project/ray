@@ -39,6 +39,18 @@ public class ActorCreator<A> extends BaseActorCreator<ActorCreator<A>> {
    * @return self
    * @see io.ray.api.options.ActorCreationOptions.Builder#setName(String, boolean)
    */
+  public ActorCreator<A> setName(String name) {
+    return setName(name, false);
+  }
+
+  /**
+   * Set the actor name of a named actor.
+   *
+   * @param name The name of the named actor.
+   * @param global Whether the named actor is a global actor or just for current job.
+   * @return self
+   * @see io.ray.api.options.ActorCreationOptions.Builder#setName(String, boolean)
+   */
   public ActorCreator<A> setName(String name, boolean global) {
     builder.setName(name, global);
     return this;

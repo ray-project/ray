@@ -95,8 +95,8 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   std::vector<std::string> dynamic_worker_options;
   uint64_t max_concurrency = 1;
   if (actorCreationOptions) {
-    auto java_name = (jstring)env->GetObjectField(
-        actorCreationOptions, java_actor_creation_options_name);
+    auto java_name = (jstring)env->GetObjectField(actorCreationOptions,
+                                                  java_actor_creation_options_name);
     if (java_name) {
       name = JavaStringToNativeString(env, java_name);
     }

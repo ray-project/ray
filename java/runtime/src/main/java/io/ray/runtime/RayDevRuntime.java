@@ -67,9 +67,10 @@ public class RayDevRuntime extends AbstractRayRuntime {
     throw new UnsupportedOperationException();
   }
 
+  @SuppressWarnings("unchecked")
   @Override
-  public Optional<BaseActorHandle> getActor(String name) throws IllegalArgumentException {
-    return ((LocalModeTaskSubmitter)taskSubmitter).getActor(name);
+  public <T extends BaseActorHandle> Optional<T> getActor(String name) {
+    return (Optional<T>) ((LocalModeTaskSubmitter)taskSubmitter).getActor(name);
   }
 
   @Override
