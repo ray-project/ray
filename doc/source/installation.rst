@@ -150,7 +150,7 @@ the dashboard. For example,
   Note: If Ray is running on a remote node, you will need to set up an
   SSH tunnel with local port forwarding in order to access the dashboard
   in your browser, e.g. by running 'ssh -L 8265:127.0.0.1:8265
-  <username>@<host>'. Alternatively, you can set webui_host="0.0.0.0" in
+  <username>@<host>'. Alternatively, you can set dashboard_host="0.0.0.0" in
   the call to ray.init() to allow direct access from external machines.
   ======================================================================
 

@@ -359,66 +359,66 @@ def test_calling_start_ray_head(call_ray_stop_only):
     # should also test the non-head node code path.
 
     # Test starting Ray with no arguments.
-    subprocess.check_output(["ray", "start", "--head"])
-    subprocess.check_output(["ray", "stop"])
+    subprocess.check_call(["ray", "start", "--head"])
+    subprocess.check_call(["ray", "stop"])
 
     # Test starting Ray with a redis port specified.
-    subprocess.check_output(["ray", "start", "--head"])
-    subprocess.check_output(["ray", "stop"])
+    subprocess.check_call(["ray", "start", "--head"])
+    subprocess.check_call(["ray", "stop"])
 
     # Test starting Ray with a node IP address specified.
-    subprocess.check_output(
+    subprocess.check_call(
         ["ray", "start", "--head", "--node-ip-address", "127.0.0.1"])
-    subprocess.check_output(["ray", "stop"])
+    subprocess.check_call(["ray", "stop"])
 
     # Test starting Ray with the object manager and node manager ports
     # specified.
-    subprocess.check_output([
+    subprocess.check_call([
         "ray", "start", "--head", "--object-manager-port", "12345",
         "--node-manager-port", "54321"
     ])
-    subprocess.check_output(["ray", "stop"])
+    subprocess.check_call(["ray", "stop"])
 
     # Test starting Ray with the worker port range specified.
-    subprocess.check_output([
+    subprocess.check_call([
         "ray", "start", "--head", "--min-worker-port", "50000",
         "--max-worker-port", "51000"
     ])
-    subprocess.check_output(["ray", "stop"])
+    subprocess.check_call(["ray", "stop"])
 
     # Test starting Ray with the number of CPUs specified.
-    subprocess.check_output(["ray", "start", "--head", "--num-cpus", "2"])
-    subprocess.check_output(["ray", "stop"])
+    subprocess.check_call(["ray", "start", "--head", "--num-cpus", "2"])
+    subprocess.check_call(["ray", "stop"])
 
     # Test starting Ray with the number of GPUs specified.
-    subprocess.check_output(["ray", "start", "--head", "--num-gpus", "100"])
-    subprocess.check_output(["ray", "stop"])
+    subprocess.check_call(["ray", "start", "--head", "--num-gpus", "100"])
+    subprocess.check_call(["ray", "stop"])
 
     # Test starting Ray with the max redis clients specified.
-    subprocess.check_output(
+    subprocess.check_call(
         ["ray", "start", "--head", "--redis-max-clients", "100"])
-    subprocess.check_output(["ray", "stop"])
+    subprocess.check_call(["ray", "stop"])
 
     if "RAY_USE_NEW_GCS" not in os.environ:
         # Test starting Ray with redis shard ports specified.
-        subprocess.check_output([
+        subprocess.check_call([
             "ray", "start", "--head", "--redis-shard-ports", "6380,6381,6382"
         ])
-        subprocess.check_output(["ray", "stop"])
+        subprocess.check_call(["ray", "stop"])
 
         # Test starting Ray with all arguments specified.
-        subprocess.check_output([
+        subprocess.check_call([
             "ray", "start", "--head", "--redis-shard-ports", "6380,6381,6382",
             "--object-manager-port", "12345", "--num-cpus", "2", "--num-gpus",
             "0", "--redis-max-clients", "100", "--resources", "{\"Custom\": 1}"
         ])
-        subprocess.check_output(["ray", "stop"])
+        subprocess.check_call(["ray", "stop"])
 
     # Test starting Ray with invalid arguments.
     with pytest.raises(subprocess.CalledProcessError):
-        subprocess.check_output(
+        subprocess.check_call(
             ["ray", "start", "--head", "--address", "127.0.0.1:6379"])
-    subprocess.check_output(["ray", "stop"])
+    subprocess.check_call(["ray", "stop"])
 
     # Test --block. Killing a child process should cause the command to exit.
     blocked = subprocess.Popen(["ray", "start", "--head", "--block"])

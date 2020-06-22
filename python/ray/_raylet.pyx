@@ -117,7 +117,6 @@ logger = logging.getLogger(__name__)
 
 def gcs_actor_service_enabled():
     return (
-        RayConfig.instance().gcs_service_enabled() and
         RayConfig.instance().gcs_actor_service_enabled())
 
 
