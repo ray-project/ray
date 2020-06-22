@@ -95,9 +95,9 @@ class ResourceReserveInterface {
       const ray::rpc::ClientCallback<ray::rpc::RequestResourceReserveReply>
           &callback) = 0;
 
-  virtual ray::Status CancelResourceReturn(
+  virtual ray::Status CancelResourceReserve(
       BundleSpecification &bundle_spec,
-      const ray::rpc::ClientCallback<ray::rpc::CancelResourceReturnReply> &callback) = 0;
+      const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
 
   virtual ~ResourceReserveInterface(){};
 };
@@ -334,9 +334,9 @@ class RayletClient : public PinObjectsInterface,
       override;
 
   /// Implements ResourceReserveInterface.
-  ray::Status CancelResourceReturn(
+  ray::Status CancelResourceReserve(
       BundleSpecification &bundle_spec,
-      const ray::rpc::ClientCallback<ray::rpc::CancelResourceReturnReply> &callback)
+      const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
       override;
 
   ray::Status PinObjectIDs(

@@ -69,9 +69,6 @@ struct Mocker {
     PlacementGroupSpecBuilder builder;
 
     auto placement_group_id = PlacementGroupID::FromRandom();
-    for (size_t i = 0; i < bundles.size(); i++) {
-      bundles[i].set_bundle_id(BundleID::FromRandom().Binary());
-    }
     builder.SetPlacementGroupSpec(placement_group_id, name, bundles, strategy);
     return builder.Build();
   }

@@ -668,8 +668,8 @@ void ResourceIdSet::AddBundleResource(const std::string &resource_name,
   available_resources_[resource_name] = resource_ids;
 }
 
-void ResourceIdSet::ReturnBundleReousce(const std::string &resource_name) {
-  std::string origin_resource_name = resource_name.substr(resource_name.find("_"));
+void ResourceIdSet::CancelResourceReserve(const std::string &resource_name) {
+  std::string origin_resource_name = resource_name.substr(resource_name.find("_") + 1);
   auto iter_orig = available_resources_.find(origin_resource_name);
   auto iter_bundle = available_resources_.find(resource_name);
   if (iter_bundle == available_resources_.end()) {
@@ -834,11 +834,15 @@ void SchedulingResources::UpdateResourceCapacity(const std::string &resource_nam
 
 void SchedulingResources::UpdateBundleResource(const std::string &bundle_id,
                                                const ResourceSet &resource_set) {
+  resources_available_.SubtractResourcesStrict(resource_set);
   resources_available_.AddBundleResources(bundle_id, resource_set);
+  resources_total_.SubtractResourcesStrict(resource_set);
+  resources_total_.AddBundleResources(bundle_id, resource_set);
 }
 
 void SchedulingResources::ReturnBundleResource(const std::string &bundle_id) {
   resources_available_.ReturnBundleResources(bundle_id);
+  resources_total_.ReturnBundleResources(bundle_id);
 }
 
 void SchedulingResources::DeleteResource(const std::string &resource_name) {

@@ -13,8 +13,8 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include <ray/protobuf/gcs.pb.h>
+#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 
 namespace ray {
 namespace gcs {
@@ -23,34 +23,37 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     boost::asio::io_context &io_context,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     const gcs::GcsNodeManager &gcs_node_manager,
-    std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_failure_handler,
-    std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_success_handler,
     ReserveResourceClientFactoryFn lease_client_factory)
-    : io_context_(io_context),
+    : return_timer_(io_context),
       gcs_table_storage_(gcs_table_storage),
       gcs_node_manager_(gcs_node_manager),
-      schedule_failure_handler_(std::move(schedule_failure_handler)),
-      schedule_success_handler_(std::move(schedule_success_handler)),
       lease_client_factory_(std::move(lease_client_factory)) {
-  RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
-  scheduler.push_back(std::make_shared<GcsPackStrategy>());
-  scheduler.push_back(std::make_shared<GcsSpreadStrategy>());
+  scheduler_strategies_.push_back(std::make_shared<GcsPackStrategy>());
+  scheduler_strategies_.push_back(std::make_shared<GcsSpreadStrategy>());
 }
 
-std::unordered_map<BundleID, ClientID> GcsPackStrategy::Schedule(
-    std::vector<ray::BundleSpecification> &bundles, const GcsNodeManager &node_manager) {
-  std::unordered_map<BundleID, ClientID> schedule_map;
+/// This is an initial algorithm to respect pack algorithm.
+/// In this algorithm, we try to pack all the bundle in the first node
+/// and don't care the real resource.
+ScheduleMap GcsPackStrategy::Schedule(
+    std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+    const GcsNodeManager &node_manager) {
+  ScheduleMap schedule_map;
   auto &alive_nodes = node_manager.GetAllAliveNodes();
   for (size_t pos = 0; pos < bundles.size(); pos++) {
-    schedule_map[bundles[pos].BundleId()] =
+    schedule_map[bundles[pos]->BundleId()] =
         ClientID::FromBinary(alive_nodes.begin()->second->node_id());
   }
   return schedule_map;
 }
 
-std::unordered_map<BundleID, ClientID> GcsSpreadStrategy::Schedule(
-    std::vector<ray::BundleSpecification> &bundles, const GcsNodeManager &node_manager) {
-  std::unordered_map<BundleID, ClientID> schedule_map;
+/// This is an initial algorithm to respect spread algorithm.
+/// In this algorithm, we try to spread all the bundle in different node
+/// and don't care the real resource.
+ScheduleMap GcsSpreadStrategy::Schedule(
+    std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+    const GcsNodeManager &node_manager) {
+  ScheduleMap schedule_map;
   auto &alive_nodes = node_manager.GetAllAliveNodes();
   auto iter = alive_nodes.begin();
   size_t index = 0;
@@ -60,7 +63,7 @@ std::unordered_map<BundleID, ClientID> GcsSpreadStrategy::Schedule(
       if (index + base * alive_nodes_size >= bundles.size()) {
         break;
       } else {
-        schedule_map[bundles[index + base * alive_nodes_size].BundleId()] =
+        schedule_map[bundles[index + base * alive_nodes_size]->BundleId()] =
             ClientID::FromBinary(iter->second->node_id());
       }
     }
@@ -69,40 +72,55 @@ std::unordered_map<BundleID, ClientID> GcsSpreadStrategy::Schedule(
 }
 
 void GcsPlacementGroupScheduler::Schedule(
-    std::shared_ptr<GcsPlacementGroup> placement_group) {
+    std::shared_ptr<GcsPlacementGroup> placement_group,
+    std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_failure_handler,
+    std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_success_handler) {
   auto bundles = placement_group->GetBundles();
   auto strategy = placement_group->GetStrategy();
   auto alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  /// If the placement group don't have bundle, the placement group creates success.
   if (bundles.size() == 0) {
-    schedule_success_handler_(placement_group);
+    schedule_success_handler(placement_group);
     return;
   }
+
+  // If alive_node is empty, the the placement group creates fail.
   if (alive_nodes.size() == 0) {
-    schedule_failure_handler_(placement_group);
+    schedule_failure_handler(placement_group);
     return;
   }
-  auto schedule_map = scheduler[strategy]->Schedule(bundles, gcs_node_manager_);
-  auto decision_ptr = std::shared_ptr<std::vector<ClientID>>(new std::vector<ClientID>());
+  auto schedule_map =
+      scheduler_strategies_[strategy]->Schedule(bundles, gcs_node_manager_);
+  // If schedule success, the decision will be set as schedule_map[bundles[pos]]
+  // else will be set ClientID::Nil().
+  auto decision = std::shared_ptr<std::unordered_map<BundleID, ClientID, pair_hash>>(
+      new std::unordered_map<BundleID, ClientID, pair_hash>());
+  // To count how many scheduler have been return, which include success and failure.
   auto finish_count = std::make_shared<size_t>();
-  decision_ptr->resize(bundles.size());
+
+  decision->resize(bundles.size());
+  /// TODO(AlisaWu): Change the strategy when reserve resource failed.
   for (size_t pos = 0; pos < bundles.size(); pos++) {
-    RAY_CHECK(node_to_bundles_when_leasing_[schedule_map.at(bundles[pos].BundleId())]
-                  .emplace(bundles[pos].BundleId())
+    RAY_CHECK(node_to_bundles_when_leasing_[schedule_map.at(bundles[pos]->BundleId())]
+                  .emplace(bundles[pos]->BundleId())
                   .second);
-    lease_resource_queue_.push_back(std::make_tuple(
-        bundles[pos], gcs_node_manager_.GetNode(schedule_map.at(bundles[pos].BundleId())),
-        [this, pos, bundles, schedule_map, placement_group, decision_ptr, finish_count](
+    ReserveResourceFromNode(
+        bundles[pos],
+        gcs_node_manager_.GetNode(schedule_map.at(bundles[pos]->BundleId())),
+        [this, pos, bundles, schedule_map, placement_group, decision, finish_count,
+         schedule_failure_handler, schedule_success_handler](
             const Status &status, const rpc::RequestResourceReserveReply &reply) {
           (*finish_count)++;
-          if (status.ok()) {
-            (*decision_ptr)[pos] = schedule_map.at(bundles[pos].BundleId());
+          if (status.ok() && reply.success()) {
+            (*decision)[bundles[pos]->BundleId()] =
+                schedule_map.at(bundles[pos]->BundleId());
           } else {
-            (*decision_ptr)[pos] = ClientID::Nil(); 
+            (*decision)[bundles[pos]->BundleId()] = ClientID::Nil();
           }
           if ((*finish_count) == bundles.size()) {
             bool lease_success = true;
             for (size_t i = 0; i < (*finish_count); i++) {
-              if ((*decision_ptr)[pos] == ClientID::Nil()) {
+              if ((*decision)[bundles[i]->BundleId()] == ClientID::Nil()) {
                 lease_success = false;
                 break;
               }
@@ -110,114 +128,110 @@ void GcsPlacementGroupScheduler::Schedule(
             if (lease_success) {
               rpc::ScheduleData data;
               for (size_t i = 0; i < bundles.size(); i++) {
-                data.mutable_schedule_plan()->insert({bundles[i].BundleId().Binary(),(*decision_ptr)[pos].Binary()});
+                data.mutable_schedule_plan()->insert(
+                    {bundles[i]->BundleIdAsString(),
+                     (*decision)[bundles[i]->BundleId()].Binary()});
               }
-               RAY_CHECK_OK(gcs_table_storage_->PlacementGroupScheduleTable().Put(
-                   placement_group->GetPlacementGroupID(), data, [](Status status) {}));
-                    schedule_success_handler_(placement_group);
+              RAY_CHECK_OK(gcs_table_storage_->PlacementGroupScheduleTable().Put(
+                  placement_group->GetPlacementGroupID(), data, [](Status status) {}));
+              schedule_success_handler(placement_group);
             } else {
               for (size_t i = 0; i < (*finish_count); i++) {
-                if ((*decision_ptr)[i] != ClientID::Nil()) {
+                if ((*decision)[bundles[i]->BundleId()] != ClientID::Nil()) {
                   CancelResourceReserve(bundles[i],
-                                       gcs_node_manager_.GetNode(
-                                           schedule_map.at(bundles[pos].BundleId())));
+                                        gcs_node_manager_.GetNode(
+                                            schedule_map.at(bundles[pos]->BundleId())));
                 }
               }
-              schedule_failure_handler_(placement_group);
-            }
-          }
-        }));
-  }
-  ReserveResourceFromNode();
-}
-
-void GcsPlacementGroupScheduler::ReserveResourceFromNode() {
-  // const BundleSpecification &bundle,
-  // std::shared_ptr<rpc::GcsNodeInfo> node
-  for (auto iter = lease_resource_queue_.begin(); iter != lease_resource_queue_.end();
-       iter++) {
-    auto bundle = std::get<0>(*iter);
-    auto node = std::get<1>(*iter);
-    auto callback = std::get<2>(*iter);
-    RAY_CHECK(node);
-
-    auto node_id = ClientID::FromBinary(node->node_id());
-    RAY_LOG(INFO) << "Start leasing resource from node " << node_id << " for bundle "
-                  << bundle.BundleId();
-
-    rpc::Address remote_address;
-    remote_address.set_raylet_id(node->node_id());
-    remote_address.set_ip_address(node->node_manager_address());
-    remote_address.set_port(node->node_manager_port());
-    auto lease_client = GetOrConnectLeaseClient(remote_address);
-
-    auto status = lease_client->RequestResourceReserve(
-        bundle, [this, node_id, bundle, node, callback](
-                    const Status &status, const rpc::RequestResourceReserveReply &reply) {
-          // If the bundle is still in the leasing map and the status is ok, remove the
-          // bundle from the leasing map and handle the reply. Otherwise, lease again,
-          // because it may be a network exception. If the bundle is not in the leasing
-          // map, it means that the placement_group has been cancelled as the node is
-          // dead, just do nothing in this case because the gcs_placement_group_manager
-          // will reconstruct it again.
-          // TODO(AlisaWu): Add placement group cancel
-          auto iter = node_to_bundles_when_leasing_.find(node_id);
-          if (iter != node_to_bundles_when_leasing_.end()) {
-            // If the node is still available, the actor must be still in the leasing map
-            // as it is erased from leasing map only when `CancelOnNode` or the
-            // `RequestWorkerLeaseReply` is received from the node, so try lease again.
-            auto bundle_iter = iter->second.find(bundle.BundleId());
-            RAY_CHECK(bundle_iter != iter->second.end());
-            if (status.ok()) {
-              // Remove the actor from the leasing map as the reply is returned from the
-              // remote node.
-              iter->second.erase(bundle_iter);
-              if (iter->second.empty()) {
-                node_to_bundles_when_leasing_.erase(iter);
-              }
-              RAY_LOG(INFO) << "Finished leasing resource from " << node_id
-                            << " for bundle " << bundle.BundleId();
-              callback(status, reply);
-            } else {
-              callback(Status::OutOfMemory("bundle lease resource failed"), reply);
+              schedule_failure_handler(placement_group);
             }
           }
         });
-    if (!status.ok()) {
-      rpc::RequestResourceReserveReply reply;
-      callback(Status::OutOfMemory("bundle lease resource failed"), reply);
-    }
+  }
+}
+
+void GcsPlacementGroupScheduler::ReserveResourceFromNode(
+    std::shared_ptr<BundleSpecification> bundle,
+    std::shared_ptr<ray::rpc::GcsNodeInfo> node, ReserveResourceCallback callback) {
+  RAY_CHECK(node);
+
+  auto node_id = ClientID::FromBinary(node->node_id());
+  RAY_LOG(DEBUG) << "Start leasing resource from node " << node_id << " for bundle "
+                 << bundle->BundleId().first << std::to_string(bundle->BundleId().second);
+
+  rpc::Address remote_address;
+  remote_address.set_raylet_id(node->node_id());
+  remote_address.set_ip_address(node->node_manager_address());
+  remote_address.set_port(node->node_manager_port());
+  auto lease_client = GetOrConnectLeaseClient(remote_address);
+  RAY_LOG(DEBUG) << "Start leasing resource from node " << node_id << " for bundle "
+                 << bundle->BundleId().first << bundle->BundleId().second;
+  auto status = lease_client->RequestResourceReserve(
+      *bundle, [this, node_id, bundle, node, callback](
+                   const Status &status, const rpc::RequestResourceReserveReply &reply) {
+        // TODO(AlisaWu): Add placement group cancel.
+        auto iter = node_to_bundles_when_leasing_.find(node_id);
+        if (iter != node_to_bundles_when_leasing_.end()) {
+          auto bundle_iter = iter->second.find(bundle->BundleId());
+          RAY_CHECK(bundle_iter != iter->second.end());
+          if (status.ok()) {
+            if (reply.success()) {
+              RAY_LOG(DEBUG) << "Finished leasing resource from " << node_id
+                             << " for bundle " << bundle->BundleId().first
+                             << bundle->BundleId().second;
+            } else {
+              RAY_LOG(DEBUG) << "Failed leasing resource from " << node_id
+                             << " for bundle " << bundle->BundleId().first
+                             << bundle->BundleId().second;
+            }
+            // Remove the actor from the leasing map as the reply is returned from the
+            // remote node.
+            iter->second.erase(bundle_iter);
+            if (iter->second.empty()) {
+              node_to_bundles_when_leasing_.erase(iter);
+            }
+          }
+          callback(status, reply);
+        }
+      });
+  if (!status.ok()) {
+    rpc::RequestResourceReserveReply reply;
+    reply.set_success(false);
+    callback(status, reply);
   }
 }
 
 void GcsPlacementGroupScheduler::CancelResourceReserve(
-    BundleSpecification bundle_spec, std::shared_ptr<ray::rpc::GcsNodeInfo> node) {
+    std::shared_ptr<BundleSpecification> bundle_spec,
+    std::shared_ptr<ray::rpc::GcsNodeInfo> node) {
   RAY_CHECK(node);
 
   auto node_id = ClientID::FromBinary(node->node_id());
-  RAY_LOG(INFO) << "Start returning resource for node " << node_id << " for bundle "
-                << bundle_spec.BundleId();
+  RAY_LOG(DEBUG) << "Start returning resource for node " << node_id << " for bundle "
+                 << bundle_spec->BundleId().first << bundle_spec->BundleId().second;
 
   rpc::Address remote_address;
   remote_address.set_raylet_id(node->node_id());
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
   auto return_client = GetOrConnectLeaseClient(remote_address);
-  auto status = return_client->CancelResourceReturn(
-      bundle_spec,
+  auto status = return_client->CancelResourceReserve(
+      *bundle_spec,
       [this, bundle_spec, node](const Status &status,
-                                const rpc::CancelResourceReturnReply &reply) {
+                                const rpc::CancelResourceReserveReply &reply) {
         if (!status.ok()) {
-          // TODO(AlisaWu): add a wait time.
-          CancelResourceReserve(bundle_spec, node);
+          return_timer_.expires_from_now(boost::posix_time::milliseconds(5));
+          return_timer_.async_wait(
+              [this, bundle_spec, node](const boost::system::error_code &error) {
+                if (error == boost::system::errc::operation_canceled) {
+                  return;
+                } else {
+                  CancelResourceReserve(bundle_spec, node);
+                }
+              });
         }
-      }
-
-  );
-  if (!status.ok()) {
-    CancelResourceReserve(bundle_spec, node);
-  }
-}
+      });
+}  // namespace gcs
 
 std::shared_ptr<ResourceReserveInterface>
 GcsPlacementGroupScheduler::GetOrConnectLeaseClient(const rpc::Address &raylet_address) {

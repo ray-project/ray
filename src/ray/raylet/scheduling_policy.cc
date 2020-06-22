@@ -139,7 +139,6 @@ bool SchedulingPolicy::ScheduleBundle(
 #ifndef NDEBUG
   RAY_LOG(DEBUG) << "Cluster resource map: ";
   for (const auto &client_resource_pair : cluster_resources) {
-    // pair = ClientID, SchedulingResources
     const ClientID &client_id = client_resource_pair.first;
     const SchedulingResources &resources = client_resource_pair.second;
     RAY_LOG(DEBUG) << "client_id: " << client_id << " "
@@ -161,11 +160,7 @@ bool SchedulingPolicy::ScheduleBundle(
                  << " load: " << node_resources.GetLoadResources().ToString();
   /// If the resource_demand is subset of the whole available_node_resources, this bundle
   /// can be set in this node, return true.
-  if (resource_demand.IsSubset(available_node_resources)) {
-    return true;
-  } else {
-    return false;
-  }
+  return resource_demand.IsSubset(available_node_resources);
 }
 
 std::vector<TaskID> SchedulingPolicy::SpillOver(

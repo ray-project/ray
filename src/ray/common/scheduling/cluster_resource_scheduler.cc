@@ -590,18 +590,6 @@ std::string ClusterResourceScheduler::GetBestSchedulableNode(
   return string_to_int_map_.Get(node_id);
 }
 
-bool ClusterResourceScheduler::CheckIfSchedulable(
-    const std::unordered_map<std::string, double> &unit_resource) {
-  TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, unit_resource);
-  auto it = nodes_.find(local_node_id_);
-  if (it != nodes_.end()) {
-    if (IsSchedulable(task_request, it->first, it->second) == 0) {
-      return true;
-    }
-  }
-  return false;
-}
-
 bool ClusterResourceScheduler::SubtractNodeAvailableResources(
     int64_t node_id, const TaskRequest &task_req) {
   auto it = nodes_.find(node_id);

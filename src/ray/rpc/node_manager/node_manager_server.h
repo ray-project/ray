@@ -23,15 +23,17 @@ namespace ray {
 namespace rpc {
 
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
-#define RAY_NODE_MANAGER_RPC_HANDLERS                         \
-  RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease) \
-  RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker)       \
-  RPC_SERVICE_HANDLER(NodeManagerService, CancelWorkerLease)  \
-  RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask)        \
-  RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs)       \
-  RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats)       \
-  RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)           \
-  RPC_SERVICE_HANDLER(NodeManagerService, FormatGlobalMemoryInfo)
+#define RAY_NODE_MANAGER_RPC_HANDLERS                             \
+  RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease)     \
+  RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker)           \
+  RPC_SERVICE_HANDLER(NodeManagerService, CancelWorkerLease)      \
+  RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask)            \
+  RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs)           \
+  RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats)           \
+  RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)               \
+  RPC_SERVICE_HANDLER(NodeManagerService, FormatGlobalMemoryInfo) \
+  RPC_SERVICE_HANDLER(NodeManagerService, RequestResourceReserve) \
+  RPC_SERVICE_HANDLER(NodeManagerService, CancelResourceReserve)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -64,9 +66,10 @@ class NodeManagerServiceHandler {
       rpc::RequestResourceReserveReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleCancelResourceReturn(const rpc::CancelResourceReturnRequest &request,
-                                          rpc::CancelResourceReturnReply *reply,
-                                          rpc::SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleCancelResourceReserve(
+      const rpc::CancelResourceReserveRequest &request,
+      rpc::CancelResourceReserveReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleForwardTask(const ForwardTaskRequest &request,
                                  ForwardTaskReply *reply,

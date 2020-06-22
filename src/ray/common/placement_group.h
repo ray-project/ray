@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_PLACEMENT_GROUP_H
-#define RAY_COMMON_PLACEMENT_GROUP_H
+#pragma once
 
 #include "ray/common/bundle_spec.h"
 #include "ray/common/grpc_util.h"
@@ -44,21 +43,22 @@ class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpe
       : MessageWrapper(message) {
     ConstructBundles();
   }
-
+  /// Return the placement group id.
   PlacementGroupID PlacementGroupId() const;
-
+  /// Return the bundles in this placement group.
   std::vector<BundleSpecification> GetBundles() const;
-
+  /// Return the strategy of the placement group.
   Strategy GetStrategy() const;
-
+  /// Return the bundle by given index.
   BundleSpecification GetBundle(int position) const;
-
+  /// Return the name of this placement group.
   std::string GetName() const;
 
  private:
+  /// Construct bundle vector from protobuf.
   void ConstructBundles();
-
-  std::vector<BundleSpecification> bundles;
+  /// The bundles in this placement group.
+  std::vector<BundleSpecification> bundles_;
 };
 
 class PlacementGroupSpecBuilder {
@@ -75,12 +75,14 @@ class PlacementGroupSpecBuilder {
     message_->set_placement_group_id(placement_group_id.Binary());
     message_->set_name(name);
     message_->set_strategy(strategy);
-    for (auto bundle : bundles) {
+    for (int i = 0; i < bundles.size(); i++) {
+      rpc::Bundle bundle = bundles[i];
       auto message_bundle = message_->add_bundles();
-      message_bundle->set_bundle_id(bundle.bundle_id());
+      auto mutable_bundle_id = message_bundle->mutable_bundle_id();
+      mutable_bundle_id->set_bundle_index(i);
+      mutable_bundle_id->set_placement_group_id(placement_group_id.Binary());
       message_bundle->mutable_unit_resources()->insert(bundle.unit_resources().begin(),
                                                        bundle.unit_resources().end());
-      message_bundle->set_unit_count(bundle.unit_count());
     }
     return *this;
   }
@@ -92,5 +94,3 @@ class PlacementGroupSpecBuilder {
 };
 
 }  // namespace ray
-#endif
-

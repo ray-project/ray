@@ -17,7 +17,7 @@
 namespace ray {
 void PlacementGroupSpecification::ConstructBundles() {
   for (int i = 0; i < message_->bundles_size(); i++) {
-    bundles.push_back(BundleSpecification(message_->bundles(i)));
+    bundles_.push_back(BundleSpecification(message_->bundles(i)));
   }
 }
 
@@ -30,7 +30,7 @@ PlacementGroupID PlacementGroupSpecification::PlacementGroupId() const {
 }
 
 std::vector<BundleSpecification> PlacementGroupSpecification::GetBundles() const {
-  return bundles;
+  return bundles_;
 }
 
 Strategy PlacementGroupSpecification::GetStrategy() const {
@@ -42,10 +42,10 @@ Strategy PlacementGroupSpecification::GetStrategy() const {
 }
 
 BundleSpecification PlacementGroupSpecification::GetBundle(int position) const {
-  return bundles[position];
+  return bundles_[position];
 }
 
 std::string PlacementGroupSpecification::GetName() const {
   return std::string(message_->name());
 }
-}  // namespace ray 
+}  // namespace ray
