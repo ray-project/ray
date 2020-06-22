@@ -135,6 +135,10 @@ class TestPPO(unittest.TestCase):
             self.assertLess(preprocessing_w, preprocessing_wo)
             self.assertLess(inference_w, inference_wo)
 
+            # Check learning success.
+            print("w/ _fast_sampling: reward={}".format(results["episode_reward_mean"]))
+            self.assertGreater(results["episode_reward_mean"], 80.0)
+
     def test_ppo_fake_multi_gpu_learning(self):
         """Test whether PPOTrainer can learn CartPole w/ faked multi-GPU."""
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)

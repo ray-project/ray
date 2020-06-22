@@ -1081,6 +1081,9 @@ class Trainer(Trainable):
 
     @staticmethod
     def _validate_config(config: PartialTrainerConfigDict):
+        if config.get("_fast_sampling") and config.get("framework") != "torch":
+            raise ValueError(
+                "`_fast_sampling` only supported for PyTorch so far!")
         if "policy_graphs" in config["multiagent"]:
             deprecation_warning("policy_graphs", "policies")
             # Backwards compatibility.
