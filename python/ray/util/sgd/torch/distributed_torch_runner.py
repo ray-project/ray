@@ -239,6 +239,9 @@ def reserve_resources(num_cpus, num_gpus, retries=20):
             resources={"node:" + ip: 0.1})(_DummyActor).remote()
         reserved_cpu_device = ray.get(_dummy_cpu_actor.cpu_devices.remote())
 
+    if num_gpus == 0:
+        return reserved_cpu_device, reserved_cuda_device
+
     cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
     cuda_device_set = {}
     match_devices = bool(cuda_devices)
@@ -298,7 +301,13 @@ class LocalDistributedRunner(DistributedTorchRunner):
         if num_gpus:
             assert num_gpus == 1, "Does not support multi-gpu workers"
 
-        if not self.is_actor():
+        if num_cpus is None:
+            num_cpus = 0
+
+        if num_gpus is None:
+            num_gpus = 0
+
+        if not self.is_actor() and (num_cpus > 0 or num_gpus > 0):
             self._try_reserve_and_set_resources(num_cpus, num_gpus)
 
         super(LocalDistributedRunner, self).__init__(*args, **kwargs)

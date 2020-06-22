@@ -245,13 +245,11 @@ class TestLocalDistributedRunner(unittest.TestCase):
         os.environ["CUDA_VISIBLE_DEVICES"] = "0"
         with patch("torch.cuda.is_initialized") as init_mock:
             init_mock.return_value = False
-            init_mock.return_value = False
             self._testReserveCUDAResource(init_mock, 0)
 
     def test1VisibleNotInitializedAndReserveCPUResource(self):
         os.environ["CUDA_VISIBLE_DEVICES"] = "0"
         with patch("torch.cuda.is_initialized") as init_mock:
-            init_mock.return_value = False
             init_mock.return_value = False
             self._testReserveCUDAResource(init_mock, 2)
 
