@@ -1373,7 +1373,7 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
 
   // This call needs to be blocking because we can't return until the actor
   // handle is created, which requires the response from the RPC. This is
-  // implemented using a promise that's captured in the RPC callback. 
+  // implemented using a promise that's captured in the RPC callback.
   // There should be no risk of deadlock because we don't hold any
   // locks during the call and the RPCs run on a separate thread.
   ActorID actor_id;
@@ -1395,7 +1395,8 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
 
   // Block until the RPC completes. Set a timeout to avoid hangs if the
   // GCS service crashes.
-  if (ready_promise.get_future().wait_for(std::chrono::seconds(5)) != std::future_status::ready) {
+  if (ready_promise.get_future().wait_for(std::chrono::seconds(5)) !=
+      std::future_status::ready) {
     return Status::TimedOut("Timed out trying to get named actor.");
   }
 
