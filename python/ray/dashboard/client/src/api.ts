@@ -369,7 +369,7 @@ export type MemoryTableGroups = {
 export type MemoryTableGroup = {
   entries: MemoryTableEntry[];
   summary: MemoryTableSummary;
-}
+};
 
 export type MemoryTableResponse = {
   group: MemoryTableGroups;
