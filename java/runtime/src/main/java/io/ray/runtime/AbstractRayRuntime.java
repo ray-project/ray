@@ -157,8 +157,8 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @SuppressWarnings("unchecked")
   @Override
-  public <T> ActorHandle<T> getActorHandle(ActorId actorId) {
-    return (ActorHandle<T>) taskSubmitter.getActor(actorId);
+  public <T extends BaseActorHandle> T getActorHandle(ActorId actorId) {
+    return (T) taskSubmitter.getActor(actorId);
   }
 
   @Override

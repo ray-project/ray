@@ -84,7 +84,7 @@ public interface RayRuntime {
    */
   void setResource(String resourceName, double capacity, UniqueId nodeId);
 
-  <T> ActorHandle<T> getActorHandle(ActorId actorId);
+  <T extends BaseActorHandle> T getActorHandle(ActorId actorId);
 
   /**
    * Get a handle to a named actor.
