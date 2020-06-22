@@ -11,6 +11,10 @@ import {
 } from "@material-ui/core";
 import React, { useState } from "react";
 import { useSelector } from "react-redux";
+import SortableTableHead, {
+  HeaderInfo,
+} from "../../../common/SortableTableHead";
+import { getComparator, Order, stableSort } from "../../../common/tableUtils";
 import { RayletInfoResponse } from "../../../api";
 import { sum } from "../../../common/util";
 import { StoreState } from "../../../store";
@@ -57,14 +61,39 @@ const nodeInfoSelector = (state: StoreState) => ({
   rayletInfo: state.dashboard.rayletInfo,
 });
 
-type dialogState = {
+type DialogState = {
   hostname: string;
   pid: number | null;
 } | null;
 
+type NodeRowDatum = {
+            host: string,
+            workers,
+            uptime: number,
+            cpu,
+            ram,
+            gpu,
+            gram,
+            disk,
+            sent,
+            received,
+            logs,
+            errors,
+};
+
+const headers: HeaderInfo<NodeRowDatum>[] = [
+  { id: "node_ip_address", label: "IP Address", numeric: true },
+  { id: "pid", label: "pid", numeric: true },
+  { id: "type", label: "Type", numeric: false },
+  { id: "object_id", label: "Object ID", numeric: false },
+  { id: "object_size", label: "Object Size (B)", numeric: true },
+  { id: "reference_type", label: "Reference Type", numeric: false },
+  { id: "call_site", label: "Call Site", numeric: false },
+];
+
 const NodeInfo: React.FC<{}> = () => {
-  const [logDialog, setLogDialog] = useState<dialogState>(null);
-  const [errorDialog, setErrorDialog] = useState<dialogState>(null);
+  const [logDialog, setLogDialog] = useState<DialogState>(null);
+  const [errorDialog, setErrorDialog] = useState<DialogState>(null);
   const classes = useNodeInfoStyles();
   const { nodeInfo, rayletInfo } = useSelector(nodeInfoSelector);
 
