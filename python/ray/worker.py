@@ -399,6 +399,9 @@ def get_gpu_ids():
         assigned_ids = [
             global_worker.original_gpu_ids[gpu_id] for gpu_id in assigned_ids
         ]
+        # Give all GPUs in local_mode.
+        if global_worker.mode == LOCAL_MODE:
+            return global_worker.original_gpu_ids
 
     return assigned_ids
 
