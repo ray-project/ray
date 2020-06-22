@@ -192,8 +192,9 @@ class _DummyActor:
 
     def cpu_devices(self):
         all_resource_ids = ray.get_resource_ids()
-        assigned_ids = [resource_id
-                        for resource_id, _ in all_resource_ids.get("CPU", [])]
+        assigned_ids = [
+            resource_id for resource_id, _ in all_resource_ids.get("CPU", [])
+        ]
         return assigned_ids
 
 
