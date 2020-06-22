@@ -184,6 +184,10 @@ class ObjectManager : public ObjectManagerInterface,
 
   ~ObjectManager();
 
+  /// Stop the Plasma Store eventloop. Currently it is only used to handle
+  /// signals from Raylet.
+  void Stop();
+
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that
   ///

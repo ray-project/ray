@@ -1098,10 +1098,11 @@ def start_reporter(redis_address,
     return process_info
 
 
-def start_dashboard(require_webui,
+def start_dashboard(require_dashboard,
                     host,
                     redis_address,
                     temp_dir,
+                    port=ray_constants.DEFAULT_DASHBOARD_PORT,
                     stdout_file=None,
                     stderr_file=None,
                     redis_password=None,
@@ -1109,10 +1110,12 @@ def start_dashboard(require_webui,
     """Start a dashboard process.
 
     Args:
-        require_webui (bool): If true, this will raise an exception if we fail
-            to start the webui. Otherwise it will print a warning if we fail
-            to start the webui.
+        require_dashboard (bool): If true, this will raise an exception if we
+            fail to start the dashboard. Otherwise it will print a warning if
+            we fail to start the dashboard.
         host (str): The host to bind the dashboard web server to.
+        port (str): The port to bind the dashboard web server to.
+            Defaults to 8265.
         redis_address (str): The address of the Redis instance.
         temp_dir (str): The temporary directory used for log files and
             information for this Ray session.
@@ -1125,15 +1128,23 @@ def start_dashboard(require_webui,
     Returns:
         ProcessInfo for the process that was started.
     """
-    port = 8265  # Note: list(map(ord, "RAY")) == [82, 65, 89]
-    while True:
+    if port == ray_constants.DEFAULT_DASHBOARD_PORT:
+        while True:
+            try:
+                port_test_socket = socket.socket()
+                port_test_socket.bind(("127.0.0.1", port))
+                port_test_socket.close()
+                break
+            except socket.error:
+                port += 1
+    else:
         try:
             port_test_socket = socket.socket()
             port_test_socket.bind(("127.0.0.1", port))
             port_test_socket.close()
-            break
         except socket.error:
-            port += 1
+            raise ValueError("The given dashboard port {}"
+                             " is already in use".format(port))
 
     dashboard_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "dashboard/dashboard.py")
@@ -1158,7 +1169,7 @@ def start_dashboard(require_webui,
         warning_message = (
             "Failed to start the dashboard. The dashboard requires Python 3 "
             "as well as 'pip install aiohttp grpcio'.")
-        if require_webui:
+        if require_dashboard:
             raise ImportError(warning_message)
         else:
             logger.warning(warning_message)

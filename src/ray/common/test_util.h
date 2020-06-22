@@ -106,9 +106,6 @@ class TestSetupUtil {
                                  const std::string &resource);
   static void StopRaylet(const std::string &raylet_socket_name);
 
-  static std::string StartRayletMonitor(const std::string &redis_address);
-  static void StopRayletMonitor(const std::string &raylet_monitor_socket_name);
-
  private:
   static int StartUpRedisServer(const int &port);
   static void ShutDownRedisServer(const int &port);

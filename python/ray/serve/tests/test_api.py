@@ -517,6 +517,37 @@ def test_endpoint_input_validation(serve_instance):
     serve.create_endpoint("endpoint", backend="backend")
 
 
+def test_create_infeasible_error(serve_instance):
+    serve.init()
+
+    def f():
+        pass
+
+    # Non existent resource should be infeasible.
+    with pytest.raises(RayServeException, match="Cannot scale backend"):
+        serve.create_backend(
+            "f:1",
+            f,
+            ray_actor_options={"resources": {
+                "MagicMLResource": 100
+            }})
+
+    # Even each replica might be feasible, the total might not be.
+    current_cpus = int(ray.nodes()[0]["Resources"]["CPU"])
+    with pytest.raises(RayServeException, match="Cannot scale backend"):
+        serve.create_backend(
+            "f:1",
+            f,
+            ray_actor_options={"resources": {
+                "CPU": 1,
+            }},
+            config={"num_replicas": current_cpus + 20})
+
+    # No replica should be created!
+    replicas = ray.get(serve.api.master_actor._list_replicas.remote("f1"))
+    assert len(replicas) == 0
+
+
 def test_shutdown(serve_instance):
     def f():
         pass
