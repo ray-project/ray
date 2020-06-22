@@ -305,15 +305,9 @@ def test_reconstruction_stress(ray_start_cluster):
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
-        num_cpus=1,
-        resources={"node1": 1},
-        object_store_memory=10**8,
-        _internal_config=config)
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
     cluster.add_node(
-        num_cpus=1,
-        resources={"node2": 1},
-        object_store_memory=10**8,
-        _internal_config=config)
+        num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
     @ray.remote
