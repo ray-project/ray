@@ -932,15 +932,12 @@ def set_log_file(stdout_name, stderr_name):
     stderr_path = ""
     worker_pid = os.getpid()
 
-
     # lambda cannot contain assignment
     def stdout_setter(x):
         sys.stdout = x
 
-
     def stderr_setter(x):
         sys.stderr = x
-
 
     if stdout_name:
         _set_log_file(stdout_name, worker_pid, sys.stdout, stdout_setter)

@@ -490,8 +490,10 @@ class Node:
     def start_redis(self):
         """Start the Redis servers."""
         assert self._redis_address is None
-        redis_out_name, redis_err_name = self.get_log_file_names("redis", unique=True)
-        redis_log_files = [(open_log(redis_out_name), open_log(redis_err_name))]
+        redis_out_name, redis_err_name = self.get_log_file_names(
+            "redis", unique=True)
+        redis_log_files = [(open_log(redis_out_name),
+                            open_log(redis_err_name))]
         for i in range(self._ray_params.num_redis_shards):
             shard_out_name, shard_err_name = self.get_log_file_names(
                 "redis-shard_", unique=True)
@@ -518,9 +520,10 @@ class Node:
 
     def start_log_monitor(self):
         """Start the log monitor."""
-        log_out_name, log_err_name = self.get_log_file_names("log_monitor",
-                                                             unique=True)
-        stdout_file, stderr_file = open_log(log_out_name), open_log(log_err_name)
+        log_out_name, log_err_name = self.get_log_file_names(
+            "log_monitor", unique=True)
+        stdout_file, stderr_file = open_log(log_out_name), open_log(
+            log_err_name)
         process_info = ray.services.start_log_monitor(
             self.redis_address,
             self._logs_dir,
@@ -604,8 +607,8 @@ class Node:
     def start_gcs_server(self):
         """Start the gcs server.
         """
-        gcs_out_name, gcs_err_name = self.get_log_file_names("gcs_server",
-                                                             unique=True)
+        gcs_out_name, gcs_err_name = self.get_log_file_names(
+            "gcs_server", unique=True)
         stdout_file, stderr_file = (open_log(gcs_out_name),
                                     open_log(gcs_err_name))
         process_info = ray.services.start_gcs_server(
@@ -662,7 +665,9 @@ class Node:
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
-    def get_job_redirected_log_file(self, worker_id : bytes, job_id : bytes = None):
+    def get_job_redirected_log_file(self,
+                                    worker_id: bytes,
+                                    job_id: bytes = None):
         """Determines (but does not create) logging files for workers to
         redirect its output.
 
@@ -685,8 +690,9 @@ class Node:
             return None, None
 
         if job_id is not None:
-            name = "worker-{}-{}".format(ray.utils.binary_to_hex(worker_id),
-                                         ray.utils.binary_to_hex(job_id))
+            name = "worker-{}-{}".format(
+                ray.utils.binary_to_hex(worker_id),
+                ray.utils.binary_to_hex(job_id))
         else:
             name = "worker-{}".format(ray.utils.binary_to_hex(worker_id))
 
@@ -700,8 +706,8 @@ class Node:
 
     def start_monitor(self):
         """Start the monitor."""
-        monitor_out_name, monitor_err_name = self.get_log_file_names("monitor",
-                                                                     unique=True)
+        monitor_out_name, monitor_err_name = self.get_log_file_names(
+            "monitor", unique=True)
         stdout_file, stderr_file = (open_log(monitor_out_name),
                                     open_log(monitor_err_name))
         process_info = ray.services.start_monitor(
@@ -716,8 +722,8 @@ class Node:
 
     def start_raylet_monitor(self):
         """Start the raylet monitor."""
-        monitor_out_name, monitor_err_name = self.get_log_file_names("raylet_monitor",
-                                                                     unique=True)
+        monitor_out_name, monitor_err_name = self.get_log_file_names(
+            "raylet_monitor", unique=True)
         stdout_file, stderr_file = (open_log(monitor_out_name),
                                     open_log(monitor_err_name))
         process_info = ray.services.start_raylet_monitor(
