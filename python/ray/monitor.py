@@ -37,6 +37,9 @@ class Monitor:
             redis_address, redis_password=redis_password)
         self.redis = ray.services.create_redis_client(
             redis_address, password=redis_password)
+        # Set the redis client so _internal_kv works for autoscaler.
+        worker = ray.worker.global_worker
+        worker.redis_client = self.redis
         # Setup subscriptions to the primary Redis server and the Redis shards.
         self.primary_subscribe_client = self.redis.pubsub(
             ignore_subscribe_messages=True)

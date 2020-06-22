@@ -111,6 +111,9 @@ class StandardAutoscaler:
         except Exception as e:
             logger.exception("StandardAutoscaler: "
                              "Error during autoscaling.")
+            if _internal_kv_initialized():
+                _internal_kv_put(
+                    DEBUG_AUTOSCALING_ERROR, str(e), overwrite=True)
             self.num_failures += 1
             if self.num_failures > self.max_failures:
                 logger.critical("StandardAutoscaler: "
@@ -184,7 +187,6 @@ class StandardAutoscaler:
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
         elif self.load_metrics.num_workers_connected() >= target_workers:
-            logger.info("Ending bringup phase")
             self.bringup = False
             self.log_info_string(nodes, target_workers)
 
@@ -387,9 +389,17 @@ class StandardAutoscaler:
             tag_filters={TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER})
 
     def log_info_string(self, nodes, target):
-        logger.info("StandardAutoscaler: {}".format(
-            self.info_string(nodes, target)))
-        logger.info("LoadMetrics: {}".format(self.load_metrics.info_string()))
+        tmp = "Cluster status: "
+        tmp += self.info_string(nodes, target)
+        tmp += "\n"
+        tmp += self.load_metrics.info_string()
+        tmp += "\n"
+        if self.resource_demand_scheduler:
+            tmp += self.resource_demand_scheduler.debug_string(
+                nodes, self.pending_launches.breakdown())
+        if _internal_kv_initialized():
+            _internal_kv_put(DEBUG_AUTOSCALING_STATUS, tmp, overwrite=True)
+        logger.info(tmp)
 
     def info_string(self, nodes, target):
         suffix = ""
@@ -406,12 +416,14 @@ class StandardAutoscaler:
         return "{}/{} target nodes{}".format(len(nodes), target, suffix)
 
     def request_resources(self, resources):
-        for resource, count in resources.items():
-            self.resource_requests[resource] = max(
-                self.resource_requests[resource], count)
-
-        logger.info("StandardAutoscaler: resource_requests={}".format(
-            self.resource_requests))
+        logger.info(
+            "StandardAutoscaler: resource_requests={}".format(resources))
+        if isinstance(resources, list):
+            self.resource_demand_vector = resources
+        else:
+            for resource, count in resources.items():
+                self.resource_requests[resource] = max(
+                    self.resource_requests[resource], count)
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")
