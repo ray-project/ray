@@ -4,7 +4,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 
 
-def discount(x, gamma):
+def discount(x: np.ndarray, gamma: float):
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
 
@@ -16,12 +16,12 @@ class Postprocessing:
 
 
 @DeveloperAPI
-def compute_advantages(rollout,
-                       last_r,
-                       gamma=0.9,
-                       lambda_=1.0,
-                       use_gae=True,
-                       use_critic=True):
+def compute_advantages(rollout: SampleBatch,
+                       last_r: float,
+                       gamma: float = 0.9,
+                       lambda_: float = 1.0,
+                       use_gae: bool = True,
+                       use_critic: bool = True):
     """
     Given a rollout, compute its value targets and the advantage.
 

@@ -4,12 +4,13 @@ from typing import List
 
 import ray
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    SampleBatchType, _get_shared_metrics
+    _get_shared_metrics
 from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.utils.actors import create_colocated
 from ray.util.iter import ParallelIterator, ParallelIteratorWorker, \
     from_actors
+from ray.rllib.utils.types import SampleBatchType
 
 logger = logging.getLogger(__name__)
 

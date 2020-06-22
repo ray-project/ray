@@ -6,9 +6,11 @@ from typing import Any, Union
 logger = logging.getLogger(__name__)
 
 # Represents a generic tensor type.
+# TODO(ekl) this is duplicated in types.py
 TensorType = Any
 
 # Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
+# TODO(ekl) this is duplicated in types.py
 TensorStructType = Union[TensorType, dict, tuple]
 
 

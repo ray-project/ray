@@ -836,11 +836,11 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
                     BuildTaskSpec(resources1, descriptor1),
                     BuildTaskSpec(resources2, descriptor1));
 
-  // Tasks with different function descriptors should request different worker leases.
+  // Tasks with different function descriptors do not request different worker leases.
   RAY_LOG(INFO) << "Test different descriptors";
   TestSchedulingKey(store, BuildTaskSpec(resources1, descriptor1),
-                    BuildTaskSpec(resources1, descriptor1),
-                    BuildTaskSpec(resources1, descriptor2));
+                    BuildTaskSpec(resources1, descriptor2),
+                    BuildTaskSpec(resources2, descriptor1));
 
   ObjectID direct1 = ObjectID::FromRandom();
   ObjectID direct2 = ObjectID::FromRandom();

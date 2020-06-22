@@ -1,5 +1,5 @@
 import numpy as np
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
 tf, tfv = try_import_tf()
 

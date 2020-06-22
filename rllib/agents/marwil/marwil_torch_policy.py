@@ -3,8 +3,8 @@ from ray.rllib.agents.marwil.marwil_tf_policy import postprocess_advantages
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_ops import explained_variance
 
 torch, _ = try_import_torch()
 
@@ -52,8 +52,7 @@ def marwil_loss(policy, model, dist_class, train_batch):
     # Combine both losses.
     policy.total_loss = policy.p_loss + policy.config["vf_coeff"] * \
         policy.v_loss
-    explained_var = explained_variance(
-        advantages, state_values, framework="torch")
+    explained_var = explained_variance(advantages, state_values)
     policy.explained_variance = torch.mean(explained_var)
 
     return policy.total_loss

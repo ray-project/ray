@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_UTIL_LOGGING_H
-#define RAY_UTIL_LOGGING_H
+#pragma once
 
 #include <iostream>
 #include <string>
@@ -171,5 +170,3 @@ class Voidify {
 };
 
 }  // namespace ray
-
-#endif  // RAY_UTIL_LOGGING_H

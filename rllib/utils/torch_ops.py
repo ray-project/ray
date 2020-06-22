@@ -1,9 +1,20 @@
 import numpy as np
 
-from ray.rllib.utils import try_import_torch, try_import_tree
+from ray.rllib.utils import try_import_tree
+from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()
 tree = try_import_tree()
+
+
+def explained_variance(y, pred):
+    y_var = torch.var(y, dim=[0])
+    diff_var = torch.var(y - pred, dim=[0])
+    min_ = torch.Tensor([-1.0])
+    return torch.max(
+        min_.to(device=torch.device("cuda"))
+        if torch.cuda.is_available() else min_,
+        1 - (diff_var / y_var))
 
 
 def global_norm(tensors):

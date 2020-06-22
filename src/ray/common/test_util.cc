@@ -157,22 +157,6 @@ void TestSetupUtil::StopRaylet(const std::string &raylet_socket_name) {
   KillProcessBySocketName(raylet_socket_name);
 }
 
-std::string TestSetupUtil::StartRayletMonitor(const std::string &redis_address) {
-  std::string raylet_monitor_socket_name = ray::JoinPaths(
-      ray::GetUserTempDir(), "raylet_monitor" + ObjectID::FromRandom().Hex() + ".pid");
-  std::vector<std::string> cmdargs({TEST_RAYLET_MONITOR_EXEC_PATH,
-                                    "--redis_address=" + redis_address,
-                                    "--redis_port=6379"});
-  RAY_LOG(DEBUG) << "Raylet monitor Start command: " << CreateCommandLine(cmdargs);
-  RAY_CHECK(!Process::Spawn(cmdargs, true, raylet_monitor_socket_name).second);
-  usleep(200 * 1000);
-  return raylet_monitor_socket_name;
-}
-
-void TestSetupUtil::StopRayletMonitor(const std::string &raylet_monitor_socket_name) {
-  KillProcessBySocketName(raylet_monitor_socket_name);
-}
-
 bool WaitForCondition(std::function<bool()> condition, int timeout_ms) {
   int wait_time = 0;
   while (true) {

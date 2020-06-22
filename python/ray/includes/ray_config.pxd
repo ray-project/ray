@@ -85,6 +85,4 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int64_t max_direct_call_object_size() const
 
-        c_bool gcs_service_enabled() const
-
         c_bool gcs_actor_service_enabled() const

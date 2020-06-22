@@ -7,6 +7,7 @@ import io.ray.streaming.api.partition.Partition;
 import io.ray.streaming.operator.Operator;
 import io.ray.streaming.python.PythonFunction;
 import io.ray.streaming.python.PythonOperator;
+import io.ray.streaming.python.PythonOperator.ChainedPythonOperator;
 import io.ray.streaming.python.PythonPartition;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionEdge;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
@@ -77,6 +78,7 @@ public class GraphPbBuilder {
     executionVertexBuilder.setOperator(
         ByteString.copyFrom(
             serializeOperator(executionVertex.getStreamOperator())));
+    executionVertexBuilder.setChained(isPythonChainedOperator(executionVertex.getStreamOperator()));
     executionVertexBuilder.setWorkerActor(
         ByteString.copyFrom(
             ((NativeActorHandle) (executionVertex.getWorkerActor())).toBytes()));
@@ -104,16 +106,34 @@ public class GraphPbBuilder {
 
   private byte[] serializeOperator(Operator operator) {
     if (operator instanceof PythonOperator) {
-      PythonOperator pythonOperator = (PythonOperator) operator;
-      return serializer.serialize(Arrays.asList(
-          serializeFunction(pythonOperator.getFunction()),
-          pythonOperator.getModuleName(),
-          pythonOperator.getClassName()
-      ));
+      if (isPythonChainedOperator(operator)) {
+        return serializePythonChainedOperator((ChainedPythonOperator) operator);
+      } else {
+        PythonOperator pythonOperator = (PythonOperator) operator;
+        return serializer.serialize(Arrays.asList(
+            serializeFunction(pythonOperator.getFunction()),
+            pythonOperator.getModuleName(),
+            pythonOperator.getClassName()
+        ));
+      }
     } else {
       return new byte[0];
     }
   }
+
+  private boolean isPythonChainedOperator(Operator operator) {
+    return operator instanceof ChainedPythonOperator;
+  }
+
+  private byte[] serializePythonChainedOperator(ChainedPythonOperator operator) {
+    List<byte[]> serializedOperators = operator.getOperators().stream()
+        .map(this::serializeOperator).collect(Collectors.toList());
+    return serializer.serialize(Arrays.asList(
+        serializedOperators,
+        operator.getConfigs()
+    ));
+  }
+
 
   private byte[] serializeFunction(Function function) {
     if (function instanceof PythonFunction) {

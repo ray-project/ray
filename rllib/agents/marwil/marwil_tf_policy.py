@@ -1,11 +1,10 @@
 import ray
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf, get_variable
-from ray.rllib.utils.tf_ops import make_tf_callable
+from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
 
 tf, tfv = try_import_tf()
 
@@ -37,7 +36,7 @@ class ReweightedImitationLoss:
                  action_dist, beta):
         # advantage estimation
         adv = cumulative_rewards - state_values
-        
+
         # update averaged advantage norm
         if tfv == 2:
             policy._ma_adv_norm.assign_add(
@@ -52,7 +51,7 @@ class ReweightedImitationLoss:
                 ref=policy._ma_adv_norm,
                 value=1e-6 *
                 (tf.reduce_mean(tf.math.square(adv)) - policy._ma_adv_norm))
-    
+
             # exponentially weighted advantages
             with tf.control_dependencies([update_adv_norm]):
                 exp_advs = tf.exp(

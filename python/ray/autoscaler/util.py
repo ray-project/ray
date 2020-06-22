@@ -54,11 +54,16 @@ def validate_config(config):
         raise jsonschema.ValidationError(message=e.message) from None
 
 
+def prepare_config(config):
+    with_defaults = fillout_defaults(config)
+    merge_setup_commands(with_defaults)
+    dockerize_if_needed(with_defaults)
+    return with_defaults
+
+
 def fillout_defaults(config):
     defaults = get_default_config(config["provider"])
     defaults.update(config)
-    merge_setup_commands(defaults)
-    dockerize_if_needed(defaults)
     defaults["auth"] = defaults.get("auth", {})
     return defaults
 

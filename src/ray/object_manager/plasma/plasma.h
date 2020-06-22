@@ -15,8 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef PLASMA_PLASMA_H
-#define PLASMA_PLASMA_H
+#pragma once
 
 #include <errno.h>
 #include <inttypes.h>
@@ -173,5 +172,3 @@ std::unique_ptr<uint8_t[]> CreatePlasmaNotificationBuffer(
     std::vector<flatbuf::ObjectInfoT>& object_info);
 
 }  // namespace plasma
-
-#endif  // PLASMA_PLASMA_H

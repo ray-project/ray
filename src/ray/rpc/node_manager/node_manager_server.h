@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RPC_NODE_MANAGER_SERVER_H
-#define RAY_RPC_NODE_MANAGER_SERVER_H
+#pragma once
 
 #include "ray/protobuf/node_manager.grpc.pb.h"
 #include "ray/protobuf/node_manager.pb.h"
@@ -110,5 +109,3 @@ class NodeManagerGrpcService : public GrpcService {
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif

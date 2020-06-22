@@ -1,6 +1,6 @@
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils import try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 
 _, nn = try_import_torch()
 
