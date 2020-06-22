@@ -10,6 +10,8 @@ import threading
 import time
 import yaml
 
+from ray.experimental.internal_kv import _internal_kv_put, \
+    _internal_kv_initialized
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
@@ -21,7 +23,8 @@ from ray.autoscaler.util import ConcurrentCounter, validate_config, \
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
     AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S, \
-    AUTOSCALER_RESOURCE_REQUEST_CHANNEL
+    AUTOSCALER_RESOURCE_REQUEST_CHANNEL, DEBUG_AUTOSCALING_ERROR, \
+    DEBUG_AUTOSCALING_STATUS
 import ray.services as services
 from ray.worker import global_worker
 from six.moves import queue
@@ -416,14 +419,12 @@ class StandardAutoscaler:
         return "{}/{} target nodes{}".format(len(nodes), target, suffix)
 
     def request_resources(self, resources):
+        for resource, count in resources.items():
+            self.resource_requests[resource] = max(
+                self.resource_requests[resource], count)
+
         logger.info(
             "StandardAutoscaler: resource_requests={}".format(resources))
-        if isinstance(resources, list):
-            self.resource_demand_vector = resources
-        else:
-            for resource, count in resources.items():
-                self.resource_requests[resource] = max(
-                    self.resource_requests[resource], count)
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")
