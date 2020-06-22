@@ -47,7 +47,7 @@ from ray.exceptions import (
 )
 from ray.function_manager import FunctionActorManager
 from ray.utils import (_random_string, check_oversized_pickle, is_cython,
-                       setup_logger, open_worker_log, open_log)
+                       setup_logger, create_and_init_new_worker_log, open_log)
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -889,12 +889,11 @@ UNCAUGHT_ERROR_GRACE_PERIOD = 5
 
 def _set_log_file(file_name, worker_pid, old_obj, setter_func):
     # Line-buffer the output (mode 1).
-    f = open_worker_log(file_name, worker_pid)
+    f = create_and_init_new_worker_log(file_name, worker_pid)
 
-    # Before redirecting stdout we need to make sure userspace buffers
-    # are all flushed.
-    # Flush python's userspace buffers
-    old_obj.flush()
+    # TODO (Alex): Python seems to always flush when writing. If that is no
+    # longer true, then we need to manually flush the old buffer.
+    # old_obj.flush()
 
     # TODO (Alex): Flush the c/c++ userspace buffers if necessary.
     # `fflush(stdout); cout.flush();`
@@ -916,15 +915,6 @@ def _set_log_file(file_name, worker_pid, old_obj, setter_func):
     return os.path.abspath(f.name)
 
 
-# lambda cannot contain assignment
-def stdout_setter(x):
-    sys.stdout = x
-
-
-def stderr_setter(x):
-    sys.stderr = x
-
-
 def set_log_file(stdout_name, stderr_name):
     """Sets up logging for the current worker, creating the (fd backed) file and
     flushing buffers as is necessary.
@@ -941,6 +931,16 @@ def set_log_file(stdout_name, stderr_name):
     stdout_path = ""
     stderr_path = ""
     worker_pid = os.getpid()
+
+
+    # lambda cannot contain assignment
+    def stdout_setter(x):
+        sys.stdout = x
+
+
+    def stderr_setter(x):
+        sys.stderr = x
+
 
     if stdout_name:
         _set_log_file(stdout_name, worker_pid, sys.stdout, stdout_setter)
@@ -1208,8 +1208,8 @@ def connect(node,
     worker.lock = threading.RLock()
 
     driver_name = ""
-    log_stdout_file_name = ""
-    log_stderr_file_name = ""
+    log_stdout_file_path = ""
+    log_stderr_file_path = ""
     if mode == SCRIPT_MODE:
         import __main__ as main
         driver_name = (main.__file__
@@ -1221,11 +1221,11 @@ def connect(node,
         redirect_worker_output_val = worker.redis_client.get("RedirectOutput")
         if (redirect_worker_output_val is not None
                 and int(redirect_worker_output_val) == 1):
-            log_stdout_file, log_stderr_file = (
-                node.new_worker_redirected_log_file(worker.worker_id))
+            log_stdout_file_name, log_stderr_file_name = (
+                node.get_job_redirected_log_file(worker.worker_id))
             try:
-                log_stdout_file_name, log_stderr_file_name = \
-                    set_log_file(log_stdout_file, log_stderr_file)
+                log_stdout_file_path, log_stderr_file_path = \
+                    set_log_file(log_stdout_file_name, log_stderr_file_name)
             except IOError:
                 raise IOError(
                     "Workers must be able to redirect their output at"
@@ -1233,7 +1233,12 @@ def connect(node,
     elif not LOCAL_MODE:
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
-    worker.current_logging_job = None
+
+    # TODO (Alex): `current_logging_job` tracks the current job so that we know
+    # when to switch log files. If all logging functionaility was moved to c++,
+    # the functionaility in `_raylet.pyx::switch_worker_log_if_necessary` could be
+    # moved to `CoreWorker::SetCurrentTaskId()`.
+    worker.current_logging_job_id = None
     redis_address, redis_port = node.redis_address.split(":")
     gcs_options = ray._raylet.GcsClientOptions(
         redis_address,
@@ -1253,8 +1258,8 @@ def connect(node,
         node.raylet_ip_address,
         (mode == LOCAL_MODE),
         driver_name,
-        log_stdout_file_name,
-        log_stderr_file_name,
+        log_stdout_file_path,
+        log_stderr_file_path,
     )
 
     # Create an object for interfacing with the global state.

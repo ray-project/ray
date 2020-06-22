@@ -397,7 +397,7 @@ def open_log(path, **kwargs):
     return open(path, **kwargs)
 
 
-def open_worker_log(path, worker_pid):
+def create_and_init_new_worker_log(path, worker_pid):
     """
     Opens a path (or creates if necessary) for a log.
 
