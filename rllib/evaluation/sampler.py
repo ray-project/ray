@@ -473,7 +473,7 @@ def _env_runner(worker: "RolloutWorker",
             return batch_builder_pool.pop()
         elif _fast_sampling:
             return _FastMultiAgentSampleBatchBuilder(
-                policies, clip_rewards, callbacks, horizon=horizon)
+                policies, clip_rewards, callbacks, buffer_size=horizon)
         else:
             return MultiAgentSampleBatchBuilder(policies, clip_rewards,
                                                 callbacks)

@@ -1,6 +1,6 @@
 import logging
 import numpy as np
-from typing import Union
+from typing import Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import PublicAPI
@@ -33,27 +33,22 @@ class Trajectory:
     _next_unroll_id = 0
 
     @PublicAPI
-    def __init__(self, horizon: Union[int, float]):
+    def __init__(self, buffer_size: Optional[int] = None):
         """Initializes a Trajectory object.
 
         Args:
-            horizon (Union[int,float]): The max number of timesteps to sample
-                in one rollout. Use float("inf") for an unlimited/unknown
-                horizon.
+            buffer_size (Optional[int]): The max number of timesteps to
+                fit into one buffer column.
         """
         self.env_id = None
         self.agent_id = None
+        self.policy_id = None
 
         # Determine the size of the initial buffers.
-        self.horizon = self.actual_horizon = horizon
-        # Find a good initial actual horizon (this will be expanded each time
-        # `self.horizon` is breached).
-        if self.horizon == float("inf"):
-            self.actual_horizon = 1000
+        self.buffer_size = buffer_size or 1000
+        self.buffers = {}
 
         self.has_initial_obs: bool = False
-
-        self.buffers = {}
 
         # Cursor into the preallocated buffers. This is where all new data
         # gets inserted.
@@ -89,7 +84,7 @@ class Trajectory:
             # last observation). Only increase `self.timestep` once we get the
             # other-than-obs data (which will include the next obs).
             obs_buffer = np.zeros(
-                shape=(self.actual_horizon + 1, ) + init_obs.shape,
+                shape=(self.buffer_size + 1, ) + init_obs.shape,
                 dtype=init_obs.dtype)
             obs_buffer[0] = init_obs
             self.buffers[SampleBatch.OBS] = obs_buffer
@@ -132,9 +127,8 @@ class Trajectory:
             self.buffers[k][t] = v
         self.cursor += 1
 
-        # Extend (re-alloc) buffers if full and horizon == +inf.
-        if self.cursor == self.actual_horizon and \
-                self.horizon == float("inf"):
+        # Extend (re-alloc) buffers if full.
+        if self.cursor == self.buffer_size:
             self._extend_buffers(values)
 
     @PublicAPI
@@ -203,14 +197,15 @@ class Trajectory:
             next_obs_add = 1 if col == SampleBatch.OBS else 0
             # Primitive.
             if isinstance(data, (int, float, bool)):
-                shape = (self.actual_horizon + next_obs_add, )
+                shape = (self.buffer_size + next_obs_add, )
                 t_ = type(data)
                 dtype = np.float32 if t_ == float else \
                     np.int32 if type(data) == int else np.bool_
                 self.buffers[col] = np.zeros(shape=shape, dtype=dtype)
             # np.ndarray, torch.Tensor, or tf.Tensor.
             else:
-                shape = (self.actual_horizon + next_obs_add, ) + data.shape
+                shape = (self.buffer_size + next_obs_add,) + \
+                        data.shape
                 dtype = data.dtype
                 if torch and isinstance(data, torch.Tensor):
                     self.buffers[col] = torch.zeros(
@@ -223,18 +218,18 @@ class Trajectory:
     def _extend_buffers(self, single_row):
         traj_length = self.cursor - self.trajectory_offset
         # Trajectory starts at 0 (meaning episodes are longer than current
-        # `self.actual_horizon` -> Simply do a resize (enlarge) on each column
+        # `self.buffer_size` -> Simply do a resize (enlarge) on each column
         # in the buffer.
         if self.trajectory_offset == 0:
             # Double actual horizon.
-            self.actual_horizon *= 2
+            self.buffer_size *= 2
             for col, data in self.buffers.items():
-                data.resize((self.actual_horizon, ) + data.shape[1:])
+                data.resize((self.buffer_size, ) + data.shape[1:])
         # Trajectory starts in first half of the buffer -> Reallocate a new
         # buffer and copy the currently ongoing trajectory into the new buffer.
-        elif self.trajectory_offset < self.actual_horizon / 2:
+        elif self.trajectory_offset < self.buffer_size / 2:
             # Double actual horizon.
-            self.actual_horizon *= 2
+            self.buffer_size *= 2
             # Store currently ongoing trajectory and build a new buffer.
             old_buffers = self.buffers
             self.buffers = {}

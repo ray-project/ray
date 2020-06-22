@@ -1,6 +1,6 @@
 import logging
 import numpy as np
-from typing import Union
+from typing import Optional, Union
 
 from ray.rllib.evaluation.policy_trajectories import PolicyTrajectories
 from ray.rllib.evaluation.trajectory import Trajectory
@@ -28,7 +28,7 @@ class _FastMultiAgentSampleBatchBuilder:
     """
 
     def __init__(self, policy_map, clip_rewards, callbacks,
-                 horizon: Union[int, float]):
+                 buffer_size: Optional[Union[float, int]]):
         """Initializes a MultiAgentSampleBatchBuilder object.
 
         Args:
@@ -36,19 +36,20 @@ class _FastMultiAgentSampleBatchBuilder:
             clip_rewards (Union[bool,float]): Whether to clip rewards before
                 postprocessing (at +/-1.0) or the actual value to +/- clip.
             callbacks (DefaultCallbacks): RLlib callbacks.
-            horizon (Union[int,float]): The max number of timesteps to sample
-                in one rollout. Use float("inf") for an unlimited/unknown
-                horizon.
+            buffer_size (Optional[Union[int,float]]): The max number of
+                timesteps to fit into one buffer column.
         """
 
         self.policy_map = policy_map
         self.clip_rewards = clip_rewards
         self.callbacks = callbacks
-        self.horizon = horizon
+        if buffer_size == float("inf") or buffer_size is None:
+            buffer_size = 1000
+        self.buffer_size = int(buffer_size)
 
         # Build the Policies' SampleBatchBuilders.
         self.policy_trajectories = {
-            k: PolicyTrajectories(horizon=self.horizon)
+            k: PolicyTrajectories(buffer_size=self.buffer_size)
             for k in policy_map.keys()
         }
         # Whenever we observe a new agent, add a new SampleBatchBuilder for
@@ -99,7 +100,7 @@ class _FastMultiAgentSampleBatchBuilder:
         # We don't have a Trajcetory for this agent ID yet, create a new one.
         if agent_id not in self.single_agent_trajectories:
             self.single_agent_trajectories[agent_id] = Trajectory(
-                horizon=self.horizon)
+                buffer_size=self.buffer_size)
         # Add initial obs to Trajectory.
         self.single_agent_trajectories[agent_id].add_init_obs(
             env_id, agent_id, policy_id, obs)
@@ -202,7 +203,7 @@ class _FastMultiAgentSampleBatchBuilder:
                 postprocessed_batch=post_batch,
                 original_batches=pre_batches)
             self.policy_trajectories[self.agent_to_policy[
-                agent_id]].add_sample_batch(agent_id, post_batch)
+                agent_id]].add_sample_batch(post_batch)
 
     def check_missing_dones(self):
         for agent_id, trajectory in self.single_agent_trajectories.items():
