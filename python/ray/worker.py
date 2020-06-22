@@ -1233,8 +1233,8 @@ def connect(node,
 
     # TODO (Alex): `current_logging_job` tracks the current job so that we know
     # when to switch log files. If all logging functionaility was moved to c++,
-    # the functionaility in `_raylet.pyx::switch_worker_log_if_necessary` could be
-    # moved to `CoreWorker::SetCurrentTaskId()`.
+    # the functionaility in `_raylet.pyx::switch_worker_log_if_necessary` could
+    # be moved to `CoreWorker::SetCurrentTaskId()`.
     worker.current_logging_job_id = None
     redis_address, redis_port = node.redis_address.split(":")
     gcs_options = ray._raylet.GcsClientOptions(
