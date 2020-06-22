@@ -7,6 +7,13 @@ XGBoost is currently one of the most popular machine learning algorithms. It per
 very well on a large selection of tasks, and was the key to success in many Kaggle
 competitions.
 
+.. image:: /images/xgboost_logo.png
+  :width: 200px
+  :alt: XGBoost
+  :align: center
+  :target: https://xgboost.readthedocs.io/en/latest/
+
+
 This tutorial will give you a quick introduction to XGBoost, show you how
 to train an XGBoost model, and then guide you on how to optimize XGBoost
 parameters using Tune to get the best performance. We tackle the following topics:
