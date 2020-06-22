@@ -94,7 +94,7 @@ def optimizer_creator(model, config):
 
 
 ray.init(address="auto" if not args.smoke_test else None, log_to_driver=True)
-num_training_workers = 3
+num_training_workers = 1 if args.smoke_test else 3
 
 executor = FailureInjectorExecutor(queue_trials=True)
 
