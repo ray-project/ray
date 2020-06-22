@@ -23,6 +23,8 @@
 //
 // Most of the code is from https://github.com/sharvil/flingfd
 
+#pragma once
+
 #include <errno.h>
 #include <sys/socket.h>
 #include <sys/types.h>

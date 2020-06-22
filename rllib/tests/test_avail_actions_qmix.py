@@ -78,6 +78,8 @@ class TestAvailActionsQMix(unittest.TestCase):
         for _ in range(5):
             agent.train()  # OK if it doesn't trip the action assertion error
         assert agent.train()["episode_reward_mean"] == 21.0
+        agent.stop()
+        ray.shutdown()
 
 
 if __name__ == "__main__":

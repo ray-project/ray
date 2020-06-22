@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_UTIL_SEQUENCER_H_
-#define RAY_UTIL_SEQUENCER_H_
+#pragma once
 
 #include <deque>
 #include <functional>
@@ -77,5 +76,3 @@ class Sequencer {
 };
 
 }  // namespace ray
-
-#endif  // RAY_UTIL_SEQUENCER_H_

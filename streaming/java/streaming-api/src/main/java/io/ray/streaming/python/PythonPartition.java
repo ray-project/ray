@@ -24,6 +24,9 @@ public class PythonPartition implements Partition<Object> {
       "ray.streaming.partition", "KeyPartition");
   public static final PythonPartition RoundRobinPartition = new PythonPartition(
       "ray.streaming.partition", "RoundRobinPartition");
+  public static final String FORWARD_PARTITION_CLASS = "ForwardPartition";
+  public static final PythonPartition ForwardPartition = new PythonPartition(
+      "ray.streaming.partition", FORWARD_PARTITION_CLASS);
 
   private byte[] partition;
   private String moduleName;
@@ -64,6 +67,10 @@ public class PythonPartition implements Partition<Object> {
 
   public String getFunctionName() {
     return functionName;
+  }
+
+  public boolean isConstructedFromBinary() {
+    return partition != null;
   }
 
   @Override

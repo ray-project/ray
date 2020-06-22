@@ -22,7 +22,7 @@ for i in range(num_nodes):
         resources={str(i): 2},
         object_store_memory=object_store_memory,
         redis_max_memory=redis_max_memory,
-        webui_host="0.0.0.0")
+        dashboard_host="0.0.0.0")
 
 print("Downloading load testing tool")
 subprocess.call([
@@ -31,7 +31,7 @@ subprocess.call([
     "chmod +x hey_linux_amd64"
 ])
 
-ray.init(address=cluster.address, include_webui=True, webui_host="0.0.0.0")
+ray.init(address=cluster.address, dashboard_host="0.0.0.0")
 serve.init()
 
 

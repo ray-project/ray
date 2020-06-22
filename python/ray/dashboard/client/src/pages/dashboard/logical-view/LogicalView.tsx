@@ -7,7 +7,7 @@ import {
 } from "@material-ui/core";
 import React, { useState } from "react";
 import { connect } from "react-redux";
-import { RayletActorInfo, RayletInfoResponse } from "../../../api";
+import { ActorState, RayletActorInfo, RayletInfoResponse } from "../../../api";
 import { StoreState } from "../../../store";
 import Actors from "./Actors";
 
@@ -29,7 +29,7 @@ const getNestedActorTitles = (actor: RayletActorInfo): string[] => {
   const actorTitle = actor.actorTitle;
   const titles: string[] = actorTitle ? [actorTitle] : [];
   // state of -1 indicates an actor data record that does not have children.
-  if (actor.state === -1) {
+  if (actor.state === ActorState.Invalid) {
     return titles;
   }
   const children = actor["children"];
@@ -53,7 +53,7 @@ type LogicalViewProps = {
   rayletInfo: RayletInfoResponse | null;
 } & ReturnType<typeof mapStateToProps>;
 
-const LogicalView = ({ rayletInfo }: LogicalViewProps) => {
+const LogicalView: React.FC<LogicalViewProps> = ({ rayletInfo }) => {
   const [nameFilter, setNameFilter] = useState("");
 
   if (rayletInfo === null) {

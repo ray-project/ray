@@ -15,8 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef HASH_TABLE_STORE_H
-#define HASH_TABLE_STORE_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -49,5 +48,3 @@ class HashTableStore : public ExternalStore {
 };
 
 }  // namespace plasma
-
-#endif  // HASH_TABLE_STORE_H

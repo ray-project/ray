@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RPC_NODE_MANAGER_CLIENT_H
-#define RAY_RPC_NODE_MANAGER_CLIENT_H
+#pragma once
 
 #include <grpcpp/grpcpp.h>
 
@@ -118,5 +117,3 @@ class NodeManagerWorkerClient
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif  // RAY_RPC_NODE_MANAGER_CLIENT_H

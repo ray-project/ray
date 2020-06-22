@@ -12,7 +12,7 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.model import restore_original_dimensions
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-from ray.rllib.utils import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 from ray.rllib.contrib.alpha_zero.core.alpha_zero_policy import AlphaZeroPolicy

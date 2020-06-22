@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_OBJECT_MANAGER_OBJECT_STORE_CLIENT_H
-#define RAY_OBJECT_MANAGER_OBJECT_STORE_CLIENT_H
+#pragma once
 
 #include <list>
 #include <memory>
@@ -99,5 +98,3 @@ class ObjectStoreNotificationManager {
 };
 
 }  // namespace ray
-
-#endif  // RAY_OBJECT_MANAGER_OBJECT_STORE_CLIENT_H

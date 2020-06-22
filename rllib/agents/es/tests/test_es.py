@@ -2,7 +2,8 @@ import unittest
 
 import ray
 import ray.rllib.agents.es as es
-from ray.rllib.utils.test_utils import framework_iterator, check_compute_action
+from ray.rllib.utils.test_utils import check_compute_single_action, \
+    framework_iterator
 
 
 class TestES(unittest.TestCase):
@@ -17,14 +18,14 @@ class TestES(unittest.TestCase):
 
         num_iterations = 2
 
-        for _ in framework_iterator(config, ("torch", "tf")):
+        for _ in framework_iterator(config, ("tf", "torch")):
             plain_config = config.copy()
             trainer = es.ESTrainer(config=plain_config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)
 
-            check_compute_action(trainer)
+            check_compute_single_action(trainer)
 
 
 if __name__ == "__main__":

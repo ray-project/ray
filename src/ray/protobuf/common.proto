@@ -254,6 +254,17 @@ message ObjectRefInfo {
   bool pinned_in_memory = 7;
 }
 
+// Details about the allocation of a given resource. Some resources
+// (e.g., GPUs) have individually allocatable units that are represented
+// as "slots" here.
+message ResourceAllocations {
+  message ResourceSlot {
+    int64 slot = 1;
+    double allocation = 2;
+  }
+  repeated ResourceSlot resource_slots = 1;
+}
+
 // Debug info returned from the core worker.
 message CoreWorkerStats {
   // Debug string of the currently executing task.
@@ -270,8 +281,8 @@ message CoreWorkerStats {
   int64 port = 7;
   // Actor ID.
   bytes actor_id = 8;
-  // A map from the resource name (e.g. "CPU") to the amount of resource used.
-  map<string, double> used_resources = 9;
+  // A map from the resource name (e.g. "CPU") to its allocation.
+  map<string, ResourceAllocations> used_resources = 9;
   // A string displayed on Dashboard.
   map<string, string> webui_display = 10;
   // Number of objects that are IN_PLASMA_ERROR in the local memory store.

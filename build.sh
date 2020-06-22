@@ -128,7 +128,7 @@ pushd "$BUILD_DIR"
 
 
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
-  "$BAZEL_EXECUTABLE" build ${ENABLE_ASAN-} //java:ray_java_pkg --verbose_failures
+  "$BAZEL_EXECUTABLE" build //java:ray_java_pkg
 fi
 
 if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
@@ -160,7 +160,7 @@ if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
 
   export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
 
-  "$BAZEL_EXECUTABLE" build ${ENABLE_ASAN-} //:ray_pkg --verbose_failures
+  "$BAZEL_EXECUTABLE" build //:ray_pkg
 fi
 
 popd
