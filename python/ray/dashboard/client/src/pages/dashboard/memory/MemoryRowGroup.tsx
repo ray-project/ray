@@ -1,16 +1,8 @@
-import {
-  createStyles,
-  TableRow,
-  Theme,
-  makeStyles
-} from "@material-ui/core";
+import { createStyles, makeStyles, TableRow, Theme } from "@material-ui/core";
 import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
 import React, { useState } from "react";
-import {
-  MemoryTableEntry,
-  MemoryTableSummary,
-} from "../../../api";
+import { MemoryTableEntry, MemoryTableSummary } from "../../../api";
 import {
   ExpandableStyledTableCell,
   StyledTableCell,
@@ -32,7 +24,8 @@ const useMemoryRowGroupStyles = makeStyles((theme: Theme) =>
       fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
       whiteSpace: "pre",
     },
-  }));
+  }),
+);
 
 type MemoryRowGroupProps = {
   groupKey: string;
@@ -41,7 +34,12 @@ type MemoryRowGroupProps = {
   initialExpanded: boolean;
 };
 
-const MemoryRowGroup: React.FC<MemoryRowGroupProps> = ({ groupKey, entries, summary, initialExpanded}) => {
+const MemoryRowGroup: React.FC<MemoryRowGroupProps> = ({
+  groupKey,
+  entries,
+  summary,
+  initialExpanded,
+}) => {
   const classes = useMemoryRowGroupStyles();
   const [expanded, setExpanded] = useState(initialExpanded);
   const toggleExpanded = () => setExpanded(!expanded);
