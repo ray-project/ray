@@ -109,8 +109,11 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name,
     confirm("This will destroy your cluster", yes)
 
     if not workers_only:
-        exec_cluster(config_file, "ray stop", False, False, False, False,
-                     False, override_cluster_name, None, False)
+        try:
+            exec_cluster(config_file, "ray stop", False, False, False, False,
+                         False, override_cluster_name, None, False)
+        except:
+            logger.exception("Ignoring error attempting a clean shutdown.")
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
