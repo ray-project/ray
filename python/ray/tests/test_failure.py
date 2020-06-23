@@ -819,7 +819,7 @@ def test_raylet_crash_when_get(ray_start_regular):
         time.sleep(2)
         ray.worker._global_node.kill_raylet()
 
-    object_id = ray.put(None)
+    object_id = ray.put(np.zeros(200 * 1024, dtype=np.uint8))
     ray.internal.free(object_id)
     while ray.worker.global_worker.core_worker.object_exists(object_id):
         time.sleep(1)
