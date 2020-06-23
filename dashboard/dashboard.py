@@ -139,7 +139,7 @@ if __name__ == "__main__":
         required=False,
         type=str,
         default=None,
-        help="the password to use for Redis")
+        help="The password to use for Redis")
     parser.add_argument(
         "--logging-level",
         required=False,

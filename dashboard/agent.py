@@ -67,14 +67,14 @@ class DashboardAgent(object):
         return modules
 
     async def run(self):
-        # Create aioredis client for all modules.
+        # Create an aioredis client for all modules.
         self.aioredis_client = await aioredis.create_redis_pool(
             address=self.redis_address, password=self.redis_password)
 
-        # Start grpc asyncio server.
+        # Start a grpc asyncio server.
         await self.server.start()
 
-        # Write dashboard agent port to redis.
+        # Write the dashboard agent port to redis.
         await self.aioredis_client.set(
             "{}{}".format(dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX,
                           self.ip), self.port)

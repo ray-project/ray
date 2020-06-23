@@ -108,7 +108,7 @@ class DashboardMaster:
         return modules
 
     async def run(self):
-        # Create aioredis client for all modules.
+        # Create an aioredis client for all modules.
         self.aioredis_client = await aioredis.create_redis_pool(
             address=self.redis_address, password=self.redis_password)
         # Waiting for GCS is ready.
