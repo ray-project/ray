@@ -6,8 +6,10 @@ import requests
 
 import ray
 from ray import serve
-from ray.serve.utils import get_random_letters
+from ray.test_utils import wait_for_condition
+from ray.serve import constants
 from ray.serve.exceptions import RayServeException
+from ray.serve.utils import format_actor_name, get_random_letters
 
 
 def test_e2e(serve_instance):
@@ -544,6 +546,34 @@ def test_create_infeasible_error(serve_instance):
     # No replica should be created!
     replicas = ray.get(serve.api.master_actor._list_replicas.remote("f1"))
     assert len(replicas) == 0
+
+
+def test_shutdown(serve_instance):
+    def f():
+        pass
+
+    instance_name = "shutdown"
+    serve.init(name=instance_name, http_port=8002)
+    serve.create_backend("backend", f)
+    serve.create_endpoint("endpoint", backend="backend")
+
+    serve.shutdown()
+    with pytest.raises(RayServeException, match="Please run serve.init"):
+        serve.list_backends()
+
+    def check_dead():
+        for actor_name in [
+                constants.SERVE_MASTER_NAME, constants.SERVE_PROXY_NAME,
+                constants.SERVE_ROUTER_NAME, constants.SERVE_METRIC_SINK_NAME
+        ]:
+            try:
+                ray.get_actor(format_actor_name(actor_name, instance_name))
+                return False
+            except ValueError:
+                pass
+        return True
+
+    assert wait_for_condition(check_dead)
 
 
 if __name__ == "__main__":
