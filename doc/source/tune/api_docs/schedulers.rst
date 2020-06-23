@@ -66,10 +66,12 @@ The `ASHA <https://openreview.net/forum?id=S1Y7OOlRZ>`__ scheduler can be used b
         max_t=100,
         grace_period=10,
         reduction_factor=3,
-        brackets=3)
+        brackets=1)
     tune.run( ... , scheduler=asha_scheduler)
 
 Compared to the original version of HyperBand, this implementation provides better parallelism and avoids straggler issues during eliminations. **We recommend using this over the standard HyperBand scheduler.** An example of this can be `found here  <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`_.
+
+Even though the original paper mentions a bracket count of 3, discussions with the authors concluded that the value should be left to 1 bracket. This is the default used if no value is provided for the ``brackets`` argument.
 
 .. autoclass:: ray.tune.schedulers.AsyncHyperBandScheduler
 
