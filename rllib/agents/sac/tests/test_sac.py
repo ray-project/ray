@@ -69,6 +69,7 @@ class TestSAC(unittest.TestCase):
                     results = trainer.train()
                     print(results)
                 check_compute_single_action(trainer)
+                trainer.stop()
 
     def test_sac_loss_function(self):
         """Tests SAC loss function results across all frameworks."""
