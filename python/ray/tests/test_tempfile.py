@@ -153,6 +153,8 @@ def test_raylet_tempfiles(shutdown_only):
         "raylet.err", "gcs_server.out", "gcs_server.err"
     }
 
+    for expected in log_files_expected:
+        assert expected in log_files
     assert log_files_expected.issubset(log_files)
     assert log_files.issuperset(log_files_expected)
 
