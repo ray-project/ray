@@ -7,12 +7,12 @@ from ray.rllib.agents.maml.maml_tf_policy import MAMLTFPolicy
 from ray.rllib.agents.trainer_template import build_trainer
 from typing import List
 from ray.rllib.evaluation.metrics import get_learner_stats
-from ray.rllib.execution.common import SampleBatchType, \
-    STEPS_SAMPLED_COUNTER, STEPS_TRAINED_COUNTER, LEARNER_INFO, \
-    _get_shared_metrics
+from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
+    STEPS_TRAINED_COUNTER, LEARNER_INFO, _get_shared_metrics
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.util.iter import from_actors
+from ray.rllib.utils.types import SampleBatchType
 
 logger = logging.getLogger(__name__)
 
