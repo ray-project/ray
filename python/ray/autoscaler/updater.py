@@ -169,7 +169,7 @@ class SSHOptions:
             })
         self.arg_dict.update(kwargs)
 
-    def get_ssh_options(self, timeout):
+    def get_ssh_options(self, *, timeout=60):
         self.arg_dict["ConnectTimeout"] = "{}s".format(timeout)
         return ["-i", self.ssh_key] + [
             x for y in (["-o", "{}={}".format(k, v)]
@@ -196,8 +196,8 @@ class SSHCommandRunner:
         self.ssh_user = auth_config["ssh_user"]
         self.ssh_control_path = ssh_control_path
         self.ssh_ip = None
-        self.default_ssh_options = SSHOptions(self.ssh_private_key,
-                                              self.ssh_control_path)
+        self.base_ssh_options = SSHOptions(self.ssh_private_key,
+                                           self.ssh_control_path)
 
     def get_node_ip(self):
         if self.use_internal_ip:
@@ -244,8 +244,9 @@ class SSHCommandRunner:
             port_forward=None,
             with_output=False,
             ssh_options=None):
-        if not ssh_options:
-            ssh_options = self.default_ssh_options
+        assert isinstance(ssh_options,
+                          SSHOptions), "ssh_options must be of type SSHOptions"
+        ssh_options = ssh_options or self.base_ssh_options
         self.set_ssh_ip_if_required()
 
         ssh = ["ssh", "-tt"]
@@ -258,7 +259,7 @@ class SSHCommandRunner:
                             "{} -> localhost:{}".format(local, remote))
                 ssh += ["-L", "{}:localhost:{}".format(remote, local)]
 
-        final_cmd = ssh + ssh_options.get_ssh_options(timeout) + [
+        final_cmd = ssh + ssh_options.get_ssh_options(timeout=timeout) + [
             "{}@{}".format(self.ssh_user, self.ssh_ip)
         ]
         if cmd:
@@ -290,7 +291,8 @@ class SSHCommandRunner:
         self.set_ssh_ip_if_required()
         self.process_runner.check_call([
             "rsync", "--rsh",
-            " ".join(["ssh"] + self.default_ssh_options.get_ssh_options(120)),
+            " ".join(["ssh"] +
+                     self.base_ssh_options.get_ssh_options(timeout=120)),
             "-avz", source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip,
                                               target)
         ])
@@ -299,7 +301,8 @@ class SSHCommandRunner:
         self.set_ssh_ip_if_required()
         self.process_runner.check_call([
             "rsync", "--rsh",
-            " ".join(["ssh"] + self.default_ssh_options.get_ssh_options(120)),
+            " ".join(["ssh"] +
+                     self.base_ssh_options.get_ssh_options(timeout=120)),
             "-avz", "{}@{}:{}".format(self.ssh_user, self.ssh_ip,
                                       source), target
         ])
