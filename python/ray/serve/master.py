@@ -61,7 +61,7 @@ class ServeMaster:
         # namespace child actors and checkpoints.
         self.instance_name = instance_name
         # Used to read/write checkpoints.
-        self.kv_store = RayInternalKVStore()
+        self.kv_store = RayInternalKVStore(namespace=instance_name)
         # path -> (endpoint, methods).
         self.routes = {}
         # backend -> (backend_worker, backend_config, replica_config).
@@ -112,10 +112,7 @@ class ServeMaster:
         # a checkpoint to the event loop. Other state-changing calls acquire
         # this lock and will be blocked until recovering from the checkpoint
         # finishes.
-        checkpoint_key = CHECKPOINT_KEY
-        if self.instance_name is not None:
-            checkpoint_key = "{}:{}".format(self.instance_name, checkpoint_key)
-        checkpoint = self.kv_store.get(checkpoint_key)
+        checkpoint = self.kv_store.get(CHECKPOINT_KEY)
         if checkpoint is None:
             logger.debug("No checkpoint found")
         else:
@@ -712,3 +709,14 @@ class ServeMaster:
         assert (backend_tag in self.backends
                 ), "Backend {} is not registered.".format(backend_tag)
         return self.backends[backend_tag][2]
+
+    async def shutdown(self):
+        """Shuts down the serve instance completely."""
+        async with self.write_lock:
+            ray.kill(self.http_proxy, no_restart=True)
+            ray.kill(self.router, no_restart=True)
+            ray.kill(self.metric_exporter, no_restart=True)
+            for replica_dict in self.workers.values():
+                for replica in replica_dict.values():
+                    ray.kill(replica, no_restart=True)
+            self.kv_store.delete(CHECKPOINT_KEY)

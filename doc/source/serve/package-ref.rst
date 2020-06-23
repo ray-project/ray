@@ -4,6 +4,7 @@ Package Reference
 Basic APIs
 ----------
 .. autofunction:: ray.serve.init
+.. autofunction:: ray.serve.shutdown
 .. autofunction:: ray.serve.create_backend
 .. autofunction:: ray.serve.create_endpoint
 
@@ -37,4 +38,3 @@ Advanced APIs
 ``serve.accept_batch`` marks your backend API does accept list of input instead
 of just single input.
 .. autofunction:: ray.serve.accept_batch
-
