@@ -15,7 +15,8 @@ import psutil
 import ray.services as services
 from ray.autoscaler.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
-    rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips)
+    rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
+    RUN_ENV_TYPES)
 import ray.ray_constants as ray_constants
 import ray.utils
 from ray.projects.scripts import project_cli, session_cli
@@ -872,9 +873,10 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
 @click.option(
     "--run-env",
     required=False,
-    type=str,
+    type=click.Choice(RUN_ENV_TYPES),
     default="auto",
-    help="Chooses running location. Either auto, host, or docker.")
+    help="Choose whether to execute this command in a container or directly on"
+    " the cluster head. Only applies when docker is configured in the YAML.")
 @click.option(
     "--stop",
     is_flag=True,

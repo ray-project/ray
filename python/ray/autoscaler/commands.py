@@ -25,7 +25,7 @@ from ray.autoscaler.log_timer import LogTimer
 
 logger = logging.getLogger(__name__)
 
-RUN_ENV_TYPES = set("auto", "host", "docker")
+RUN_ENV_TYPES = ["auto", "host", "docker"]
 
 
 def create_or_update_cluster(config_file, override_min_workers,
@@ -375,7 +375,8 @@ def exec_cluster(config_file,
     Arguments:
         config_file: path to the cluster yaml
         cmd: command to run
-        run_env: whether to run the command on the host or in a container
+        run_env: whether to run the command on the host or in a container.
+            Select between "auto", "host" and "docker"
         screen: whether to run in a screen
         tmux: whether to run in a tmux session
         stop: whether to stop the cluster after command run
@@ -384,7 +385,8 @@ def exec_cluster(config_file,
         port_forward (int or list[int]): port(s) to forward
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
-    assert run_env in RUN_ENV_TYPES
+    assert run_env in RUN_ENV_TYPES, "--run_env must be in {}".format(
+        RUN_ENV_TYPES)
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
