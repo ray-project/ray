@@ -190,12 +190,9 @@ class _DummyActor:
     def cuda_devices(self):
         return os.environ["CUDA_VISIBLE_DEVICES"]
 
-    def cpu_devices(self):
-        all_resource_ids = ray.get_resource_ids()
-        assigned_ids = [
-            resource_id for resource_id, _ in all_resource_ids.get("CPU", [])
-        ]
-        return assigned_ids
+    def get(self):
+        # in order to verify the actor has created
+        return 1
 
 
 # This is a bit of a hack. It prevents the reassignment of CUDA_VISIBLE_DEVICES
@@ -229,18 +226,18 @@ def clear_dummy_actor():
 def reserve_resources(num_cpus, num_gpus, retries=20):
     ip = ray.services.get_node_ip_address()
 
-    reserved_cpu_device = None
     reserved_cuda_device = None
 
     if num_cpus > 0:
         global _dummy_cpu_actor
-        _dummy_cpu_actor = ray.remote(
-            num_cpus=num_cpus,
-            resources={"node:" + ip: 0.1})(_DummyActor).remote()
-        reserved_cpu_device = ray.get(_dummy_cpu_actor.cpu_devices.remote())
+        if _dummy_cpu_actor is None:
+            _dummy_cpu_actor = ray.remote(
+                num_cpus=num_cpus,
+                resources={"node:" + ip: 0.1})(_DummyActor).remote()
+            assert ray.get(_dummy_cpu_actor.get.remote()) == 1
 
     if num_gpus == 0:
-        return reserved_cpu_device, reserved_cuda_device
+        return reserved_cuda_device
 
     cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
     cuda_device_set = {}
@@ -257,6 +254,7 @@ def reserve_resources(num_cpus, num_gpus, retries=20):
     for _ in range(retries):
         if _dummy_cuda_actor is None:
             _dummy_cuda_actor = ray.remote(
+                num_cpus=0,
                 num_gpus=num_gpus,
                 resources={"node:" + ip: 0.1})(_DummyActor).remote()
 
@@ -280,7 +278,7 @@ def reserve_resources(num_cpus, num_gpus, retries=20):
             "make sure that Ray has access to all the visible devices: "
             "{}".format(os.environ.get("CUDA_VISIBLE_DEVICES")))
 
-    return reserved_cpu_device, reserved_cuda_device
+    return reserved_cuda_device
 
 
 class LocalDistributedRunner(DistributedTorchRunner):
@@ -314,9 +312,7 @@ class LocalDistributedRunner(DistributedTorchRunner):
 
     def _try_reserve_and_set_resources(self, num_cpus, num_gpus):
         visible_cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
-        reserved_cpu_devices, reserved_cuda_device = reserve_resources(
-            num_cpus, num_gpus)
-        self._set_cpu_devices(reserved_cpu_devices)
+        reserved_cuda_device = reserve_resources(num_cpus, num_gpus)
         if num_gpus == 0:
             return
         # This needs to be set even if torch.cuda is already
@@ -340,10 +336,6 @@ class LocalDistributedRunner(DistributedTorchRunner):
             # Once cuda is initialized, torch.device ignores the os.env
             # so we have to set the right actual device.
             self._set_cuda_device(reserved_cuda_device)
-
-    def _set_cpu_devices(self, device_list):
-        # for test
-        self.local_cpu_device = device_list
 
     def _set_cuda_device(self, device_str):
         """Sets the CUDA device for this current local worker."""

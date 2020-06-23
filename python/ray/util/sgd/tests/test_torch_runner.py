@@ -223,12 +223,6 @@ class TestLocalDistributedRunner(unittest.TestCase):
             init_mock.return_value = True
             self._testReserveCUDAResource(init_mock, 0)
 
-    def test1VisibleWithInitializedAndReserveCPUResource(self):
-        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-        with patch("torch.cuda.is_initialized") as init_mock:
-            init_mock.return_value = True
-            self._testReserveCUDAResource(init_mock, 2)
-
     def test2VisibleWithInitialized(self):
         os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
         with patch("torch.cuda.is_initialized") as init_mock:
@@ -259,40 +253,29 @@ class TestLocalDistributedRunner(unittest.TestCase):
             init_mock.return_value = False
             self._testReserveCUDAResource(init_mock, 0)
 
-    def test2VisibleNotInitializedAndReserveCPUResource(self):
-        os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
-        with patch("torch.cuda.is_initialized") as init_mock:
-            init_mock.return_value = False
-            self._testReserveCUDAResource(init_mock, 2)
-
     @patch("torch.cuda.set_device")
     def testSetDevice(self, set_mock):
         mock_runner = MagicMock()
         mock_runner._is_set = False
         LocalDistributedRunner._set_cuda_device(mock_runner, "123")
-        self.assertEquals(mock_runner.local_cuda_device, "123")
+        self.assertEqual(mock_runner.local_cuda_device, "123")
         self.assertTrue(set_mock.called)
         set_mock.assert_called_with(123)
 
-    def testReserveCPUResources(self):
+    def testV1ReserveCPUResources(self):
         mock_runner = MagicMock()
         mock_runner._set_cpu_devices = MagicMock()
         # reserve CPU only
         LocalDistributedRunner._try_reserve_and_set_resources(
             mock_runner, 4, 0)
+        remaining = ray.available_resources()["CPU"]
+        self.assertEqual(int(remaining), 6)
 
-        available_devices = set(range(0, 10))
-
-        self.assertTrue(mock_runner._set_cpu_devices.called)
-        set_devices = mock_runner._set_cpu_devices.call_args[0][0]
-        self.assertEquals(len(set_devices), 4)
-        self.assertTrue(set(set_devices).issubset(available_devices))
-
+    def testV2ReserveCPUResources(self):
+        mock_runner = MagicMock()
+        mock_runner._set_cpu_devices = MagicMock()
         # reserve CPU and GPU
         LocalDistributedRunner._try_reserve_and_set_resources(
             mock_runner, 4, 1)
-
-        self.assertTrue(mock_runner._set_cpu_devices.called)
-        set_devices = mock_runner._set_cpu_devices.call_args[0][0]
-        self.assertEquals(len(set_devices), 4)
-        self.assertTrue(set(set_devices).issubset(available_devices))
+        remaining = ray.available_resources()["CPU"]
+        self.assertEqual(int(remaining), 6)
