@@ -112,7 +112,7 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name,
         try:
             exec_cluster(config_file, "ray stop", False, False, False, False,
                          False, override_cluster_name, None, False)
-        except:
+        except Exception:
             logger.exception("Ignoring error attempting a clean shutdown.")
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
