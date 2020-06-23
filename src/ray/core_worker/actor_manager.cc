@@ -65,7 +65,6 @@ Status ActorManager::GetNamedActorHandle(const std::string &name,
                                          const TaskID &caller_id,
                                          const std::string &call_site,
                                          const rpc::Address &caller_address) {
-  RAY_CHECK(RayConfig::instance().gcs_service_enabled());
   RAY_CHECK(RayConfig::instance().gcs_actor_service_enabled());
   RAY_CHECK(!name.empty());
 
@@ -158,8 +157,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
             // If we own the actor and the actor handle is no longer in scope,
             // terminate the actor. We do not do this if the GCS service is
             // enabled since then the GCS will terminate the actor for us.
-            if (!(RayConfig::instance().gcs_service_enabled() &&
-                  RayConfig::instance().gcs_actor_service_enabled())) {
+            if (RayConfig::instance().gcs_actor_service_enabled()) {
               RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id
                             << " has gone out of scope, sending message to actor "
                             << actor_id << " to do a clean exit.";
