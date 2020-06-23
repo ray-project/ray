@@ -31,12 +31,13 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ray/common/status.h"
 #include "ray/object_manager/plasma/compat.h"
 
 #include "arrow/status.h"
-#include "arrow/util/logging.h"
 #include "arrow/util/macros.h"
 #include "ray/object_manager/plasma/common.h"
+#include "ray/util/logging.h"
 
 #ifdef PLASMA_CUDA
 using arrow::cuda::CudaIpcMemHandle;
@@ -53,7 +54,7 @@ struct ObjectInfoT;
     Status _s = (s);                                                        \
     if (!_s.ok()) {                                                         \
       if (errno == EPIPE || errno == EBADF || errno == ECONNRESET) {        \
-        ARROW_LOG(WARNING)                                                  \
+        RAY_LOG(WARNING)                                                  \
             << "Received SIGPIPE, BAD FILE DESCRIPTOR, or ECONNRESET when " \
                "sending a message to client on fd "                         \
             << fd_                                                          \

@@ -25,7 +25,7 @@ namespace plasma {
 
 void LRUCache::Add(const ObjectID& key, int64_t size) {
   auto it = item_map_.find(key);
-  ARROW_CHECK(it == item_map_.end());
+  RAY_CHECK(it == item_map_.end());
   // Note that it is important to use a list so the iterators stay valid.
   item_list_.emplace_front(key, size);
   item_map_.emplace(key, item_list_.begin());
@@ -41,15 +41,15 @@ int64_t LRUCache::Remove(const ObjectID& key) {
   used_capacity_ -= size;
   item_list_.erase(it->second);
   item_map_.erase(it);
-  ARROW_CHECK(used_capacity_ >= 0) << DebugString();
+  RAY_CHECK(used_capacity_ >= 0) << DebugString();
   return size;
 }
 
 void LRUCache::AdjustCapacity(int64_t delta) {
-  ARROW_LOG(INFO) << "adjusting global lru capacity from " << Capacity() << " to "
+  RAY_LOG(INFO) << "adjusting global lru capacity from " << Capacity() << " to "
                   << (Capacity() + delta) << " (max " << OriginalCapacity() << ")";
   capacity_ += delta;
-  ARROW_CHECK(used_capacity_ >= 0) << DebugString();
+  RAY_CHECK(used_capacity_ >= 0) << DebugString();
 }
 
 int64_t LRUCache::Capacity() const { return capacity_; }
@@ -128,10 +128,10 @@ bool EvictionPolicy::RequireSpace(int64_t size, std::vector<ObjectID>* objects_t
   // up to 20% of the total capacity.
   int64_t space_to_free =
       std::max(required_space, PlasmaAllocator::GetFootprintLimit() / 5);
-  ARROW_LOG(DEBUG) << "not enough space to create this object, so evicting objects";
+  RAY_LOG(DEBUG) << "not enough space to create this object, so evicting objects";
   // Choose some objects to evict, and update the return pointers.
   int64_t num_bytes_evicted = ChooseObjectsToEvict(space_to_free, objects_to_evict);
-  ARROW_LOG(INFO) << "There is not enough space to create this object, so evicting "
+  RAY_LOG(INFO) << "There is not enough space to create this object, so evicting "
                   << objects_to_evict->size() << " objects to free up "
                   << num_bytes_evicted << " bytes. The number of bytes in use (before "
                   << "this eviction) is " << PlasmaAllocator::Allocated() << ".";
