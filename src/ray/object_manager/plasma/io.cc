@@ -58,7 +58,7 @@ Status WriteBytes(int fd, uint8_t* cursor, size_t length) {
     } else if (nbytes == 0) {
       return Status::IOError("Encountered unexpected EOF");
     }
-    ARROW_CHECK(nbytes > 0);
+    RAY_CHECK(nbytes > 0);
     bytesleft -= nbytes;
     offset += nbytes;
   }
@@ -89,7 +89,7 @@ Status ReadBytes(int fd, uint8_t* cursor, size_t length) {
     } else if (0 == nbytes) {
       return Status::IOError("Encountered unexpected EOF");
     }
-    ARROW_CHECK(nbytes > 0);
+    RAY_CHECK(nbytes > 0);
     bytesleft -= nbytes;
     offset += nbytes;
   }
@@ -101,7 +101,7 @@ Status ReadMessage(int fd, MessageType* type, std::vector<uint8_t>* buffer) {
   int64_t version;
   RETURN_NOT_OK_ELSE(ReadBytes(fd, reinterpret_cast<uint8_t*>(&version), sizeof(version)),
                      *type = MessageType::PlasmaDisconnectClient);
-  ARROW_CHECK(version == kPlasmaProtocolVersion) << "version = " << version;
+  RAY_CHECK(version == kPlasmaProtocolVersion) << "version = " << version;
   RETURN_NOT_OK_ELSE(ReadBytes(fd, reinterpret_cast<uint8_t*>(type), sizeof(*type)),
                      *type = MessageType::PlasmaDisconnectClient);
   int64_t length_temp;
@@ -139,18 +139,18 @@ int ConnectOrListenIpcSock(const std::string& pathname, bool shall_listen) {
     socket_address.in.sin_addr.s_addr = inet_addr(addr.substr(0, i).c_str());
     socket_address.in.sin_port = htons(static_cast<short>(atoi(addr.substr(j).c_str())));
     if (socket_address.in.sin_addr.s_addr == INADDR_NONE) {
-      ARROW_LOG(ERROR) << "Socket address is not a valid IPv4 address: " << pathname;
+      RAY_LOG(ERROR) << "Socket address is not a valid IPv4 address: " << pathname;
       return -1;
     }
     if (socket_address.in.sin_port == htons(0)) {
-      ARROW_LOG(ERROR) << "Socket address is missing a valid port: " << pathname;
+      RAY_LOG(ERROR) << "Socket address is missing a valid port: " << pathname;
       return -1;
     }
   } else {
     addrlen = sizeof(socket_address.un);
     socket_address.un.sun_family = AF_UNIX;
     if (pathname.size() + 1 > sizeof(socket_address.un.sun_path)) {
-      ARROW_LOG(ERROR) << "Socket pathname is too long.";
+      RAY_LOG(ERROR) << "Socket pathname is too long.";
       return -1;
     }
     strncpy(socket_address.un.sun_path, pathname.c_str(), pathname.size() + 1);
@@ -158,7 +158,7 @@ int ConnectOrListenIpcSock(const std::string& pathname, bool shall_listen) {
 
   int socket_fd = socket(socket_address.addr.sa_family, SOCK_STREAM, 0);
   if (socket_fd < 0) {
-    ARROW_LOG(ERROR) << "socket() failed for pathname " << pathname;
+    RAY_LOG(ERROR) << "socket() failed for pathname " << pathname;
     return -1;
   }
   if (shall_listen) {
@@ -166,7 +166,7 @@ int ConnectOrListenIpcSock(const std::string& pathname, bool shall_listen) {
     int on = 1;
     if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&on),
                    sizeof(on)) < 0) {
-      ARROW_LOG(ERROR) << "setsockopt failed for pathname " << pathname;
+      RAY_LOG(ERROR) << "setsockopt failed for pathname " << pathname;
       close(socket_fd);
       return -1;
     }
@@ -179,13 +179,13 @@ int ConnectOrListenIpcSock(const std::string& pathname, bool shall_listen) {
 #endif
     }
     if (bind(socket_fd, &socket_address.addr, addrlen) != 0) {
-      ARROW_LOG(ERROR) << "Bind failed for pathname " << pathname;
+      RAY_LOG(ERROR) << "Bind failed for pathname " << pathname;
       close(socket_fd);
       return -1;
     }
 
     if (listen(socket_fd, 128) == -1) {
-      ARROW_LOG(ERROR) << "Could not listen to socket " << pathname;
+      RAY_LOG(ERROR) << "Could not listen to socket " << pathname;
       close(socket_fd);
       return -1;
     }
@@ -209,7 +209,7 @@ Status ConnectIpcSocketRetry(const std::string& pathname, int num_retries,
   }
   *fd = ConnectOrListenIpcSock(pathname, false);
   while (*fd < 0 && num_retries > 0) {
-    ARROW_LOG(ERROR) << "Connection to IPC socket failed for pathname " << pathname
+    RAY_LOG(ERROR) << "Connection to IPC socket failed for pathname " << pathname
                      << ", retrying " << num_retries << " more times";
     // Sleep for timeout milliseconds.
     usleep(static_cast<int>(timeout * 1000));
@@ -228,7 +228,7 @@ Status ConnectIpcSocketRetry(const std::string& pathname, int num_retries,
 int AcceptClient(int socket_fd) {
   int client_fd = accept(socket_fd, NULL, NULL);
   if (client_fd < 0) {
-    ARROW_LOG(ERROR) << "Error reading from socket.";
+    RAY_LOG(ERROR) << "Error reading from socket.";
     return -1;
   }
   return client_fd;
@@ -239,7 +239,7 @@ std::unique_ptr<uint8_t[]> ReadMessageAsync(int sock) {
   Status s = ReadBytes(sock, reinterpret_cast<uint8_t*>(&size), sizeof(int64_t));
   if (!s.ok()) {
     // The other side has closed the socket.
-    ARROW_LOG(DEBUG) << "Socket has been closed, or some other error has occurred.";
+    RAY_LOG(DEBUG) << "Socket has been closed, or some other error has occurred.";
     close(sock);
     return NULL;
   }
@@ -247,7 +247,7 @@ std::unique_ptr<uint8_t[]> ReadMessageAsync(int sock) {
   s = ReadBytes(sock, message.get(), size);
   if (!s.ok()) {
     // The other side has closed the socket.
-    ARROW_LOG(DEBUG) << "Socket has been closed, or some other error has occurred.";
+    RAY_LOG(DEBUG) << "Socket has been closed, or some other error has occurred.";
     close(sock);
     return NULL;
   }

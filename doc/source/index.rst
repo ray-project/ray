@@ -152,7 +152,18 @@ Getting Involved
 
 .. toctree::
    :maxdepth: -1
-   :caption: Tune
+   :caption: Ray Serve
+
+   serve/index.rst
+   serve/key-concepts.rst
+   serve/tutorials/index.rst
+   serve/deployment.rst
+   serve/advanced.rst
+   serve/package-ref.rst
+
+.. toctree::
+   :maxdepth: -1
+   :caption: Ray Tune
 
    tune.rst
    Tutorials, Guides, Examples <tune/tutorials/overview.rst>
@@ -184,17 +195,6 @@ Getting Involved
    raysgd/raysgd_tensorflow.rst
    raysgd/raysgd_dataset.rst
    raysgd/raysgd_ref.rst
-
-.. toctree::
-   :maxdepth: -1
-   :caption: Ray Serve
-
-   serve/index.rst
-   serve/key-concepts.rst
-   serve/tutorials/index.rst
-   serve/deployment.rst
-   serve/advanced.rst
-   serve/package-ref.rst
 
 .. toctree::
    :maxdepth: -1

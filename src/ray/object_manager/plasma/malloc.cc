@@ -61,7 +61,7 @@ int64_t GetMmapSize(int fd) {
       return entry.second.size;
     }
   }
-  ARROW_LOG(FATAL) << "failed to find entry in mmap_records for fd " << fd;
+  RAY_LOG(FATAL) << "failed to find entry in mmap_records for fd " << fd;
   return -1;  // This code is never reached.
 }
 

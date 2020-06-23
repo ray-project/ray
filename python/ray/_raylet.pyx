@@ -109,7 +109,8 @@ include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
 
-# Expose GCC & Clang macro to report whether C++ optimizations were enabled during compilation.
+# Expose GCC & Clang macro to report whether C++ optimizations were enabled
+# during compilation.
 OPTIMIZED = __OPTIMIZE__
 
 logger = logging.getLogger(__name__)
@@ -953,11 +954,10 @@ cdef class CoreWorker:
             prepare_args(self, language, args, &args_vector)
 
             with nogil:
-                check_status(
-                    CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
-                        c_actor_id,
-                        ray_function,
-                        args_vector, task_options, &return_ids))
+                CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
+                    c_actor_id,
+                    ray_function,
+                    args_vector, task_options, &return_ids)
 
             return VectorToObjectIDs(return_ids)
 
