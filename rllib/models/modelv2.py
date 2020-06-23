@@ -289,7 +289,7 @@ class NullContextManager:
 @DeveloperAPI
 def flatten(obs, framework):
     """Flatten the given tensor."""
-    if framework == "tf":
+    if framework in ["tf", "tfe"]:
         return tf.keras.layers.Flatten()(obs)
     elif framework == "torch":
         assert torch is not None

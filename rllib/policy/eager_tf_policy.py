@@ -165,7 +165,6 @@ def traced_eager_policy(eager_policy_cls):
 
 def build_eager_tf_policy(name,
                           loss_fn,
-                          cls=None,
                           get_default_config=None,
                           postprocess_fn=None,
                           stats_fn=None,
@@ -195,7 +194,7 @@ def build_eager_tf_policy(name,
 
     This has the same signature as build_tf_policy()."""
 
-    base = add_mixins(cls or Policy, mixins)
+    base = add_mixins(Policy, mixins)
 
     class eager_policy_cls(base):
         def __init__(self, observation_space, action_space, config):
