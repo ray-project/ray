@@ -28,7 +28,7 @@ import { MemoryTableRow } from "./MemoryTableRow";
 const makeGroupedEntries = (
   memoryTableGroups: MemoryTableGroups,
   order: Order,
-  orderBy: keyof MemoryTableEntry | null,
+  orderBy: string | null,
 ) => {
   const comparator = orderBy && getComparator(order, orderBy);
   return Object.entries(memoryTableGroups).map(([groupKey, group]) => {
@@ -50,7 +50,7 @@ const makeGroupedEntries = (
 const makeUngroupedEntries = (
   memoryTableGroups: MemoryTableGroups,
   order: Order,
-  orderBy: keyof MemoryTableEntry | null,
+  orderBy: string | null,
 ) => {
   const allEntries = Object.values(memoryTableGroups).reduce(
     (allEntries: Array<MemoryTableEntry>, memoryTableGroup) => {
@@ -71,14 +71,14 @@ const makeUngroupedEntries = (
   ));
 };
 
-const memoryHeaderInfo: HeaderInfo<MemoryTableEntry>[] = [
-  { id: "node_ip_address", label: "IP Address", numeric: true },
-  { id: "pid", label: "pid", numeric: true },
-  { id: "type", label: "Type", numeric: false },
-  { id: "object_id", label: "Object ID", numeric: false },
-  { id: "object_size", label: "Object Size (B)", numeric: true },
-  { id: "reference_type", label: "Reference Type", numeric: false },
-  { id: "call_site", label: "Call Site", numeric: false },
+const memoryHeaderInfo: HeaderInfo[] = [
+  { id: "node_ip_address", label: "IP Address", numeric: true, sortable: true },
+  { id: "pid", label: "pid", numeric: true, sortable: true },
+  { id: "type", label: "Type", numeric: false, sortable: true },
+  { id: "object_id", label: "Object ID", numeric: false, sortable: true },
+  { id: "object_size", label: "Object Size (B)", numeric: true, sortable: true },
+  { id: "reference_type", label: "Reference Type", numeric: false, sortable: true },
+  { id: "call_site", label: "Call Site", numeric: false, sortable: true },
 ];
 
 const useMemoryInfoStyles = makeStyles((theme: Theme) =>
@@ -120,7 +120,7 @@ const MemoryInfo: React.FC<{}> = () => {
   const [isGrouped, setIsGrouped] = useState(true);
   const [order, setOrder] = React.useState<Order>("asc");
   const toggleOrder = () => setOrder(order === "asc" ? "desc" : "asc");
-  const [orderBy, setOrderBy] = React.useState<keyof MemoryTableEntry | null>(
+  const [orderBy, setOrderBy] = React.useState<string | null>(
     null,
   );
   return (
@@ -145,7 +145,7 @@ const MemoryInfo: React.FC<{}> = () => {
             <SortableTableHead
               orderBy={orderBy || ""}
               order={order}
-              onRequestSort={(event, property) => {
+              onRequestSort={(_, property) => {
                 if (property === orderBy) {
                   toggleOrder();
                 } else {

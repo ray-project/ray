@@ -26,62 +26,54 @@ const useSortableTableHeadStyles = makeStyles((theme: Theme) =>
   }),
 );
 
-export type SortableHeaderInfo<T> = {
-  kind: "sortable";
-  id: keyof T;
+export type HeaderInfo = {
+  sortable: boolean;
+  id: string;
   label: string;
   numeric: boolean;
 };
 
-export type UnsortableHeaderInfo = {
-  kind: "unsortable";
-  label: string;
-  numeric: boolean;
-};
-
-type HeaderInfo<T> = SortableHeaderInfo<T> | UnsortableHeaderInfo;
-type SortableTableHeadProps<T> = {
-  onRequestSort: (event: React.MouseEvent<unknown>, property: keyof T) => void;
+type SortableTableHeadProps = {
+  onRequestSort: (event: React.MouseEvent<unknown>, id: string) => void;
   order: Order;
   orderBy: string | null;
-  headerInfo: HeaderInfo<T>[];
+  headerInfo: HeaderInfo[];
 };
 
-const SortableTableHead = <T,>(props: SortableTableHeadProps<T>) => {
+const SortableTableHead = (props: SortableTableHeadProps) => {
   const { order, orderBy, onRequestSort, headerInfo} = props;
   const classes = useSortableTableHeadStyles();
-  const createSortHandler = (property: keyof T) => (
+  const createSortHandler = (id: string) => (
     event: React.MouseEvent<unknown>,
   ) => {
-    onRequestSort(event, property);
+    onRequestSort(event, id);
   };
   return (
     <TableHead>
       <TableRow>
         {headerInfo.map(headerInfo => {
-          switch (headerInfo.kind) {
-            case "sortable":
-              return (
-                <StyledTableCell
-                  key={headerInfo.label}
-                  align={headerInfo.numeric ? "right" : "left"}
-                  sortDirection={orderBy === headerInfo.id ? order : false}
+          if (headerInfo.sortable) {
+            return (
+              <StyledTableCell
+                key={headerInfo.label}
+                align={headerInfo.numeric ? "right" : "left"}
+                sortDirection={orderBy === headerInfo.id ? order : false}
+              >
+                <TableSortLabel
+                  active={orderBy === headerInfo.id}
+                  direction={orderBy === headerInfo.id ? order : "asc"}
+                  onClick={createSortHandler(headerInfo.id)}
                 >
-                  <TableSortLabel
-                    active={orderBy === headerInfo.id}
-                    direction={orderBy === headerInfo.id ? order : "asc"}
-                    onClick={createSortHandler(headerInfo.id)}
-                  >
-                    {headerInfo.label}
-                    {orderBy === headerInfo.id ? (
-                      <span className={classes.visuallyHidden}>
-                        {order === "desc" ? "sorted descending" : "sorted ascending"}
-                      </span>
-                    ) : null}
-                  </TableSortLabel>
-                </StyledTableCell>
-              )
-            case "unsortable":
+                  {headerInfo.label}
+                  {orderBy === headerInfo.id ? (
+                    <span className={classes.visuallyHidden}>
+                      {order === "desc" ? "sorted descending" : "sorted ascending"}
+                    </span>
+                  ) : null}
+                </TableSortLabel>
+              </StyledTableCell>
+            )
+          } else {
               return (
                 <StyledTableCell
                   key={headerInfo.label}

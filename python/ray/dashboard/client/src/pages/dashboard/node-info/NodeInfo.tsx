@@ -66,34 +66,29 @@ type DialogState = {
   pid: number | null;
 } | null;
 
-type NodeRowDatum = {
-            host: string,
-            workers,
-            uptime: number,
-            cpu,
-            ram,
-            gpu,
-            gram,
-            disk,
-            sent,
-            received,
-            logs,
-            errors,
-};
-
-const headers: HeaderInfo<NodeRowDatum>[] = [
-  { id: "node_ip_address", label: "IP Address", numeric: true },
-  { id: "pid", label: "pid", numeric: true },
-  { id: "type", label: "Type", numeric: false },
-  { id: "object_id", label: "Object ID", numeric: false },
-  { id: "object_size", label: "Object Size (B)", numeric: true },
-  { id: "reference_type", label: "Reference Type", numeric: false },
-  { id: "call_site", label: "Call Site", numeric: false },
+const nodeInfoHeaders: HeaderInfo[] = [
+  { id: "host", label: "Host", numeric: true, sortable: true },
+  { id: "workers", label: "PID", numeric: true, sortable: false },
+  { id: "uptime", label: "Uptime (s)", numeric: true, sortable: true },
+  { id: "cpu", label: "CPU", numeric: false, sortable: true },
+  { id: "ram", label: "RAM", numeric: true, sortable: true },
+  { id: "gpu", label: "GPU", numeric: true, sortable: true },
+  { id: "gram", label: "GRAM", numeric: true, sortable: true },
+  { id: "disk", label: "Disk", numeric: true, sortable: true },
+  { id: "sent", label: "Sent", numeric: true, sortable: true },
+  { id: "received", label: "Received", numeric: false, sortable: true },
+  { id: "logs", label: "Logs", numeric: false, sortable: false },
+  { id: "errors", label: "Errors", numeric: false, sortable: false }
 ];
 
 const NodeInfo: React.FC<{}> = () => {
   const [logDialog, setLogDialog] = useState<DialogState>(null);
   const [errorDialog, setErrorDialog] = useState<DialogState>(null);
+  const [isGrouped, setIsGrouped] = useState(true);
+  const [order, setOrder] = React.useState<Order>("asc");
+  const toggleOrder = () => setOrder(order === "asc" ? "desc" : "asc");
+
+  const [orderBy, setOrderBy] = React.useState<string | null>(null);
   const classes = useNodeInfoStyles();
   const { nodeInfo, rayletInfo } = useSelector(nodeInfoSelector);
 
@@ -158,23 +153,11 @@ const NodeInfo: React.FC<{}> = () => {
   return (
     <React.Fragment>
       <Table className={classes.table}>
-        <TableHead>
-          <TableRow>
-            <TableCell className={classes.cell} />
-            <TableCell className={classes.cell}>Host</TableCell>
-            <TableCell className={classes.cell}>Workers</TableCell>
-            <TableCell className={classes.cell}>Uptime</TableCell>
-            <TableCell className={classes.cell}>CPU</TableCell>
-            <TableCell className={classes.cell}>RAM</TableCell>
-            <TableCell className={classes.cell}>GPU</TableCell>
-            <TableCell className={classes.cell}>GRAM</TableCell>
-            <TableCell className={classes.cell}>Disk</TableCell>
-            <TableCell className={classes.cell}>Sent</TableCell>
-            <TableCell className={classes.cell}>Received</TableCell>
-            <TableCell className={classes.cell}>Logs</TableCell>
-            <TableCell className={classes.cell}>Errors</TableCell>
-          </TableRow>
-        </TableHead>
+        <SortableTableHead
+          onRequestSort={() => { }}
+          headerInfo={nodeInfoHeaders}
+          order={order}
+          orderBy={orderBy} />
         <TableBody>
           {nodeInfo.clients.map((client) => {
             const clusterWorkerPids =
