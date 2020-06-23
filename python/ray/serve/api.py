@@ -300,10 +300,8 @@ def shadow_traffic(endpoint_name, backend_tag, proportion):
         proportion (float): The proportion of traffic from 0 to 1.
     """
 
-    if not isinstance(proportion, float) and not isinstance(proportion, int):
+    if not isinstance(proportion, (float, int)) or not 0 <= proportion <= 1:
         raise TypeError("proportion must be a float from 0 to 1.")
-    if not 0 <= proportion <= 1:
-        raise ValueError("proportion must be a float from 0 to 1.")
 
     ray.get(
         master_actor.shadow_traffic.remote(endpoint_name, backend_tag,

@@ -48,16 +48,16 @@ class RandomEndpointPolicy(EndpointPolicy):
     """
 
     def __init__(self, traffic_policy):
-        self.backend_names, self.backend_weights = zip(
-            *sorted(traffic_policy.traffic_dict.items()))
+        self.backends = sorted(traffic_policy.traffic_dict.items())
         self.shadow_backends = traffic_policy.shadow_dict
 
     def _select_backends(self, val):
         curr_sum = 0
-        for i in range(len(self.backend_weights)):
-            curr_sum += self.backend_weights[i]
+        for name, weight in self.backends:
+            curr_sum += weight
             if curr_sum > val:
-                chosen_backend = self.backend_names[i]
+                chosen_backend = name
+                break
 
         shadow_backends = []
         for backend, backend_weight in self.shadow_backends:
@@ -67,7 +67,7 @@ class RandomEndpointPolicy(EndpointPolicy):
         return chosen_backend, shadow_backends
 
     def flush(self, endpoint_queue, backend_queues):
-        if len(self.backend_names) == 0:
+        if len(self.backends) == 0:
             logger.info("No backends to assign traffic to.")
             return set()
 
@@ -89,6 +89,7 @@ class RandomEndpointPolicy(EndpointPolicy):
             backend_queues[chosen_backend].add(query)
             if len(shadow_backends) > 0:
                 shadow_query = query.copy()
+                shadow_query.async_future = None
                 shadow_query.is_shadow_query = True
                 for shadow_backend in shadow_backends:
                     assigned_backends.add(shadow_backend)
