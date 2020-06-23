@@ -396,6 +396,16 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  bool RegisterWorker(const rpc::RegisterWorkerRequest &request) {
+    std::promise<bool> promise;
+    client_->RegisterWorker(
+        request, [&promise](const Status &status, const rpc::RegisterWorkerReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
   bool WaitReady(const std::future<bool> &future, uint64_t timeout_ms) {
     auto status = future.wait_for(std::chrono::milliseconds(timeout_ms));
     return status == std::future_status::ready;
@@ -731,6 +741,18 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   rpc::ReportWorkerFailureRequest report_worker_failure_request;
   report_worker_failure_request.mutable_worker_failure()->CopyFrom(worker_failure_data);
   ASSERT_TRUE(ReportWorkerFailure(report_worker_failure_request));
+
+  rpc::RegisterWorkerRequest register_worker_request;
+  register_worker_request.set_worker_id(WorkerID::FromRandom().Binary());
+  register_worker_request.set_worker_type(rpc::WorkerType::WORKER);
+  register_worker_request.mutable_worker_info()->insert({"stderr", "test"});
+  ASSERT_TRUE(RegisterWorker(register_worker_request));
+
+  rpc::RegisterWorkerRequest register_driver_request;
+  register_driver_request.set_worker_id(WorkerID::FromRandom().Binary());
+  register_driver_request.set_worker_type(rpc::WorkerType::WORKER);
+  register_driver_request.mutable_worker_info()->insert({"stderr", "test"});
+  ASSERT_TRUE(RegisterWorker(register_driver_request));
 }
 
 }  // namespace ray

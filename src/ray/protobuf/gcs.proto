@@ -298,12 +298,19 @@ message ActorCheckpointIdData {
 }
 
 message WorkerFailureData {
+  // Is worker failure data
+  // true: worker failure data; false: register worker data
+  bool is_worker_failure = 1;
   // Address of the worker that failed.
-  Address worker_address = 1;
+  Address worker_address = 2;
   // The UNIX timestamp at which the worker failed.
   int64 timestamp = 3;
   // Is intentional disconnect
   bool intentional_disconnect = 4;
+  // mark worker type, used in register worker data
+  WorkerType worker_type = 5;
+  // This is for RegisterWorker
+  map<string, bytes> worker_info = 6;
 }
 
 message ResourceMap {
