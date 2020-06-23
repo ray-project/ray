@@ -40,7 +40,12 @@ Ray uses Tasks (functions) and Actors (Classes) to allow you to parallelize your
     print(ray.get(futures)) # [1, 1, 1, 1]
 
 
+Ray is more than a framework for distributed applications but also an active community of developers,
+researchers, and folks that love machine learning.
+
 .. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray! The community is extremely active in helping people succeed in building their ray applications.
+
+You can join (and Star!) us on `on GitHub`_.
 
 You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
 
@@ -144,7 +149,18 @@ Getting Involved
 
 .. toctree::
    :maxdepth: -1
-   :caption: Tune
+   :caption: Ray Serve
+
+   serve/index.rst
+   serve/key-concepts.rst
+   serve/tutorials/index.rst
+   serve/deployment.rst
+   serve/advanced.rst
+   serve/package-ref.rst
+
+.. toctree::
+   :maxdepth: -1
+   :caption: Ray Tune
 
    tune.rst
    Tutorials, Guides, Examples <tune/tutorials/overview.rst>
@@ -176,17 +192,6 @@ Getting Involved
    raysgd/raysgd_tensorflow.rst
    raysgd/raysgd_dataset.rst
    raysgd/raysgd_ref.rst
-
-.. toctree::
-   :maxdepth: -1
-   :caption: Ray Serve
-
-   serve/index.rst
-   serve/key-concepts.rst
-   serve/tutorials/index.rst
-   serve/deployment.rst
-   serve/advanced.rst
-   serve/package-ref.rst
 
 .. toctree::
    :maxdepth: -1

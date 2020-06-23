@@ -476,7 +476,6 @@ void PlasmaStore::ProcessGetRequest(Client* client,
   }
 
   if (!evicted_ids.empty()) {
-    unsigned char digest[kDigestSize];
     std::vector<std::shared_ptr<Buffer>> buffers;
     for (size_t i = 0; i < evicted_ids.size(); ++i) {
       ARROW_CHECK(evicted_entries[i]->pointer != nullptr);
@@ -486,7 +485,6 @@ void PlasmaStore::ProcessGetRequest(Client* client,
     if (external_store_->Get(evicted_ids, buffers).ok()) {
       for (size_t i = 0; i < evicted_ids.size(); ++i) {
         evicted_entries[i]->state = ObjectState::PLASMA_SEALED;
-        std::memcpy(&evicted_entries[i]->digest[0], &digest[0], kDigestSize);
         evicted_entries[i]->construct_duration =
             std::time(nullptr) - evicted_entries[i]->create_time;
         PlasmaObject_init(&get_req->objects[evicted_ids[i]], evicted_entries[i]);
@@ -574,8 +572,7 @@ ObjectStatus PlasmaStore::ContainsObject(const ObjectID& object_id) {
              : ObjectStatus::OBJECT_NOT_FOUND;
 }
 
-void PlasmaStore::SealObjects(const std::vector<ObjectID>& object_ids,
-                              const std::vector<std::string>& digests) {
+void PlasmaStore::SealObjects(const std::vector<ObjectID>& object_ids) {
   std::vector<ObjectInfoT> infos;
 
   ARROW_LOG(DEBUG) << "sealing " << object_ids.size() << " objects";
@@ -586,15 +583,12 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID>& object_ids,
     ARROW_CHECK(entry->state == ObjectState::PLASMA_CREATED);
     // Set the state of object to SEALED.
     entry->state = ObjectState::PLASMA_SEALED;
-    // Set the object digest.
-    std::memcpy(&entry->digest[0], digests[i].c_str(), kDigestSize);
     // Set object construction duration.
     entry->construct_duration = std::time(nullptr) - entry->create_time;
 
     object_info.object_id = object_ids[i].Binary();
     object_info.data_size = entry->data_size;
     object_info.metadata_size = entry->metadata_size;
-    object_info.digest = digests[i];
     infos.push_back(object_info);
   }
 
@@ -901,8 +895,6 @@ void PlasmaStore::SubscribeToUpdates(Client* client) {
       info.object_id = entry.first.Binary();
       info.data_size = entry.second->data_size;
       info.metadata_size = entry.second->metadata_size;
-      info.digest =
-          std::string(reinterpret_cast<char*>(&entry.second->digest[0]), kDigestSize);
       PushNotification(&info, fd);
     }
   }
@@ -948,10 +940,8 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       bool evict_if_full;
       std::string data;
       std::string metadata;
-      std::string digest;
-      digest.reserve(kDigestSize);
       RETURN_NOT_OK(ReadCreateAndSealRequest(input, input_size, &object_id,
-                                             &evict_if_full, &data, &metadata, &digest));
+                                             &evict_if_full, &data, &metadata));
       // CreateAndSeal currently only supports device_num = 0, which corresponds
       // to the host.
       int device_num = 0;
@@ -965,7 +955,7 @@ Status PlasmaStore::ProcessMessage(Client* client) {
         // Write the inlined data and metadata into the allocated object.
         std::memcpy(entry->pointer, data.data(), data.size());
         std::memcpy(entry->pointer + data.size(), metadata.data(), metadata.size());
-        SealObjects({object_id}, {digest});
+        SealObjects({object_id});
         // Remove the client from the object's array of clients because the
         // object is not being used by any client. The client was added to the
         // object's array of clients in CreateObject. This is analogous to the
@@ -981,10 +971,9 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       std::vector<ObjectID> object_ids;
       std::vector<std::string> data;
       std::vector<std::string> metadata;
-      std::vector<std::string> digests;
 
       RETURN_NOT_OK(ReadCreateAndSealBatchRequest(
-          input, input_size, &object_ids, &evict_if_full, &data, &metadata, &digests));
+          input, input_size, &object_ids, &evict_if_full, &data, &metadata));
 
       // CreateAndSeal currently only supports device_num = 0, which corresponds
       // to the host.
@@ -1011,7 +1000,7 @@ Status PlasmaStore::ProcessMessage(Client* client) {
                       metadata[i].size());
         }
 
-        SealObjects(object_ids, digests);
+        SealObjects(object_ids);
         // Remove the client from the object's array of clients because the
         // object is not being used by any client. The client was added to the
         // object's array of clients in CreateObject. This is analogous to the
@@ -1063,14 +1052,9 @@ Status PlasmaStore::ProcessMessage(Client* client) {
         HANDLE_SIGPIPE(SendContainsReply(client->fd, object_id, 0), client->fd);
       }
     } break;
-    case fb::MessageType::PlasmaListRequest: {
-      RETURN_NOT_OK(ReadListRequest(input, input_size));
-      HANDLE_SIGPIPE(SendListReply(client->fd, store_info_.objects), client->fd);
-    } break;
     case fb::MessageType::PlasmaSealRequest: {
-      std::string digest;
-      RETURN_NOT_OK(ReadSealRequest(input, input_size, &object_id, &digest));
-      SealObjects({object_id}, {digest});
+      RETURN_NOT_OK(ReadSealRequest(input, input_size, &object_id));
+      SealObjects({object_id});
       HANDLE_SIGPIPE(SendSealReply(client->fd, object_id, PlasmaError::OK), client->fd);
     } break;
     case fb::MessageType::PlasmaEvictRequest: {
