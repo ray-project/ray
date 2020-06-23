@@ -56,7 +56,7 @@ void MetricExporter::ExportToPoints(
                    << " max value : " << max_point.value
                    << "  min value : " << min_point.value;
 
-    if (points.size() >= kMaxBatchSize) {
+    if (points.size() >= report_batch_size_) {
       RAY_LOG(DEBUG) << "Point size : " << points.size();
       metric_exporter_client_->ReportMetrics(points);
       points.clear();
@@ -91,7 +91,7 @@ void MetricExporter::ExportViewData(
                                                       metric_name, keys, points);
       break;
     default:
-      RAY_LOG(WARNING) << "Unknown view data type.";
+      RAY_LOG(FATAL) << "Unknown view data type.";
       break;
     }
   }

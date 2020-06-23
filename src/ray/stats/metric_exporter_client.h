@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
 #ifndef RAY_METRIC_EXPORTER_CLIENT_H
 #define RAY_METRIC_EXPORTER_CLIENT_H
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
@@ -28,6 +29,8 @@ class MetricExporterClient {
 };
 
 /// Default stdout exporter client can log metrics info for debug.
+/// In decorator pattern, a basic concrete class is needed, so we
+/// use stdout as the default concrete class.
 class StdoutExporterClient : public MetricExporterClient {
  public:
   void ReportMetrics(const MetricPoints &points) override;
@@ -37,10 +40,10 @@ class StdoutExporterClient : public MetricExporterClient {
 /// combinations.
 /// Usage:
 /// std::shared_ptr<MetricExporterClient> exporter(new StdoutExporterClient());
-/// std::shared_ptr<MetricExporterClient> gcs_exporter_client(
-///         new GcsExporterClient(exporter, gcs_rpc_client));
-///  Both gcs rpc and std logging will emit when
-//  gcs_exporter_client->ReportMetrics(points) is called.
+/// std::shared_ptr<MetricExporterClient> dashboard_exporter_client(
+///         new DashboardExporterCLient(exporter, gcs_rpc_client));
+///  Both dahsboard client and std logging will emit when
+//  dahsboard_exporter_client->ReportMetrics(points) is called.
 /// Actually, opentsdb exporter can be added like above mentioned style.
 class MetricExporterDecorator : public MetricExporterClient {
  public:

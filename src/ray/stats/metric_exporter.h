@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
 #ifndef RAY_METRIC_EXPORTER_H
 #define RAY_METRIC_EXPORTER_H
 #include "absl/memory/memory.h"
@@ -27,14 +28,15 @@ namespace ray {
 namespace stats {
 
 /// Main function of metric exporter is collecting indicator information from
-/// opencensus data view, and finally sends it to the remote ( for example
-/// send metrics to gcs service through rpc. How to use it? Register metrics
-/// exporter after raylet main thread launched. Actually its exporter
-///  has never beed used in raylet, we will enable it later.
+/// opencensus data view, and sends it to the remote (for example
+/// sends metrics to dashboard agents through RPC). How to use it? Register metrics
+/// exporter after a main thread launched.
 class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
  public:
-  explicit MetricExporter(std::shared_ptr<MetricExporterClient> metric_exporter_client)
-      : metric_exporter_client_(metric_exporter_client) {}
+  explicit MetricExporter(std::shared_ptr<MetricExporterClient> metric_exporter_client,
+                          size_t report_batch_size = kDefaultBatchSize)
+      : metric_exporter_client_(metric_exporter_client),
+        report_batch_size_(report_batch_size) {}
   ~MetricExporter() = default;
   static void Register(std::shared_ptr<MetricExporterClient> metric_exporter_client) {
     opencensus::stats::StatsExporter::RegisterPushHandler(
@@ -68,7 +70,7 @@ class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
                         .tags = tags};
       RAY_LOG(DEBUG) << "Metric name " << metric_name << ", value " << point.value;
       points.push_back(std::move(point));
-      if (points.size() >= kMaxBatchSize) {
+      if (points.size() >= kDefaultBatchSize) {
         RAY_LOG(DEBUG) << "Point size : " << points.size();
         metric_exporter_client_->ReportMetrics(points);
         points.clear();
@@ -78,8 +80,9 @@ class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
 
  private:
   std::shared_ptr<MetricExporterClient> metric_exporter_client_;
-  /// Auto minbatch for reporting metrics to external components.
-  static constexpr size_t kMaxBatchSize = 100;
+  /// Auto max minbatch size for reporting metrics to external components.
+  static constexpr size_t kDefaultBatchSize = 100;
+  size_t report_batch_size_;
 };
 
 }  // namespace stats

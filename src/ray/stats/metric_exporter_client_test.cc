@@ -89,6 +89,7 @@ int MockExporterClient1::client1_value;
 int MockExporterClient2::client2_value;
 
 TEST_F(MetricExporterClientTest, decorator_test) {
+  // Export client should emit at least once in 10 seconds.
   for (size_t i = 0; i < 100; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     stats::CurrentWorker().Record(i + 1);
