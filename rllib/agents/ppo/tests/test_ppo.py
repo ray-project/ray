@@ -60,7 +60,7 @@ class TestPPO(unittest.TestCase):
         config["model"]["max_seq_len"] = 20
         num_iterations = 1
 
-        for _ in framework_iterator(config, frameworks=("torch", "tf", "tfe")):
+        for _ in framework_iterator(config, frameworks=("tfe", "torch", "tf")):
             for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
                 for lstm in [False, True]:
