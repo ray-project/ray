@@ -292,7 +292,6 @@ class LocalDistributedRunner(DistributedTorchRunner):
 
         # Reserve a local GPU or CPU for the local worker
         # TODO: we should make sure this NEVER dies.
-        self.local_cpu_device = None
         self.local_cuda_device = "0"
         self._is_set = False
         if num_gpus:
