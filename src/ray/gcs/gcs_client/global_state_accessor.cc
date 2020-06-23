@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <boost/algorithm/string.hpp>
-
 #include "global_state_accessor.h"
+
+#include <boost/algorithm/string.hpp>
 
 namespace ray {
 namespace gcs {
@@ -148,6 +148,23 @@ std::string GlobalStateAccessor::GetNodeResourceInfo(const ClientID &node_id) {
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetResources(node_id, on_done));
   promise.get_future().get();
   return node_resource_map.SerializeAsString();
+}
+
+std::map<std::string, std::string> GlobalStateAccessor::GetInternalConfig() {
+  std::map<std::string, std::string> config;
+  std::promise<void> promise;
+  auto on_done =
+      [&config, &promise](
+          const std::unordered_map<std::string, std::string> stored_raylet_config) {
+        for (auto &data : stored_raylet_config) {
+          config[data.first] = data.second;
+        }
+        promise.set_value();
+      };
+
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetInternalConfig(on_done));
+  promise.get_future().get();
+  return config;
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllActorInfo() {

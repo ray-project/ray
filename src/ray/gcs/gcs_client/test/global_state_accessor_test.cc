@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_client/global_state_accessor.h"
+
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
@@ -166,6 +167,22 @@ TEST_F(GlobalStateAccessorTest, TestNodeResourceTable) {
                 .resource_capacity()),
         node_data.node_manager_port() + 1);
   }
+}
+
+TEST_F(GlobalStateAccessorTest, TestInternalConfig) {
+  ASSERT_EQ(global_state_->GetInternalConfig().size(), 0);
+  std::promise<bool> promise;
+  std::unordered_map<std::string, std::string> begin_config;
+  begin_config["key1"] = "value1";
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSetInternalConfig(begin_config));
+  std::map<std::string, std::string> returned;
+  auto end = std::chrono::system_clock::now() + timeout_ms_;
+  while (std::chrono::system_clock::now() < end && returned.size() == 0) {
+    returned = global_state_->GetInternalConfig();
+  }
+  ASSERT_EQ(returned.size(), begin_config.size());
+  ASSERT_EQ(returned.begin()->first, begin_config.begin()->first);
+  ASSERT_EQ(returned.begin()->second, begin_config.begin()->second);
 }
 
 TEST_F(GlobalStateAccessorTest, TestProfileTable) {

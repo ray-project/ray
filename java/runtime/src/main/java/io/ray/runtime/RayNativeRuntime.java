@@ -45,6 +45,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       final String sessionDir = client.get("session_dir", null);
       Preconditions.checkNotNull(sessionDir);
       rayConfig.setSessionDir(sessionDir);
+
+      GcsClient tempGcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+      for (Map.Entry<String, String> entry : tempGcsClient.getInternalConfig().entrySet()) {
+        rayConfig.rayletConfigParameters.put(entry.getKey(), entry.getValue());
+      }
     }
 
     JniUtils.loadLibrary("core_worker_library_java", true);
