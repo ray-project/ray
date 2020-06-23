@@ -35,6 +35,7 @@ class DashboardAgent(object):
         self._agent_cls_list = dashboard_utils.get_all_modules(
             dashboard_consts.TYPE_AGENT)
         ip, port = redis_address.split(":")
+        # Public attributes are accessible for all agent modules.
         self.redis_address = (ip, int(port))
         self.redis_password = redis_password
         self.temp_dir = temp_dir
@@ -70,7 +71,7 @@ class DashboardAgent(object):
         self.aioredis_client = await aioredis.create_redis_pool(
             address=self.redis_address, password=self.redis_password)
 
-        # Start aiogrpc server.
+        # Start grpc asyncio server.
         await self.server.start()
 
         # Write dashboard agent port to redis.
@@ -79,7 +80,7 @@ class DashboardAgent(object):
                           self.ip), self.port)
 
         async def _check_parent():
-            """Check raylet is dead."""
+            """Check if raylet is dead."""
             curr_proc = psutil.Process()
             while True:
                 parent = curr_proc.parent()

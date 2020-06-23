@@ -287,7 +287,7 @@ class Change:
 
 
 class NotifyQueue:
-    """Asyncio notify queue."""
+    """Asyncio notify queue for Dict signal."""
 
     _queue = asyncio.Queue()
     _signals = []

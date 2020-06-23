@@ -22,6 +22,7 @@ class DashboardMaster:
         self._master_cls_list = dashboard_utils.get_all_modules(
             dashboard_consts.TYPE_MASTER)
         ip, port = redis_address.split(":")
+        # Public attributes are accessible for all master modules.
         self.redis_address = (ip, int(port))
         self.redis_password = redis_password
         self.aioredis_client = None
@@ -110,7 +111,7 @@ class DashboardMaster:
         # Create aioredis client for all modules.
         self.aioredis_client = await aioredis.create_redis_pool(
             address=self.redis_address, password=self.redis_password)
-        # Waiting for GCS ready.
+        # Waiting for GCS is ready.
         while True:
             try:
                 gcs_address = await self.aioredis_client.get(

@@ -110,7 +110,7 @@ class Dashboard:
         aioredis_client = await aioredis.create_redis_pool(
             address=self.dashboard_master.redis_address,
             password=self.dashboard_master.redis_password)
-        await aioredis_client.set(dashboard_consts.REDIS_KEY_API_SERVER,
+        await aioredis_client.set(dashboard_consts.REDIS_KEY_DASHBOARD,
                                   ip + ":" + str(self.port))
         await asyncio.gather(*coroutines)
 
