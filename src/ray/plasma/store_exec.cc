@@ -12,16 +12,20 @@
 #define __STDC_FORMAT_MACROS
 #endif
 
-using arrow::util::ArrowLog;
-
 void HandleSignal(int signal) {
   if (signal == SIGTERM) {
-    ARROW_LOG(INFO) << "SIGTERM Signal received, closing Plasma Server...";
+    RAY_LOG(INFO) << "SIGTERM Signal received, closing Plasma Server...";
     plasma::plasma_store_runner->Stop();
   }
 }
 
 int main(int argc, char *argv[]) {
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLogLevel::INFO,
+                                         /*log_dir=*/"");
+  ray::RayLog::InstallFailureSignalHandler();
+
   std::string socket_name;
   // Directory where plasma memory mapped files are stored.
   std::string plasma_directory;
@@ -47,7 +51,7 @@ int main(int argc, char *argv[]) {
     case 'm': {
       char extra;
       int scanned = sscanf(optarg, "%" SCNd64 "%c", &system_memory, &extra);
-      ARROW_CHECK(scanned == 1);
+      RAY_CHECK(scanned == 1);
       break;
     }
     case 'z': {
@@ -60,7 +64,6 @@ int main(int argc, char *argv[]) {
   }
 
   if (!keep_idle) {
-    ArrowLog::InstallFailureSignalHandler();
     plasma::plasma_store_runner.reset(
         new plasma::PlasmaStoreRunner(socket_name, system_memory, hugepages_enabled,
                                       plasma_directory, external_store_endpoint));
@@ -73,11 +76,9 @@ int main(int argc, char *argv[]) {
     signal(SIGTERM, HandleSignal);
     plasma::plasma_store_runner->Start();
     plasma::plasma_store_runner.reset();
-    ArrowLog::UninstallSignalAction();
   } else {
-    printf(
-        "The Plasma Store is started with the '-z' flag, "
-        "and it will run idle as a placeholder.");
+    RAY_LOG(INFO) << "The Plasma Store is started with the '-z' flag, "
+                  << "and it will run idle as a placeholder.";
     while (true) {
       std::this_thread::sleep_for(std::chrono::hours(1000));
     }
