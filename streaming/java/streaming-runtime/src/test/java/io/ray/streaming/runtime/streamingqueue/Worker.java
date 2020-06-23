@@ -191,7 +191,7 @@ class WriterWorker extends Worker {
   }
 
   public String testCallReader(ActorHandle<ReaderWorker> readerActor) {
-    String name = readerActor.call(ReaderWorker::getName).get();
+    String name = readerActor.task(ReaderWorker::getName).remote().get();
     LOGGER.info("testCallReader: {}", name);
     return name;
   }
@@ -211,7 +211,7 @@ class WriterWorker extends Worker {
 
     int count = 3;
     while (count-- != 0) {
-      peer.call(ReaderWorker::testRayCall).get();
+      peer.task(ReaderWorker::testRayCall).remote().get();
     }
 
     try {

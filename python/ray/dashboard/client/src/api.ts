@@ -74,6 +74,29 @@ export type NodeInfoResponseWorker = {
   };
 };
 
+export type GPUProcessStats = {
+  // Sub stat of GPU stats, this type represents the GPU
+  // utilization of a single process of a single GPU.
+  username: string;
+  command: string;
+  gpu_memory_usage: number;
+  pid: number;
+};
+
+export type GPUStats = {
+  // This represents stats fetched from a node about a single GPU
+  uuid: string;
+  name: string;
+  temperature_gpu: number;
+  fan_speed: number;
+  utilization_gpu: number;
+  power_draw: number;
+  enforced_power_limit: number;
+  memory_used: number;
+  memory_total: number;
+  processes: Array<GPUProcessStats>;
+};
+
 export type NodeInfoResponse = {
   clients: Array<{
     now: number;
@@ -82,6 +105,7 @@ export type NodeInfoResponse = {
     boot_time: number; // System boot time expressed in seconds since epoch
     cpu: number; // System-wide CPU utilization expressed as a percentage
     cpus: [number, number]; // Number of logical CPUs and physical CPUs
+    gpus: Array<GPUStats>; // GPU stats fetched from node, 1 entry per GPU
     mem: [number, number, number]; // Total, available, and used percentage of memory
     disk: {
       [path: string]: {
@@ -109,48 +133,82 @@ export type NodeInfoResponse = {
 
 export const getNodeInfo = () => get<NodeInfoResponse>("/api/node_info", {});
 
+export type ResourceSlot = {
+  slot: number;
+  allocation: number;
+};
+
+export type ResourceAllocations = {
+  resourceSlots: ResourceSlot[];
+};
+
+export type RayletCoreWorkerStats = {
+  usedResources: {
+    [key: string]: ResourceAllocations;
+  };
+};
+
+export type RayletWorkerStats = {
+  pid: number;
+  isDriver?: boolean;
+  coreWorkerStats: RayletCoreWorkerStats;
+};
+
+export type RayletActorInfo =
+  | {
+      actorId: string;
+      actorTitle: string;
+      averageTaskExecutionSpeed: number;
+      children: RayletInfoResponse["actors"];
+      // currentTaskFuncDesc: string[];
+      ipAddress: string;
+      jobId: string;
+      nodeId: string;
+      numExecutedTasks: number;
+      numLocalObjects: number;
+      numObjectIdsInScope: number;
+      pid: number;
+      port: number;
+      state:
+        | ActorState.Creating
+        | ActorState.Alive
+        | ActorState.Restarting
+        | ActorState.Dead;
+      taskQueueLength: number;
+      timestamp: number;
+      usedObjectStoreMemory: number;
+      usedResources: { [key: string]: ResourceAllocations };
+      currentTaskDesc?: string;
+      numPendingTasks?: number;
+      webuiDisplay?: Record<string, string>;
+    }
+  | {
+      actorId: string;
+      actorTitle: string;
+      requiredResources: { [key: string]: number };
+      state: ActorState.Invalid;
+      invalidStateType?: InvalidStateType;
+    };
+
+export type InvalidStateType = "infeasibleActor" | "pendingActor";
+
+export enum ActorState {
+  Invalid = -1,
+  Creating = 0,
+  Alive = 1,
+  Restarting = 2,
+  Dead = 3,
+}
+
 export type RayletInfoResponse = {
   nodes: {
     [ip: string]: {
       extraInfo?: string;
-      workersStats: {
-        pid: number;
-        isDriver?: boolean;
-      }[];
+      workersStats: Array<RayletWorkerStats>;
     };
   };
   actors: {
-    [actorId: string]:
-      | {
-          actorId: string;
-          actorTitle: string;
-          averageTaskExecutionSpeed: number;
-          children: RayletInfoResponse["actors"];
-          // currentTaskFuncDesc: string[];
-          ipAddress: string;
-          jobId: string;
-          nodeId: string;
-          numExecutedTasks: number;
-          numLocalObjects: number;
-          numObjectIdsInScope: number;
-          pid: number;
-          port: number;
-          state: 0 | 1 | 2;
-          taskQueueLength: number;
-          timestamp: number;
-          usedObjectStoreMemory: number;
-          usedResources: { [key: string]: number };
-          currentTaskDesc?: string;
-          numPendingTasks?: number;
-          webuiDisplay?: Record<string, string>;
-        }
-      | {
-          actorId: string;
-          actorTitle: string;
-          requiredResources: { [key: string]: number };
-          state: -1;
-          invalidStateType?: "infeasibleActor" | "pendingActor";
-        };
+    [actorId: string]: RayletActorInfo;
   };
 };
 
@@ -304,13 +362,17 @@ export type MemoryTableEntry = {
   call_site: string;
 };
 
+export type MemoryTableGroups = {
+  [groupKey: string]: MemoryTableGroup;
+};
+
+export type MemoryTableGroup = {
+  entries: MemoryTableEntry[];
+  summary: MemoryTableSummary;
+};
+
 export type MemoryTableResponse = {
-  group: {
-    [groupKey: string]: {
-      entries: MemoryTableEntry[];
-      summary: MemoryTableSummary;
-    };
-  };
+  group: MemoryTableGroups;
   summary: MemoryTableSummary;
 };
 

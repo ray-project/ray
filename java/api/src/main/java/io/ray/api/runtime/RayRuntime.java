@@ -7,7 +7,7 @@ import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
-import io.ray.api.function.PyRemoteFunction;
+import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
@@ -103,12 +103,12 @@ public interface RayRuntime {
   /**
    * Invoke a remote Python function.
    *
-   * @param pyRemoteFunction The Python function.
+   * @param pyFunction The Python function.
    * @param args Arguments of the function.
    * @param options The options for this call.
    * @return The result object.
    */
-  ObjectRef call(PyRemoteFunction pyRemoteFunction, Object[] args, CallOptions options);
+  ObjectRef call(PyFunction pyFunction, Object[] args, CallOptions options);
 
   /**
    * Invoke a remote function on an actor.

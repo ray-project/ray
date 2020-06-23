@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_ID_H_
-#define RAY_ID_H_
+#pragma once
 
 #include <inttypes.h>
 #include <limits.h>
@@ -494,4 +493,3 @@ DEFINE_UNIQUE_ID(ObjectID);
 
 #undef DEFINE_UNIQUE_ID
 }  // namespace std
-#endif  // RAY_ID_H_

@@ -1,9 +1,10 @@
 package io.ray.streaming.runtime.util;
 
+import static org.testng.Assert.assertEquals;
+
 import java.io.Serializable;
 import java.util.Collections;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertEquals;
 
 public class ReflectionUtilsTest {
 

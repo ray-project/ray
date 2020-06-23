@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_GCS_PUB_SUB_H_
-#define RAY_GCS_GCS_PUB_SUB_H_
+#pragma once
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
@@ -158,5 +157,3 @@ class GcsPubSub {
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif  // RAY_GCS_GCS_PUB_SUB_H_

@@ -11,9 +11,9 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import global_norm, sequence_mask
+from ray.rllib.utils.torch_ops import explained_variance, global_norm, \
+    sequence_mask
 
 torch, nn = try_import_torch()
 
@@ -239,8 +239,7 @@ def stats(policy, train_batch):
         "vf_loss": policy.loss.vf_loss,
         "vf_explained_var": explained_variance(
             torch.reshape(policy.loss.value_targets, [-1]),
-            torch.reshape(values_batched, [-1]),
-            framework="torch"),
+            torch.reshape(values_batched, [-1])),
     }
 
 

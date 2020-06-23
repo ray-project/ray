@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RAYLET_NODE_MANAGER_H
-#define RAY_RAYLET_NODE_MANAGER_H
+#pragma once
 
 #include <boost/asio/steady_timer.hpp>
 
@@ -789,5 +788,3 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 }  // namespace raylet
 
 }  // end namespace ray
-
-#endif  // RAY_RAYLET_NODE_MANAGER_H

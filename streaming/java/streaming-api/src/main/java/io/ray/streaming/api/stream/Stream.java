@@ -4,7 +4,8 @@ import com.google.common.base.Preconditions;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.partition.Partition;
-import io.ray.streaming.api.partition.impl.RoundRobinPartition;
+import io.ray.streaming.api.partition.impl.ForwardPartition;
+import io.ray.streaming.operator.ChainStrategy;
 import io.ray.streaming.operator.Operator;
 import io.ray.streaming.operator.StreamOperator;
 import io.ray.streaming.python.PythonPartition;
@@ -30,8 +31,7 @@ public abstract class Stream<S extends Stream<S, T>, T>
   private Stream originalStream;
 
   public Stream(StreamingContext streamingContext, StreamOperator streamOperator) {
-    this(streamingContext, null, streamOperator,
-         selectPartition(streamOperator));
+    this(streamingContext, null, streamOperator, getForwardPartition(streamOperator));
   }
 
   public Stream(StreamingContext streamingContext,
@@ -42,7 +42,7 @@ public abstract class Stream<S extends Stream<S, T>, T>
 
   public Stream(Stream inputStream, StreamOperator streamOperator) {
     this(inputStream.getStreamingContext(), inputStream, streamOperator,
-         selectPartition(streamOperator));
+        getForwardPartition(streamOperator));
   }
 
   public Stream(Stream inputStream, StreamOperator streamOperator, Partition<T> partition) {
@@ -50,9 +50,9 @@ public abstract class Stream<S extends Stream<S, T>, T>
   }
 
   protected Stream(StreamingContext streamingContext,
-                Stream inputStream,
-                StreamOperator streamOperator,
-                Partition<T> partition) {
+                   Stream inputStream,
+                   StreamOperator streamOperator,
+                   Partition<T> partition) {
     this.streamingContext = streamingContext;
     this.inputStream = inputStream;
     this.operator = streamOperator;
@@ -73,15 +73,16 @@ public abstract class Stream<S extends Stream<S, T>, T>
     this.streamingContext = originalStream.getStreamingContext();
     this.inputStream = originalStream.getInputStream();
     this.operator = originalStream.getOperator();
+    Preconditions.checkNotNull(operator);
   }
 
   @SuppressWarnings("unchecked")
-  private static <T> Partition<T> selectPartition(Operator operator) {
+  private static <T> Partition<T> getForwardPartition(Operator operator) {
     switch (operator.getLanguage()) {
       case PYTHON:
-        return (Partition<T>) PythonPartition.RoundRobinPartition;
+        return (Partition<T>) PythonPartition.ForwardPartition;
       case JAVA:
-        return new RoundRobinPartition<>();
+        return new ForwardPartition<>();
       default:
         throw new UnsupportedOperationException(
             "Unsupported language " + operator.getLanguage());
@@ -163,6 +164,30 @@ public abstract class Stream<S extends Stream<S, T>, T>
   public Stream getOriginalStream() {
     Preconditions.checkArgument(isProxyStream());
     return originalStream;
+  }
+
+  /**
+   * Set chain strategy for this stream
+   */
+  public S withChainStrategy(ChainStrategy chainStrategy) {
+    Preconditions.checkArgument(!isProxyStream());
+    operator.setChainStrategy(chainStrategy);
+    return self();
+  }
+
+  /**
+   * Disable chain for this stream
+   */
+  public S disableChain() {
+    return withChainStrategy(ChainStrategy.NEVER);
+  }
+
+  /**
+   * Set the partition function of this {@link Stream} so that output elements are forwarded to
+   * next operator locally.
+   */
+  public S forward() {
+    return setPartition(getForwardPartition(operator));
   }
 
   public abstract Language getLanguage();

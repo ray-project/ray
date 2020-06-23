@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RAYLET_SCHEDULING_POLICY_H
-#define RAY_RAYLET_SCHEDULING_POLICY_H
+#pragma once
 
 #include <random>
 #include <unordered_map>
@@ -72,5 +71,3 @@ class SchedulingPolicy {
 }  // namespace raylet
 
 }  // namespace ray
-
-#endif  // RAY_RAYLET_SCHEDULING_POLICY_H

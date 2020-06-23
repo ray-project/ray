@@ -58,7 +58,7 @@ class AxSearch(Searcher):
         def easy_objective(config):
             for i in range(100):
                 intermediate_result = config["x1"] + config["x2"] * i
-                tune.track.log(score=intermediate_result)
+                tune.report(score=intermediate_result)
 
         client = AxClient(enforce_sequential_optimization=False)
         client.create_experiment(parameters=parameters, objective_name="score")

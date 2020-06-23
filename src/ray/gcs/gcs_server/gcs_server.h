@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_GCS_SERVER_H
-#define RAY_GCS_GCS_SERVER_H
+#pragma once
 
 #include <ray/gcs/pubsub/gcs_pub_sub.h>
 #include <ray/gcs/redis_gcs_client.h>
@@ -82,7 +81,7 @@ class GcsServer {
   virtual void InitGcsActorManager();
 
   /// The job info handler
-  virtual std::unique_ptr<rpc::JobInfoHandler> InitJobInfoHandler();
+  virtual void InitJobInfoHandler();
 
   /// The object manager
   virtual std::unique_ptr<GcsObjectManager> InitObjectManager();
@@ -156,5 +155,3 @@ class GcsServer {
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif
