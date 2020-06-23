@@ -496,7 +496,7 @@ class Node:
                             open_log(redis_err_name))]
         for i in range(self._ray_params.num_redis_shards):
             shard_out_name, shard_err_name = self.get_log_file_names(
-                "redis-shard_", unique=True)
+                "redis-shard_{}".format(i), unique=True)
             redis_log_files.append((open_log(shard_out_name),
                                     open_log(shard_err_name)))
 
