@@ -164,32 +164,9 @@ class HTTPProxy:
             shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
         )
 
-        await Response("hello").send(scope, receive, send)
-"""
-        future = await self.router.enqueue_request(
-            request_metadata, scope, http_body_bytes)
+        future = await self.router.enqueue_request(request_metadata, scope,
+                                                   http_body_bytes)
         await Response(await future).send(scope, receive, send)
-
-        # XXX: rethink this logic.
-        retries = 0
-        while retries <= MAX_ACTOR_DEAD_RETRIES:
-            try:
-                result = await self.router.enqueue_request(
-                    request_metadata, scope, http_body_bytes, scope, receive, send)
-                if not isinstance(result, ray.exceptions.RayActorError):
-                    await Response(result).send(scope, receive, send)
-                    break
-                logger.warning("Got RayActorError: {}".format(str(result)))
-                await asyncio.sleep(0.1)
-            except Exception as e:
-                error_message = "Internal Error. Traceback: {}.".format(e)
-                await error_sender(error_message, 500)
-                break
-        else:
-            logger.debug("Maximum actor death retries exceeded")
-            await error_sender(
-                "Internal Error. Maximum actor death retries exceeded", 500)
-"""
 
 
 @ray.remote
