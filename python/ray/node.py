@@ -563,7 +563,7 @@ class Node:
                 a warning if we fail to start the dashboard.
         """
         dashboard_out_name, dashboard_err_name = self.get_log_file_names(
-            "dashbaord", unique=True)
+            "dashboard", unique=True)
         stdout_file, stderr_file = (open_log(dashboard_out_name),
                                     open_log(dashboard_err_name))
         self._webui_url, process_info = ray.services.start_dashboard(
