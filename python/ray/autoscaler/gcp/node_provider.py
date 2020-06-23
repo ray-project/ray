@@ -3,8 +3,6 @@ from threading import RLock
 import time
 import logging
 
-from googleapiclient import discovery
-
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.autoscaler.gcp.config import MAX_POLLS, POLL_INTERVAL, \
