@@ -77,9 +77,8 @@ int main(int argc, char *argv[]) {
     plasma::plasma_store_runner->Start();
     plasma::plasma_store_runner.reset();
   } else {
-    printf(
-        "The Plasma Store is started with the '-z' flag, "
-        "and it will run idle as a placeholder.");
+    RAY_LOG(INFO) << "The Plasma Store is started with the '-z' flag, "
+                  << "and it will run idle as a placeholder.";
     while (true) {
       std::this_thread::sleep_for(std::chrono::hours(1000));
     }
