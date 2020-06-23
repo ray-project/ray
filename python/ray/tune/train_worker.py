@@ -1,4 +1,49 @@
 class Trainable:
+    """Abstract class for trainable models, functions, etc.
+
+    A call to ``train()`` on a trainable will execute one logical iteration of
+    training. As a rule of thumb, the execution time of one train call should
+    be large enough to avoid overheads (i.e. more than a few seconds), but
+    short enough to report progress periodically (i.e. at most a few minutes).
+
+    Calling ``save()`` should save the training state of a trainable to disk,
+    and ``restore(path)`` should restore a trainable to the given state.
+
+    Generally you only need to implement ``_setup``, ``_train``,
+    ``_save``, and ``_restore`` when subclassing Trainable.
+
+    Other implementation methods that may be helpful to override are
+    ``_log_result``, ``reset_config``, ``_stop``, and ``_export_model``.
+
+    When using Tune, Tune will convert this class into a Ray actor, which
+    runs on a separate process. Tune will also change the current working
+    directory of this process to ``self.logdir``.
+
+    """
+    def __init__(self, config=None, logger_creator=None):
+        """Subclasses should override this for custom initialization.
+
+        Args:
+            config (dict): Hyperparameters and other configs given.
+                Copy of `self.config`.
+        """
+        self.config = config or {}
+        trial_info = self.config.pop(TRIAL_INFO, None)
+
+        if logger_creator:
+            self._result_logger = logger_creator(self.config)
+            self._logdir = self._result_logger.logdir
+        else:
+            logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+            ray.utils.try_to_create_directory(DEFAULT_RESULTS_DIR)
+            self._logdir = tempfile.mkdtemp(
+                prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
+            self._result_logger = UnifiedLogger(
+                self.config, self._logdir, loggers=None)
+
+        self._trial_info = trial_info
+
+
     @classmethod
     def default_resource_request(cls, config):
         """Provides a static resource requirement for the given configuration.
@@ -29,15 +74,6 @@ class Trainable:
             config (dict): The Trainer's config dict.
         """
         return ""
-
-    def build(self, config):
-        """Subclasses should override this for custom initialization.
-
-        Args:
-            config (dict): Hyperparameters and other configs given.
-                Copy of `self.config`.
-        """
-        pass
 
     def step(self, **info):
         """Subclasses should override this to implement train().
@@ -160,6 +196,25 @@ class Trainable:
             True if reset was successful else False.
         """
         return False
+
+    def log_result(self, result):
+        """Subclasses can optionally override this to customize logging.
+
+        The logging here is done on the worker process rather than
+        the driver. You may want to turn off driver logging via the
+        ``loggers`` parameter in ``tune.run`` when overriding this function.
+
+        Args:
+            result (dict): Training result returned by _train().
+        """
+        self._result_logger.on_result(result)
+
+
+    def stop(self):
+        """Releases all resources used by this trainable."""
+        self._result_logger.flush()
+        self._result_logger.close()
+        self._stop()
 
     @property
     def logdir(self):
