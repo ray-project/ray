@@ -34,6 +34,7 @@ def agent(enable_or_cls):
         async def run(self, server):
             pass
     """
+
     def _wrapper(cls):
         if enable_or_cls:
             assert inspect.iscoroutinefunction(cls.run)
@@ -60,6 +61,7 @@ def master(enable_or_cls):
         async def run(self):
             pass
     """
+
     def _wrapper(cls):
         if enable_or_cls:
             assert inspect.iscoroutinefunction(cls.run)
@@ -96,9 +98,10 @@ class ClassMethodRouteTable:
         def _wrapper(handler):
             if path in cls._bind_map[method]:
                 bind_info = cls._bind_map[method][path]
-                raise Exception(
-                    "Duplicated route path: {}, previous one registered at {}:{}".
-                    format(path, bind_info.filename, bind_info.lineno))
+                raise Exception("Duplicated route path: {}, "
+                                "previous one registered at {}:{}".format(
+                                    path, bind_info.filename,
+                                    bind_info.lineno))
 
             bind_info = cls._BindInfo(handler.__code__.co_filename,
                                       handler.__code__.co_firstlineno, None)
@@ -165,7 +168,9 @@ class ClassMethodRouteTable:
 def get_all_modules(module_type):
     """Collect all modules by type."""
     logger.info("Get all modules by type: {}".format(module_type))
-    assert module_type in [dashboard_consts.TYPE_AGENT, dashboard_consts.TYPE_MASTER]
+    assert module_type in [
+        dashboard_consts.TYPE_AGENT, dashboard_consts.TYPE_MASTER
+    ]
     import ray.new_dashboard.modules
 
     result = []
@@ -195,10 +200,10 @@ async def rest_response(success, message, **kwargs) -> aiohttp.web.Response:
 
 def to_camel_case(snake_str):
     """Convert a snake str to camel case."""
-    components = snake_str.split('_')
+    components = snake_str.split("_")
     # We capitalize the first letter of each component except the first one
     # with the 'title' method and join them together.
-    return components[0] + ''.join(x.title() for x in components[1:])
+    return components[0] + "".join(x.title() for x in components[1:])
 
 
 def to_google_style(d):
@@ -222,6 +227,7 @@ def to_google_style(d):
 
 def message_to_dict(message, decode_keys=None, **kwargs):
     """Convert protobuf message to Python dict."""
+
     def _decode_keys(d):
         for k, v in d.items():
             if isinstance(v, dict):
@@ -306,8 +312,8 @@ class NotifyQueue:
 
 class Dict(MutableMapping):
     """A simple descriptor for dict type to notify data changes.
-    
-    :note: Only the first level data change can trigger notification.
+
+    :note: Only the first level data report change.
     """
 
     def __init__(self, *args, **kwargs):
@@ -375,6 +381,7 @@ class MetricExporter:
                     name, args, kwargs)
                 return subtype(*args, **kwargs)
         logger.warning(
-            "Construct metric exporter %s failed, available metric exporters: %s",
-            name, MetricExporter.__subclasses__())
+            "Construct metric exporter %s failed, "
+            "available metric exporters: %s", name,
+            MetricExporter.__subclasses__())
         return cls(*args, **kwargs)

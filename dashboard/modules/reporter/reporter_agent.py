@@ -10,9 +10,9 @@ import sys
 import aioredis
 
 import ray
+import ray.gcs_utils
 import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.new_dashboard.utils as dashboard_utils
-import ray.gcs_utils
 import ray.services
 import ray.utils
 from ray.core.generated import reporter_pb2
@@ -184,22 +184,6 @@ class Reporter:
                 await aioredis_client.publish(
                     "{}{}".format(reporter_consts.REPORTER_PREFIX,
                                   self._hostname), jsonify_asdict(stats))
-
-                # Report metrics.
-                for w in stats["workers"]:
-                    tags = {
-                        "JobName": "agent",
-                        "Version": ray.__version__,
-                        "NodeAddress": self._ip,
-                        "Pid": str(w["pid"])
-                    }
-                    if w["cpu_percent"] is not None:
-                        self._dashboard_agent.metric_exporter \
-                            .put("cpu_percent", w["cpu_percent"], tags)
-                    if w["memory_info"] is not None:
-                        self._dashboard_agent.metric_exporter \
-                            .put("memory_info.rss", w["memory_info"].rss, tags) \
-                            .put("memory_info.vms", w["memory_info"].vms, tags)
             except Exception as ex:
                 logger.exception(ex)
             await asyncio.sleep(

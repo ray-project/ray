@@ -25,7 +25,8 @@ class DataSource:
 class DataOrganizer:
     @staticmethod
     def purge():
-        # These data sources are maintained by master, we do not needs to purge them:
+        # These data sources are maintained by master,
+        # we do not needs to purge them:
         #   * agents
         #   * nodes
         #   * hostname_to_ip

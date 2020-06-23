@@ -7,9 +7,9 @@ from aioredis.pubsub import Receiver
 from grpc.experimental import aio as aiogrpc
 
 import ray
+import ray.gcs_utils
 import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.new_dashboard.utils as dashboard_utils
-import ray.gcs_utils
 import ray.services
 import ray.utils
 from ray.core.generated import reporter_pb2
@@ -96,7 +96,6 @@ class ReportMaster:
 
         async for sender, msg in mpsc.iter():
             try:
-                channel = ray.utils.decode(sender.name)
                 _, data = msg
                 data = json.loads(ray.utils.decode(data))
                 DataSource.node_physical_stats[data["ip"]] = data

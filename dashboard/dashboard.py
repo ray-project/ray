@@ -79,17 +79,12 @@ class Dashboard:
         self.dashboard_master = dashboard_master.DashboardMaster(
             redis_address=redis_address, redis_password=redis_password)
 
-        # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
-        # security checks in the dashboard server to ease development while
-        # using the React dev server. Specifically, when this option is set, we
-        # allow cross-origin requests to be made.
-        self.is_dev = os.environ.get("RAY_DASHBOARD_DEV") == "1"
-
         self.app = aiohttp.web.Application()
         self.app.add_routes(routes=routes.routes())
 
         # Setup Dashboard Routes
         build_dir = setup_static_dir(self.app)
+        logger.info("Setup static dir for dashboard: %s", build_dir)
         dashboard_utils.ClassMethodRouteTable.bind(self)
 
     @routes.get("/")
@@ -166,9 +161,6 @@ if __name__ == "__main__":
         help="Specify the path of the temporary directory use by Ray process.")
     args = parser.parse_args()
     logging.basicConfig(level=args.logging_level, format=args.logging_format)
-
-    # TODO(sang): Add a URL validation.
-    metrics_export_address = os.environ.get("METRICS_EXPORT_ADDRESS")
 
     try:
         dashboard = Dashboard(
