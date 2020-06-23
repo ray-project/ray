@@ -69,9 +69,8 @@ int main(int argc, char *argv[]) {
     } else if (system_memory == -1) {
       ExitWithUsageError("please specify the amount of memory (in bytes) to use with -m");
     }
-    ARROW_CHECK(!plasma_directory.empty());
+    RAY_CHECK(!plasma_directory.empty());
 
-    ArrowLog::InstallFailureSignalHandler();
     plasma::plasma_store_runner.reset(
         new plasma::PlasmaStoreRunner(socket_name, system_memory, hugepages_enabled,
                                       plasma_directory, external_store_endpoint));
