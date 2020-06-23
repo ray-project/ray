@@ -261,8 +261,6 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   Status Contains(const ObjectID& object_id, bool* has_object);
 
-  Status List(ObjectTable* objects);
-
   Status Abort(const ObjectID& object_id);
 
   Status Seal(const ObjectID& object_id);
@@ -508,15 +506,9 @@ Status PlasmaClient::Impl::CreateAndSeal(const ObjectID& object_id,
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   ARROW_LOG(DEBUG) << "called CreateAndSeal on conn " << store_conn_;
-  // Compute the object hash.
-  static unsigned char digest[kDigestSize];
-  uint64_t hash = ComputeObjectHashCPU(
-      reinterpret_cast<const uint8_t*>(data.data()), data.size(),
-      reinterpret_cast<const uint8_t*>(metadata.data()), metadata.size());
-  memcpy(&digest[0], &hash, sizeof(hash));
 
   RETURN_NOT_OK(SendCreateAndSealRequest(store_conn_, object_id, evict_if_full, data,
-                                         metadata, digest));
+                                         metadata));
   std::vector<uint8_t> buffer;
   RETURN_NOT_OK(
       PlasmaReceive(store_conn_, MessageType::PlasmaCreateAndSealReply, &buffer));
@@ -532,19 +524,8 @@ Status PlasmaClient::Impl::CreateAndSealBatch(const std::vector<ObjectID>& objec
 
   ARROW_LOG(DEBUG) << "called CreateAndSealBatch on conn " << store_conn_;
 
-  std::vector<std::string> digests;
-  for (size_t i = 0; i < object_ids.size(); i++) {
-    // Compute the object hash.
-    std::string digest;
-    uint64_t hash = ComputeObjectHashCPU(
-        reinterpret_cast<const uint8_t*>(data.data()), data.size(),
-        reinterpret_cast<const uint8_t*>(metadata.data()), metadata.size());
-    digest.assign(reinterpret_cast<char*>(&hash), sizeof(hash));
-    digests.push_back(digest);
-  }
-
   RETURN_NOT_OK(SendCreateAndSealBatchRequest(store_conn_, object_ids, evict_if_full,
-                                              data, metadata, digests));
+                                              data, metadata));
   std::vector<uint8_t> buffer;
   RETURN_NOT_OK(
       PlasmaReceive(store_conn_, MessageType::PlasmaCreateAndSealBatchReply, &buffer));
@@ -780,14 +761,6 @@ Status PlasmaClient::Impl::Contains(const ObjectID& object_id, bool* has_object)
   return Status::OK();
 }
 
-Status PlasmaClient::Impl::List(ObjectTable* objects) {
-  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-  RETURN_NOT_OK(SendListRequest(store_conn_));
-  std::vector<uint8_t> buffer;
-  RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaListReply, &buffer));
-  return ReadListReply(buffer.data(), buffer.size(), objects);
-}
-
 static void ComputeBlockHash(const unsigned char* data, int64_t nbytes, uint64_t* hash) {
   XXH64_state_t hash_state;
   XXH64_reset(&hash_state, XXH64_DEFAULT_SEED);
@@ -876,10 +849,7 @@ Status PlasmaClient::Impl::Seal(const ObjectID& object_id) {
 
   object_entry->second->is_sealed = true;
   /// Send the seal request to Plasma.
-  std::vector<uint8_t> digest(kDigestSize);
-  RETURN_NOT_OK(Hash(object_id, &digest[0]));
-  RETURN_NOT_OK(
-      SendSealRequest(store_conn_, object_id, std::string(digest.begin(), digest.end())));
+  RETURN_NOT_OK(SendSealRequest(store_conn_, object_id));
   std::vector<uint8_t> buffer;
   RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaSealReply, &buffer));
   ObjectID sealed_id;
@@ -1199,8 +1169,6 @@ Status PlasmaClient::Release(const ObjectID& object_id) {
 Status PlasmaClient::Contains(const ObjectID& object_id, bool* has_object) {
   return impl_->Contains(object_id, has_object);
 }
-
-Status PlasmaClient::List(ObjectTable* objects) { return impl_->List(objects); }
 
 Status PlasmaClient::Abort(const ObjectID& object_id) { return impl_->Abort(object_id); }
 
