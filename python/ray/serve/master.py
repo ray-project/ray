@@ -1,5 +1,5 @@
 import asyncio
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 import os
 import random
 import time
@@ -58,11 +58,8 @@ class TrafficPolicy:
             self.shadow_dict[backend] = proportion
 
 
-class BackendInfo:
-    def __init__(self, worker_class, backend_config, replica_config):
-        self.worker_class = worker_class
-        self.backend_config = backend_config
-        self.replica_config = replica_config
+BackendInfo = namedtuple("BackendInfo",
+                         ["worker_class", "backend_config", "replica_config"])
 
 
 @ray.remote
