@@ -258,7 +258,7 @@ class TestLocalDistributedRunner(unittest.TestCase):
         mock_runner = MagicMock()
         mock_runner._is_set = False
         LocalDistributedRunner._set_cuda_device(mock_runner, "123")
-        self.assertEqual(mock_runner.local_cuda_device, "123")
+        self.assertEquals(mock_runner.local_cuda_device, "123")
         self.assertTrue(set_mock.called)
         set_mock.assert_called_with(123)
 
@@ -269,7 +269,7 @@ class TestLocalDistributedRunner(unittest.TestCase):
         LocalDistributedRunner._try_reserve_and_set_resources(
             mock_runner, 4, 0)
         remaining = ray.available_resources()["CPU"]
-        self.assertEqual(int(remaining), 6)
+        self.assertEquals(int(remaining), 6)
 
     def testV2ReserveCPUResources(self):
         mock_runner = MagicMock()
@@ -278,4 +278,4 @@ class TestLocalDistributedRunner(unittest.TestCase):
         LocalDistributedRunner._try_reserve_and_set_resources(
             mock_runner, 4, 1)
         remaining = ray.available_resources()["CPU"]
-        self.assertEqual(int(remaining), 6)
+        self.assertEquals(int(remaining), 6)
