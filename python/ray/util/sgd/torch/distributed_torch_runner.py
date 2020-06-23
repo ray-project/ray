@@ -254,8 +254,7 @@ def reserve_resources(num_cpus, num_gpus, retries=20):
     for _ in range(retries):
         if _dummy_cuda_actor is None:
             _dummy_cuda_actor = ray.remote(
-                num_cpus=0,
-                num_gpus=num_gpus,
+                num_cpus=0, num_gpus=num_gpus,
                 resources={"node:" + ip: 0.1})(_DummyActor).remote()
 
         reserved_cuda_device = ray.get(_dummy_cuda_actor.cuda_devices.remote())
