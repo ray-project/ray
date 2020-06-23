@@ -47,9 +47,24 @@ class RandomEndpointPolicy(EndpointPolicy):
     be made deterministically based on the hash of the shard key.
     """
 
-    def __init__(self, traffic_dict):
+    def __init__(self, traffic_policy):
         self.backend_names, self.backend_weights = zip(
-            *sorted(traffic_dict.items()))
+            *sorted(traffic_policy.traffic_dict.items()))
+        self.shadow_backends = traffic_policy.shadow_dict
+
+    def _select_backends(self, val):
+        curr_sum = 0
+        for i in range(len(self.backend_weights)):
+            curr_sum += self.backend_weights[i]
+            if curr_sum > val:
+                chosen_backend = self.backend_names[i]
+
+        shadow_backends = []
+        for backend, backend_weight in self.shadow_backends:
+            if backend_weight < val:
+                shadow_backends.append(backend)
+
+        return chosen_backend, shadow_backends
 
     def flush(self, endpoint_queue, backend_queues):
         if len(self.backend_names) == 0:
@@ -67,11 +82,16 @@ class RandomEndpointPolicy(EndpointPolicy):
                 # Note(simon): This constructor takes 100+us, maybe cache this?
                 rstate = np.random.RandomState(seed)
 
-            chosen_backend = rstate.choice(
-                self.backend_names, replace=False,
-                p=self.backend_weights).squeeze()
+            chosen_backend, shadow_backends = self._select_backends(
+                rstate.random())
 
             assigned_backends.add(chosen_backend)
             backend_queues[chosen_backend].add(query)
+            if len(shadow_backends) > 0:
+                shadow_query = query.copy()
+                shadow_query.is_shadow_query = True
+                for shadow_backend in shadow_backends:
+                    assigned_backends.add(shadow_backend)
+                    backend_queues[shadow_backend].add(shadow_query)
 
         return assigned_backends

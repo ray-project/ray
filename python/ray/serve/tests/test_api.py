@@ -442,9 +442,11 @@ def test_list_endpoints(serve_instance):
 
     serve.create_backend("backend", f)
     serve.create_backend("backend2", f)
+    serve.create_backend("backend3", f)
     serve.create_endpoint(
         "endpoint", backend="backend", route="/api", methods=["GET", "POST"])
     serve.create_endpoint("endpoint2", backend="backend2", methods=["POST"])
+    serve.shadow_traffic("endpoint", "backend3", 0.5)
 
     endpoints = serve.list_endpoints()
     assert "endpoint" in endpoints
@@ -453,6 +455,9 @@ def test_list_endpoints(serve_instance):
         "methods": ["GET", "POST"],
         "traffic": {
             "backend": 1.0
+        },
+        "shadows": {
+            "backend3": 0.5
         }
     }
 
@@ -462,7 +467,8 @@ def test_list_endpoints(serve_instance):
         "methods": ["POST"],
         "traffic": {
             "backend2": 1.0
-        }
+        },
+        "shadows": {}
     }
 
     serve.delete_endpoint("endpoint")
