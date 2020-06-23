@@ -12,7 +12,7 @@ export type Order = "asc" | "desc";
 
 export const getComparator = <Key extends keyof any>(
   order: Order,
-  orderBy: Key
+  orderBy: Key,
 ): ((
   a: { [key in Key]: number | string },
   b: { [key in Key]: number | string },

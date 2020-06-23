@@ -11,11 +11,11 @@ import {
 } from "@material-ui/core";
 import React, { useState } from "react";
 import { useSelector } from "react-redux";
+import { RayletInfoResponse } from "../../../api";
 import SortableTableHead, {
   HeaderInfo,
 } from "../../../common/SortableTableHead";
 import { getComparator, Order, stableSort } from "../../../common/tableUtils";
-import { RayletInfoResponse } from "../../../api";
 import { sum } from "../../../common/util";
 import { StoreState } from "../../../store";
 import Errors from "./dialogs/errors/Errors";
@@ -78,7 +78,7 @@ const nodeInfoHeaders: HeaderInfo[] = [
   { id: "sent", label: "Sent", numeric: true, sortable: true },
   { id: "received", label: "Received", numeric: false, sortable: true },
   { id: "logs", label: "Logs", numeric: false, sortable: false },
-  { id: "errors", label: "Errors", numeric: false, sortable: false }
+  { id: "errors", label: "Errors", numeric: false, sortable: false },
 ];
 
 const NodeInfo: React.FC<{}> = () => {
@@ -154,10 +154,11 @@ const NodeInfo: React.FC<{}> = () => {
     <React.Fragment>
       <Table className={classes.table}>
         <SortableTableHead
-          onRequestSort={() => { }}
+          onRequestSort={() => {}}
           headerInfo={nodeInfoHeaders}
           order={order}
-          orderBy={orderBy} />
+          orderBy={orderBy}
+        />
         <TableBody>
           {nodeInfo.clients.map((client) => {
             const clusterWorkerPids =

@@ -41,7 +41,7 @@ type SortableTableHeadProps = {
 };
 
 const SortableTableHead = (props: SortableTableHeadProps) => {
-  const { order, orderBy, onRequestSort, headerInfo} = props;
+  const { order, orderBy, onRequestSort, headerInfo } = props;
   const classes = useSortableTableHeadStyles();
   const createSortHandler = (id: string) => (
     event: React.MouseEvent<unknown>,
@@ -51,7 +51,7 @@ const SortableTableHead = (props: SortableTableHeadProps) => {
   return (
     <TableHead>
       <TableRow>
-        {headerInfo.map(headerInfo => {
+        {headerInfo.map((headerInfo) => {
           if (headerInfo.sortable) {
             return (
               <StyledTableCell
@@ -67,20 +67,23 @@ const SortableTableHead = (props: SortableTableHeadProps) => {
                   {headerInfo.label}
                   {orderBy === headerInfo.id ? (
                     <span className={classes.visuallyHidden}>
-                      {order === "desc" ? "sorted descending" : "sorted ascending"}
+                      {order === "desc"
+                        ? "sorted descending"
+                        : "sorted ascending"}
                     </span>
                   ) : null}
                 </TableSortLabel>
               </StyledTableCell>
-            )
+            );
           } else {
-              return (
-                <StyledTableCell
-                  key={headerInfo.label}
-                  align={headerInfo.numeric ? "right" : "left"}>
-                  {headerInfo.label}
-                </StyledTableCell>
-              )
+            return (
+              <StyledTableCell
+                key={headerInfo.label}
+                align={headerInfo.numeric ? "right" : "left"}
+              >
+                {headerInfo.label}
+              </StyledTableCell>
+            );
           }
         })}
       </TableRow>

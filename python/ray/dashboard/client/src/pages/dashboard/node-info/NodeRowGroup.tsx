@@ -26,6 +26,7 @@ import { NodeReceived, WorkerReceived } from "./features/Received";
 import { NodeSent, WorkerSent } from "./features/Sent";
 import { NodeUptime, WorkerUptime } from "./features/Uptime";
 import { NodeWorkers, WorkerWorkers } from "./features/Workers";
+import { NodeWorkerRow } from "./NodeWorkerRow";
 
 const useNodeRowGroupStyles = makeStyles((theme: Theme) =>
   createStyles({
@@ -145,20 +146,13 @@ const NodeRowGroup: React.FC<NodeRowGroupProps> = ({
               raylet?.workersStats.find(
                 (rayletWorker) => worker.pid === rayletWorker.pid,
               ) || null;
-
+            const featureData = { rayletWorker, node, worker };
             return (
-              <TableRow hover key={index}>
-                <TableCell className={classes.cell} />
-                {features.map(({ WorkerFeature }, index) => (
-                  <TableCell className={classes.cell} key={index}>
-                    <WorkerFeature
-                      node={node}
-                      worker={worker}
-                      rayletWorker={rayletWorker}
-                    />
-                  </TableCell>
-                ))}
-              </TableRow>
+              <NodeWorkerRow
+                key={index}
+                features={features.map((feature) => feature.WorkerFeature)}
+                data={featureData}
+              />
             );
           })}
         </React.Fragment>

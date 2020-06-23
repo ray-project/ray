@@ -76,8 +76,18 @@ const memoryHeaderInfo: HeaderInfo[] = [
   { id: "pid", label: "pid", numeric: true, sortable: true },
   { id: "type", label: "Type", numeric: false, sortable: true },
   { id: "object_id", label: "Object ID", numeric: false, sortable: true },
-  { id: "object_size", label: "Object Size (B)", numeric: true, sortable: true },
-  { id: "reference_type", label: "Reference Type", numeric: false, sortable: true },
+  {
+    id: "object_size",
+    label: "Object Size (B)",
+    numeric: true,
+    sortable: true,
+  },
+  {
+    id: "reference_type",
+    label: "Reference Type",
+    numeric: false,
+    sortable: true,
+  },
   { id: "call_site", label: "Call Site", numeric: false, sortable: true },
 ];
 
@@ -120,9 +130,7 @@ const MemoryInfo: React.FC<{}> = () => {
   const [isGrouped, setIsGrouped] = useState(true);
   const [order, setOrder] = React.useState<Order>("asc");
   const toggleOrder = () => setOrder(order === "asc" ? "desc" : "asc");
-  const [orderBy, setOrderBy] = React.useState<string | null>(
-    null,
-  );
+  const [orderBy, setOrderBy] = React.useState<string | null>(null);
   return (
     <React.Fragment>
       {memoryTable !== null ? (
