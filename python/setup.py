@@ -188,11 +188,12 @@ def find_version(*filepath):
 
 requires = [
     "aiohttp",
+    "aioredis",
     "click >= 7.0",
     "colorama",
     "filelock",
     "google",
-    "grpcio",
+    "grpcio >= 1.28.1",
     "jsonschema",
     "msgpack >= 0.6.0, < 2.0.0",
     "numpy >= 1.16",
