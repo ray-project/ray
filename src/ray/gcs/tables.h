@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_TABLES_H
-#define RAY_GCS_TABLES_H
+#pragma once
 
 #include <map>
 #include <string>
@@ -1024,5 +1023,3 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_TABLES_H

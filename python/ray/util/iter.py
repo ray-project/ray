@@ -203,9 +203,9 @@ class ParallelIterator(Generic[T]):
 
         `max_concurrency` should be used to achieve a high degree of
         parallelism without the overhead of increasing the number of shards
-        (which are actor based). This provides the semantic guarantee that
-        `fn(x_i)` will _begin_ executing before `fn(x_{i+1})` (but not
-        necessarily finish first)
+        (which are actor based). If `max_concurrency` is not 1, this function
+        provides no semantic guarantees on the output order.
+        Results will be returned as soon as they are ready.
 
         A performance note: When executing concurrently, this function
         maintains its own internal buffer. If `num_async` is `n` and
@@ -234,6 +234,7 @@ class ParallelIterator(Generic[T]):
             ... [0, 2, 4, 8]
 
         """
+        assert max_concurrency >= 0, "max_concurrency must be non-negative."
         return self._with_transform(
             lambda local_it: local_it.for_each(fn, max_concurrency, resources),
             ".for_each()")
@@ -765,23 +766,13 @@ class LocalIterator(Generic[T]):
                     if isinstance(item, _NextValueNotReady):
                         yield item
                     else:
-                        finished, remaining = ray.wait(cur, timeout=0)
-                        if max_concurrency and len(
-                                remaining) >= max_concurrency:
-                            ray.wait(cur, num_returns=(len(finished) + 1))
+                        if max_concurrency and len(cur) >= max_concurrency:
+                            finished, cur = ray.wait(cur)
+                            yield from ray.get(finished)
                         cur.append(remote_fn(item))
-
-                        while len(cur) > 0:
-                            to_yield = cur[0]
-                            finished, remaining = ray.wait(
-                                [to_yield], timeout=0)
-                            if finished:
-                                cur.pop(0)
-                                yield ray.get(to_yield)
-                            else:
-                                break
-
-                yield from ray.get(cur)
+                while cur:
+                    finished, cur = ray.wait(cur)
+                    yield from ray.get(finished)
 
         if hasattr(fn, LocalIterator.ON_FETCH_START_HOOK_NAME):
             unwrapped = apply_foreach

@@ -13,7 +13,9 @@ from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.metric.exporter import MetricExporterActor
 from ray.serve.router import Router
-from ray.serve.utils import (format_actor_name, get_random_letters, logger)
+from ray.serve.exceptions import RayServeException
+from ray.serve.utils import (format_actor_name, get_random_letters, logger,
+                             try_schedule_resources_on_nodes)
 
 import numpy as np
 
@@ -21,6 +23,10 @@ import numpy as np
 # after writing each checkpoint with the specified probability.
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.0
 CHECKPOINT_KEY = "serve-master-checkpoint"
+
+# Feature flag for master actor resource checking. If true, master actor will
+# error if the desired replicas exceed current resource availability.
+_RESOURCE_CHECK_ENABLED = True
 
 
 @ray.remote
@@ -258,6 +264,7 @@ class ServeMaster:
         for backend, (_, backend_config, _) in self.backends.items():
             await self.router.set_backend_config.remote(
                 backend, backend_config)
+            await self.broadcast_backend_config(backend)
 
         # Push configuration state to the HTTP proxy.
         await self.http_proxy.set_route_table.remote(self.routes)
@@ -314,6 +321,7 @@ class ServeMaster:
                 backend_tag,
                 replica_tag,
                 replica_config.actor_init_args,
+                backend_config,
                 instance_name=self.instance_name)
         # TODO(edoakes): we should probably have a timeout here.
         await worker_handle.ready.remote()
@@ -422,7 +430,25 @@ class ServeMaster:
         current_num_replicas = len(self.replicas[backend_tag])
         delta_num_replicas = num_replicas - current_num_replicas
 
+        _, _, replica_config = self.backends[backend_tag]
         if delta_num_replicas > 0:
+            can_schedule = try_schedule_resources_on_nodes(
+                requirements=[
+                    replica_config.resource_dict
+                    for _ in range(delta_num_replicas)
+                ],
+                ray_nodes=ray.nodes())
+            if _RESOURCE_CHECK_ENABLED and not all(can_schedule):
+                num_possible = sum(can_schedule)
+                raise RayServeException(
+                    "Cannot scale backend {} to {} replicas. Ray Serve tried "
+                    "to add {} replicas but the resources only allows {} "
+                    "to be added. To fix this, consider scaling to replica to "
+                    "{} or add more resources to the cluster. You can check "
+                    "avaiable resources with ray.nodes().".format(
+                        backend_tag, num_replicas, delta_num_replicas,
+                        num_possible, current_num_replicas + num_possible))
+
             logger.debug("Adding {} replicas to backend {}".format(
                 delta_num_replicas, backend_tag))
             for _ in range(delta_num_replicas):
@@ -602,6 +628,7 @@ class ServeMaster:
             # (particularly for max-batch-size).
             await self.router.set_backend_config.remote(
                 backend_tag, backend_config)
+            await self.broadcast_backend_config(backend_tag)
 
     async def delete_backend(self, backend_tag):
         async with self.write_lock:
@@ -663,6 +690,22 @@ class ServeMaster:
 
             await self._start_pending_replicas()
             await self._stop_pending_replicas()
+
+            await self.broadcast_backend_config(backend_tag)
+
+    async def broadcast_backend_config(self, backend_tag):
+        _, backend_config, _ = self.backends[backend_tag]
+        broadcast_futures = []
+        for replica_tag in self.replicas[backend_tag]:
+            try:
+                replica = ray.get_actor(replica_tag)
+            except ValueError:
+                continue
+
+            future = replica.update_config.remote(backend_config).as_future()
+            broadcast_futures.append(future)
+        if len(broadcast_futures) > 0:
+            await asyncio.gather(*broadcast_futures)
 
     def get_backend_config(self, backend_tag):
         """Get the current config for the specified backend."""

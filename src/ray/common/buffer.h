@@ -12,17 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_BUFFER_H
-#define RAY_COMMON_BUFFER_H
+#pragma once
 
 #include <cstdint>
 #include <cstdio>
-#include "plasma/client.h"
-#include "ray/common/status.h"
 
-namespace arrow {
-class Buffer;
-}
+#include "arrow/buffer.h"
+#include "ray/common/status.h"
 
 namespace ray {
 
@@ -143,5 +139,3 @@ class PlasmaBuffer : public Buffer {
 };
 
 }  // namespace ray
-
-#endif  // RAY_COMMON_BUFFER_H

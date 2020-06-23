@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_OBJECT_MANAGER_OBJECT_STORE_CLIENT_H
-#define RAY_OBJECT_MANAGER_OBJECT_STORE_CLIENT_H
+#pragma once
 
 #include <list>
 #include <memory>
@@ -23,13 +22,11 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
-#include "plasma/client.h"
-
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-
 #include "ray/object_manager/object_directory.h"
+#include "ray/object_manager/plasma/client.h"
 
 namespace ray {
 
@@ -101,5 +98,3 @@ class ObjectStoreNotificationManager {
 };
 
 }  // namespace ray
-
-#endif  // RAY_OBJECT_MANAGER_OBJECT_STORE_CLIENT_H

@@ -1,5 +1,3 @@
-from typing import Union
-
 from ray.util.iter import LocalIterator
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 
@@ -23,14 +21,11 @@ LOAD_BATCH_TIMER = "load"
 # Instant metrics (keys for metrics.info).
 LEARNER_INFO = "learner"
 
-# Type aliases.
-GradientType = dict
-SampleBatchType = Union[SampleBatch, MultiAgentBatch]
-
 
 # Asserts that an object is a type of SampleBatch.
 def _check_sample_batch_type(batch):
-    if not isinstance(batch, SampleBatchType.__args__):
+    if not isinstance(batch, SampleBatch) and not isinstance(
+            batch, MultiAgentBatch):
         raise ValueError("Expected either SampleBatch or MultiAgentBatch, "
                          "got {}: {}".format(type(batch), batch))
 

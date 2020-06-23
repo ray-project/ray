@@ -409,6 +409,127 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
             request2.task_spec().actor_creation_task_spec().actor_id());
 }
 
+TEST_F(GcsActorManagerTest, TestNamedActorDeletionWorkerFailure) {
+  // Make sure named actor deletion succeeds when workers fail.
+  const auto actor_name = "actor_to_delete";
+  const auto job_id_1 = JobID::FromInt(1);
+  const auto request1 = Mocker::GenCreateActorRequest(job_id_1, 0, /*is_detached=*/true,
+                                                      /*name=*/actor_name);
+  Status status = gcs_actor_manager_->RegisterActor(
+      request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name).Binary(),
+            request1.task_spec().actor_creation_task_spec().actor_id());
+
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.pop_back();
+
+  // Check that the actor is in state `ALIVE`.
+  rpc::Address address;
+  auto node_id = ClientID::FromRandom();
+  auto worker_id = WorkerID::FromRandom();
+  address.set_raylet_id(node_id.Binary());
+  address.set_worker_id(worker_id.Binary());
+  actor->UpdateAddress(address);
+  gcs_actor_manager_->OnActorCreationSuccess(actor);
+
+  // Remove worker and then check that the actor is dead.
+  gcs_actor_manager_->OnWorkerDead(node_id, worker_id);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
+  ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name), ActorID::Nil());
+
+  // Create an actor with the same name. This ensures that the name has been properly
+  // deleted.
+  const auto request2 = Mocker::GenCreateActorRequest(job_id_1, 0, /*is_detached=*/true,
+                                                      /*name=*/actor_name);
+  status = gcs_actor_manager_->RegisterActor(request2,
+                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name).Binary(),
+            request2.task_spec().actor_creation_task_spec().actor_id());
+}
+
+TEST_F(GcsActorManagerTest, TestNamedActorDeletionNodeFailure) {
+  // Make sure named actor deletion succeeds when nodes fail.
+  const auto job_id_1 = JobID::FromInt(1);
+  const auto request1 =
+      Mocker::GenCreateActorRequest(job_id_1, 0, /*is_detached=*/true, /*name=*/"actor");
+  Status status = gcs_actor_manager_->RegisterActor(
+      request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor").Binary(),
+            request1.task_spec().actor_creation_task_spec().actor_id());
+
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.pop_back();
+
+  // Check that the actor is in state `ALIVE`.
+  rpc::Address address;
+  auto node_id = ClientID::FromRandom();
+  auto worker_id = WorkerID::FromRandom();
+  address.set_raylet_id(node_id.Binary());
+  address.set_worker_id(worker_id.Binary());
+  actor->UpdateAddress(address);
+  gcs_actor_manager_->OnActorCreationSuccess(actor);
+
+  // Remove node and then check that the actor is dead.
+  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id));
+  gcs_actor_manager_->OnNodeDead(node_id);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
+
+  // Create an actor with the same name. This ensures that the name has been properly
+  // deleted.
+  const auto request2 =
+      Mocker::GenCreateActorRequest(job_id_1, 0, /*is_detached=*/true, /*name=*/"actor");
+  status = gcs_actor_manager_->RegisterActor(request2,
+                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor").Binary(),
+            request2.task_spec().actor_creation_task_spec().actor_id());
+}
+
+TEST_F(GcsActorManagerTest, TestNamedActorDeletionNotHappendWhenReconstructed) {
+  // Make sure named actor deletion succeeds when nodes fail.
+  const auto job_id_1 = JobID::FromInt(1);
+  // The dead actor will be reconstructed.
+  const auto request1 =
+      Mocker::GenCreateActorRequest(job_id_1, 1, /*is_detached=*/true, /*name=*/"actor");
+  Status status = gcs_actor_manager_->RegisterActor(
+      request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor").Binary(),
+            request1.task_spec().actor_creation_task_spec().actor_id());
+
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.pop_back();
+
+  // Check that the actor is in state `ALIVE`.
+  rpc::Address address;
+  auto node_id = ClientID::FromRandom();
+  auto worker_id = WorkerID::FromRandom();
+  address.set_raylet_id(node_id.Binary());
+  address.set_worker_id(worker_id.Binary());
+  actor->UpdateAddress(address);
+  gcs_actor_manager_->OnActorCreationSuccess(actor);
+
+  // Remove worker and then check that the actor is dead. The actor should be
+  // reconstructed.
+  gcs_actor_manager_->OnWorkerDead(node_id, worker_id);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
+
+  // Create an actor with the same name.
+  // It should fail because actor has been reconstructed, and names shouldn't have been
+  // cleaned.
+  const auto job_id_2 = JobID::FromInt(2);
+  const auto request2 =
+      Mocker::GenCreateActorRequest(job_id_2, 0, /*is_detached=*/true, /*name=*/"actor");
+  status = gcs_actor_manager_->RegisterActor(request2,
+                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
+  ASSERT_TRUE(status.IsInvalid());
+  ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor").Binary(),
+            request1.task_spec().actor_creation_task_spec().actor_id());
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

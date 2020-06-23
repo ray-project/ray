@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_CLIENT_CONNECTION_H
-#define RAY_COMMON_CLIENT_CONNECTION_H
+#pragma once
 
 #include <deque>
 #include <memory>
@@ -217,5 +216,3 @@ class ClientConnection : public ServerConnection {
 };
 
 }  // namespace ray
-
-#endif  // RAY_COMMON_CLIENT_CONNECTION_H

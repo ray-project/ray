@@ -71,7 +71,6 @@ class Stream(ABC):
             self
         """
         if key is not None:
-            assert value
             assert type(key) is str
             assert type(value) is str
             self._gateway_client(). \
@@ -94,6 +93,18 @@ class Stream(ABC):
     @abstractmethod
     def get_language(self):
         pass
+
+    def forward(self):
+        """Set the partition function of this {@link Stream} so that output
+         elements are forwarded to next operator locally."""
+        self._gateway_client().call_method(self._j_stream, "forward")
+        return self
+
+    def disable_chain(self):
+        """Disable chain for this stream so that it will be run in a separate
+         task."""
+        self._gateway_client().call_method(self._j_stream, "disableChain")
+        return self
 
     def _gateway_client(self):
         return self.get_streaming_context()._gateway_client
@@ -182,6 +193,21 @@ class DataStream(Stream):
         j_stream = self._gateway_client(). \
             call_method(self._j_stream, "filter", j_func)
         return DataStream(self, j_stream)
+
+    def union(self, *streams):
+        """Apply union transformations to this stream by merging data stream
+         outputs of the same type with each other.
+
+        Args:
+            *streams: The DataStreams to union output with.
+
+        Returns:
+            A new UnionStream.
+        """
+        assert len(streams) >= 1, "Need at least one stream to union with"
+        j_streams = [s._j_stream for s in streams]
+        j_stream = self._gateway_client().union(self._j_stream, *j_streams)
+        return UnionStream(self, j_stream)
 
     def key_by(self, func):
         """
@@ -308,6 +334,13 @@ class JavaDataStream(Stream):
         return JavaDataStream(self, self._unary_call("filter",
                                                      java_func_class))
 
+    def union(self, *streams):
+        """See io.ray.streaming.api.stream.DataStream.union"""
+        assert len(streams) >= 1, "Need at least one stream to union with"
+        j_streams = [s._j_stream for s in streams]
+        j_stream = self._gateway_client().union(self._j_stream, *j_streams)
+        return JavaUnionStream(self, j_stream)
+
     def key_by(self, java_func_class):
         """See io.ray.streaming.api.stream.DataStream.keyBy"""
         self._check_partition_call()
@@ -427,6 +460,30 @@ class JavaKeyDataStream(JavaDataStream):
         j_stream = self._gateway_client(). \
             call_method(self._j_stream, "asPythonStream")
         return KeyDataStream(self, j_stream)
+
+
+class UnionStream(DataStream):
+    """Represents a union stream.
+     Wrapper of java io.ray.streaming.python.stream.PythonUnionStream
+    """
+
+    def __init__(self, input_stream, j_stream):
+        super().__init__(input_stream, j_stream)
+
+    def get_language(self):
+        return function.Language.PYTHON
+
+
+class JavaUnionStream(JavaDataStream):
+    """Represents a java union stream.
+     Wrapper of java io.ray.streaming.api.stream.UnionStream
+    """
+
+    def __init__(self, input_stream, j_stream):
+        super().__init__(input_stream, j_stream)
+
+    def get_language(self):
+        return function.Language.JAVA
 
 
 class StreamSource(DataStream):

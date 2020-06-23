@@ -1,5 +1,4 @@
-#ifndef RAY_COMMON_TASK_TASK_UTIL_H
-#define RAY_COMMON_TASK_TASK_UTIL_H
+#pragma once
 
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
@@ -144,5 +143,3 @@ class TaskSpecBuilder {
 };
 
 }  // namespace ray
-
-#endif  // RAY_COMMON_TASK_TASK_UTIL_H

@@ -1,5 +1,4 @@
-#ifndef RAY_PRIORITY_QUEUE_H
-#define RAY_PRIORITY_QUEUE_H
+#pragma once
 
 #include <algorithm>
 #include <memory>
@@ -49,5 +48,3 @@ class PriorityQueue {
 };
 }  // namespace streaming
 }  // namespace ray
-
-#endif  // RAY_PRIORITY_QUEUE_H

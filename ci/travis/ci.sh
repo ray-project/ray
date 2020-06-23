@@ -66,7 +66,7 @@ reload_env() {
     export TRAVIS_PULL_REQUEST
   fi
 
-  if [ -z "${TRAVIS_BRANCH-}" ] && [ -n "${GITHUB_WORKFLOW-}" ]; then
+  if [ "${GITHUB_ACTIONS-}" = true ] && [ -z "${TRAVIS_BRANCH-}" ]; then
     # Define TRAVIS_BRANCH to make Travis scripts run on GitHub Actions.
     TRAVIS_BRANCH="${GITHUB_BASE_REF:-${GITHUB_REF}}"  # For pull requests, the base branch name
     TRAVIS_BRANCH="${TRAVIS_BRANCH#refs/heads/}"  # Remove refs/... prefix
@@ -104,18 +104,49 @@ upload_wheels() {
       fi
     done
   fi
+  (
+    cd "${WORKSPACE_DIR}"/python
+    if ! python -s -c "import ray, sys; sys.exit(0 if ray._raylet.OPTIMIZED else 1)"; then
+      echo "ERROR: Uploading non-optimized wheels! Performance will suffer for users!"
+      false
+    fi
+  )
 }
 
+test_core() {
+  bazel test --config=ci --build_tests_only -- //:all -rllib/...
+}
 
 test_python() {
   if [ "${OSTYPE}" = msys ]; then
-    # Increased timeout from default of timeout=300 due to test_basic
-    bazel test -k --config=ci --test_timeout=600 --build_tests_only -- \
-      python/ray/tests:test_actor \
-      python/ray/tests:test_basic \
-      python/ray/tests:test_debug_tools \
-      python/ray/tests:test_mini \
-      ;
+    local args=(python/ray/tests/...)
+    args+=(
+      -python/ray/tests:test_actor_advanced
+      -python/ray/tests:test_actor_failures
+      -python/ray/tests:test_advanced_2
+      -python/ray/tests:test_advanced_3
+      -python/ray/tests:test_array  # timeout
+      -python/ray/tests:test_autoscaler_aws
+      -python/ray/tests:test_autoscaler_yaml
+      -python/ray/tests:test_component_failures
+      -python/ray/tests:test_cython
+      -python/ray/tests:test_failure
+      -python/ray/tests:test_global_gc
+      -python/ray/tests:test_memstat
+      -python/ray/tests:test_metrics
+      -python/ray/tests:test_multi_node
+      -python/ray/tests:test_multi_node_2
+      -python/ray/tests:test_multiprocessing  # flaky
+      -python/ray/tests:test_node_manager
+      -python/ray/tests:test_object_manager
+      -python/ray/tests:test_projects
+      -python/ray/tests:test_queue  # timeout
+      -python/ray/tests:test_reconstruction  # UnreconstructableError
+      -python/ray/tests:test_stress
+      -python/ray/tests:test_stress_sharded
+      -python/ray/tests:test_webui
+    )
+    bazel test -k --config=ci --test_timeout=600 --build_tests_only -- "${args[@]}";
   fi
 }
 
@@ -248,7 +279,7 @@ build_wheels() {
           local existing_version
           existing_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
           if [ "${pyversion}" != "${existing_version}" ]; then
-            suppress_xtrace conda install python="${pyversion}"
+            suppress_output conda install python="${pyversion}"
           fi
           install_ray
           (cd "${WORKSPACE_DIR}"/python && python setup.py --quiet bdist_wheel)
@@ -371,7 +402,7 @@ _check_job_triggers() {
   fi
 
   if ! (set +x && should_run_job ${job_names//,/ }); then
-    if [ -n "${GITHUB_WORKFLOW-}" ]; then
+    if [ "${GITHUB_ACTIONS-}" = true ]; then
       # If this job is to be skipped, emit 'exit' into .bashrc to quickly exit all following steps.
       # This isn't needed on Travis (since everything runs in one shell), but is on GitHub Actions.
       cat <<EOF1 >> ~/.bashrc
@@ -416,7 +447,8 @@ init() {
 
 build() {
   if ! need_wheels; then
-    bazel build ${ENABLE_ASAN-} -k "//:*"   # Do a full build first to ensure everything passes
+    # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
+    bazel build -k "//:*"  # Full build first, since pip install will build only a subset of targets
     install_ray
     if [ "${LINT-}" = 1 ]; then
       # Try generating Sphinx documentation. To do this, we need to install Ray first.
@@ -438,7 +470,7 @@ build() {
 }
 
 _main() {
-  if [ -n "${GITHUB_WORKFLOW-}" ]; then
+  if [ "${GITHUB_ACTIONS-}" = true ]; then
     exec 2>&1  # Merge stdout and stderr to prevent out-of-order buffering issues
     reload_env
   fi

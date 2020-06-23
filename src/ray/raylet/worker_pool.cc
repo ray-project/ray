@@ -18,6 +18,7 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 
 #include "ray/common/constants.h"
+#include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/gcs/pb_util.h"
@@ -296,17 +297,26 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
 }
 
 Status WorkerPool::GetNextFreePort(int *port) {
-  if (free_ports_) {
-    if (free_ports_->empty()) {
-      return Status::Invalid(
-          "Ran out of ports to allocate to workers. Please specify a wider port range.");
-    }
+  if (!free_ports_) {
+    *port = 0;
+    return Status::OK();
+  }
+
+  // Try up to the current number of ports.
+  int current_size = free_ports_->size();
+  for (int i = 0; i < current_size; i++) {
     *port = free_ports_->front();
     free_ports_->pop();
-  } else {
-    *port = 0;
+    if (CheckFree(*port)) {
+      return Status::OK();
+    }
+    // Return to pool to check later.
+    free_ports_->push(*port);
   }
-  return Status::OK();
+  *port = -1;
+  return Status::Invalid(
+      "No available ports. Please specify a wider port range using --min-worker-port and "
+      "--max-worker-port.");
 }
 
 void WorkerPool::MarkPortAsFree(int port) {
@@ -379,14 +389,14 @@ void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
     // The worker is used for the actor creation task with dynamic options.
     // Put it into idle dedicated worker pool.
     const auto task_id = it->second;
-    state.idle_dedicated_workers[task_id] = std::move(worker);
+    state.idle_dedicated_workers[task_id] = worker;
   } else {
     // The worker is not used for the actor creation task without dynamic options.
     // Put the worker to the corresponding idle pool.
     if (worker->GetActorId().IsNil()) {
-      state.idle.insert(std::move(worker));
+      state.idle.insert(worker);
     } else {
-      state.idle_actor[worker->GetActorId()] = std::move(worker);
+      state.idle_actor[worker->GetActorId()] = worker;
     }
   }
 }

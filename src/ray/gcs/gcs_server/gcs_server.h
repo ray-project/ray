@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_GCS_SERVER_H
-#define RAY_GCS_GCS_SERVER_H
+#pragma once
 
 #include <ray/gcs/pubsub/gcs_pub_sub.h>
 #include <ray/gcs/redis_gcs_client.h>
@@ -48,7 +47,8 @@ class GcsActorManager;
 /// https://docs.google.com/document/d/1d-9qBlsh2UQHo-AWMWR0GptI_Ajwu4SKx0Q0LHKPpeI/edit#heading=h.csi0gaglj2pv
 class GcsServer {
  public:
-  explicit GcsServer(const GcsServerConfig &config);
+  explicit GcsServer(const GcsServerConfig &config,
+                     boost::asio::io_service &main_service);
   virtual ~GcsServer();
 
   /// Start gcs server.
@@ -81,7 +81,7 @@ class GcsServer {
   virtual void InitGcsActorManager();
 
   /// The job info handler
-  virtual std::unique_ptr<rpc::JobInfoHandler> InitJobInfoHandler();
+  virtual void InitJobInfoHandler();
 
   /// The object manager
   virtual std::unique_ptr<GcsObjectManager> InitObjectManager();
@@ -108,10 +108,10 @@ class GcsServer {
 
   /// Gcs server configuration
   GcsServerConfig config_;
+  /// The main io service to drive event posted from grpc threads.
+  boost::asio::io_context &main_service_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
-  /// The main io service to drive event posted from grpc threads.
-  boost::asio::io_context main_service_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
   rpc::ClientCallManager client_call_manager_;
   /// The gcs node manager.
@@ -155,5 +155,3 @@ class GcsServer {
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif

@@ -28,11 +28,13 @@
 namespace ray {
 namespace gcs {
 
-GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config)
+GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
+                     boost::asio::io_service &main_service)
     : config_(config),
+      main_service_(main_service),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
                   config.grpc_server_thread_num),
-      client_call_manager_(main_service_) {}
+      client_call_manager_(main_service) {}
 
 GcsServer::~GcsServer() { Stop(); }
 
@@ -59,7 +61,17 @@ void GcsServer::Start() {
   InitGcsActorManager();
 
   // Register rpc service.
-  job_info_handler_ = InitJobInfoHandler();
+  gcs_object_manager_ = InitObjectManager();
+  object_info_service_.reset(
+      new rpc::ObjectInfoGrpcService(main_service_, *gcs_object_manager_));
+  rpc_server_.RegisterService(*object_info_service_);
+
+  task_info_handler_ = InitTaskInfoHandler();
+  task_info_service_.reset(
+      new rpc::TaskInfoGrpcService(main_service_, *task_info_handler_));
+  rpc_server_.RegisterService(*task_info_service_);
+
+  InitJobInfoHandler();
   job_info_service_.reset(new rpc::JobInfoGrpcService(main_service_, *job_info_handler_));
   rpc_server_.RegisterService(*job_info_service_);
 
@@ -70,16 +82,6 @@ void GcsServer::Start() {
   node_info_service_.reset(
       new rpc::NodeInfoGrpcService(main_service_, *gcs_node_manager_));
   rpc_server_.RegisterService(*node_info_service_);
-
-  gcs_object_manager_ = InitObjectManager();
-  object_info_service_.reset(
-      new rpc::ObjectInfoGrpcService(main_service_, *gcs_object_manager_));
-  rpc_server_.RegisterService(*object_info_service_);
-
-  task_info_handler_ = InitTaskInfoHandler();
-  task_info_service_.reset(
-      new rpc::TaskInfoGrpcService(main_service_, *task_info_handler_));
-  rpc_server_.RegisterService(*task_info_service_);
 
   stats_handler_ = InitStatsHandler();
   stats_service_.reset(new rpc::StatsGrpcService(main_service_, *stats_handler_));
@@ -112,24 +114,17 @@ void GcsServer::Start() {
   gcs_actor_manager_->LoadInitialData(on_done);
   gcs_object_manager_->LoadInitialData(on_done);
   gcs_node_manager_->LoadInitialData(on_done);
-
-  // Run the event loop.
-  // Using boost::asio::io_context::work to avoid ending the event loop when
-  // there are no events to handle.
-  boost::asio::io_context::work worker(main_service_);
-  main_service_.run();
 }
 
 void GcsServer::Stop() {
-  RAY_LOG(INFO) << "Stopping gcs server.";
-  // Shutdown the rpc server
-  rpc_server_.Shutdown();
+  if (!is_stopped_) {
+    RAY_LOG(INFO) << "Stopping GCS server.";
+    // Shutdown the rpc server
+    rpc_server_.Shutdown();
 
-  // Stop the event loop.
-  main_service_.stop();
-
-  is_stopped_ = true;
-  RAY_LOG(INFO) << "Finished stopping gcs server.";
+    is_stopped_ = true;
+    RAY_LOG(INFO) << "GCS server stopped.";
+  }
 }
 
 void GcsServer::InitBackendClient() {
@@ -203,9 +198,12 @@ void GcsServer::InitGcsActorManager() {
   RAY_CHECK_OK(gcs_pub_sub_->SubscribeAll(WORKER_FAILURE_CHANNEL, on_subscribe, nullptr));
 }
 
-std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
-  return std::unique_ptr<rpc::DefaultJobInfoHandler>(
-      new rpc::DefaultJobInfoHandler(gcs_table_storage_, gcs_pub_sub_));
+void GcsServer::InitJobInfoHandler() {
+  job_info_handler_ = std::unique_ptr<rpc::GcsJobInfoHandler>(
+      new rpc::GcsJobInfoHandler(gcs_table_storage_, gcs_pub_sub_));
+  job_info_handler_->AddJobFinishedListener([this](std::shared_ptr<JobID> job_id) {
+    gcs_actor_manager_->OnJobFinished(*job_id);
+  });
 }
 
 std::unique_ptr<GcsObjectManager> GcsServer::InitObjectManager() {

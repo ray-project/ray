@@ -657,11 +657,23 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
         }));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
+    // For detached actors, make sure to remove its name.
+    if (actor->IsDetached()) {
+      auto it = named_actors_.find(actor->GetName());
+      if (it != named_actors_.end()) {
+        RAY_CHECK(it->second == actor->GetActorID());
+        named_actors_.erase(it);
+      }
+    }
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, *mutable_actor_table_data,
-        [this, actor_id, mutable_actor_table_data](Status status) {
+        [this, actor, actor_id, mutable_actor_table_data](Status status) {
+          // if actor was an detached actor, make sure to destroy it.
+          // We need to do this because detached actors are not destroyed
+          // when its owners are dead because it doesn't have owners.
+          if (actor->IsDetached()) DestroyActor(actor_id);
           RAY_CHECK_OK(gcs_pub_sub_->Publish(
               ACTOR_CHANNEL, actor_id.Hex(),
               mutable_actor_table_data->SerializeAsString(), nullptr));
@@ -750,6 +762,53 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
     done();
   };
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().GetAll(callback));
+}
+
+void GcsActorManager::OnJobFinished(const JobID &job_id) {
+  auto on_done = [this,
+                  job_id](const std::unordered_map<ActorID, ActorTableData> &result) {
+    if (!result.empty()) {
+      std::vector<ActorID> non_detached_actors;
+      std::unordered_set<ActorID> non_detached_actors_set;
+      for (auto &item : result) {
+        if (!item.second.is_detached()) {
+          non_detached_actors.push_back(item.first);
+          non_detached_actors_set.insert(item.first);
+        }
+      }
+      RAY_CHECK_OK(
+          gcs_table_storage_->ActorTable().BatchDelete(non_detached_actors, nullptr));
+
+      // Get checkpoint id first from checkpoint id table and delete all checkpoints
+      // related to this job
+      RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointIdTable().GetByJobId(
+          job_id, [this, non_detached_actors_set](
+                      const std::unordered_map<ActorID, ActorCheckpointIdData> &result) {
+            if (!result.empty()) {
+              std::vector<ActorID> checkpoints;
+              std::vector<ActorCheckpointID> checkpoint_ids;
+              for (auto &item : result) {
+                if (non_detached_actors_set.find(item.first) !=
+                    non_detached_actors_set.end()) {
+                  checkpoints.push_back(item.first);
+                  for (auto &id : item.second.checkpoint_ids()) {
+                    checkpoint_ids.push_back(ActorCheckpointID::FromBinary(id));
+                  }
+                }
+              }
+
+              RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointIdTable().BatchDelete(
+                  checkpoints, nullptr));
+              RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointTable().BatchDelete(
+                  checkpoint_ids, nullptr));
+            }
+          }));
+    }
+  };
+
+  // Only non-detached actors should be deleted. We get all actors of this job and to the
+  // filtering.
+  RAY_CHECK_OK(gcs_table_storage_->ActorTable().GetByJobId(job_id, on_done));
 }
 
 }  // namespace gcs

@@ -11,10 +11,11 @@ with the multi-agent particle envs.
 
 import logging
 
-from ray.rllib.agents.trainer import with_common_config
+from ray.rllib.agents.trainer import COMMON_CONFIG, with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.contrib.maddpg.maddpg_policy import MADDPGTFPolicy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.utils import merge_dicts
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -66,13 +67,14 @@ DEFAULT_CONFIG = with_common_config({
     # Observation compression. Note that compression makes simulation slow in
     # MPE.
     "compress_observations": False,
-    # In multi-agent mode, whether to replay experiences from the same time
-    # step for all policies. This is required for MADDPG.
-    "multiagent_sync_replay": True,
     # If set, this will fix the ratio of sampled to replayed timesteps.
     # Otherwise, replay will proceed at the native ratio determined by
     # (train_batch_size / rollout_fragment_length).
     "training_intensity": None,
+    # Force lockstep replay mode for MADDPG.
+    "multiagent": merge_dicts(COMMON_CONFIG["multiagent"], {
+        "replay_mode": "lockstep",
+    }),
 
     # === Optimization ===
     # Learning rate for the critic (Q-function) optimizer.

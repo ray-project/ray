@@ -5,6 +5,7 @@ import pytest
 import sys
 
 import ray
+from ray.test_utils import SignalActor
 
 
 def test_asyncio_actor(ray_start_regular_shared):
@@ -175,6 +176,26 @@ def test_asyncio_actor_async_get(ray_start_regular_shared):
     getter = AsyncGetter.remote()
     assert ray.get(getter.get.remote()) == 1
     assert ray.get(getter.plasma_get.remote([plasma_object])) == 2
+
+
+@pytest.mark.asyncio
+async def test_asyncio_double_await(ray_start_regular_shared):
+    # This is a regression test for
+    # https://github.com/ray-project/ray/issues/8841
+
+    signal = SignalActor.remote()
+    waiting = signal.wait.remote()
+
+    future = waiting.as_future()
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(future, timeout=0.1)
+    assert future.cancelled()
+
+    # We are explicitly waiting multiple times here to test asyncio state
+    # override.
+    await signal.send.remote()
+    await waiting
+    await waiting
 
 
 if __name__ == "__main__":

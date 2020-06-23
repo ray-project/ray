@@ -232,8 +232,10 @@ class SignalActor:
     def __init__(self):
         self.ready_event = asyncio.Event()
 
-    def send(self):
+    def send(self, clear=False):
         self.ready_event.set()
+        if clear:
+            self.ready_event.clear()
 
     async def wait(self, should_wait=True):
         if should_wait:
@@ -246,7 +248,7 @@ class Semaphore:
         self._sema = asyncio.Semaphore(value=value)
 
     async def acquire(self):
-        self._sema.acquire()
+        await self._sema.acquire()
 
     async def release(self):
         self._sema.release()
