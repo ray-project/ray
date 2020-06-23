@@ -59,6 +59,16 @@ The logical view shows you:
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/Logical-view-basic.png
     :align: center
 
+Memory View
+~~~~~~~~~~~~
+The memory view shows you:
+
+- The state of Ray objects, including their size, reference type, and call site.
+- A summary of reference types and object sizes in use.
+
+.. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/dashboard/Memory-view-basic.png
+    :align: center
+
 Ray Config
 ~~~~~~~~~~
 The ray config tab shows you the current autoscaler configuration.
@@ -126,6 +136,11 @@ As a result, the rest of ``Actor1`` will be pending.
 
 You can also see it is infeasible to create ``Actor2`` because it requires 4 GPUs which 
 is bigger than the total gpus available in this cluster (2 GPUs). 
+
+Debugging ObjectStoreFullError and Memory Leak
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+You can view information for Ray objects in the memory tab. It is useful to debug memory leaks, especially `ObjectStoreFullError`.
+Note that this is the same information as displayed in the `ray memory command <https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory>`_. For details about the information contained in the table, please see the `ray memory` documentation.
 
 Inspect Memory Usage
 ~~~~~~~~~~~~~~~~~~~~
@@ -293,6 +308,24 @@ You can see that the dashboard shows the parent/child relationship as expected.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/Logical-view-basic.png
     :align: center
+
+Memory
+~~~~~~
+**Pause Collection**: A button to stop/continue updating Ray memory tables.
+
+**IP Address**: Node IP Address where a Ray object is pinned.
+
+**Pid**: ID of a process where a Ray object is being used.
+
+**Type**: Type of a process. It is either a driver or worker.
+
+**Object ID**: Object ID of a Ray object.
+
+**Object Size** Object Size of a Ray object in bytes.
+
+**Reference Type**: Reference types of Ray objects. Checkout the `ray memory command <https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory>`_ to learn each reference type.
+
+**Call Site**: Call site where this Ray object is referenced.
 
 Ray Config
 ~~~~~~~~~~~~
