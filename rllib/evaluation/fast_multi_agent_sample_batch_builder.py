@@ -1,14 +1,18 @@
 import logging
 import numpy as np
-from typing import Optional, Union
+from typing import Dict, Optional, Union
 
+from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.env.base_env import _DUMMY_AGENT_ID
+from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.policy_trajectories import PolicyTrajectories
 from ray.rllib.evaluation.trajectory import Trajectory
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.env.base_env import _DUMMY_AGENT_ID
+from ray.rllib.utils.types import AgentID, EnvID, PolicyID, TensorType
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -18,21 +22,28 @@ logger = logging.getLogger(__name__)
 class _FastMultiAgentSampleBatchBuilder:
     """Builds SampleBatches for each policy (and agent) in a multi-agent env.
 
-    Input data is per-agent, while output data is per-policy. There is a
-    mapping from M agents to N policies (M can change over time; N is fixed at
-    beginning).
-    We retain one local batch builder per acting agent in the environment.
-    When an agent is done (or hits the rollout_fragment_len limit), its
-    batch is appended into the corresponding policy batch for the agent's
-    policy.
+    Once `_fast_sampling` becomes the default in configs: This class will
+    deprecate the `SampleBatchBuilder` class.
+
+    Input data is collected in `Trajectory` objects (per-agent), which
+    efficiently preallocate memory over n timesteps and re-use the same memory
+    even for succeeding agents and episodes.
+    Once an agent is done (episode terminated for this agent or the Sampler hit
+    the `rollout_fragment_len` limit), the agent's Trajectory is appended
+    (as a SampleBatch object) to a corresponding `PolicyTrajectories` object,
+    which holds all data for one Policy (note that M agents map to N Policies,
+    where M >= N).
     """
 
-    def __init__(self, policy_map, clip_rewards, callbacks,
+    def __init__(self, policy_map: Dict[PolicyID, Policy],
+                 clip_rewards: Union[bool, float],
+                 callbacks: DefaultCallbacks,
                  buffer_size: Optional[Union[float, int]]):
-        """Initializes a MultiAgentSampleBatchBuilder object.
+        """Initializes a _FastMultiAgentSampleBatchBuilder object.
 
         Args:
-            policy_map (Dict[str,Policy]): Maps policy ids to policy instances.
+            policy_map (Dict[PolicyID,Policy]): Maps policy ids to policy
+                instances.
             clip_rewards (Union[bool,float]): Whether to clip rewards before
                 postprocessing (at +/-1.0) or the actual value to +/- clip.
             callbacks (DefaultCallbacks): RLlib callbacks.
@@ -61,7 +72,7 @@ class _FastMultiAgentSampleBatchBuilder:
         # Regardless of the number of agents involved in each of these steps.
         self.count = 0
 
-    def total(self):
+    def total(self) -> int:
         """Returns total number of steps taken in the env (sum of all agents).
 
         Returns:
@@ -71,7 +82,7 @@ class _FastMultiAgentSampleBatchBuilder:
 
         return sum(a.timestep for a in self.single_agent_trajectories.values())
 
-    def has_pending_agent_data(self):
+    def has_pending_agent_data(self) -> bool:
         """Returns whether there is pending unprocessed data.
 
         Returns:
@@ -82,14 +93,19 @@ class _FastMultiAgentSampleBatchBuilder:
         return self.total() > 0
 
     @DeveloperAPI
-    def add_init_obs(self, env_id, agent_id, policy_id, obs):
+    def add_init_obs(self,
+                     env_id: EnvID,
+                     agent_id: AgentID,
+                     policy_id: PolicyID,
+                     obs: TensorType) -> None:
         """Add the given dictionary (row) of values to this batch.
 
         Arguments:
-            env_id (obj): Unique id for the episode we are adding values for.
-            agent_id (obj): Unique id for the agent we are adding values for.
-            policy_id (obj): Unique id for policy controlling the agent.
-            obs (any): Initial observation (after env.reset()).
+            env_id (EnvID): Unique id for the episode we are adding values for.
+            agent_id (AgentID): Unique id for the agent we are adding
+                values for.
+            policy_id (PolicyID): Unique id for policy controlling the agent.
+            obs (TensorType): Initial observation (after env.reset()).
         """
         # Make sure our mappings are up to date.
         if agent_id not in self.agent_to_policy:
@@ -106,14 +122,19 @@ class _FastMultiAgentSampleBatchBuilder:
             env_id, agent_id, policy_id, obs)
 
     @DeveloperAPI
-    def add_action_reward_next_obs(self, env_id, agent_id, policy_id,
-                                   **values):
+    def add_action_reward_next_obs(self,
+                                   env_id: EnvID,
+                                   agent_id: AgentID,
+                                   policy_id: PolicyID,
+                                   **values: Dict[str, TensorType]) -> None:
         """Add the given dictionary (row) of values to this batch.
 
         Args:
-            agent_id (obj): Unique id for the agent we are adding values for.
-            policy_id (obj): Unique id for policy controlling the agent.
-            values (dict): Row of values to add for this agent.
+            env_id (EnvID): Unique id for the episode we are adding values for.
+            agent_id (AgentID): Unique id for the agent we are adding
+                values for.
+            policy_id (PolicyID): Unique id for policy controlling the agent.
+            values (Dict[str,TensorType]): Row of values to add for this agent.
         """
         assert agent_id in self.single_agent_trajectories
 
@@ -131,7 +152,9 @@ class _FastMultiAgentSampleBatchBuilder:
         self.single_agent_trajectories[agent_id].add_action_reward_next_obs(
             env_id, agent_id, policy_id, values)
 
-    def postprocess_batch_so_far(self, episode=None):
+    def postprocess_batch_so_far(
+        self,
+        episode: Optional[MultiAgentEpisode] = None) -> None:
         """Apply policy postprocessors to any unprocessed rows.
 
         This pushes the postprocessed per-agent data into the
@@ -205,7 +228,7 @@ class _FastMultiAgentSampleBatchBuilder:
             self.policy_trajectories[self.agent_to_policy[
                 agent_id]].add_sample_batch(post_batch)
 
-    def check_missing_dones(self):
+    def check_missing_dones(self) -> None:
         for agent_id, trajectory in self.single_agent_trajectories.items():
             if not trajectory.buffers["dones"][trajectory.cursor - 1]:
                 raise ValueError(
@@ -218,7 +241,9 @@ class _FastMultiAgentSampleBatchBuilder:
                     "Alternatively, set no_done_at_end=True to allow this.")
 
     @DeveloperAPI
-    def get_multi_agent_batch_and_reset(self, episode=None):
+    def get_multi_agent_batch_and_reset(
+        self,
+        episode: Optional[MultiAgentEpisode] = None) -> MultiAgentBatch:
         """Returns the accumulated sample batches for each policy.
 
         Any unprocessed rows will be first postprocessed with a policy

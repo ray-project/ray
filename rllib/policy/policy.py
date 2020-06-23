@@ -95,7 +95,8 @@ class Policy(metaclass=ABCMeta):
                 action (default: None -> use self.config["explore"]).
             timestep (int): The current (sampling) time step.
             trajectories (List[Trajectory]): A List of Trajectory data used
-                to create a view for the Model forward call.
+                to create a view for the Model forward call. Only used so far
+                iff `_fast_sampling=True` (only supported for torch).
             kwargs: forward compatibility placeholder
 
         Returns:

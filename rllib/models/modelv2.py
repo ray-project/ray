@@ -1,5 +1,6 @@
 from collections import OrderedDict
 import gym
+from typing import Dict
 
 from ray.rllib.models.preprocessors import get_preprocessor, \
     RepeatedValuesPreprocessor
@@ -9,6 +10,7 @@ from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.spaces.repeated import Repeated
+from ray.rllib.utils.types import ModelConfigDict
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -16,7 +18,7 @@ torch, _ = try_import_torch()
 
 @PublicAPI
 class ModelV2:
-    """Defines a Keras-style abstract network model for use with RLlib.
+    """Defines an abstract neural network model for use with RLlib.
 
     Custom models should extend either TFModelV2 or TorchModelV2 instead of
     this class directly.
@@ -24,31 +26,37 @@ class ModelV2:
     Data flow:
         obs -> forward() -> model_out
                value_function() -> V(s)
-
-    Attributes:
-        obs_space (gym.spaces.Space): Observation space of the target gym env.
-            This may have an `original_space` attribute that specifies how to
-            unflatten the tensor into a ragged tensor.
-        action_space (gym.spaces.Space): Action space of the target gym env.
-        num_outputs (int): Number of output units of the model.
-        model_config (dict): Config for the model, documented in ModelCatalog.
-        name (str): Name (scope) for the model.
-        framework (str): Either "tf" or "torch".
     """
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name, framework):
-        """Initialize the model.
+    def __init__(self,
+                 obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space,
+                 num_outputs: int,
+                 model_config: ModelConfigDict,
+                 name: str,
+                 framework: str):
+        """Initializes a ModelV2 object.
 
         This method should create any variables used by the model.
+
+        Args:
+            obs_space (gym.spaces.Space): Observation space of the target gym env.
+                This may have an `original_space` attribute that specifies how to
+                unflatten the tensor into a ragged tensor.
+            action_space (gym.spaces.Space): Action space of the target gym env.
+            num_outputs (int): Number of output units of the model.
+            model_config (ModelConfigDict): Config for the model, documented in
+                ModelCatalog.
+            name (str): Name (scope) for the model.
+            framework (str): Either "tf" or "torch".
         """
 
-        self.obs_space = obs_space
-        self.action_space = action_space
-        self.num_outputs = num_outputs
-        self.model_config = model_config
-        self.name = name or "default_model"
-        self.framework = framework
+        self.obs_space: gym.spaces.Space = obs_space
+        self.action_space: gym.spaces.Space = action_space
+        self.num_outputs: int = num_outputs
+        self.model_config: ModelConfigDict = model_config
+        self.name: str = name or "default_model"
+        self.framework: str = framework
         self._last_output = None
 
     def get_initial_state(self):

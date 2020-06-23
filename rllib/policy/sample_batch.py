@@ -63,10 +63,11 @@ class SampleBatch:
         """Constructs a sample batch (same params as dict constructor)."""
 
         # Placeholder for a last_obs value (in an n x sars'-trajectory).
-        # Only used if _fast_sampling=True in the config to be able to
-        # deprecate the NEXT_OBS field entirely.
+        # Only used if _fast_sampling=True in the Policy's config to be able to
+        # deprecate the SampleBatch.NEXT_OBS field entirely soon.
         self.last_obs = kwargs.pop("_last_obs", None)
 
+        # The actual data, accessible by column name (str).
         self.data = dict(*args, **kwargs)
 
         lengths = []

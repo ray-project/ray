@@ -1,11 +1,12 @@
 import logging
 import numpy as np
-from typing import Optional
+from typing import Dict, Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.types import AgentID, EnvID, PolicyID, TensorType
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -18,15 +19,17 @@ class Trajectory:
     """A trajectory of a (single) agent throughout one episode.
 
     Collects all data produced by the environment during stepping of the agent
-    as well as all model outputs associated with the agent's Policy.
+    as well as all model outputs associated with the agent's Policy into
+    pre-allocated buffers of n timesteps capacity (`self.buffer_size`).
     NOTE: A Trajectory object may contain remainders of a previous trajectory,
     however, these are only kept for avoiding memory re-allocations. A
-    convenience cursor and offset allow for only "viewing" the currently
-    ongoing trajectory.
-    Pre-allocation happens over a given `horizon` range of timesteps. `horizon`
-    may be float("inf"), in which case, we will allocate for some fixed
-    n timesteps and double (re-allocate) the buffers each time this limit is
-    reached.
+    convenience cursor and offset-pointers allow for only "viewing" the
+    currently ongoing trajectory.
+    Memory re-allocation into larger buffers (`self.buffer_size *= 2`) only
+    happens if unavoidable (in case the buffer is full AND the currently ongoing
+    trajectory (episode) takes more than half of the buffer). In all other
+    cases, the same buffer is used for succeeding episodes/trejactories (even
+    for different agents).
     """
 
     # Disambiguate unrolls within a single episode.
@@ -38,14 +41,17 @@ class Trajectory:
 
         Args:
             buffer_size (Optional[int]): The max number of timesteps to
-                fit into one buffer column.
+                fit into one buffer column. When re-allocating
         """
-        self.env_id = None
-        self.agent_id = None
-        self.policy_id = None
+        # The current occupant (agent X in env Y using policy Z) of our buffers.
+        self.env_id: EnvID = None
+        self.agent_id: AgentID = None
+        self.policy_id: PolicyID = None
 
         # Determine the size of the initial buffers.
         self.buffer_size = buffer_size or 1000
+        # The actual buffer holding dict (by column name (str) -> numpy/torch/tf
+        # tensors).
         self.buffers = {}
 
         self.has_initial_obs: bool = False
@@ -60,19 +66,25 @@ class Trajectory:
         self.sample_batch_offset: int = 0
 
     @property
-    def timestep(self):
-        # The timestep in the (currently ongoing) trajectory.
+    def timestep(self) -> int:
+        """The timestep in the (currently ongoing) trajectory."""
         return self.cursor - self.trajectory_offset
 
     @PublicAPI
-    def add_init_obs(self, env_id, agent_id, policy_id, init_obs):
+    def add_init_obs(self,
+                     env_id: EnvID,
+                     agent_id: AgentID,
+                     policy_id: PolicyID,
+                     init_obs: TensorType) -> None:
         """Adds a single initial observation (after env.reset()) to the buffer.
 
         Args:
-            env_id (str): The env's ID for which we want to store the initial
-                observation.
-            agent_id (str): The agent's ID whose observation we want to store.
-            init_obs (any): Initial observation (after env.reset()).
+            env_id (EnvID): Unique id for the episode we are adding the initial
+                observation for.
+            agent_id (AgentID): Unique id for the agent we are adding the
+                initial observation for.
+            policy_id (PolicyID): Unique id for policy controlling the agent.
+            init_obs (TensorType): Initial observation (after env.reset()).
         """
         # Our buffer should be empty when we add the first observation.
         if SampleBatch.OBS not in self.buffers:
@@ -97,13 +109,22 @@ class Trajectory:
         self.policy_id = policy_id
 
     @PublicAPI
-    def add_action_reward_next_obs(self, env_id, agent_id, policy_id, values):
+    def add_action_reward_next_obs(self,
+                                   env_id: EnvID,
+                                   agent_id: AgentID,
+                                   policy_id: PolicyID,
+                                   values: Dict[str, TensorType]) -> None:
         """Add the given dictionary (row) of values to this batch.
 
         Args:
-            values (Dict[str,any]): Data dict (interpreted as a single row)
-                to be added to buffer. Must contain keys: SampleBatch.ACTIONS,
-                REWARDS, DONES, and OBS.
+            env_id (EnvID): Unique id for the episode we are adding the initial
+                observation for.
+            agent_id (AgentID): Unique id for the agent we are adding the
+                initial observation for.
+            policy_id (PolicyID): Unique id for policy controlling the agent.
+            values (Dict[str, TensorType]): Data dict (interpreted as a single
+                row) to be added to buffer.
+                Must contain keys: SampleBatch.ACTIONS, REWARDS, DONES, and OBS.
         """
         assert self.has_initial_obs is True
         assert (SampleBatch.ACTIONS in values and SampleBatch.REWARDS in values
@@ -142,7 +163,10 @@ class Trajectory:
         Returns:
             SampleBatch: The SampleBatch containing this agent's data for the
                 entire trajectory (so far). The trajectory may not be
-                terminated yet.
+                terminated yet. This SampleBatch object will contain a
+                `_last_obs` property, which contains the last observation for
+                this agent. This should be used by postprocessing functions
+                instead of the SampleBatch.NEXT_OBS field, which is deprecated.
         """
 
         # Convert all our data to numpy arrays, compress float64 to float32,

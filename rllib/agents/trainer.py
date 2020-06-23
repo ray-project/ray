@@ -215,14 +215,16 @@ COMMON_CONFIG = {
     # advisable to turn on unless your env specifically requires it).
     "sample_async": False,
 
-    # Experimental flag to speed up sampling. If set, uses a new
-    # SampleBatchBuilder class that lazily gathers data (e.g. torch GPU
-    # Tensors for actions, numpy arrays for env-produced obs and rewards)
-    # instead of always moving everything into numpy (from the GPU, back to the
-    # CPU, then back again to the GPU for the next forward pass).
-    # When post-processing, hands the respective method a “lazy_numpy_dict”,
-    # such that accessed items will automatically be detached (and put on CPU)
-    # for numpy-postprocessing.
+    # Experimental flag to speed up sampling. If True, uses a new
+    # _FastSampleBatchBuilder (instead of SampleBatchBuilder) that pre-allocates
+    # sufficient memory to store n timesteps, then "lazily" gathers data
+    # (e.g. as torch GPU Tensors for actions, numpy arrays for
+    # env-produced obs and rewards, etc..) instead of always moving everything
+    # into numpy.
+    # When the buffers are full, memory re-allocation only happens if the
+    # currently ongoing episode requires it (otherwise, the same buffer is re-
+    # used).
+    # NOTE: Only supported for PyTorch so far.
     "_fast_sampling": False,
 
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter".

@@ -135,6 +135,9 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
 
     @override(ModelV2)
     def get_view_requirements(self, is_training=False):
-        return [
-            ViewRequirement("obs"),
-        ]
+        """Default implementation for simple RL model.
+
+        Takes current observation as only required input.
+        """
+        # Single requirement: Pass current obs as input.
+        return [ViewRequirement("obs")]

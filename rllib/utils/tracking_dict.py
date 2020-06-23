@@ -18,11 +18,7 @@ class UsageTrackingDict(dict):
         self.get_interceptor = fn
 
     def copy(self):
-        copy = UsageTrackingDict(**dict.copy(self))
-        copy.accessed_keys = self.accessed_keys
-        copy.intercepted_values = self.intercepted_values
-        copy.get_interceptor = self.get_interceptor
-        return copy
+        return UsageTrackingDict(**dict.copy(self))
 
     def __getitem__(self, key):
         self.accessed_keys.add(key)
