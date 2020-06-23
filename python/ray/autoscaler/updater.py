@@ -244,9 +244,11 @@ class SSHCommandRunner:
             port_forward=None,
             with_output=False,
             ssh_options=None):
+        ssh_options = ssh_options or self.base_ssh_options
+
         assert isinstance(ssh_options,
                           SSHOptions), "ssh_options must be of type SSHOptions"
-        ssh_options = ssh_options or self.base_ssh_options
+
         self.set_ssh_ip_if_required()
 
         ssh = ["ssh", "-tt"]
