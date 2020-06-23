@@ -207,8 +207,9 @@ class ResourceSpec(
             "with ray.init(memory=<bytes>, "
             "object_store_memory=<bytes>).".format(
                 round(
-                    ray_constants.round_bytes(memory, round_up=False) /
-                    (1024**3), 2), round(object_store_memory / (1024**3), 2)))
+                    ray_constants.round_to_nearest_memory_units(
+                        memory, round_up=False) / (1024**3), 2),
+                round(object_store_memory / (1024**3), 2)))
 
         spec = ResourceSpec(num_cpus, num_gpus, memory, object_store_memory,
                             resources, redis_max_memory)
