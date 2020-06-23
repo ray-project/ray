@@ -195,11 +195,11 @@ def build_tf_policy(name,
     def with_updates(**overrides):
         return build_tf_policy(**dict(original_kwargs, **overrides))
 
-    def as_eager():
-        return eager_tf_policy.build_eager_tf_policy(**original_kwargs)
+    def as_eager(cls):
+        return eager_tf_policy.build_eager_tf_policy(cls=cls, **original_kwargs)
 
     policy_cls.with_updates = staticmethod(with_updates)
-    policy_cls.as_eager = staticmethod(as_eager)
+    policy_cls.as_eager = classmethod(as_eager)
     policy_cls.__name__ = name
     policy_cls.__qualname__ = name
     return policy_cls
