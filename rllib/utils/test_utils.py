@@ -276,14 +276,20 @@ def check_compute_single_action(trainer,
     except AttributeError:
         pol = trainer.policy
 
-    obs_space = pol.observation_space
     action_space = pol.action_space
 
     for what in [pol, trainer]:
         if what is trainer:
             method_to_test = trainer.compute_action
+            # Get the obs-space from Workers.env (not Policy) due to possible
+            # pre-processor up front.
+            if isinstance(trainer.workers, list):
+                obs_space = trainer.workers[0].env.observation_space
+            else:
+                obs_space = trainer.workers.local_worker().env.observation_space
         else:
             method_to_test = pol.compute_single_action
+            obs_space = pol.observation_space
 
         for explore in [True, False]:
             for full_fetch in ([False, True] if what is trainer else [False]):

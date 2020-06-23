@@ -778,9 +778,9 @@ class Trainer(Trainable):
     @PublicAPI
     def compute_action(self,
                        observation: TensorStructType,
-                       state: List[Any] = None,
+                       state: List[TensorStructType] = None,
                        prev_action: TensorStructType = None,
-                       prev_reward: int = None,
+                       prev_reward: float = None,
                        info: EnvInfoDict = None,
                        policy_id: PolicyID = DEFAULT_POLICY_ID,
                        full_fetch: bool = False,
@@ -791,16 +791,16 @@ class Trainer(Trainable):
         self.get_policy(policy_id) and call compute_actions() on it directly.
 
         Arguments:
-            observation (obj): observation from the environment.
-            state (list): RNN hidden state, if any. If state is not None,
-                then all of compute_single_action(...) is returned
+            observation (TensorStructType): observation from the environment.
+            state (List[TensorStructType]): RNN hidden state, if any. If state
+                is not None, then all of compute_single_action(...) is returned
                 (computed action, rnn state(s), logits dictionary).
                 Otherwise compute_single_action(...)[0] is returned
                 (computed action).
-            prev_action (obj): previous action value, if any
-            prev_reward (int): previous reward, if any
-            info (dict): info object, if any
-            policy_id (str): Policy to query (only applies to multi-agent).
+            prev_action (TensorStructType): Previous action value, if any.
+            prev_reward (float): Previous reward, if any.
+            info (EnvInfoDict): info object, if any
+            policy_id (PolicyID): Policy to query (only applies to multi-agent).
             full_fetch (bool): Whether to return extra action fetch results.
                 This is always set to True if RNN state is specified.
             explore (bool): Whether to pick an exploitation or exploration
