@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-include "common.fbs";
-
 // Plasma protocol specification
 namespace plasma.flatbuf;
 
@@ -309,10 +307,6 @@ table PlasmaEvictReply {
 }
 
 table PlasmaSubscribeRequest {
-}
-
-table PlasmaNotification {
-  object_info: [ObjectInfo];
 }
 
 table PlasmaDataRequest {
