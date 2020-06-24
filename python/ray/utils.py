@@ -397,12 +397,13 @@ def open_log(path, **kwargs):
     return open(path, **kwargs)
 
 
-def open_worker_log(path, worker_pid):
+def create_and_init_new_worker_log(path, worker_pid):
     """
     Opens a path (or creates if necessary) for a log.
 
     Args:
         path (str): The name/path of the file to be opened.
+        worker_pid (int): The pid of the worker process.
 
     Returns:
         A file-like object which can be written to.

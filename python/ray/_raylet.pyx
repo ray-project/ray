@@ -308,15 +308,17 @@ cdef prepare_args(
                         core_worker.put_serialized_object(serialized_arg)))))
 
 
-def switch_worker_log(worker, next_job_id):
-    if (worker.current_logging_job is None) or \
-            (worker.current_logging_job != next_job_id):
+def switch_worker_log_if_needed(worker, next_job_id):
+    if worker.mode != ray.WORKER_MODE:
+        return
+    if (worker.current_logging_job_id is None) or \
+            (worker.current_logging_job_id != next_job_id):
         job_stdout_path, job_stderr_path = (
             worker.node.get_job_redirected_log_file(
                 worker.worker_id, next_job_id.binary())
         )
         ray.worker.set_log_file(job_stdout_path, job_stderr_path)
-        worker.current_logging_job = next_job_id
+        worker.current_logging_job_id = next_job_id
 
 
 cdef execute_task(
@@ -455,7 +457,7 @@ cdef execute_task(
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
                 try:
-                    switch_worker_log(worker, job_id)
+                    switch_worker_log_if_needed(worker, job_id)
                     with ray.worker._changeproctitle(title, next_title):
                         outputs = function_executor(*args, **kwargs)
                     task_exception = False
@@ -966,11 +968,10 @@ cdef class CoreWorker:
             prepare_args(self, language, args, &args_vector)
 
             with nogil:
-                check_status(
-                    CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
-                        c_actor_id,
-                        ray_function,
-                        args_vector, task_options, &return_ids))
+                CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
+                    c_actor_id,
+                    ray_function,
+                    args_vector, task_options, &return_ids)
 
             return VectorToObjectIDs(return_ids)
 

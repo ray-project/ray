@@ -170,10 +170,9 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
 
   std::vector<ObjectID> return_ids;
-  auto status = ray::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
+  ray::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
       actor_id, ray_function, task_args, task_options, &return_ids);
 
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return NativeIdVectorToJavaByteArrayList(env, return_ids);
 }
 
