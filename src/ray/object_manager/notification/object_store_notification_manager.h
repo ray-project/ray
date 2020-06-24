@@ -21,6 +21,8 @@
 
 #include <boost/asio.hpp>
 
+#include "absl/synchronization/mutex.h"
+
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/format/object_manager_generated.h"
@@ -42,6 +44,7 @@ class ObjectStoreNotificationManager {
   /// \param callback A callback expecting an ObjectID.
   void SubscribeObjAdded(
       std::function<void(const object_manager::protocol::ObjectInfoT &)> callback) {
+    absl::MutexLock lock(&store_add_mutex_);
     add_handlers_.push_back(std::move(callback));
   }
 
@@ -49,12 +52,14 @@ class ObjectStoreNotificationManager {
   ///
   /// \param callback A callback expecting an ObjectID.
   void SubscribeObjDeleted(std::function<void(const ray::ObjectID &)> callback) {
+    absl::MutexLock lock(&store_remove_mutex_);
     rem_handlers_.push_back(std::move(callback));
   }
 
   /// Support for rebroadcasting object add/rem events.
   void ProcessStoreAdd(const object_manager::protocol::ObjectInfoT &object_info) {
     // TODO(suquark): Use strand in boost asio to enforce sequential execution.
+    absl::MutexLock lock(&store_add_mutex_);
     for (auto &handler : add_handlers_) {
       main_service_->post([handler, object_info]() { handler(object_info); });
     }
@@ -62,6 +67,7 @@ class ObjectStoreNotificationManager {
   }
 
   void ProcessStoreRemove(const ObjectID &object_id) {
+    absl::MutexLock lock(&store_remove_mutex_);
     for (auto &handler : rem_handlers_) {
       main_service_->post([handler, object_id]() { handler(object_id); });
     }
@@ -86,6 +92,8 @@ class ObjectStoreNotificationManager {
   std::vector<std::function<void(const object_manager::protocol::ObjectInfoT &)>>
       add_handlers_;
   std::vector<std::function<void(const ray::ObjectID &)>> rem_handlers_;
+  absl::Mutex store_add_mutex_;
+  absl::Mutex store_remove_mutex_;
   int64_t num_adds_processed_;
   int64_t num_removes_processed_;
 };
