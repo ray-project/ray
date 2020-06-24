@@ -30,9 +30,10 @@ public interface TaskSubmitter {
    * @param args Arguments of this task.
    * @param options Options for this actor creation task.
    * @return Handle to the actor.
+   * @throws IllegalArgumentException if actor of specified name exists
    */
   BaseActorHandle createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
-                              ActorCreationOptions options);
+                              ActorCreationOptions options) throws IllegalArgumentException;
 
   /**
    * Submit an actor task.

@@ -156,8 +156,9 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   @Override
-  public BaseActorHandle createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
-                                     ActorCreationOptions options) {
+  public BaseActorHandle createActor(
+      FunctionDescriptor functionDescriptor, List<FunctionArg> args,
+      ActorCreationOptions options) throws IllegalArgumentException {
     ActorId actorId = ActorId.fromRandom();
     TaskSpec taskSpec = getTaskSpecBuilder(TaskType.ACTOR_CREATION_TASK, functionDescriptor, args)
         .setNumReturns(1)

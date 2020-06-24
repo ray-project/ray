@@ -48,10 +48,11 @@ public class NamedActorTest extends BaseTest {
         Integer.valueOf(2));
   }
 
+  @Test(expectedExceptions = IllegalArgumentException.class)
   public void testActorDuplicatedName() {
     String name = "named-actor-counter";
     // Create an actor.
-    ActorHandle<Counter> actor = Ray.actor(Counter::new).setName(name).remote();
+    Ray.actor(Counter::new).setName(name).remote();
     // Registering with the same name should fail.
     Ray.actor(Counter::new).setName(name).remote();
   }
