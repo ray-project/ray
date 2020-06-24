@@ -18,3 +18,10 @@ export const getWeightedAverage = (
 };
 
 export const sum = (vals: number[]) => vals.reduce((acc, val) => acc + val, 0);
+
+export const filterObj = (obj: Object, filterFn: any) =>
+  Object.fromEntries(Object.entries(obj).filter(filterFn));
+
+export const mapObj = (obj: Object, filterFn: any) =>
+  Object.fromEntries(Object.entries(obj).map(filterFn));
+

@@ -26,24 +26,24 @@ const useSortableTableHeadStyles = makeStyles((theme: Theme) =>
   }),
 );
 
-export type HeaderInfo = {
+export type HeaderInfo<T> = {
   sortable: boolean;
-  id: string;
+  id: T;
   label: string;
   numeric: boolean;
 };
 
-type SortableTableHeadProps = {
-  onRequestSort: (event: React.MouseEvent<unknown>, id: string) => void;
+type SortableTableHeadProps<T> = {
+  onRequestSort: (event: React.MouseEvent<unknown>, id: T) => void;
   order: Order;
-  orderBy: string | null;
-  headerInfo: HeaderInfo[];
+  orderBy: T | null;
+  headerInfo: HeaderInfo<T>[];
 };
 
-const SortableTableHead = (props: SortableTableHeadProps) => {
+const SortableTableHead = <T,>(props: SortableTableHeadProps<T>) => {
   const { order, orderBy, onRequestSort, headerInfo } = props;
   const classes = useSortableTableHeadStyles();
-  const createSortHandler = (id: string) => (
+  const createSortHandler = (id: T) => (
     event: React.MouseEvent<unknown>,
   ) => {
     onRequestSort(event, id);

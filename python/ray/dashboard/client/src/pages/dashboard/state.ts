@@ -7,6 +7,7 @@ import {
   TuneAvailabilityResponse,
   TuneJobResponse,
 } from "../../api";
+import {mapObj, filterObj} from "../../common/util"
 
 const name = "dashboard";
 
@@ -53,8 +54,8 @@ const slice = createSlice({
         rayletInfo: RayletInfoResponse;
       }>,
     ) => {
-      state.nodeInfo = action.payload.nodeInfo;
       state.rayletInfo = action.payload.rayletInfo;
+      state.nodeInfo = filterNonClusterWorkerInfo(action.payload.rayletInfo, action.payload.nodeInfo);
       state.lastUpdatedAt = Date.now();
     },
     setTuneInfo: (state, action: PayloadAction<TuneJobResponse>) => {
@@ -82,6 +83,49 @@ const slice = createSlice({
     },
   },
 });
+
+const clusterWorkerPids = (
+  rayletInfo: RayletInfoResponse,
+): Map<string, Set<string>> => {
+  // Groups PIDs registered with the raylet by node IP address
+  // This is used to filter out processes belonging to other ray clusters.
+  const nodeMap = new Map();
+  const workerPids = new Set();
+  for (const [nodeIp, { workersStats }] of Object.entries(rayletInfo.nodes)) {
+    for (const worker of workersStats) {
+      if (!worker.isDriver) {
+        workerPids.add(worker.pid.toString());
+      }
+    }
+    nodeMap.set(nodeIp, workerPids);
+  }
+  return nodeMap;
+};
+
+const filterNonClusterWorkerInfo = (rayletInfo: RayletInfoResponse, nodeInfo: NodeInfoResponse) => {
+  const workerPidsByIP = clusterWorkerPids(rayletInfo);
+  const filteredClients = nodeInfo.clients.map(client => {
+    const workerPids = workerPidsByIP.get(client.ip);
+    const workers = client.workers.filter(worker => workerPids?.has(worker.pid.toString()));
+    client.workers = workers;
+    return client;
+  });
+  const filteredLogEntries = mapObj(nodeInfo.log_counts, (ip: string, pidToCount: {pid: string}) => {
+    const workerPids = workerPidsByIP.get(ip);
+    const filteredPidToCount = filterObj(pidToCount, (pid: string) => workerPids?.has(pid));
+    return [ip, filteredPidToCount]
+  });
+  const filteredErrEntries = mapObj(nodeInfo.error_counts, (ip: string, pidToCount: {pid: string}) => {
+    const workerPids = workerPidsByIP.get(ip);
+    const filteredPidToCount = filterObj(pidToCount, (pid: string) => workerPids?.has(pid));
+    return [ip, filteredPidToCount]
+  });
+  return {
+    clients: filteredClients,
+    log_counts: filteredLogEntries,
+    error_counts: filteredErrEntries,
+  };
+}
 
 export const dashboardActions = slice.actions;
 export const dashboardReducer = slice.reducer;

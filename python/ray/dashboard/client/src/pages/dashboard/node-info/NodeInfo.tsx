@@ -3,15 +3,11 @@ import {
   makeStyles,
   Table,
   TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
   Theme,
   Typography,
 } from "@material-ui/core";
 import React, { useState } from "react";
 import { useSelector } from "react-redux";
-import { RayletInfoResponse } from "../../../api";
 import SortableTableHead, {
   HeaderInfo,
 } from "../../../common/SortableTableHead";
@@ -22,24 +18,6 @@ import Errors from "./dialogs/errors/Errors";
 import Logs from "./dialogs/logs/Logs";
 import NodeRowGroup from "./NodeRowGroup";
 import TotalRow from "./TotalRow";
-
-const clusterWorkerPids = (
-  rayletInfo: RayletInfoResponse,
-): Map<string, Set<string>> => {
-  // Groups PIDs registered with the raylet by node IP address
-  // This is used to filter out processes belonging to other ray clusters.
-  const nodeMap = new Map();
-  const workerPids = new Set();
-  for (const [nodeIp, { workersStats }] of Object.entries(rayletInfo.nodes)) {
-    for (const worker of workersStats) {
-      if (!worker.isDriver) {
-        workerPids.add(worker.pid.toString());
-      }
-    }
-    nodeMap.set(nodeIp, workerPids);
-  }
-  return nodeMap;
-};
 
 const useNodeInfoStyles = makeStyles((theme: Theme) =>
   createStyles({
@@ -66,7 +44,18 @@ type DialogState = {
   pid: number | null;
 } | null;
 
-const nodeInfoHeaders: HeaderInfo[] = [
+type NodeAggregation = {
+    [ip: string]: {
+      perWorker: {
+        [pid: string]: number;
+      };
+      total: number;
+    };
+  }
+
+type nodeInfoColumnId = "host" | "workers" | "uptime" | "cpu" | "ram" | "gpu" | "gram" | "disk" | "sent" | "received" | "logs" | "errors"
+
+const nodeInfoHeaders: HeaderInfo<nodeInfoColumnId>[] = [
   { id: "host", label: "Host", numeric: true, sortable: true },
   { id: "workers", label: "PID", numeric: true, sortable: false },
   { id: "uptime", label: "Uptime (s)", numeric: true, sortable: true },
@@ -95,57 +84,24 @@ const NodeInfo: React.FC<{}> = () => {
   if (nodeInfo === null || rayletInfo === null) {
     return <Typography color="textSecondary">Loading...</Typography>;
   }
+  const clusterTotalWorkers = sum(nodeInfo.clients.map(c => c.workers.length));
 
-  const logCounts: {
-    [ip: string]: {
-      perWorker: {
-        [pid: string]: number;
-      };
-      total: number;
-    };
-  } = {};
-
-  const errorCounts: {
-    [ip: string]: {
-      perWorker: {
-        [pid: string]: number;
-      };
-      total: number;
-    };
-  } = {};
-
-  // We fetch data about which process IDs are registered with
-  // the cluster's raylet for each node. We use this to filter
-  // the worker data contained in the node info data because
-  // the node info can contain data from more than one cluster
-  // if more than one cluster is running on a machine.
-  const clusterWorkerPidsByIp = clusterWorkerPids(rayletInfo);
-  const clusterTotalWorkers = sum(
-    Array.from(clusterWorkerPidsByIp.values()).map(
-      (workerSet) => workerSet.size,
-    ),
-  );
+  const logCounts: NodeAggregation = {};
+  const errorCounts: NodeAggregation = {};
   // Initialize inner structure of the count objects
   for (const client of nodeInfo.clients) {
-    const clusterWorkerPids = clusterWorkerPidsByIp.get(client.ip);
-    if (!clusterWorkerPids) {
-      continue;
-    }
-    const filteredLogEntries = Object.entries(
-      nodeInfo.log_counts[client.ip] || {},
-    ).filter(([pid, _]) => clusterWorkerPids.has(pid));
-    const totalLogEntries = sum(filteredLogEntries.map(([_, count]) => count));
+    const nodeLogCounts = nodeInfo.log_counts[client.ip] || {};
+    const totalLogEntries = sum(Object.values(nodeLogCounts));
     logCounts[client.ip] = {
-      perWorker: Object.fromEntries(filteredLogEntries),
+      perWorker: nodeLogCounts,
       total: totalLogEntries,
     };
 
-    const filteredErrEntries = Object.entries(
-      nodeInfo.error_counts[client.ip] || {},
-    ).filter(([pid, _]) => clusterWorkerPids.has(pid));
-    const totalErrEntries = sum(filteredErrEntries.map(([_, count]) => count));
+
+    const nodeErrCounts = nodeInfo.error_counts[client.ip] || {};
+    const totalErrEntries = sum(Object.values(nodeErrCounts));
     errorCounts[client.ip] = {
-      perWorker: Object.fromEntries(filteredErrEntries),
+      perWorker: nodeErrCounts,
       total: totalErrEntries,
     };
   }
@@ -161,15 +117,10 @@ const NodeInfo: React.FC<{}> = () => {
         />
         <TableBody>
           {nodeInfo.clients.map((client) => {
-            const clusterWorkerPids =
-              clusterWorkerPidsByIp.get(client.ip) || new Set();
             return (
               <NodeRowGroup
                 key={client.ip}
-                clusterWorkers={client.workers
-                  .filter((worker) =>
-                    clusterWorkerPids.has(worker.pid.toString()),
-                  )
+                clusterWorkers={[...client.workers]
                   .sort((w1, w2) => {
                     if (w2.cmdline[0] === "ray::IDLE") {
                       return -1;

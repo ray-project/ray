@@ -71,7 +71,9 @@ const makeUngroupedEntries = (
   ));
 };
 
-const memoryHeaderInfo: HeaderInfo[] = [
+type memoryColumnId = "node_ip_address" | "pid" | "type" | "object_id" | "object_size" | "reference_type" | "call_site" 
+
+const memoryHeaderInfo: HeaderInfo<memoryColumnId>[] = [
   { id: "node_ip_address", label: "IP Address", numeric: true, sortable: true },
   { id: "pid", label: "pid", numeric: true, sortable: true },
   { id: "type", label: "Type", numeric: false, sortable: true },
