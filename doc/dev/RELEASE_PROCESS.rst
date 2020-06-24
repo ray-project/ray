@@ -150,12 +150,13 @@ This document describes the process for creating new releases.
    scripts. Make sure that it is finding the version of Ray that you just
    installed by checking ``ray.__version__`` and ``ray.__file__``.
 
-   Do this at least for MacOS and Linux.
+   Do this for MacOS, Linux, and Windows.
 
    This process is automated. Run ./bin/pip_download_test.sh. 
    This will download the ray from the test pypi repository and run the minimum 
    sanity check from all the Python version supported. (3.5, 3.6, 3.7, 3.8)
 
+   Windows sanity check test is currently not automated.
 
 9. **Upload to PyPI:** Now that you've tested the wheels on the PyPI test
    repository, they can be uploaded to the main PyPI repository. Be careful,
