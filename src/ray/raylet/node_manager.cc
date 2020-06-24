@@ -1896,7 +1896,7 @@ void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &r
   bool canceled = false;
 
   if (new_scheduler_enabled_) {
-    for (auto it = tasks_to_schedule_.begin(); it!=tasks_to_schedule_.end(); ++it) {
+    for (auto it = tasks_to_schedule_.begin(); it != tasks_to_schedule_.end(); ++it) {
       auto cur_task_id = it->second.GetTaskSpecification().TaskId();
       if (cur_task_id == task_id) {
         tasks_to_schedule_.erase(it);
@@ -1908,8 +1908,7 @@ void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &r
   } else {
     Task removed_task;
     TaskState removed_task_state;
-    canceled =
-        local_queues_.RemoveTask(task_id, &removed_task, &removed_task_state);
+    canceled = local_queues_.RemoveTask(task_id, &removed_task, &removed_task_state);
     if (!canceled) {
       // We do not have the task. This could be because we haven't received the
       // lease request yet, or because we already granted the lease request and
