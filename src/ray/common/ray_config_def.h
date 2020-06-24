@@ -301,5 +301,5 @@ RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 600)
 RAY_CONFIG(bool, plasma_store_as_thread, false)
 
 RAY_CONFIG(bool, gcs_actor_service_enabled,
-           true || (getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") != nullptr
-              && getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == std::string("true")))
+           true || (getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") != nullptr &&
+                    getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == std::string("true")))
