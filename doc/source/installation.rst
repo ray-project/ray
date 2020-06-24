@@ -79,7 +79,7 @@ Windows support is currently limited and "alpha" quality.
 Bugs, process/resource leaks, or other incompatibilities may exist under various scenarios.
 Unusual, unattended, or production usage is **not** recommended.
 
-To use Ray on Windows, Visual C++ runtime must be installed (see :ref:`Windows Dependencies <windows-dependencies>` section).
+To use Ray on Windows, the Visual C++ runtime must be installed (see :ref:`Windows Dependencies <windows-dependencies>` section).
 
 If you encounter any issues, please try the following:
 
