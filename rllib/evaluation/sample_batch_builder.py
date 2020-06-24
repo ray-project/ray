@@ -50,7 +50,12 @@ class SampleBatchBuilder:
 
     @PublicAPI
     def add_batch(self, batch: SampleBatch) -> None:
-        """Add the given batch of values to this batch."""
+        """Add the given batch of values to this batch.
+
+        Args:
+            batch (SampleBatch): The SampleBatch whose data to add to this
+                SampleBatchBuilder's current buffers.
+        """
 
         for k, column in batch.items():
             self.buffers[k].extend(column)
@@ -189,7 +194,7 @@ class MultiAgentSampleBatchBuilder:
                     pre_batch["eps_id"])) > 1:
                 raise ValueError(
                     "Batches sent to postprocessing must only contain steps "
-                    "from a single trajectory.", pre_batch)
+                    "from a single episode!", pre_batch)
             post_batches[agent_id] = policy.postprocess_trajectory(
                 pre_batch, other_batches, episode)
             # Call the Policy's Exploration's postprocess method.

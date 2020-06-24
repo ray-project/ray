@@ -69,6 +69,9 @@ class MultiAgentEpisode:
         self._policy_mapping_fn: Callable[[AgentID], PolicyID] = \
             policy_mapping_fn
         self._next_agent_index: int = 0
+        # TODO: (sven) deprecate all these in favour of Trajectory, which
+        #  always holds the entire episode data, not just the current and prev
+        #  steps.
         self._agent_to_index: Dict[AgentID, int] = {}
         self._agent_to_policy: Dict[AgentID, PolicyID] = {}
         self._agent_to_rnn_state: Dict[AgentID, List[Any]] = {}
