@@ -12,15 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "job_info_handler_impl.h"
+#include "gcs_job_manager.h"
+
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
-namespace rpc {
+namespace gcs {
 
-void GcsJobInfoHandler::HandleAddJob(const rpc::AddJobRequest &request,
-                                     rpc::AddJobReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) {
+void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
+                                 rpc::AddJobReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) {
   JobID job_id = JobID::FromBinary(request.data().job_id());
   RAY_LOG(INFO) << "Adding job, job id = " << job_id
                 << ", driver pid = " << request.data().driver_pid();
@@ -41,9 +42,9 @@ void GcsJobInfoHandler::HandleAddJob(const rpc::AddJobRequest &request,
   }
 }
 
-void GcsJobInfoHandler::HandleMarkJobFinished(
-    const rpc::MarkJobFinishedRequest &request, rpc::MarkJobFinishedReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void GcsJobManager::HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &request,
+                                          rpc::MarkJobFinishedReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
   JobID job_id = JobID::FromBinary(request.job_id());
   RAY_LOG(INFO) << "Marking job state, job id = " << job_id;
   auto job_table_data =
@@ -67,7 +68,7 @@ void GcsJobInfoHandler::HandleMarkJobFinished(
   }
 }
 
-void GcsJobInfoHandler::ClearJobInfos(const JobID &job_id) {
+void GcsJobManager::ClearJobInfos(const JobID &job_id) {
   // Notify all listeners.
   for (auto &listener : job_finished_listeners_) {
     listener(std::make_shared<JobID>(job_id));
@@ -77,15 +78,15 @@ void GcsJobInfoHandler::ClearJobInfos(const JobID &job_id) {
 /// Add listener to monitor the add action of nodes.
 ///
 /// \param listener The handler which process the add of nodes.
-void GcsJobInfoHandler::AddJobFinishedListener(
+void GcsJobManager::AddJobFinishedListener(
     std::function<void(std::shared_ptr<JobID>)> listener) {
   RAY_CHECK(listener);
   job_finished_listeners_.emplace_back(std::move(listener));
 }
 
-void GcsJobInfoHandler::HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest &request,
-                                            rpc::GetAllJobInfoReply *reply,
-                                            rpc::SendReplyCallback send_reply_callback) {
+void GcsJobManager::HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest &request,
+                                        rpc::GetAllJobInfoReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "Getting all job info.";
   auto on_done = [reply, send_reply_callback](
                      const std::unordered_map<JobID, JobTableData> &result) {
@@ -101,5 +102,5 @@ void GcsJobInfoHandler::HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest &req
   }
 }
 
-}  // namespace rpc
+}  // namespace gcs
 }  // namespace ray
