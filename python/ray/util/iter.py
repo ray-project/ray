@@ -204,7 +204,8 @@ class ParallelIterator(Generic[T]):
         Args:
             fn (func): function to use to transform the iterator. The function
                 should pass through instances of _NextValueNotReady that appear
-                in its input iterator.
+                in its input iterator. Note that this function is only called
+                **once** over the input iterator.
 
         Returns:
             ParallelIterator[U]: a parallel iterator.
