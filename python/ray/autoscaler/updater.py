@@ -172,9 +172,10 @@ class SSHCommandRunner:
             # Supresses initial fingerprint verification.
             ("StrictHostKeyChecking", "no"),
             # SSH IP and fingerprint pairs no longer added to known_hosts.
-            # This is to remove a "REMOTE HOST IDENTIFICATION HAS CHANGED" warning if
-            # a new node has the same IP as a previously deleted node, because the
-            # fingerprints will not match in that case.
+            # This is to remove a "REMOTE HOST IDENTIFICATION HAS CHANGED"
+            # warning if a new node has the same IP as a previously
+            # deleted node, because the fingerprints will not match in
+            # that case.
             ("UserKnownHostsFile", "/dev/null"),
             ("ControlMaster", "auto"),
             ("ControlPath", "{}/%C".format(self.ssh_control_path)),
