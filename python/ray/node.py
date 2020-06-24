@@ -244,7 +244,8 @@ class Node:
                 self._ray_params.num_cpus, self._ray_params.num_gpus,
                 self._ray_params.memory, self._ray_params.object_store_memory,
                 self._ray_params.resources,
-                self._ray_params.redis_max_memory).resolve(is_head=self.head)
+                self._ray_params.redis_max_memory).resolve(
+                    is_head=self.head, node_ip_address=self.node_ip_address)
         return self._resource_spec
 
     @property

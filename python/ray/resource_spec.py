@@ -121,8 +121,14 @@ class ResourceSpec(
 
         return resources
 
-    def resolve(self, is_head):
-        """Returns a copy with values filled out with system defaults."""
+    def resolve(self, is_head, node_ip_address=None):
+        """Returns a copy with values filled out with system defaults.
+
+        Args:
+            is_head (bool): Whether this is the head node.
+            node_ip_address (str): The IP address of the node that we are on.
+                This is used to automatically create a node id resource.
+        """
 
         resources = (self.resources or {}).copy()
         assert "CPU" not in resources, resources
@@ -130,9 +136,12 @@ class ResourceSpec(
         assert "memory" not in resources, resources
         assert "object_store_memory" not in resources, resources
 
+        if node_ip_address is None:
+            node_ip_address = ray.services.get_node_ip_address()
+
         # Automatically create a node id resource on each node. This is
         # queryable with ray.state.node_ids() and ray.state.current_node_id().
-        resources[NODE_ID_PREFIX + ray.services.get_node_ip_address()] = 1.0
+        resources[NODE_ID_PREFIX + node_ip_address] = 1.0
 
         num_cpus = self.num_cpus
         if num_cpus is None:
