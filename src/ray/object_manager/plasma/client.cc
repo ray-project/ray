@@ -181,14 +181,14 @@ class ClientMmapTableEntry {
     pointer_ = reinterpret_cast<uint8_t*>(MapViewOfFile(reinterpret_cast<HANDLE>(fh_get(fd)), FILE_MAP_ALL_ACCESS, 0, 0, length_));
     // TODO(pcm): Don't fail here, instead return a Status.
     if (pointer_ == NULL) {
-      ARROW_LOG(FATAL) << "mmap failed";
+      RAY_LOG(FATAL) << "mmap failed";
     }
 #else
     pointer_ = reinterpret_cast<uint8_t*>(
         mmap(NULL, length_, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
     // TODO(pcm): Don't fail here, instead return a Status.
     if (pointer_ == MAP_FAILED) {
-      ARROW_LOG(FATAL) << "mmap failed";
+      RAY_LOG(FATAL) << "mmap failed";
     }
 #endif
     close(fd);  // Closing this fd has an effect on performance.
@@ -207,7 +207,7 @@ class ClientMmapTableEntry {
     r = munmap(pointer_, length_);
 #endif
     if (r != 0) {
-      ARROW_LOG(ERROR) << "munmap returned " << r << ", errno = " << errno;
+      RAY_LOG(ERROR) << "munmap returned " << r << ", errno = " << errno;
     }
   }
 
@@ -382,7 +382,7 @@ uint8_t* PlasmaClient::Impl::LookupOrMmap(int fd, int store_fd_val, int64_t map_
 // process before.
 uint8_t* PlasmaClient::Impl::LookupMmappedFile(int store_fd_val) {
   auto entry = mmap_table_.find(store_fd_val);
-  ARROW_CHECK(entry != mmap_table_.end());
+  RAY_CHECK(entry != mmap_table_.end());
   return entry->second->pointer();
 }
 
@@ -397,7 +397,7 @@ int PlasmaClient::Impl::GetStoreFd(int store_fd) {
   auto entry = mmap_table_.find(store_fd);
   if (entry == mmap_table_.end()) {
     int fd = recv_fd(store_conn_);
-    ARROW_CHECK(fd >= 0) << "recv not successful";
+    RAY_CHECK(fd >= 0) << "recv not successful";
     return fd;
   } else {
     return entry->second->fd();
@@ -421,7 +421,7 @@ void PlasmaClient::Impl::IncrementObjectCount(const ObjectID& object_id,
     object_entry = objects_in_use_[object_id].get();
   } else {
     object_entry = elem->second.get();
-    ARROW_CHECK(object_entry->count > 0);
+    RAY_CHECK(object_entry->count > 0);
   }
   // Increment the count of the number of instances of this object that are
   // being used by this client. The corresponding decrement should happen in
@@ -435,7 +435,7 @@ Status PlasmaClient::Impl::Create(const ObjectID& object_id, int64_t data_size,
                                   bool evict_if_full) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
-  ARROW_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
+  RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
                    << data_size << " and metadata size " << metadata_size;
   RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, evict_if_full, data_size,
                                   metadata_size, device_num));
@@ -451,10 +451,10 @@ Status PlasmaClient::Impl::Create(const ObjectID& object_id, int64_t data_size,
   // descriptor.
   if (device_num == 0) {
     int fd = GetStoreFd(store_fd);
-    ARROW_CHECK(object.data_size == data_size);
-    ARROW_CHECK(object.metadata_size == metadata_size);
+    RAY_CHECK(object.data_size == data_size);
+    RAY_CHECK(object.metadata_size == metadata_size);
     // The metadata should come right after the data.
-    ARROW_CHECK(object.metadata_offset == object.data_offset + data_size);
+    RAY_CHECK(object.metadata_offset == object.data_offset + data_size);
     *data = std::make_shared<PlasmaMutableBuffer>(
         shared_from_this(), LookupOrMmap(fd, store_fd, mmap_size) + object.data_offset,
         data_size);
@@ -483,7 +483,7 @@ Status PlasmaClient::Impl::Create(const ObjectID& object_id, int64_t data_size,
     }
     *data = MakeBufferFromGpuProcessHandle(handle);
 #else
-    ARROW_LOG(FATAL) << "Arrow GPU library is not enabled.";
+    RAY_LOG(FATAL) << "Arrow GPU library is not enabled.";
 #endif
   }
 
@@ -505,7 +505,7 @@ Status PlasmaClient::Impl::CreateAndSeal(const ObjectID& object_id,
                                          bool evict_if_full) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
-  ARROW_LOG(DEBUG) << "called CreateAndSeal on conn " << store_conn_;
+  RAY_LOG(DEBUG) << "called CreateAndSeal on conn " << store_conn_;
 
   RETURN_NOT_OK(SendCreateAndSealRequest(store_conn_, object_id, evict_if_full, data,
                                          metadata));
@@ -522,7 +522,7 @@ Status PlasmaClient::Impl::CreateAndSealBatch(const std::vector<ObjectID>& objec
                                               bool evict_if_full) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
-  ARROW_LOG(DEBUG) << "called CreateAndSealBatch on conn " << store_conn_;
+  RAY_LOG(DEBUG) << "called CreateAndSealBatch on conn " << store_conn_;
 
   RETURN_NOT_OK(SendCreateAndSealBatchRequest(store_conn_, object_ids, evict_if_full,
                                               data, metadata));
@@ -551,9 +551,9 @@ Status PlasmaClient::Impl::GetBuffers(
       // This client created the object but hasn't sealed it. If we call Get
       // with no timeout, we will deadlock, because this client won't be able to
       // call Seal.
-      ARROW_CHECK(timeout_ms != -1)
+      RAY_CHECK(timeout_ms != -1)
           << "Plasma client called get on an unsealed object that it created";
-      ARROW_LOG(WARNING)
+      RAY_LOG(WARNING)
           << "Attempting to get an object that this client created but hasn't sealed.";
       all_present = false;
     } else {
@@ -568,11 +568,11 @@ Status PlasmaClient::Impl::GetBuffers(
 #ifdef PLASMA_CUDA
         std::lock_guard<std::mutex> lock(gpu_mutex);
         auto iter = gpu_object_map.find(object_ids[i]);
-        ARROW_CHECK(iter != gpu_object_map.end());
+        RAY_CHECK(iter != gpu_object_map.end());
         iter->second->client_count++;
         physical_buf = MakeBufferFromGpuProcessHandle(iter->second);
 #else
-        ARROW_LOG(FATAL) << "Arrow GPU library is not enabled.";
+        RAY_LOG(FATAL) << "Arrow GPU library is not enabled.";
 #endif
       }
       physical_buf = wrap_buffer(object_ids[i], physical_buf);
@@ -612,12 +612,12 @@ Status PlasmaClient::Impl::GetBuffers(
   }
 
   for (int64_t i = 0; i < num_objects; ++i) {
-    DCHECK(received_object_ids[i] == object_ids[i]);
+    RAY_DCHECK(received_object_ids[i] == object_ids[i]);
     object = &object_data[i];
     if (object_buffers[i].data) {
       // If the object was already in use by the client, then the store should
       // have returned it.
-      DCHECK_NE(object->data_size, -1);
+      RAY_DCHECK(object->data_size != -1);
       // We've already filled out the information for this object, so we can
       // just continue.
       continue;
@@ -648,7 +648,7 @@ Status PlasmaClient::Impl::GetBuffers(
           physical_buf = MakeBufferFromGpuProcessHandle(iter->second);
         }
 #else
-        ARROW_LOG(FATAL) << "Arrow GPU library is not enabled.";
+        RAY_LOG(FATAL) << "Arrow GPU library is not enabled.";
 #endif
       }
       // Finish filling out the return values.
@@ -663,8 +663,8 @@ Status PlasmaClient::Impl::GetBuffers(
     } else {
       // The object was not retrieved.  The caller can detect this condition
       // by checking the boolean value of the metadata/data buffers.
-      DCHECK(!object_buffers[i].metadata);
-      DCHECK(!object_buffers[i].data);
+      RAY_DCHECK(!object_buffers[i].metadata);
+      RAY_DCHECK(!object_buffers[i].data);
     }
   }
   return Status::OK();
@@ -694,8 +694,8 @@ Status PlasmaClient::Impl::Get(const ObjectID* object_ids, int64_t num_objects,
 
 Status PlasmaClient::Impl::MarkObjectUnused(const ObjectID& object_id) {
   auto object_entry = objects_in_use_.find(object_id);
-  ARROW_CHECK(object_entry != objects_in_use_.end());
-  ARROW_CHECK(object_entry->second->count == 0);
+  RAY_CHECK(object_entry != objects_in_use_.end());
+  RAY_CHECK(object_entry->second->count == 0);
 
   // Remove the entry from the hash table of objects currently in use.
   objects_in_use_.erase(object_id);
@@ -710,13 +710,13 @@ Status PlasmaClient::Impl::Release(const ObjectID& object_id) {
     return Status::OK();
   }
   auto object_entry = objects_in_use_.find(object_id);
-  ARROW_CHECK(object_entry != objects_in_use_.end());
+  RAY_CHECK(object_entry != objects_in_use_.end());
 
 #ifdef PLASMA_CUDA
   if (object_entry->second->object.device_num != 0) {
     std::lock_guard<std::mutex> lock(gpu_mutex);
     auto iter = gpu_object_map.find(object_id);
-    ARROW_CHECK(iter != gpu_object_map.end());
+    RAY_CHECK(iter != gpu_object_map.end());
     if (--iter->second->client_count == 0) {
       delete iter->second;
       gpu_object_map.erase(iter);
@@ -725,7 +725,7 @@ Status PlasmaClient::Impl::Release(const ObjectID& object_id) {
 #endif
 
   object_entry->second->count -= 1;
-  ARROW_CHECK(object_entry->second->count >= 0);
+  RAY_CHECK(object_entry->second->count >= 0);
   // Check if the client is no longer using this object.
   if (object_entry->second->count == 0) {
     // Tell the store that the client no longer needs the object.
@@ -754,7 +754,7 @@ Status PlasmaClient::Impl::Contains(const ObjectID& object_id, bool* has_object)
     std::vector<uint8_t> buffer;
     RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaContainsReply, &buffer));
     ObjectID object_id2;
-    DCHECK_GT(buffer.size(), 0);
+    RAY_DCHECK(buffer.size() > 0);
     RETURN_NOT_OK(
         ReadContainsReply(buffer.data(), buffer.size(), &object_id2, has_object));
   }
@@ -796,7 +796,7 @@ bool PlasmaClient::Impl::ComputeObjectHashParallel(XXH64_state_t* hash_state,
                    &threadhash[num_threads]);
 
   for (auto& fut : futures) {
-    ARROW_CHECK_OK(fut.status());
+    RAY_ARROW_CHECK_OK(fut.status());
   }
 
   XXH64_update(hash_state, reinterpret_cast<unsigned char*>(threadhash),
@@ -816,8 +816,8 @@ uint64_t PlasmaClient::Impl::ComputeObjectHash(const ObjectBuffer& obj_buffer) {
 uint64_t PlasmaClient::Impl::ComputeObjectHashCPU(const uint8_t* data, int64_t data_size,
                                                   const uint8_t* metadata,
                                                   int64_t metadata_size) {
-  DCHECK(metadata);
-  DCHECK(data);
+  RAY_DCHECK(metadata);
+  RAY_DCHECK(data);
   XXH64_state_t hash_state;
   XXH64_reset(&hash_state, XXH64_DEFAULT_SEED);
   if (data_size >= kBytesInMB) {
@@ -854,7 +854,7 @@ Status PlasmaClient::Impl::Seal(const ObjectID& object_id) {
   RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaSealReply, &buffer));
   ObjectID sealed_id;
   RETURN_NOT_OK(ReadSealReply(buffer.data(), buffer.size(), &sealed_id));
-  ARROW_CHECK(sealed_id == object_id);
+  RAY_CHECK(sealed_id == object_id);
   // We call PlasmaClient::Release to decrement the number of instances of this
   // object
   // that are currently being used by this client. The corresponding increment
@@ -866,9 +866,9 @@ Status PlasmaClient::Impl::Seal(const ObjectID& object_id) {
 Status PlasmaClient::Impl::Abort(const ObjectID& object_id) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   auto object_entry = objects_in_use_.find(object_id);
-  ARROW_CHECK(object_entry != objects_in_use_.end())
+  RAY_CHECK(object_entry != objects_in_use_.end())
       << "Plasma client called abort on an object without a reference to it";
-  ARROW_CHECK(!object_entry->second->is_sealed)
+  RAY_CHECK(!object_entry->second->is_sealed)
       << "Plasma client called abort on a sealed object";
 
   // Make sure that the Plasma client only has one reference to the object. If
@@ -882,8 +882,8 @@ Status PlasmaClient::Impl::Abort(const ObjectID& object_id) {
   if (object_entry->second->object.device_num != 0) {
     std::lock_guard<std::mutex> lock(gpu_mutex);
     auto iter = gpu_object_map.find(object_id);
-    ARROW_CHECK(iter != gpu_object_map.end());
-    ARROW_CHECK(iter->second->client_count == 1);
+    RAY_CHECK(iter != gpu_object_map.end());
+    RAY_CHECK(iter->second->client_count == 1);
     delete iter->second;
     gpu_object_map.erase(iter);
   }
@@ -918,7 +918,7 @@ Status PlasmaClient::Impl::Delete(const std::vector<ObjectID>& object_ids) {
     RETURN_NOT_OK(SendDeleteRequest(store_conn_, not_in_use_ids));
     std::vector<uint8_t> buffer;
     RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaDeleteReply, &buffer));
-    DCHECK_GT(buffer.size(), 0);
+    RAY_DCHECK(buffer.size() > 0);
     std::vector<PlasmaError> error_codes;
     not_in_use_ids.clear();
     RETURN_NOT_OK(
@@ -983,16 +983,16 @@ Status PlasmaClient::Impl::Subscribe(int* fd) {
   // Make the socket non-blocking.
 #ifdef _WINSOCKAPI_
   unsigned long value = 1;
-  ARROW_CHECK(ioctlsocket(sock[1], FIONBIO, &value) == 0);
+  RAY_CHECK(ioctlsocket(sock[1], FIONBIO, &value) == 0);
 #else
   int flags = fcntl(sock[1], F_GETFL, 0);
-  ARROW_CHECK(fcntl(sock[1], F_SETFL, flags | O_NONBLOCK) == 0);
+  RAY_CHECK(fcntl(sock[1], F_SETFL, flags | O_NONBLOCK) == 0);
 #endif
   // Tell the Plasma store about the subscription.
   RETURN_NOT_OK(SendSubscribeRequest(store_conn_));
   // Send the file descriptor that the Plasma store should use to push
   // notifications about sealed objects to this client.
-  ARROW_CHECK(send_fd(store_conn_, sock[1]) >= 0);
+  RAY_CHECK(send_fd(store_conn_, sock[1]) >= 0);
   close(sock[1]);
   // Return the file descriptor that the client should use to read notifications
   // about sealed objects.
@@ -1063,7 +1063,7 @@ Status PlasmaClient::Impl::Connect(const std::string& store_socket_name,
     return Status::NotImplemented("plasma manager is no longer supported");
   }
   if (release_delay != 0) {
-    ARROW_LOG(WARNING) << "The release_delay parameter in PlasmaClient::Connect "
+    RAY_LOG(WARNING) << "The release_delay parameter in PlasmaClient::Connect "
                        << "is deprecated";
   }
   // Send a ConnectRequest to the store to get its memory capacity.

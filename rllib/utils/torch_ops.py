@@ -77,7 +77,7 @@ def sequence_mask(lengths, maxlen=None, dtype=None):
     39036).
     """
     if maxlen is None:
-        maxlen = lengths.max()
+        maxlen = int(lengths.max())
 
     mask = ~(torch.ones((len(lengths), maxlen)).to(
         lengths.device).cumsum(dim=1).t() > lengths).t()

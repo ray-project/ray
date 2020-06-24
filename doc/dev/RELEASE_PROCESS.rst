@@ -26,7 +26,7 @@ This document describes the process for creating new releases.
 
 4. **Testing:** Before releasing, the following sets of tests should be run.
    The results of each of these tests for previous releases are checked in
-   under ``doc/dev/release_tests``, and should be compared against to identify
+   under ``doc/dev/release_logs``, and should be compared against to identify
    any regressions.
 
    1. Long-running tests
@@ -35,9 +35,19 @@ This document describes the process for creating new releases.
 
        ray/ci/long_running_tests/README.rst
 
-   Follow the instructions to kick off the tests and check the status of the workloads
-   These tests should run for at least 24 hours (printing new iterations and CPU load
+   Follow the instructions to kick off the tests and check the status of the workloads.
+   These tests should run for at least 24 hours without erroring or hanging (ensure that it is printing new iterations and CPU load is
    stable in the AWS console).
+
+   2. Long-running multi-node tests
+
+   .. code-block:: bash
+
+      ray/ci/long_running_distributed_tests/README.rst
+
+   Follow the instructions to kick off the tests and check the status of the workloads.
+   These suite of tests are similar to the standard long running tests, except these actually run in a multi-node cluster instead of just a simulated one.
+   These tests should also run for at least 24 hours without erroring or hanging.
 
    2. Multi-node regression tests
 

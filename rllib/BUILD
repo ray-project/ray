@@ -471,6 +471,14 @@ py_test(
     srcs = ["agents/marwil/tests/test_marwil.py"]
 )
 
+# MAMLTrainer
+py_test(
+    name = "test_maml",
+    tags = ["agents_dir"],
+    size = "small",
+    srcs = ["agents/maml/tests/test_maml.py"]
+)
+
 # PGTrainer
 py_test(
     name = "test_pg",
