@@ -399,10 +399,10 @@ void Process::Kill() {
       if (!::TerminateProcess(handle, ERROR_PROCESS_ABORTED)) {
         error = std::error_code(GetLastError(), std::system_category());
         if (error.value() == ERROR_ACCESS_DENIED) {
-          // This can occur under some circumstances if the process is already terminating
+          // This can occur in some situations if the process is already terminating.
           DWORD exit_code;
           if (GetExitCodeProcess(handle, &exit_code) && exit_code != STILL_ACTIVE) {
-            // The process is already terminating, so consider the killing successful
+            // The process is already terminating, so consider the killing successful.
             error = std::error_code();
           }
         }
@@ -417,7 +417,7 @@ void Process::Kill() {
       if (error.value() == ESRCH) {
         // The process died before our kill().
         // This is probably due to using FromPid().Kill() on a non-owned process.
-        // We got lucky here, because we could've kill a recycled PID.
+        // We got lucky here, because we could've killed a recycled PID.
         // To avoid this, do not kill a process that is not owned by us.
         // Instead, let its parent receive its SIGCHLD normally and call waitpid() on it.
         // (Exception: Tests might occasionally trigger this, but that should be benign.)
