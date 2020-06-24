@@ -150,21 +150,25 @@ std::string GlobalStateAccessor::GetNodeResourceInfo(const ClientID &node_id) {
   return node_resource_map.SerializeAsString();
 }
 
-std::map<std::string, std::string> GlobalStateAccessor::GetInternalConfig() {
-  std::map<std::string, std::string> config;
+std::string GlobalStateAccessor::GetInternalConfig() {
+  rpc::StoredConfig config_proto;
   std::promise<void> promise;
   auto on_done =
-      [&config, &promise](
+      [&config_proto, &promise](
           const std::unordered_map<std::string, std::string> stored_raylet_config) {
         for (auto &data : stored_raylet_config) {
-          config[data.first] = data.second;
+          (*config_proto.mutable_config())[data.first] = data.second;
         }
         promise.set_value();
       };
 
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetInternalConfig(on_done));
   promise.get_future().get();
-  return config;
+
+  // config_proto.mutable_config()->insert()
+  // config.auto x = config_proto.mutable_config();
+
+  return config_proto.SerializeAsString();
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllActorInfo() {

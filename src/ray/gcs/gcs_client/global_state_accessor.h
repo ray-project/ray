@@ -88,8 +88,9 @@ class GlobalStateAccessor {
 
   /// Get internal config from GCS Service.
   ///
-  /// \return map of internal config keys and values.
-  std::map<std::string, std::string> GetInternalConfig();
+  /// \return map of internal config keys and values. It is stored as a StoredConfig proto
+  /// and serialized as a string to allow multi-language support.
+  std::string GetInternalConfig();
 
   /// Get information of all actors from GCS Service.
   ///
