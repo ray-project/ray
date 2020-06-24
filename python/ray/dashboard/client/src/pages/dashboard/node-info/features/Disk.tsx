@@ -1,11 +1,13 @@
 import { Typography } from "@material-ui/core";
 import React from "react";
 import { formatUsage } from "../../../../common/formatUtils";
+import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import {
   ClusterFeatureComponent,
   NodeFeatureComponent,
   WorkerFeatureComponent,
+  NodeFeatureData,
 } from "./types";
 
 export const ClusterDisk: ClusterFeatureComponent = ({ nodes }) => {
@@ -28,6 +30,9 @@ export const NodeDisk: NodeFeatureComponent = ({ node }) => (
     percent={(100 * node.disk["/"].used) / node.disk["/"].total}
     text={formatUsage(node.disk["/"].used, node.disk["/"].total, "gibibyte")}
   />
+);
+export const NodeDiskAccessor: Accessor<NodeFeatureData> = ({ node }) => (
+  node.disk["/"].used
 );
 
 export const WorkerDisk: WorkerFeatureComponent = () => (

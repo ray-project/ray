@@ -5,7 +5,7 @@ type ArrayType<T> = T extends Array<infer U> ? U : never;
 export type Node = ArrayType<NodeInfoResponse["clients"]>;
 export type Worker = ArrayType<Node["workers"]>;
 
-export type ClusterFeatureData = { nodes: Node[] };
+type ClusterFeatureData = { nodes: Node[] };
 export type NodeFeatureData = { node: Node };
 export type WorkerFeatureData = {
   node: Node;
