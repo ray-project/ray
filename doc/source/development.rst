@@ -65,6 +65,8 @@ For MacOS, run the following commands:
 
   pip install cython==0.29.0 pytest
 
+For Windows, see the :ref:`Windows Dependencies <windows-dependencies>` section.
+
 Ray can be built from the repository as follows.
 
 .. code-block:: bash
@@ -74,7 +76,8 @@ Ray can be built from the repository as follows.
   # Install Bazel.
   ray/ci/travis/install-bazel.sh
 
-  # Optionally build the dashboard (requires Node.js, see below for more information).
+  # Optionally build the dashboard
+  # (requires Node.js, see https://nodejs.org/ for more information).
   pushd ray/python/ray/dashboard/client
   npm ci
   npm run build
