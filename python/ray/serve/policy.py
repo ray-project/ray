@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+import copy
 from hashlib import sha256
 
 import numpy as np
@@ -49,7 +50,7 @@ class RandomEndpointPolicy(EndpointPolicy):
 
     def __init__(self, traffic_policy):
         self.backends = sorted(traffic_policy.traffic_dict.items())
-        self.shadow_backends = traffic_policy.shadow_dict
+        self.shadow_backends = list(traffic_policy.shadow_dict.items())
 
     def _select_backends(self, val):
         curr_sum = 0
@@ -58,10 +59,12 @@ class RandomEndpointPolicy(EndpointPolicy):
             if curr_sum > val:
                 chosen_backend = name
                 break
+        else:
+            assert False, "XXX"
 
         shadow_backends = []
         for backend, backend_weight in self.shadow_backends:
-            if backend_weight < val:
+            if val < backend_weight:
                 shadow_backends.append(backend)
 
         return chosen_backend, shadow_backends
@@ -88,7 +91,7 @@ class RandomEndpointPolicy(EndpointPolicy):
             assigned_backends.add(chosen_backend)
             backend_queues[chosen_backend].add(query)
             if len(shadow_backends) > 0:
-                shadow_query = query.copy()
+                shadow_query = copy.copy(query)
                 shadow_query.async_future = None
                 shadow_query.is_shadow_query = True
                 for shadow_backend in shadow_backends:

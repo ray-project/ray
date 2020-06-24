@@ -6,6 +6,7 @@ import requests
 
 import ray
 from ray import serve
+from ray.test_utils import wait_for_condition
 from ray.serve.utils import get_random_letters
 from ray.serve.exceptions import RayServeException
 
@@ -550,6 +551,49 @@ def test_create_infeasible_error(serve_instance):
     # No replica should be created!
     replicas = ray.get(serve.api.master_actor._list_replicas.remote("f1"))
     assert len(replicas) == 0
+
+
+def test_shadow_traffic(serve_instance):
+    def f():
+        return "hello"
+
+    def f_shadow():
+        return "oops"
+
+    serve.create_backend("backend1", f)
+    serve.create_backend("backend2", f_shadow)
+    serve.create_backend("backend3", f_shadow)
+    serve.create_backend("backend4", f_shadow)
+
+    serve.create_endpoint("endpoint", backend="backend1", route="/api")
+    serve.shadow_traffic("endpoint", "backend2", 1.0)
+    serve.shadow_traffic("endpoint", "backend3", 0.5)
+    serve.shadow_traffic("endpoint", "backend4", 0.1)
+
+    start = time.time()
+    num_requests = 100
+    for _ in range(num_requests):
+        assert requests.get("http://127.0.0.1:8000/api").text == "hello"
+    print("Finished 100 requests in {}s.".format(time.time() - start))
+
+    def requests_to_backend(backend):
+        for entry in serve.stat():
+            if entry["info"]["name"] == "backend_request_counter":
+                if entry["info"]["backend"] == backend:
+                    return entry["value"]
+
+        return 0
+
+    def check_requests():
+        return all([
+            requests_to_backend("backend1") == num_requests,
+            requests_to_backend("backend2") == requests_to_backend("backend1"),
+            requests_to_backend("backend3") < requests_to_backend("backend2"),
+            requests_to_backend("backend4") < requests_to_backend("backend3"),
+            requests_to_backend("backend4") > 0,
+        ])
+
+    assert wait_for_condition(check_requests)
 
 
 if __name__ == "__main__":
