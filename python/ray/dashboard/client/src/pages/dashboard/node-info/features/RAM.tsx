@@ -1,10 +1,13 @@
 import React from "react";
 import { formatByteAmount, formatUsage } from "../../../../common/formatUtils";
+import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import {
   ClusterFeatureComponent,
   NodeFeatureComponent,
   WorkerFeatureComponent,
+  NodeFeatureData,
+  WorkerFeatureData
 } from "./types";
 
 export const ClusterRAM: ClusterFeatureComponent = ({ nodes }) => {
@@ -29,9 +32,16 @@ export const NodeRAM: NodeFeatureComponent = ({ node }) => (
   />
 );
 
+export const NodeRAMAccessor: Accessor<NodeFeatureData> = ({ node }) =>
+  100 * (node.mem[0] - node.mem[1]);
+
 export const WorkerRAM: WorkerFeatureComponent = ({ node, worker }) => (
   <UsageBar
     percent={(100 * worker.memory_info.rss) / node.mem[0]}
     text={formatByteAmount(worker.memory_info.rss, "mebibyte")}
   />
 );
+
+export const WorkerRAMAccessor: Accessor<WorkerFeatureData> = ({ worker }) => (
+  worker.memory_info.rss
+); 
