@@ -40,7 +40,7 @@ class ObjectStore {
   std::vector<std::shared_ptr<msgpack::sbuffer>> Get(
       const std::vector<ObjectID> &ids, int timeout_ms = default_get_timeout_ms);
 
-  /// Wait for a list of RayObjects to be locally available,
+  /// Wait for a list of ObjectRefs to be locally available,
   /// until specified number of objects are ready, or specified timeout has passed.
   ///
   /// \param[in] ids The object id array which should be waited.
