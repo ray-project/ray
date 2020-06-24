@@ -1,5 +1,6 @@
 import React from "react";
 import { NodeInfoResponse, RayletWorkerStats } from "../../../../api";
+import { Accessor } from "../../../../common/tableUtils"
 
 type ArrayType<T> = T extends Array<infer U> ? U : never;
 export type Node = ArrayType<NodeInfoResponse["clients"]>;
@@ -13,12 +14,31 @@ export type WorkerFeatureData = {
   rayletWorker: RayletWorkerStats | null;
 };
 
-export type ClusterFeatureComponent = (
+export type NodeAggregations = {
+  [ip: string]: NodeAggregation;
+};
+
+export type NodeAggregation = {
+  perWorker: {
+    [pid: string]: number;
+  };
+  total: number;
+};
+
+export type ClusterFeatureRenderFn = (
   data: ClusterFeatureData,
 ) => React.ReactElement;
-export type NodeFeatureComponent = (
+export type NodeFeatureRenderFn = (
   data: NodeFeatureData,
 ) => React.ReactElement;
-export type WorkerFeatureComponent = (
+export type WorkerFeatureRenderFn = (
   data: WorkerFeatureData,
 ) => React.ReactElement;
+
+export type NodeInfoFeature = {
+  WorkerFeatureRenderFn: WorkerFeatureRenderFn,
+  NodeFeatureRenderFn: NodeFeatureRenderFn,
+  ClusterFeatureRenderFn?: ClusterFeatureRenderFn,
+  workerAccessor?: Accessor<WorkerFeatureData>,
+  nodeAccessor?: Accessor<NodeFeatureData>
+}

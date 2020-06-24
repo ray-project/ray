@@ -5,9 +5,9 @@ import { MiBRatio } from "../../../../common/formatUtils";
 import UsageBar from "../../../../common/UsageBar";
 import { getWeightedAverage, sum } from "../../../../common/util";
 import {
-  ClusterFeatureComponent,
+  ClusterFeatureRenderFn,
   Node,
-  NodeFeatureComponent,
+  NodeFeatureRenderFn,
   WorkerFeatureComponent,
 } from "./types";
 
@@ -35,7 +35,7 @@ const clusterGRAMUtilization = (nodes: Array<Node>) => {
   return getWeightedAverage(utils);
 };
 
-export const ClusterGRAM: ClusterFeatureComponent = ({ nodes }) => {
+export const ClusterGRAM: ClusterFeatureRenderFn = ({ nodes }) => {
   const clusterAverageUtilization = clusterGRAMUtilization(nodes);
   return (
     <div style={{ minWidth: 60 }}>
@@ -53,7 +53,7 @@ export const ClusterGRAM: ClusterFeatureComponent = ({ nodes }) => {
   );
 };
 
-export const NodeGRAM: NodeFeatureComponent = ({ node }) => {
+export const NodeGRAM: NodeFeatureRenderFn = ({ node }) => {
   const gramUtil = nodeGRAMUtilization(node);
   return (
     <div style={{ minWidth: 60 }}>

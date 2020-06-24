@@ -4,13 +4,13 @@ import { formatUsage } from "../../../../common/formatUtils";
 import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import {
-  ClusterFeatureComponent,
-  NodeFeatureComponent,
+  ClusterFeatureRenderFn,
+  NodeFeatureRenderFn,
   WorkerFeatureComponent,
   NodeFeatureData,
 } from "./types";
 
-export const ClusterDisk: ClusterFeatureComponent = ({ nodes }) => {
+export const ClusterDisk: ClusterFeatureRenderFn = ({ nodes }) => {
   let used = 0;
   let total = 0;
   for (const node of nodes) {
@@ -25,7 +25,7 @@ export const ClusterDisk: ClusterFeatureComponent = ({ nodes }) => {
   );
 };
 
-export const NodeDisk: NodeFeatureComponent = ({ node }) => (
+export const NodeDisk: NodeFeatureRenderFn = ({ node }) => (
   <UsageBar
     percent={(100 * node.disk["/"].used) / node.disk["/"].total}
     text={formatUsage(node.disk["/"].used, node.disk["/"].total, "gibibyte")}

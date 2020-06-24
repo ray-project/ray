@@ -1,13 +1,13 @@
 import React from "react";
 import {
-  ClusterFeatureComponent,
-  NodeFeatureComponent,
+  ClusterFeatureRenderFn,
+  NodeFeatureRenderFn,
   WorkerFeatureComponent,
 } from "./types";
 
 export const ClusterWorkers = (
   totalWorkers: number,
-): ClusterFeatureComponent => ({ nodes }) => {
+): ClusterFeatureRenderFn => ({ nodes }) => {
   let totalCpus = 0;
   for (const node of nodes) {
     totalCpus += node.cpus[0];
@@ -21,7 +21,7 @@ export const ClusterWorkers = (
   );
 };
 
-export const NodeWorkers = (totalWorkers: number): NodeFeatureComponent => ({
+export const NodeWorkers = (totalWorkers: number): NodeFeatureRenderFn => ({
   node,
 }) => {
   const cpus = node.cpus[0];

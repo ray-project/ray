@@ -14,18 +14,6 @@ import {
   NodeInfoResponseWorker,
   RayletInfoResponse,
 } from "../../../api";
-import { NodeCPU, WorkerCPU } from "./features/CPU";
-import { NodeDisk, WorkerDisk } from "./features/Disk";
-import { makeNodeErrors, makeWorkerErrors } from "./features/Errors";
-import { NodeGPU, WorkerGPU } from "./features/GPU";
-import { NodeGRAM, WorkerGRAM } from "./features/GRAM";
-import { NodeHost, WorkerHost } from "./features/Host";
-import { makeNodeLogs, makeWorkerLogs } from "./features/Logs";
-import { NodeRAM, WorkerRAM } from "./features/RAM";
-import { NodeReceived, WorkerReceived } from "./features/Received";
-import { NodeSent, WorkerSent } from "./features/Sent";
-import { NodeUptime, WorkerUptime } from "./features/Uptime";
-import { NodeWorkers, WorkerWorkers } from "./features/Workers";
 import { NodeWorkerRow } from "./NodeWorkerRow";
 
 const useNodeRowGroupStyles = makeStyles((theme: Theme) =>
@@ -85,30 +73,6 @@ const NodeRowGroup: React.FC<NodeRowGroupProps> = ({
   const [expanded, setExpanded] = useState<boolean>(initialExpanded);
   const toggleExpand = () => setExpanded(!expanded);
   const classes = useNodeRowGroupStyles();
-  const features = [
-    { NodeFeature: NodeHost, WorkerFeature: WorkerHost },
-    {
-      NodeFeature: NodeWorkers(clusterWorkers.length),
-      WorkerFeature: WorkerWorkers,
-    },
-    { NodeFeature: NodeUptime, WorkerFeature: WorkerUptime },
-    { NodeFeature: NodeCPU, WorkerFeature: WorkerCPU },
-    { NodeFeature: NodeRAM, WorkerFeature: WorkerRAM },
-    { NodeFeature: NodeGPU, WorkerFeature: WorkerGPU },
-    { NodeFeature: NodeGRAM, WorkerFeature: WorkerGRAM },
-    { NodeFeature: NodeDisk, WorkerFeature: WorkerDisk },
-    { NodeFeature: NodeSent, WorkerFeature: WorkerSent },
-    { NodeFeature: NodeReceived, WorkerFeature: WorkerReceived },
-    {
-      NodeFeature: makeNodeLogs(logCounts, setLogDialog),
-      WorkerFeature: makeWorkerLogs(logCounts, setLogDialog),
-    },
-    {
-      NodeFeature: makeNodeErrors(errorCounts, setErrorDialog),
-      WorkerFeature: makeWorkerErrors(errorCounts, setErrorDialog),
-    },
-  ];
-
   return (
     <React.Fragment>
       <TableRow hover>

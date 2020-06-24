@@ -2,9 +2,9 @@ import { Typography } from "@material-ui/core";
 import React from "react";
 import SpanButton from "../../../../common/SpanButton";
 import {
-  ClusterFeatureComponent,
-  NodeFeatureComponent,
-  WorkerFeatureComponent,
+  ClusterFeatureRenderFn,
+  NodeFeatureRenderFn,
+  NodeAggregation
 } from "./types";
 
 export const makeClusterErrors = (errorCounts: {
@@ -14,7 +14,7 @@ export const makeClusterErrors = (errorCounts: {
     };
     total: number;
   };
-}): ClusterFeatureComponent => ({ nodes }) => {
+}): ClusterFeatureRenderFn => ({ nodes }) => {
   let totalErrorCount = 0;
   for (const node of nodes) {
     if (node.ip in errorCounts) {
@@ -34,12 +34,9 @@ export const makeClusterErrors = (errorCounts: {
 };
 
 export const makeNodeErrors = (
-  errorCounts: {
-    perWorker: { [pid: string]: number };
-    total: number;
-  },
+  errorCounts: NodeAggregation,
   setErrorDialog: (hostname: string, pid: number | null) => void,
-): NodeFeatureComponent => ({ node }) =>
+): NodeFeatureRenderFn => ({ node }) =>
   errorCounts.total === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
       No errors
@@ -51,10 +48,7 @@ export const makeNodeErrors = (
   );
 
 export const makeWorkerErrors = (
-  errorCounts: {
-    perWorker: { [pid: string]: number };
-    total: number;
-  },
+  errorCounts: NodeAggregation,
   setErrorDialog: (hostname: string, pid: number | null) => void,
 ): WorkerFeatureComponent => ({ node, worker }) =>
   errorCounts.perWorker[worker.pid] ? (

@@ -1,13 +1,15 @@
 import { Typography } from "@material-ui/core";
 import React from "react";
 import { formatByteAmount } from "../../../../common/formatUtils";
+import { Accessor } from "../../../../common/tableUtils";
 import {
-  ClusterFeatureComponent,
-  NodeFeatureComponent,
+  ClusterFeatureRenderFn,
+  NodeFeatureRenderFn,
+  NodeFeatureData,
   WorkerFeatureComponent,
 } from "./types";
 
-export const ClusterSent: ClusterFeatureComponent = ({ nodes }) => {
+export const ClusterSent: ClusterFeatureRenderFn = ({ nodes }) => {
   let totalSent = 0;
   for (const node of nodes) {
     totalSent += node.net[0];
@@ -17,8 +19,12 @@ export const ClusterSent: ClusterFeatureComponent = ({ nodes }) => {
   );
 };
 
-export const NodeSent: NodeFeatureComponent = ({ node }) => (
+export const NodeSent: NodeFeatureRenderFn = ({ node }) => (
   <React.Fragment>{formatByteAmount(node.net[0], "mebibyte")}/s</React.Fragment>
+);
+
+export const NodeSentAccessor: Accessor<NodeFeatureData> = ({ node }) => (
+  node.net[0]
 );
 
 export const WorkerSent: WorkerFeatureComponent = () => (

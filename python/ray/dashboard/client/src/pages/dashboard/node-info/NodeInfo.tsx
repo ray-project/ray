@@ -11,7 +11,20 @@ import { useSelector } from "react-redux";
 import SortableTableHead, {
   HeaderInfo,
 } from "../../../common/SortableTableHead";
-import { getComparator, Order, stableSort } from "../../../common/tableUtils";
+import { NodeAggregation } from "./features/types";
+import { getComparator, Order, stableSort } from "../../../common/tableUtils";import { NodeCPU, WorkerCPU } from "./features/CPU";
+import { NodeDisk, WorkerDisk } from "./features/Disk";
+import { makeNodeErrors, makeWorkerErrors } from "./features/Errors";
+import { NodeGPU, WorkerGPU } from "./features/GPU";
+import { NodeGRAM, WorkerGRAM } from "./features/GRAM";
+import { NodeHost, WorkerHost } from "./features/Host";
+import { makeNodeLogs, makeWorkerLogs } from "./features/Logs";
+import { NodeRAM, WorkerRAM } from "./features/RAM";
+import { NodeReceived, WorkerReceived } from "./features/Received";
+import { NodeSent, WorkerSent } from "./features/Sent";
+import { NodeUptime, WorkerUptime } from "./features/Uptime";
+import { NodeWorkers, WorkerWorkers } from "./features/Workers";
+
 import { sum } from "../../../common/util";
 import { StoreState } from "../../../store";
 import Errors from "./dialogs/errors/Errors";
@@ -44,15 +57,6 @@ type DialogState = {
   pid: number | null;
 } | null;
 
-type NodeAggregation = {
-    [ip: string]: {
-      perWorker: {
-        [pid: string]: number;
-      };
-      total: number;
-    };
-  }
-
 type nodeInfoColumnId = "host" | "workers" | "uptime" | "cpu" | "ram" | "gpu" | "gram" | "disk" | "sent" | "received" | "logs" | "errors"
 
 const nodeInfoHeaders: HeaderInfo<nodeInfoColumnId>[] = [
@@ -70,6 +74,30 @@ const nodeInfoHeaders: HeaderInfo<nodeInfoColumnId>[] = [
   { id: "errors", label: "Errors", numeric: false, sortable: false },
 ];
 
+const nodeInfoFeatures = (numClusterWorkers: number, ) => [
+  { NodeFeature: NodeHost, WorkerFeature: WorkerHost, nodeAccessor },
+  {
+    NodeFeature: NodeWorkers(clusterWorkers.length),
+    WorkerFeature: WorkerWorkers,
+  },
+  { NodeFeature: NodeUptime, WorkerFeature: WorkerUptime },
+  { NodeFeature: NodeCPU, WorkerFeature: WorkerCPU },
+  { NodeFeature: NodeRAM, WorkerFeature: WorkerRAM },
+  { NodeFeature: NodeGPU, WorkerFeature: WorkerGPU },
+  { NodeFeature: NodeGRAM, WorkerFeature: WorkerGRAM },
+  { NodeFeature: NodeDisk, WorkerFeature: WorkerDisk },
+  { NodeFeature: NodeSent, WorkerFeature: WorkerSent },
+  { NodeFeature: NodeReceived, WorkerFeature: WorkerReceived },
+  {
+    NodeFeature: makeNodeLogs(logCounts, setLogDialog),
+    WorkerFeature: makeWorkerLogs(logCounts, setLogDialog),
+  },
+  {
+    NodeFeature: makeNodeErrors(errorCounts, setErrorDialog),
+    WorkerFeature: makeWorkerErrors(errorCounts, setErrorDialog),
+  },
+];
+
 const NodeInfo: React.FC<{}> = () => {
   const [logDialog, setLogDialog] = useState<DialogState>(null);
   const [errorDialog, setErrorDialog] = useState<DialogState>(null);
@@ -85,6 +113,7 @@ const NodeInfo: React.FC<{}> = () => {
     return <Typography color="textSecondary">Loading...</Typography>;
   }
   const clusterTotalWorkers = sum(nodeInfo.clients.map(c => c.workers.length));
+  
 
   const logCounts: NodeAggregation = {};
   const errorCounts: NodeAggregation = {};

@@ -2,8 +2,8 @@ import { Typography } from "@material-ui/core";
 import React from "react";
 import SpanButton from "../../../../common/SpanButton";
 import {
-  ClusterFeatureComponent,
-  NodeFeatureComponent,
+  ClusterFeatureRenderFn,
+  NodeFeatureRenderFn,
   WorkerFeatureComponent,
 } from "./types";
 
@@ -14,7 +14,7 @@ export const makeClusterLogs = (logCounts: {
     };
     total: number;
   };
-}): ClusterFeatureComponent => ({ nodes }) => {
+}): ClusterFeatureRenderFn => ({ nodes }) => {
   let totalLogCount = 0;
   for (const node of nodes) {
     if (node.ip in logCounts) {
@@ -38,7 +38,7 @@ export const makeNodeLogs = (
     total: number;
   },
   setLogDialog: (hostname: string, pid: number | null) => void,
-): NodeFeatureComponent => ({ node }) =>
+): NodeFeatureRenderFn => ({ node }) =>
   logCounts.total === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
       No logs

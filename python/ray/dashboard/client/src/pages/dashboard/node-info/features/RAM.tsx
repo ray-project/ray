@@ -3,14 +3,14 @@ import { formatByteAmount, formatUsage } from "../../../../common/formatUtils";
 import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import {
-  ClusterFeatureComponent,
-  NodeFeatureComponent,
+  ClusterFeatureRenderFn,
+  NodeFeatureRenderFn,
   WorkerFeatureComponent,
   NodeFeatureData,
   WorkerFeatureData
 } from "./types";
 
-export const ClusterRAM: ClusterFeatureComponent = ({ nodes }) => {
+export const ClusterRAM: ClusterFeatureRenderFn = ({ nodes }) => {
   let used = 0;
   let total = 0;
   for (const node of nodes) {
@@ -25,7 +25,7 @@ export const ClusterRAM: ClusterFeatureComponent = ({ nodes }) => {
   );
 };
 
-export const NodeRAM: NodeFeatureComponent = ({ node }) => (
+export const NodeRAM: NodeFeatureRenderFn = ({ node }) => (
   <UsageBar
     percent={(100 * (node.mem[0] - node.mem[1])) / node.mem[0]}
     text={formatUsage(node.mem[0] - node.mem[1], node.mem[0], "gibibyte")}

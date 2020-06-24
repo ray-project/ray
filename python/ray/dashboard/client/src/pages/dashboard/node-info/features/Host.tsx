@@ -1,22 +1,26 @@
 import React from "react";
+import { Accessor } from "../../../../common/tableUtils";
 import {
-  ClusterFeatureComponent,
-  NodeFeatureComponent,
+  ClusterFeatureRenderFn,
+  NodeFeatureRenderFn,
+  NodeFeatureData,
   WorkerFeatureComponent,
 } from "./types";
 
-export const ClusterHost: ClusterFeatureComponent = ({ nodes }) => (
+export const ClusterHost: ClusterFeatureRenderFn = ({ nodes }) => (
   <React.Fragment>
     Totals ({nodes.length.toLocaleString()}{" "}
     {nodes.length === 1 ? "host" : "hosts"})
   </React.Fragment>
 );
 
-export const NodeHost: NodeFeatureComponent = ({ node }) => (
+export const NodeHost: NodeFeatureRenderFn = ({ node }) => (
   <React.Fragment>
     {node.hostname} ({node.ip})
   </React.Fragment>
 );
+
+export const NodeHostAccessor: Accessor<NodeFeatureData> = ({ node }) => node.hostname;
 
 // Ray worker process titles have one of the following forms: `ray::IDLE`,
 // `ray::function()`, `ray::Class`, or `ray::Class.method()`. We extract the

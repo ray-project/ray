@@ -22,7 +22,8 @@ export const descendingComparatorFnAccessor = <T>(a: T, b: T, orderByFn: Accesso
 
 export type Order = "asc" | "desc";
 export type Comparator<T> = (a: T, b: T) => number;
-export type Accessor<T> = (a: T) => number;
+export type Accessor<T> = (a: T) => number | string;
+
 export const getComparator = <Key extends keyof any>(
   order: Order,
   orderBy: Key,

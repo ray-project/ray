@@ -1,22 +1,30 @@
 import { Typography } from "@material-ui/core";
 import React from "react";
 import { formatDuration } from "../../../../common/formatUtils";
+import { Accessor } from "../../../../common/tableUtils";
 import {
-  ClusterFeatureComponent,
-  NodeFeatureComponent,
+  ClusterFeatureRenderFn,
+  NodeFeatureRenderFn,
+  NodeFeatureData,
+  WorkerFeatureData,
   WorkerFeatureComponent,
+  NodeInfoFeature
 } from "./types";
 
 const getUptime = (bootTime: number) => Date.now() / 1000 - bootTime;
 
-export const ClusterUptime: ClusterFeatureComponent = ({ nodes }) => (
+export const ClusterUptime: ClusterFeatureRenderFn = ({ nodes }) => (
   <Typography color="textSecondary" component="span" variant="inherit">
     N/A
   </Typography>
 );
 
-export const NodeUptime: NodeFeatureComponent = ({ node }) => (
+export const NodeUptime: NodeFeatureRenderFn = ({ node }) => (
   <React.Fragment>{formatDuration(getUptime(node.boot_time))}</React.Fragment>
+);
+
+export const nodeUptimeAccessor: Accessor<NodeFeatureData> = ({ node }) => (
+  getUptime(node.boot_time)
 );
 
 export const WorkerUptime: WorkerFeatureComponent = ({ worker }) => (
@@ -24,3 +32,16 @@ export const WorkerUptime: WorkerFeatureComponent = ({ worker }) => (
     {formatDuration(getUptime(worker.create_time))}
   </React.Fragment>
 );
+
+const workerUptimeAccessor: Accessor<WorkerFeatureData> = ({ worker }) => (
+  getUptime(worker.create_time)
+);
+
+const UptimeFeature: NodeInfoFeature = {
+  NodeFeatureRenderFn: NodeUptime,
+  WorkerFeatureRenderFn: WorkerUptime,
+  nodeAccessor: nodeUptimeAccessor,
+  workerAccessor: workerUptimeAccessor
+};
+
+export default UptimeFeature;

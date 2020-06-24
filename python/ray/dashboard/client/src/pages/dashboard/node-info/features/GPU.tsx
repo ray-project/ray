@@ -3,9 +3,9 @@ import React from "react";
 import UsageBar from "../../../../common/UsageBar";
 import { getWeightedAverage, sum } from "../../../../common/util";
 import {
-  ClusterFeatureComponent,
+  ClusterFeatureRenderFn,
   Node,
-  NodeFeatureComponent,
+  NodeFeatureRenderFn,
   WorkerFeatureComponent,
 } from "./types";
 
@@ -28,7 +28,7 @@ const nodeUtilization = (node: Node): number => {
   return avgUtilization;
 };
 
-export const ClusterGPU: ClusterFeatureComponent = ({ nodes }) => {
+export const ClusterGPU: ClusterFeatureRenderFn = ({ nodes }) => {
   const clusterAverageUtilization = clusterUtilization(nodes);
   return (
     <div style={{ minWidth: 60 }}>
@@ -46,7 +46,7 @@ export const ClusterGPU: ClusterFeatureComponent = ({ nodes }) => {
   );
 };
 
-export const NodeGPU: NodeFeatureComponent = ({ node }) => {
+export const NodeGPU: NodeFeatureRenderFn = ({ node }) => {
   const nodeUtil = nodeUtilization(node);
   return (
     <div style={{ minWidth: 60 }}>
