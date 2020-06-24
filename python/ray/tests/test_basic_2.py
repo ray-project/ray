@@ -682,6 +682,8 @@ def test_get_correct_node_ip():
         worker_mock._global_node = node_mock
         found_ip = ray.services.get_node_ip_address()
         assert found_ip == "10.0.0.111"
+        assert "node:10.0.0.111" in ray.cluster_resources()
+        
 
 
 if __name__ == "__main__":
