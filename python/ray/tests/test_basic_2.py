@@ -683,7 +683,6 @@ def test_get_correct_node_ip():
         found_ip = ray.services.get_node_ip_address()
         assert found_ip == "10.0.0.111"
         assert "node:10.0.0.111" in ray.cluster_resources()
-        
 
 
 if __name__ == "__main__":
