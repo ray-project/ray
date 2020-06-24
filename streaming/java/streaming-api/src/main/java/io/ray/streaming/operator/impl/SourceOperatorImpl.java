@@ -5,15 +5,19 @@ import io.ray.streaming.api.context.RuntimeContext;
 import io.ray.streaming.api.function.impl.SourceFunction;
 import io.ray.streaming.api.function.impl.SourceFunction.SourceContext;
 import io.ray.streaming.message.Record;
+import io.ray.streaming.operator.ChainStrategy;
 import io.ray.streaming.operator.OperatorType;
+import io.ray.streaming.operator.SourceOperator;
 import io.ray.streaming.operator.StreamOperator;
 import java.util.List;
 
-public class SourceOperator<T> extends StreamOperator<SourceFunction<T>> {
+public class SourceOperatorImpl<T> extends StreamOperator<SourceFunction<T>>
+    implements SourceOperator {
   private SourceContextImpl sourceContext;
 
-  public SourceOperator(SourceFunction<T> function) {
+  public SourceOperatorImpl(SourceFunction<T> function) {
     super(function);
+    setChainStrategy(ChainStrategy.HEAD);
   }
 
   @Override
@@ -23,6 +27,7 @@ public class SourceOperator<T> extends StreamOperator<SourceFunction<T>> {
     this.function.init(runtimeContext.getParallelism(), runtimeContext.getTaskIndex());
   }
 
+  @Override
   public void run() {
     try {
       this.function.run(this.sourceContext);
@@ -32,12 +37,16 @@ public class SourceOperator<T> extends StreamOperator<SourceFunction<T>> {
   }
 
   @Override
+  public SourceContext getSourceContext() {
+    return sourceContext;
+  }
+
+  @Override
   public OperatorType getOpType() {
     return OperatorType.SOURCE;
   }
 
   class SourceContextImpl implements SourceContext<T> {
-
     private List<Collector> collectors;
 
     public SourceContextImpl(List<Collector> collectors) {
@@ -47,9 +56,10 @@ public class SourceOperator<T> extends StreamOperator<SourceFunction<T>> {
     @Override
     public void collect(T t) throws Exception {
       for (Collector collector : collectors) {
-        collector.collect(new Record(t));
+        collector.collect(new Record<>(t));
       }
     }
 
   }
+
 }

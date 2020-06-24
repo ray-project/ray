@@ -129,8 +129,6 @@ Ray currently supports AWS and GCP. Follow the instructions below to launch node
 
 ``ray submit --start`` starts a cluster as specified by the given cluster configuration YAML file, uploads ``tune_script.py`` to the cluster, and runs ``python tune_script.py [args]``.
 
-.. note:: You may see a message like: ``bash: cannot set terminal process group (-1): Inappropriate ioctl for device bash: no job control in this shell`` This is a harmless error. If the cluster launcher fails, it is most likely due to some other factor.
-
 .. code-block:: bash
 
     ray submit tune-default.yaml tune_script.py --start -- --ray-address=localhost:6379

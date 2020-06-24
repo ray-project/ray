@@ -14,13 +14,13 @@ namespace api {
 /// Represents an object in the object store..
 /// \param T The type of object.
 template <typename T>
-class RayObject {
+class ObjectRef {
  public:
-  RayObject();
+  ObjectRef();
 
-  RayObject(const ObjectID &id);
+  ObjectRef(const ObjectID &id);
 
-  bool operator==(const RayObject<T> &object) const;
+  bool operator==(const ObjectRef<T> &object) const;
 
   /// Get a untyped ID of the object
   const ObjectID &ID() const;
@@ -31,7 +31,7 @@ class RayObject {
   /// \return shared pointer of the result.
   std::shared_ptr<T> Get() const;
 
-  /// Make RayObject serializable
+  /// Make ObjectRef serializable
   MSGPACK_DEFINE(id_);
 
  private:
@@ -42,25 +42,25 @@ class RayObject {
 #include <ray/api.h>
 
 template <typename T>
-RayObject<T>::RayObject() {}
+ObjectRef<T>::ObjectRef() {}
 
 template <typename T>
-RayObject<T>::RayObject(const ObjectID &id) {
+ObjectRef<T>::ObjectRef(const ObjectID &id) {
   id_ = id;
 }
 
 template <typename T>
-inline bool RayObject<T>::operator==(const RayObject<T> &object) const {
+inline bool ObjectRef<T>::operator==(const ObjectRef<T> &object) const {
   return id_ == object.id_;
 }
 
 template <typename T>
-const ObjectID &RayObject<T>::ID() const {
+const ObjectID &ObjectRef<T>::ID() const {
   return id_;
 }
 
 template <typename T>
-inline std::shared_ptr<T> RayObject<T>::Get() const {
+inline std::shared_ptr<T> ObjectRef<T>::Get() const {
   return Ray::Get(*this);
 }
 }  // namespace api

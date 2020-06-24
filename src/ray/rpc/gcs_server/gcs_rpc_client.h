@@ -87,7 +87,7 @@ class GcsRpcClient {
   GcsRpcClient(const std::string &address, const int port,
                ClientCallManager &client_call_manager,
                std::function<std::pair<std::string, int>()> get_server_address = nullptr,
-               std::function<void()> reconnected_callback = nullptr)
+               std::function<void(bool)> reconnected_callback = nullptr)
       : client_call_manager_(client_call_manager),
         get_server_address_(std::move(get_server_address)),
         reconnected_callback_(std::move(reconnected_callback)) {
@@ -255,7 +255,10 @@ class GcsRpcClient {
       if (index < RayConfig::instance().ping_gcs_rpc_server_max_retries()) {
         Init(address.first, address.second, client_call_manager_);
         if (reconnected_callback_) {
-          reconnected_callback_();
+          // TODO(ffbin): Once we separate the pubsub server and storage addresses, we can
+          // judge whether pubsub server is restarted. Currently, we only support the
+          // scenario where pubsub server does not restart.
+          reconnected_callback_(false);
         }
       } else {
         RAY_LOG(FATAL) << "Couldn't reconnect to GCS server. The last attempted GCS "
@@ -275,7 +278,7 @@ class GcsRpcClient {
   /// Note, we use ping to detect whether the reconnection is successful. If the ping
   /// succeeds but the RPC connection fails, this function might be called called again.
   /// So it needs to be idempotent.
-  std::function<void()> reconnected_callback_;
+  std::function<void(bool)> reconnected_callback_;
 
   /// The gRPC-generated stub.
   std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;

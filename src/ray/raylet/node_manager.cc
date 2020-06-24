@@ -761,9 +761,9 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   remote_resources.SetLoadResources(std::move(remote_load));
 
   if (new_scheduler_enabled_ && client_id != self_node_id_) {
-    new_resource_scheduler_->AddOrUpdateNode(client_id.Binary(),
-                                             remote_total.GetResourceMap(),
-                                             remote_available.GetResourceMap());
+    new_resource_scheduler_->AddOrUpdateNode(
+        client_id.Binary(), remote_total.GetResourceMap(),
+        remote_resources.GetAvailableResources().GetResourceMap());
     NewSchedulerSchedulePendingTasks();
     return;
   }
@@ -810,8 +810,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
   if (it == actor_registry_.end()) {
     it = actor_registry_.emplace(actor_id, actor_registration).first;
   } else {
-    if (RayConfig::instance().gcs_service_enabled() &&
-        RayConfig::instance().gcs_actor_service_enabled()) {
+    if (RayConfig::instance().gcs_actor_service_enabled()) {
       it->second = actor_registration;
     } else {
       // Only process the state transition if it is to a later state than ours.
@@ -878,8 +877,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     }
   } else if (actor_registration.GetState() == ActorTableData::RESTARTING) {
     RAY_LOG(DEBUG) << "Actor is being restarted: " << actor_id;
-    if (!(RayConfig::instance().gcs_service_enabled() &&
-          RayConfig::instance().gcs_actor_service_enabled())) {
+    if (!RayConfig::instance().gcs_actor_service_enabled()) {
       // The actor is dead and needs reconstruction. Attempting to reconstruct its
       // creation task.
       reconstruction_policy_.ListenAndMaybeReconstruct(
@@ -942,7 +940,7 @@ void NodeManager::DispatchTasks(
   // Approximate fair round robin between classes.
   for (const auto &it : fair_order) {
     const auto &task_resources =
-        TaskSpecification::GetSchedulingClassDescriptor(it->first).first;
+        TaskSpecification::GetSchedulingClassDescriptor(it->first);
     // FIFO order within each class.
     for (const auto &task_id : it->second) {
       const auto &task = local_queues_.GetTaskOfState(task_id, TaskState::READY);
@@ -1169,8 +1167,7 @@ void NodeManager::ProcessAnnounceWorkerPortMessage(
 
 void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                           bool intentional_disconnect) {
-  if (RayConfig::instance().gcs_service_enabled() &&
-      RayConfig::instance().gcs_actor_service_enabled()) {
+  if (RayConfig::instance().gcs_actor_service_enabled()) {
     // If gcs actor management is enabled, the gcs will take over the status change of all
     // actors.
     return;
@@ -2716,8 +2713,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
       worker.MarkDetachedActor();
     }
 
-    if (RayConfig::instance().gcs_service_enabled() &&
-        RayConfig::instance().gcs_actor_service_enabled()) {
+    if (RayConfig::instance().gcs_actor_service_enabled()) {
       // Gcs server is responsible for notifying other nodes of the changes of actor
       // status, and thus raylet doesn't need to handle this anymore.
       // And if `new_scheduler_enabled_` is true, this function `FinishAssignedActorTask`

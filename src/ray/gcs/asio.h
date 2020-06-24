@@ -60,12 +60,9 @@ class RedisAsioClient {
 
   void operate();
 
-  void handle_read(boost::system::error_code ec);
-  void handle_write(boost::system::error_code ec);
-  void add_read();
-  void del_read();
-  void add_write();
-  void del_write();
+  void handle_io(boost::system::error_code ec, bool write);
+  void add_io(bool write);
+  void del_io(bool write);
   void cleanup();
 
  private:

@@ -322,7 +322,7 @@ class StandardAutoscaler:
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
             use_internal_ip=True,
-            docker_config=self.config["docker"])
+            docker_config=self.config.get("docker"))
         updater.start()
         self.updaters[node_id] = updater
 
@@ -362,7 +362,7 @@ class StandardAutoscaler:
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
             use_internal_ip=True,
-            docker_config=self.config["docker"])
+            docker_config=self.config.get("docker"))
         updater.start()
         self.updaters[node_id] = updater
 

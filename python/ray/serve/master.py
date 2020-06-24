@@ -13,7 +13,9 @@ from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.metric.exporter import MetricExporterActor
 from ray.serve.router import Router
-from ray.serve.utils import (format_actor_name, get_random_letters, logger)
+from ray.serve.exceptions import RayServeException
+from ray.serve.utils import (format_actor_name, get_random_letters, logger,
+                             try_schedule_resources_on_nodes)
 
 import numpy as np
 
@@ -21,6 +23,10 @@ import numpy as np
 # after writing each checkpoint with the specified probability.
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.0
 CHECKPOINT_KEY = "serve-master-checkpoint"
+
+# Feature flag for master actor resource checking. If true, master actor will
+# error if the desired replicas exceed current resource availability.
+_RESOURCE_CHECK_ENABLED = True
 
 
 @ray.remote
@@ -55,7 +61,7 @@ class ServeMaster:
         # namespace child actors and checkpoints.
         self.instance_name = instance_name
         # Used to read/write checkpoints.
-        self.kv_store = RayInternalKVStore()
+        self.kv_store = RayInternalKVStore(namespace=instance_name)
         # path -> (endpoint, methods).
         self.routes = {}
         # backend -> (backend_worker, backend_config, replica_config).
@@ -106,10 +112,7 @@ class ServeMaster:
         # a checkpoint to the event loop. Other state-changing calls acquire
         # this lock and will be blocked until recovering from the checkpoint
         # finishes.
-        checkpoint_key = CHECKPOINT_KEY
-        if self.instance_name is not None:
-            checkpoint_key = "{}:{}".format(self.instance_name, checkpoint_key)
-        checkpoint = self.kv_store.get(checkpoint_key)
+        checkpoint = self.kv_store.get(CHECKPOINT_KEY)
         if checkpoint is None:
             logger.debug("No checkpoint found")
         else:
@@ -424,7 +427,25 @@ class ServeMaster:
         current_num_replicas = len(self.replicas[backend_tag])
         delta_num_replicas = num_replicas - current_num_replicas
 
+        _, _, replica_config = self.backends[backend_tag]
         if delta_num_replicas > 0:
+            can_schedule = try_schedule_resources_on_nodes(
+                requirements=[
+                    replica_config.resource_dict
+                    for _ in range(delta_num_replicas)
+                ],
+                ray_nodes=ray.nodes())
+            if _RESOURCE_CHECK_ENABLED and not all(can_schedule):
+                num_possible = sum(can_schedule)
+                raise RayServeException(
+                    "Cannot scale backend {} to {} replicas. Ray Serve tried "
+                    "to add {} replicas but the resources only allows {} "
+                    "to be added. To fix this, consider scaling to replica to "
+                    "{} or add more resources to the cluster. You can check "
+                    "avaiable resources with ray.nodes().".format(
+                        backend_tag, num_replicas, delta_num_replicas,
+                        num_possible, current_num_replicas + num_possible))
+
             logger.debug("Adding {} replicas to backend {}".format(
                 delta_num_replicas, backend_tag))
             for _ in range(delta_num_replicas):
@@ -688,3 +709,14 @@ class ServeMaster:
         assert (backend_tag in self.backends
                 ), "Backend {} is not registered.".format(backend_tag)
         return self.backends[backend_tag][2]
+
+    async def shutdown(self):
+        """Shuts down the serve instance completely."""
+        async with self.write_lock:
+            ray.kill(self.http_proxy, no_restart=True)
+            ray.kill(self.router, no_restart=True)
+            ray.kill(self.metric_exporter, no_restart=True)
+            for replica_dict in self.workers.values():
+                for replica in replica_dict.values():
+                    ray.kill(replica, no_restart=True)
+            self.kv_store.delete(CHECKPOINT_KEY)

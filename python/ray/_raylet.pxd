@@ -26,6 +26,18 @@ from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
 )
 
+cdef extern from *:
+   """
+   #if __OPTIMIZE__ && __OPTIMIZE__ == 1
+   #undef __OPTIMIZE__
+   int __OPTIMIZE__ = 1;
+   #define __OPTIMIZE__ 1
+   #else
+   int __OPTIMIZE__ = 0;
+   #endif
+   """
+   int __OPTIMIZE__
+
 cdef extern from "Python.h":
     # Note(simon): This is used to configure asyncio actor stack size.
     # Cython made PyThreadState an opaque types. Saying that if the user wants
