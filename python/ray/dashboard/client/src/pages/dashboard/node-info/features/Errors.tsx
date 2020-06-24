@@ -1,13 +1,13 @@
 import { Typography } from "@material-ui/core";
 import React from "react";
 import SpanButton from "../../../../common/SpanButton";
+import { WorkerFeatureRenderFn, NodeFeatureRenderFn } from '../../../../../../../../../bazel-ray/python/ray/dashboard/client/src/pages/dashboard/node-info/features/types';
 import {
   ClusterFeatureRenderFn,
-  NodeFeatureRenderFn,
-  NodeAggregation
+  NodeAggregation,
 } from "./types";
 
-export const makeClusterErrors = (errorCounts: {
+const makeClusterErrors = (errorCounts: {
   [ip: string]: {
     perWorker: {
       [pid: string]: number;
@@ -33,7 +33,7 @@ export const makeClusterErrors = (errorCounts: {
   );
 };
 
-export const makeNodeErrors = (
+const makeNodeErrors = (
   errorCounts: NodeAggregation,
   setErrorDialog: (hostname: string, pid: number | null) => void,
 ): NodeFeatureRenderFn => ({ node }) =>
@@ -47,10 +47,10 @@ export const makeNodeErrors = (
     </SpanButton>
   );
 
-export const makeWorkerErrors = (
+const makeWorkerErrors = (
   errorCounts: NodeAggregation,
   setErrorDialog: (hostname: string, pid: number | null) => void,
-): WorkerFeatureComponent => ({ node, worker }) =>
+): WorkerFeatureRenderFn => ({ node, worker }) =>
   errorCounts.perWorker[worker.pid] ? (
     <SpanButton onClick={() => setErrorDialog(node.hostname, worker.pid)}>
       View errors ({errorCounts.perWorker[worker.pid].toLocaleString()})
@@ -60,3 +60,10 @@ export const makeWorkerErrors = (
       No errors
     </Typography>
   );
+
+const makeErrorsFeature = (errorCounts: NodeAggregation, setErrorDialog: (hostname: string, pid: number | null) => void) => ({
+  WorkerFeatureRenderFn: makeWorkerErrors(errorCounts, setErrorDialog),
+  NodeFeatureRenderFn: makeNodeErrors(errorCounts, setErrorDialog),
+})
+
+export default makeErrorsFeature;
