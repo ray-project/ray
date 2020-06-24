@@ -476,6 +476,14 @@ message AddWorkerInfoReply {
   GcsStatus status = 1;
 }
 
+message GetWorkerFailuresRequest {
+}
+
+message GetWorkerFailuresReply {
+  GcsStatus status = 1;
+  repeated WorkerFailureData worker_failure_list = 2;
+}
+
 // Service for worker info access.
 service WorkerInfoGcsService {
   // Report a worker failure to GCS Service.

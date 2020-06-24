@@ -100,11 +100,13 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
 ///
 /// \param node_id The node ID that this object appeared on or was evicted by.
 /// \param is_add Whether the object is appeared on the node.
+/// \param timestamp The timestamp that the object location is changed.
 /// \return The object location change created by this method.
 inline std::shared_ptr<ray::rpc::ObjectLocationChange> CreateObjectLocationChange(
-    const ClientID &node_id, bool is_add) {
+    const ClientID &node_id, int64_t timestamp, bool is_add) {
   ray::rpc::ObjectTableData object_table_data;
   object_table_data.set_manager(node_id.Binary());
+  object_table_data.set_timestamp(timestamp);
   auto object_location_change = std::make_shared<ray::rpc::ObjectLocationChange>();
   object_location_change->set_is_add(is_add);
   object_location_change->mutable_data()->CopyFrom(object_table_data);

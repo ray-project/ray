@@ -140,7 +140,9 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
                                         rpc::SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_info().node_id());
   RAY_LOG(INFO) << "Registering node info, node id = " << node_id;
-  AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
+  auto node_info = std::make_shared<rpc::GcsNodeInfo>(request.node_info());
+  node_info->set_timestamp(current_time_ms());
+  AddNode(node_info);
   auto on_done = [this, node_id, request, reply,
                   send_reply_callback](const Status &status) {
     RAY_CHECK_OK(status);
@@ -149,8 +151,7 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
                                        request.node_info().SerializeAsString(), nullptr));
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
-  RAY_CHECK_OK(
-      gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
+  RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node_info, on_done));
 }
 
 void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &request,
@@ -160,6 +161,7 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
   RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
   if (auto node = RemoveNode(node_id, /* is_intended = */ true)) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
+    node->set_timestamp(current_time_ms());
     RAY_CHECK(dead_nodes_.emplace(node_id, node).second);
 
     auto on_done = [this, node_id, node, reply,
@@ -242,15 +244,18 @@ void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &re
   RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
   auto iter = cluster_resources_.find(node_id);
   auto to_be_updated_resources = request.resources();
+  auto timestamp = current_time_ms();
   if (iter != cluster_resources_.end()) {
     for (auto &entry : to_be_updated_resources) {
       (*iter->second.mutable_items())[entry.first] = entry.second;
+      (*iter->second.mutable_items())[entry.first].set_timestamp(timestamp);
     }
-    auto on_done = [this, node_id, to_be_updated_resources, reply,
+    auto on_done = [this, node_id, to_be_updated_resources, timestamp, reply,
                     send_reply_callback](const Status &status) {
       RAY_CHECK_OK(status);
       rpc::NodeResourceChange node_resource_change;
       node_resource_change.set_node_id(node_id.Binary());
+      node_resource_change.set_timestamp(timestamp);
       for (auto &it : to_be_updated_resources) {
         (*node_resource_change.mutable_updated_resources())[it.first] =
             it.second.resource_capacity();
@@ -277,17 +282,19 @@ void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &re
                                            rpc::SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "Deleting node resources, node id = " << node_id;
+  auto timestamp = current_time_ms();
   auto resource_names = VectorFromProtobuf(request.resource_name_list());
   auto iter = cluster_resources_.find(node_id);
   if (iter != cluster_resources_.end()) {
     for (auto &resource_name : resource_names) {
       RAY_IGNORE_EXPR(iter->second.mutable_items()->erase(resource_name));
     }
-    auto on_done = [this, node_id, resource_names, reply,
+    auto on_done = [this, node_id, resource_names, timestamp, reply,
                     send_reply_callback](const Status &status) {
       RAY_CHECK_OK(status);
       rpc::NodeResourceChange node_resource_change;
       node_resource_change.set_node_id(node_id.Binary());
+      node_resource_change.set_timestamp(timestamp);
       for (const auto &resource_name : resource_names) {
         node_resource_change.add_deleted_resources(resource_name);
       }
