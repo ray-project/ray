@@ -645,6 +645,10 @@ import ray
 import sys
 from ray.test_utils import Semaphore
 
+@ray.remote(num_cpus=0)
+def remote_print(s, file=None):
+    print(s, file=file)
+
 ray.init(address="{}")
 
 driver_wait = ray.get_actor("{}")
@@ -654,15 +658,15 @@ ray.get(main_wait.release.remote())
 ray.get(driver_wait.acquire.remote())
 
 s1 = "{}"
-print(s1)
-print(s1, file=sys.stderr)
+ray.get(remote_print.remote(s1))
+# ray.get(remote_print.remote(s1, file=sys.stderr))
 
 ray.get(main_wait.release.remote())
 ray.get(driver_wait.acquire.remote())
 
 s2 = "{}"
-print(s2)
-print(s2, file=sys.stderr)
+ray.get(remote_print.remote(s2))
+# ray.get(remote_print.remote(s2, file=sys.stderr))
 
 ray.get(main_wait.release.remote())
     """
@@ -690,28 +694,13 @@ ray.get(main_wait.release.remote())
     ray.get(main_wait.acquire.remote())
     ray.get(main_wait.acquire.remote())
 
-    driver1_out = p1.stdout.read()
-    driver2_out = p2.stdout.read()
+    driver1_out = p1.stdout.read().decode("ascii").split('\n')
+    driver2_out = p2.stdout.read().decode("ascii").split('\n')
 
-    driver1_expected = "1\n2\n".encode("ascii")
-    driver2_expected = "3\n4\n".encode("ascii")
-
-    assert driver1_out == driver1_expected
-    assert driver2_out == driver2_expected
-
-    driver1_err = p1.stderr.read()
-    driver2_err = p2.stderr.read()
-
-    driver1_expected = "1\n2\n".encode("ascii")
-    driver2_expected = "3\n4\n".encode("ascii")
-
-    # We check for "in" not an exact match because the ray INFO logs appear in
-    # stderr
-    assert driver1_expected in driver1_err
-    assert driver2_expected not in driver1_err
-
-    assert driver2_expected in driver2_err
-    assert driver1_expected not in driver2_err
+    assert driver1_out[0][-1] == "1"
+    assert driver1_out[1][-1] == "2"
+    assert driver2_out[0][-1] == "3"
+    assert driver2_out[1][-1] == "4"
 
 
 if __name__ == "__main__":
