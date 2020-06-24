@@ -38,9 +38,10 @@ class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
       : metric_exporter_client_(metric_exporter_client),
         report_batch_size_(report_batch_size) {}
   ~MetricExporter() = default;
-  static void Register(std::shared_ptr<MetricExporterClient> metric_exporter_client) {
+  static void Register(std::shared_ptr<MetricExporterClient> metric_exporter_client,
+                       size_t report_batch_size) {
     opencensus::stats::StatsExporter::RegisterPushHandler(
-        absl::make_unique<MetricExporter>(metric_exporter_client));
+        absl::make_unique<MetricExporter>(metric_exporter_client, report_batch_size));
   }
 
   void ExportViewData(
@@ -70,7 +71,7 @@ class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
                         .tags = tags};
       RAY_LOG(DEBUG) << "Metric name " << metric_name << ", value " << point.value;
       points.push_back(std::move(point));
-      if (points.size() >= kDefaultBatchSize) {
+      if (points.size() >= report_batch_size_) {
         RAY_LOG(DEBUG) << "Point size : " << points.size();
         metric_exporter_client_->ReportMetrics(points);
         points.clear();

@@ -35,32 +35,46 @@ void MetricExporter::ExportToPoints(
     tags[keys[i]] = view_data.begin()->first[i];
   }
   // Histogram metric will be append suffix with mean/max/min.
+  double hist_mean = 0.0;
+  double hist_max = 0.0;
+  double hist_min = 0.0;
+  bool in_first_hist_data = true;
   for (const auto &row : view_data) {
-    MetricPoint mean_point{.metric_name = metric_name + ".mean",
-                           .timestamp = current_sys_time_ms(),
-                           .value = static_cast<double>(row.second.mean()),
-                           .tags = tags};
-    MetricPoint max_point{.metric_name = metric_name + ".max",
-                          .timestamp = current_sys_time_ms(),
-                          .value = static_cast<double>(row.second.max()),
-                          .tags = tags};
-    MetricPoint min_point{.metric_name = metric_name + ".min",
-                          .timestamp = current_sys_time_ms(),
-                          .value = static_cast<double>(row.second.min()),
-                          .tags = tags};
-    points.push_back(std::move(mean_point));
-    points.push_back(std::move(max_point));
-    points.push_back(std::move(min_point));
-    RAY_LOG(DEBUG) << "Metric name " << metric_name
-                   << ", mean value : " << mean_point.value
-                   << " max value : " << max_point.value
-                   << "  min value : " << min_point.value;
-
-    if (points.size() >= report_batch_size_) {
-      RAY_LOG(DEBUG) << "Point size : " << points.size();
-      metric_exporter_client_->ReportMetrics(points);
-      points.clear();
+    if (in_first_hist_data) {
+      hist_mean = static_cast<double>(row.second.mean());
+      hist_max = static_cast<double>(row.second.max());
+      hist_min = static_cast<double>(row.second.min());
+      in_first_hist_data = false;
+    } else {
+      hist_mean += static_cast<double>(row.second.mean());
+      hist_max = std::max(hist_max, static_cast<double>(row.second.max()));
+      hist_min = std::min(hist_min, static_cast<double>(row.second.min()));
     }
+  }
+  hist_mean /= view_data.size();
+  MetricPoint mean_point{.metric_name = metric_name + ".mean",
+                         .timestamp = current_sys_time_ms(),
+                         .value = hist_mean,
+                         .tags = tags};
+  MetricPoint max_point{.metric_name = metric_name + ".max",
+                        .timestamp = current_sys_time_ms(),
+                        .value = hist_max,
+                        .tags = tags};
+  MetricPoint min_point{.metric_name = metric_name + ".min",
+                        .timestamp = current_sys_time_ms(),
+                        .value = hist_min,
+                        .tags = tags};
+  points.push_back(std::move(mean_point));
+  points.push_back(std::move(max_point));
+  points.push_back(std::move(min_point));
+  RAY_LOG(DEBUG) << "Metric name " << metric_name << ", mean value : " << mean_point.value
+                 << " max value : " << max_point.value
+                 << "  min value : " << min_point.value;
+
+  if (points.size() >= report_batch_size_) {
+    RAY_LOG(DEBUG) << "Point size : " << points.size();
+    metric_exporter_client_->ReportMetrics(points);
+    points.clear();
   }
 }
 
