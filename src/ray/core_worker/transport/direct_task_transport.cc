@@ -154,7 +154,6 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
             RAY_LOG(INFO) << "[CancelWorkerLeaseIfNeeded] Retrying cancel worker lease";
             RAY_LOG(WARNING) << "Cancelling worker lease failed.";
             CancelWorkerLeaseIfNeeded(scheduling_key);
-            K
           }
         }));
   }
