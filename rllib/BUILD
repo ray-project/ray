@@ -496,7 +496,7 @@ py_test(
             "agents/ppo/tests/test.py"]  # TODO(sven): Move down once PR 6889 merged
 )
 
-# DDPPO
+# PPO: DDPPO
 py_test(
     name = "test_ddppo",
     tags = ["agents_dir"],
@@ -504,7 +504,7 @@ py_test(
     srcs = ["agents/ppo/tests/test_ddppo.py"]
 )
 
-# APPO
+# PPO: APPO
 py_test(
     name = "test_appo",
     tags = ["agents_dir"],
@@ -512,7 +512,15 @@ py_test(
     srcs = ["agents/ppo/tests/test_appo.py"]
 )
 
-# SAC
+# QMixTrainer
+py_test(
+    name = "test_qmix",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/qmix/tests/test_qmix.py"]
+)
+
+# SACTrainer
 py_test(
     name = "test_sac",
     tags = ["agents_dir"],
@@ -1101,13 +1109,6 @@ py_test(
     tags = ["tests_dir", "tests_dir_A"],
     size = "large",
     srcs = ["tests/test_attention_net_learning.py"]
-)
-
-py_test(
-    name = "tests/test_avail_actions_qmix",
-    tags = ["tests_dir", "tests_dir_A"],
-    size = "medium",
-    srcs = ["tests/test_avail_actions_qmix.py"]
 )
 
 py_test(

@@ -24,21 +24,6 @@ logger = logging.getLogger(__name__)
 
 
 def build_sac_model(policy, obs_space, action_space, config):
-    if config["model"].get("custom_model"):
-        logger.warning(
-            "Setting use_state_preprocessor=True since a custom model "
-            "was specified.")
-        config["use_state_preprocessor"] = True
-    if not isinstance(action_space, (Box, Discrete)):
-        raise UnsupportedSpaceException(
-            "Action space {} is not supported for SAC.".format(action_space))
-    if isinstance(action_space, Box) and len(action_space.shape) > 1:
-        raise UnsupportedSpaceException(
-            "Action space has multiple dimensions "
-            "{}. ".format(action_space.shape) +
-            "Consider reshaping this into a single dimension, "
-            "using a Tuple action space, or the multi-agent API.")
-
     # 2 cases:
     # 1) with separate state-preprocessor (before obs+action concat).
     # 2) no separate state-preprocessor: concat obs+actions right away.
