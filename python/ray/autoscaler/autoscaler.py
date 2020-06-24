@@ -444,6 +444,12 @@ class StandardAutoscaler:
         return "{}/{} target nodes{}".format(len(nodes), target, suffix)
 
     def request_resources(self, resources):
+        """Called by monitor to request resources (EXPERIMENTAL).
+
+        Args:
+            resources: Either a list of resource bundles or a single resource
+                demand dictionary.
+        """
         logger.info(
             "StandardAutoscaler: resource_requests={}".format(resources))
         if isinstance(resources, list):

@@ -9,16 +9,29 @@ from ray.autoscaler.tags import TAG_RAY_INSTANCE_TYPE
 
 logger = logging.getLogger(__name__)
 
+# e.g., m4.16xlarge.
+InstanceType = str
+
+# e.g., {"resources": ..., "max_workers": ...}.
+InstanceTypeConfigDict = str
+
+# e.g., {"GPU": 1}.
+ResourceDict = str
+
+# e.g., IP address of the node.
+NodeID = str
+
 
 class ResourceDemandScheduler:
-    def __init__(self, provider: NodeProvider, instance_types: Dict[str, dict],
+    def __init__(self, provider: NodeProvider,
+                 instance_types: Dict[InstanceType, InstanceTypeConfigDict],
                  max_workers: int):
         self.provider = provider
         self.instance_types = instance_types
         self.max_workers = max_workers
 
-    def debug_string(self, nodes: List[str],
-                     pending_nodes: Dict[str, int]) -> str:
+    def debug_string(self, nodes: List[NodeID],
+                     pending_nodes: Dict[NodeID, int]) -> str:
         node_resources, instance_type_counts = self.calculate_node_resources(
             nodes, pending_nodes)
 
@@ -31,8 +44,8 @@ class ResourceDemandScheduler:
         return out
 
     def calculate_node_resources(
-            self, nodes: List[str],
-            pending_nodes: Dict[str, int]) -> (List[dict], Dict[str, int]):
+            self, nodes: List[NodeID], pending_nodes: Dict[NodeID, int]
+    ) -> (List[ResourceDict], Dict[InstanceType, int]):
         """Returns node resource list and instance type counts."""
 
         node_resources = []
@@ -61,9 +74,10 @@ class ResourceDemandScheduler:
 
         return node_resources, instance_type_counts
 
-    def get_instances_to_launch(self, nodes: List[str],
-                                pending_nodes: Dict[str, int],
-                                resource_demands: List[dict]):
+    def get_instances_to_launch(self, nodes: List[NodeID],
+                                pending_nodes: Dict[InstanceType, int],
+                                resource_demands: List[ResourceDict]
+                                ) -> List[Tuple[InstanceType, int]]:
         """Get a list of instance types that should be added to the cluster.
 
         This method:
@@ -93,10 +107,22 @@ class ResourceDemandScheduler:
         return instances
 
 
-# TODO(ekl) we could use ortools to minimize cost here instead.
-def get_instances_for(instance_types: Dict[str, dict],
-                      existing_instances: Dict[str, int], max_to_add: int,
-                      resources: List[dict]) -> List[Tuple[str, int]]:
+def get_instances_for(
+        instance_types: Dict[InstanceType, InstanceTypeConfigDict],
+        existing_instances: Dict[InstanceType, int], max_to_add: int,
+        resources: List[ResourceDict]) -> List[Tuple[InstanceType, int]]:
+    """Determine instances to add given resource demands and constraints.
+
+    Args:
+        instance_types: instance types config.
+        existing_instances: counts of existing instances already launched.
+            This sets constraints on the number of new instances to add.
+        max_to_add: global constraint on instances to add.
+        resources: resource demands to fulfill.
+
+    Returns:
+        List of instances types and count to add.
+    """
     instances_to_add = collections.defaultdict(int)
     allocated_resources = []
 
@@ -128,7 +154,8 @@ def get_instances_for(instance_types: Dict[str, dict],
     return list(instances_to_add.items())
 
 
-def _utilization_score(node_resources, resources):
+def _utilization_score(node_resources: ResourceDict,
+                       resources: ResourceDict) -> float:
     remaining = copy.deepcopy(node_resources)
 
     fittable = []
@@ -149,8 +176,9 @@ def _utilization_score(node_resources, resources):
     return (min(util_by_resources), np.mean(util_by_resources))
 
 
-def get_bin_pack_residual(node_resources: List[dict],
-                          resource_demands: List[dict]):
+def get_bin_pack_residual(
+        node_resources: List[ResourceDict],
+        resource_demands: List[ResourceDict]) -> List[ResourceDict]:
     """Return a subset of resource_demands that cannot fit in the cluster.
 
     TODO(ekl): this currently does not guarantee the resources will be packed
@@ -158,12 +186,12 @@ def get_bin_pack_residual(node_resources: List[dict],
     supports a placement groups API.
 
     Args:
-        node_resources (List[dict]): List of resources per node.
-        resource_demands (List[dict]): List of resource bundles that need to
-            be bin packed onto the nodes.
+        node_resources (List[ResourceDict]): List of resources per node.
+        resource_demands (List[ResourceDict]): List of resource bundles that
+            need to be bin packed onto the nodes.
 
     Returns:
-        List[dict] the residual list resources that do not fit.
+        List[ResourceDict] the residual list resources that do not fit.
     """
 
     unfulfilled = []
@@ -183,14 +211,14 @@ def get_bin_pack_residual(node_resources: List[dict],
     return unfulfilled
 
 
-def _fits(node, resources):
+def _fits(node: ResourceDict, resources: ResourceDict) -> bool:
     for k, v in resources.items():
         if v > node.get(k, 0.0):
             return False
     return True
 
 
-def _inplace_subtract(node, resources):
+def _inplace_subtract(node: ResourceDict, resources: ResourceDict) -> None:
     for k, v in resources.items():
         assert k in node, (k, node)
         node[k] -= v

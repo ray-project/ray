@@ -63,7 +63,7 @@ def request_resources(num_cpus=None, bundles=None):
     This function is to be called e.g. on a node before submitting a bunch of
     ray.remote calls to ensure that resources rapidly become available.
 
-    This function is non blocking.
+    This function is EXPERIMENTAL.
 
     Args:
         num_cpus: int -- the number of CPU cores to request
