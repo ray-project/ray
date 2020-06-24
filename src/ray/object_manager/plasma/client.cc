@@ -123,7 +123,7 @@ std::shared_ptr<Buffer> MakeBufferFromGpuProcessHandle(GpuProcessHandle* handle)
 
 /// A Buffer class that automatically releases the backing plasma object
 /// when it goes out of scope. This is returned by Get.
-class ARROW_NO_EXPORT PlasmaBuffer : public Buffer {
+class RAY_NO_EXPORT PlasmaBuffer : public Buffer {
  public:
   ~PlasmaBuffer();
 
@@ -143,7 +143,7 @@ class ARROW_NO_EXPORT PlasmaBuffer : public Buffer {
 /// A mutable Buffer class that keeps the backing data alive by keeping a
 /// PlasmaClient shared pointer. This is returned by Create. Release will
 /// be called in the associated Seal call.
-class ARROW_NO_EXPORT PlasmaMutableBuffer : public MutableBuffer {
+class RAY_NO_EXPORT PlasmaMutableBuffer : public MutableBuffer {
  public:
   PlasmaMutableBuffer(std::shared_ptr<PlasmaClient::Impl> client, uint8_t* mutable_data,
                       int64_t data_size)
@@ -352,7 +352,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 #endif
 };
 
-PlasmaBuffer::~PlasmaBuffer() { ARROW_UNUSED(client_->Release(object_id_)); }
+PlasmaBuffer::~PlasmaBuffer() { RAY_UNUSED(client_->Release(object_id_)); }
 
 PlasmaClient::Impl::Impl() : store_conn_(0), store_capacity_(0) {
 #ifdef PLASMA_CUDA

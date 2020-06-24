@@ -35,7 +35,6 @@
 #include "ray/object_manager/plasma/compat.h"
 
 #include "arrow/status.h"
-#include "arrow/util/macros.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/util/logging.h"
 
