@@ -25,6 +25,11 @@ Take a look at any of the below tutorials to get started with Tune.
    :figure: /images/tune.png
    :description: :doc:`A walkthrough to setup your first Tune experiment <tune-tutorial>`
 
+.. customgalleryitem::
+   :tooltip: Tune's Scikit-Learn Adapters
+   :figure: /images/tune-sklearn.png
+   :description: :doc:`Tune's Scikit-Learn Adapters <tune-sklearn>`
+
 .. raw:: html
 
     </div>
@@ -34,6 +39,7 @@ Take a look at any of the below tutorials to get started with Tune.
 
    tune-60-seconds.rst
    tune-tutorial.rst
+   tune-sklearn.rst
 
 
 User Guides
