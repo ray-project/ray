@@ -694,8 +694,8 @@ ray.get(main_wait.release.remote())
     ray.get(main_wait.acquire.remote())
     ray.get(main_wait.acquire.remote())
 
-    driver1_out = p1.stdout.read().decode("ascii").split('\n')
-    driver2_out = p2.stdout.read().decode("ascii").split('\n')
+    driver1_out = p1.stdout.read().decode("ascii").split("\n")
+    driver2_out = p2.stdout.read().decode("ascii").split("\n")
 
     assert driver1_out[0][-1] == "1"
     assert driver1_out[1][-1] == "2"
