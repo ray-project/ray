@@ -70,7 +70,7 @@ class BayesOptSearch(Searcher):
             'height': (-100, 100),
         }
         algo = BayesOptSearch(space, metric="mean_loss", mode="min")
-        tune.run(my_func, algo=algo)
+        tune.run(my_func, search_alg=algo)
     """
     # bayes_opt.BayesianOptimization: Optimization object
     optimizer = None

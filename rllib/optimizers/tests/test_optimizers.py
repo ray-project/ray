@@ -12,7 +12,7 @@ from ray.rllib.optimizers import AsyncGradientsOptimizer, AsyncSamplesOptimizer
 from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.tests.mock_worker import _MockWorker
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()
 

@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RPC_GCS_RPC_SERVER_H
-#define RAY_RPC_GCS_RPC_SERVER_H
+#pragma once
 
 #include "ray/protobuf/gcs_service.grpc.pb.h"
 #include "ray/rpc/grpc_server.h"
@@ -64,6 +63,9 @@ class JobInfoGcsServiceHandler {
   virtual void HandleGetAllJobInfo(const GetAllJobInfoRequest &request,
                                    GetAllJobInfoReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
+
+  virtual void AddJobFinishedListener(
+      std::function<void(std::shared_ptr<JobID>)> listener) = 0;
 };
 
 /// The `GrpcService` for `JobInfoGcsService`.
@@ -468,5 +470,3 @@ using WorkerInfoHandler = WorkerInfoGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif  // RAY_RPC_GCS_RPC_SERVER_H

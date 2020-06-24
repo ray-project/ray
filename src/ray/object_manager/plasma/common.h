@@ -15,8 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef PLASMA_COMMON_H
-#define PLASMA_COMMON_H
+#pragma once
 
 #include <stddef.h>
 
@@ -123,5 +122,3 @@ typedef std::unordered_map<ObjectID, std::unique_ptr<ObjectTableEntry>> ObjectTa
 struct PlasmaStoreInfo;
 extern const PlasmaStoreInfo* plasma_config;
 }  // namespace plasma
-
-#endif  // PLASMA_COMMON_H

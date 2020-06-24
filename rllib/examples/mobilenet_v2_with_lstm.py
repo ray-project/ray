@@ -11,7 +11,7 @@ from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.examples.models.mobilenet_v2_with_lstm_models import \
     MobileV2PlusRNNModel, TorchMobileV2PlusRNNModel
 from ray.rllib.models import ModelCatalog
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()
 

@@ -10,8 +10,8 @@ from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
 from ray.rllib.execution.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
 

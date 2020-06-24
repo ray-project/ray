@@ -669,8 +669,7 @@ class RayTrialExecutor(TrialExecutor):
             elif trial.sync_on_checkpoint:
                 # This provides FT backwards compatibility in the
                 # case where a DurableTrainable is not provided.
-                logger.warning("Trial %s: Reading checkpoint into memory.",
-                               trial)
+                logger.debug("Trial %s: Reading checkpoint into memory", trial)
                 data_dict = TrainableUtil.pickle_checkpoint(value)
                 with self._change_working_directory(trial):
                     remote = trial.runner.restore_from_object.remote(data_dict)

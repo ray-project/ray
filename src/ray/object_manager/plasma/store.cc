@@ -28,16 +28,9 @@
 
 #include "ray/object_manager/plasma/store.h"
 
-#include <assert.h>
-#include <fcntl.h>
 #include <limits.h>
-#include <signal.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/statvfs.h>
-#include <sys/types.h>
-#include <unistd.h>
 
 #include <ctime>
 #include <deque>
@@ -66,14 +59,9 @@ using arrow::cuda::CudaContext;
 using arrow::cuda::CudaDeviceManager;
 #endif
 
-using arrow::util::ArrowLog;
-using arrow::util::ArrowLogLevel;
-
 namespace fb = plasma::flatbuf;
 
 namespace plasma {
-
-void SetMallocGranularity(int value);
 
 struct GetRequest {
   GetRequest(Client* client, const std::vector<ObjectID>& object_ids);
@@ -488,7 +476,6 @@ void PlasmaStore::ProcessGetRequest(Client* client,
   }
 
   if (!evicted_ids.empty()) {
-    unsigned char digest[kDigestSize];
     std::vector<std::shared_ptr<Buffer>> buffers;
     for (size_t i = 0; i < evicted_ids.size(); ++i) {
       ARROW_CHECK(evicted_entries[i]->pointer != nullptr);
@@ -498,7 +485,6 @@ void PlasmaStore::ProcessGetRequest(Client* client,
     if (external_store_->Get(evicted_ids, buffers).ok()) {
       for (size_t i = 0; i < evicted_ids.size(); ++i) {
         evicted_entries[i]->state = ObjectState::PLASMA_SEALED;
-        std::memcpy(&evicted_entries[i]->digest[0], &digest[0], kDigestSize);
         evicted_entries[i]->construct_duration =
             std::time(nullptr) - evicted_entries[i]->create_time;
         PlasmaObject_init(&get_req->objects[evicted_ids[i]], evicted_entries[i]);
@@ -586,8 +572,7 @@ ObjectStatus PlasmaStore::ContainsObject(const ObjectID& object_id) {
              : ObjectStatus::OBJECT_NOT_FOUND;
 }
 
-void PlasmaStore::SealObjects(const std::vector<ObjectID>& object_ids,
-                              const std::vector<std::string>& digests) {
+void PlasmaStore::SealObjects(const std::vector<ObjectID>& object_ids) {
   std::vector<ObjectInfoT> infos;
 
   ARROW_LOG(DEBUG) << "sealing " << object_ids.size() << " objects";
@@ -598,15 +583,12 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID>& object_ids,
     ARROW_CHECK(entry->state == ObjectState::PLASMA_CREATED);
     // Set the state of object to SEALED.
     entry->state = ObjectState::PLASMA_SEALED;
-    // Set the object digest.
-    std::memcpy(&entry->digest[0], digests[i].c_str(), kDigestSize);
     // Set object construction duration.
     entry->construct_duration = std::time(nullptr) - entry->create_time;
 
     object_info.object_id = object_ids[i].Binary();
     object_info.data_size = entry->data_size;
     object_info.metadata_size = entry->metadata_size;
-    object_info.digest = digests[i];
     infos.push_back(object_info);
   }
 
@@ -913,8 +895,6 @@ void PlasmaStore::SubscribeToUpdates(Client* client) {
       info.object_id = entry.first.Binary();
       info.data_size = entry.second->data_size;
       info.metadata_size = entry.second->metadata_size;
-      info.digest =
-          std::string(reinterpret_cast<char*>(&entry.second->digest[0]), kDigestSize);
       PushNotification(&info, fd);
     }
   }
@@ -960,10 +940,8 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       bool evict_if_full;
       std::string data;
       std::string metadata;
-      std::string digest;
-      digest.reserve(kDigestSize);
       RETURN_NOT_OK(ReadCreateAndSealRequest(input, input_size, &object_id,
-                                             &evict_if_full, &data, &metadata, &digest));
+                                             &evict_if_full, &data, &metadata));
       // CreateAndSeal currently only supports device_num = 0, which corresponds
       // to the host.
       int device_num = 0;
@@ -977,7 +955,7 @@ Status PlasmaStore::ProcessMessage(Client* client) {
         // Write the inlined data and metadata into the allocated object.
         std::memcpy(entry->pointer, data.data(), data.size());
         std::memcpy(entry->pointer + data.size(), metadata.data(), metadata.size());
-        SealObjects({object_id}, {digest});
+        SealObjects({object_id});
         // Remove the client from the object's array of clients because the
         // object is not being used by any client. The client was added to the
         // object's array of clients in CreateObject. This is analogous to the
@@ -993,10 +971,9 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       std::vector<ObjectID> object_ids;
       std::vector<std::string> data;
       std::vector<std::string> metadata;
-      std::vector<std::string> digests;
 
       RETURN_NOT_OK(ReadCreateAndSealBatchRequest(
-          input, input_size, &object_ids, &evict_if_full, &data, &metadata, &digests));
+          input, input_size, &object_ids, &evict_if_full, &data, &metadata));
 
       // CreateAndSeal currently only supports device_num = 0, which corresponds
       // to the host.
@@ -1023,7 +1000,7 @@ Status PlasmaStore::ProcessMessage(Client* client) {
                       metadata[i].size());
         }
 
-        SealObjects(object_ids, digests);
+        SealObjects(object_ids);
         // Remove the client from the object's array of clients because the
         // object is not being used by any client. The client was added to the
         // object's array of clients in CreateObject. This is analogous to the
@@ -1075,14 +1052,9 @@ Status PlasmaStore::ProcessMessage(Client* client) {
         HANDLE_SIGPIPE(SendContainsReply(client->fd, object_id, 0), client->fd);
       }
     } break;
-    case fb::MessageType::PlasmaListRequest: {
-      RETURN_NOT_OK(ReadListRequest(input, input_size));
-      HANDLE_SIGPIPE(SendListReply(client->fd, store_info_.objects), client->fd);
-    } break;
     case fb::MessageType::PlasmaSealRequest: {
-      std::string digest;
-      RETURN_NOT_OK(ReadSealRequest(input, input_size, &object_id, &digest));
-      SealObjects({object_id}, {digest});
+      RETURN_NOT_OK(ReadSealRequest(input, input_size, &object_id));
+      SealObjects({object_id});
       HANDLE_SIGPIPE(SendSealReply(client->fd, object_id, PlasmaError::OK), client->fd);
     } break;
     case fb::MessageType::PlasmaEvictRequest: {
@@ -1132,154 +1104,6 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       ARROW_CHECK(0);
   }
   return Status::OK();
-}
-
-void HandleSignal(int signal) {
-  if (signal == SIGTERM) {
-    ARROW_LOG(INFO) << "SIGTERM Signal received, closing Plasma Server...";
-#ifdef _WIN32
-    ExitThread(0);
-#else
-    pthread_exit(0);
-#endif
-  }
-}
-
-PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_memory,
-                     bool hugepages_enabled, std::string plasma_directory,
-                     const std::string external_store_endpoint):
-    hugepages_enabled_(hugepages_enabled), external_store_endpoint_(external_store_endpoint) {
-  ArrowLog::StartArrowLog("plasma_store", ArrowLogLevel::ARROW_INFO);
-  ArrowLog::InstallFailureSignalHandler();
-
-  // Sanity check.
-  if (socket_name.empty()) {
-    ARROW_LOG(FATAL) << "please specify socket for incoming connections with -s switch";
-  }
-  socket_name_ = socket_name;
-  if (system_memory == -1) {
-    ARROW_LOG(FATAL) << "please specify the amount of system memory with -m switch";
-  }
-  // Set system memory capacity
-  plasma::PlasmaAllocator::SetFootprintLimit(static_cast<size_t>(system_memory));
-  ARROW_LOG(INFO) << "Allowing the Plasma store to use up to "
-                  << static_cast<double>(system_memory) / 1000000000
-                  << "GB of memory.";
-  if (hugepages_enabled && plasma_directory.empty()) {
-    ARROW_LOG(FATAL) << "if you want to use hugepages, please specify path to huge pages "
-                        "filesystem with -d";
-  }
-  if (plasma_directory.empty()) {
-#ifdef __linux__
-    plasma_directory = "/dev/shm";
-#else
-    plasma_directory = "/tmp";
-#endif
-  }
-  ARROW_LOG(INFO) << "Starting object store with directory " << plasma_directory
-                  << " and huge page support "
-                  << (hugepages_enabled ? "enabled" : "disabled");
-#ifdef __linux__
-  if (!hugepages_enabled) {
-    // On Linux, check that the amount of memory available in /dev/shm is large
-    // enough to accommodate the request. If it isn't, then fail.
-    int shm_fd = open(plasma_directory.c_str(), O_RDONLY);
-    struct statvfs shm_vfs_stats;
-    fstatvfs(shm_fd, &shm_vfs_stats);
-    // The value shm_vfs_stats.f_bsize is the block size, and the value
-    // shm_vfs_stats.f_bavail is the number of available blocks.
-    int64_t shm_mem_avail = shm_vfs_stats.f_bsize * shm_vfs_stats.f_bavail;
-    close(shm_fd);
-    // Keep some safety margin for allocator fragmentation.
-    shm_mem_avail = 9 * shm_mem_avail / 10;
-    if (system_memory > shm_mem_avail) {
-      ARROW_LOG(WARNING)
-          << "System memory request exceeds memory available in " << plasma_directory
-          << ". The request is for " << system_memory
-          << " bytes, and the amount available is " << shm_mem_avail
-          << " bytes. You may be able to free up space by deleting files in "
-             "/dev/shm. If you are inside a Docker container, you may need to "
-             "pass an argument with the flag '--shm-size' to 'docker run'.";
-      system_memory = shm_mem_avail;
-    }
-  } else {
-    plasma::SetMallocGranularity(1024 * 1024 * 1024);  // 1 GB
-  }
-#endif
-  system_memory_ = system_memory;
-  plasma_directory_ = plasma_directory;
-}
-
-void PlasmaStoreRunner::Start() {
-#ifdef _WINSOCKAPI_
-  WSADATA wsadata;
-  WSAStartup(MAKEWORD(2, 2), &wsadata);
-#endif
-   // Get external store
-  std::shared_ptr<plasma::ExternalStore> external_store{nullptr};
-  if (!external_store_endpoint_.empty()) {
-    std::string name;
-    ARROW_CHECK_OK(
-        plasma::ExternalStores::ExtractStoreName(external_store_endpoint_, &name));
-    external_store = plasma::ExternalStores::GetStore(name);
-    if (external_store == nullptr) {
-      ARROW_LOG(FATAL) << "No such external store \"" << name << "\"";
-    }
-    ARROW_LOG(DEBUG) << "connecting to external store...";
-    ARROW_CHECK_OK(external_store->Connect(external_store_endpoint_));
-  }
-  ARROW_LOG(DEBUG) << "starting server listening on " << socket_name_;
-
-  // Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
-  // to a client that has already died, the store could die.
-#ifndef _WIN32  // TODO(mehrdadn): Is there an equivalent of this we need for Windows?
-   // Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
-   // to a client that has already died, the store could die.
-   signal(SIGPIPE, SIG_IGN);
-#endif
-  signal(SIGTERM, HandleSignal);
-
-  // Create the event loop.
-  loop_.reset(new EventLoop);
-  store_.reset(new PlasmaStore(loop_.get(), plasma_directory_, hugepages_enabled_,
-                               socket_name_, external_store));
-  plasma_config = store_->GetPlasmaStoreInfo();
-
-  // We are using a single memory-mapped file by mallocing and freeing a single
-  // large amount of space up front. According to the documentation,
-  // dlmalloc might need up to 128*sizeof(size_t) bytes for internal
-  // bookkeeping.
-  void* pointer = plasma::PlasmaAllocator::Memalign(
-      kBlockSize, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
-  ARROW_CHECK(pointer != nullptr);
-  // This will unmap the file, but the next one created will be as large
-  // as this one (this is an implementation detail of dlmalloc).
-  plasma::PlasmaAllocator::Free(
-      pointer, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
-
-  int socket = ConnectOrListenIpcSock(socket_name_, true);
-  // TODO(pcm): Check return value.
-  ARROW_CHECK(socket >= 0);
-
-  loop_->AddFileEvent(socket, kEventLoopRead, [this, socket](int events) {
-    this->store_->ConnectClient(socket);
-  });
-  loop_->Start();
-
-  Shutdown();
-#ifdef _WINSOCKAPI_
-  WSACleanup();
-#endif
-  ArrowLog::UninstallSignalAction();
-  ArrowLog::ShutDownArrowLog();
-}
-
-void PlasmaStoreRunner::Stop() { loop_->Stop(); }
-
-void PlasmaStoreRunner::Shutdown() {
-  loop_->Shutdown();
-  loop_ = nullptr;
-  store_ = nullptr;
 }
 
 }  // namespace plasma
