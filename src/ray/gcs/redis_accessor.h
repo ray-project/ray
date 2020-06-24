@@ -467,6 +467,11 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
   Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
                   const StatusCallback &callback) override;
 
+  Status AsyncGetWorkerFailures(
+      const MultiItemCallback<rpc::WorkerFailureData> &callback) override {
+    return Status::NotImplemented("AsyncGetWorkerFailures not implemented");
+  }
+
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
  private:

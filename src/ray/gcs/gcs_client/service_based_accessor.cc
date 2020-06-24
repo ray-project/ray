@@ -85,14 +85,14 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
           subscribe(JobID::FromBinary(job_info.job_id()), job_info);
         }
       }
-      if (done) {
-        done(status);
+      if (fetch_done) {
+        fetch_done(status);
       }
     };
     RAY_CHECK_OK(AsyncGetAll(callback));
   };
 
-  subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
+  subscribe_operation_ = [this, subscribe](const StatusCallback &subscribe_done) {
     auto on_subscribe = [this, subscribe](const std::string &id,
                                           const std::string &data) {
       JobTableData job_data;
@@ -102,7 +102,8 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
         subscribe(JobID::FromBinary(id), job_data);
       }
     };
-    return client_impl_->GetGcsPubSub().SubscribeAll(JOB_CHANNEL, on_subscribe, done);
+    return client_impl_->GetGcsPubSub().SubscribeAll(JOB_CHANNEL, on_subscribe,
+                                                     subscribe_done);
   };
 
   return subscribe_operation_(
@@ -272,8 +273,8 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  fetch_all_data_operation_ = [this, subscribe](const StatusCallback &done) {
-    auto callback = [this, subscribe, done](
+  fetch_all_data_operation_ = [this, subscribe](const StatusCallback &fetch_done) {
+    auto callback = [this, subscribe, fetch_done](
                         const Status &status,
                         const std::vector<rpc::ActorTableData> &actor_info_list) {
       for (auto &actor_info : actor_info_list) {
@@ -281,14 +282,14 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribeAll(
           subscribe(ActorID::FromBinary(actor_info.actor_id()), actor_info);
         }
       }
-      if (done) {
-        done(status);
+      if (fetch_done) {
+        fetch_done(status);
       }
     };
     RAY_CHECK_OK(AsyncGetAll(callback));
   };
 
-  subscribe_all_operation_ = [this, subscribe](const StatusCallback &done) {
+  subscribe_all_operation_ = [this, subscribe](const StatusCallback &subscribe_done) {
     auto on_subscribe = [this, subscribe](const std::string &id,
                                           const std::string &data) {
       ActorTableData actor_data;
@@ -297,7 +298,8 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribeAll(
         subscribe(ActorID::FromBinary(actor_data.actor_id()), actor_data);
       }
     };
-    return client_impl_->GetGcsPubSub().SubscribeAll(ACTOR_CHANNEL, on_subscribe, done);
+    return client_impl_->GetGcsPubSub().SubscribeAll(ACTOR_CHANNEL, on_subscribe,
+                                                     subscribe_done);
   };
 
   return subscribe_all_operation_(
@@ -571,26 +573,31 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
   RAY_CHECK(node_change_callback_ == nullptr);
   node_change_callback_ = subscribe;
 
-  fetch_node_data_operation_ = [this](const StatusCallback &done) {
-    auto callback = [this, done](const Status &status,
-                                 const std::vector<GcsNodeInfo> &node_info_list) {
+  fetch_node_data_operation_ = [this](const StatusCallback &fetch_done) {
+    auto callback = [this, fetch_done](const Status &status,
+                                       const std::vector<GcsNodeInfo> &node_info_list) {
       for (auto &node_info : node_info_list) {
-        HandleNotification(node_info);
+        if (subscribe_node_filter_.Filter(node_info.node_id(), node_info.timestamp())) {
+          HandleNotification(node_info);
+        }
       }
-      if (done) {
-        done(status);
+      if (fetch_done) {
+        fetch_done(status);
       }
     };
     RAY_CHECK_OK(AsyncGetAll(callback));
   };
 
-  subscribe_node_operation_ = [this](const StatusCallback &done) {
+  subscribe_node_operation_ = [this](const StatusCallback &subscribe_done) {
     auto on_subscribe = [this](const std::string &id, const std::string &data) {
       GcsNodeInfo node_info;
       node_info.ParseFromString(data);
-      HandleNotification(node_info);
+      if (subscribe_node_filter_.Filter(node_info.node_id(), node_info.timestamp())) {
+        HandleNotification(node_info);
+      }
     };
-    return client_impl_->GetGcsPubSub().SubscribeAll(NODE_CHANNEL, on_subscribe, done);
+    return client_impl_->GetGcsPubSub().SubscribeAll(NODE_CHANNEL, on_subscribe,
+                                                     subscribe_done);
   };
 
   return subscribe_node_operation_([this, subscribe, done](const Status &status) {
@@ -709,27 +716,62 @@ Status ServiceBasedNodeInfoAccessor::AsyncDeleteResources(
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
     const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  fetch_resource_data_operation_ = [this](const StatusCallback &done) {
-    auto callback = [this, done](const Status &status,
-                                 const std::vector<GcsNodeInfo> &node_info_list) {
-      for (auto &node_info : node_info_list) {
-        HandleNotification(node_info);
+  fetch_resource_data_operation_ = [this, subscribe](const StatusCallback &fetch_done) {
+    auto callback = [this, subscribe, fetch_done](
+                        const Status &status,
+                        const std::vector<rpc::NodeResources> &node_resources_list) {
+      for (auto &node_resources : node_resources_list) {
+        rpc::NodeResourceChange node_resource_change;
+        node_resource_change.set_node_id(node_resources.node_id());
+        for (auto &it : node_resources.resources()) {
+          if (subscribe_resource_filter_.Filter(node_resources.node_id() + it.first,
+                                                it.second.timestamp())) {
+            (*node_resource_change.mutable_updated_resources())[it.first] =
+                it.second.resource_capacity();
+          }
+        }
+        if (node_resource_change.updated_resources_size() > 0 ||
+            node_resource_change.deleted_resources_size() > 0) {
+          subscribe(node_resource_change);
+        }
       }
-      if (done) {
-        done(status);
+      if (fetch_done) {
+        fetch_done(status);
       }
     };
-    RAY_CHECK_OK(AsyncGetAll(callback));
+    RAY_CHECK_OK(AsyncGetAllNodeResources(callback));
   };
 
-  subscribe_resource_operation_ = [this, subscribe](const StatusCallback &done) {
-    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+  subscribe_resource_operation_ = [this,
+                                   subscribe](const StatusCallback &subscribe_done) {
+    auto on_subscribe = [this, subscribe](const std::string &id,
+                                          const std::string &data) {
+      rpc::NodeResourceChange result;
+      result.ParseFromString(data);
+
+      bool is_changed = false;
       rpc::NodeResourceChange node_resource_change;
-      node_resource_change.ParseFromString(data);
-      subscribe(node_resource_change);
+      node_resource_change.set_node_id(result.node_id());
+      for (auto &it : result.updated_resources()) {
+        if (subscribe_resource_filter_.Filter(result.node_id() + it.first,
+                                              result.timestamp())) {
+          (*node_resource_change.mutable_updated_resources())[it.first] = it.second;
+          is_changed = true;
+        }
+      }
+      for (auto &it : result.deleted_resources()) {
+        if (subscribe_resource_filter_.Filter(result.node_id() + it,
+                                              result.timestamp())) {
+          node_resource_change.add_deleted_resources(it);
+          is_changed = true;
+        }
+      }
+      if (is_changed) {
+        subscribe(node_resource_change);
+      }
     };
     return client_impl_->GetGcsPubSub().SubscribeAll(NODE_RESOURCE_CHANNEL, on_subscribe,
-                                                     done);
+                                                     subscribe_done);
   };
 
   return subscribe_resource_operation_([this, subscribe, done](const Status &status) {
@@ -773,15 +815,16 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
     const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  subscribe_batch_heartbeat_operation_ = [this, subscribe](const StatusCallback &done) {
-    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-      rpc::HeartbeatBatchTableData heartbeat_batch_table_data;
-      heartbeat_batch_table_data.ParseFromString(data);
-      subscribe(heartbeat_batch_table_data);
-    };
-    return client_impl_->GetGcsPubSub().Subscribe(HEARTBEAT_BATCH_CHANNEL, "",
-                                                  on_subscribe, done);
-  };
+  subscribe_batch_heartbeat_operation_ =
+      [this, subscribe](const StatusCallback &subscribe_done) {
+        auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+          rpc::HeartbeatBatchTableData heartbeat_batch_table_data;
+          heartbeat_batch_table_data.ParseFromString(data);
+          subscribe(heartbeat_batch_table_data);
+        };
+        return client_impl_->GetGcsPubSub().Subscribe(HEARTBEAT_BATCH_CHANNEL, "",
+                                                      on_subscribe, subscribe_done);
+      };
   return subscribe_batch_heartbeat_operation_(done);
 }
 
@@ -1229,12 +1272,18 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
 
   auto fetch_data_operation = [this, object_id,
                                subscribe](const StatusCallback &fetch_done) {
-    auto callback = [object_id, subscribe, fetch_done](
+    auto callback = [this, object_id, subscribe, fetch_done](
                         const Status &status,
                         const std::vector<rpc::ObjectTableData> &result) {
       if (status.ok()) {
+        std::vector<rpc::ObjectTableData> object_changed;
+        for (auto &object_data : result) {
+          if (subscribe_filter_.Filter(object_id.Binary(), object_data.timestamp())) {
+            object_changed.push_back(object_data);
+          }
+        }
         gcs::ObjectChangeNotification notification(rpc::GcsChangeMode::APPEND_OR_ADD,
-                                                   result);
+                                                   object_changed);
         subscribe(object_id, notification);
       }
       if (fetch_done) {
@@ -1246,17 +1295,20 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
 
   auto subscribe_operation = [this, object_id,
                               subscribe](const StatusCallback &subscribe_done) {
-    auto on_subscribe = [object_id, subscribe](const std::string &id,
-                                               const std::string &data) {
+    auto on_subscribe = [this, object_id, subscribe](const std::string &id,
+                                                     const std::string &data) {
       rpc::ObjectLocationChange object_location_change;
       object_location_change.ParseFromString(data);
-      std::vector<rpc::ObjectTableData> object_data_vector;
-      object_data_vector.emplace_back(object_location_change.data());
-      auto change_mode = object_location_change.is_add()
-                             ? rpc::GcsChangeMode::APPEND_OR_ADD
-                             : rpc::GcsChangeMode::REMOVE;
-      gcs::ObjectChangeNotification notification(change_mode, object_data_vector);
-      subscribe(object_id, notification);
+      if (subscribe_filter_.Filter(object_id.Binary(),
+                                   object_location_change.data().timestamp())) {
+        std::vector<rpc::ObjectTableData> object_data_vector;
+        object_data_vector.emplace_back(object_location_change.data());
+        auto change_mode = object_location_change.is_add()
+                               ? rpc::GcsChangeMode::APPEND_OR_ADD
+                               : rpc::GcsChangeMode::REMOVE;
+        gcs::ObjectChangeNotification notification(change_mode, object_data_vector);
+        subscribe(object_id, notification);
+      }
     };
     return client_impl_->GetGcsPubSub().Subscribe(OBJECT_CHANNEL, object_id.Hex(),
                                                   on_subscribe, subscribe_done);
@@ -1292,6 +1344,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncUnsubscribeToLocations(
   auto status = client_impl_->GetGcsPubSub().Unsubscribe(OBJECT_CHANNEL, object_id.Hex());
   subscribe_object_operations_.erase(object_id);
   fetch_object_data_operations_.erase(object_id);
+  subscribe_filter_.Remove(object_id.Binary());
   RAY_LOG(DEBUG) << "Finished unsubscribing object location, object id = " << object_id;
   return status;
 }
@@ -1368,6 +1421,25 @@ Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
     const SubscribeCallback<WorkerID, rpc::WorkerTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
+
+  fetch_data_operation_ = [this, subscribe](const StatusCallback &fetch_done) {
+    auto callback = [this, subscribe, fetch_done](
+                        const Status &status,
+                        const std::vector<rpc::WorkerFailureData> &worker_failure_list) {
+      for (auto &worker_failure : worker_failure_list) {
+        const auto worker_id =
+            WorkerID::FromBinary(worker_failure.worker_address().worker_id());
+        if (subscribe_filter_.Filter(worker_id.Binary(), worker_failure.timestamp())) {
+          subscribe(worker_id, worker_failure);
+        }
+      }
+      if (fetch_done) {
+        fetch_done(status);
+      }
+    };
+    RAY_CHECK_OK(AsyncGetWorkerFailures(callback));
+  };
+
   subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
       rpc::WorkerTableData worker_failure_data;
@@ -1448,6 +1520,20 @@ Status ServiceBasedWorkerInfoAccessor::AsyncAdd(
         if (callback) {
           callback(status);
         }
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedWorkerInfoAccessor::AsyncGetWorkerFailures(
+    const MultiItemCallback<rpc::WorkerFailureData> &callback) {
+  RAY_LOG(DEBUG) << "Getting worker failures.";
+  rpc::GetWorkerFailuresRequest request;
+  client_impl_->GetGcsRpcClient().GetWorkerFailures(
+      request,
+      [callback](const Status &status, const rpc::GetWorkerFailuresReply &reply) {
+        auto result = VectorFromProtobuf(reply.worker_failure_list());
+        callback(status, result);
+        RAY_LOG(DEBUG) << "Finished getting worker failures.";
       });
   return Status::OK();
 }

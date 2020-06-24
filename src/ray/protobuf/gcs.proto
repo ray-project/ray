@@ -84,6 +84,8 @@ message ObjectTableData {
   uint64 object_size = 1;
   // The node manager ID that this object appeared on or was evicted by.
   bytes manager = 2;
+  // Timestamp that the object is created.
+  int64 timestamp = 3;
 }
 
 message TaskReconstructionData {
@@ -217,6 +219,8 @@ message ProfileTableData {
 message ResourceTableData {
   // The total capacity of this resource type.
   double resource_capacity = 1;
+  // Timestamp that the resource is created or updated.
+  int64 timestamp = 2;
 }
 
 message GcsNodeInfo {
@@ -242,12 +246,12 @@ message GcsNodeInfo {
   // The port at which the object manager is listening for TCP
   // connections from other object managers.
   int32 object_manager_port = 6;
-
   // Current state of this node.
   GcsNodeState state = 7;
-
   // The Hostname address of the node manager.
   string node_manager_hostname = 8;
+  // Timestamp that the node is created or updated.
+  int64 timestamp = 9;
 }
 
 message HeartbeatTableData {
@@ -396,6 +400,8 @@ message NodeResourceChange {
   map<string, double> updated_resources = 2;
   // Labels of the resources that were deleted.
   repeated string deleted_resources = 3;
+  // Timestamp that the node resource is changed.
+  int64 timestamp = 4;
 }
 
 message PubSubMessage {

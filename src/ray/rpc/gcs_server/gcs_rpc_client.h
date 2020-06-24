@@ -251,6 +251,10 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, AddWorkerInfo,
                              worker_info_grpc_client_, )
 
+  /// Get worker failures from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, GetWorkerFailures,
+                             worker_info_grpc_client_, )
+
  private:
   std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;
 

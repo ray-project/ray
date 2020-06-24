@@ -705,6 +705,13 @@ class WorkerInfoAccessor {
   virtual Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
                           const StatusCallback &callback) = 0;
 
+  /// Get worker failures from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \param Status
+  virtual Status AsyncGetWorkerFailures(
+      const MultiItemCallback<rpc::WorkerFailureData> &callback) = 0;
+
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   /// PubSub server restart will cause GCS server restart. In this case, we need to
