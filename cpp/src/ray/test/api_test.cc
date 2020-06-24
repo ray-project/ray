@@ -94,7 +94,7 @@ TEST(RayApiTest, CallWithObjectTest) {
 
 TEST(RayApiTest, ActorTest) {
   Ray::Init();
-  ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate);
+  ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate).Remote();
   auto rt1 = actor.Task(&Counter::Add, 1).Remote();
   auto rt2 = actor.Task(&Counter::Add, 2).Remote();
   auto rt3 = actor.Task(&Counter::Add, 3).Remote();

@@ -60,7 +60,7 @@ int main() {
             << result5 << std::endl;
 
   /// create actor and actor function remote call
-  ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate);
+  ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate).Remote();
   auto r6 = actor.Task(&Counter::Add, 5).Remote();
   auto r7 = actor.Task(&Counter::Add, 1).Remote();
   auto r8 = actor.Task(&Counter::Add, 1).Remote();

@@ -22,6 +22,9 @@ class TaskCaller;
 template <typename ReturnType>
 class ActorTaskCaller;
 
+template <typename ActorType>
+class ActorCreator;
+
 class WaitResult;
 
 class Ray {
@@ -52,7 +55,7 @@ class Ray {
   template <typename T>
   static std::vector<std::shared_ptr<T>> Get(const std::vector<ObjectRef<T>> &ids);
 
-  /// Wait for a list of Objects to be locally available,
+  /// Wait for a list of objects to be locally available,
   /// until specified number of objects are ready, or specified timeout has passed.
   ///
   /// \param[in] ids The object id array which should be waited.
@@ -83,9 +86,9 @@ class Ray {
   static TaskCaller<ReturnType> TaskInternal(FuncType &func, ExecFuncType &exec_func,
                                              ArgTypes &... args);
 
-  template <typename ReturnType, typename FuncType, typename ExecFuncType,
+  template <typename ActorType, typename FuncType, typename ExecFuncType,
             typename... ArgTypes>
-  static ActorHandle<ReturnType> CreateActorInternal(FuncType &func,
+  static ActorCreator<ActorType> CreateActorInternal(FuncType &func,
                                                      ExecFuncType &exec_func,
                                                      ArgTypes &... args);
 
@@ -111,6 +114,7 @@ class Ray {
 }  // namespace ray
 
 // --------- inline implementation ------------
+#include <ray/api/actor_creator.h>
 #include <ray/api/actor_handle.h>
 #include <ray/api/actor_task_caller.h>
 #include <ray/api/arguments.h>
@@ -194,9 +198,9 @@ inline TaskCaller<ReturnType> Ray::TaskInternal(FuncType &func, ExecFuncType &ex
   return TaskCaller<ReturnType>(runtime_, ptr, buffer);
 }
 
-template <typename ReturnType, typename FuncType, typename ExecFuncType,
+template <typename ActorType, typename FuncType, typename ExecFuncType,
           typename... ArgTypes>
-inline ActorHandle<ReturnType> Ray::CreateActorInternal(FuncType &create_func,
+inline ActorCreator<ActorType> Ray::CreateActorInternal(FuncType &create_func,
                                                         ExecFuncType &exec_func,
                                                         ArgTypes &... args) {
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
@@ -205,8 +209,7 @@ inline ActorHandle<ReturnType> Ray::CreateActorInternal(FuncType &create_func,
   RemoteFunctionPtrHolder ptr;
   ptr.function_pointer = reinterpret_cast<uintptr_t>(create_func);
   ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
-  auto returned_actor_id = runtime_->CreateActor(ptr, buffer);
-  return ActorHandle<ReturnType>(returned_actor_id);
+  return ActorCreator<ActorType>(runtime_, ptr, buffer);
 }
 
 template <typename ReturnType, typename ActorType, typename FuncType,
