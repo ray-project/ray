@@ -296,7 +296,6 @@ cc_library(
         "@bazel_tools//src/conditions:windows": PROPAGATED_WINDOWS_DEFINES,
         "//conditions:default": [],
     }),
-    includes = ["src/ray/object_manager/format"],  # workaround for flatbuffer-generated headers
     linkopts = PLASMA_LINKOPTS,
     strip_include_prefix = "src",
     deps = [
