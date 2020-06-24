@@ -390,6 +390,7 @@ ray::Status raylet::RayletClient::CancelWorkerLease(
     const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) {
   rpc::CancelWorkerLeaseRequest request;
   request.set_task_id(task_id.Binary());
+  RAY_LOG(INFO) << "[RayletClient] Cancelling worker lease.";
   return grpc_client_->CancelWorkerLease(request, callback);
 }
 

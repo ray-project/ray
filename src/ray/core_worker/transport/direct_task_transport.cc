@@ -117,6 +117,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     if (queue_entry->second.empty()) {
       task_queues_.erase(queue_entry);
       RAY_LOG(DEBUG) << "Task queue empty, canceling lease request";
+      RAY_LOG(INFO) << "[OnWorkerIdle] Cancelling worker lease if needed";
       CancelWorkerLeaseIfNeeded(scheduling_key);
     }
   }
@@ -150,7 +151,9 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
             // request again. In the latter case, the in-flight lease request
             // should already have been removed from our local state, so we no
             // longer need to cancel.
-            CancelWorkerLeaseIfNeeded(scheduling_key);
+            RAY_LOG(INFO) << "[CancelWorkerLeaseIfNeeded] Retrying cancel worker lease";
+            RAY_LOG(WARNING) << "Cancelling worker lease failed.";
+            CancelWorkerLeaseIfNeeded(scheduling_key);K
           }
         }));
   }
@@ -321,6 +324,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
 
           if (scheduled_tasks->second.empty()) {
             task_queues_.erase(scheduling_key);
+            RAY_LOG(INFO) << "[CancelTask] Cancelling worker lease if needed";
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
           RAY_UNUSED(task_finisher_->PendingTaskFailed(task_spec.TaskId(),
