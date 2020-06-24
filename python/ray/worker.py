@@ -964,7 +964,6 @@ def print_logs(redis_client, threads_stopped):
     pubsub_client = redis_client.pubsub(ignore_subscribe_messages=True)
     pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL)
     localhost = services.get_node_ip_address()
-    job_str = ray.utils.binary_to_hex(job_id.binary())
     try:
         # Keep track of the number of consecutive log messages that have been
         # received with no break in between. If this number grows continually,
@@ -983,17 +982,7 @@ def print_logs(redis_client, threads_stopped):
                 continue
             num_consecutive_messages_received += 1
 
-            if (num_consecutive_messages_received % 100 == 0
-                    and num_consecutive_messages_received > 0):
-                logger.warning(
-                    "The driver may not be able to keep up with the "
-                    "stdout/stderr of the workers. To avoid forwarding logs "
-                    "to the driver, use 'ray.init(log_to_driver=False)'.")
-
             data = json.loads(ray.utils.decode(msg["data"]))
-
-            if data["job"] and data["job"] != job_str:
-                continue
 
             def color_for(data):
                 if data["pid"] == "raylet":
@@ -1012,6 +1001,12 @@ def print_logs(redis_client, threads_stopped):
                         colorama.Style.DIM, color_for(data), data["pid"],
                         data["ip"], colorama.Style.RESET_ALL, line))
 
+            if (num_consecutive_messages_received % 100 == 0
+                    and num_consecutive_messages_received > 0):
+                logger.warning(
+                    "The driver may not be able to keep up with the "
+                    "stdout/stderr of the workers. To avoid forwarding logs "
+                    "to the driver, use 'ray.init(log_to_driver=False)'.")
     except (OSError, redis.exceptions.ConnectionError) as e:
         logger.error("print_logs: {}".format(e))
     finally:
@@ -1315,8 +1310,7 @@ def connect(node,
             worker.logger_thread = threading.Thread(
                 target=print_logs,
                 name="ray_print_logs",
-                args=(worker.redis_client, worker.threads_stopped,
-                      worker.current_job_id))
+                args=(worker.redis_client, worker.threads_stopped))
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
 
