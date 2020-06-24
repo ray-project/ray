@@ -659,14 +659,12 @@ ray.get(driver_wait.acquire.remote())
 
 s1 = "{}"
 ray.get(remote_print.remote(s1))
-# ray.get(remote_print.remote(s1, file=sys.stderr))
 
 ray.get(main_wait.release.remote())
 ray.get(driver_wait.acquire.remote())
 
 s2 = "{}"
 ray.get(remote_print.remote(s2))
-# ray.get(remote_print.remote(s2, file=sys.stderr))
 
 ray.get(main_wait.release.remote())
     """

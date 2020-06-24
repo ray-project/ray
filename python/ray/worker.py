@@ -991,9 +991,9 @@ def print_logs(redis_client, threads_stopped, job_id):
                     "to the driver, use 'ray.init(log_to_driver=False)'.")
 
             data = json.loads(ray.utils.decode(msg["data"]))
-            if ("job" in data) and data["job"] and ray.utils.binary_to_hex(
-                    job_id.binary()) != data["job"]:
-                continue
+            # if data["job"] and ray.utils.binary_to_hex(
+            #         job_id.binary()) != data["job"]:
+            #     continue
 
             def color_for(data):
                 if data["pid"] == "raylet":
