@@ -1,3 +1,4 @@
+# flake8: noqa
 """
 Tune's Scikit Learn Adapters
 ============================
@@ -38,7 +39,6 @@ To start out, change the import statement to get tune-scikit-learn’s grid sear
 # from sklearn.model_selection import GridSearchCV
 from tune_sklearn import TuneGridSearchCV
 
-
 #######################################################################
 # And from there, we would proceed just like how we would in Scikit-Learn’s interface!
 #
@@ -59,11 +59,7 @@ y = digits.target
 x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=.2)
 
 # Example parameters to tune from SGDClassifier
-parameter_grid = {
-    "alpha": [1e-4, 1e-1, 1],
-    "epsilon": [0.01, 0.1]
-}
-
+parameter_grid = {"alpha": [1e-4, 1e-1, 1], "epsilon": [0.01, 0.1]}
 
 #######################################################################
 # As you can see, the setup here is exactly how you would do it for Scikit-Learn. Now, let's try fitting a model.
@@ -75,7 +71,7 @@ tune_search = TuneGridSearchCV(
     early_stopping=True,
     max_iters=10)
 
-import time # Just to compare fit times
+import time  # Just to compare fit times
 start = time.time()
 tune_search.fit(x_train, y_train)
 end = time.time()
