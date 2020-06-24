@@ -437,7 +437,7 @@ py_test(
 py_test(
     name = "test_dyna",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/dyna/tests/test_dyna.py"]
 )
 
@@ -469,6 +469,14 @@ py_test(
     tags = ["agents_dir"],
     size = "small",
     srcs = ["agents/marwil/tests/test_marwil.py"]
+)
+
+# MAMLTrainer
+py_test(
+    name = "test_maml",
+    tags = ["agents_dir"],
+    size = "small",
+    srcs = ["agents/maml/tests/test_maml.py"]
 )
 
 # PGTrainer
