@@ -67,7 +67,9 @@ def request_resources(num_cpus=None, bundles=None):
 
     Args:
         num_cpus: int -- the number of CPU cores to request
-        bundles: List[dict] -- list of resource bundles (Experimental)
+        bundles: List[dict] -- list of resource dicts (e.g., {"CPU": 1}). This
+            only has an effect if you've configured `available_instance_types`
+            if your cluster config.
     """
     r = _redis()
     if num_cpus is not None and num_cpus > 0:

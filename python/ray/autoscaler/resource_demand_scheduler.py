@@ -140,6 +140,7 @@ def get_instances_for(
 
         # Give up, no feasible node.
         if not utilization_scores:
+            logger.info("No feasible instance to add for {}".format(resources))
             break
 
         utilization_scores = sorted(utilization_scores, reverse=True)

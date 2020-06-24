@@ -11,7 +11,7 @@ provider:
     availability_zone: us-west-2a
 
 # Tell the autoscaler the allowed node types and the resources they provide.
-# Setting this configuration enables the Tune resource demand scheduler.
+# This only has an effect if you use the experimental request_resources() call.
 available_instance_types:
     m4.xlarge:
         resources: {"CPU": 4}
@@ -26,8 +26,7 @@ available_instance_types:
         resources: {"CPU": 32, "GPU": 8}
         max_workers: 2
 
-# Configure the cluster for very conservative auto-scaling. This is fine
-# since Tune will manage scale-up separately.
+# Configure the cluster for very conservative auto-scaling otherwise.
 target_utilization_fraction: 1.0
 idle_timeout_minutes: 2
 
