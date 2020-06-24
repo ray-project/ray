@@ -38,9 +38,15 @@ NUMPY_VERSIONS=("1.14.5"
 mkdir -p $DOWNLOAD_DIR
 mkdir -p .whl
 
-# Use the latest version of Node.js in order to build the dashboard.
-source $HOME/.nvm/nvm.sh
-nvm use node
+# In azure pipelines or github acions, we don't need to install node
+if [ -x "$(command -v npm)" ]; then
+  echo "Node already installed"
+  npm -v
+else
+  # Use the latest version of Node.js in order to build the dashboard.
+  source $HOME/.nvm/nvm.sh
+  nvm use node
+fi
 
 # Build the dashboard so its static assets can be included in the wheel.
 pushd python/ray/dashboard/client

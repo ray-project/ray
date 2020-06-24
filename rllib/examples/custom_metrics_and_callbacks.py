@@ -4,7 +4,7 @@ Here we use callbacks to track the average CartPole pole angle magnitude as a
 custom metric.
 """
 
-from typing import Dict
+from typing import Any, Dict
 import argparse
 import numpy as np
 
@@ -18,9 +18,13 @@ from ray.rllib.agents.callbacks import DefaultCallbacks
 
 
 class MyCallbacks(DefaultCallbacks):
-    def on_episode_start(self, worker: RolloutWorker, base_env: BaseEnv,
+    def on_episode_start(self, 
+                         worker: RolloutWorker,
+                         base_env: BaseEnv,
                          policies: Dict[str, Policy],
-                         episode: MultiAgentEpisode, **kwargs):
+                         episode: MultiAgentEpisode,
+                         env_infos: Dict[str, Any],
+                         **kwargs):
         print("episode {} started".format(episode.episode_id))
         episode.user_data["pole_angles"] = []
         episode.hist_data["pole_angles"] = []

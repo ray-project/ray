@@ -1,4 +1,5 @@
 import logging
+from typing import Type, TypeVar
 
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
@@ -77,26 +78,30 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def choose_policy_optimizer(workers, config):
-    if config["simple_optimizer"]:
-        return SyncSamplesOptimizer(
-            workers,
-            num_sgd_iter=config["num_sgd_iter"],
-            train_batch_size=config["train_batch_size"],
-            sgd_minibatch_size=config["sgd_minibatch_size"],
-            standardize_fields=["advantages"])
+TLocalMultiGPUOptimizer = TypeVar('TLocalMultiGPUOptimizer', bound=LocalMultiGPUOptimizer)
 
-    return LocalMultiGPUOptimizer(
-        workers,
-        sgd_batch_size=config["sgd_minibatch_size"],
-        num_sgd_iter=config["num_sgd_iter"],
-        num_gpus=config["num_gpus"],
-        rollout_fragment_length=config["rollout_fragment_length"],
-        num_envs_per_worker=config["num_envs_per_worker"],
-        train_batch_size=config["train_batch_size"],
-        standardize_fields=["advantages"],
-        shuffle_sequences=config["shuffle_sequences"],
-        _fake_gpus=config["_fake_gpus"])
+def get_make_optimizer(async_replay_optimizer_cls: Type[TLocalMultiGPUOptimizer] = LocalMultiGPUOptimizer):
+    def choose_policy_optimizer(workers, config):
+        if config["simple_optimizer"]:
+            return SyncSamplesOptimizer(
+                workers,
+                num_sgd_iter=config["num_sgd_iter"],
+                train_batch_size=config["train_batch_size"],
+                sgd_minibatch_size=config["sgd_minibatch_size"],
+                standardize_fields=["advantages"])
+
+        return async_replay_optimizer_cls(
+            workers,
+            sgd_batch_size=config["sgd_minibatch_size"],
+            num_sgd_iter=config["num_sgd_iter"],
+            num_gpus=config["num_gpus"],
+            rollout_fragment_length=config["rollout_fragment_length"],
+            num_envs_per_worker=config["num_envs_per_worker"],
+            train_batch_size=config["train_batch_size"],
+            standardize_fields=["advantages"],
+            shuffle_sequences=config["shuffle_sequences"],
+            _fake_gpus=config["_fake_gpus"])
+    return choose_policy_optimizer
 
 
 def update_kl(trainer, fetches):
@@ -191,7 +196,7 @@ PPOTrainer = build_trainer(
     default_config=DEFAULT_CONFIG,
     default_policy=PPOTFPolicy,
     get_policy_class=get_policy_class,
-    make_policy_optimizer=choose_policy_optimizer,
+    make_policy_optimizer=get_make_optimizer(),
     validate_config=validate_config,
     after_optimizer_step=update_kl,
     after_train_result=warn_about_bad_reward_scales)

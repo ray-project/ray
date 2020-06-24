@@ -22,7 +22,7 @@ install_base() {
       pkg_install_helper build-essential curl unzip tmux gdb libunwind-dev python3-pip python3-setuptools
       if [ "${LINUX_WHEELS-}" = 1 ]; then
         pkg_install_helper docker
-        sudo usermod -a -G docker travis
+        sudo usermod -a -G docker vsts
       fi
       if [ -n "${PYTHON-}" ]; then
         "${ROOT_DIR}/install-strace.sh" || true
@@ -110,8 +110,15 @@ install_node() {
     (
       set +x # suppress set -x since it'll get very noisy here
       . "${HOME}/.nvm/nvm.sh"
-      nvm install node
-      nvm use --silent node
+      if which node > /dev/null
+      then
+        echo "node is installed - node: $(node -v) - npm: $(npm -v), skipping..."
+      else
+        echo "node not installed, installing..."
+
+        nvm install node
+        nvm use --silent node
+      fi
       npm config set loglevel warn  # make NPM quieter
     )
   fi
@@ -135,11 +142,13 @@ install_dependencies() {
     pip_packages=(scipy tensorflow=="${TF_VERSION:-2.0.0b1}" cython==0.29.0 gym opencv-python-headless pyyaml \
       pandas==0.24.2 requests feather-format lxml openpyxl xlrd py-spy pytest pytest-timeout networkx tabulate aiohttp \
       uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
-      scikit-learn numba)
+      scikit-learn numba urllib3 numpy)
     if [ "${OSTYPE}" != msys ]; then
       # These packages aren't Windows-compatible
       pip_packages+=(blist)  # https://github.com/DanielStutzbach/blist/issues/81#issue-391460716
     fi
+    pip install --upgrade pip
+    pip install --upgrade setuptools
     CC=gcc pip install "${pip_packages[@]}"
   elif [ "${LINT-}" = 1 ]; then
     install_miniconda

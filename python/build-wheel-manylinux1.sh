@@ -29,12 +29,18 @@ sudo apt-get install unzip
 # Put bazel into the PATH
 export PATH=$PATH:/root/bin
 
-# Install and use the latest version of Node.js in order to build the dashboard.
-set +x
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
-source $HOME/.nvm/nvm.sh
-nvm install node
-nvm use node
+# In azure pipelines or github acions, we don't need to install node
+if [ -x "$(command -v npm)" ]; then
+  echo "Node already installed"
+  npm -v
+else
+  # Install and use the latest version of Node.js in order to build the dashboard.
+  set +x
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
+  source $HOME/.nvm/nvm.sh
+  nvm install node
+  nvm use node
+fi
 
 # Build the dashboard so its static assets can be included in the wheel.
 pushd python/ray/dashboard/client

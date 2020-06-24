@@ -106,6 +106,9 @@ COMMON_CONFIG = {
     "env": None,
     # Unsquash actions to the upper and lower bounds of env's action space
     "normalize_actions": False,
+    # If normalize_actions (above flag) is on, this flag allows you to
+    # control if the actions must be rescaled back to the env scale or not.
+    "disable_actions_rescaling": False,
     # Whether to clip rewards prior to experience postprocessing. Setting to
     # None means clip for Atari only.
     "clip_rewards": None,
@@ -553,7 +556,7 @@ class Trainer(Trainable):
         self.config = Trainer.merge_trainer_configs(self._default_config,
                                                     config)
 
-        if self.config["normalize_actions"]:
+        if self.config["normalize_actions"] and not self.config["disable_actions_rescaling"]:
             inner = self.env_creator
 
             def normalize(env):

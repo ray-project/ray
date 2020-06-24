@@ -1,4 +1,5 @@
 import logging
+from typing import Type, TypeVar
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
@@ -134,33 +135,37 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def make_policy_optimizer(workers, config):
-    """Create the single process DQN policy optimizer.
+TReplayOptimizer = TypeVar('TReplayOptimizer', bound=SyncReplayOptimizer)
 
-    Returns:
-        SyncReplayOptimizer: Used for generic off-policy Trainers.
-    """
-    # SimpleQ does not use a PR buffer.
-    kwargs = {"prioritized_replay": config.get("prioritized_replay", False)}
-    kwargs.update(**config["optimizer"])
-    if "prioritized_replay" in config:
-        kwargs.update({
-            "prioritized_replay_alpha": config["prioritized_replay_alpha"],
-            "prioritized_replay_beta": config["prioritized_replay_beta"],
-            "prioritized_replay_beta_annealing_timesteps": config[
-                "prioritized_replay_beta_annealing_timesteps"],
-            "final_prioritized_replay_beta": config[
-                "final_prioritized_replay_beta"],
-            "prioritized_replay_eps": config["prioritized_replay_eps"],
-        })
+def get_make_optimizer(replay_optimizer_cls: Type[TReplayOptimizer] = SyncReplayOptimizer):
+    def make_optimizer(workers, config):
+        """Create the single process DQN policy optimizer.
 
-    return SyncReplayOptimizer(
-        workers,
-        # TODO(sven): Move all PR-beta decays into Schedule components.
-        learning_starts=config["learning_starts"],
-        buffer_size=config["buffer_size"],
-        train_batch_size=config["train_batch_size"],
-        **kwargs)
+        Returns:
+            SyncReplayOptimizer: Used for generic off-policy Trainers.
+        """
+        # SimpleQ does not use a PR buffer.
+        kwargs = {"prioritized_replay": config.get("prioritized_replay", False)}
+        kwargs.update(**config["optimizer"])
+        if "prioritized_replay" in config:
+            kwargs.update({
+                "prioritized_replay_alpha": config["prioritized_replay_alpha"],
+                "prioritized_replay_beta": config["prioritized_replay_beta"],
+                "prioritized_replay_beta_annealing_timesteps": config[
+                    "prioritized_replay_beta_annealing_timesteps"],
+                "final_prioritized_replay_beta": config[
+                    "final_prioritized_replay_beta"],
+                "prioritized_replay_eps": config["prioritized_replay_eps"],
+            })
+
+        return replay_optimizer_cls(
+            workers,
+            # TODO(sven): Move all PR-beta decays into Schedule components.
+            learning_starts=config["learning_starts"],
+            buffer_size=config["buffer_size"],
+            train_batch_size=config["train_batch_size"],
+            **kwargs)
+    return make_optimizer
 
 
 def validate_config(config):
@@ -375,7 +380,7 @@ GenericOffPolicyTrainer = build_trainer(
     default_config=DEFAULT_CONFIG,
     validate_config=validate_config,
     get_initial_state=get_initial_state,
-    make_policy_optimizer=make_policy_optimizer,
+    make_policy_optimizer=get_make_optimizer(),
     before_train_step=update_worker_exploration,
     after_optimizer_step=update_target_if_needed,
     after_train_result=after_train_result,

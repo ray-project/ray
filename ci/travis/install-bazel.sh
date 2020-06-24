@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -euox pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-version="1.1.0"
+version="3.2.0"
 achitecture="${HOSTTYPE}"
 platform="unknown"
 case "${OSTYPE}" in
@@ -42,13 +42,21 @@ esac
   fi
 }
 
-if [ "${OSTYPE}" = "msys" ]; then
+# In azure pipelines or github acions, we don't need to install bazel
+if [ -x "$(command -v bazel)" ]; then
+  echo 'Bazel is already installed'
+  bazel info
+  bazel --version
+elif [ "${OSTYPE}" = "msys" ]; then
   target="${MINGW_DIR-/usr}/bin/bazel.exe"
   mkdir -p "${target%/*}"
-  curl -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-${achitecture}.exe"
+  curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-${achitecture}.exe"
+  tee /etc/profile.d/bazel.sh > /dev/null <<EOF; . /etc/profile.d/bazel.sh
+export USE_CLANG_CL=1  # Clang front-end for Visual C++
+EOF
 else
   target="./install.sh"
-  curl -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
+  curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
   chmod +x "${target}"
   if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
     sudo "${target}" > /dev/null  # system-wide install for CI

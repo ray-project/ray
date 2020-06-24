@@ -70,7 +70,7 @@ TEST_F(RandomSampleTest, TestEqualOccurrenceChance) {
     }
   }
   for (int count : occurrences) {
-    ASSERT_NEAR(trials / 2, count, 0.05 * trials / 2);
+    ASSERT_NEAR(trials / 2, count, 0.20 * trials / 2);
   }
 }
 

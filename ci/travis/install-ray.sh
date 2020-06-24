@@ -12,8 +12,16 @@ build_dashboard_front_end() {
     (
       cd ray/dashboard/client
       set +x  # suppress set -x since it'll get very noisy here
-      . "${HOME}/.nvm/nvm.sh"
-      nvm use --silent node
+      if which npm > /dev/null
+      then
+        npm -v
+        echo "npm is active, skipping..."
+      else
+        echo "npm not active, using..."
+
+        . "${HOME}/.nvm/nvm.sh"
+        nvm use node
+      fi
       npm ci
       npm run -s build
     )

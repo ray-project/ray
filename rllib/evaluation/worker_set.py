@@ -1,5 +1,6 @@
 import logging
 from types import FunctionType
+from typing import Type, TypeVar, Generic
 
 import ray
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -14,9 +15,10 @@ tf = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
+TRolloutWorker = TypeVar('TRolloutWorker', bound=RolloutWorker)
 
 @DeveloperAPI
-class WorkerSet:
+class WorkerSet(Generic[TRolloutWorker]):
     """Represents a set of RolloutWorkers.
 
     There must be one local worker copy, and zero or more remote workers.
@@ -28,7 +30,8 @@ class WorkerSet:
                  trainer_config=None,
                  num_workers=0,
                  logdir=None,
-                 _setup=True):
+                 _setup=True,
+                 rollout_worker_cls: Type[TRolloutWorker] = RolloutWorker):
         """Create a new WorkerSet and initialize its workers.
 
         Arguments:
@@ -50,6 +53,7 @@ class WorkerSet:
         self._remote_config = trainer_config
         self._num_workers = num_workers
         self._logdir = logdir
+        self._rollout_worker_cls = rollout_worker_cls
 
         if _setup:
             self._local_config = merge_dicts(
@@ -58,7 +62,7 @@ class WorkerSet:
 
             # Always create a local worker
             self._local_worker = self._make_worker(
-                RolloutWorker, env_creator, policy, 0, self._local_config)
+                self._rollout_worker_cls, env_creator, policy, 0, self._local_config)
 
             # Create a number of remote workers
             self._remote_workers = []
@@ -95,7 +99,7 @@ class WorkerSet:
                 "object_store_memory_per_worker"],
             "resources": self._remote_config["custom_resources_per_worker"],
         }
-        cls = RolloutWorker.as_remote(**remote_args).remote
+        cls = self._rollout_worker_cls.as_remote(**remote_args).remote
         self._remote_workers.extend([
             self._make_worker(cls, self._env_creator, self._policy, i + 1,
                               self._remote_config) for i in range(num_workers)
@@ -239,7 +243,11 @@ class WorkerSet:
         else:
             extra_python_environs = config.get(
                 "extra_python_environs_for_worker", None)
-
+        # For cases like APEX where the creation of the workers is deferred
+        # we have to make sure that we are specifying the right amount of
+        # workers after this point where things like exploration strategies
+        # care about the right value
+        true_num_workers = max(self._num_workers, config["num_workers"])
         worker = cls(
             env_creator,
             policy,
@@ -261,7 +269,7 @@ class WorkerSet:
             model_config=config["model"],
             policy_config=config,
             worker_index=worker_index,
-            num_workers=self._num_workers,
+            num_workers=true_num_workers,
             monitor_path=self._logdir if config["monitor"] else None,
             log_dir=self._logdir,
             log_level=config["log_level"],

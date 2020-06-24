@@ -1,0 +1,81 @@
+# This template includes the steps of the lint job in travix.yml
+
+steps:
+- bash: |
+    echo Running LINT job of the original travis.yml
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # ADO is not setting the following properties properly:
+    #   * Build.SourceBranch
+    #   * System.PullRequest.TargetBranch
+    # we are running linting against HEAD
+    TRAVIS_PULL_REQUEST="false"
+
+    set +e
+
+    # Start Original lint job body
+
+    # Install part
+    . ./ci/travis/ci.sh init
+    . ./ci/travis/ci.sh build
+
+    # Script part
+    . ./ci/travis/ci.sh preload
+    # Modified from original to do not block CI
+    ./ci/travis/check-git-clang-format-output.sh 2> /dev/null
+    if [ $? -eq 0 ]
+    then
+      echo "Successful clang-format execution"
+    else
+      echo "clang-format execution failed!!!"
+      echo "##vso[task.logissue type=error]clang-format execution failed!!!"
+    fi
+
+    # Try generating Sphinx documentation. To do this, we need to install
+    # Ray first.
+    cd doc
+    # readthedocs has an antiquated build env.
+    # This is a best effort to reproduce it locally to avoid doc build failures
+    # and hidden errors.
+    pip install -r requirements-rtd.txt
+    pip install -r requirements-doc.txt
+    pip install yapf==0.23.0
+    sphinx-build -q -W -E -T -b html source _build/html
+    cd ..
+    # Run Python linting, ignore dict vs {} (C408), others are defaults
+    flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
+    ./ci/travis/format.sh --all
+    # Make sure that the README is formatted properly.
+    cd python
+    python setup.py check --restructuredtext --strict --metadata
+    cd ..
+    # Run Bazel linter Buildifier.
+    wget -q https://dl.google.com/go/go1.14.2.linux-amd64.tar.gz
+    tar -xf go1.14.2.linux-amd64.tar.gz
+    mkdir $HOME/go_dir
+    export GOROOT=`pwd`/go
+    export GOPATH="$HOME/go_dir"
+    export PATH="$GOROOT/bin:$GOPATH/bin:$PATH"
+    go get github.com/bazelbuild/buildtools/buildifier
+    ./ci/travis/bazel-format.sh
+    # Run TypeScript and HTML linting.
+    pushd python/ray/dashboard/client
+    source "$HOME/.nvm/nvm.sh"
+    nvm use node
+    node_modules/.bin/eslint --max-warnings 0 $(find src -name "*.ts" -or -name "*.tsx")
+    node_modules/.bin/prettier --check $(find src -name "*.ts" -or -name "*.tsx")
+    node_modules/.bin/prettier --check public/index.html
+    popd
+
+    # End Original script
+
+    exit 0
+  env:
+    PYTHONWARNINGS: 'ignore'
+    TRAVIS: 'true'
+    LINT: 1
+  displayName: 'Run original LINT job'
+  timeoutInMinutes: 120
+  continueOnError: 'true'

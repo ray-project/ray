@@ -1,0 +1,56 @@
+# This template includes some steps to check
+# and gather information about the system
+steps:
+- script: |
+    # the hash was computed in Mac
+    if [[ $AGENT_OS == "Darwin" ]]; then 
+      pushd $BUILD_SOURCESDIRECTORY
+      EXPECTED_HASH_TRAVIS='f37da02375099340de86a2fe1ecf23df9fbdd5202d801f41a445a2955401c909'
+      CURRENT_HASH_TRAVIS=$(shasum -a 256 ./.travis.yml | awk '{print $1}')
+      if [[ $EXPECTED_HASH_TRAVIS != $CURRENT_HASH_TRAVIS ]]; then 
+        echo "The original Travis file of the project has changed"
+        echo "Expected Hash: $EXPECTED_HASH_TRAVIS"
+        echo "Current Hash:  $CURRENT_HASH_TRAVIS"
+        echo "Please check the changes, change the azure pipelines acordingly and update the sha256"
+        exit 1
+      fi
+      EXPECTED_HASH_CI_FOLDER='8118185a06946027ff3d2a3fe397526609b4445a33c23b4832297cf503721dec'
+      CURRENT_HASH_CI_FOLDER=$(find ./ci -path "./ci/azure_pipelines" -prune -o -path "./**/.DS_Store" -prune -o -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | awk '{print $1}')
+      if [[ $EXPECTED_HASH_CI_FOLDER != $CURRENT_HASH_CI_FOLDER ]]; then 
+        echo "The original CI folder of the project has changed"
+        echo "Expected Hash: $EXPECTED_HASH_CI_FOLDER"
+        echo "Current Hash:  $CURRENT_HASH_CI_FOLDER"
+        echo "Please check the changes, change the azure pipelines acordingly and update the sha256"
+        exit 1
+      fi
+      popd
+    fi
+  displayName: Check upstream CI
+- script: |
+    echo "Build ID used for versioning: $BUILD_BUILDID"
+    echo "User: $(whoami)"
+    echo "AGENT_TOOLSDIRECTORY: ${AGENT_TOOLSDIRECTORY=}"
+    echo "Default $(python --version)"
+    if [[ $AGENT_OS == "Linux" ]]; then 
+      echo "Docker: $(docker --version)"
+      echo "Test docker connection:"
+      docker ps -a
+    fi
+    if [[ $AGENT_OS == "Darwin" ]]; then 
+      echo "MACOSX_DEPLOYMENT_TARGET: $MACOSX_DEPLOYMENT_TARGET"
+      echo "MacOS version info:"
+      sw_vers
+    fi
+    echo "PYTHON_CONFIGURE_OPTS: $PYTHON_CONFIGURE_OPTS"
+    echo "Java info:"
+    java -version
+    javac -version
+    echo "JAVA_HOME: $JAVA_HOME"
+    echo "Bazel info:"
+    if [ -x "$(command -v bazel)" ]; then
+      echo 'Bazel is already installed'
+      bazel info || true
+    else
+      echo 'Bazel is not installed'
+    fi
+  displayName: 'General system info'

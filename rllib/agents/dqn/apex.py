@@ -1,5 +1,6 @@
 import collections
 import copy
+from typing import Type, TypeVar
 
 import ray
 from ray.rllib.agents.dqn.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_CONFIG
@@ -50,26 +51,29 @@ def defer_make_workers(trainer, env_creator, policy, config):
     # The workers will be created later, after the optimizer is created
     return trainer._make_workers(env_creator, policy, config, 0)
 
+TReplayOptimizer = TypeVar('TReplayOptimizer', bound=AsyncReplayOptimizer)
 
-def make_async_optimizer(workers, config):
-    assert len(workers.remote_workers()) == 0
-    extra_config = config["optimizer"].copy()
-    for key in [
-            "prioritized_replay", "prioritized_replay_alpha",
-            "prioritized_replay_beta", "prioritized_replay_eps"
-    ]:
-        if key in config:
-            extra_config[key] = config[key]
-    opt = AsyncReplayOptimizer(
-        workers,
-        learning_starts=config["learning_starts"],
-        buffer_size=config["buffer_size"],
-        train_batch_size=config["train_batch_size"],
-        rollout_fragment_length=config["rollout_fragment_length"],
-        **extra_config)
-    workers.add_workers(config["num_workers"])
-    opt._set_workers(workers.remote_workers())
-    return opt
+def get_make_optimizer(replay_optimizer_cls: Type[TReplayOptimizer] = AsyncReplayOptimizer):
+    def make_async_optimizer(workers, config):
+        assert len(workers.remote_workers()) == 0
+        extra_config = config["optimizer"].copy()
+        for key in [
+                "prioritized_replay", "prioritized_replay_alpha",
+                "prioritized_replay_beta", "prioritized_replay_eps"
+        ]:
+            if key in config:
+                extra_config[key] = config[key]
+        opt = replay_optimizer_cls(
+            workers,
+            learning_starts=config["learning_starts"],
+            buffer_size=config["buffer_size"],
+            train_batch_size=config["train_batch_size"],
+            rollout_fragment_length=config["rollout_fragment_length"],
+            **extra_config)
+        workers.add_workers(config["num_workers"])
+        opt._set_workers(workers.remote_workers())
+        return opt
+    return make_async_optimizer
 
 
 def update_target_based_on_num_steps_trained(trainer, fetches):
@@ -197,7 +201,7 @@ def execution_plan(workers, config):
 
 APEX_TRAINER_PROPERTIES = {
     "make_workers": defer_make_workers,
-    "make_policy_optimizer": make_async_optimizer,
+    "make_policy_optimizer": get_make_optimizer(),
     "after_optimizer_step": update_target_based_on_num_steps_trained,
 }
 

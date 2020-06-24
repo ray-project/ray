@@ -33,14 +33,14 @@ def list_changed_files(commit_range):
 if __name__ == "__main__":
 
     RAY_CI_TUNE_AFFECTED = 0
-    RAY_CI_ONLY_RLLIB_AFFECTED = 0  # Whether only RLlib is affected.
-    RAY_CI_RLLIB_AFFECTED = 0  # Whether RLlib minimal tests should be run.
-    RAY_CI_RLLIB_FULL_AFFECTED = 0  # Whether full RLlib tests should be run.
+    RAY_CI_ONLY_RLLIB_AFFECTED = 1  # Whether only RLlib is affected.
+    RAY_CI_RLLIB_AFFECTED = 1  # Whether RLlib minimal tests should be run.
+    RAY_CI_RLLIB_FULL_AFFECTED = 1  # Whether full RLlib tests should be run.
     RAY_CI_SERVE_AFFECTED = 0
     RAY_CI_JAVA_AFFECTED = 0
     RAY_CI_PYTHON_AFFECTED = 0
-    RAY_CI_LINUX_WHEELS_AFFECTED = 0
-    RAY_CI_MACOS_WHEELS_AFFECTED = 0
+    RAY_CI_LINUX_WHEELS_AFFECTED = 1
+    RAY_CI_MACOS_WHEELS_AFFECTED = 1
     RAY_CI_STREAMING_CPP_AFFECTED = 0
     RAY_CI_STREAMING_PYTHON_AFFECTED = 0
     RAY_CI_STREAMING_JAVA_AFFECTED = 0

@@ -27,7 +27,7 @@ class TestParameterNoise(unittest.TestCase):
                 "map_name": "4x4"
             },
             np.array(0),
-            fws=("tf", "eager"))
+            fws="tf")
 
     def do_test_parameter_noise_exploration(self, trainer_cls, config, env,
                                             env_config, obs, fws):

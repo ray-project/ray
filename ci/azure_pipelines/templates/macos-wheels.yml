@@ -1,0 +1,62 @@
+# This template includes the steps to genarete the MacOS wheels in travis.
+
+steps:
+# Install phase of the travis MacOS wheels build
+- bash: |
+    echo Running install phase of the original travis.yml
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # Start Original script
+
+    . ./ci/travis/ci.sh init RAY_CI_MACOS_WHEELS_AFFECTED
+    . ./ci/travis/ci.sh build
+
+    # End Original script
+
+    exit 0
+  env:
+    PYTHONWARNINGS: 'ignore'
+    TRAVIS: 'true'
+    MAC_WHEELS: 1
+    RAY_INSTALL_JAVA: 1
+    RAY_GCS_ACTOR_SERVICE_ENABLED: 'true'
+  displayName: 'Run original travis install phase'
+  timeoutInMinutes: 180
+# Script phase of the travis MacOS wheels build
+- bash: |
+    ls -l "$BUILD_SOURCESDIRECTORY/.whl/"
+
+    echo "MACOSX_DEPLOYMENT_TARGET: $MACOSX_DEPLOYMENT_TARGET"
+    echo "PYTHON_CONFIGURE_OPTS: $PYTHON_CONFIGURE_OPTS"
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # Duplicate the wheel packages for the architecture of the agent
+    for f in $BUILD_SOURCESDIRECTORY/.whl/*.whl; do mv "$f" "$(echo "$f" | sed s/macosx_10_15_intel/macosx_10_13_x86_64/)"; done
+
+    # Start Original script
+
+    # Explicitly sleep 60 seconds for logs to go through
+    ./ci/travis/test-wheels.sh || { cat /tmp/ray/session_latest/logs/* && sleep 60 && false; }
+
+    # End Original script
+
+    set +e
+
+    # Duplicate the wheel packages for the architecture of the agent
+    for f in $BUILD_SOURCESDIRECTORY/.whl/*.whl; do cp "$f" "$(echo "$f" | sed s/macosx_10_13_x86_64/macosx_10_15_intel/)"; done
+
+    ls -l "$BUILD_SOURCESDIRECTORY/.whl/"
+
+    exit 0
+  env:
+    PYTHONWARNINGS: 'ignore'
+    TRAVIS: 'true'
+    MAC_WHEELS: 1
+    RAY_INSTALL_JAVA: 1
+    RAY_GCS_ACTOR_SERVICE_ENABLED: 'true'
+  displayName: 'Run original script phase'
+  timeoutInMinutes: 60

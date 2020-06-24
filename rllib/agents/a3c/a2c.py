@@ -34,8 +34,7 @@ def choose_policy_optimizer(workers, config):
             train_batch_size=config["train_batch_size"],
             microbatch_size=config["microbatch_size"])
     else:
-        return SyncSamplesOptimizer(
-            workers, train_batch_size=config["train_batch_size"])
+        return SyncSamplesOptimizer(workers, train_batch_size=config["train_batch_size"])
 
 
 # Experimental distributed execution impl; enable with "use_exec_api": True.
