@@ -145,7 +145,8 @@ public final class Ray extends RayCall {
    * have been created with name specified.
    *
    * @param name The name of the named actor.
-   * @return and ActorHandle to the actor if the actor of specified name exists or
+   * @return an ActorHandle to the actor if the actor of specified name exists or an
+   * Optional.empty()
    */
   public static <T extends BaseActorHandle> Optional<T> getActor(String name) {
     return runtime.getActor(name, false);
@@ -158,11 +159,11 @@ public final class Ray extends RayCall {
    * have been created with name specified.
    *
    * @param name The name of the named actor.
-   * @param global Whether the named actor is a global actor
-   * @return and ActorHandle to the actor if the actor of specified name exists or
+   * @return an ActorHandle to the actor if the actor of specified name exists or an
+   * Optional.empty()
    */
-  public static <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global) {
-    return runtime.getActor(name, global);
+  public static <T extends BaseActorHandle> Optional<T> getGlobalActor(String name) {
+    return runtime.getActor(name, true);
   }
 
   /**

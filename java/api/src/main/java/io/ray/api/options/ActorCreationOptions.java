@@ -34,17 +34,28 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     /**
      * Set the actor name of a named actor.
+     * This named actor is only accessible from this job by this name via
+     * {@link Ray#getActor(java.lang.String)}. If you want create a named actor that is accessible
+     * from all jobs, use {@link Builder#setGlobalName(java.lang.String)} instead.
      *
      * @param name The name of the named actor.
-     * @param global Whether this actor is a global actor
      * @return self
      */
-    public Builder setName(String name, boolean global) {
-      if (global) {
-        this.name = String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), name);
-      } else {
-        this.name = name;
-      }
+    public Builder setName(String name) {
+      this.name = String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), name);
+      return this;
+    }
+
+    /**
+     * Set the name of this actor. This actor will be accessible from all jobs by this name via
+     * {@link Ray#getGlobalActor(java.lang.String)}. If you want to create a named actor that is
+     * only accessible from this job, use {@link Builder#setName(java.lang.String)} instead.
+     *
+     * @param name The name of the named actor.
+     * @return self
+     */
+    public Builder setGlobalName(String name) {
+      this.name = name;
       return this;
     }
 
