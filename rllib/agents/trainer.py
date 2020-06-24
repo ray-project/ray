@@ -12,10 +12,10 @@ from typing import Callable, List, Dict, Union, Any
 import ray
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.env import EnvType
 from ray.rllib.env.normalize_actions import NormalizeActionWrapper
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.policy import Policy, PolicyID
+from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
@@ -26,6 +26,8 @@ from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.types import TrainerConfigDict, \
+    PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType, PolicyID
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
@@ -338,8 +340,9 @@ COMMON_CONFIG = {
 
     # === Settings for Multi-Agent Environments ===
     "multiagent": {
-        # Map from policy ids to tuples of (policy_cls, obs_space,
-        # act_space, config). See rollout_worker.py for more info.
+        # Map of type MultiAgentPolicyConfigDict from policy ids to tuples
+        # of (policy_cls, obs_space, act_space, config). This defines the
+        # observation and action spaces of the policies and any extra config.
         "policies": {},
         # Function mapping agent ids to policy ids.
         "policy_mapping_fn": None,
@@ -371,13 +374,16 @@ COMMON_CONFIG = {
 
 
 @DeveloperAPI
-def with_common_config(extra_config):
+def with_common_config(
+        extra_config: PartialTrainerConfigDict) -> TrainerConfigDict:
     """Returns the given config dict merged with common agent confs."""
 
     return with_base_config(COMMON_CONFIG, extra_config)
 
 
-def with_base_config(base_config, extra_config):
+def with_base_config(
+        base_config: TrainerConfigDict,
+        extra_config: PartialTrainerConfigDict) -> TrainerConfigDict:
     """Returns the given config dict merged with a base agent conf."""
 
     config = copy.deepcopy(base_config)
@@ -418,7 +424,7 @@ class Trainer(Trainable):
 
     @PublicAPI
     def __init__(self,
-                 config: dict = None,
+                 config: TrainerConfigDict = None,
                  env: str = None,
                  logger_creator: Callable[[], Logger] = None):
         """Initialize an RLLib trainer.
@@ -464,7 +470,8 @@ class Trainer(Trainable):
 
     @classmethod
     @override(Trainable)
-    def default_resource_request(cls, config: dict) -> Resources:
+    def default_resource_request(
+            cls, config: PartialTrainerConfigDict) -> Resources:
         cf = dict(cls._default_config, **config)
         Trainer._validate_config(cf)
         num_workers = cf["num_workers"] + cf["evaluation_num_workers"]
@@ -482,7 +489,7 @@ class Trainer(Trainable):
 
     @override(Trainable)
     @PublicAPI
-    def train(self) -> dict:
+    def train(self) -> ResultDict:
         """Overrides super.train to synchronize global vars."""
 
         if self._has_policy_optimizer():
@@ -533,7 +540,7 @@ class Trainer(Trainable):
 
         return result
 
-    def _sync_filters_if_needed(self, workers):
+    def _sync_filters_if_needed(self, workers: WorkerSet):
         if self.config.get("observation_filter", "NoFilter") != "NoFilter":
             FilterManager.synchronize(
                 workers.local_worker().filters,
@@ -543,14 +550,14 @@ class Trainer(Trainable):
                 workers.local_worker().filters))
 
     @override(Trainable)
-    def _log_result(self, result: dict):
+    def _log_result(self, result: ResultDict):
         self.callbacks.on_train_result(trainer=self, result=result)
         # log after the callback is invoked, so that the user has a chance
         # to mutate the result
         Trainable._log_result(self, result)
 
     @override(Trainable)
-    def _setup(self, config: dict):
+    def _setup(self, config: PartialTrainerConfigDict):
         env = self._env_id
         if env:
             config["env"] = env
@@ -678,8 +685,8 @@ class Trainer(Trainable):
         self.__setstate__(extra_data)
 
     @DeveloperAPI
-    def _make_workers(self, env_creator: Callable[[dict], EnvType],
-                      policy: type, config: dict,
+    def _make_workers(self, env_creator: Callable[[EnvContext], EnvType],
+                      policy: type, config: TrainerConfigDict,
                       num_workers: int) -> WorkerSet:
         """Default factory method for a WorkerSet running under this Trainer.
 
@@ -709,7 +716,8 @@ class Trainer(Trainable):
             logdir=self.logdir)
 
     @DeveloperAPI
-    def _init(self, config, env_creator):
+    def _init(self, config: TrainerConfigDict,
+              env_creator: Callable[[EnvContext], EnvType]):
         """Subclasses should override this for custom initialization."""
         raise NotImplementedError
 
@@ -773,7 +781,7 @@ class Trainer(Trainable):
                        state: List[Any] = None,
                        prev_action: TensorStructType = None,
                        prev_reward: int = None,
-                       info: dict = None,
+                       info: EnvInfoDict = None,
                        policy_id: PolicyID = DEFAULT_POLICY_ID,
                        full_fetch: bool = False,
                        explore: bool = None) -> TensorStructType:
@@ -923,7 +931,7 @@ class Trainer(Trainable):
         raise NotImplementedError
 
     @property
-    def _default_config(self) -> dict:
+    def _default_config(self) -> TrainerConfigDict:
         """Subclasses should override this to declare their default config."""
         raise NotImplementedError
 
@@ -956,7 +964,9 @@ class Trainer(Trainable):
         self.workers.local_worker().set_weights(weights)
 
     @DeveloperAPI
-    def export_policy_model(self, export_dir, policy_id=DEFAULT_POLICY_ID):
+    def export_policy_model(self,
+                            export_dir: str,
+                            policy_id: PolicyID = DEFAULT_POLICY_ID):
         """Export policy model with given policy_id to local directory.
 
         Arguments:
@@ -1024,14 +1034,15 @@ class Trainer(Trainable):
             selected_workers=selected_workers)
 
     @classmethod
-    def resource_help(cls, config: dict) -> str:
+    def resource_help(cls, config: TrainerConfigDict) -> str:
         return ("\n\nYou can adjust the resource requests of RLlib agents by "
                 "setting `num_workers`, `num_gpus`, and other configs. See "
                 "the DEFAULT_CONFIG defined by each agent for more info.\n\n"
                 "The config of this agent is: {}".format(config))
 
     @classmethod
-    def merge_trainer_configs(cls, config1: dict, config2: dict) -> dict:
+    def merge_trainer_configs(cls, config1: TrainerConfigDict,
+                              config2: PartialTrainerConfigDict) -> dict:
         config1 = copy.deepcopy(config1)
         # Error if trainer default has deprecated value.
         if config1["sample_batch_size"] != DEPRECATED_VALUE:
@@ -1058,7 +1069,7 @@ class Trainer(Trainable):
                            cls._override_all_subkeys_if_type_changes)
 
     @staticmethod
-    def _validate_config(config: dict):
+    def _validate_config(config: PartialTrainerConfigDict):
         if "policy_graphs" in config["multiagent"]:
             deprecation_warning("policy_graphs", "policies")
             # Backwards compatibility.

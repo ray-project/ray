@@ -6,7 +6,10 @@ import requests
 
 import ray
 from ray import serve
-from ray.serve.utils import get_random_letters
+from ray.test_utils import wait_for_condition
+from ray.serve import constants
+from ray.serve.exceptions import RayServeException
+from ray.serve.utils import format_actor_name, get_random_letters
 
 
 def test_e2e(serve_instance):
@@ -512,6 +515,65 @@ def test_endpoint_input_validation(serve_instance):
     with pytest.raises(TypeError):
         serve.create_endpoint("endpoint", backend=2)
     serve.create_endpoint("endpoint", backend="backend")
+
+
+def test_create_infeasible_error(serve_instance):
+    serve.init()
+
+    def f():
+        pass
+
+    # Non existent resource should be infeasible.
+    with pytest.raises(RayServeException, match="Cannot scale backend"):
+        serve.create_backend(
+            "f:1",
+            f,
+            ray_actor_options={"resources": {
+                "MagicMLResource": 100
+            }})
+
+    # Even each replica might be feasible, the total might not be.
+    current_cpus = int(ray.nodes()[0]["Resources"]["CPU"])
+    with pytest.raises(RayServeException, match="Cannot scale backend"):
+        serve.create_backend(
+            "f:1",
+            f,
+            ray_actor_options={"resources": {
+                "CPU": 1,
+            }},
+            config={"num_replicas": current_cpus + 20})
+
+    # No replica should be created!
+    replicas = ray.get(serve.api.master_actor._list_replicas.remote("f1"))
+    assert len(replicas) == 0
+
+
+def test_shutdown(serve_instance):
+    def f():
+        pass
+
+    instance_name = "shutdown"
+    serve.init(name=instance_name, http_port=8002)
+    serve.create_backend("backend", f)
+    serve.create_endpoint("endpoint", backend="backend")
+
+    serve.shutdown()
+    with pytest.raises(RayServeException, match="Please run serve.init"):
+        serve.list_backends()
+
+    def check_dead():
+        for actor_name in [
+                constants.SERVE_MASTER_NAME, constants.SERVE_PROXY_NAME,
+                constants.SERVE_ROUTER_NAME, constants.SERVE_METRIC_SINK_NAME
+        ]:
+            try:
+                ray.get_actor(format_actor_name(actor_name, instance_name))
+                return False
+            except ValueError:
+                pass
+        return True
+
+    assert wait_for_condition(check_dead)
 
 
 if __name__ == "__main__":

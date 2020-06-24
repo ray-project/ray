@@ -214,7 +214,8 @@ def test_worker_replica_failure(serve_instance):
         def __call__(self):
             pass
 
-    temp_path = tempfile.gettempdir() + "/" + serve.utils.get_random_letters()
+    temp_path = os.path.join(tempfile.gettempdir(),
+                             serve.utils.get_random_letters())
     serve.create_backend("replica_failure", Worker, temp_path)
     serve.update_backend_config("replica_failure", {"num_replicas": 2})
     serve.create_endpoint(

@@ -95,6 +95,11 @@ def _import_marwil():
     return marwil.MARWILTrainer
 
 
+def _import_maml():
+    from ray.rllib.agents import maml
+    return maml.MAMLTrainer
+
+
 ALGORITHMS = {
     "SAC": _import_sac,
     "DDPG": _import_ddpg,
@@ -114,10 +119,11 @@ ALGORITHMS = {
     "APPO": _import_appo,
     "DDPPO": _import_ddppo,
     "MARWIL": _import_marwil,
+    "MAML": _import_maml,
 }
 
 
-def get_agent_class(alg):
+def get_agent_class(alg: str) -> type:
     """Returns the class of a known agent given its name."""
 
     try:
@@ -127,7 +133,7 @@ def get_agent_class(alg):
         return _agent_import_failed(traceback.format_exc())
 
 
-def _get_agent_class(alg):
+def _get_agent_class(alg: str) -> type:
     if alg in ALGORITHMS:
         return ALGORITHMS[alg]()
     elif alg in CONTRIBUTED_ALGORITHMS:
