@@ -67,15 +67,14 @@ class Policy(metaclass=ABCMeta):
     @DeveloperAPI
     def compute_actions(
             self,
-            obs_batch=None,  # TODO: deprecate
-            state_batches=None,  # TODO: deprecate
-            prev_action_batch=None,  # TODO: deprecate
-            prev_reward_batch=None,  # TODO: deprecate
-            info_batch=None,  # TODO: deprecate
-            episodes=None,  # TODO: deprecate
+            obs_batch=None,
+            state_batches=None,
+            prev_action_batch=None,
+            prev_reward_batch=None,
+            info_batch=None,
+            episodes=None,
             explore=None,
             timestep=None,
-            trajectories=None,  # TODO: move this up as the main input source
             **kwargs):
         """Computes actions for the current policy.
 
@@ -94,9 +93,6 @@ class Policy(metaclass=ABCMeta):
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
             timestep (int): The current (sampling) time step.
-            trajectories (List[Trajectory]): A List of Trajectory data used
-                to create a view for the Model forward call. Only used so far
-                iff `_fast_sampling=True` (only supported for torch).
             kwargs: forward compatibility placeholder
 
         Returns:
@@ -193,6 +189,36 @@ class Policy(metaclass=ABCMeta):
         # Return action, internal state(s), infos.
         return single_action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
+
+    @DeveloperAPI
+    def _compute_actions_from_trajectories(
+            self,
+            trajectories,
+            explore=None,
+            timestep=None,
+            **kwargs):
+        """Computes actions for the current policy.
+
+        Only used so far by the Sampler iff `_fast_sampling=True` (also only
+        supported for torch).
+
+        Args:
+            trajectories (List[Trajectory]): A List of Trajectory data used
+                to create a view for the Model forward call.
+            explore (bool): Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
+            timestep (int): The current (sampling) time step.
+            kwargs: forward compatibility placeholder
+
+        Returns:
+            actions (np.ndarray): batch of output actions, with shape like
+                [BATCH_SIZE, ACTION_SHAPE].
+            state_outs (list): list of RNN state output batches, if any, with
+                shape like [STATE_SIZE, BATCH_SIZE].
+            info (dict): dictionary of extra feature batches, if any, with
+                shape like {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
+        """
+        raise NotImplementedError
 
     @DeveloperAPI
     def compute_log_likelihoods(self,
