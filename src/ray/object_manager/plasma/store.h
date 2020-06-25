@@ -24,6 +24,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ray/object_manager/format/object_manager_generated.h"
+#include "ray/object_manager/notification/object_store_notification_manager.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/events.h"
 #include "ray/object_manager/plasma/external_store.h"
@@ -38,11 +40,10 @@ class Status;
 namespace plasma {
 
 namespace flatbuf {
-struct ObjectInfoT;
 enum class PlasmaError;
 }  // namespace flatbuf
 
-using flatbuf::ObjectInfoT;
+using ray::object_manager::protocol::ObjectInfoT;
 using flatbuf::PlasmaError;
 
 struct GetRequest;
@@ -171,10 +172,27 @@ class PlasmaStore {
 
   arrow::Status ProcessMessage(Client* client);
 
+  void SetNotificationListener(
+      const std::shared_ptr<ray::ObjectStoreNotificationManager> &notification_listener) {
+    notification_listener_ = notification_listener;
+    if (notification_listener_) {
+      // Push notifications to the new subscriber about existing sealed objects.
+      for (const auto& entry : store_info_.objects) {
+        if (entry.second->state == ObjectState::PLASMA_SEALED) {
+          ObjectInfoT info;
+          info.object_id = entry.first.Binary();
+          info.data_size = entry.second->data_size;
+          info.metadata_size = entry.second->metadata_size;
+          notification_listener_->ProcessStoreAdd(info);
+        }
+      }
+    }
+  }
+
  private:
   void PushNotification(ObjectInfoT* object_notification);
 
-  void PushNotifications(std::vector<ObjectInfoT>& object_notifications);
+  void PushNotifications(const std::vector<ObjectInfoT>& object_notifications);
 
   void PushNotification(ObjectInfoT* object_notification, int client_fd);
 
@@ -239,6 +257,7 @@ class PlasmaStore {
 #ifdef PLASMA_CUDA
   arrow::cuda::CudaDeviceManager* manager_;
 #endif
+  std::shared_ptr<ray::ObjectStoreNotificationManager> notification_listener_;
 };
 
 }  // namespace plasma
