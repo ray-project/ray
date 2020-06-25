@@ -2007,6 +2007,7 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
                           SetResultCallback fallback_callback, void *python_future) {
   memory_store_->GetAsync(object_id, [python_future, success_callback, fallback_callback,
                                       object_id](std::shared_ptr<RayObject> ray_object) {
+    // RAY_LOG(ERROR) << "Object is in plasma " << ray_object->IsInPlasmaError();
     if (ray_object->IsInPlasmaError()) {
       fallback_callback(ray_object, object_id, python_future);
     } else {
