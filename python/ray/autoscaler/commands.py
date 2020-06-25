@@ -23,6 +23,7 @@ from ray.autoscaler.util import validate_config, hash_runtime_conf, \
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_TYPE_WORKER, NODE_TYPE_HEAD
+from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.log_timer import LogTimer
 from ray.autoscaler.docker import with_docker_exec
@@ -54,6 +55,30 @@ def debug_status():
         status += "\n"
         status += error.decode("utf-8")
     return status
+
+
+def request_resources(num_cpus=None, bundles=None):
+    """Remotely request some CPU or GPU resources from the autoscaler.
+
+    This function is to be called e.g. on a node before submitting a bunch of
+    ray.remote calls to ensure that resources rapidly become available.
+
+    This function is EXPERIMENTAL.
+
+    Args:
+        num_cpus: int -- the number of CPU cores to request
+        bundles: List[dict] -- list of resource dicts (e.g., {"CPU": 1}). This
+            only has an effect if you've configured `available_instance_types`
+            if your cluster config.
+    """
+    r = _redis()
+    if num_cpus is not None and num_cpus > 0:
+        r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
+                  json.dumps({
+                      "CPU": num_cpus
+                  }))
+    if bundles:
+        r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(bundles))
 
 
 def create_or_update_cluster(config_file, override_min_workers,

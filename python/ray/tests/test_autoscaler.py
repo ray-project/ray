@@ -21,12 +21,13 @@ import pytest
 
 
 class MockNode:
-    def __init__(self, node_id, tags):
+    def __init__(self, node_id, tags, instance_type=None):
         self.node_id = node_id
         self.state = "pending"
         self.tags = tags
         self.external_ip = "1.2.3.4"
         self.internal_ip = "172.0.0.{}".format(self.node_id)
+        self.instance_type = instance_type
 
     def matches(self, tags):
         for k, v in tags.items():
@@ -119,7 +120,7 @@ class MockProvider(NodeProvider):
     def external_ip(self, node_id):
         return self.mock_nodes[node_id].external_ip
 
-    def create_node(self, node_config, tags, count):
+    def create_node(self, node_config, tags, count, instance_type=None):
         self.ready_to_create.wait()
         if self.fail_creates:
             return
@@ -130,8 +131,16 @@ class MockProvider(NodeProvider):
                     node.state = "pending"
                     node.tags.update(tags)
         for _ in range(count):
-            self.mock_nodes[self.next_id] = MockNode(self.next_id, tags.copy())
+            self.mock_nodes[self.next_id] = MockNode(self.next_id, tags.copy(),
+                                                     instance_type)
             self.next_id += 1
+
+    def create_node_of_type(self, node_config, tags, instance_type, count):
+        return self.create_node(
+            node_config, tags, count, instance_type=instance_type)
+
+    def get_instance_type(self, node_config):
+        return "m4.large"
 
     def set_node_tags(self, node_id, tags):
         self.mock_nodes[node_id].tags.update(tags)
