@@ -14,7 +14,7 @@ if __name__ == "__main__":
     # note: no ray.init(), to test it works without Ray
     trainer = A2CTrainer(
         env="CartPole-v0", config={
-            "framework"  : "torch",
+            "framework": "torch",
             "num_workers": 0
         })
     trainer.train()

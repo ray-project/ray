@@ -210,7 +210,7 @@ def build_eager_tf_policy(name,
                 config = dict(get_default_config(), **config)
 
             if validate_spaces:
-                validate_spaces(self, obs_space, action_space, config)
+                validate_spaces(self, observation_space, action_space, config)
 
             if before_init:
                 before_init(self, observation_space, action_space, config)

@@ -1,4 +1,3 @@
-from gym.spaces import Box
 import logging
 
 from ray.rllib.agents.trainer import with_common_config
@@ -168,12 +167,12 @@ def validate_config(config):
     #  Backward compatibility of noise-based exploration config.
     schedule_max_timesteps = None
     if config.get("schedule_max_timesteps", DEPRECATED_VALUE) != \
-        DEPRECATED_VALUE:
+            DEPRECATED_VALUE:
         deprecation_warning("schedule_max_timesteps",
                             "exploration_config.scale_timesteps")
         schedule_max_timesteps = config["schedule_max_timesteps"]
     if config.get("exploration_final_scale", DEPRECATED_VALUE) != \
-        DEPRECATED_VALUE:
+            DEPRECATED_VALUE:
         deprecation_warning("exploration_final_scale",
                             "exploration_config.final_scale")
         if isinstance(config["exploration_config"], dict):
@@ -198,8 +197,7 @@ def validate_config(config):
 
     if config.get("parameter_noise", DEPRECATED_VALUE) != DEPRECATED_VALUE:
         deprecation_warning("parameter_noise", "exploration_config={"
-                            "type=ParameterNoise"
-                                               "}")
+                            "type=ParameterNoise}")
 
     if config["exploration_config"]["type"] == "ParameterNoise":
         if config["batch_mode"] != "complete_episodes":
