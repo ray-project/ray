@@ -8,7 +8,7 @@ from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
-tf = try_import_tf()
+tf, tf2, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)

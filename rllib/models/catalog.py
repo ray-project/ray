@@ -27,7 +27,7 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import flatten_space
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 tree = try_import_tree()
 
 logger = logging.getLogger(__name__)
@@ -257,7 +257,7 @@ class ModelCatalog:
 
         dtype, shape = ModelCatalog.get_action_shape(action_space)
 
-        return tf.placeholder(dtype, shape=shape, name=name)
+        return tf1.placeholder(dtype, shape=shape, name=name)
 
     @staticmethod
     @DeveloperAPI

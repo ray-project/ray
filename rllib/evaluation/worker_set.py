@@ -14,7 +14,7 @@ from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.types import PolicyID, TrainerConfigDict, EnvType
 
-tf = try_import_tf()
+tf, tf2, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 

@@ -35,7 +35,7 @@ from ray.tune.resources import Resources
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
-tf = try_import_tf()
+tf, tf2, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 

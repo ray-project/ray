@@ -6,7 +6,7 @@ from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 @DeveloperAPI

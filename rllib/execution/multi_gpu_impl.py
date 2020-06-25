@@ -5,7 +5,7 @@ from ray.util.debug import log_once
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf, tf2, tfv = try_import_tf()
 
 # Variable scope in which created variables will be placed under
 TOWER_SCOPE_NAME = "tower"

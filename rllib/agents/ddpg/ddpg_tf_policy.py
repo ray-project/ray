@@ -22,7 +22,7 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip, \
     make_tf_callable
 
-tf = try_import_tf()
+tf, tf2, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -286,7 +286,7 @@ def build_apply_op(policy, optimizer, grads_and_vars):
     # For policy gradient, update policy net one time v.s.
     # update critic net `policy_delay` time(s).
     should_apply_actor_opt = tf.equal(
-        tf.mod(policy.global_step, policy.config["policy_delay"]), 0)
+        tf.math.floormod(policy.global_step, policy.config["policy_delay"]), 0)
 
     def make_apply_op():
         return policy._actor_optimizer.apply_gradients(

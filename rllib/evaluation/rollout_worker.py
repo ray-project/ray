@@ -50,7 +50,7 @@ if TYPE_CHECKING:
 # Generic type var for foreach_* methods.
 T = TypeVar("T")
 
-tf = try_import_tf()
+tf, tf2, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)

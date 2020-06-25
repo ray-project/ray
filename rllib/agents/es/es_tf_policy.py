@@ -14,7 +14,7 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
 
-tf = try_import_tf()
+tf, tf2, tfv = try_import_tf()
 tree = try_import_tree()
 
 

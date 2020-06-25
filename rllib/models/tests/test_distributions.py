@@ -16,7 +16,7 @@ from ray.rllib.utils.numpy import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, \
     softmax, SMALL_NUMBER, LARGE_INTEGER
 from ray.rllib.utils.test_utils import check, framework_iterator
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 tree = try_import_tree()
 

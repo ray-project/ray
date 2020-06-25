@@ -2,7 +2,7 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 @PublicAPI

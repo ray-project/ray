@@ -6,7 +6,7 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
 
-tf = try_import_tf()
+tf, tf2, tfv = try_import_tf()
 
 
 class ValueNetworkMixin:

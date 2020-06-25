@@ -6,7 +6,7 @@ import ray
 from ray.rllib.agents.registry import get_agent_class
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf, tf2, tfv = try_import_tf()
 
 ray.init(num_cpus=10)
 

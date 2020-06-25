@@ -13,7 +13,7 @@ from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import unbatch
 
-tf = try_import_tf()
+tf, tf2, tfv = try_import_tf()
 
 
 class ARSTFPolicy:

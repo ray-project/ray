@@ -16,7 +16,7 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.sgd import averaged
 from ray.rllib.utils.timer import TimerStat
 
-tf = try_import_tf()
+tf, tf2, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 

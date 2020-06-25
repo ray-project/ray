@@ -22,7 +22,7 @@ from ray.tune.registry import register_env
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.repeated import Repeated
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 _, nn = try_import_torch()
 
 DICT_SPACE = spaces.Dict({

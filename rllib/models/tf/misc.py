@@ -1,7 +1,7 @@
 import numpy as np
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf, tf2, tfv = try_import_tf()
 
 
 def normc_initializer(std=1.0):

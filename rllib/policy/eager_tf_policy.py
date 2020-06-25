@@ -16,7 +16,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
@@ -262,7 +262,7 @@ def build_eager_tf_policy(name,
             if optimizer_fn:
                 self._optimizer = optimizer_fn(self, config)
             else:
-                self._optimizer = tf.train.AdamOptimizer(config["lr"])
+                self._optimizer = tf1.train.AdamOptimizer(config["lr"])
 
             if after_init:
                 after_init(self, observation_space, action_space, config)

@@ -6,7 +6,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf, tf2, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 

@@ -9,7 +9,7 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
 tree = try_import_tree()
 

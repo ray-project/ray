@@ -17,7 +17,7 @@ from ray.rllib.utils.tf_ops import huber_loss, reduce_mean_ignore_inf, \
     minimize_and_clip
 from ray.rllib.utils.tf_ops import make_tf_callable
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"

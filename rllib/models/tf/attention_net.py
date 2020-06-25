@@ -17,7 +17,7 @@ from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 # TODO(sven): Use RLlib's FCNet instead.
