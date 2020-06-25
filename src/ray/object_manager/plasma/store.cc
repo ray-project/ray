@@ -43,8 +43,8 @@
 
 #include "arrow/status.h"
 
+#include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/plasma/common.h"
-#include "ray/object_manager/plasma/common_generated.h"
 #include "ray/object_manager/plasma/fling.h"
 #include "ray/object_manager/plasma/io.h"
 #include "ray/object_manager/plasma/malloc.h"
@@ -644,7 +644,7 @@ PlasmaError PlasmaStore::DeleteObject(ObjectID& object_id) {
   eviction_policy_.RemoveObject(object_id);
   EraseFromObjectTable(object_id);
   // Inform all subscribers that the object has been deleted.
-  fb::ObjectInfoT notification;
+  ObjectInfoT notification;
   notification.object_id = object_id.Binary();
   notification.is_deletion = true;
   PushNotification(&notification);
@@ -683,7 +683,7 @@ void PlasmaStore::EvictObjects(const std::vector<ObjectID>& object_ids) {
       // and send a deletion notification.
       EraseFromObjectTable(object_id);
       // Inform all subscribers that the object has been deleted.
-      fb::ObjectInfoT notification;
+      ObjectInfoT notification;
       notification.object_id = object_id.Binary();
       notification.is_deletion = true;
       PushNotification(&notification);
@@ -835,18 +835,21 @@ PlasmaStore::NotificationMap::iterator PlasmaStore::SendNotifications(
   }
 }
 
-void PlasmaStore::PushNotification(fb::ObjectInfoT* object_info) {
-  auto it = pending_notifications_.begin();
-  while (it != pending_notifications_.end()) {
-    std::vector<fb::ObjectInfoT> info;
-    info.push_back(*object_info);
-    auto notification = CreatePlasmaNotificationBuffer(info);
-    it->second.object_notifications.emplace_back(std::move(notification));
-    it = SendNotifications(it);
-  }
+void PlasmaStore::PushNotification(ObjectInfoT* object_info) {
+  PushNotifications({*object_info});
 }
 
-void PlasmaStore::PushNotifications(std::vector<fb::ObjectInfoT>& object_info) {
+void PlasmaStore::PushNotifications(const std::vector<ObjectInfoT>& object_info) {
+  if (notification_listener_) {
+    for (const auto& info : object_info) {
+      if (!info.is_deletion) {
+        notification_listener_->ProcessStoreAdd(info);
+      } else {
+        notification_listener_->ProcessStoreRemove(ObjectID::FromBinary(info.object_id));
+      }
+    }
+  }
+
   auto it = pending_notifications_.begin();
   while (it != pending_notifications_.end()) {
     auto notifications = CreatePlasmaNotificationBuffer(object_info);
@@ -855,12 +858,10 @@ void PlasmaStore::PushNotifications(std::vector<fb::ObjectInfoT>& object_info) {
   }
 }
 
-void PlasmaStore::PushNotification(fb::ObjectInfoT* object_info, int client_fd) {
+void PlasmaStore::PushNotification(ObjectInfoT* object_info, int client_fd) {
   auto it = pending_notifications_.find(client_fd);
   if (it != pending_notifications_.end()) {
-    std::vector<fb::ObjectInfoT> info;
-    info.push_back(*object_info);
-    auto notification = CreatePlasmaNotificationBuffer(info);
+    auto notification = CreatePlasmaNotificationBuffer({*object_info});
     it->second.object_notifications.emplace_back(std::move(notification));
     SendNotifications(it);
   }

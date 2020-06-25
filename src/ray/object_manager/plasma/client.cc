@@ -1035,7 +1035,7 @@ Status PlasmaClient::Impl::DecodeNotifications(const uint8_t* buffer,
                                                std::vector<int64_t>* data_sizes,
                                                std::vector<int64_t>* metadata_sizes) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-  auto object_info = flatbuffers::GetRoot<fb::PlasmaNotification>(buffer);
+  auto object_info = flatbuffers::GetRoot<ray::object_manager::protocol::PlasmaNotification>(buffer);
 
   for (size_t i = 0; i < object_info->object_info()->size(); ++i) {
     auto info = object_info->object_info()->Get(i);
