@@ -275,8 +275,8 @@ cdef prepare_args(
         if isinstance(arg, ObjectID):
             # TODO
             args_vector.push_back(
-                unique_ptr[CTaskArg](new 
-                CTaskArgByReference((<ObjectID>arg).native(), CAddress())))
+                unique_ptr[CTaskArg](new CTaskArgByReference(
+                    (<ObjectID>arg).native(), CAddress())))
 
         else:
             serialized_arg = worker.get_serialization_context().serialize(arg)
@@ -302,17 +302,17 @@ cdef prepare_args(
                 for object_id in serialized_arg.contained_object_ids:
                     inlined_ids.push_back((<ObjectID>object_id).native())
                 args_vector.push_back(
-                unique_ptr[CTaskArg](new 
-                    CTaskArgByValue(make_shared[CRayObject](
-                        arg_data, string_to_buffer(metadata),
-                        inlined_ids))))
+                    unique_ptr[CTaskArg](new CTaskArgByValue(
+                        make_shared[CRayObject](
+                            arg_data, string_to_buffer(metadata),
+                            inlined_ids))))
                 inlined_ids.clear()
             else:
                 # TODO
-                args_vector.push_back(
-                unique_ptr[CTaskArg](new 
-                    CTaskArgByReference(CObjectID.FromBinary(
-                        core_worker.put_serialized_object(serialized_arg)), CAddress())))
+                args_vector.push_back(unique_ptr[CTaskArg](
+                    new CTaskArgByReference(CObjectID.FromBinary(
+                        core_worker.put_serialized_object(serialized_arg)),
+                        CAddress())))
 
 
 def switch_worker_log_if_needed(worker, next_job_id):

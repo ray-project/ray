@@ -1081,7 +1081,8 @@ Status CoreWorker::SetResource(const std::string &resource_name, const double ca
   return local_raylet_client_->SetResource(resource_name, capacity, client_id);
 }
 
-void CoreWorker::SubmitTask(const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
+void CoreWorker::SubmitTask(const RayFunction &function,
+                            const std::vector<std::unique_ptr<TaskArg>> &args,
                             const TaskOptions &task_options,
                             std::vector<ObjectID> *return_ids, int max_retries) {
   TaskSpecBuilder builder;
@@ -1163,9 +1164,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 }
 
 void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
-                                   const std::vector<std::unique_ptr<TaskArg>> &args,
-                                   const TaskOptions &task_options,
-                                   std::vector<ObjectID> *return_ids) {
+                                 const std::vector<std::unique_ptr<TaskArg>> &args,
+                                 const TaskOptions &task_options,
+                                 std::vector<ObjectID> *return_ids) {
   ActorHandle *actor_handle = nullptr;
   RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
 
@@ -1630,16 +1631,13 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
 
   for (size_t i = 0; i < task.NumArgs(); ++i) {
     if (task.ArgByRef(i)) {
-      // pass by reference.
-      RAY_CHECK(task.ArgIdCount(i) == 1);
-      // Objects that weren't inlined have been promoted to plasma.
       // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
       // properly redirects to the plasma store.
       if (!options_.is_local_mode) {
         RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                      task.ArgId(i, 0)));
+                                      task.ArgId(i)));
       }
-      const auto &arg_id = task.ArgId(i, 0);
+      const auto &arg_id = task.ArgId(i);
       by_ref_ids.insert(arg_id);
       auto it = by_ref_indices.find(arg_id);
       if (it == by_ref_indices.end()) {
@@ -1654,7 +1652,7 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
       // it finishes.
       borrowed_ids->push_back(arg_id);
     } else {
-      // pass by value.
+      // A pass-by-value argument.
       std::shared_ptr<LocalMemoryBuffer> data = nullptr;
       if (task.ArgDataSize(i)) {
         data = std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(task.ArgData(i)),

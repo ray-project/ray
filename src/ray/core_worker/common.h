@@ -64,10 +64,10 @@ class TaskArgByReference : public TaskArg {
   /// \param[in] object_id Id of the argument.
   /// \return The task argument.
   TaskArgByReference(const ObjectID &object_id, const rpc::Address &owner_address)
-    : id_(object_id), owner_address_(owner_address) {}
+      : id_(object_id), owner_address_(owner_address) {}
 
   void ToProto(rpc::TaskArg *arg_proto) const {
-    auto ref = arg_proto->add_object_refs();
+    auto ref = arg_proto->mutable_object_ref();
     ref->set_object_id(id_.Binary());
     ref->mutable_owner_address()->CopyFrom(owner_address_);
   }
