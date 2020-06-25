@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import contextmanager
 from urllib.parse import parse_qs
 
 import uvicorn
@@ -9,7 +10,7 @@ from ray.serve.context import TaskContext
 from ray.serve.metric import MetricClient
 from ray.serve.request_params import RequestMetadata
 from ray.serve.http_util import Response
-from ray.serve.utils import logger
+from ray.serve.utils import logger, _get_tracer
 from ray.serve.router import Router
 
 # The maximum number of times to retry a request due to actor failure.
@@ -25,6 +26,13 @@ class HTTPProxy:
     >>> uvicorn.run(HTTPProxy(kv_store_actor_handle, router_handle))
     # blocks forever
     """
+
+    def __init__(self, tracing_enabled):
+        self.query_id_counter = 0
+        self.tracer = _get_tracer()
+
+        if tracing_enabled:
+            self.tracer.enable()
 
     async def fetch_config_from_master(self):
         assert ray.is_initialized()
@@ -107,7 +115,13 @@ class HTTPProxy:
     async def __call__(self, scope, receive, send):
         # NOTE: This implements ASGI protocol specified in
         #       https://asgi.readthedocs.io/en/latest/specs/index.html
+        query_id = self.query_id_counter
+        self.query_id_counter += 1
 
+        def tracepoint(event):
+            self.tracer.add(query_id, event)
+
+        tracepoint("query_received")
         error_sender = self._make_error_sender(scope, receive, send)
 
         assert self.route_table is not None, (
@@ -119,6 +133,7 @@ class HTTPProxy:
 
         if current_path.startswith("/-/"):
             await self._handle_system_request(scope, receive, send)
+            tracepoint("query_responded")
             return
 
         try:
@@ -129,6 +144,7 @@ class HTTPProxy:
                 "Please ping http://.../-/routes for routing table"
             ).format(current_path)
             await error_sender(error_message, 404)
+            tracepoint("query_responded")
             return
 
         if scope["method"] not in methods_allowed:
@@ -136,19 +152,23 @@ class HTTPProxy:
                              "Available HTTP methods are {}.").format(
                                  scope["method"], methods_allowed)
             await error_sender(error_message, 405)
+            tracepoint("query_responded")
             return
 
         http_body_bytes = await self.receive_http_body(scope, receive, send)
+        tracepoint("query_body_received")
 
         # get slo_ms before enqueuing the query
         try:
             relative_slo_ms, absolute_slo_ms = self._parse_latency_slo(scope)
         except ValueError as e:
             await error_sender(str(e), 400)
+            tracepoint("query_responded")
             return
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
         request_metadata = RequestMetadata(
+            query_id,
             endpoint_name,
             TaskContext.Web,
             relative_slo_ms=relative_slo_ms,
@@ -157,9 +177,11 @@ class HTTPProxy:
             shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
         )
 
+        tracepoint("before_router_enqueue")
         future = await self.router.enqueue_request(request_metadata, scope,
                                                    http_body_bytes)
         await Response(await future).send(scope, receive, send)
+        tracepoint("query_responded")
 
 
 def _autoproxy(*, methods, through):
@@ -207,9 +229,13 @@ def _autoproxy(*, methods, through):
     ],
     through="_proxy_router_call")
 class HTTPProxyActor:
-    async def __init__(self, host, port, instance_name=None):
+    async def __init__(self,
+                       host,
+                       port,
+                       instance_name=None,
+                       tracing_enabled=False):
         serve.init(name=instance_name)
-        self.app = HTTPProxy()
+        self.app = HTTPProxy(tracing_enabled)
         await self.app.fetch_config_from_master()
         self.host = host
         self.port = port
@@ -238,3 +264,6 @@ class HTTPProxyActor:
         future = await self.app.router.enqueue_request(*args, **kwargs)
         result = await future
         return result
+
+    def _collect_trace(self):
+        return _get_tracer().get()

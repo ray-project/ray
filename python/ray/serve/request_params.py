@@ -1,6 +1,7 @@
 import time
 from ray.serve.constants import DEFAULT_LATENCY_SLO_MS
 import ray.cloudpickle as pickle
+from ray.serve.utils import _get_tracer
 
 
 class RequestMetadata:
@@ -17,13 +18,14 @@ class RequestMetadata:
     """
 
     def __init__(self,
+                 query_id,
                  endpoint,
                  request_context,
                  relative_slo_ms=None,
                  absolute_slo_ms=None,
                  call_method="__call__",
                  shard_key=None):
-
+        self.query_id = query_id
         self.endpoint = endpoint
         self.request_context = request_context
         self.relative_slo_ms = relative_slo_ms
@@ -42,7 +44,11 @@ class RequestMetadata:
         return current_time_ms + slo_ms
 
     def ray_serialize(self):
-        return pickle.dumps(self.__dict__, protocol=5)
+        tracer = _get_tracer()
+        tracer.add(self.query_id, "request_params_before_serialize")
+        serialized_bytes = pickle.dumps(self.__dict__, protocol=5)
+        tracer.add(self.query_id, "request_params_after_serialize")
+        return serialized_bytes
 
     @staticmethod
     def ray_deserialize(value):

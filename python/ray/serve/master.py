@@ -3,6 +3,7 @@ from collections import defaultdict
 import os
 import random
 import time
+from itertools import chain
 
 import ray
 import ray.cloudpickle as pickle
@@ -27,6 +28,9 @@ CHECKPOINT_KEY = "serve-master-checkpoint"
 # Feature flag for master actor resource checking. If true, master actor will
 # error if the desired replicas exceed current resource availability.
 _RESOURCE_CHECK_ENABLED = True
+
+# Feature flag for enable system wide query tracing.
+_TRACING_ENABLED = False
 
 
 @ray.remote
@@ -145,7 +149,10 @@ class ServeMaster:
                     node_id: 0.01
                 },
             ).remote(
-                host, port, instance_name=self.instance_name)
+                host,
+                port,
+                instance_name=self.instance_name,
+                tracing_enabled=_TRACING_ENABLED)
 
         self.router = self.http_proxy
 
@@ -304,7 +311,8 @@ class ServeMaster:
                 replica_tag,
                 replica_config.actor_init_args,
                 backend_config,
-                instance_name=self.instance_name)
+                instance_name=self.instance_name,
+                tracing_enabled=_TRACING_ENABLED)
         # TODO(edoakes): we should probably have a timeout here.
         await worker_handle.ready.remote()
         return worker_handle
@@ -699,9 +707,24 @@ class ServeMaster:
         """Shuts down the serve instance completely."""
         async with self.write_lock:
             ray.kill(self.http_proxy, no_restart=True)
-            ray.kill(self.router, no_restart=True)
+            # ray.kill(self.router, no_restart=True)
             ray.kill(self.metric_exporter, no_restart=True)
             for replica_dict in self.workers.values():
                 for replica in replica_dict.values():
                     ray.kill(replica, no_restart=True)
             self.kv_store.delete(CHECKPOINT_KEY)
+
+    async def _collect_trace(self):
+        if not _TRACING_ENABLED:
+            return RayServeException("Tracing is disabled.")
+
+        actors_to_collect = [self.http_proxy]
+        for replica_dict in self.workers.values():
+            for replica in replica_dict.values():
+                actors_to_collect.append(replica)
+
+        futures = [
+            actor._collect_trace.remote() for actor in actors_to_collect
+        ]
+        done, _ = await asyncio.wait(futures)
+        return list(chain.from_iterable(task.result() for task in done))

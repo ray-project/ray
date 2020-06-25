@@ -13,11 +13,12 @@ import ray
 from ray import serve
 from ray.serve.metric import MetricClient
 from ray.serve.policy import RandomEndpointPolicy
-from ray.serve.utils import logger, chain_future
+from ray.serve.utils import logger, chain_future, _get_tracer
 
 
 class Query:
     def __init__(self,
+                 query_id,
                  request_args,
                  request_kwargs,
                  request_context,
@@ -25,6 +26,7 @@ class Query:
                  call_method="__call__",
                  shard_key=None,
                  async_future=None):
+        self.query_id = query_id
         self.request_args = request_args
         self.request_kwargs = request_kwargs
         self.request_context = request_context
@@ -38,15 +40,27 @@ class Query:
         self.call_method = call_method
         self.shard_key = shard_key
 
+        self.tracer = None
+
+    def tracepoint(self, event):
+        if self.tracer is None:
+            self.tracer = _get_tracer()
+
+        self.tracer.add(self.query_id, event)
+
     def ray_serialize(self):
         # NOTE: this method is needed because Query need to be serialized and
         # sent to the replica worker. However, after we send the query to
         # replica worker the async_future is still needed to retrieve the final
         # result. Therefore we need a way to pass the information to replica
         # worker without removing async_future.
+        self.tracepoint("query_before_serialize")
         clone = copy.copy(self).__dict__
         clone.pop("async_future")
-        return pickle.dumps(clone, protocol=5)
+        clone.pop("tracer")
+        serialized_bytes = pickle.dumps(clone, protocol=5)
+        self.tracepoint("query_after_serialize")
+        return serialized_bytes
 
     @staticmethod
     def ray_deserialize(value):
@@ -174,6 +188,7 @@ class Router:
         endpoint = request_meta.endpoint
         logger.debug("Received a request for endpoint {}".format(endpoint))
         self.num_router_requests.labels(endpoint=endpoint).add()
+        query_id = request_meta.query_id
 
         # check if the slo specified is directly the
         # wall clock time
@@ -183,6 +198,7 @@ class Router:
             request_slo_ms = request_meta.adjust_relative_slo_ms()
         request_context = request_meta.request_context
         query = Query(
+            query_id,
             request_args,
             request_kwargs,
             request_context,
@@ -190,12 +206,14 @@ class Router:
             call_method=request_meta.call_method,
             shard_key=request_meta.shard_key,
             async_future=asyncio.get_event_loop().create_future())
+        query.tracepoint("query_constructed")
         async with self.flush_lock:
             self.endpoint_queues[endpoint].appendleft(query)
             self.flush_endpoint_queue(endpoint)
 
         # Note: a future change can be to directly return the ObjectID from
         # replica task submission
+        query.tracepoint("query_assigned")
         return query.async_future
 
         # try:
@@ -315,11 +333,13 @@ class Router:
         logger.debug("Sending query to replica:" + backend_replica_tag)
         start = time.time()
         worker = self.replicas[backend_replica_tag]
+        req.tracepoint("query_sent_to_worker")
         try:
             result = await worker.handle_request.remote(req)
         except RayTaskError as error:
             self.num_error_backend_request.labels(backend=backend).add()
             result = error
+        req.tracepoint("query_received_from_worker")
         self.queries_counter[backend_replica_tag] -= 1
         await self.mark_worker_idle(backend, backend_replica_tag)
         logger.debug("Got result in {:.2f}s".format(time.time() - start))

@@ -8,6 +8,7 @@ import time
 from typing import List
 import io
 import os
+from collections import defaultdict
 
 import requests
 from pygments import formatters, highlight, lexers
@@ -226,3 +227,35 @@ def try_schedule_resources_on_nodes(
             successfully_scheduled.append(False)
 
     return successfully_scheduled
+
+
+class InMemoryTracer:
+    def __init__(self):
+        self.sink = []
+        self.enabled = False
+
+    def add(self, query_id, event):
+        if not self.enabled:
+            return
+
+        self.sink.append({
+            "time_us": int(time.time() * 1e6),
+            "query_id": query_id,
+            "event": event,
+        })
+
+    def enable(self):
+        self.enabled = True
+
+    def get(self):
+        return self.sink
+
+
+_tracer = None
+
+
+def _get_tracer():
+    global _tracer
+    if _tracer is None:
+        _tracer = InMemoryTracer()
+    return _tracer

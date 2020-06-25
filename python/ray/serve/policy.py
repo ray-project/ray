@@ -67,6 +67,7 @@ class RandomEndpointPolicy(EndpointPolicy):
                 # Note(simon): This constructor takes 100+us, maybe cache this?
                 rstate = np.random.RandomState(seed)
 
+            # Note(simon): rstate.choice takes 34us.
             chosen_backend = rstate.choice(
                 self.backend_names, replace=False,
                 p=self.backend_weights).squeeze()

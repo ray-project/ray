@@ -14,7 +14,7 @@ from ray import serve
 from ray.serve import context as serve_context
 from ray.serve.context import FakeFlaskRequest
 from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
-                             unpack_future)
+                             unpack_future, _get_tracer)
 from ray.serve.exceptions import RayServeException
 from ray.serve.metric import MetricClient
 from ray.serve.config import BackendConfig
@@ -101,7 +101,8 @@ def create_backend_worker(func_or_class):
                      replica_tag,
                      init_args,
                      backend_config: BackendConfig,
-                     instance_name=None):
+                     instance_name=None,
+                     tracing_enabled=False):
             serve.init(name=instance_name)
 
             if is_function:
@@ -113,6 +114,11 @@ def create_backend_worker(func_or_class):
             [metric_exporter] = ray.get(master.get_metric_exporter.remote())
             metric_client = MetricClient(
                 metric_exporter, default_labels={"backend": backend_tag})
+
+            self.tracer = _get_tracer()
+            if tracing_enabled:
+                self.tracer.enable()
+
             self.backend = RayServeWorker(backend_tag, replica_tag, _callable,
                                           backend_config, is_function,
                                           metric_client)
@@ -125,6 +131,9 @@ def create_backend_worker(func_or_class):
 
         def ready(self):
             pass
+
+        def _collect_trace(self):
+            return self.tracer.get()
 
     RayServeWrappedWorker.__name__ = "RayServeWorker_" + func_or_class.__name__
     return RayServeWrappedWorker
@@ -230,6 +239,8 @@ class RayServeWorker:
         finally:
             self._reset_context()
 
+        request_item.tracepoint("worker_query_evaluated")
+
         return result
 
     async def invoke_batch(self, request_item_list):
@@ -319,6 +330,7 @@ class RayServeWorker:
 
             if not self.config.accepts_batches:
                 query = batch[0]
+                query.tracepoint("worker_query_dequeued")
                 evaluated = asyncio.ensure_future(self.invoke_single(query))
                 all_evaluated_futures = [evaluated]
                 chain_future(evaluated, query.async_future)
@@ -348,4 +360,7 @@ class RayServeWorker:
         logger.debug("Worker {} got request {}".format(self.name, request))
         request.async_future = asyncio.get_event_loop().create_future()
         self.batch_queue.put(request)
-        return await request.async_future
+        request.tracepoint("worker_query_enqueued")
+        result = await request.async_future
+        request.tracepoint("worker_query_processed")
+        return result
