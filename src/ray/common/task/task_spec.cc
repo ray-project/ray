@@ -114,11 +114,11 @@ bool TaskSpecification::ArgByRef(size_t arg_index) const {
 }
 
 size_t TaskSpecification::ArgIdCount(size_t arg_index) const {
-  return message_->args(arg_index).object_ids_size();
+  return message_->args(arg_index).object_refs_size();
 }
 
 ObjectID TaskSpecification::ArgId(size_t arg_index, size_t id_index) const {
-  return ObjectID::FromBinary(message_->args(arg_index).object_ids(id_index));
+  return ObjectID::FromBinary(message_->args(arg_index).object_refs(id_index).object_id());
 }
 
 const uint8_t *TaskSpecification::ArgData(size_t arg_index) const {

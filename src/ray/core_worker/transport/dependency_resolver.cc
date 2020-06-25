@@ -44,12 +44,10 @@ void InlineDependencies(
       if (it != dependencies.end()) {
         RAY_CHECK(it->second);
         auto *mutable_arg = msg.mutable_args(i);
-        mutable_arg->clear_object_ids();
-        if (it->second->IsInPlasmaError()) {
-          // Promote the object id to plasma.
-          mutable_arg->add_object_ids(it->first.Binary());
-        } else {
-          // Inline the object value.
+        if (!it->second->IsInPlasmaError()) {
+          // The object has not been promoted to plasma. Inline the object
+          // value.
+          mutable_arg->clear_object_refs();
           if (it->second->HasData()) {
             const auto &data = it->second->GetData();
             mutable_arg->set_data(data->Data(), data->Size());

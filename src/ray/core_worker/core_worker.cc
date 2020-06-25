@@ -32,7 +32,7 @@ void BuildCommonTaskSpec(
     ray::TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
     const TaskID &current_task_id, const int task_index, const TaskID &caller_id,
     const ray::rpc::Address &address, const ray::RayFunction &function,
-    const std::vector<ray::TaskArg> &args, uint64_t num_returns,
+    const std::vector<std::unique_ptr<ray::TaskArg>> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     std::vector<ObjectID> *return_ids) {
@@ -43,11 +43,7 @@ void BuildCommonTaskSpec(
                             required_resources, required_placement_resources);
   // Set task arguments.
   for (const auto &arg : args) {
-    if (arg.IsPassedByReference()) {
-      builder.AddByRefArg(arg.GetReference());
-    } else {
-      builder.AddByValueArg(arg.GetValue());
-    }
+    builder.AddArg(*arg);
   }
 
   // Compute return IDs.
@@ -1085,7 +1081,7 @@ Status CoreWorker::SetResource(const std::string &resource_name, const double ca
   return local_raylet_client_->SetResource(resource_name, capacity, client_id);
 }
 
-void CoreWorker::SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
+void CoreWorker::SubmitTask(const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
                             const TaskOptions &task_options,
                             std::vector<ObjectID> *return_ids, int max_retries) {
   TaskSpecBuilder builder;
@@ -1113,7 +1109,7 @@ void CoreWorker::SubmitTask(const RayFunction &function, const std::vector<TaskA
 }
 
 Status CoreWorker::CreateActor(const RayFunction &function,
-                               const std::vector<TaskArg> &args,
+                               const std::vector<std::unique_ptr<TaskArg>> &args,
                                const ActorCreationOptions &actor_creation_options,
                                const std::string &extension_data,
                                ActorID *return_actor_id) {
@@ -1167,9 +1163,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 }
 
 void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
-                                 const std::vector<TaskArg> &args,
-                                 const TaskOptions &task_options,
-                                 std::vector<ObjectID> *return_ids) {
+                                   const std::vector<std::unique_ptr<TaskArg>> &args,
+                                   const TaskOptions &task_options,
+                                   std::vector<ObjectID> *return_ids) {
   ActorHandle *actor_handle = nullptr;
   RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
 

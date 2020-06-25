@@ -545,7 +545,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
-  void SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
+  void SubmitTask(const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
                   const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
                   int max_retries);
 
@@ -560,7 +560,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] actor_id ID of the created actor. This can be used to submit
   /// tasks on the actor.
   /// \return Status error if actor creation fails, likely due to raylet failure.
-  Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
+  Status CreateActor(const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
                      const ActorCreationOptions &actor_creation_options,
                      const std::string &extension_data, ActorID *actor_id);
 
@@ -576,7 +576,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// failed. Tasks can be invalid for direct actor calls because not all tasks
   /// are currently supported.
   void SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
-                       const std::vector<TaskArg> &args, const TaskOptions &task_options,
+                       const std::vector<std::unique_ptr<TaskArg>> &args,
+                       const TaskOptions &task_options,
                        std::vector<ObjectID> *return_ids);
 
   /// Tell an actor to exit immediately, without completing outstanding work.
