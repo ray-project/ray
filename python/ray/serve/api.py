@@ -119,6 +119,18 @@ def init(name=None,
 
 
 @_ensure_connected
+def shutdown():
+    """Completely shut down the connected Serve instance.
+
+    Shuts down all processes and deletes all state associated with the Serve
+    instance that's currently connected to (via serve.init).
+    """
+    global master_actor
+    ray.get(master_actor.shutdown.remote())
+    ray.kill(master_actor, no_restart=True)
+    master_actor = None
+
+
 def create_endpoint(endpoint_name,
                     *,
                     backend=None,
