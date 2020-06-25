@@ -33,8 +33,6 @@ def run_http_benchmark(url):
 
 @click.command()
 @click.option("--blocking", is_flag=True, required=False, help="Block forever")
-# @click.option("--num-replicas")
-# @click.option("--num-replicas")
 def main(blocking: bool):
     serve.init()
 
