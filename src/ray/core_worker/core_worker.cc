@@ -1198,8 +1198,8 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec, actor_id);
   } else {
-    task_manager_->AddPendingTask(rpc_address_, task_spec,
-                                  CurrentCallSite(), actor_handle->MaxTaskRetries());
+    task_manager_->AddPendingTask(rpc_address_, task_spec, CurrentCallSite(),
+                                  actor_handle->MaxTaskRetries());
     io_service_.post([this, task_spec]() {
       RAY_UNUSED(direct_actor_submitter_->SubmitTask(task_spec));
     });
