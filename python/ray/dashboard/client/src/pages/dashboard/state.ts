@@ -7,7 +7,7 @@ import {
   TuneAvailabilityResponse,
   TuneJobResponse,
 } from "../../api";
-import {mapObj, filterObj} from "../../common/util"
+import { filterObj } from "../../common/util";
 
 const name = "dashboard";
 
@@ -55,7 +55,10 @@ const slice = createSlice({
       }>,
     ) => {
       state.rayletInfo = action.payload.rayletInfo;
-      state.nodeInfo = filterNonClusterWorkerInfo(action.payload.rayletInfo, action.payload.nodeInfo);
+      state.nodeInfo = filterNonClusterWorkerInfo(
+        action.payload.rayletInfo,
+        action.payload.nodeInfo,
+      );
       state.lastUpdatedAt = Date.now();
     },
     setTuneInfo: (state, action: PayloadAction<TuneJobResponse>) => {
@@ -102,30 +105,33 @@ const clusterWorkerPids = (
   return nodeMap;
 };
 
-const filterNonClusterWorkerInfo = (rayletInfo: RayletInfoResponse, nodeInfo: NodeInfoResponse) => {
+const filterNonClusterWorkerInfo = (
+  rayletInfo: RayletInfoResponse,
+  nodeInfo: NodeInfoResponse,
+) => {
+  // The back-end that generates the NodeInfoResponse does not remove worker
+  // information of workers that belong to other clusters, so we do it here.
   const workerPidsByIP = clusterWorkerPids(rayletInfo);
-  const filteredClients = nodeInfo.clients.map(client => {
+  const filteredClients = nodeInfo.clients.map((client) => {
     const workerPids = workerPidsByIP.get(client.ip);
-    const workers = client.workers.filter(worker => workerPids?.has(worker.pid.toString()));
+    const workers = client.workers.filter((worker) =>
+      workerPids?.has(worker.pid.toString()),
+    );
+    const logs =
+      client.log_count &&
+      filterObj(client.log_count, (pid: string) => workerPids?.has(pid));
+    const errors =
+      client.error_count &&
+      filterObj(client.error_count, (pid: string) => workerPids?.has(pid));
     client.workers = workers;
+    client.log_count = logs;
+    client.error_count = errors;
     return client;
-  });
-  const filteredLogEntries = mapObj(nodeInfo.log_counts, (ip: string, pidToCount: {pid: string}) => {
-    const workerPids = workerPidsByIP.get(ip);
-    const filteredPidToCount = filterObj(pidToCount, (pid: string) => workerPids?.has(pid));
-    return [ip, filteredPidToCount]
-  });
-  const filteredErrEntries = mapObj(nodeInfo.error_counts, (ip: string, pidToCount: {pid: string}) => {
-    const workerPids = workerPidsByIP.get(ip);
-    const filteredPidToCount = filterObj(pidToCount, (pid: string) => workerPids?.has(pid));
-    return [ip, filteredPidToCount]
   });
   return {
     clients: filteredClients,
-    log_counts: filteredLogEntries,
-    error_counts: filteredErrEntries,
   };
-}
+};
 
 export const dashboardActions = slice.actions;
 export const dashboardReducer = slice.reducer;

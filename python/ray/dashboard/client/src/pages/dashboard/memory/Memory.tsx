@@ -71,7 +71,14 @@ const makeUngroupedEntries = (
   ));
 };
 
-type memoryColumnId = "node_ip_address" | "pid" | "type" | "object_id" | "object_size" | "reference_type" | "call_site" 
+type memoryColumnId =
+  | "node_ip_address"
+  | "pid"
+  | "type"
+  | "object_id"
+  | "object_size"
+  | "reference_type"
+  | "call_site";
 
 const memoryHeaderInfo: HeaderInfo<memoryColumnId>[] = [
   { id: "node_ip_address", label: "IP Address", numeric: true, sortable: true },
@@ -164,6 +171,7 @@ const MemoryInfo: React.FC<{}> = () => {
                 }
               }}
               headerInfo={memoryHeaderInfo}
+              firstColumnEmpty={true}
             />
             <TableBody>
               {isGrouped

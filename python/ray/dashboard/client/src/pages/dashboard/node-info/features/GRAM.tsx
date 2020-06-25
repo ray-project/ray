@@ -8,7 +8,8 @@ import {
   ClusterFeatureRenderFn,
   Node,
   NodeFeatureRenderFn,
-  WorkerFeatureComponent,
+  NodeInfoFeature,
+  WorkerFeatureRenderFn,
 } from "./types";
 
 const nodeGRAMUtilization = (node: Node) => {
@@ -68,7 +69,7 @@ export const NodeGRAM: NodeFeatureRenderFn = ({ node }) => {
   );
 };
 
-export const WorkerGRAM: WorkerFeatureComponent = ({ worker, node }) => {
+export const WorkerGRAM: WorkerFeatureRenderFn = ({ worker, node }) => {
   const workerProcessPerGPU = node.gpus
     .map((gpu) => gpu.processes)
     .map((processes) =>
@@ -94,3 +95,11 @@ export const WorkerGRAM: WorkerFeatureComponent = ({ worker, node }) => {
     </div>
   );
 };
+
+const gramFeature: NodeInfoFeature = {
+  ClusterFeatureRenderFn: ClusterGRAM,
+  NodeFeatureRenderFn: NodeGRAM,
+  WorkerFeatureRenderFn: WorkerGRAM,
+};
+
+export default gramFeature;

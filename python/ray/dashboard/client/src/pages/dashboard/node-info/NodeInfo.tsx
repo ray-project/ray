@@ -11,24 +11,24 @@ import { useSelector } from "react-redux";
 import SortableTableHead, {
   HeaderInfo,
 } from "../../../common/SortableTableHead";
-import { NodeAggregation } from "./features/types";
-import { getComparator, Order, stableSort } from "../../../common/tableUtils";import { NodeCPU, WorkerCPU } from "./features/CPU";
-import { NodeDisk, WorkerDisk } from "./features/Disk";
-import { makeNodeErrors, makeWorkerErrors } from "./features/Errors";
-import { NodeGPU, WorkerGPU } from "./features/GPU";
-import { NodeGRAM, WorkerGRAM } from "./features/GRAM";
-import { NodeHost, WorkerHost } from "./features/Host";
-import { makeNodeLogs, makeWorkerLogs } from "./features/Logs";
-import { NodeRAM, WorkerRAM } from "./features/RAM";
-import { NodeReceived, WorkerReceived } from "./features/Received";
-import { NodeSent, WorkerSent } from "./features/Sent";
-import { NodeUptime, WorkerUptime } from "./features/Uptime";
-import { NodeWorkers, WorkerWorkers } from "./features/Workers";
-
+import { getComparator, Order, stableSort } from "../../../common/tableUtils";
 import { sum } from "../../../common/util";
 import { StoreState } from "../../../store";
 import Errors from "./dialogs/errors/Errors";
 import Logs from "./dialogs/logs/Logs";
+import cpuFeature from "./features/CPU";
+import diskFeature from "./features/Disk";
+import makeErrorsFeature from "./features/Errors";
+import gpuFeature from "./features/GPU";
+import gramFeature from "./features/GRAM";
+import hostFeature from "./features/Host";
+import makeLogsFeature from "./features/Logs";
+import ramFeature from "./features/RAM";
+import receivedFeature from "./features/Received";
+import sentFeature from "./features/Sent";
+import uptimeFeature from "./features/Uptime";
+import workersFeature from "./features/Workers";
+
 import NodeRowGroup from "./NodeRowGroup";
 import TotalRow from "./TotalRow";
 
@@ -57,7 +57,19 @@ type DialogState = {
   pid: number | null;
 } | null;
 
-type nodeInfoColumnId = "host" | "workers" | "uptime" | "cpu" | "ram" | "gpu" | "gram" | "disk" | "sent" | "received" | "logs" | "errors"
+type nodeInfoColumnId =
+  | "host"
+  | "workers"
+  | "uptime"
+  | "cpu"
+  | "ram"
+  | "gpu"
+  | "gram"
+  | "disk"
+  | "sent"
+  | "received"
+  | "logs"
+  | "errors";
 
 const nodeInfoHeaders: HeaderInfo<nodeInfoColumnId>[] = [
   { id: "host", label: "Host", numeric: true, sortable: true },
@@ -74,30 +86,6 @@ const nodeInfoHeaders: HeaderInfo<nodeInfoColumnId>[] = [
   { id: "errors", label: "Errors", numeric: false, sortable: false },
 ];
 
-const nodeInfoFeatures = (numClusterWorkers: number, ) => [
-  { NodeFeature: NodeHost, WorkerFeature: WorkerHost, nodeAccessor },
-  {
-    NodeFeature: NodeWorkers(clusterWorkers.length),
-    WorkerFeature: WorkerWorkers,
-  },
-  { NodeFeature: NodeUptime, WorkerFeature: WorkerUptime },
-  { NodeFeature: NodeCPU, WorkerFeature: WorkerCPU },
-  { NodeFeature: NodeRAM, WorkerFeature: WorkerRAM },
-  { NodeFeature: NodeGPU, WorkerFeature: WorkerGPU },
-  { NodeFeature: NodeGRAM, WorkerFeature: WorkerGRAM },
-  { NodeFeature: NodeDisk, WorkerFeature: WorkerDisk },
-  { NodeFeature: NodeSent, WorkerFeature: WorkerSent },
-  { NodeFeature: NodeReceived, WorkerFeature: WorkerReceived },
-  {
-    NodeFeature: makeNodeLogs(logCounts, setLogDialog),
-    WorkerFeature: makeWorkerLogs(logCounts, setLogDialog),
-  },
-  {
-    NodeFeature: makeNodeErrors(errorCounts, setErrorDialog),
-    WorkerFeature: makeWorkerErrors(errorCounts, setErrorDialog),
-  },
-];
-
 const NodeInfo: React.FC<{}> = () => {
   const [logDialog, setLogDialog] = useState<DialogState>(null);
   const [errorDialog, setErrorDialog] = useState<DialogState>(null);
@@ -112,28 +100,23 @@ const NodeInfo: React.FC<{}> = () => {
   if (nodeInfo === null || rayletInfo === null) {
     return <Typography color="textSecondary">Loading...</Typography>;
   }
-  const clusterTotalWorkers = sum(nodeInfo.clients.map(c => c.workers.length));
-  
-
-  const logCounts: NodeAggregation = {};
-  const errorCounts: NodeAggregation = {};
-  // Initialize inner structure of the count objects
-  for (const client of nodeInfo.clients) {
-    const nodeLogCounts = nodeInfo.log_counts[client.ip] || {};
-    const totalLogEntries = sum(Object.values(nodeLogCounts));
-    logCounts[client.ip] = {
-      perWorker: nodeLogCounts,
-      total: totalLogEntries,
-    };
-
-
-    const nodeErrCounts = nodeInfo.error_counts[client.ip] || {};
-    const totalErrEntries = sum(Object.values(nodeErrCounts));
-    errorCounts[client.ip] = {
-      perWorker: nodeErrCounts,
-      total: totalErrEntries,
-    };
-  }
+  const clusterTotalWorkers = sum(
+    nodeInfo.clients.map((c) => c.workers.length),
+  );
+  const nodeInfoFeatures = [
+    hostFeature,
+    workersFeature,
+    uptimeFeature,
+    cpuFeature,
+    ramFeature,
+    gpuFeature,
+    gramFeature,
+    diskFeature,
+    sentFeature,
+    receivedFeature,
+    makeLogsFeature((hostname, pid) => setLogDialog({ hostname, pid })),
+    makeErrorsFeature((hostname, pid) => setErrorDialog({ hostname, pid })),
+  ];
 
   return (
     <React.Fragment>
@@ -143,36 +126,29 @@ const NodeInfo: React.FC<{}> = () => {
           headerInfo={nodeInfoHeaders}
           order={order}
           orderBy={orderBy}
+          firstColumnEmpty={true}
         />
         <TableBody>
           {nodeInfo.clients.map((client) => {
             return (
               <NodeRowGroup
                 key={client.ip}
-                clusterWorkers={[...client.workers]
-                  .sort((w1, w2) => {
-                    if (w2.cmdline[0] === "ray::IDLE") {
-                      return -1;
-                    }
-                    if (w1.cmdline[0] === "ray::IDLE") {
-                      return 1;
-                    }
-                    return w1.pid < w2.pid ? -1 : 1;
-                  })}
+                clusterWorkers={[...client.workers].sort((w1, w2) => {
+                  if (w2.cmdline[0] === "ray::IDLE") {
+                    return -1;
+                  }
+                  if (w1.cmdline[0] === "ray::IDLE") {
+                    return 1;
+                  }
+                  return w1.pid < w2.pid ? -1 : 1;
+                })}
                 node={client}
                 raylet={
                   client.ip in rayletInfo.nodes
                     ? rayletInfo.nodes[client.ip]
                     : null
                 }
-                logCounts={logCounts[client.ip]}
-                errorCounts={errorCounts[client.ip]}
-                setLogDialog={(hostname, pid) =>
-                  setLogDialog({ hostname, pid })
-                }
-                setErrorDialog={(hostname, pid) =>
-                  setErrorDialog({ hostname, pid })
-                }
+                features={nodeInfoFeatures}
                 initialExpanded={nodeInfo.clients.length <= 1}
               />
             );
@@ -180,8 +156,9 @@ const NodeInfo: React.FC<{}> = () => {
           <TotalRow
             clusterTotalWorkers={clusterTotalWorkers}
             nodes={nodeInfo.clients}
-            logCounts={logCounts}
-            errorCounts={errorCounts}
+            features={nodeInfoFeatures.map(
+              (feature) => feature.ClusterFeatureRenderFn,
+            )}
           />
         </TableBody>
       </Table>

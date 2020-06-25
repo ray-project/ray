@@ -4,9 +4,10 @@ import { formatByteAmount } from "../../../../common/formatUtils";
 import { Accessor } from "../../../../common/tableUtils";
 import {
   ClusterFeatureRenderFn,
-  NodeFeatureRenderFn,
   NodeFeatureData,
-  WorkerFeatureComponent,
+  NodeFeatureRenderFn,
+  NodeInfoFeature,
+  WorkerFeatureRenderFn,
 } from "./types";
 
 export const ClusterSent: ClusterFeatureRenderFn = ({ nodes }) => {
@@ -23,12 +24,20 @@ export const NodeSent: NodeFeatureRenderFn = ({ node }) => (
   <React.Fragment>{formatByteAmount(node.net[0], "mebibyte")}/s</React.Fragment>
 );
 
-export const NodeSentAccessor: Accessor<NodeFeatureData> = ({ node }) => (
-  node.net[0]
-);
+export const nodeSentAccessor: Accessor<NodeFeatureData> = ({ node }) =>
+  node.net[0];
 
-export const WorkerSent: WorkerFeatureComponent = () => (
+export const WorkerSent: WorkerFeatureRenderFn = () => (
   <Typography color="textSecondary" component="span" variant="inherit">
     N/A
   </Typography>
 );
+
+const sentFeature: NodeInfoFeature = {
+  ClusterFeatureRenderFn: ClusterSent,
+  NodeFeatureRenderFn: NodeSent,
+  WorkerFeatureRenderFn: WorkerSent,
+  nodeAccessor: nodeSentAccessor,
+};
+
+export default sentFeature;

@@ -38,19 +38,19 @@ type SortableTableHeadProps<T> = {
   order: Order;
   orderBy: T | null;
   headerInfo: HeaderInfo<T>[];
+  firstColumnEmpty: boolean;
 };
 
 const SortableTableHead = <T,>(props: SortableTableHeadProps<T>) => {
-  const { order, orderBy, onRequestSort, headerInfo } = props;
+  const { order, orderBy, onRequestSort, headerInfo, firstColumnEmpty } = props;
   const classes = useSortableTableHeadStyles();
-  const createSortHandler = (id: T) => (
-    event: React.MouseEvent<unknown>,
-  ) => {
+  const createSortHandler = (id: T) => (event: React.MouseEvent<unknown>) => {
     onRequestSort(event, id);
   };
   return (
     <TableHead>
       <TableRow>
+        {firstColumnEmpty && <StyledTableCell />}
         {headerInfo.map((headerInfo) => {
           if (headerInfo.sortable) {
             return (

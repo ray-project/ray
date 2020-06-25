@@ -4,11 +4,11 @@ import { formatDuration } from "../../../../common/formatUtils";
 import { Accessor } from "../../../../common/tableUtils";
 import {
   ClusterFeatureRenderFn,
-  NodeFeatureRenderFn,
   NodeFeatureData,
+  NodeFeatureRenderFn,
+  NodeInfoFeature,
   WorkerFeatureData,
-  WorkerFeatureComponent,
-  NodeInfoFeature
+  WorkerFeatureRenderFn,
 } from "./types";
 
 const getUptime = (bootTime: number) => Date.now() / 1000 - bootTime;
@@ -23,25 +23,23 @@ export const NodeUptime: NodeFeatureRenderFn = ({ node }) => (
   <React.Fragment>{formatDuration(getUptime(node.boot_time))}</React.Fragment>
 );
 
-export const nodeUptimeAccessor: Accessor<NodeFeatureData> = ({ node }) => (
-  getUptime(node.boot_time)
-);
+export const nodeUptimeAccessor: Accessor<NodeFeatureData> = ({ node }) =>
+  getUptime(node.boot_time);
 
-export const WorkerUptime: WorkerFeatureComponent = ({ worker }) => (
+export const WorkerUptime: WorkerFeatureRenderFn = ({ worker }) => (
   <React.Fragment>
     {formatDuration(getUptime(worker.create_time))}
   </React.Fragment>
 );
 
-const workerUptimeAccessor: Accessor<WorkerFeatureData> = ({ worker }) => (
-  getUptime(worker.create_time)
-);
+const workerUptimeAccessor: Accessor<WorkerFeatureData> = ({ worker }) =>
+  getUptime(worker.create_time);
 
-const UptimeFeature: NodeInfoFeature = {
+const uptimeFeature: NodeInfoFeature = {
   NodeFeatureRenderFn: NodeUptime,
   WorkerFeatureRenderFn: WorkerUptime,
   nodeAccessor: nodeUptimeAccessor,
-  workerAccessor: workerUptimeAccessor
+  workerAccessor: workerUptimeAccessor,
 };
 
-export default UptimeFeature;
+export default uptimeFeature;

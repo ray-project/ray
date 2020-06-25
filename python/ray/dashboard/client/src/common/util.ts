@@ -24,4 +24,3 @@ export const filterObj = (obj: Object, filterFn: any) =>
 
 export const mapObj = (obj: Object, filterFn: any) =>
   Object.fromEntries(Object.entries(obj).map(filterFn));
-

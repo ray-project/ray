@@ -1,69 +1,67 @@
 import { Typography } from "@material-ui/core";
 import React from "react";
 import SpanButton from "../../../../common/SpanButton";
-import { WorkerFeatureRenderFn, NodeFeatureRenderFn } from '../../../../../../../../../bazel-ray/python/ray/dashboard/client/src/pages/dashboard/node-info/features/types';
+import { sum } from "../../../../common/util";
 import {
   ClusterFeatureRenderFn,
-  NodeAggregation,
+  Node,
+  NodeFeatureRenderFn,
+  WorkerFeatureRenderFn,
 } from "./types";
 
-const makeClusterErrors = (errorCounts: {
-  [ip: string]: {
-    perWorker: {
-      [pid: string]: number;
-    };
-    total: number;
-  };
-}): ClusterFeatureRenderFn => ({ nodes }) => {
-  let totalErrorCount = 0;
-  for (const node of nodes) {
-    if (node.ip in errorCounts) {
-      totalErrorCount += errorCounts[node.ip].total;
-    }
-  }
-  return totalErrorCount === 0 ? (
+const nodeErrCount = (node: Node) =>
+  node.error_count ? sum(Object.values(node.error_count)) : 0;
+
+const ClusterErrors: ClusterFeatureRenderFn = ({ nodes }) => {
+  const totalErrCount = sum(nodes.map(nodeErrCount));
+  return totalErrCount === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
       No errors
     </Typography>
   ) : (
     <React.Fragment>
-      {totalErrorCount.toLocaleString()}{" "}
-      {totalErrorCount === 1 ? "error" : "errors"}
+      {totalErrCount.toLocaleString()}{" "}
+      {totalErrCount === 1 ? "error" : "errors"}
     </React.Fragment>
   );
 };
 
 const makeNodeErrors = (
-  errorCounts: NodeAggregation,
   setErrorDialog: (hostname: string, pid: number | null) => void,
-): NodeFeatureRenderFn => ({ node }) =>
-  errorCounts.total === 0 ? (
+): NodeFeatureRenderFn => ({ node }) => {
+  const nodeErrorCount = nodeErrCount(node);
+  return nodeErrorCount === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
       No errors
     </Typography>
   ) : (
     <SpanButton onClick={() => setErrorDialog(node.hostname, null)}>
-      View all errors ({errorCounts.total.toLocaleString()})
+      View all errors ({nodeErrorCount.toLocaleString()})
     </SpanButton>
   );
+};
 
 const makeWorkerErrors = (
-  errorCounts: NodeAggregation,
   setErrorDialog: (hostname: string, pid: number | null) => void,
-): WorkerFeatureRenderFn => ({ node, worker }) =>
-  errorCounts.perWorker[worker.pid] ? (
+): WorkerFeatureRenderFn => ({ node, worker }) => {
+  const workerErrorCount = node.error_count?.[worker.pid] || 0;
+  return workerErrorCount !== 0 ? (
     <SpanButton onClick={() => setErrorDialog(node.hostname, worker.pid)}>
-      View errors ({errorCounts.perWorker[worker.pid].toLocaleString()})
+      View errors ({workerErrorCount.toLocaleString()})
     </SpanButton>
   ) : (
     <Typography color="textSecondary" component="span" variant="inherit">
       No errors
     </Typography>
   );
+};
 
-const makeErrorsFeature = (errorCounts: NodeAggregation, setErrorDialog: (hostname: string, pid: number | null) => void) => ({
-  WorkerFeatureRenderFn: makeWorkerErrors(errorCounts, setErrorDialog),
-  NodeFeatureRenderFn: makeNodeErrors(errorCounts, setErrorDialog),
-})
+const makeErrorsFeature = (
+  setErrorDialog: (hostname: string, pid: number | null) => void,
+) => ({
+  ClusterFeatureRenderFn: ClusterErrors,
+  WorkerFeatureRenderFn: makeWorkerErrors(setErrorDialog),
+  NodeFeatureRenderFn: makeNodeErrors(setErrorDialog),
+});
 
 export default makeErrorsFeature;

@@ -5,9 +5,10 @@ import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import {
   ClusterFeatureRenderFn,
-  NodeFeatureRenderFn,
-  WorkerFeatureComponent,
   NodeFeatureData,
+  NodeFeatureRenderFn,
+  NodeInfoFeature,
+  WorkerFeatureRenderFn,
 } from "./types";
 
 export const ClusterDisk: ClusterFeatureRenderFn = ({ nodes }) => {
@@ -31,12 +32,20 @@ export const NodeDisk: NodeFeatureRenderFn = ({ node }) => (
     text={formatUsage(node.disk["/"].used, node.disk["/"].total, "gibibyte")}
   />
 );
-export const NodeDiskAccessor: Accessor<NodeFeatureData> = ({ node }) => (
-  node.disk["/"].used
-);
 
-export const WorkerDisk: WorkerFeatureComponent = () => (
+export const nodeDiskAccessor: Accessor<NodeFeatureData> = ({ node }) =>
+  node.disk["/"].used;
+
+export const WorkerDisk: WorkerFeatureRenderFn = () => (
   <Typography color="textSecondary" component="span" variant="inherit">
     N/A
   </Typography>
 );
+
+const diskFeature: NodeInfoFeature = {
+  NodeFeatureRenderFn: NodeDisk,
+  WorkerFeatureRenderFn: WorkerDisk,
+  nodeAccessor: nodeDiskAccessor,
+};
+
+export default diskFeature;

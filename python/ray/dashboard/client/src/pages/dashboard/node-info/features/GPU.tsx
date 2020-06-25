@@ -6,7 +6,8 @@ import {
   ClusterFeatureRenderFn,
   Node,
   NodeFeatureRenderFn,
-  WorkerFeatureComponent,
+  NodeInfoFeature,
+  WorkerFeatureRenderFn,
 } from "./types";
 
 const clusterUtilization = (nodes: Array<Node>): number => {
@@ -61,7 +62,7 @@ export const NodeGPU: NodeFeatureRenderFn = ({ node }) => {
   );
 };
 
-export const WorkerGPU: WorkerFeatureComponent = ({ rayletWorker }) => {
+export const WorkerGPU: WorkerFeatureRenderFn = ({ rayletWorker }) => {
   const workerRes = rayletWorker?.coreWorkerStats.usedResources;
   const workerUsedGPUResources = workerRes?.["GPU"];
   let message;
@@ -82,3 +83,10 @@ export const WorkerGPU: WorkerFeatureComponent = ({ rayletWorker }) => {
   }
   return <div style={{ minWidth: 60 }}>{message}</div>;
 };
+
+const gpuFeature: NodeInfoFeature = {
+  NodeFeatureRenderFn: NodeGPU,
+  WorkerFeatureRenderFn: WorkerGPU,
+};
+
+export default gpuFeature;

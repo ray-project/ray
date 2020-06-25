@@ -4,10 +4,11 @@ import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import {
   ClusterFeatureRenderFn,
-  NodeFeatureRenderFn,
-  WorkerFeatureComponent,
   NodeFeatureData,
-  WorkerFeatureData
+  NodeFeatureRenderFn,
+  NodeInfoFeature,
+  WorkerFeatureData,
+  WorkerFeatureRenderFn,
 } from "./types";
 
 export const ClusterRAM: ClusterFeatureRenderFn = ({ nodes }) => {
@@ -32,16 +33,25 @@ export const NodeRAM: NodeFeatureRenderFn = ({ node }) => (
   />
 );
 
-export const NodeRAMAccessor: Accessor<NodeFeatureData> = ({ node }) =>
+export const nodeRAMAccessor: Accessor<NodeFeatureData> = ({ node }) =>
   100 * (node.mem[0] - node.mem[1]);
 
-export const WorkerRAM: WorkerFeatureComponent = ({ node, worker }) => (
+export const WorkerRAM: WorkerFeatureRenderFn = ({ node, worker }) => (
   <UsageBar
     percent={(100 * worker.memory_info.rss) / node.mem[0]}
     text={formatByteAmount(worker.memory_info.rss, "mebibyte")}
   />
 );
 
-export const WorkerRAMAccessor: Accessor<WorkerFeatureData> = ({ worker }) => (
-  worker.memory_info.rss
-); 
+export const workerRAMAccessor: Accessor<WorkerFeatureData> = ({ worker }) =>
+  worker.memory_info.rss;
+
+const ramFeature: NodeInfoFeature = {
+  ClusterFeatureRenderFn: ClusterRAM,
+  NodeFeatureRenderFn: NodeRAM,
+  WorkerFeatureRenderFn: WorkerRAM,
+  nodeAccessor: nodeRAMAccessor,
+  workerAccessor: workerRAMAccessor,
+};
+
+export default ramFeature;

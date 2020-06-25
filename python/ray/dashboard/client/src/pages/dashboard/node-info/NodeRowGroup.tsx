@@ -14,6 +14,8 @@ import {
   NodeInfoResponseWorker,
   RayletInfoResponse,
 } from "../../../api";
+import { StyledTableCell } from "../../../common/TableCell";
+import { NodeInfoFeature } from "./features/types";
 import { NodeWorkerRow } from "./NodeWorkerRow";
 
 const useNodeRowGroupStyles = makeStyles((theme: Theme) =>
@@ -45,34 +47,30 @@ type Node = ArrayType<NodeInfoResponse["clients"]>;
 
 type NodeRowGroupProps = {
   node: Node;
-  clusterWorkers: Array<NodeInfoResponseWorker>;
   raylet: RayletInfoResponse["nodes"][keyof RayletInfoResponse["nodes"]] | null;
-  logCounts: {
-    perWorker: { [pid: string]: number };
-    total: number;
-  };
-  errorCounts: {
-    perWorker: { [pid: string]: number };
-    total: number;
-  };
-  setLogDialog: (hostname: string, pid: number | null) => void;
-  setErrorDialog: (hostname: string, pid: number | null) => void;
+  features: NodeInfoFeature[];
+  clusterWorkers: Array<NodeInfoResponseWorker>;
   initialExpanded: boolean;
 };
 
 const NodeRowGroup: React.FC<NodeRowGroupProps> = ({
   node,
   raylet,
+  features,
   clusterWorkers,
-  logCounts,
-  errorCounts,
-  setLogDialog,
-  setErrorDialog,
   initialExpanded,
 }) => {
   const [expanded, setExpanded] = useState<boolean>(initialExpanded);
   const toggleExpand = () => setExpanded(!expanded);
   const classes = useNodeRowGroupStyles();
+  const renderedNodeFeatures = features.map((nodeInfoFeature, i) => {
+    const FeatureComponent = nodeInfoFeature.NodeFeatureRenderFn;
+    return (
+      <StyledTableCell className={classes.cell} key={i}>
+        <FeatureComponent node={node} />
+      </StyledTableCell>
+    );
+  });
   return (
     <React.Fragment>
       <TableRow hover>
@@ -86,11 +84,7 @@ const NodeRowGroup: React.FC<NodeRowGroupProps> = ({
             <RemoveIcon className={classes.expandCollapseIcon} />
           )}
         </TableCell>
-        {features.map(({ NodeFeature }, index) => (
-          <TableCell className={classes.cell} key={index}>
-            <NodeFeature node={node} />
-          </TableCell>
-        ))}
+        {renderedNodeFeatures}
       </TableRow>
       {expanded && (
         <React.Fragment>
@@ -114,7 +108,9 @@ const NodeRowGroup: React.FC<NodeRowGroupProps> = ({
             return (
               <NodeWorkerRow
                 key={index}
-                features={features.map((feature) => feature.WorkerFeature)}
+                features={features.map(
+                  (feature) => feature.WorkerFeatureRenderFn,
+                )}
                 data={featureData}
               />
             );

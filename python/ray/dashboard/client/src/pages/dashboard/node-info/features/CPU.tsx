@@ -1,14 +1,14 @@
 import React from "react";
-import UsageBar from "../../../../common/UsageBar";
 import { Accessor } from "../../../../common/tableUtils";
+import UsageBar from "../../../../common/UsageBar";
 import { getWeightedAverage } from "../../../../common/util";
 import {
   ClusterFeatureRenderFn,
-  NodeFeatureRenderFn,
-  WorkerFeatureComponent,
-  ClusterFeatureData,
   NodeFeatureData,
-  WorkerFeatureData
+  NodeFeatureRenderFn,
+  NodeInfoFeature,
+  WorkerFeatureData,
+  WorkerFeatureRenderFn,
 } from "./types";
 
 export const ClusterCPU: ClusterFeatureRenderFn = ({ nodes }) => {
@@ -30,11 +30,11 @@ export const NodeCPU: NodeFeatureRenderFn = ({ node }) => (
     <UsageBar percent={node.cpu} text={`${node.cpu.toFixed(1)}%`} />
   </div>
 );
-export const NodeCPUComparator: Accessor<NodeFeatureData> = ({ node }) => {
+export const nodeCPUAccessor: Accessor<NodeFeatureData> = ({ node }) => {
   return node.cpu;
-}
+};
 
-export const WorkerCPU: WorkerFeatureComponent = ({ worker }) => (
+export const WorkerCPU: WorkerFeatureRenderFn = ({ worker }) => (
   <div style={{ minWidth: 60 }}>
     <UsageBar
       percent={worker.cpu_percent}
@@ -43,6 +43,16 @@ export const WorkerCPU: WorkerFeatureComponent = ({ worker }) => (
   </div>
 );
 
-export const WorkerCPUComparator: Accessor<WorkerFeatureData> = ({ worker }) => {
+export const workerCPUAccessor: Accessor<WorkerFeatureData> = ({ worker }) => {
   return worker.cpu_percent;
-}
+};
+
+const cpuFeature: NodeInfoFeature = {
+  ClusterFeatureRenderFn: ClusterCPU,
+  NodeFeatureRenderFn: NodeCPU,
+  WorkerFeatureRenderFn: WorkerCPU,
+  nodeAccessor: nodeCPUAccessor,
+  workerAccessor: workerCPUAccessor,
+};
+
+export default cpuFeature;

@@ -8,7 +8,11 @@ export const descendingComparator = <T>(a: T, b: T, orderBy: keyof T) => {
   return 0;
 };
 
-export const descendingComparatorFnAccessor = <T>(a: T, b: T, orderByFn: Accessor<T>) => {
+export const descendingComparatorFnAccessor = <T>(
+  a: T,
+  b: T,
+  orderByFn: Accessor<T>,
+) => {
   const aVal = orderByFn(a);
   const bVal = orderByFn(b);
   if (bVal < aVal) {
@@ -18,7 +22,7 @@ export const descendingComparatorFnAccessor = <T>(a: T, b: T, orderByFn: Accesso
     return 1;
   }
   return 0;
-}
+};
 
 export type Order = "asc" | "desc";
 export type Comparator<T> = (a: T, b: T) => number;
@@ -36,10 +40,7 @@ export const getComparator = <Key extends keyof any>(
     : (a, b) => -descendingComparator(a, b, orderBy);
 };
 
-export const stableSort = <T>(
-  array: T[],
-  comparator: Comparator<T>,
-) => {
+export const stableSort = <T>(array: T[], comparator: Comparator<T>) => {
   const stabilizedThis = array.map((el, index) => [el, index] as [T, number]);
   stabilizedThis.sort((a, b) => {
     const order = comparator(a[0], b[0]);
