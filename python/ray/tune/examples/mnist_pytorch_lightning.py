@@ -1,25 +1,37 @@
-# __lightning_begin__
+# flake8: noqa
+# yapf: disable
+# __import_lightning_begin__
 import torch
-from pytorch_lightning import Callback
-from ray import tune
-from ray.tune import CLIReporter
-from ray.tune.schedulers import ASHAScheduler
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
 from torch.nn import functional as F
 from torchvision.datasets import MNIST
 from torchvision import transforms
 import os
+# __import_lightning_end__
+
+# __import_tune_begin__
+import shutil
+from tempfile import mkdtemp
+from pytorch_lightning.callbacks import Callback
+from pytorch_lightning.utilities.cloud_io import load as pl_load
+from ray import tune
+from ray.tune import CLIReporter
+from ray.tune.schedulers import ASHAScheduler, PopulationBasedTraining
+# __import_tune_end__
 
 
+# __lightning_begin__
 class LightningMNISTClassifier(pl.LightningModule):
     """
     This has been adapted from
     https://towardsdatascience.com/from-pytorch-to-pytorch-lightning-a-gentle-introduction-b371b7caaf09
     """
 
-    def __init__(self, config):
+    def __init__(self, config, data_dir=None):
         super(LightningMNISTClassifier, self).__init__()
+
+        self.data_dir = data_dir or os.getcwd()
 
         self.layer_1_size = config["layer_1_size"]
         self.layer_2_size = config["layer_2_size"]
@@ -83,13 +95,16 @@ class LightningMNISTClassifier(pl.LightningModule):
             "log": tensorboard_logs
         }
 
-    def prepare_data(self):
+    @staticmethod
+    def download_data(data_dir):
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.1307, ), (0.3081, ))
         ])
-        mnist_train = MNIST(
-            os.getcwd(), train=True, download=True, transform=transform)
+        return MNIST(data_dir, train=True, download=True, transform=transform)
+
+    def prepare_data(self):
+        mnist_train = self.download_data(self.data_dir)
 
         self.mnist_train, self.mnist_val = random_split(
             mnist_train, [55000, 5000])
@@ -110,42 +125,74 @@ def train_mnist(config):
     trainer = pl.Trainer(max_epochs=10, show_progress_bar=False)
 
     trainer.fit(model)
-
-
 # __lightning_end__
 
 
 # __tune_callback_begin__
-class LightningCallback(Callback):
+class TuneReportCallback(Callback):
     def on_validation_end(self, trainer, pl_module):
         tune.report(
             loss=trainer.callback_metrics["avg_val_loss"],
             mean_accuracy=trainer.callback_metrics["avg_val_accuracy"])
-
-
 # __tune_callback_end__
 
 
 # __tune_train_begin__
 def train_mnist_tune(config):
-    model = LightningMNISTClassifier(config)
+    model = LightningMNISTClassifier(config, config["data_dir"])
     trainer = pl.Trainer(
         max_epochs=10,
         progress_bar_refresh_rate=0,
-        callbacks=[LightningCallback()])
+        callbacks=[TuneReportCallback()])
 
     trainer.fit(model)
-
-
 # __tune_train_end__
 
-# __tune_begin__
-if __name__ == "__main__":
+
+# __tune_checkpoint_callback_begin__
+class CheckpointCallback(Callback):
+    def on_validation_end(self, trainer, pl_module):
+        path = tune.make_checkpoint_dir(trainer.global_step)
+        trainer.save_checkpoint(os.path.join(path, "checkpoint"))
+        tune.save_checkpoint(path)
+# __tune_checkpoint_callback_end__
+
+
+# __tune_train_checkpoint_begin__
+def train_mnist_tune_checkpoint(config, checkpoint=None):
+    trainer = pl.Trainer(
+        max_epochs=10,
+        progress_bar_refresh_rate=0,
+        callbacks=[CheckpointCallback(),
+                   TuneReportCallback()])
+    if checkpoint:
+        # Currently, this leads to errors:
+        # model = LightningMNISTClassifier.load_from_checkpoint(
+        #     os.path.join(checkpoint, "checkpoint"))
+        # Workaround:
+        ckpt = pl_load(
+            os.path.join(checkpoint, "checkpoint"),
+            map_location=lambda storage, loc: storage)
+        model = LightningMNISTClassifier._load_model_state(ckpt, config=config)
+        trainer.current_epoch = ckpt["epoch"]
+    else:
+        model = LightningMNISTClassifier(
+            config=config, data_dir=config["data_dir"])
+
+    trainer.fit(model)
+# __tune_train_checkpoint_end__
+
+
+# __tune_asha_begin__
+def tune_mnist_asha():
+    data_dir = mkdtemp(prefix="mnist_data_")
+    LightningMNISTClassifier.download_data(data_dir)
     config = {
-        "layer_1_size": tune.choice([64, 128]),
-        "layer_2_size": tune.choice([64, 128]),
+        "layer_1_size": tune.choice([32, 64, 128]),
+        "layer_2_size": tune.choice([64, 128, 256]),
         "lr": tune.loguniform(1e-4, 1e-1),
-        "batch_size": tune.choice([32, 64, 128])
+        "batch_size": tune.choice([32, 64, 128]),
+        "data_dir": data_dir
     }
     scheduler = ASHAScheduler(
         metric="loss",
@@ -154,6 +201,7 @@ if __name__ == "__main__":
         grace_period=1,
         reduction_factor=2)
     reporter = CLIReporter(
+        parameter_columns=["layer_1_size", "layer_2_size", "lr", "batch_size"],
         metric_columns=["loss", "mean_accuracy", "training_iteration"])
     tune.run(
         train_mnist_tune,
@@ -162,4 +210,43 @@ if __name__ == "__main__":
         num_samples=10,
         scheduler=scheduler,
         progress_reporter=reporter)
-# __tune_end__
+    shutil.rmtree(data_dir)
+# __tune_asha_end__
+
+
+# __tune_pbt_begin__
+def tune_mnist_pbt():
+    data_dir = mkdtemp(prefix="mnist_data_")
+    LightningMNISTClassifier.download_data(data_dir)
+    config = {
+        "layer_1_size": tune.choice([32, 64, 128]),
+        "layer_2_size": tune.choice([64, 128, 256]),
+        "lr": 1e-3,
+        "batch_size": 64,
+        "data_dir": data_dir
+    }
+    scheduler = PopulationBasedTraining(
+        time_attr="training_iteration",
+        metric="loss",
+        mode="min",
+        perturbation_interval=4,
+        hyperparam_mutations={
+            "lr": lambda: tune.loguniform(1e-4, 1e-1).func(None),
+            "batch_size": [32, 64, 128]
+        })
+    reporter = CLIReporter(
+        parameter_columns=["layer_1_size", "layer_2_size", "lr", "batch_size"],
+        metric_columns=["loss", "mean_accuracy", "training_iteration"])
+    tune.run(
+        train_mnist_tune_checkpoint,
+        resources_per_trial={"cpu": 1},
+        config=config,
+        num_samples=10,
+        scheduler=scheduler,
+        progress_reporter=reporter)
+    shutil.rmtree(data_dir)
+# __tune_pbt_end__
+
+if __name__ == "__main__":
+    # tune_mnist_asha()  # ASHA scheduler
+    tune_mnist_pbt()  # population based training

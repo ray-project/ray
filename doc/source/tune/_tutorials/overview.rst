@@ -34,6 +34,7 @@ Take a look at any of the below tutorials to get started with Tune.
 
    tune-60-seconds.rst
    tune-tutorial.rst
+   tune-pytorch-lightning.rst
 
 
 User Guides
@@ -59,6 +60,12 @@ These pages will demonstrate the various features and configurations of Tune.
    :tooltip: A guide to distributed hyperparameter tuning
    :figure: /images/tune.png
    :description: :doc:`A guide to distributed hyperparameter tuning <tune-distributed>`
+
+.. customgalleryitem::
+   :tooltip: Tuning PyTorch Lightning modules
+   :figure: /images/pytorch_lightning_small.png
+   :description: :doc:`Tuning PyTorch Lightning modules <tune-pytorch-lightning>`
+
 
 .. raw:: html
 
