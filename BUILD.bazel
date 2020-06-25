@@ -278,9 +278,10 @@ cc_library(
         "src/ray/object_manager/plasma/protocol.cc",
     ],
     hdrs = [
+        "src/ray/object_manager/format/object_manager_generated.h",
+        "src/ray/object_manager/notification/object_store_notification_manager.h",
         "src/ray/object_manager/plasma/client.h",
         "src/ray/object_manager/plasma/common.h",
-        "src/ray/object_manager/plasma/common_generated.h",
         "src/ray/object_manager/plasma/compat.h",
         "src/ray/object_manager/plasma/external_store.h",
         "src/ray/object_manager/plasma/fling.h",
@@ -298,7 +299,7 @@ cc_library(
     linkopts = PLASMA_LINKOPTS,
     strip_include_prefix = "src",
     deps = [
-        ":common_fbs",
+        ":object_manager_fbs",
         ":plasma_fbs",
         ":platform_shims",
         ":ray_common",
@@ -424,17 +425,10 @@ FLATC_ARGS = [
 ]
 
 flatbuffer_cc_library(
-    name = "common_fbs",
-    srcs = ["src/ray/object_manager/plasma/common.fbs"],
-    flatc_args = FLATC_ARGS,
-    out_prefix = "src/ray/object_manager/plasma/",
-)
-
-flatbuffer_cc_library(
     name = "plasma_fbs",
     srcs = ["src/ray/object_manager/plasma/plasma.fbs"],
     flatc_args = FLATC_ARGS,
-    includes = ["src/ray/object_manager/plasma/common.fbs"],
+    includes = ["src/ray/object_manager/format/object_manager.fbs"],
     out_prefix = "src/ray/object_manager/plasma/",
 )
 
@@ -1197,9 +1191,11 @@ cc_library(
     name = "object_manager",
     srcs = glob([
         "src/ray/object_manager/*.cc",
+        "src/ray/object_manager/notification/*.cc",
     ]),
     hdrs = glob([
         "src/ray/object_manager/*.h",
+        "src/ray/object_manager/notification/*.h",
     ]),
     copts = COPTS,
     includes = [

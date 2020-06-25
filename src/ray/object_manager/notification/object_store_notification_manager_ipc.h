@@ -25,15 +25,15 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/object_manager/object_directory.h"
+#include "ray/object_manager/notification/object_store_notification_manager.h"
 #include "ray/object_manager/plasma/client.h"
 
 namespace ray {
 
-/// \class ObjectStoreClientPool
+/// \class ObjectStoreNotificationManagerIPC
 ///
 /// Encapsulates notification handling from the object store.
-class ObjectStoreNotificationManager {
+class ObjectStoreNotificationManagerIPC : public ObjectStoreNotificationManager {
  public:
   /// Constructor.
   ///
@@ -41,32 +41,14 @@ class ObjectStoreNotificationManager {
   /// \param store_socket_name The store socket to connect to.
   /// \param exit_on_error The manager will exit with error when it fails
   ///                      to process messages from socket.
-  ObjectStoreNotificationManager(boost::asio::io_service &io_service,
-                                 const std::string &store_socket_name,
-                                 bool exit_on_error = true);
+  ObjectStoreNotificationManagerIPC(boost::asio::io_service &io_service,
+                                    const std::string &store_socket_name,
+                                    bool exit_on_error = true);
 
-  ~ObjectStoreNotificationManager();
-
-  /// Subscribe to notifications of objects added to local store.
-  /// Upon subscribing, the callback will be invoked for all objects that
-  /// already exist in the local store
-  ///
-  /// \param callback A callback expecting an ObjectID.
-  void SubscribeObjAdded(
-      std::function<void(const object_manager::protocol::ObjectInfoT &)> callback);
-
-  /// Subscribe to notifications of objects deleted from local store.
-  ///
-  /// \param callback A callback expecting an ObjectID.
-  void SubscribeObjDeleted(std::function<void(const ray::ObjectID &)> callback);
+  ~ObjectStoreNotificationManagerIPC() override;
 
   /// Explicitly shutdown the manager.
   void Shutdown();
-
-  /// Returns debug string for class.
-  ///
-  /// \return string.
-  std::string DebugString() const;
 
  private:
   /// Async loop for handling object store notifications.
@@ -74,18 +56,8 @@ class ObjectStoreNotificationManager {
   void ProcessStoreLength(const boost::system::error_code &error);
   void ProcessStoreNotification(const boost::system::error_code &error);
 
-  /// Support for rebroadcasting object add/rem events.
-  void ProcessStoreAdd(const object_manager::protocol::ObjectInfoT &object_info);
-  void ProcessStoreRemove(const ObjectID &object_id);
-
-  std::vector<std::function<void(const object_manager::protocol::ObjectInfoT &)>>
-      add_handlers_;
-  std::vector<std::function<void(const ray::ObjectID &)>> rem_handlers_;
-
   plasma::PlasmaClient store_client_;
   int64_t length_;
-  int64_t num_adds_processed_;
-  int64_t num_removes_processed_;
   std::vector<uint8_t> notification_;
   local_stream_socket socket_;
 

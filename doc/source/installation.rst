@@ -3,7 +3,8 @@ Installing Ray
 
 .. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
 
-Ray currently supports MacOS and Linux. Windows support is planned for the future.
+Ray currently supports MacOS and Linux.
+Windows wheels are now available, but :ref:`Windows support <windows-support>` is experimental and under development.
 
 Latest stable version
 ---------------------
@@ -14,6 +15,7 @@ You can install the latest stable version of Ray as follows.
 
   pip install -U ray  # also recommended: ray[debug]
 
+**Note for Windows Users:** To use Ray on Windows, Visual C++ runtime must be installed (see :ref:`Windows Dependencies <windows-dependencies>` section). If you run into any issues, please see the :ref:`Windows Support <windows-support>` section.
 
 .. _install-nightlies:
 
@@ -21,7 +23,8 @@ Latest Snapshots (Nightlies)
 ----------------------------
 
 Here are links to the latest wheels (which are built for each commit on the
-master branch). To install these wheels, run the following command:
+master branch). To install these wheels, use the following ``pip`` command and wheels
+instead of the ones above:
 
 .. code-block:: bash
 
@@ -67,6 +70,41 @@ For example, here are the Ray 0.9.0.dev0 wheels for Python 3.5, MacOS for commit
 
     pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/a0ba4499ac645c9d3e82e68f3a281e48ad57f873/ray-0.9.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
 
+.. _windows-support:
+
+Windows Support
+---------------
+
+Windows support is currently limited and "alpha" quality.
+Bugs, process/resource leaks, or other incompatibilities may exist under various scenarios.
+Unusual, unattended, or production usage is **not** recommended.
+
+To use Ray on Windows, the Visual C++ runtime must be installed (see :ref:`Windows Dependencies <windows-dependencies>` section).
+
+If you encounter any issues, please try the following:
+
+- Check the `Windows Known Issues <https://github.com/ray-project/ray/issues/9114>`_ page on GitHub to see the latest updates on Windows support.
+- In the case that your issue has been addressed, try installing the :ref:`latest nightly wheels <install-nightlies>`.
+
+If your issue has not yet been addressed, comment on the `Windows Known Issues <https://github.com/ray-project/ray/issues/9114>`_ page.
+
+.. _windows-dependencies:
+
+Windows Dependencies
+~~~~~~~~~~~~~~~~~~~~
+
+For Windows, ensure the latest `Visual C++ runtime`_ (`install link`_) is installed before using Ray.
+
+Otherwise, you may receive an error similar to the following when Ray fails to find
+the runtime library files (e.g. ``VCRUNTIME140_1.dll``):
+
+.. code-block:: bash
+
+  FileNotFoundError: Could not find module '_raylet.pyd' (or one of its dependencies).
+
+.. _`Visual C++ Runtime`: https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads
+.. _`install link`: https://aka.ms/vs/16/release/vc_redist.x64.exe
+
 Building Ray from Source
 ------------------------
 
@@ -98,11 +136,16 @@ For MacOS, run the following commands:
 
   pip install cython==0.29.0 pytest
 
+For Windows, see the :ref:`Windows Dependencies <windows-dependencies>` section.
+
 
 Install Ray
 ~~~~~~~~~~~
 
 Ray can be built from the repository as follows.
+
+We recommend avoiding paths with spaces or other special characters to avoid potential problems.
+However, should you encounter any related issues, please let us know.
 
 .. code-block:: bash
 
@@ -129,6 +172,8 @@ If you would like to use the dashboard, you will additionally need to install
 `Node.js`_ and build the dashboard before installing Ray. The relevant build
 steps are included in the installation instructions above.
 
+(Note that the dashboard may not yet work on Windows.)
+
 .. _`Node.js`: https://nodejs.org/
 
 The dashboard requires a few additional Python packages, which can be installed
@@ -153,7 +198,6 @@ the dashboard. For example,
   <username>@<host>'. Alternatively, you can set dashboard_host="0.0.0.0" in
   the call to ray.init() to allow direct access from external machines.
   ======================================================================
-
 
 
 Installing Ray on Arch Linux

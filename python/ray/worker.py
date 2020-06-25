@@ -46,12 +46,8 @@ from ray.exceptions import (
     ObjectStoreFullError,
 )
 from ray.function_manager import FunctionActorManager
-from ray.utils import (
-    _random_string,
-    check_oversized_pickle,
-    is_cython,
-    setup_logger,
-)
+from ray.utils import (_random_string, check_oversized_pickle, is_cython,
+                       setup_logger, create_and_init_new_worker_log, open_log)
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -895,6 +891,68 @@ last_task_error_raise_time = 0
 UNCAUGHT_ERROR_GRACE_PERIOD = 5
 
 
+def _set_log_file(file_name, worker_pid, old_obj, setter_func):
+    # Line-buffer the output (mode 1).
+    f = create_and_init_new_worker_log(file_name, worker_pid)
+
+    # TODO (Alex): Python seems to always flush when writing. If that is no
+    # longer true, then we need to manually flush the old buffer.
+    # old_obj.flush()
+
+    # TODO (Alex): Flush the c/c++ userspace buffers if necessary.
+    # `fflush(stdout); cout.flush();`
+
+    fileno = old_obj.fileno()
+
+    # C++ logging requires redirecting the stdout file descriptor. Note that
+    # dup2 will automatically close the old file descriptor before overriding
+    # it.
+    os.dup2(f.fileno(), fileno)
+
+    # We also manually set sys.stdout and sys.stderr because that seems to
+    # have an effect on the output buffering. Without doing this, stdout
+    # and stderr are heavily buffered resulting in seemingly lost logging
+    # statements. We never want to close the stdout file descriptor, dup2 will
+    # close it when necessary and we don't want python's GC to close it.
+    setter_func(open_log(fileno, closefd=False))
+
+    return os.path.abspath(f.name)
+
+
+def set_log_file(stdout_name, stderr_name):
+    """Sets up logging for the current worker, creating the (fd backed) file and
+    flushing buffers as is necessary.
+
+    Args:
+        stdout_name (str): The file name that stdout should be written to.
+        stderr_name(str): The file name that stderr should be written to.
+
+    Returns:
+        (tuple) The absolute paths of the files that stdout and stderr will be
+    written to.
+
+    """
+    stdout_path = ""
+    stderr_path = ""
+    worker_pid = os.getpid()
+
+    # lambda cannot contain assignment
+    def stdout_setter(x):
+        sys.stdout = x
+
+    def stderr_setter(x):
+        sys.stderr = x
+
+    if stdout_name:
+        _set_log_file(stdout_name, worker_pid, sys.stdout, stdout_setter)
+
+    # The stderr case should be analogous to the stdout case
+    if stderr_name:
+        _set_log_file(stderr_name, worker_pid, sys.stderr, stderr_setter)
+
+    return stdout_path, stderr_path
+
+
 def print_logs(redis_client, threads_stopped):
     """Prints log messages from workers on all of the nodes.
 
@@ -1151,8 +1209,8 @@ def connect(node,
     worker.lock = threading.RLock()
 
     driver_name = ""
-    log_stdout_file_name = ""
-    log_stderr_file_name = ""
+    log_stdout_file_path = ""
+    log_stderr_file_path = ""
     if mode == SCRIPT_MODE:
         import __main__ as main
         driver_name = (main.__file__
@@ -1164,39 +1222,24 @@ def connect(node,
         redirect_worker_output_val = worker.redis_client.get("RedirectOutput")
         if (redirect_worker_output_val is not None
                 and int(redirect_worker_output_val) == 1):
-            log_stdout_file, log_stderr_file = (
-                node.new_worker_redirected_log_file(worker.worker_id))
-            # Redirect stdout/stderr at the file descriptor level. If we simply
-            # set sys.stdout and sys.stderr, then logging from C++ can fail to
-            # be redirected.
-            if log_stdout_file is not None:
-                os.dup2(log_stdout_file.fileno(), sys.stdout.fileno())
-            if log_stderr_file is not None:
-                os.dup2(log_stderr_file.fileno(), sys.stderr.fileno())
-            # We also manually set sys.stdout and sys.stderr because that seems
-            # to have an affect on the output buffering. Without doing this,
-            # stdout and stderr are heavily buffered resulting in seemingly
-            # lost logging statements.
-            if log_stdout_file is not None:
-                sys.stdout = log_stdout_file
-            if log_stderr_file is not None:
-                sys.stderr = log_stderr_file
-            # This should always be the first message to appear in the worker's
-            # stdout and stderr log files. The string "Ray worker pid:" is
-            # parsed in the log monitor process.
-            print("Ray worker pid: {}".format(os.getpid()))
-            print("Ray worker pid: {}".format(os.getpid()), file=sys.stderr)
-            sys.stdout.flush()
-            sys.stderr.flush()
-            log_stdout_file_name = os.path.abspath(
-                (log_stdout_file
-                 if log_stdout_file is not None else sys.stdout).name)
-            log_stderr_file_name = os.path.abspath(
-                (log_stderr_file
-                 if log_stderr_file is not None else sys.stderr).name)
+            log_stdout_file_name, log_stderr_file_name = (
+                node.get_job_redirected_log_file(worker.worker_id))
+            try:
+                log_stdout_file_path, log_stderr_file_path = \
+                    set_log_file(log_stdout_file_name, log_stderr_file_name)
+            except IOError:
+                raise IOError(
+                    "Workers must be able to redirect their output at"
+                    "the file descriptor level.")
     elif not LOCAL_MODE:
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
+
+    # TODO (Alex): `current_logging_job` tracks the current job so that we know
+    # when to switch log files. If all logging functionaility was moved to c++,
+    # the functionaility in `_raylet.pyx::switch_worker_log_if_necessary` could
+    # be moved to `CoreWorker::SetCurrentTaskId()`.
+    worker.current_logging_job_id = None
     redis_address, redis_port = node.redis_address.split(":")
     gcs_options = ray._raylet.GcsClientOptions(
         redis_address,
@@ -1216,8 +1259,8 @@ def connect(node,
         node.raylet_ip_address,
         (mode == LOCAL_MODE),
         driver_name,
-        log_stdout_file_name,
-        log_stderr_file_name,
+        log_stdout_file_path,
+        log_stderr_file_path,
     )
 
     # Create an object for interfacing with the global state.

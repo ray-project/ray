@@ -1,16 +1,37 @@
-#include <getopt.h>
 #include <signal.h>
-#include <stdio.h>
 
 #include <chrono>
+#include <iostream>
 #include <thread>
 
+#include <gflags/gflags.h>
+
 #include "ray/object_manager/plasma/store_runner.h"
-// TODO(pcm): Convert getopt and sscanf in the store to use more idiomatic C++
-// and get rid of the next three lines:
-#ifndef __STDC_FORMAT_MACROS
-#define __STDC_FORMAT_MACROS
+
+#ifdef __linux__
+#define SHM_DEFAULT_PATH "/dev/shm"
+#else
+#define SHM_DEFAULT_PATH "/tmp"
 #endif
+
+// Command-line flags.
+DEFINE_string(d, SHM_DEFAULT_PATH, "directory where to create the memory-backed file");
+DEFINE_string(e, "",
+              "endpoint for external storage service, where objects "
+              "evicted from Plasma store can be written to, optional");
+DEFINE_bool(h, false, "whether to enable hugepage support");
+DEFINE_string(s, "",
+              "socket name where the Plasma store will listen for requests, required");
+DEFINE_int64(m, -1, "amount of memory in bytes to use for Plasma store, required");
+DEFINE_bool(z, false, "Run idle as a placeholder, optional");
+
+// Function to use (instead of ARROW_LOG(FATAL)) for usage, etc. errors before
+// the main server loop starts, so users don't get a backtrace if they
+// simply forgot a command-line switch.
+void ExitWithUsageError(const char *error_msg) {
+  std::cerr << gflags::ProgramInvocationShortName() << ": " << error_msg << std::endl;
+  exit(1);
+}
 
 void HandleSignal(int signal) {
   if (signal == SIGTERM) {
@@ -20,50 +41,36 @@ void HandleSignal(int signal) {
 }
 
 int main(int argc, char *argv[]) {
+  gflags::SetUsageMessage("Plasma store server.\nUsage: ");
+  gflags::ParseCommandLineFlags(&argc, &argv, /*remove_flags=*/true);
+
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler();
-
-  std::string socket_name;
   // Directory where plasma memory mapped files are stored.
-  std::string plasma_directory;
-  std::string external_store_endpoint;
-  bool hugepages_enabled = false;
-  bool keep_idle = false;
-  int64_t system_memory = -1;
-  int c;
-  while ((c = getopt(argc, argv, "s:m:d:e:h:z")) != -1) {
-    switch (c) {
-    case 'd':
-      plasma_directory = std::string(optarg);
-      break;
-    case 'e':
-      external_store_endpoint = std::string(optarg);
-      break;
-    case 'h':
-      hugepages_enabled = true;
-      break;
-    case 's':
-      socket_name = std::string(optarg);
-      break;
-    case 'm': {
-      char extra;
-      int scanned = sscanf(optarg, "%" SCNd64 "%c", &system_memory, &extra);
-      RAY_CHECK(scanned == 1);
-      break;
-    }
-    case 'z': {
-      keep_idle = true;
-      break;
-    }
-    default:
-      exit(-1);
-    }
-  }
+  std::string plasma_directory = FLAGS_d;
+  std::string external_store_endpoint = FLAGS_e;
+  bool hugepages_enabled = FLAGS_h;
+  std::string socket_name = FLAGS_s;
+  int64_t system_memory = FLAGS_m;
+  bool keep_idle = FLAGS_z;
 
   if (!keep_idle) {
+    if (socket_name.empty() || system_memory == -1) {
+      // Nicer error message for the case where the user ran the program without
+      // any of the required command-line switches.
+      ExitWithUsageError(
+          "please specify socket for incoming connections with -s, "
+          "and the amount of memory (in bytes) to use with -m");
+    } else if (socket_name.empty()) {
+      ExitWithUsageError("please specify socket for incoming connections with -s");
+    } else if (system_memory == -1) {
+      ExitWithUsageError("please specify the amount of memory (in bytes) to use with -m");
+    }
+    RAY_CHECK(!plasma_directory.empty());
+
     plasma::plasma_store_runner.reset(
         new plasma::PlasmaStoreRunner(socket_name, system_memory, hugepages_enabled,
                                       plasma_directory, external_store_endpoint));

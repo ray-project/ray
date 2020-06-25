@@ -139,6 +139,10 @@
                 "project_id": {
                     "type": ["string", "null"],
                     "description": "GCP globally unique project id"
+                },
+                "gcp_credentials": {
+                    "type": "string",
+                    "description": "JSON string constituting GCP credentials"
                 }
             }
         },
