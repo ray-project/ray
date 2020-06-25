@@ -123,7 +123,7 @@ std::shared_ptr<Buffer> MakeBufferFromGpuProcessHandle(GpuProcessHandle* handle)
 
 /// A Buffer class that automatically releases the backing plasma object
 /// when it goes out of scope. This is returned by Get.
-class ARROW_NO_EXPORT PlasmaBuffer : public Buffer {
+class RAY_NO_EXPORT PlasmaBuffer : public Buffer {
  public:
   ~PlasmaBuffer();
 
@@ -143,7 +143,7 @@ class ARROW_NO_EXPORT PlasmaBuffer : public Buffer {
 /// A mutable Buffer class that keeps the backing data alive by keeping a
 /// PlasmaClient shared pointer. This is returned by Create. Release will
 /// be called in the associated Seal call.
-class ARROW_NO_EXPORT PlasmaMutableBuffer : public MutableBuffer {
+class RAY_NO_EXPORT PlasmaMutableBuffer : public MutableBuffer {
  public:
   PlasmaMutableBuffer(std::shared_ptr<PlasmaClient::Impl> client, uint8_t* mutable_data,
                       int64_t data_size)
@@ -352,7 +352,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 #endif
 };
 
-PlasmaBuffer::~PlasmaBuffer() { ARROW_UNUSED(client_->Release(object_id_)); }
+PlasmaBuffer::~PlasmaBuffer() { RAY_UNUSED(client_->Release(object_id_)); }
 
 PlasmaClient::Impl::Impl() : store_conn_(0), store_capacity_(0) {
 #ifdef PLASMA_CUDA
@@ -1035,7 +1035,7 @@ Status PlasmaClient::Impl::DecodeNotifications(const uint8_t* buffer,
                                                std::vector<int64_t>* data_sizes,
                                                std::vector<int64_t>* metadata_sizes) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-  auto object_info = flatbuffers::GetRoot<fb::PlasmaNotification>(buffer);
+  auto object_info = flatbuffers::GetRoot<ray::object_manager::protocol::PlasmaNotification>(buffer);
 
   for (size_t i = 0; i < object_info->object_info()->size(); ++i) {
     auto info = object_info->object_info()->Get(i);

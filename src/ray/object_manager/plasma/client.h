@@ -24,9 +24,9 @@
 
 #include "arrow/buffer.h"
 #include "arrow/status.h"
-#include "arrow/util/macros.h"
-#include "arrow/util/visibility.h"
+
 #include "ray/object_manager/plasma/common.h"
+#include "ray/util/visibility.h"
 
 using arrow::Buffer;
 using arrow::Status;
@@ -43,7 +43,8 @@ struct ObjectBuffer {
   int device_num;
 };
 
-class ARROW_EXPORT PlasmaClient {
+// TODO(suquark): Maybe we should not export plasma later?
+class RAY_EXPORT PlasmaClient {
  public:
   PlasmaClient();
   ~PlasmaClient();
@@ -287,7 +288,7 @@ class ARROW_EXPORT PlasmaClient {
 
   bool IsInUse(const ObjectID& object_id);
 
-  class ARROW_NO_EXPORT Impl;
+  class RAY_NO_EXPORT Impl;
   std::shared_ptr<Impl> impl_;
 };
 
