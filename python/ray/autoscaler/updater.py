@@ -169,7 +169,14 @@ class SSHCommandRunner:
     def get_default_ssh_options(self, connect_timeout):
         OPTS = [
             ("ConnectTimeout", "{}s".format(connect_timeout)),
+            # Supresses initial fingerprint verification.
             ("StrictHostKeyChecking", "no"),
+            # SSH IP and fingerprint pairs no longer added to known_hosts.
+            # This is to remove a "REMOTE HOST IDENTIFICATION HAS CHANGED"
+            # warning if a new node has the same IP as a previously
+            # deleted node, because the fingerprints will not match in
+            # that case.
+            ("UserKnownHostsFile", os.devnull),
             ("ControlMaster", "auto"),
             ("ControlPath", "{}/%C".format(self.ssh_control_path)),
             ("ControlPersist", "10s"),
