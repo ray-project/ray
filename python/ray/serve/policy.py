@@ -60,7 +60,7 @@ class RandomEndpointPolicy(EndpointPolicy):
                 chosen_backend = name
                 break
         else:
-            assert False, "XXX"
+            assert False, "This should never be reached."
 
         shadow_backends = []
         for backend, backend_weight in self.shadow_backends:
