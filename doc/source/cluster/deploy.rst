@@ -5,7 +5,7 @@ Ray with Cluster Managers
 
 .. note::
 
-    If you're using AWS, Azure or GCP you should use the automated `setup commands <autoscaling.html>`_.
+    If you're using AWS, Azure or GCP you should use the automated :ref:`setup commands <ref-automatic-cluster>`.
 
 .. toctree::
    :maxdepth: 2

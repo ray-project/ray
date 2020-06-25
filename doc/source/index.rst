@@ -154,7 +154,7 @@ Getting Involved
    :caption: Ray Cluster
 
    cluster/index.rst
-   cluster/autoscaling.rst
+   cluster/launcher.rst
    cluster/deploy.rst
 
 .. toctree::

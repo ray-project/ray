@@ -8,7 +8,7 @@ to deploy and update your serve application over time.
 
 To deploy a Ray Serve instance you're going to need several things.
 
-1. A running Ray cluster (you can deploy one on your local machine for testing). To learn more about Ray clusters see :ref:`ray-cluster-index`.
+1. A running Ray cluster (you can deploy one on your local machine for testing). To learn more about Ray clusters see :ref:`cluster-index`.
 2. A Ray Serve instance.
 3. Your Ray Serve endpoint(s) and backend(s).
 
@@ -21,7 +21,7 @@ Deploying a Model with Ray Serve
 
 Let's get started deploying our first Ray Serve application. The first thing you'll need
 to do is start a Ray cluster. You can do that using the Ray autoscaler, but in our case
-we'll create it on our local machine. To learn more about Ray Clusters see :ref:`ray-cluster-index`.
+we'll create it on our local machine. To learn more about Ray Clusters see :ref:`cluster-index`.
 
 Starting the Cluster
 --------------------
@@ -275,7 +275,7 @@ Best practices for local development
 One thing you may notice is that we never have to declare a ``while True`` loop or
 something to keep the Ray Serve process running. In general, we don't recommend using forever loops and therefore
 opt for launching a Ray Cluster locally. Specify a Ray cluster like we did in :ref:`serve-deploy-tutorial`.
-To learn more, in general, about Ray Clusters see :ref:`ray-cluster-index`.
+To learn more, in general, about Ray Clusters see :ref:`cluster-index`.
 
 
 Deploying Multiple Serve Instaces on a Single Ray Cluster

@@ -1,7 +1,7 @@
-.. _ray-cluster-index:
+.. _cluster-index:
 
-Multi-node Ray (Overview)
-=========================
+Multi-node Ray Overview
+=======================
 
 One of Ray's strengths is the ability to leverage multiple machines in the same program. You can do this by creating and connecting to a Ray cluster.
 

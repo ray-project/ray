@@ -1,7 +1,7 @@
 .. _launcher-usage:
 
-Launcher Usage Guide
-====================
+Cluster Launcher Usage Guide
+============================
 
 To launch a cluster, you must first create a *cluster configuration file*, which specifies some important details about the cluster. Here is an example cluster configuration file for AWS:
 
@@ -43,7 +43,7 @@ Here are the commands covered in this document:
 Launching a cluster (``ray up``)
 --------------------------------
 
-This will start up the machines in the cloud, install your dependencies and run any setup commands that you have, configure the Ray cluster automatically, and prepare you to scale your distributed system.
+This will start up the machines in the cloud, install your dependencies and run any setup commands that you have, configure the Ray cluster automatically, and prepare you to scale your distributed system. See :ref:`the documentation <ray-up-doc>` for ``ray up``.
 
 .. tip:: The worker nodes will start only after the head node has finished starting. To monitor the progress of the cluster setup, you can run `ray monitor <cluster yaml>`.
 
@@ -63,15 +63,16 @@ Updating an existing cluster (``ray up``)
 
 If you want to update your cluster configuration (add more files, change dependencies), run ``ray up`` again on the existing cluster.
 
-This command checks if the local configuration differs from the applied configuration of the cluster. This includes any changes to synced files specified in the ``file_mounts`` section of the config.
+This command checks if the local configuration differs from the applied configuration of the cluster. This includes any changes to synced files specified in the ``file_mounts`` section of the config. If so, the new files and config will be uploaded to the cluster. Following that, Ray services/processes will be restarted.
 
 .. tip:: Don't do this for the cloud provider specifications (e.g., change from AWS to GCP on a running cluster) or change the cluster name (as this will just start a new cluster and orphan the original one).
 
-If so, the new files and config will be uploaded to the cluster. Following that, Ray services/processes will be restarted.
 
 You can also run ``ray up`` to restart a cluster if it seems to be in a bad state (this will restart all Ray services even if there are no config changes).
 
 If you don't want the update to restart services (e.g., because the changes don't require a restart), pass ``--no-restart`` to the update call.
+
+See :ref:`the documentation <ray-up-doc>` for ``ray up``.
 
 .. code-block:: shell
 
@@ -82,7 +83,8 @@ If you don't want the update to restart services (e.g., because the changes don'
 Running shell commands on the cluster (``ray exec``)
 ----------------------------------------------------
 
-You can use ``ray exec`` to conveniently run commands on clusters. Note that python scripts that you want to scale should connect to Ray via ``ray.init(address="auto")``.
+You can use ``ray exec`` to conveniently run commands on clusters. Note that python scripts that you want to scale should connect to Ray via ``ray.init(address="auto")``. See :ref:`the documentation <ray-exec-doc>` for ``ray exec``.
+
 
 .. code-block:: shell
 
@@ -116,7 +118,7 @@ If you want to run applications on the cluster that are accessible from a web br
 Running Ray scripts on the cluster (``ray submit``)
 ---------------------------------------------------
 
-You can also use ``ray submit`` to execute Python scripts on clusters. This will ``rsync`` the designated file onto the cluster and execute it with the given arguments.
+You can also use ``ray submit`` to execute Python scripts on clusters. This will ``rsync`` the designated file onto the cluster and execute it with the given arguments. See :ref:`the documentation <ray-submit-doc>` for ``ray submit``.
 
 .. code-block:: shell
 
@@ -127,7 +129,7 @@ You can also use ``ray submit`` to execute Python scripts on clusters. This will
 Attaching to a running cluster (``ray attach``)
 -----------------------------------------------
 
-You can use ``ray attach`` to attach to an interactive screen session on the cluster.
+You can use ``ray attach`` to attach to an interactive screen session on the cluster. See :ref:`the documentation <ray-attach-doc>` for ``ray attach`` or run ``ray attach --help``.
 
 .. code-block:: shell
 
@@ -150,6 +152,8 @@ To download or upload files to the cluster head node, use ``ray rsync_down`` or 
 
     $ ray rsync_down cluster.yaml '/path/on/cluster' '/local/path'
     $ ray rsync_up cluster.yaml '/local/path' '/path/on/cluster'
+
+.. _monitor-cluster:
 
 Monitoring cluster status (``ray dashboard/monitor``)
 -----------------------------------------------------
@@ -195,6 +199,7 @@ This tells ``ray up`` to sync the current git branch SHA from your personal comp
 
 Autoscaling
 -----------
- The Ray Cluster Launcher will automatically enable a load-based autoscaler. When cluster resource usage exceeds a configurable threshold (80% by default), new nodes will be launched up the specified ``max_workers`` limit. When nodes are idle for more than a timeout, they will be removed, down to the ``min_workers`` limit. The head node is never removed.
 
-The default idle timeout is 5 minutes. This is to prevent excessive node churn which could impact performance and increase costs (in AWS / GCP there is a minimum billing charge of 1 minute per instance, after which usage is billed by the second).
+The Ray Cluster Launcher will automatically enable a load-based autoscaler. When cluster resource usage exceeds a configurable threshold (80% by default), new nodes will be launched up the specified ``max_workers`` limit (in the cluster config). When nodes are idle for more than a timeout, they will be removed, down to the ``min_workers`` limit. The head node is never removed.
+
+The default idle timeout is 5 minutes, which can be set in the cluster config. This is to prevent excessive node churn which could impact performance and increase costs (in AWS / GCP there is a minimum billing charge of 1 minute per instance, after which usage is billed by the second).

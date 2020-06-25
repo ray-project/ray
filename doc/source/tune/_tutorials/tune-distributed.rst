@@ -62,7 +62,7 @@ If you used a cluster configuration (starting a cluster with ``ray up`` or ``ray
 Local Cluster Setup
 -------------------
 
-If you already have a list of nodes, you can follow the local private cluster setup `instructions here <autoscaling.html#quick-start-private-cluster>`_. Below is an example cluster configuration as ``tune-default.yaml``:
+If you already have a list of nodes, you can follow the local :ref:`private cluster setup <cluster-private-setup>`. Below is an example cluster configuration as ``tune-default.yaml``:
 
 .. literalinclude:: /../../python/ray/tune/examples/tune-local-default.yaml
    :language: yaml
@@ -82,7 +82,7 @@ If you already have a list of nodes, you can follow the local private cluster se
 Manual Local Cluster Setup
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you run into issues using the local cluster setup (or want to add nodes manually), you can use the manual cluster setup. `Full documentation here <using-ray-on-a-cluster.html>`__. At a glance,
+If you run into issues using the local cluster setup (or want to add nodes manually), you can use :ref:`the manual cluster setup <cluster-index>`. At a glance,
 
 **On the head node**:
 
