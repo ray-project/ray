@@ -34,7 +34,7 @@ parser.add_argument(
         "../tests/data/cartpole_small"))
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(local_mode=True)
     args = parser.parse_args()
 
     # Bazel makes it hard to find files specified in `args` (and `data`).
