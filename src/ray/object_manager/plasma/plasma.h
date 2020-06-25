@@ -35,6 +35,7 @@
 #include "ray/object_manager/plasma/compat.h"
 
 #include "arrow/status.h"
+#include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/util/logging.h"
 
@@ -44,9 +45,7 @@ using arrow::cuda::CudaIpcMemHandle;
 
 namespace plasma {
 
-namespace flatbuf {
-struct ObjectInfoT;
-}  // namespace flatbuf
+using ray::object_manager::protocol::ObjectInfoT;
 
 #define HANDLE_SIGPIPE(s, fd_)                                              \
   do {                                                                      \
@@ -166,9 +165,9 @@ ObjectTableEntry* GetObjectTableEntry(PlasmaStoreInfo* store_info,
 /// \return The errno set.
 int WarnIfSigpipe(int status, int client_sock);
 
-std::unique_ptr<uint8_t[]> CreateObjectInfoBuffer(flatbuf::ObjectInfoT* object_info);
+std::unique_ptr<uint8_t[]> CreateObjectInfoBuffer(ObjectInfoT* object_info);
 
 std::unique_ptr<uint8_t[]> CreatePlasmaNotificationBuffer(
-    std::vector<flatbuf::ObjectInfoT>& object_info);
+    const std::vector<ObjectInfoT>& object_info);
 
 }  // namespace plasma

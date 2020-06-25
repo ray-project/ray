@@ -21,11 +21,11 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/plasma/common.h"
-#include "ray/object_manager/plasma/common_generated.h"
 #include "ray/object_manager/plasma/protocol.h"
 
-namespace fb = plasma::flatbuf;
+namespace fb = ray::object_manager::protocol;
 
 namespace plasma {
 
@@ -70,9 +70,9 @@ std::unique_ptr<uint8_t[]> CreateObjectInfoBuffer(fb::ObjectInfoT* object_info) 
 }
 
 std::unique_ptr<uint8_t[]> CreatePlasmaNotificationBuffer(
-    std::vector<fb::ObjectInfoT>& object_info) {
+    const std::vector<fb::ObjectInfoT>& object_info) {
   flatbuffers::FlatBufferBuilder fbb;
-  std::vector<flatbuffers::Offset<plasma::flatbuf::ObjectInfo>> info;
+  std::vector<flatbuffers::Offset<fb::ObjectInfo>> info;
   for (size_t i = 0; i < object_info.size(); ++i) {
     info.push_back(fb::CreateObjectInfo(fbb, &object_info[i]));
   }

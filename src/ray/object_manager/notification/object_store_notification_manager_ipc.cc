@@ -12,13 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/object_manager/object_store_notification_manager.h"
+#include "ray/object_manager/notification/object_store_notification_manager_ipc.h"
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
 #include <boost/function.hpp>
-#include <future>
-#include <iostream>
 
 #include "ray/common/common_protocol.h"
 #include "ray/common/status.h"
@@ -30,13 +28,12 @@
 
 namespace ray {
 
-ObjectStoreNotificationManager::ObjectStoreNotificationManager(
+ObjectStoreNotificationManagerIPC::ObjectStoreNotificationManagerIPC(
     boost::asio::io_service &io_service, const std::string &store_socket_name,
     bool exit_on_error)
-    : store_client_(),
+    : ObjectStoreNotificationManager(io_service),
+      store_client_(),
       length_(0),
-      num_adds_processed_(0),
-      num_removes_processed_(0),
       socket_(io_service),
       exit_on_error_(exit_on_error) {
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket_name.c_str(), "", 0, 300));
@@ -73,21 +70,22 @@ ObjectStoreNotificationManager::ObjectStoreNotificationManager(
   NotificationWait();
 }
 
-ObjectStoreNotificationManager::~ObjectStoreNotificationManager() {
+ObjectStoreNotificationManagerIPC::~ObjectStoreNotificationManagerIPC() {
   RAY_ARROW_CHECK_OK(store_client_.Disconnect());
 }
 
-void ObjectStoreNotificationManager::Shutdown() {
+void ObjectStoreNotificationManagerIPC::Shutdown() {
   RAY_ARROW_CHECK_OK(store_client_.Disconnect());
 }
 
-void ObjectStoreNotificationManager::NotificationWait() {
-  boost::asio::async_read(socket_, boost::asio::buffer(&length_, sizeof(length_)),
-                          boost::bind(&ObjectStoreNotificationManager::ProcessStoreLength,
-                                      this, boost::asio::placeholders::error));
+void ObjectStoreNotificationManagerIPC::NotificationWait() {
+  boost::asio::async_read(
+      socket_, boost::asio::buffer(&length_, sizeof(length_)),
+      boost::bind(&ObjectStoreNotificationManagerIPC::ProcessStoreLength, this,
+                  boost::asio::placeholders::error));
 }
 
-void ObjectStoreNotificationManager::ProcessStoreLength(
+void ObjectStoreNotificationManagerIPC::ProcessStoreLength(
     const boost::system::error_code &error) {
   notification_.resize(length_);
   if (error) {
@@ -113,11 +111,11 @@ void ObjectStoreNotificationManager::ProcessStoreLength(
 
   boost::asio::async_read(
       socket_, boost::asio::buffer(notification_),
-      boost::bind(&ObjectStoreNotificationManager::ProcessStoreNotification, this,
+      boost::bind(&ObjectStoreNotificationManagerIPC::ProcessStoreNotification, this,
                   boost::asio::placeholders::error));
 }
 
-void ObjectStoreNotificationManager::ProcessStoreNotification(
+void ObjectStoreNotificationManagerIPC::ProcessStoreNotification(
     const boost::system::error_code &error) {
   if (error) {
     if (exit_on_error_) {
@@ -150,39 +148,6 @@ void ObjectStoreNotificationManager::ProcessStoreNotification(
     }
   }
   NotificationWait();
-}
-
-void ObjectStoreNotificationManager::ProcessStoreAdd(
-    const object_manager::protocol::ObjectInfoT &object_info) {
-  for (auto &handler : add_handlers_) {
-    handler(object_info);
-  }
-  num_adds_processed_++;
-}
-
-void ObjectStoreNotificationManager::ProcessStoreRemove(const ObjectID &object_id) {
-  for (auto &handler : rem_handlers_) {
-    handler(object_id);
-  }
-  num_removes_processed_++;
-}
-
-void ObjectStoreNotificationManager::SubscribeObjAdded(
-    std::function<void(const object_manager::protocol::ObjectInfoT &)> callback) {
-  add_handlers_.push_back(std::move(callback));
-}
-
-void ObjectStoreNotificationManager::SubscribeObjDeleted(
-    std::function<void(const ObjectID &)> callback) {
-  rem_handlers_.push_back(std::move(callback));
-}
-
-std::string ObjectStoreNotificationManager::DebugString() const {
-  std::stringstream result;
-  result << "ObjectStoreNotificationManager:";
-  result << "\n- num adds processed: " << num_adds_processed_;
-  result << "\n- num removes processed: " << num_removes_processed_;
-  return result.str();
 }
 
 }  // namespace ray
