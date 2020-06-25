@@ -513,10 +513,6 @@ that outperforms all the other ones.
 Further References
 ------------------
 
-(Need to format the below into links)
-XGBoost Hyperparameter Tuning - A Visual Guide https://kevinvecmanis.io/machine%20learning/hyperparameter%20tuning/dataviz/python/2019/05/11/XGBoost-Tuning-Visual-Guide.html
-
-Notes on XGBoost Parameter Tuning https://xgboost.readthedocs.io/en/latest/tutorials/param_tuning.html
-
-Doing XGBoost Hyperparameter Tuning the smart way
-https://towardsdatascience.com/doing-xgboost-hyper-parameter-tuning-the-smart-way-part-1-of-2-f6d255a45dde
+* `XGBoost Hyperparameter Tuning - A Visual Guide <https://kevinvecmanis.io/machine%20learning/hyperparameter%20tuning/dataviz/python/2019/05/11/XGBoost-Tuning-Visual-Guide.html>`_
+* `Notes on XGBoost Parameter Tuning <https://xgboost.readthedocs.io/en/latest/tutorials/param_tuning.html>`_
+* `Doing XGBoost Hyperparameter Tuning the smart way <https://towardsdatascience.com/doing-xgboost-hyper-parameter-tuning-the-smart-way-part-1-of-2-f6d255a45dde>`_
