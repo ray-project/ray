@@ -80,7 +80,8 @@ class Categorical(TFActionDistribution):
         z0 = tf.reduce_sum(ea0, axis=1, keepdims=True)
         z1 = tf.reduce_sum(ea1, axis=1, keepdims=True)
         p0 = ea0 / z0
-        return tf.reduce_sum(p0 * (a0 - tf.math.log(z0) - a1 + tf.math.log(z1)), axis=1)
+        return tf.reduce_sum(
+            p0 * (a0 - tf.math.log(z0) - a1 + tf.math.log(z1)), axis=1)
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
@@ -230,16 +231,18 @@ class DiagGaussian(TFActionDistribution):
     @override(ActionDistribution)
     def logp(self, x):
         return -0.5 * tf.reduce_sum(
-            tf.math.square((tf.cast(x, tf.float32) - self.mean) / self.std), axis=1) - \
-               0.5 * np.log(2.0 * np.pi) * tf.cast(tf.shape(x)[1], tf.float32) - \
-               tf.reduce_sum(self.log_std, axis=1)
+            tf.math.square((tf.cast(x, tf.float32) - self.mean) / self.std),
+            axis=1
+        ) - 0.5 * np.log(2.0 * np.pi) * tf.cast(tf.shape(x)[1], tf.float32) - \
+            tf.reduce_sum(self.log_std, axis=1)
 
     @override(ActionDistribution)
     def kl(self, other):
         assert isinstance(other, DiagGaussian)
         return tf.reduce_sum(
             other.log_std - self.log_std +
-            (tf.math.square(self.std) + tf.math.square(self.mean - other.mean)) /
+            (tf.math.square(self.std) +
+             tf.math.square(self.mean - other.mean)) /
             (2.0 * tf.math.square(other.std)) - 0.5,
             axis=1)
 

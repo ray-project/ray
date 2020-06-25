@@ -444,9 +444,11 @@ def test_list_endpoints(serve_instance):
 
     serve.create_backend("backend", f)
     serve.create_backend("backend2", f)
+    serve.create_backend("backend3", f)
     serve.create_endpoint(
         "endpoint", backend="backend", route="/api", methods=["GET", "POST"])
     serve.create_endpoint("endpoint2", backend="backend2", methods=["POST"])
+    serve.shadow_traffic("endpoint", "backend3", 0.5)
 
     endpoints = serve.list_endpoints()
     assert "endpoint" in endpoints
@@ -455,6 +457,9 @@ def test_list_endpoints(serve_instance):
         "methods": ["GET", "POST"],
         "traffic": {
             "backend": 1.0
+        },
+        "shadows": {
+            "backend3": 0.5
         }
     }
 
@@ -464,7 +469,8 @@ def test_list_endpoints(serve_instance):
         "methods": ["POST"],
         "traffic": {
             "backend2": 1.0
-        }
+        },
+        "shadows": {}
     }
 
     serve.delete_endpoint("endpoint")
@@ -574,6 +580,49 @@ def test_shutdown(serve_instance):
         return True
 
     assert wait_for_condition(check_dead)
+
+
+def test_shadow_traffic(serve_instance):
+    def f():
+        return "hello"
+
+    def f_shadow():
+        return "oops"
+
+    serve.create_backend("backend1", f)
+    serve.create_backend("backend2", f_shadow)
+    serve.create_backend("backend3", f_shadow)
+    serve.create_backend("backend4", f_shadow)
+
+    serve.create_endpoint("endpoint", backend="backend1", route="/api")
+    serve.shadow_traffic("endpoint", "backend2", 1.0)
+    serve.shadow_traffic("endpoint", "backend3", 0.5)
+    serve.shadow_traffic("endpoint", "backend4", 0.1)
+
+    start = time.time()
+    num_requests = 100
+    for _ in range(num_requests):
+        assert requests.get("http://127.0.0.1:8000/api").text == "hello"
+    print("Finished 100 requests in {}s.".format(time.time() - start))
+
+    def requests_to_backend(backend):
+        for entry in serve.stat():
+            if entry["info"]["name"] == "backend_request_counter":
+                if entry["info"]["backend"] == backend:
+                    return entry["value"]
+
+        return 0
+
+    def check_requests():
+        return all([
+            requests_to_backend("backend1") == num_requests,
+            requests_to_backend("backend2") == requests_to_backend("backend1"),
+            requests_to_backend("backend3") < requests_to_backend("backend2"),
+            requests_to_backend("backend4") < requests_to_backend("backend3"),
+            requests_to_backend("backend4") > 0,
+        ])
+
+    assert wait_for_condition(check_requests)
 
 
 if __name__ == "__main__":

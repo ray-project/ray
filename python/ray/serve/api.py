@@ -296,6 +296,31 @@ def set_traffic(endpoint_name, traffic_policy_dictionary):
 
 
 @_ensure_connected
+def shadow_traffic(endpoint_name, backend_tag, proportion):
+    """Shadow traffic from an endpoint to a backend.
+
+    The specified proportion of requests will be duplicated and sent to the
+    backend. Responses of the duplicated traffic will be ignored.
+    The backend must not already be in use.
+
+    To stop shadowing traffic to a backend, call `shadow_traffic` with
+    proportion equal to 0.
+
+    Args:
+        endpoint_name (str): A registered service endpoint.
+        backend_tag (str): A registered backend.
+        proportion (float): The proportion of traffic from 0 to 1.
+    """
+
+    if not isinstance(proportion, (float, int)) or not 0 <= proportion <= 1:
+        raise TypeError("proportion must be a float from 0 to 1.")
+
+    ray.get(
+        master_actor.shadow_traffic.remote(endpoint_name, backend_tag,
+                                           proportion))
+
+
+@_ensure_connected
 def get_handle(endpoint_name,
                relative_slo_ms=None,
                absolute_slo_ms=None,

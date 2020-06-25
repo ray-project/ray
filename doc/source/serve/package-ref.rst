@@ -14,6 +14,7 @@ APIs for Managing Endpoints
 .. autofunction:: ray.serve.list_endpoints
 .. autofunction:: ray.serve.delete_endpoint
 .. autofunction:: ray.serve.set_traffic
+.. autofunction:: ray.serve.shadow_traffic
 
 
 APIs for Managing Backends
