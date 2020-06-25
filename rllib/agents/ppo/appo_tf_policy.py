@@ -347,11 +347,11 @@ def stats(policy, train_batch):
         drop_last=policy.config["vtrace"])
 
     stats_dict = {
-        "cur_lr"          : tf.cast(policy.cur_lr, tf.float64),
-        "policy_loss"     : policy.loss.pi_loss,
-        "entropy"         : policy.loss.entropy,
-        "var_gnorm"       : tf.linalg.global_norm(policy.model.trainable_variables()),
-        "vf_loss"         : policy.loss.vf_loss,
+        "cur_lr": tf.cast(policy.cur_lr, tf.float64),
+        "policy_loss": policy.loss.pi_loss,
+        "entropy": policy.loss.entropy,
+        "var_gnorm": tf.linalg.global_norm(policy.model.trainable_variables()),
+        "vf_loss": policy.loss.vf_loss,
         "vf_explained_var": explained_variance(
             tf.reshape(policy.loss.value_targets, [-1]),
             tf.reshape(values_batched, [-1])),
