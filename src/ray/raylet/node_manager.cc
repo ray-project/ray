@@ -1683,11 +1683,11 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
 void NodeManager::WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work) {
   RAY_CHECK(new_scheduler_enabled_);
   const Task &task = work.second;
-  std::vector<ObjectID> object_ids = task.GetTaskSpecification().GetDependencies();
+  const auto &object_refs = task.GetDependencies();
 
-  if (object_ids.size() > 0) {
+  if (object_refs.size() > 0) {
     bool args_ready = task_dependency_manager_.SubscribeGetDependencies(
-        task.GetTaskSpecification().TaskId(), task.GetDependencies());
+        task.GetTaskSpecification().TaskId(), object_refs);
     if (args_ready) {
       task_dependency_manager_.UnsubscribeGetDependencies(
           task.GetTaskSpecification().TaskId());
@@ -2249,8 +2249,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // Once the actor has been created and this method removed from the
       // waiting queue, the caller must make the corresponding call to
       // UnsubscribeGetDependencies.
-      task_dependency_manager_.SubscribeGetDependencies(spec.TaskId(),
-                                                        {actor_creation_dummy_object});
+      task_dependency_manager_.SubscribeGetDependencies(
+          spec.TaskId(), {GetReferenceForActorDummyObject(actor_creation_dummy_object)});
       // Mark the task as pending. It will be canceled once we discover the
       // actor's location and either execute the task ourselves or forward it
       // to another node.
@@ -2401,11 +2401,14 @@ void NodeManager::AsyncResolveObjects(const std::shared_ptr<ClientConnection> &c
     // HandleDirectCallUnblocked.
     auto &task_id = mark_worker_blocked ? current_task_id : worker->GetAssignedTaskId();
     if (!task_id.IsNil()) {
-      task_dependency_manager_.SubscribeGetDependencies(task_id, required_object_ids);
+      // TODO
+      // task_dependency_manager_.SubscribeGetDependencies(task_id, required_object_ids);
+      task_dependency_manager_.SubscribeGetDependencies(task_id, {});
     }
   } else {
-    task_dependency_manager_.SubscribeWaitDependencies(worker->WorkerId(),
-                                                       required_object_ids);
+    // TODO
+    task_dependency_manager_.SubscribeWaitDependencies(worker->WorkerId(), {});
+    // required_object_ids);
   }
 }
 
