@@ -7,7 +7,7 @@ import os
 import pickle
 import time
 import tempfile
-from typing import Callable, List, Dict, Union, Any
+from typing import Callable, List, Dict, Union
 
 import ray
 from ray.exceptions import RayError
@@ -797,7 +797,8 @@ class Trainer(Trainable):
             prev_action (TensorStructType): Previous action value, if any.
             prev_reward (float): Previous reward, if any.
             info (EnvInfoDict): info object, if any
-            policy_id (PolicyID): Policy to query (only applies to multi-agent).
+            policy_id (PolicyID): Policy to query (only applies to
+                multi-agent).
             full_fetch (bool): Whether to return extra action fetch results.
                 This is always set to True if RNN state is specified.
             explore (bool): Whether to pick an exploitation or exploration

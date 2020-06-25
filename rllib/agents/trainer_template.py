@@ -1,4 +1,3 @@
-from gym.spaces import Space
 import logging
 import time
 from typing import Callable, Optional, List, Iterable
@@ -67,7 +66,8 @@ def build_trainer(
         default_config (dict): The default config dict of the algorithm,
             otherwise uses the Trainer default config.
         validate_config (Optional[callable]): Optional callable that takes the
-            config to check for correctness. It may mutate the config as needed.
+            config to check for correctness. It may mutate the config as
+            needed.
         get_policy_class (Optional[callable]): Optional callable that takes a
             config and returns the policy class to override the default with.
         before_init (Optional[callable]): Optional callable to run at the start

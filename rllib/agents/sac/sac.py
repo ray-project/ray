@@ -1,11 +1,9 @@
-from gym.spaces import Box, Discrete
 import logging
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
-from ray.rllib.utils.error import UnsupportedSpaceException
 
 logger = logging.getLogger(__name__)
 
@@ -150,13 +148,13 @@ def validate_config(config):
     # Use same keys as for standard Trainer "model" config.
     for model in ["Q_model", "policy_model"]:
         if config[model].get("hidden_activation", DEPRECATED_VALUE) != \
-            DEPRECATED_VALUE:
+                DEPRECATED_VALUE:
             deprecation_warning(
                 "{}.hidden_activation".format(model),
                 "{}.fcnet_activation".format(model),
                 error=True)
         if config[model].get("hidden_layer_sizes", DEPRECATED_VALUE) != \
-            DEPRECATED_VALUE:
+                DEPRECATED_VALUE:
             deprecation_warning(
                 "{}.hidden_layer_sizes".format(model),
                 "{}.fcnet_hiddens".format(model),
