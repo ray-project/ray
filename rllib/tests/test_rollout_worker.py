@@ -158,6 +158,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertEqual(batch["prev_actions"].tolist(),
                          to_prev(batch["actions"]))
         self.assertGreater(batch["advantages"][0], 1)
+        ev.stop()
 
     def test_batch_ids(self):
         ev = RolloutWorker(
@@ -170,6 +171,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertEqual(len(set(batch2["unroll_id"])), 1)
         self.assertEqual(
             len(set(SampleBatch.concat(batch1, batch2)["unroll_id"])), 2)
+        ev.stop()
 
     def test_global_vars_update(self):
         # Allow for Unittest run.
@@ -202,10 +204,9 @@ class TestRolloutWorker(unittest.TestCase):
                     break
             self.assertLess(
                 result["info"]["learner"]["default_policy"]["cur_lr"], 0.07)
+            agent.stop()
 
     def test_no_step_on_init(self):
-        # Allow for Unittest run.
-        ray.init(num_cpus=5, ignore_reinit_error=True)
         register_env("fail", lambda _: FailOnStepEnv())
         for fw in framework_iterator(frameworks=()):
             pg = PGTrainer(
@@ -214,6 +215,7 @@ class TestRolloutWorker(unittest.TestCase):
                     "framework": fw,
                 })
             self.assertRaises(Exception, lambda: pg.train())
+            pg.stop()
 
     def test_callbacks(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):
@@ -240,10 +242,9 @@ class TestRolloutWorker(unittest.TestCase):
             self.assertGreater(counts["start"], 0)
             self.assertGreater(counts["end"], 0)
             self.assertGreater(counts["step"], 0)
+            pg.stop()
 
     def test_query_evaluators(self):
-        # Allow for Unittest run.
-        ray.init(num_cpus=5, ignore_reinit_error=True)
         register_env("test", lambda _: gym.make("CartPole-v0"))
         for fw in framework_iterator(frameworks=("torch", "tf")):
             pg = PGTrainer(
@@ -263,6 +264,7 @@ class TestRolloutWorker(unittest.TestCase):
             self.assertEqual(results, [10, 10, 10])
             self.assertEqual(results2, [(0, 10), (1, 10), (2, 10)])
             self.assertEqual(results3, [[1, 1], [1, 1], [1, 1]])
+            pg.stop()
 
     def test_reward_clipping(self):
         # clipping on
@@ -274,6 +276,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertEqual(max(ev.sample()["rewards"]), 1)
         result = collect_metrics(ev, [])
         self.assertEqual(result["episode_reward_mean"], 1000)
+        ev.stop()
 
         # clipping off
         ev2 = RolloutWorker(
@@ -284,6 +287,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertEqual(max(ev2.sample()["rewards"]), 100)
         result2 = collect_metrics(ev2, [])
         self.assertEqual(result2["episode_reward_mean"], 1000)
+        ev2.stop()
 
     def test_hard_horizon(self):
         ev = RolloutWorker(
@@ -302,6 +306,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertEqual(np.argmax(samples["obs"][4]), 0)
         # 3 done values.
         self.assertEqual(sum(samples["dones"]), 3)
+        ev.stop()
 
         # A gym env's max_episode_steps is smaller than Trainer's horizon.
         ev = RolloutWorker(
@@ -322,6 +327,7 @@ class TestRolloutWorker(unittest.TestCase):
             False, False, False, False, False, True, False, False, False,
             False, False, True
         ])
+        ev.stop()
 
     def test_soft_horizon(self):
         ev = RolloutWorker(
@@ -336,10 +342,9 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertEqual(len(set(samples["eps_id"])), 3)
         # only 1 hard done value
         self.assertEqual(sum(samples["dones"]), 1)
+        ev.stop()
 
     def test_metrics(self):
-        # Allow for Unittest run.
-        ray.init(num_cpus=5, ignore_reinit_error=True)
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(episode_length=10),
             policy=MockPolicy,
@@ -353,6 +358,7 @@ class TestRolloutWorker(unittest.TestCase):
         result = collect_metrics(ev, [remote_ev])
         self.assertEqual(result["episodes_this_iter"], 20)
         self.assertEqual(result["episode_reward_mean"], 10)
+        ev.stop()
 
     def test_async(self):
         ev = RolloutWorker(
@@ -363,6 +369,7 @@ class TestRolloutWorker(unittest.TestCase):
         for key in ["obs", "actions", "rewards", "dones", "advantages"]:
             self.assertIn(key, batch)
         self.assertGreater(batch["advantages"][0], 1)
+        ev.stop()
 
     def test_auto_vectorization(self):
         ev = RolloutWorker(
@@ -386,6 +393,7 @@ class TestRolloutWorker(unittest.TestCase):
             self.assertEqual(env.unwrapped.config.worker_index, 0)
             indices.append(env.unwrapped.config.vector_index)
         self.assertEqual(indices, [0, 1, 2, 3, 4, 5, 6, 7])
+        ev.stop()
 
     def test_batches_larger_when_vectorized(self):
         ev = RolloutWorker(
@@ -401,6 +409,7 @@ class TestRolloutWorker(unittest.TestCase):
         batch = ev.sample()
         result = collect_metrics(ev, [])
         self.assertEqual(result["episodes_this_iter"], 4)
+        ev.stop()
 
     def test_vector_env_support(self):
         ev = RolloutWorker(
@@ -418,6 +427,7 @@ class TestRolloutWorker(unittest.TestCase):
             self.assertEqual(batch.count, 10)
         result = collect_metrics(ev, [])
         self.assertEqual(result["episodes_this_iter"], 8)
+        ev.stop()
 
     def test_truncate_episodes(self):
         ev = RolloutWorker(
@@ -427,6 +437,7 @@ class TestRolloutWorker(unittest.TestCase):
             batch_mode="truncate_episodes")
         batch = ev.sample()
         self.assertEqual(batch.count, 15)
+        ev.stop()
 
     def test_complete_episodes(self):
         ev = RolloutWorker(
@@ -436,6 +447,7 @@ class TestRolloutWorker(unittest.TestCase):
             batch_mode="complete_episodes")
         batch = ev.sample()
         self.assertEqual(batch.count, 10)
+        ev.stop()
 
     def test_complete_episodes_packing(self):
         ev = RolloutWorker(
@@ -448,6 +460,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertEqual(
             batch["t"].tolist(),
             [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+        ev.stop()
 
     def test_filter_sync(self):
         ev = RolloutWorker(
@@ -461,6 +474,7 @@ class TestRolloutWorker(unittest.TestCase):
         obs_f = filters[DEFAULT_POLICY_ID]
         self.assertNotEqual(obs_f.rs.n, 0)
         self.assertNotEqual(obs_f.buffer.n, 0)
+        ev.stop()
 
     def test_get_filters(self):
         ev = RolloutWorker(
@@ -476,6 +490,7 @@ class TestRolloutWorker(unittest.TestCase):
         obs_f2 = filters2[DEFAULT_POLICY_ID]
         self.assertGreaterEqual(obs_f2.rs.n, obs_f.rs.n)
         self.assertGreaterEqual(obs_f2.buffer.n, obs_f.buffer.n)
+        ev.stop()
 
     def test_sync_filter(self):
         ev = RolloutWorker(
@@ -498,6 +513,23 @@ class TestRolloutWorker(unittest.TestCase):
         obs_f = filters[DEFAULT_POLICY_ID]
         self.assertGreaterEqual(obs_f.rs.n, 100)
         self.assertLessEqual(obs_f.buffer.n, 20)
+        ev.stop()
+
+    def test_extra_python_envs(self):
+        extra_envs = {"env_key_1": "env_value_1", "env_key_2": "env_value_2"}
+        self.assertFalse("env_key_1" in os.environ)
+        self.assertFalse("env_key_2" in os.environ)
+        ev = RolloutWorker(
+            env_creator=lambda _: MockEnv(10),
+            policy=MockPolicy,
+            extra_python_environs=extra_envs)
+        self.assertTrue("env_key_1" in os.environ)
+        self.assertTrue("env_key_2" in os.environ)
+        ev.stop()
+
+        # reset to original
+        del os.environ["env_key_1"]
+        del os.environ["env_key_2"]
 
     def sample_and_flush(self, ev):
         time.sleep(2)
@@ -507,21 +539,6 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertNotEqual(obs_f.rs.n, 0)
         self.assertNotEqual(obs_f.buffer.n, 0)
         return obs_f
-
-    def test_extra_python_envs(self):
-        extra_envs = {"env_key_1": "env_value_1", "env_key_2": "env_value_2"}
-        self.assertFalse("env_key_1" in os.environ)
-        self.assertFalse("env_key_2" in os.environ)
-        RolloutWorker(
-            env_creator=lambda _: MockEnv(10),
-            policy=MockPolicy,
-            extra_python_environs=extra_envs)
-        self.assertTrue("env_key_1" in os.environ)
-        self.assertTrue("env_key_2" in os.environ)
-
-        # reset to original
-        del os.environ["env_key_1"]
-        del os.environ["env_key_2"]
 
 
 if __name__ == "__main__":
