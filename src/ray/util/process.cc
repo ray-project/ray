@@ -134,7 +134,8 @@ class ProcessFD {
       int r = read(pipefds[0], &pid, sizeof(pid));
       (void)r;  // can't do much if this fails, so ignore return value
     }
-    fd = pipefds[0];  // Use pipe to track process lifetime
+    // Use pipe to track process lifetime. (The pipe closes when process terminates.)
+    fd = pipefds[0];
     if (pid == -1) {
       ec = std::error_code(errno, std::system_category());
     }
