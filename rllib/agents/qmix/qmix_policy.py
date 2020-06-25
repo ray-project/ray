@@ -194,6 +194,7 @@ class QMixTorchPolicy(Policy):
             agent_obs_space = agent_obs_space.spaces["obs"]
         else:
             self.obs_size = _get_size(agent_obs_space)
+            self.env_global_state_shape = (self.obs_size, self.n_agents)
 
         self.model = ModelCatalog.get_model_v2(
             agent_obs_space,

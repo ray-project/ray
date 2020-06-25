@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_SCHEDULING_SCHEDULING_IDS_H
-#define RAY_COMMON_SCHEDULING_SCHEDULING_IDS_H
+#pragma once
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/util/logging.h"
@@ -66,5 +65,3 @@ class StringIdMap {
   /// Get number of identifiers.
   int64_t Count();
 };
-
-#endif  // RAY_COMMON_SCHEDULING_SCHEDULING_IDS_H

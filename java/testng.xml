@@ -3,8 +3,8 @@
 <suite name="RAY suite" verbose="2">
     <test name = "RAY test">
         <packages>
-            <package name = "io.ray.api.test.*" />
             <package name = "io.ray.runtime.*" />
+            <package name = "io.ray.test.*" />
         </packages>
     </test>
     <listeners>

@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAYLET_CLIENT_H
-#define RAYLET_CLIENT_H
+#pragma once
 
 #include <ray/protobuf/gcs.pb.h>
 #include <unistd.h>
@@ -340,5 +339,3 @@ class RayletClient : public PinObjectsInterface,
 }  // namespace raylet
 
 }  // namespace ray
-
-#endif

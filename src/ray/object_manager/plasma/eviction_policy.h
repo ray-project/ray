@@ -15,8 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef PLASMA_EVICTION_POLICY_H
-#define PLASMA_EVICTION_POLICY_H
+#pragma once
 
 #include <functional>
 #include <list>
@@ -208,5 +207,3 @@ class EvictionPolicy {
 };
 
 }  // namespace plasma
-
-#endif  // PLASMA_EVICTION_POLICY_H

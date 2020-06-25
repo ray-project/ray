@@ -124,6 +124,7 @@ class TorchTrainer:
         num_workers (int): the number of workers used in distributed
             training. If 1, the worker will not be wrapped with
             DistributedDataParallel.
+        num_cpus_per_worker (int): Sets the cpu requirement for each worker.
         use_gpu (bool): Sets resource allocation for workers to 1 GPU
             if true, and automatically moves both the model and optimizer
             to the available CUDA device.
@@ -175,6 +176,7 @@ class TorchTrainer:
             initialization_hook=None,
             config=None,
             num_workers=1,
+            num_cpus_per_worker=1,
             use_gpu="auto",
             backend="auto",
             wrap_ddp=True,
@@ -240,6 +242,7 @@ class TorchTrainer:
 
         logger.debug("Using {} as backend.".format(backend))
         self.backend = backend
+        self.num_cpus_per_worker = num_cpus_per_worker
         self.use_gpu = use_gpu
         self.max_replicas = num_workers
 
@@ -328,11 +331,14 @@ class TorchTrainer:
 
             # Start local worker
             self.local_worker = LocalDistributedRunner(
-                num_cpus=1, num_gpus=int(self.use_gpu), **params)
+                num_cpus=self.num_cpus_per_worker,
+                num_gpus=int(self.use_gpu),
+                **params)
 
             # Generate actor class
             RemoteRunner = ray.remote(
-                num_cpus=1, num_gpus=int(self.use_gpu))(DistributedTorchRunner)
+                num_cpus=self.num_cpus_per_worker,
+                num_gpus=int(self.use_gpu))(DistributedTorchRunner)
             # Start workers
             self.remote_workers = [
                 RemoteRunner.remote(**params) for i in range(num_workers - 1)
@@ -736,12 +742,14 @@ class TorchTrainer:
             def default_resource_request(cls, config):
                 num_workers = config.get("num_workers",
                                          kwargs.get("num_workers", 1))
+                num_cpus = config.get("num_cpus_per_worker",
+                                      kwargs.get("num_cpus_per_worker", 1))
                 use_gpu = config.get("use_gpu", kwargs.get("use_gpu"))
 
                 remote_worker_count = num_workers - 1
 
                 return Resources(
-                    cpu=1,
+                    cpu=num_cpus,
                     gpu=int(use_gpu),
                     extra_cpu=int(remote_worker_count),
                     extra_gpu=int(int(use_gpu) * remote_worker_count))

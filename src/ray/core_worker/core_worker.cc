@@ -320,11 +320,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                 << ", raylet " << local_raylet_id;
 
   // Initialize gcs client.
-  if (RayConfig::instance().gcs_service_enabled()) {
-    gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(options_.gcs_options);
-  } else {
-    gcs_client_ = std::make_shared<ray::gcs::RedisGcsClient>(options_.gcs_options);
-  }
+  gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(options_.gcs_options);
+
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs();
 
@@ -434,8 +431,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   std::function<Status(const TaskSpecification &, const gcs::StatusCallback &)>
       actor_create_callback = nullptr;
-  if (RayConfig::instance().gcs_service_enabled() &&
-      RayConfig::instance().gcs_actor_service_enabled()) {
+  if (RayConfig::instance().gcs_actor_service_enabled()) {
     actor_create_callback = [this](const TaskSpecification &task_spec,
                                    const gcs::StatusCallback &callback) {
       return gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
@@ -1170,12 +1166,12 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   return status;
 }
 
-Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
-                                   const std::vector<TaskArg> &args,
-                                   const TaskOptions &task_options,
-                                   std::vector<ObjectID> *return_ids) {
+void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
+                                 const std::vector<TaskArg> &args,
+                                 const TaskOptions &task_options,
+                                 std::vector<ObjectID> *return_ids) {
   ActorHandle *actor_handle = nullptr;
-  RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
+  RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
 
   // Add one for actor cursor object id for tasks.
   const int num_returns = task_options.num_returns + 1;
@@ -1198,16 +1194,16 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   return_ids->pop_back();
 
   // Submit task.
-  Status status;
   TaskSpecification task_spec = builder.Build();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec, actor_id);
   } else {
-    task_manager_->AddPendingTask(rpc_address_, task_spec, CurrentCallSite(),
-                                  actor_handle->MaxTaskRetries());
-    status = direct_actor_submitter_->SubmitTask(task_spec);
+    task_manager_->AddPendingTask(rpc_address_, task_spec,
+                                  CurrentCallSite(), actor_handle->MaxTaskRetries());
+    io_service_.post([this, task_spec]() {
+      RAY_UNUSED(direct_actor_submitter_->SubmitTask(task_spec));
+    });
   }
-  return status;
 }
 
 Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill) {
@@ -1325,8 +1321,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
             // If we own the actor and the actor handle is no longer in scope,
             // terminate the actor. We do not do this if the GCS service is
             // enabled since then the GCS will terminate the actor for us.
-            if (!(RayConfig::instance().gcs_service_enabled() &&
-                  RayConfig::instance().gcs_actor_service_enabled())) {
+            if (!RayConfig::instance().gcs_actor_service_enabled()) {
               RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id
                             << " has gone out of scope, sending message to actor "
                             << actor_id << " to do a clean exit.";
@@ -1366,7 +1361,6 @@ Status CoreWorker::GetActorHandle(const ActorID &actor_id,
 
 Status CoreWorker::GetNamedActorHandle(const std::string &name,
                                        ActorHandle **actor_handle) {
-  RAY_CHECK(RayConfig::instance().gcs_service_enabled());
   RAY_CHECK(RayConfig::instance().gcs_actor_service_enabled());
   RAY_CHECK(!name.empty());
 
@@ -1456,7 +1450,7 @@ Status CoreWorker::AllocateReturnObjects(
       RAY_LOG(DEBUG) << "Creating return object " << object_ids[i];
       // Mark this object as containing other object IDs. The ref counter will
       // keep the inner IDs in scope until the outer one is out of scope.
-      if (!contained_object_ids[i].empty()) {
+      if (!contained_object_ids[i].empty() && !options_.is_local_mode) {
         reference_counter_->AddNestedObjectIds(object_ids[i], contained_object_ids[i],
                                                owner_address);
       }
@@ -1595,6 +1589,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   {
     absl::MutexLock lock(&mutex_);
     current_task_ = TaskSpecification();
+    if (task_spec.IsNormalTask()) {
+      resource_ids_.reset(new ResourceMappingType());
+    }
   }
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId();
 
@@ -1955,11 +1952,13 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_actor_id(actor_id_.Binary());
   auto used_resources_map = stats->mutable_used_resources();
   for (auto const &it : *resource_ids_) {
-    double quantity = 0;
+    rpc::ResourceAllocations allocations;
     for (auto const &pair : it.second) {
-      quantity += pair.second;
+      auto resource_slot = allocations.add_resource_slots();
+      resource_slot->set_slot(pair.first);
+      resource_slot->set_allocation(pair.second);
     }
-    (*used_resources_map)[it.first] = quantity;
+    (*used_resources_map)[it.first] = allocations;
   }
   stats->set_actor_title(actor_title_);
   google::protobuf::Map<std::string, std::string> webui_map(webui_display_.begin(),

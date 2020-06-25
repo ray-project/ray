@@ -6,7 +6,6 @@ import time
 
 import pytest
 import ray
-import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
 
 
@@ -151,14 +150,12 @@ def test_raylet_tempfiles(shutdown_only):
         "log_monitor.out", "log_monitor.err", "plasma_store.out",
         "plasma_store.err", "monitor.out", "monitor.err", "redis-shard_0.out",
         "redis-shard_0.err", "redis.out", "redis.err", "raylet.out",
-        "raylet.err"
+        "raylet.err", "gcs_server.out", "gcs_server.err"
     }
 
-    if ray_constants.GCS_SERVICE_ENABLED:
-        log_files_expected.update({"gcs_server.out", "gcs_server.err"})
-    else:
-        log_files_expected.update({"raylet_monitor.out", "raylet_monitor.err"})
-
+    for expected in log_files_expected:
+        assert expected in log_files
+    assert log_files_expected.issubset(log_files)
     assert log_files.issuperset(log_files_expected)
 
     socket_files = set(os.listdir(node.get_sockets_dir_path()))

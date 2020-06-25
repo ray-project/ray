@@ -36,10 +36,10 @@ inline void Arguments::WrapArgs(msgpack::packer<msgpack::sbuffer> &packer) {}
 template <typename Arg1Type>
 inline void Arguments::WrapArgs(msgpack::packer<msgpack::sbuffer> &packer,
                                 Arg1Type &arg1) {
-  /// Notice RayObjectClassPrefix should be modified by RayObject class name or namespace.
-  static const std::string RayObjectClassPrefix = "N3ray3api9RayObject";
+  /// Notice ObjectRefClassPrefix should be modified by ObjectRef class name or namespace.
+  static const std::string ObjectRefClassPrefix = "N3ray3api9ObjectRef";
   std::string type_name = typeid(arg1).name();
-  if (type_name.rfind(RayObjectClassPrefix, 0) == 0) {
+  if (type_name.rfind(ObjectRefClassPrefix, 0) == 0) {
     /// Pass by reference.
     Serializer::Serialize(packer, true);
   } else {
@@ -61,12 +61,12 @@ inline void Arguments::UnwrapArgs(msgpack::unpacker &unpacker) {}
 template <typename Arg1Type>
 inline void Arguments::UnwrapArgs(msgpack::unpacker &unpacker,
                                   std::shared_ptr<Arg1Type> *arg1) {
-  bool is_ray_object;
-  Serializer::Deserialize(unpacker, &is_ray_object);
-  if (is_ray_object) {
-    RayObject<Arg1Type> ray_object;
-    Serializer::Deserialize(unpacker, &ray_object);
-    *arg1 = ray_object.Get();
+  bool is_object_ref;
+  Serializer::Deserialize(unpacker, &is_object_ref);
+  if (is_object_ref) {
+    ObjectRef<Arg1Type> object_ref;
+    Serializer::Deserialize(unpacker, &object_ref);
+    *arg1 = object_ref.Get();
   } else {
     Serializer::Deserialize(unpacker, arg1);
   }

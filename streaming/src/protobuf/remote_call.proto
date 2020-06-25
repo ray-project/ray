@@ -30,12 +30,13 @@ message ExecutionVertexContext {
     int32 parallelism = 5;
     // serialized operator
     bytes operator = 6;
-    bytes worker_actor = 7;
-    string container_id = 8;
-    uint64 build_time = 9;
-    Language language = 10;
-    map<string, string> config = 11;
-    map<string, double> resource = 12;
+    bool chained = 7;
+    bytes worker_actor = 8;
+    string container_id = 9;
+    uint64 build_time = 10;
+    Language language = 11;
+    map<string, string> config = 12;
+    map<string, double> resource = 13;
   }
 
   // vertices
