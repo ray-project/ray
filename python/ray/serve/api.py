@@ -300,11 +300,11 @@ def shadow_traffic(endpoint_name, backend_tag, proportion):
     """Shadow traffic from an endpoint to a backend.
 
     The specified proportion of requests will be duplicated and sent to the
-    backend. Responses of the duplicated traffic will not be sent to users.
+    backend. Responses of the duplicated traffic will be ignored.
     The backend must not already be in use.
 
     To stop shadowing traffic to a backend, call `shadow_traffic` with
-    proportion set to 0.
+    proportion equal to 0.
 
     Args:
         endpoint_name (str): A registered service endpoint.
