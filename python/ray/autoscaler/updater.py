@@ -176,7 +176,7 @@ class SSHCommandRunner:
             # warning if a new node has the same IP as a previously
             # deleted node, because the fingerprints will not match in
             # that case.
-            ("UserKnownHostsFile", "/dev/null"),
+            ("UserKnownHostsFile", os.devnull),
             ("ControlMaster", "auto"),
             ("ControlPath", "{}/%C".format(self.ssh_control_path)),
             ("ControlPersist", "10s"),
