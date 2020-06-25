@@ -87,12 +87,12 @@ class ValueNetworkMixin:
 
 def stats(policy, train_batch):
     return {
-        "cur_lr"        : tf.cast(policy.cur_lr, tf.float64),
-        "policy_loss"   : policy.loss.pi_loss,
+        "cur_lr": tf.cast(policy.cur_lr, tf.float64),
+        "policy_loss": policy.loss.pi_loss,
         "policy_entropy": policy.loss.entropy,
-        "var_gnorm"     : tf.linalg.global_norm(
+        "var_gnorm": tf.linalg.global_norm(
             list(policy.model.trainable_variables())),
-        "vf_loss"       : policy.loss.vf_loss,
+        "vf_loss": policy.loss.vf_loss,
     }
 
 

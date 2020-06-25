@@ -701,9 +701,6 @@ class Trainer(Trainable):
             config (dict): The Trainer's config.
             num_workers (int): Number of remote rollout workers to create.
                 0 for local only.
-            remote_config_updates (Optional[List[dict]]): A list of config
-                dicts to update `config` with for each Worker (len must be
-                same as `num_workers`).
 
         Returns:
             WorkerSet: The created WorkerSet.
