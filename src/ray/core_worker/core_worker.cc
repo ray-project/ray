@@ -1752,7 +1752,8 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
                                        rpc::SendReplyCallback send_reply_callback) {
   if (HandleWrongRecipient(WorkerID::FromBinary(request.owner_worker_id()),
                            send_reply_callback)) {
-    RAY_LOG(INFO) << "Handling GetObjectStatus for object produced by previous task";
+    RAY_LOG(INFO) << "Handling GetObjectStatus for object produced by a previous worker "
+                     "with the same address";
     return;
   }
 
