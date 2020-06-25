@@ -4,7 +4,7 @@ import threading
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()
 

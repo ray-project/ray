@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_STATS_METRIC_H
-#define RAY_STATS_METRIC_H
+#pragma once
 
 #include <memory>
 #include <unordered_map>
@@ -145,5 +144,3 @@ class Sum : public Metric {
 }  // namespace stats
 
 }  // namespace ray
-
-#endif  // RAY_STATS_METRIC_H

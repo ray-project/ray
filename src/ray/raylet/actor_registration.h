@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RAYLET_ACTOR_REGISTRATION_H
-#define RAY_RAYLET_ACTOR_REGISTRATION_H
+#pragma once
 
 #include <unordered_map>
 
@@ -180,5 +179,3 @@ class ActorRegistration {
 }  // namespace raylet
 
 }  // namespace ray
-
-#endif  // RAY_RAYLET_ACTOR_REGISTRATION_H

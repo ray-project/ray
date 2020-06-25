@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_STATS_HANDLER_IMPL_H
-#define RAY_GCS_STATS_HANDLER_IMPL_H
+#pragma once
 
 #include "gcs_table_storage.h"
 #include "ray/gcs/redis_gcs_client.h"
@@ -42,5 +41,3 @@ class DefaultStatsHandler : public rpc::StatsHandler {
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif  // RAY_GCS_STATS_HANDLER_IMPL_H

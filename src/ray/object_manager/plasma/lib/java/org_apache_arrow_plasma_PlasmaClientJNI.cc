@@ -28,8 +28,6 @@
 #include <string>
 #include <vector>
 
-#include "arrow/util/logging.h"
-
 #include "ray/object_manager/plasma/client.h"
 
 constexpr jsize OBJECT_ID_SIZE = sizeof(plasma::ObjectID) / sizeof(jbyte);

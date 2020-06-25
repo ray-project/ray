@@ -20,7 +20,7 @@ import psutil  # We must import psutil after ray because we bundle it with ray.
 
 
 def test_worker_stats(shutdown_only):
-    addresses = ray.init(num_cpus=1, include_webui=True)
+    addresses = ray.init(num_cpus=1, include_dashboard=True)
     raylet = ray.nodes()[0]
     num_cpus = raylet["Resources"]["CPU"]
     raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
@@ -155,7 +155,7 @@ def test_worker_stats(shutdown_only):
 
 
 def test_raylet_info_endpoint(shutdown_only):
-    addresses = ray.init(include_webui=True, num_cpus=6)
+    addresses = ray.init(include_dashboard=True, num_cpus=6)
 
     @ray.remote
     def f():
@@ -223,7 +223,13 @@ def test_raylet_info_endpoint(shutdown_only):
                 raise Exception(
                     "Timed out while waiting for dashboard to start.")
 
-    assert parent_actor_info["usedResources"]["CPU"] == 2
+    def cpu_resources(actor_info):
+        cpu_resources = 0
+        for slot in actor_info["usedResources"]["CPU"]["resourceSlots"]:
+            cpu_resources += slot["allocation"]
+        return cpu_resources
+
+    assert cpu_resources(parent_actor_info) == 2
     assert parent_actor_info["numExecutedTasks"] == 4
     for _, child_actor_info in children.items():
         if child_actor_info["state"] == -1:
@@ -231,7 +237,7 @@ def test_raylet_info_endpoint(shutdown_only):
         else:
             assert child_actor_info["state"] == 1
             assert len(child_actor_info["children"]) == 0
-            assert child_actor_info["usedResources"]["CPU"] == 1
+            assert cpu_resources(child_actor_info) == 1
 
     profiling_id = requests.get(
         webui_url + "/api/launch_profiling",

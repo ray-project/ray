@@ -77,13 +77,13 @@ class KubernetesCommandRunner:
                 port_forward_cmd) + " failed with error: " + perr
             raise Exception(exception_str)
         else:
-            logger.info(self.log_prefix + "Running {}...".format(cmd))
             final_cmd = self.kubectl + ["exec", "-it"]
             final_cmd += [
                 self.node_id,
                 "--",
             ]
             final_cmd += with_interactive(cmd)
+            logger.info(self.log_prefix + "Running {}".format(final_cmd))
             try:
                 if with_output:
                     return self.process_runner.check_output(
@@ -170,7 +170,14 @@ class SSHCommandRunner:
     def get_default_ssh_options(self, connect_timeout):
         OPTS = [
             ("ConnectTimeout", "{}s".format(connect_timeout)),
+            # Supresses initial fingerprint verification.
             ("StrictHostKeyChecking", "no"),
+            # SSH IP and fingerprint pairs no longer added to known_hosts.
+            # This is to remove a "REMOTE HOST IDENTIFICATION HAS CHANGED"
+            # warning if a new node has the same IP as a previously
+            # deleted node, because the fingerprints will not match in
+            # that case.
+            ("UserKnownHostsFile", os.devnull),
             ("ControlMaster", "auto"),
             ("ControlPath", "{}/%C".format(self.ssh_control_path)),
             ("ControlPersist", "10s"),
@@ -253,8 +260,7 @@ class SSHCommandRunner:
         ]
         if cmd:
             logger.info(self.log_prefix +
-                        "Running {} on {}...".format(cmd, self.ssh_ip))
-            logger.info("Begin remote output from {}".format(self.ssh_ip))
+                        "Running {}".format(" ".join(final_cmd)))
             final_cmd += with_interactive(cmd)
         else:
             # We do this because `-o ControlMaster` causes the `-N` flag to

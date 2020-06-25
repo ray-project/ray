@@ -1,6 +1,6 @@
 package io.ray.streaming.runtime.worker.tasks;
 
-import io.ray.streaming.operator.impl.SourceOperator;
+import io.ray.streaming.operator.SourceOperator;
 import io.ray.streaming.runtime.core.processor.Processor;
 import io.ray.streaming.runtime.core.processor.SourceProcessor;
 import io.ray.streaming.runtime.worker.JobWorker;
@@ -30,9 +30,7 @@ public class SourceStreamTask extends StreamTask {
   public void run() {
     LOG.info("Source stream task thread start.");
 
-    while (running) {
-      sourceProcessor.run();
-    }
+    sourceProcessor.run();
   }
 
   @Override

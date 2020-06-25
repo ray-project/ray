@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import platform
+import re
 import shutil
 import time
 import traceback
@@ -18,19 +19,24 @@ import ray.utils
 # entry/init points.
 logger = logging.getLogger(__name__)
 
+# First group is worker id. Second group is job id.
+JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]{40})-(\d+)")
+
 
 class LogFileInfo:
     def __init__(self,
                  filename=None,
                  size_when_last_opened=None,
                  file_position=None,
-                 file_handle=None):
+                 file_handle=None,
+                 job_id=None):
         assert (filename is not None and size_when_last_opened is not None
                 and file_position is not None)
         self.filename = filename
         self.size_when_last_opened = size_when_last_opened
         self.file_position = file_position
         self.file_handle = file_handle
+        self.job_id = job_id
         self.worker_pid = None
 
 
@@ -116,13 +122,20 @@ class LogMonitor:
         for file_path in log_file_paths + raylet_err_paths:
             if os.path.isfile(
                     file_path) and file_path not in self.log_filenames:
+                job_match = JOB_LOG_PATTERN.match(file_path)
+                if job_match:
+                    job_id = job_match.group(2)
+                else:
+                    job_id = None
+
                 self.log_filenames.add(file_path)
                 self.closed_file_infos.append(
                     LogFileInfo(
                         filename=file_path,
                         size_when_last_opened=0,
                         file_position=0,
-                        file_handle=None))
+                        file_handle=None,
+                        job_id=job_id))
                 log_filename = os.path.basename(file_path)
                 logger.info("Beginning to track file {}".format(log_filename))
 
@@ -231,6 +244,7 @@ class LogMonitor:
                     json.dumps({
                         "ip": self.ip,
                         "pid": file_info.worker_pid,
+                        "job": file_info.job_id,
                         "lines": lines_to_publish
                     }))
                 anything_published = True

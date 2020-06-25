@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_CORE_WORKER_H
-#define RAY_CORE_WORKER_CORE_WORKER_H
+#pragma once
 
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
@@ -33,7 +32,6 @@
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/subscription_executor.h"
-#include "ray/object_manager/object_store_notification_manager.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -580,10 +578,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status error if the task is invalid or if the task submission
   /// failed. Tasks can be invalid for direct actor calls because not all tasks
   /// are currently supported.
-  Status SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
-                         const std::vector<TaskArg> &args,
-                         const TaskOptions &task_options,
-                         std::vector<ObjectID> *return_ids);
+  void SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
+                       const std::vector<TaskArg> &args, const TaskOptions &task_options,
+                       std::vector<ObjectID> *return_ids);
 
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
@@ -1081,5 +1078,3 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_CORE_WORKER_H
