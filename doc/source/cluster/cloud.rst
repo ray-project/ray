@@ -5,6 +5,11 @@ Launching clusters on the cloud
 
 This section provides instructions for configuring the Ray Cluster Launcher to use with AWS/Azure/GCP, an existing Kubernetes cluster, or on a private cluster of host machines.
 
+.. contents::
+    :local:
+    :backlinks: none
+
+
 AWS (EC2)
 ---------
 

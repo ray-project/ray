@@ -15,21 +15,16 @@ Ray comes with a built-in cluster launcher that makes deploying a Ray cluster si
 
 This will provision resources from a node provider (like AWS EC2 or Kubernetes) to instantiate the specified cluster, and start a Ray cluster on the provisioned resources. Once the Ray cluster is running, you can manually SSH into it or use provided commands like ``ray attach``, ``ray rsync-up``, and ``ray exec`` to access it and run Ray programs. Check out :ref:`the Usage Guide <launcher-usage>` for instructions on how to use the cluster launcher.
 
-You can configure the Ray Cluster Launcher to use with :ref:`a cloud provider, an existing Kubernetes cluster, or a private cluster of machines <cluster-cloud>`.
-
-
-**Autoscaling**: The Ray Cluster Launcher will automatically enable a load-based autoscaler. When cluster resource usage exceeds a configurable threshold (80% by default), new nodes will be launched up the specified ``max_workers`` limit. When nodes are idle for more than a timeout, they will be removed, down to the ``min_workers`` limit. The head node is never removed.
-
-The default idle timeout is 5 minutes. This is to prevent excessive node churn which could impact performance and increase costs (in AWS / GCP there is a minimum billing charge of 1 minute per instance, after which usage is billed by the second).
+You can configure the Ray Cluster Launcher to use with :ref:`a cloud provider <cluster-cloud>`, an existing :ref:`Kubernetes cluster <ray-launch-k8s>`, or a private cluster of machines.
 
 Check out the below for more information about how to configure and use the cluster launcher.
 
 .. toctree::
    :maxdepth: 2
 
-   cluster-launcher-usage.rst
-   ray-on-cloud.rst
-   cluster-config.rst
+   launcher-usage.rst
+   cloud.rst
+   config.rst
 
 Questions or Issues?
 --------------------

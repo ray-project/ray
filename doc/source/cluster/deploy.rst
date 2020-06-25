@@ -10,7 +10,7 @@ Ray with Cluster Managers
 .. toctree::
    :maxdepth: 2
 
-   deploy-on-yarn.rst
-   deploy-on-kubernetes.rst
-   deploying-on-slurm.rst
+   kubernetes.rst
+   yarn.rst
+   slurm.rst
 

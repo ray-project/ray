@@ -138,7 +138,6 @@ Getting Involved
    ray-overview/index.rst
    installation.rst
 
-
 .. toctree::
    :maxdepth: -1
    :caption: Ray Core
@@ -152,6 +151,14 @@ Getting Involved
 
 .. toctree::
    :maxdepth: -1
+   :caption: Ray Cluster
+
+   cluster/index.rst
+   cluster/autoscaling.rst
+   cluster/deploy.rst
+
+.. toctree::
+   :maxdepth: -1
    :caption: Ray Serve
 
    serve/index.rst
@@ -160,14 +167,6 @@ Getting Involved
    serve/deployment.rst
    serve/advanced.rst
    serve/package-ref.rst
-
-.. toctree::
-   :maxdepth: -1
-   :caption: Ray Cluster
-
-   cluster-index.rst
-   autoscaling.rst
-   using-ray-on-a-cluster.rst
 
 .. toctree::
    :maxdepth: -1

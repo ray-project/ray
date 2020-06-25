@@ -1,3 +1,5 @@
+.. _ray-cluster-index:
+
 Multi-node Ray (Overview)
 =========================
 
