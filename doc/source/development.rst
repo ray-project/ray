@@ -1,6 +1,6 @@
 .. _building-ray:
 
-Buiilding Ray from Source
+Building Ray from Source
 =========================
 
 For majority of Ray users, installing Ray via the latest wheels or pip package is usually enough. However, you may want to build the latest master branch.
