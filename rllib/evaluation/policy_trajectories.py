@@ -107,14 +107,14 @@ class PolicyTrajectories:
         for col, data in sample_batch.items():
             # Primitive.
             if isinstance(data, (int, float, bool)):
-                shape = (self.buffer_size,)
+                shape = (self.buffer_size, )
                 t_ = type(data)
                 dtype = np.float32 if t_ == float else \
                     np.int32 if type(data) == int else np.bool_
                 self.buffers[col] = np.zeros(shape=shape, dtype=dtype)
             # np.ndarray, torch.Tensor, or tf.Tensor.
             else:
-                shape = (self.buffer_size,) + data.shape[1:]
+                shape = (self.buffer_size, ) + data.shape[1:]
                 dtype = data.dtype
                 if torch and isinstance(data, torch.Tensor):
                     self.buffers[col] = torch.zeros(
@@ -153,7 +153,7 @@ class PolicyTrajectories:
         else:
             for col, data in self.buffers.items():
                 self.buffers[col][:sample_batch_size] = self.buffers[col][
-                                                        self.sample_batch_offset:self.cursor]
+                    self.sample_batch_offset:self.cursor]
 
         # Set all pointers to their correct new values.
         self.sample_batch_offset = 0

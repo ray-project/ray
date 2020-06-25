@@ -65,16 +65,18 @@ class Policy(metaclass=ABCMeta):
 
     @abstractmethod
     @DeveloperAPI
-    def compute_actions(self,
-                        obs_batch,
-                        state_batches=None,
-                        prev_action_batch=None,
-                        prev_reward_batch=None,
-                        info_batch=None,
-                        episodes=None,
-                        explore=None,
-                        timestep=None,
-                        **kwargs):
+    def compute_actions(
+            self,
+            obs_batch=None,  # TODO: deprecate
+            state_batches=None,  # TODO: deprecate
+            prev_action_batch=None,  # TODO: deprecate
+            prev_reward_batch=None,  # TODO: deprecate
+            info_batch=None,  # TODO: deprecate
+            episodes=None,  # TODO: deprecate
+            explore=None,
+            timestep=None,
+            trajectories=None,  # TODO: move this up as the main input source
+            **kwargs):
         """Computes actions for the current policy.
 
         Args:
@@ -92,6 +94,9 @@ class Policy(metaclass=ABCMeta):
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
             timestep (int): The current (sampling) time step.
+            trajectories (List[Trajectory]): A List of Trajectory data used
+                to create a view for the Model forward call. Only used so far
+                iff `_fast_sampling=True` (only supported for torch).
             kwargs: forward compatibility placeholder
 
         Returns:
@@ -430,3 +435,12 @@ def clip_action(action, action_space):
         return a
 
     return tree.map_structure(map_, action, action_space)
+
+
+def get_view(model, data, is_training=False):
+    # Get Model's view requirements.
+    view_reqs = model.get_view_requirements(is_training=is_training)
+    view = {}
+    for col, _ in view_reqs.items():
+        view[col] = data[col]
+    return view

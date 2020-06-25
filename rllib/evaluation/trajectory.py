@@ -90,13 +90,13 @@ class Trajectory:
         if SampleBatch.OBS not in self.buffers:
             assert self.has_initial_obs is False
             assert self.cursor == self.sample_batch_offset == \
-                   self.trajectory_offset == 0
+                self.trajectory_offset == 0
             self.has_initial_obs = True
             # Build the buffer only for "obs" (needs +1 time step slot for the
             # last observation). Only increase `self.timestep` once we get the
             # other-than-obs data (which will include the next obs).
             obs_buffer = np.zeros(
-                shape=(self.buffer_size + 1,) + init_obs.shape,
+                shape=(self.buffer_size + 1, ) + init_obs.shape,
                 dtype=init_obs.dtype)
             obs_buffer[0] = init_obs
             self.buffers[SampleBatch.OBS] = obs_buffer
@@ -221,7 +221,7 @@ class Trajectory:
             next_obs_add = 1 if col == SampleBatch.OBS else 0
             # Primitive.
             if isinstance(data, (int, float, bool)):
-                shape = (self.buffer_size + next_obs_add,)
+                shape = (self.buffer_size + next_obs_add, )
                 t_ = type(data)
                 dtype = np.float32 if t_ == float else \
                     np.int32 if type(data) == int else np.bool_
@@ -248,7 +248,7 @@ class Trajectory:
             # Double actual horizon.
             self.buffer_size *= 2
             for col, data in self.buffers.items():
-                data.resize((self.buffer_size,) + data.shape[1:])
+                data.resize((self.buffer_size, ) + data.shape[1:])
         # Trajectory starts in first half of the buffer -> Reallocate a new
         # buffer and copy the currently ongoing trajectory into the new buffer.
         elif self.trajectory_offset < self.buffer_size / 2:
@@ -267,7 +267,7 @@ class Trajectory:
         else:
             for col, data in self.buffers.items():
                 self.buffers[col][:traj_length] = self.buffers[col][
-                                                  self.trajectory_offset:self.cursor]
+                    self.trajectory_offset:self.cursor]
 
         # Set all pointers to their correct new values.
         self.sample_batch_offset = (

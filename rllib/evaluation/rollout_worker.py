@@ -490,7 +490,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 rollout_fragment_length=rollout_fragment_length,
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
-                pack_multiple_episodes_in_batch=pack,
+                multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
                 blackhole_outputs="simulation" in input_evaluation,
@@ -512,7 +512,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 rollout_fragment_length=rollout_fragment_length,
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
-                pack_multiple_episodes_in_batch=pack,
+                multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
                 soft_horizon=soft_horizon,
@@ -563,7 +563,8 @@ class RolloutWorker(ParallelIteratorWorker):
             batch = self.input_reader.next()
             steps_so_far += batch.count
             batches.append(batch)
-        batch = batches[0].concat_samples(batches)
+        batch = batches[0].concat_samples(batches) if len(batches) > 1 else \
+            batches[0]
 
         self.callbacks.on_sample_end(worker=self, samples=batch)
 

@@ -189,7 +189,7 @@ class _FastMultiAgentSampleBatchBuilder:
                     a_max=self.clip_rewards)
         for agent_id, (_, pre_batch) in pre_batches.items():
             if any(pre_batch["dones"][:-1]) or len(set(
-                pre_batch["eps_id"])) > 1:
+                    pre_batch["eps_id"])) > 1:
                 raise ValueError(
                     "Batches sent to postprocessing must only contain steps "
                     "from a single episode!", pre_batch)
@@ -211,8 +211,8 @@ class _FastMultiAgentSampleBatchBuilder:
 
         if log_once("after_post"):
             logger.info(
-                "Trajectory fragment after postprocess_trajectory():\n\n{}\n".
-                    format(summarize(post_batches)))
+                "Trajectory fragment after postprocess_trajectory():"
+                "\n\n{}\n".format(summarize(post_batches)))
 
         # Append into policy batches and reset
         from ray.rllib.evaluation.rollout_worker import get_global_worker
