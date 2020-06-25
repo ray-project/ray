@@ -1,3 +1,5 @@
+.. _ray-yarn-deploy:
+
 Deploying on YARN
 =================
 

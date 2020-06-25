@@ -138,6 +138,7 @@ Getting Involved
    ray-overview/index.rst
    installation.rst
 
+
 .. toctree::
    :maxdepth: -1
    :caption: Ray Core
@@ -146,7 +147,6 @@ Getting Involved
    using-ray.rst
    configure.rst
    ray-dashboard.rst
-   cluster-index.rst
    Tutorial and Examples <auto_examples/overview.rst>
    package-ref.rst
 
@@ -160,6 +160,14 @@ Getting Involved
    serve/deployment.rst
    serve/advanced.rst
    serve/package-ref.rst
+
+.. toctree::
+   :maxdepth: -1
+   :caption: Ray Cluster
+
+   cluster-index.rst
+   autoscaling.rst
+   using-ray-on-a-cluster.rst
 
 .. toctree::
    :maxdepth: -1
@@ -204,6 +212,7 @@ Getting Involved
    joblib.rst
    iter.rst
    pandas_on_ray.rst
+   projects.rst
 
 .. toctree::
    :maxdepth: -1
