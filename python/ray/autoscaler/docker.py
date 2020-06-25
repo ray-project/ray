@@ -23,7 +23,6 @@ def dockerize_if_needed(config):
     worker_docker_image = config["docker"].get("worker_image", docker_image)
     worker_run_options = config["docker"].get("worker_run_options", [])
 
-    ssh_user = config["auth"]["ssh_user"]
     if not docker_image and not (head_docker_image and worker_docker_image):
         if cname:
             logger.warning(
@@ -32,6 +31,7 @@ def dockerize_if_needed(config):
         return config
     else:
         assert cname, "Must provide container name!"
+    ssh_user = config["auth"]["ssh_user"]
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
 
     if docker_pull:
