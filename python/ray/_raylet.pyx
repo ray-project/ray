@@ -273,10 +273,12 @@ cdef prepare_args(
     put_threshold = RayConfig.instance().max_direct_call_object_size()
     for arg in args:
         if isinstance(arg, ObjectID):
-            # TODO
+            c_arg = (<ObjectID>arg).native()
             args_vector.push_back(
                 unique_ptr[CTaskArg](new CTaskArgByReference(
-                    (<ObjectID>arg).native(), CAddress())))
+                    c_arg,
+                    CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
+                        c_arg))))
 
         else:
             serialized_arg = worker.get_serialization_context().serialize(arg)
@@ -308,11 +310,10 @@ cdef prepare_args(
                             inlined_ids))))
                 inlined_ids.clear()
             else:
-                # TODO
                 args_vector.push_back(unique_ptr[CTaskArg](
                     new CTaskArgByReference(CObjectID.FromBinary(
                         core_worker.put_serialized_object(serialized_arg)),
-                        CAddress())))
+                        CCoreWorkerProcess.GetCoreWorker().GetRpcAddress())))
 
 
 def switch_worker_log_if_needed(worker, next_job_id):

@@ -699,6 +699,20 @@ CoreWorker::GetAllReferenceCounts() const {
   return counts;
 }
 
+const rpc::Address &CoreWorker::GetRpcAddress() const { return rpc_address_; }
+
+rpc::Address CoreWorker::GetOwnerAddress(const ObjectID &object_id) const {
+  rpc::Address owner_address;
+  auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
+  RAY_CHECK(has_owner)
+      << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+         "(ObjectID.from_binary(...)) cannot be used because Ray does not know "
+         "which task will create them. "
+         "If this was not how your object ID was generated, please file an issue "
+         "at https://github.com/ray-project/ray/issues/";
+  return owner_address;
+}
+
 void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
                                                     rpc::Address *owner_address) {
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);

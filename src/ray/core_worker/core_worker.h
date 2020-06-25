@@ -337,6 +337,19 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// (local, submitted_task) reference counts. For debugging purposes.
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
 
+  /// Get the RPC address of this worker.
+  ///
+  /// \param[out] The RPC address of this worker.
+  const rpc::Address &GetRpcAddress() const;
+
+  /// Get the RPC address of the worker that owns the given object.
+  ///
+  /// \param[in] object_id The object ID. The object must either be owned by
+  /// us, or the caller previously added the ownership information (via
+  /// RegisterOwnershipInfoAndResolveFuture).
+  /// \param[out] The RPC address of the worker that owns this object.
+  rpc::Address GetOwnerAddress(const ObjectID &object_id) const;
+
   /// Promote an object to plasma and get its owner information. This should be
   /// called when serializing an object ID, and the returned information should
   /// be stored with the serialized object ID. For plasma promotion, if the
