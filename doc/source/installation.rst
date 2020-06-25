@@ -133,14 +133,6 @@ the runtime library files (e.g. ``VCRUNTIME140_1.dll``):
 .. _`install link`: https://aka.ms/vs/16/release/vc_redist.x64.exe
 
 
-Building Ray from Source
-------------------------
-
-Installing from ``pip`` should be sufficient for most Ray users.
-
-However, should you need to build from source, follow :ref:`these instructions for building <building-ray>` Ray.
-
-
 Installing Ray on Arch Linux
 ----------------------------
 
@@ -183,6 +175,17 @@ If you use `Anaconda`_ and want to use Ray in a defined environment, e.g, ``ray`
 Use ``pip list`` to confirm that ``ray`` is installed.
 
 .. _`Anaconda`: https://www.anaconda.com/
+
+
+
+
+Building Ray from Source
+------------------------
+
+Installing from ``pip`` should be sufficient for most Ray users.
+
+However, should you need to build from source, follow :ref:`these instructions for building <building-ray>` Ray.
+
 
 
 Docker Source Images
@@ -253,22 +256,3 @@ that you've cloned the git repository.
 .. code-block:: bash
 
   python -m pytest -v python/ray/tests/test_mini.py
-
-
-Troubleshooting installing Arrow
---------------------------------
-
-You have a different version of Flatbuffers installed
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Arrow pulls and builds its own copy of Flatbuffers, but if you already have
-Flatbuffers installed, Arrow may find the wrong version. If a directory like
-``/usr/local/include/flatbuffers`` shows up in the output, this may be the
-problem. To solve it, get rid of the old version of flatbuffers.
-
-There is some problem with Boost
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If a message like ``Unable to find the requested Boost libraries`` appears when
-installing Arrow, there may be a problem with Boost. This can happen if you
-installed Boost using MacPorts. This is sometimes solved by using Brew instead.

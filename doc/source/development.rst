@@ -5,6 +5,11 @@ Buiilding Ray from Source
 
 For majority of Ray users, installing Ray via the latest wheels or pip package is usually enough. However, you may want to build the latest master branch.
 
+.. tip:: If you are only editing Python files, follow instructions for :ref:`python-develop` to avoid long build times.
+
+.. contents::
+  :local:
+
 .. _python-develop:
 
 Building Ray (Python Only)
