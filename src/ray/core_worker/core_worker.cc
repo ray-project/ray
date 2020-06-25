@@ -452,7 +452,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           memory_store_, task_manager_, local_raylet_id,
           RayConfig::instance().worker_lease_timeout_milliseconds(),
           std::move(actor_create_callback), boost::asio::steady_timer(io_service_)));
-  future_resolver_.reset(new FutureResolver(memory_store_, client_factory));
+  future_resolver_.reset(new FutureResolver(memory_store_, client_factory, rpc_address_));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
     direct_task_receiver_->Init(client_factory, rpc_address_, local_raylet_client_);
@@ -739,7 +739,7 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
   RAY_CHECK(!owner_id.IsNil() || options_.is_local_mode);
   // We will ask the owner about the object until the object is
   // created or we can no longer reach the owner.
-  future_resolver_->ResolveFutureAsync(object_id, owner_id, owner_address);
+  future_resolver_->ResolveFutureAsync(object_id, owner_address);
 }
 
 Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
@@ -1760,13 +1760,14 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
 void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,
                                        rpc::GetObjectStatusReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.owner_id()),
+                           send_reply_callback)) {
+    RAY_LOG(INFO) << "Handling GetObjectStatus for object produced by previous task";
+    return;
+  }
+
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   RAY_LOG(DEBUG) << "Received GetObjectStatus " << object_id;
-  TaskID owner_id = TaskID::FromBinary(request.owner_id());
-  if (owner_id != GetCallerId()) {
-    RAY_LOG(INFO) << "Handling GetObjectStatus for object produced by previous task "
-                  << owner_id.Hex();
-  }
   // We own the task. Reply back to the borrower once the object has been
   // created.
   // TODO(swang): We could probably just send the object value if it is small
