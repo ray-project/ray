@@ -83,7 +83,7 @@ def _make_future_unwrapper(client_futures: List[asyncio.Future],
 class Router:
     """A router that routes request to available workers."""
 
-    async def __init__(self, instance_name=None):
+    async def setup(self, instance_name=None):
         # Note: Several queues are used in the router
         # - When a request come in, it's placed inside its corresponding
         #   endpoint_queue.
@@ -196,12 +196,14 @@ class Router:
 
         # Note: a future change can be to directly return the ObjectID from
         # replica task submission
-        try:
-            result = await query.async_future
-        except RayTaskError as e:
-            self.num_error_endpoint_request.labels(endpoint=endpoint).add()
-            result = e
-        return result
+        return query.async_future
+
+        # try:
+        #     result = await query.async_future
+        # except RayTaskError as e:
+        #     self.num_error_endpoint_request.labels(endpoint=endpoint).add()
+        #     result = e
+        # return result
 
     async def add_new_worker(self, backend_tag, replica_tag, worker_handle):
         backend_replica_tag = backend_tag + ":" + replica_tag

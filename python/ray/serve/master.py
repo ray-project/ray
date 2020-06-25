@@ -96,7 +96,7 @@ class ServeMaster:
         # If starting the actor for the first time, starts up the other system
         # components. If recovering, fetches their actor handles.
         self._get_or_start_metric_exporter(metric_exporter_class)
-        self._get_or_start_router()
+        # self._get_or_start_router()
         self._get_or_start_http_proxy(http_node_id, http_proxy_host,
                                       http_proxy_port)
 
@@ -120,26 +120,9 @@ class ServeMaster:
             asyncio.get_event_loop().create_task(
                 self._recover_from_checkpoint(checkpoint))
 
-    def _get_or_start_router(self):
-        """Get the router belonging to this serve instance.
-
-        If the router does not already exist, it will be started.
-        """
-        router_name = format_actor_name(SERVE_ROUTER_NAME, self.instance_name)
-        try:
-            self.router = ray.get_actor(router_name)
-        except ValueError:
-            logger.info("Starting router with name '{}'".format(router_name))
-            self.router = ray.remote(Router).options(
-                name=router_name,
-                max_concurrency=ASYNC_CONCURRENCY,
-                max_restarts=-1,
-                max_task_retries=-1,
-            ).remote(instance_name=self.instance_name)
-
     def get_router(self):
         """Returns a handle to the router managed by this actor."""
-        return [self.router]
+        return [self.http_proxy]
 
     def _get_or_start_http_proxy(self, node_id, host, port):
         """Get the HTTP proxy belonging to this serve instance.
@@ -164,13 +147,15 @@ class ServeMaster:
             ).remote(
                 host, port, instance_name=self.instance_name)
 
+        self.router = self.http_proxy
+
     def get_http_proxy(self):
         """Returns a handle to the HTTP proxy managed by this actor."""
         return [self.http_proxy]
 
     def get_http_proxy_config(self):
         """Called by the HTTP proxy on startup to fetch required state."""
-        return self.routes, self.get_router()
+        return self.routes
 
     def _get_or_start_metric_exporter(self, metric_exporter_class):
         """Get the metric exporter belonging to this serve instance.

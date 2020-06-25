@@ -1,5 +1,5 @@
 import asyncio
-import socket
+from urllib.parse import parse_qs
 
 import uvicorn
 
@@ -10,8 +10,7 @@ from ray.serve.metric import MetricClient
 from ray.serve.request_params import RequestMetadata
 from ray.serve.http_util import Response
 from ray.serve.utils import logger
-
-from urllib.parse import parse_qs
+from ray.serve.router import Router
 
 # The maximum number of times to retry a request due to actor failure.
 # TODO(edoakes): this should probably be configurable.
@@ -31,8 +30,7 @@ class HTTPProxy:
         assert ray.is_initialized()
         master = serve.api._get_master_actor()
 
-        self.route_table, [self.router_handle
-                           ] = await master.get_http_proxy_config.remote()
+        self.route_table = await master.get_http_proxy_config.remote()
 
         # The exporter is required to return results for /-/metrics endpoint.
         [self.metric_exporter] = await master.get_metric_exporter.remote()
@@ -42,6 +40,9 @@ class HTTPProxy:
             "num_http_requests",
             description="The number of requests processed",
             label_names=("route", ))
+
+        self.router = Router()
+        await self.router.setup()
 
     def set_route_table(self, route_table):
         self.route_table = route_table
@@ -156,27 +157,55 @@ class HTTPProxy:
             shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
         )
 
-        retries = 0
-        while retries <= MAX_ACTOR_DEAD_RETRIES:
-            try:
-                result = await self.router_handle.enqueue_request.remote(
-                    request_metadata, scope, http_body_bytes)
-                if not isinstance(result, ray.exceptions.RayActorError):
-                    await Response(result).send(scope, receive, send)
-                    break
-                logger.warning("Got RayActorError: {}".format(str(result)))
-                await asyncio.sleep(0.1)
-            except Exception as e:
-                error_message = "Internal Error. Traceback: {}.".format(e)
-                await error_sender(error_message, 500)
-                break
-        else:
-            logger.debug("Maximum actor death retries exceeded")
-            await error_sender(
-                "Internal Error. Maximum actor death retries exceeded", 500)
+        future = await self.router.enqueue_request(request_metadata, scope,
+                                                   http_body_bytes)
+        await Response(await future).send(scope, receive, send)
+
+
+def _autoproxy(*, methods, through):
+    """Decorator for a class. Automatically proxy methods
+
+    This decorator installs method with the same name in ``methods`` and proxy
+    them with the self.``through`` method.
+
+    Example:
+        >>> class A:
+                def call_one(self): pass
+                def call_two(self): pass
+        >>> @_autoproxy(methods=[A.call_one, A.call_two], through="_proxy")
+            class B:
+                a = A()
+                def _proxy(self, method_name, *args):
+                    return getattr(self.a, method_name)(*args)
+        >>> B.call_one()
+        >>> B.call_two()
+    """
+
+    def proxy_with_methods(cls):
+        for method in methods:
+            method_name = str(method.__name__)
+
+            async def wrapped_method(self, *args, name=method_name, **kwargs):
+                proxy_call = getattr(self, through)
+                return await proxy_call(name, *args, **kwargs)
+
+            setattr(cls, method_name, wrapped_method)
+        return cls
+
+    return proxy_with_methods
 
 
 @ray.remote
+@_autoproxy(
+    methods=[
+        Router.add_new_worker,
+        Router.set_traffic,
+        Router.set_backend_config,
+        Router.remove_backend,
+        Router.remove_endpoint,
+        Router.remove_worker,
+    ],
+    through="_proxy_router_call")
 class HTTPProxyActor:
     async def __init__(self, host, port, instance_name=None):
         serve.init(name=instance_name)
@@ -199,3 +228,13 @@ class HTTPProxyActor:
 
     async def set_route_table(self, route_table):
         self.app.set_route_table(route_table)
+
+    async def _proxy_router_call(self, method_name, *args, **kwargs):
+        method = getattr(self.app.router, method_name)
+        return await method(*args, **kwargs)
+
+    async def enqueue_request(self, *args, **kwargs):
+        # Resolve the future for RayServeHandle
+        future = await self.app.router.enqueue_request(*args, **kwargs)
+        result = await future
+        return result

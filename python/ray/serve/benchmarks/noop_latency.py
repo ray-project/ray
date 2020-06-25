@@ -1,4 +1,5 @@
 import time
+from typing import Optional
 
 import requests
 import pandas as pd
@@ -33,13 +34,21 @@ def run_http_benchmark(url):
 
 @click.command()
 @click.option("--blocking", is_flag=True, required=False, help="Block forever")
-def main(blocking: bool):
+@click.option("--num-replicas", type=int, default=1)
+@click.option("--max-concurrent-queries", type=int, required=False)
+def main(num_replicas: int, max_concurrent_queries: Optional[int],
+         blocking: bool):
     serve.init()
 
     def noop(_):
         return "hello world"
 
-    serve.create_backend("noop", noop)
+    config = {
+        "num_replicas": num_replicas,
+        "max_concurrent_queries": max_concurrent_queries
+    }
+    print("Using config", config)
+    serve.create_backend("noop", noop, config=config)
     serve.create_endpoint("noop", backend="noop", route="/noop")
 
     url = "{}/noop".format(DEFAULT_HTTP_ADDRESS)
