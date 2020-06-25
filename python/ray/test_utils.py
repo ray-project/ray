@@ -130,7 +130,9 @@ def run_string_as_driver_nonblocking(driver_script):
         f.write(driver_script.encode("ascii"))
         f.flush()
         return subprocess.Popen(
-            [sys.executable, f.name], stdout=subprocess.PIPE)
+            [sys.executable, f.name],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE)
 
 
 def flat_errors():
