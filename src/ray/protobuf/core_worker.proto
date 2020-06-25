@@ -145,7 +145,7 @@ message DirectActorCallArgWaitCompleteReply {
 message GetObjectStatusRequest {
   // The ID of the worker that owns this object. This is also
   // the ID of the worker that this message is intended for.
-  bytes owner_id = 1;
+  bytes owner_worker_id = 1;
   // Wait for this object's status.
   bytes object_id = 2;
 }
@@ -228,8 +228,6 @@ message GetCoreWorkerStatsReply {
 message ObjectReference {
   // ObjectID that the worker has a reference to.
   bytes object_id = 1;
-  // The task or actor ID of the object's owner.
-  bytes owner_id = 2;
   // The address of the object's owner.
   Address owner_address = 3;
 }

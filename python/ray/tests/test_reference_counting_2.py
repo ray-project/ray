@@ -331,8 +331,8 @@ def test_borrowed_id_failure(one_worker_100MiB, failure):
     obj_bytes = obj.binary()
     del obj
 
+    _fill_object_store_and_get(obj_bytes, succeed=not failure)
     # The borrower should not hang when trying to get the object's value.
-    _fill_object_store_and_get(obj_bytes, succeed=False)
     ray.get(borrower.resolve_ref.remote())
 
 
