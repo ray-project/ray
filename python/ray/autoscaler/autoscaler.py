@@ -10,6 +10,8 @@ import threading
 import time
 import yaml
 
+from ray.experimental.internal_kv import _internal_kv_put, \
+    _internal_kv_initialized
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
@@ -17,7 +19,8 @@ from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.node_launcher import NodeLauncher
 from ray.autoscaler.util import ConcurrentCounter, validate_config, \
-    with_head_node_ip, hash_launch_conf, hash_runtime_conf
+    with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
+    DEBUG_AUTOSCALING_STATUS, DEBUG_AUTOSCALING_ERROR
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
     AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S, \
@@ -111,6 +114,9 @@ class StandardAutoscaler:
         except Exception as e:
             logger.exception("StandardAutoscaler: "
                              "Error during autoscaling.")
+            if _internal_kv_initialized():
+                _internal_kv_put(
+                    DEBUG_AUTOSCALING_ERROR, str(e), overwrite=True)
             self.num_failures += 1
             if self.num_failures > self.max_failures:
                 logger.critical("StandardAutoscaler: "
@@ -184,7 +190,6 @@ class StandardAutoscaler:
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
         elif self.load_metrics.num_workers_connected() >= target_workers:
-            logger.info("Ending bringup phase")
             self.bringup = False
             self.log_info_string(nodes, target_workers)
 
@@ -387,9 +392,14 @@ class StandardAutoscaler:
             tag_filters={TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER})
 
     def log_info_string(self, nodes, target):
-        logger.info("StandardAutoscaler: {}".format(
-            self.info_string(nodes, target)))
-        logger.info("LoadMetrics: {}".format(self.load_metrics.info_string()))
+        tmp = "Cluster status: "
+        tmp += self.info_string(nodes, target)
+        tmp += "\n"
+        tmp += self.load_metrics.info_string()
+        tmp += "\n"
+        if _internal_kv_initialized():
+            _internal_kv_put(DEBUG_AUTOSCALING_STATUS, tmp, overwrite=True)
+        logger.info(tmp)
 
     def info_string(self, nodes, target):
         suffix = ""
@@ -410,8 +420,8 @@ class StandardAutoscaler:
             self.resource_requests[resource] = max(
                 self.resource_requests[resource], count)
 
-        logger.info("StandardAutoscaler: resource_requests={}".format(
-            self.resource_requests))
+        logger.info(
+            "StandardAutoscaler: resource_requests={}".format(resources))
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")

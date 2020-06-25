@@ -15,16 +15,45 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
+from ray.experimental.internal_kv import _internal_kv_get
+import ray.services as services
 from ray.autoscaler.util import validate_config, hash_runtime_conf, \
-    hash_launch_conf, prepare_config
+    hash_launch_conf, prepare_config, DEBUG_AUTOSCALING_ERROR, \
+    DEBUG_AUTOSCALING_STATUS
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_TYPE_WORKER, NODE_TYPE_HEAD
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.log_timer import LogTimer
 from ray.autoscaler.docker import with_docker_exec
+from ray.worker import global_worker
 
 logger = logging.getLogger(__name__)
+
+redis_client = None
+
+
+def _redis():
+    global redis_client
+    if redis_client is None:
+        redis_client = services.create_redis_client(
+            global_worker.node.redis_address,
+            password=global_worker.node.redis_password)
+    return redis_client
+
+
+def debug_status():
+    """Return a debug string for the autoscaler."""
+    status = _internal_kv_get(DEBUG_AUTOSCALING_STATUS)
+    error = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
+    if not status:
+        status = "No cluster status."
+    else:
+        status = status.decode("utf-8")
+    if error:
+        status += "\n"
+        status += error.decode("utf-8")
+    return status
 
 
 def create_or_update_cluster(config_file, override_min_workers,
@@ -80,8 +109,11 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name,
     confirm("This will destroy your cluster", yes)
 
     if not workers_only:
-        exec_cluster(config_file, "ray stop", False, False, False, False,
-                     False, override_cluster_name, None, False)
+        try:
+            exec_cluster(config_file, "ray stop", False, False, False, False,
+                         False, override_cluster_name, None, False)
+        except Exception:
+            logger.exception("Ignoring error attempting a clean shutdown.")
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
