@@ -320,6 +320,7 @@ def switch_worker_log_if_needed(worker, next_job_id):
         ray.worker.set_log_file(job_stdout_path, job_stderr_path)
         worker.current_logging_job_id = next_job_id
 
+
 cdef execute_task(
         CTaskType task_type,
         const CRayFunction &ray_function,
