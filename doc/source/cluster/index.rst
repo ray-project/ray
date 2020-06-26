@@ -8,7 +8,7 @@ One of Ray's strengths is the ability to leverage multiple machines in the same 
 Key Concepts
 ------------
 
-* **Ray Nodes**: A Ray cluster consists of a **head node** and set of **worker nodes**. The head node needs to be started first, and the worker nodes are given the address of the head node to form the cluster. The Ray cluster itself can also "auto-scale", meaning that it can interact with a Cloud Provider to request or release instances according to application workload.
+* **Ray Nodes**: A Ray cluster consists of a **head node** and a set of **worker nodes**. The head node needs to be started first, and the worker nodes are given the address of the head node to form the cluster. The Ray cluster itself can also "auto-scale," meaning that it can interact with a Cloud Provider to request or release instances according to application workload.
 
 * **Ports**: Ray processes communicate via TCP ports. When starting a Ray cluster, either on prem or on the cloud, it is important to open the right ports so that Ray functions correctly.
 
