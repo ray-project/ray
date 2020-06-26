@@ -82,6 +82,7 @@ class ActorManager {
   /// actor to disconnect once all handles are out of scope.
   /// \param[in] caller_id The caller's task ID
   /// \param[in] call_site The caller's site.
+  /// \param[in] caller_address The address of the caller.
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
   bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle,
@@ -102,7 +103,12 @@ class ActorManager {
   std::vector<ObjectID> GetActorHandleIDsFromHandles();
 
   /// Resolve locations of actors that are not persisted to GCS yet.
-  void ResolveActorsLocationNotPersistedToGCS();
+  /// https://github.com/ray-project/ray/pull/8679/files
+  /// It is required because core workers persist actor information to
+  /// GCS after it resolves all local dependencies. It means that, there's
+  /// no way for a worker to figure out if the actor is dead or not, which
+  /// can lead a worker to hang forever. 
+  void ResolveActorsLocations();
 
  private:
   /// Handle actor state notification published from GCS.
@@ -111,6 +117,13 @@ class ActorManager {
   /// \param[in] actor_data The GCS actor data.
   void HandleActorStateNotification(const ActorID &actor_id,
                                     const gcs::ActorTableData &actor_data);
+
+  /// Get an actor handle.
+  ///
+  /// \param[in] actor_id The actor handle to get.
+  /// \return reference to the actor_handle's pointer.
+  std::unique_ptr<ActorHandle> &GetActorHandleInternal(const ActorID &actor_id) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// GCS client
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 

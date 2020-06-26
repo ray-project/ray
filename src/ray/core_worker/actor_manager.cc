@@ -37,6 +37,10 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
 
 std::unique_ptr<ActorHandle> &ActorManager::GetActorHandle(const ActorID &actor_id) {
   absl::MutexLock lock(&mutex_);
+  return GetActorHandleInternal(actor_id);
+}
+
+std::unique_ptr<ActorHandle> &ActorManager::GetActorHandleInternal(const ActorID &actor_id) {
   auto it = actor_handles_.find(actor_id);
   RAY_CHECK(it != actor_handles_.end());
   return it->second;
@@ -134,8 +138,7 @@ void ActorManager::AddActorOutOfScopeCallback(
 
 void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                                                 const gcs::ActorTableData &actor_data) {
-  ActorHandle *actor_handle = nullptr;
-  RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
+  std::unique_ptr<ActorHandle> &actor_handle = GetActorHandle(actor_id);
   // If any notification comes in, that means this actor is persisted to GCS.
   actor_handle->SetIsPersistedToGCSFlag();
 
@@ -173,14 +176,14 @@ std::vector<ObjectID> ActorManager::GetActorHandleIDsFromHandles() {
   return actor_handle_ids;
 }
 
-void ActorManager::ResolveActorsLocationNotPersistedToGCS() {
+void ActorManager::ResolveActorsLocations() {
   absl::MutexLock lock(&mutex_);
   for (auto it = actors_pending_location_resolution_.begin();
        it != actors_pending_location_resolution_.end();) {
     auto current = it++;
     const auto &actor_id = *current;
-    ActorHandle *actor_handle = nullptr;
-    RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
+
+    std::unique_ptr<ActorHandle> &actor_handle = GetActorHandleInternal(actor_id);
     const ClientID &node_id =
         ClientID::FromBinary(actor_handle->GetOwnerAddress().raylet_id());
 
@@ -220,16 +223,11 @@ void ActorManager::ResolveActorsLocationNotPersistedToGCS() {
                   actor_id,
                   [this, actor_id](Status status,
                                    const boost::optional<gcs::ActorTableData> &result) {
-                    // If actor information is not found, this means an actor is safe to
-                    // disconnect.
-                    if (status.ok() && !result) {
-                      ActorHandle *actor_handle = nullptr;
-                      RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
-                      if (!actor_handle->IsPersistedToGCS()) {
+                    absl::MutexLock lock(&mutex_);
+                    std::unique_ptr<ActorHandle> &actor_handle = GetActorHandleInternal(actor_id);
+                    if (status.ok() && !result && !actor_handle->IsPersistedToGCS()) {
                         direct_actor_submitter_->DisconnectActor(actor_id, /*dead*/ true);
-                        absl::MutexLock lock(&mutex_);
                         actors_pending_location_resolution_.erase(actor_id);
-                      }
                     }
                   }));
             }

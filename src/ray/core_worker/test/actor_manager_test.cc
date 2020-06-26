@@ -61,12 +61,82 @@ class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
       callback_map_;
 };
 
+// SANG-TODO Impelement
+class MockWorkerInfoAccessor : public gcs::RedisWorkerInfoAccessor {
+ public:
+  MockActorInfoAccessor(gcs::RedisGcsClient *client)
+      : gcs::RedisActorInfoAccessor(client) {}
+
+  ~MockActorInfoAccessor() {}
+
+  ray::Status AsyncSubscribe(
+      const ActorID &actor_id,
+      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const gcs::StatusCallback &done) {
+    auto callback_entry = std::make_pair(actor_id, subscribe);
+    callback_map_.emplace(actor_id, subscribe);
+    return Status::OK();
+  }
+
+  bool ActorStateNotificationPublished(const ActorID &actor_id,
+                                       const gcs::ActorTableData &actor_data) {
+    auto it = callback_map_.find(actor_id);
+    if (it == callback_map_.end()) return false;
+    auto actor_state_notification_callback = it->second;
+    actor_state_notification_callback(actor_id, actor_data);
+    return true;
+  }
+
+  bool CheckSubscriptionRequested(const ActorID &actor_id) {
+    return callback_map_.find(actor_id) != callback_map_.end();
+  }
+
+  absl::flat_hash_map<ActorID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>
+      callback_map_;
+};
+
+// SANG-TODO Impelement
+class MockNodeInfoAccessor : public gcs::RedisNodeInfoAccessor {
+ public:
+  MockActorInfoAccessor(gcs::RedisGcsClient *client)
+      : gcs::RedisActorInfoAccessor(client) {}
+
+  ~MockActorInfoAccessor() {}
+
+  ray::Status AsyncSubscribe(
+      const ActorID &actor_id,
+      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const gcs::StatusCallback &done) {
+    auto callback_entry = std::make_pair(actor_id, subscribe);
+    callback_map_.emplace(actor_id, subscribe);
+    return Status::OK();
+  }
+
+  bool ActorStateNotificationPublished(const ActorID &actor_id,
+                                       const gcs::ActorTableData &actor_data) {
+    auto it = callback_map_.find(actor_id);
+    if (it == callback_map_.end()) return false;
+    auto actor_state_notification_callback = it->second;
+    actor_state_notification_callback(actor_id, actor_data);
+    return true;
+  }
+
+  bool CheckSubscriptionRequested(const ActorID &actor_id) {
+    return callback_map_.find(actor_id) != callback_map_.end();
+  }
+
+  absl::flat_hash_map<ActorID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>
+      callback_map_;
+};
+
 class MockGcsClient : public gcs::RedisGcsClient {
  public:
   MockGcsClient(const gcs::GcsClientOptions &options) : gcs::RedisGcsClient(options) {}
 
-  void Init(MockActorInfoAccessor *actor_accesor_mock) {
+  void Init(MockActorInfoAccessor *actor_accesor_mock, MockWorkerInfoAccessor *worker_accessor_mock, MockNodeInfoAccessor *node_accessor_mock) {
     actor_accessor_.reset(actor_accesor_mock);
+    node_accessor_.reset(node_accessor_mock);
+    worker_accessor_.reset(worker_accessor_mock);
   }
 
   ~MockGcsClient() {}
