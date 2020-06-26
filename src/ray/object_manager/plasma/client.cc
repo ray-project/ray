@@ -56,6 +56,16 @@
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
 
+// This macro is used to replace the "ARROW_CHECK_OK_PREPEND" macro.
+#define RAY_ARROW_CHECK_OK_PREPEND(to_call, msg)          \
+  do {                                                    \
+    ::arrow::Status _s = (to_call);                       \
+    RAY_CHECK(_s.ok()) << (msg) << ": " << _s.ToString(); \
+  } while (0)
+
+// This macro is used to replace the "ARROW_CHECK_OK" macro.
+#define RAY_ARROW_CHECK_OK(s) RAY_ARROW_CHECK_OK_PREPEND(s, "Bad status")
+
 #ifdef PLASMA_CUDA
 #include "arrow/gpu/cuda_api.h"
 
@@ -437,15 +447,15 @@ Status PlasmaClient::Impl::Create(const ObjectID& object_id, int64_t data_size,
 
   RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
                    << data_size << " and metadata size " << metadata_size;
-  RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, evict_if_full, data_size,
+  RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, evict_if_full, data_size,
                                   metadata_size, device_num));
   std::vector<uint8_t> buffer;
-  RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaCreateReply, &buffer));
+  RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaCreateReply, &buffer));
   ObjectID id;
   PlasmaObject object;
   int store_fd;
   int64_t mmap_size;
-  RETURN_NOT_OK(
+  RAY_RETURN_NOT_OK(
       ReadCreateReply(buffer.data(), buffer.size(), &id, &object, &store_fd, &mmap_size));
   // If the CreateReply included an error, then the store will not send a file
   // descriptor.
@@ -479,7 +489,7 @@ Status PlasmaClient::Impl::Create(const ObjectID& object_id, int64_t data_size,
     if (metadata != NULL) {
       // Copy the metadata to the buffer.
       CudaBufferWriter writer(handle->ptr);
-      RETURN_NOT_OK(writer.WriteAt(object.data_size, metadata, metadata_size));
+      RAY_RETURN_NOT_OK(writer.WriteAt(object.data_size, metadata, metadata_size));
     }
     *data = MakeBufferFromGpuProcessHandle(handle);
 #else
@@ -507,12 +517,12 @@ Status PlasmaClient::Impl::CreateAndSeal(const ObjectID& object_id,
 
   RAY_LOG(DEBUG) << "called CreateAndSeal on conn " << store_conn_;
 
-  RETURN_NOT_OK(SendCreateAndSealRequest(store_conn_, object_id, evict_if_full, data,
+  RAY_RETURN_NOT_OK(SendCreateAndSealRequest(store_conn_, object_id, evict_if_full, data,
                                          metadata));
   std::vector<uint8_t> buffer;
-  RETURN_NOT_OK(
+  RAY_RETURN_NOT_OK(
       PlasmaReceive(store_conn_, MessageType::PlasmaCreateAndSealReply, &buffer));
-  RETURN_NOT_OK(ReadCreateAndSealReply(buffer.data(), buffer.size()));
+  RAY_RETURN_NOT_OK(ReadCreateAndSealReply(buffer.data(), buffer.size()));
   return Status::OK();
 }
 
@@ -524,12 +534,12 @@ Status PlasmaClient::Impl::CreateAndSealBatch(const std::vector<ObjectID>& objec
 
   RAY_LOG(DEBUG) << "called CreateAndSealBatch on conn " << store_conn_;
 
-  RETURN_NOT_OK(SendCreateAndSealBatchRequest(store_conn_, object_ids, evict_if_full,
+  RAY_RETURN_NOT_OK(SendCreateAndSealBatchRequest(store_conn_, object_ids, evict_if_full,
                                               data, metadata));
   std::vector<uint8_t> buffer;
-  RETURN_NOT_OK(
+  RAY_RETURN_NOT_OK(
       PlasmaReceive(store_conn_, MessageType::PlasmaCreateAndSealBatchReply, &buffer));
-  RETURN_NOT_OK(ReadCreateAndSealBatchReply(buffer.data(), buffer.size()));
+  RAY_RETURN_NOT_OK(ReadCreateAndSealBatchReply(buffer.data(), buffer.size()));
 
   return Status::OK();
 }
@@ -592,15 +602,15 @@ Status PlasmaClient::Impl::GetBuffers(
 
   // If we get here, then the objects aren't all currently in use by this
   // client, so we need to send a request to the plasma store.
-  RETURN_NOT_OK(SendGetRequest(store_conn_, &object_ids[0], num_objects, timeout_ms));
+  RAY_RETURN_NOT_OK(SendGetRequest(store_conn_, &object_ids[0], num_objects, timeout_ms));
   std::vector<uint8_t> buffer;
-  RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaGetReply, &buffer));
+  RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaGetReply, &buffer));
   std::vector<ObjectID> received_object_ids(num_objects);
   std::vector<PlasmaObject> object_data(num_objects);
   PlasmaObject* object;
   std::vector<int> store_fds;
   std::vector<int64_t> mmap_sizes;
-  RETURN_NOT_OK(ReadGetReply(buffer.data(), buffer.size(), received_object_ids.data(),
+  RAY_RETURN_NOT_OK(ReadGetReply(buffer.data(), buffer.size(), received_object_ids.data(),
                              object_data.data(), num_objects, store_fds, mmap_sizes));
 
   // We mmap all of the file descriptors here so that we can avoid look them up
@@ -729,12 +739,12 @@ Status PlasmaClient::Impl::Release(const ObjectID& object_id) {
   // Check if the client is no longer using this object.
   if (object_entry->second->count == 0) {
     // Tell the store that the client no longer needs the object.
-    RETURN_NOT_OK(MarkObjectUnused(object_id));
-    RETURN_NOT_OK(SendReleaseRequest(store_conn_, object_id));
+    RAY_RETURN_NOT_OK(MarkObjectUnused(object_id));
+    RAY_RETURN_NOT_OK(SendReleaseRequest(store_conn_, object_id));
     auto iter = deletion_cache_.find(object_id);
     if (iter != deletion_cache_.end()) {
       deletion_cache_.erase(object_id);
-      RETURN_NOT_OK(Delete({object_id}));
+      RAY_RETURN_NOT_OK(Delete({object_id}));
     }
   }
   return Status::OK();
@@ -750,12 +760,12 @@ Status PlasmaClient::Impl::Contains(const ObjectID& object_id, bool* has_object)
   } else {
     // If we don't already have a reference to the object, check with the store
     // to see if we have the object.
-    RETURN_NOT_OK(SendContainsRequest(store_conn_, object_id));
+    RAY_RETURN_NOT_OK(SendContainsRequest(store_conn_, object_id));
     std::vector<uint8_t> buffer;
-    RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaContainsReply, &buffer));
+    RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaContainsReply, &buffer));
     ObjectID object_id2;
     RAY_DCHECK(buffer.size() > 0);
-    RETURN_NOT_OK(
+    RAY_RETURN_NOT_OK(
         ReadContainsReply(buffer.data(), buffer.size(), &object_id2, has_object));
   }
   return Status::OK();
@@ -839,21 +849,21 @@ Status PlasmaClient::Impl::Seal(const ObjectID& object_id) {
   auto object_entry = objects_in_use_.find(object_id);
 
   if (object_entry == objects_in_use_.end()) {
-    return MakePlasmaError(PlasmaErrorCode::PlasmaObjectNonexistent,
-                           "Seal() called on an object without a reference to it");
+    return Status::ObjectNotFound(
+        "Seal() called on an object without a reference to it");
   }
   if (object_entry->second->is_sealed) {
-    return MakePlasmaError(PlasmaErrorCode::PlasmaObjectAlreadySealed,
-                           "Seal() called on an already sealed object");
+    return Status::ObjectAlreadySealed(
+        "Seal() called on an already sealed object");
   }
 
   object_entry->second->is_sealed = true;
   /// Send the seal request to Plasma.
-  RETURN_NOT_OK(SendSealRequest(store_conn_, object_id));
+  RAY_RETURN_NOT_OK(SendSealRequest(store_conn_, object_id));
   std::vector<uint8_t> buffer;
-  RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaSealReply, &buffer));
+  RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaSealReply, &buffer));
   ObjectID sealed_id;
-  RETURN_NOT_OK(ReadSealReply(buffer.data(), buffer.size(), &sealed_id));
+  RAY_RETURN_NOT_OK(ReadSealReply(buffer.data(), buffer.size(), &sealed_id));
   RAY_CHECK(sealed_id == object_id);
   // We call PlasmaClient::Release to decrement the number of instances of this
   // object
@@ -890,15 +900,15 @@ Status PlasmaClient::Impl::Abort(const ObjectID& object_id) {
 #endif
 
   // Send the abort request.
-  RETURN_NOT_OK(SendAbortRequest(store_conn_, object_id));
+  RAY_RETURN_NOT_OK(SendAbortRequest(store_conn_, object_id));
   // Decrease the reference count to zero, then remove the object.
   object_entry->second->count--;
-  RETURN_NOT_OK(MarkObjectUnused(object_id));
+  RAY_RETURN_NOT_OK(MarkObjectUnused(object_id));
 
   std::vector<uint8_t> buffer;
   ObjectID id;
   MessageType type;
-  RETURN_NOT_OK(ReadMessage(store_conn_, &type, &buffer));
+  RAY_RETURN_NOT_OK(ReadMessage(store_conn_, &type, &buffer));
   return ReadAbortReply(buffer.data(), buffer.size(), &id);
 }
 
@@ -915,13 +925,13 @@ Status PlasmaClient::Impl::Delete(const std::vector<ObjectID>& object_ids) {
     }
   }
   if (not_in_use_ids.size() > 0) {
-    RETURN_NOT_OK(SendDeleteRequest(store_conn_, not_in_use_ids));
+    RAY_RETURN_NOT_OK(SendDeleteRequest(store_conn_, not_in_use_ids));
     std::vector<uint8_t> buffer;
-    RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaDeleteReply, &buffer));
+    RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaDeleteReply, &buffer));
     RAY_DCHECK(buffer.size() > 0);
     std::vector<PlasmaError> error_codes;
     not_in_use_ids.clear();
-    RETURN_NOT_OK(
+    RAY_RETURN_NOT_OK(
         ReadDeleteReply(buffer.data(), buffer.size(), &not_in_use_ids, &error_codes));
   }
   return Status::OK();
@@ -931,21 +941,21 @@ Status PlasmaClient::Impl::Evict(int64_t num_bytes, int64_t& num_bytes_evicted) 
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   // Send a request to the store to evict objects.
-  RETURN_NOT_OK(SendEvictRequest(store_conn_, num_bytes));
+  RAY_RETURN_NOT_OK(SendEvictRequest(store_conn_, num_bytes));
   // Wait for a response with the number of bytes actually evicted.
   std::vector<uint8_t> buffer;
   MessageType type;
-  RETURN_NOT_OK(ReadMessage(store_conn_, &type, &buffer));
+  RAY_RETURN_NOT_OK(ReadMessage(store_conn_, &type, &buffer));
   return ReadEvictReply(buffer.data(), buffer.size(), num_bytes_evicted);
 }
 
 Status PlasmaClient::Impl::Refresh(const std::vector<ObjectID>& object_ids) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
-  RETURN_NOT_OK(SendRefreshLRURequest(store_conn_, object_ids));
+  RAY_RETURN_NOT_OK(SendRefreshLRURequest(store_conn_, object_ids));
   std::vector<uint8_t> buffer;
   MessageType type;
-  RETURN_NOT_OK(ReadMessage(store_conn_, &type, &buffer));
+  RAY_RETURN_NOT_OK(ReadMessage(store_conn_, &type, &buffer));
   return ReadRefreshLRUReply(buffer.data(), buffer.size());
 }
 
@@ -955,10 +965,10 @@ Status PlasmaClient::Impl::Hash(const ObjectID& object_id, uint8_t* digest) {
   // Get the plasma object data. We pass in a timeout of 0 to indicate that
   // the operation should timeout immediately.
   std::vector<ObjectBuffer> object_buffers;
-  RETURN_NOT_OK(Get({object_id}, 0, &object_buffers));
+  RAY_RETURN_NOT_OK(Get({object_id}, 0, &object_buffers));
   // If the object was not retrieved, return false.
   if (!object_buffers[0].data) {
-    return MakePlasmaError(PlasmaErrorCode::PlasmaObjectNonexistent, "Object not found");
+    return Status::ObjectNotFound("Object not found");
   }
   // Compute the hash.
   uint64_t hash = ComputeObjectHash(object_buffers[0]);
@@ -989,7 +999,7 @@ Status PlasmaClient::Impl::Subscribe(int* fd) {
   RAY_CHECK(fcntl(sock[1], F_SETFL, flags | O_NONBLOCK) == 0);
 #endif
   // Tell the Plasma store about the subscription.
-  RETURN_NOT_OK(SendSubscribeRequest(store_conn_));
+  RAY_RETURN_NOT_OK(SendSubscribeRequest(store_conn_));
   // Send the file descriptor that the Plasma store should use to push
   // notifications about sealed objects to this client.
   RAY_CHECK(send_fd(store_conn_, sock[1]) >= 0);
@@ -1013,7 +1023,7 @@ Status PlasmaClient::Impl::GetNotification(int fd, ObjectID* object_id,
     std::vector<ObjectID> object_ids;
     std::vector<int64_t> data_sizes;
     std::vector<int64_t> metadata_sizes;
-    RETURN_NOT_OK(
+    RAY_RETURN_NOT_OK(
         DecodeNotifications(message.get(), &object_ids, &data_sizes, &metadata_sizes));
     for (size_t i = 0; i < object_ids.size(); ++i) {
       pending_notification_.emplace_back(object_ids[i], data_sizes[i], metadata_sizes[i]);
@@ -1058,7 +1068,7 @@ Status PlasmaClient::Impl::Connect(const std::string& store_socket_name,
                                    int release_delay, int num_retries) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
-  RETURN_NOT_OK(ConnectIpcSocketRetry(store_socket_name, num_retries, -1, &store_conn_));
+  RAY_RETURN_NOT_OK(ConnectIpcSocketRetry(store_socket_name, num_retries, -1, &store_conn_));
   if (manager_socket_name != "") {
     return Status::NotImplemented("plasma manager is no longer supported");
   }
@@ -1067,19 +1077,19 @@ Status PlasmaClient::Impl::Connect(const std::string& store_socket_name,
                        << "is deprecated";
   }
   // Send a ConnectRequest to the store to get its memory capacity.
-  RETURN_NOT_OK(SendConnectRequest(store_conn_));
+  RAY_RETURN_NOT_OK(SendConnectRequest(store_conn_));
   std::vector<uint8_t> buffer;
-  RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaConnectReply, &buffer));
-  RETURN_NOT_OK(ReadConnectReply(buffer.data(), buffer.size(), &store_capacity_));
+  RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaConnectReply, &buffer));
+  RAY_RETURN_NOT_OK(ReadConnectReply(buffer.data(), buffer.size(), &store_capacity_));
   return Status::OK();
 }
 
 Status PlasmaClient::Impl::SetClientOptions(const std::string& client_name,
                                             int64_t output_memory_quota) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-  RETURN_NOT_OK(SendSetOptionsRequest(store_conn_, client_name, output_memory_quota));
+  RAY_RETURN_NOT_OK(SendSetOptionsRequest(store_conn_, client_name, output_memory_quota));
   std::vector<uint8_t> buffer;
-  RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaSetOptionsReply, &buffer));
+  RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaSetOptionsReply, &buffer));
   return ReadSetOptionsReply(buffer.data(), buffer.size());
 }
 

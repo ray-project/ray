@@ -21,16 +21,12 @@
 #include <memory>
 #include <sstream>
 
-#include "arrow/status.h"
-
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
 #ifndef _WIN32
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #endif
-
-using arrow::Status;
 
 /// Number of times we try connecting to a socket.
 constexpr int64_t kNumConnectAttempts = 80;
@@ -67,9 +63,9 @@ Status WriteBytes(int fd, uint8_t* cursor, size_t length) {
 
 Status WriteMessage(int fd, MessageType type, int64_t length, uint8_t* bytes) {
   int64_t version = kPlasmaProtocolVersion;
-  RETURN_NOT_OK(WriteBytes(fd, reinterpret_cast<uint8_t*>(&version), sizeof(version)));
-  RETURN_NOT_OK(WriteBytes(fd, reinterpret_cast<uint8_t*>(&type), sizeof(type)));
-  RETURN_NOT_OK(WriteBytes(fd, reinterpret_cast<uint8_t*>(&length), sizeof(length)));
+  RAY_RETURN_NOT_OK(WriteBytes(fd, reinterpret_cast<uint8_t*>(&version), sizeof(version)));
+  RAY_RETURN_NOT_OK(WriteBytes(fd, reinterpret_cast<uint8_t*>(&type), sizeof(type)));
+  RAY_RETURN_NOT_OK(WriteBytes(fd, reinterpret_cast<uint8_t*>(&length), sizeof(length)));
   return WriteBytes(fd, bytes, length * sizeof(char));
 }
 
@@ -98,13 +94,13 @@ Status ReadBytes(int fd, uint8_t* cursor, size_t length) {
 
 Status ReadMessage(int fd, MessageType* type, std::vector<uint8_t>* buffer) {
   int64_t version;
-  RETURN_NOT_OK_ELSE(ReadBytes(fd, reinterpret_cast<uint8_t*>(&version), sizeof(version)),
+  RAY_RETURN_NOT_OK_ELSE(ReadBytes(fd, reinterpret_cast<uint8_t*>(&version), sizeof(version)),
                      *type = MessageType::PlasmaDisconnectClient);
   RAY_CHECK(version == kPlasmaProtocolVersion) << "version = " << version;
-  RETURN_NOT_OK_ELSE(ReadBytes(fd, reinterpret_cast<uint8_t*>(type), sizeof(*type)),
+  RAY_RETURN_NOT_OK_ELSE(ReadBytes(fd, reinterpret_cast<uint8_t*>(type), sizeof(*type)),
                      *type = MessageType::PlasmaDisconnectClient);
   int64_t length_temp;
-  RETURN_NOT_OK_ELSE(
+  RAY_RETURN_NOT_OK_ELSE(
       ReadBytes(fd, reinterpret_cast<uint8_t*>(&length_temp), sizeof(length_temp)),
       *type = MessageType::PlasmaDisconnectClient);
   // The length must be read as an int64_t, but it should be used as a size_t.
@@ -112,7 +108,7 @@ Status ReadMessage(int fd, MessageType* type, std::vector<uint8_t>* buffer) {
   if (length > buffer->size()) {
     buffer->resize(length);
   }
-  RETURN_NOT_OK_ELSE(ReadBytes(fd, buffer->data(), length),
+  RAY_RETURN_NOT_OK_ELSE(ReadBytes(fd, buffer->data(), length),
                      *type = MessageType::PlasmaDisconnectClient);
   return Status::OK();
 }
@@ -218,7 +214,7 @@ Status ConnectIpcSocketRetry(const std::string& pathname, int num_retries,
 
   // If we could not connect to the socket, exit.
   if (*fd == -1) {
-    return Status::IOError("Could not connect to socket ", pathname);
+    return Status::IOError("Could not connect to socket " + pathname);
   }
 
   return Status::OK();
