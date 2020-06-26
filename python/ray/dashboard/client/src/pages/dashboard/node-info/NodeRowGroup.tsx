@@ -12,10 +12,9 @@ import React, { useState } from "react";
 import {
   NodeInfoResponse,
   NodeInfoResponseWorker,
-  RayletInfoResponse,
 } from "../../../api";
 import { StyledTableCell } from "../../../common/TableCell";
-import { NodeInfoFeature } from "./features/types";
+import { NodeInfoFeature, WorkerFeatureData } from "./features/types";
 import { NodeWorkerRow } from "./NodeWorkerRow";
 
 const useNodeRowGroupStyles = makeStyles((theme: Theme) =>
@@ -46,10 +45,8 @@ type ArrayType<T> = T extends Array<infer U> ? U : never;
 type Node = ArrayType<NodeInfoResponse["clients"]>;
 
 type NodeRowGroupProps = {
-  node: Node;
-  raylet: RayletInfoResponse["nodes"][keyof RayletInfoResponse["nodes"]] | null;
   features: NodeInfoFeature[];
-  clusterWorkers: Array<NodeInfoResponseWorker>;
+  workerFeatureData: WorkerFeatureData[];
   initialExpanded: boolean;
 };
 

@@ -8,7 +8,6 @@ import {
 } from "@material-ui/core";
 import React, { useState } from "react";
 import { useSelector } from "react-redux";
-import { NodeInfoFeature } from "../../../../../../../../bazel-ray/python/ray/dashboard/client/src/pages/dashboard/node-info/features/types";
 import SortableTableHead, {
   HeaderInfo,
 } from "../../../common/SortableTableHead";
@@ -27,7 +26,7 @@ import makeLogsFeature from "./features/Logs";
 import ramFeature from "./features/RAM";
 import receivedFeature from "./features/Received";
 import sentFeature from "./features/Sent";
-import { nodeInfoColumnId } from "./features/types";
+import { nodeInfoColumnId, WorkerFeatureData, NodeInfoFeature } from "./features/types";
 import uptimeFeature from "./features/Uptime";
 import workersFeature from "./features/Workers";
 
@@ -144,19 +143,21 @@ const NodeInfo: React.FC<{}> = () => {
                 return w1.pid < w2.pid ? -1 : 1;
               },
             );
+            const workerFeatureData: WorkerFeatureData[] = idleSortedClusterWorkers.map(worker => {
+              const rayletWorker = rayletInfo?.nodes?.[client.ip]?.workersStats?.find(workerStats => workerStats.pid === worker.pid) || null;
+              return {
+                node: client,
+                worker,
+                rayletWorker,
+              }
+            });
             const sortedClusterWorkers = sortWorkerComparator
-              ? stableSort(idleSortedClusterWorkers, sortWorkerComparator)
+              ? stableSort(workerFeatureData, sortWorkerComparator)
               : idleSortedClusterWorkers;
             return (
               <NodeRowGroup
                 key={client.ip}
-                clusterWorkers={}
-                node={client}
-                raylet={
-                  client.ip in rayletInfo.nodes
-                    ? rayletInfo.nodes[client.ip]
-                    : null
-                }
+                clusterWorkers={sortedClusterWorkers}
                 features={nodeInfoFeatures}
                 initialExpanded={nodeInfo.clients.length <= 1}
               />
