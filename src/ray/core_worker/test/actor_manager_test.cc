@@ -91,15 +91,17 @@ class MockReferenceCounter : public ReferenceCounterInterface {
 
   MOCK_METHOD2(AddLocalReference,
                void(const ObjectID &object_id, const std::string &call_sit));
-  MOCK_METHOD4(AddBorrowedObject,
+
+  MOCK_METHOD3(AddBorrowedObject,
                bool(const ObjectID &object_id, const ObjectID &outer_id,
-                    const TaskID &owner_id, const rpc::Address &owner_address));
-  MOCK_METHOD8(AddOwnedObject,
+                    const rpc::Address &owner_address));
+
+  MOCK_METHOD7(AddOwnedObject,
                void(const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
-                    const TaskID &owner_id, const rpc::Address &owner_address,
-                    const std::string &call_site, const int64_t object_size,
-                    bool is_reconstructable,
+                    const rpc::Address &owner_address, const std::string &call_site,
+                    const int64_t object_size, bool is_reconstructable,
                     const absl::optional<ClientID> &pinned_at_raylet_id));
+
   MOCK_METHOD2(SetDeleteCallback,
                bool(const ObjectID &object_id,
                     const std::function<void(const ObjectID &)> callback));
@@ -154,7 +156,7 @@ class ActorManagerTest : public ::testing::Test {
   std::shared_ptr<ActorManager> actor_manager_;
 };
 
-TEST_F(ActorManagerTest, TestAddAndGetActorHandle) {
+TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
   JobID job_id = JobID::FromInt(1);
   const TaskID task_id = TaskID::ForDriverTask(job_id);
   ActorID actor_id = ActorID::Of(job_id, task_id, 1);
@@ -184,14 +186,25 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandle) {
   // Make sure we can get an actor handle correctly.
   std::unique_ptr<ActorHandle> &actor_handle_to_get =
       actor_manager_->GetActorHandle(actor_id);
-  // ActorHandle *actor_handle_to_get = nullptr;
-  // ASSERT_TRUE(actor_manager_->GetActorHandle(actor_id, &actor_handle_to_get).ok());
-  // ASSERT_TRUE(actor_handle_to_get->GetActorID() == actor_id);
   ASSERT_TRUE(actor_handle_to_get->GetActorID() == actor_id);
+
+  // Check after the actor is created, if it is connected to an actor.
+  EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _)).Times(1);
+  rpc::ActorTableData actor_table_data;
+  actor_table_data.set_actor_id(actor_id.Binary());
+  actor_table_data.set_state(
+      rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+  actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data);
+
+  // Now actor state is updated to DEAD. Make sure it is diconnected.
+  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _)).Times(1);
+  actor_table_data.set_actor_id(actor_id.Binary());
+  actor_table_data.set_state(
+      rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
+  actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data);
 }
 
 TEST_F(ActorManagerTest, TestCheckActorHandleDoesntExists) {
-  // Get actor handle that does not exist should fail.
   JobID job_id = JobID::FromInt(2);
   const TaskID task_id = TaskID::ForDriverTask(job_id);
   ActorID actor_id = ActorID::Of(job_id, task_id, 1);
@@ -215,7 +228,7 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
 
   // Sinece RegisterActor happens in a non-owner worker, we should
   // make sure it borrows an object.
-  EXPECT_CALL(*reference_counter_, AddBorrowedObject(_, _, _, _));
+  EXPECT_CALL(*reference_counter_, AddBorrowedObject(_, _, _));
   ActorID returned_actor_id = actor_manager_->RegisterActorHandle(
       std::move(actor_handle), outer_object_id, task_id, call_site, caller_address);
   ASSERT_TRUE(returned_actor_id == actor_id);

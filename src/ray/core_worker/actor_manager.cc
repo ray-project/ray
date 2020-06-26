@@ -25,15 +25,13 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
                                           const std::string &call_site,
                                           const rpc::Address &caller_address) {
   const ActorID actor_id = actor_handle->GetActorID();
-  const TaskID owner_id = actor_handle->GetOwnerId();
   const rpc::Address owner_address = actor_handle->GetOwnerAddress();
 
   RAY_UNUSED(AddActorHandle(std::move(actor_handle),
                             /*is_owner_handle=*/false, caller_id, call_site,
                             caller_address));
   ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
-  reference_counter_->AddBorrowedObject(actor_handle_id, outer_object_id, owner_id,
-                                        owner_address);
+  reference_counter_->AddBorrowedObject(actor_handle_id, outer_object_id, owner_address);
   return actor_id;
 }
 
@@ -57,8 +55,8 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
   if (is_owner_handle) {
     reference_counter_->AddOwnedObject(actor_creation_return_id,
-                                       /*inner_ids=*/{}, caller_id, caller_address,
-                                       call_site, -1,
+                                       /*inner_ids=*/{}, caller_address, call_site,
+                                       /*object_size*/ -1,
                                        /*is_reconstructable=*/true);
   }
 

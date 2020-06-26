@@ -1168,10 +1168,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   return status;
 }
 
-Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
-                                   const std::vector<TaskArg> &args,
-                                   const TaskOptions &task_options,
-                                   std::vector<ObjectID> *return_ids) {
+void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
+                                 const std::vector<TaskArg> &args,
+                                 const TaskOptions &task_options,
+                                 std::vector<ObjectID> *return_ids) {
   std::unique_ptr<ActorHandle> &actor_handle = actor_manager_->GetActorHandle(actor_id);
 
   // Add one for actor cursor object id for tasks.
@@ -1258,10 +1258,9 @@ Status CoreWorker::SerializeActorHandle(const ActorID &actor_id, std::string *ou
   return Status::OK();
 }
 
-Status CoreWorker::GetActorHandle(const ActorID &actor_id,
-                                  ActorHandle **actor_handle) const {
+void CoreWorker::GetActorHandle(const ActorID &actor_id,
+                                ActorHandle **actor_handle) const {
   *actor_handle = actor_manager_->GetActorHandle(actor_id).get();
-  return Status::OK();
 }
 
 Status CoreWorker::GetNamedActorHandle(const std::string &name,
@@ -1318,7 +1317,8 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
               "actor hasn't been created because named actor creation is asynchronous.";
     status = Status::NotFound(stream.str());
   } else {
-    status = GetActorHandle(actor_id, actor_handle);
+    GetActorHandle(actor_id, actor_handle);
+    status = Status::OK();
   }
   return status;
 }

@@ -34,11 +34,10 @@ class ReferenceCounterInterface {
   virtual void AddLocalReference(const ObjectID &object_id,
                                  const std::string &call_site) = 0;
   virtual bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
-                                 const TaskID &owner_id,
                                  const rpc::Address &owner_address) = 0;
   virtual void AddOwnedObject(const ObjectID &object_id,
                               const std::vector<ObjectID> &contained_ids,
-                              const TaskID &owner_id, const rpc::Address &owner_address,
+                              const rpc::Address &owner_address,
                               const std::string &call_site, const int64_t object_size,
                               bool is_reconstructable,
                               const absl::optional<ClientID> &pinned_at_raylet_id =
