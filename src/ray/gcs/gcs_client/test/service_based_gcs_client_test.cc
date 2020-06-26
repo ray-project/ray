@@ -818,15 +818,15 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectInfo) {
   WaitPendingDone(object_remove_count, 1);
   ASSERT_TRUE(GetLocations(object_id).empty());
 
-//  // Cancel subscription to any update of an object's location.
-//  UnsubscribeToLocations(object_id);
-//
-//  // Add location of object to GCS again.
-//  ASSERT_TRUE(AddLocation(object_id, node_id));
-//
-//  // Assert unsubscribe succeeded.
-//  usleep(100 * 1000);
-//  ASSERT_EQ(object_add_count, 1);
+  // Cancel subscription to any update of an object's location.
+  UnsubscribeToLocations(object_id);
+
+  // Add location of object to GCS again.
+  ASSERT_TRUE(AddLocation(object_id, node_id));
+
+  // Assert unsubscribe succeeded.
+  usleep(100 * 1000);
+  ASSERT_EQ(object_add_count, 1);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestStats) {
@@ -1037,6 +1037,8 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
   // Set this flag because GCS won't publish unchanged heartbeat.
   heartbeat->set_should_global_gc(true);
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
+  WaitPendingDone(node_change_count, 1);
+  WaitPendingDone(resource_change_count, 1);
   WaitPendingDone(batch_heartbeat_count, 1);
 
   RestartGcsServer();
@@ -1101,6 +1103,11 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerTableResubscribe) {
   };
   ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
 
+  // Report a worker failure to GCS.
+  auto worker_failure_data = Mocker::GenWorkerFailureData();
+  ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
+  WaitPendingDone(worker_failure_count, 1);
+
   // Restart GCS
   RestartGcsServer();
 
@@ -1110,8 +1117,8 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerTableResubscribe) {
   ASSERT_TRUE(AddWorker(worker_data));
 
   // Report a worker failure to GCS and check if resubscribe works.
-  ASSERT_TRUE(ReportWorkerFailure(worker_data));
-  WaitPendingDone(worker_failure_count, 1);
+  ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
+  WaitPendingDone(worker_failure_count, 2);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestGcsTableReload) {

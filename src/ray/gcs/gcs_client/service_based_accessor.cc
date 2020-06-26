@@ -1276,15 +1276,18 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
                         const Status &status,
                         const std::vector<rpc::ObjectTableData> &result) {
       if (status.ok()) {
-        std::vector<rpc::ObjectTableData> object_changed;
+        std::vector<rpc::ObjectTableData> objects_changed;
         for (auto &object_data : result) {
-          if (subscribe_filter_.Filter(object_id.Binary(), object_data.timestamp())) {
-            object_changed.push_back(object_data);
+          if (subscribe_filter_.Filter(object_id.Binary() + object_data.manager(),
+                                       object_data.timestamp())) {
+            objects_changed.push_back(object_data);
           }
         }
-        gcs::ObjectChangeNotification notification(rpc::GcsChangeMode::APPEND_OR_ADD,
-                                                   object_changed);
-        subscribe(object_id, notification);
+        if (!objects_changed.empty()) {
+          gcs::ObjectChangeNotification notification(rpc::GcsChangeMode::APPEND_OR_ADD,
+                                                     objects_changed);
+          subscribe(object_id, notification);
+        }
       }
       if (fetch_done) {
         fetch_done(status);
@@ -1299,8 +1302,9 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
                                                      const std::string &data) {
       rpc::ObjectLocationChange object_location_change;
       object_location_change.ParseFromString(data);
-      if (subscribe_filter_.Filter(object_id.Binary(),
-                                   object_location_change.data().timestamp())) {
+      if (subscribe_filter_.Filter(
+              object_id.Binary() + object_location_change.data().manager(),
+              object_location_change.data().timestamp())) {
         std::vector<rpc::ObjectTableData> object_data_vector;
         object_data_vector.emplace_back(object_location_change.data());
         auto change_mode = object_location_change.is_add()
