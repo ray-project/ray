@@ -23,9 +23,24 @@ export type WorkerFeatureRenderFn = (
 ) => React.ReactElement;
 
 export type NodeInfoFeature = {
+  id: nodeInfoColumnId;
   WorkerFeatureRenderFn: WorkerFeatureRenderFn;
   NodeFeatureRenderFn: NodeFeatureRenderFn;
   ClusterFeatureRenderFn?: ClusterFeatureRenderFn;
   workerAccessor?: Accessor<WorkerFeatureData>;
   nodeAccessor?: Accessor<NodeFeatureData>;
 };
+
+export type nodeInfoColumnId =
+  | "host"
+  | "workers"
+  | "uptime"
+  | "cpu"
+  | "ram"
+  | "gpu"
+  | "gram"
+  | "disk"
+  | "sent"
+  | "received"
+  | "logs"
+  | "errors";

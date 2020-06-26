@@ -36,6 +36,7 @@ const workerUptimeAccessor: Accessor<WorkerFeatureData> = ({ worker }) =>
   getUptime(worker.create_time);
 
 const uptimeFeature: NodeInfoFeature = {
+  id: "uptime",
   NodeFeatureRenderFn: NodeUptime,
   WorkerFeatureRenderFn: WorkerUptime,
   nodeAccessor: nodeUptimeAccessor,

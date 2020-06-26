@@ -47,6 +47,7 @@ export const workerRAMAccessor: Accessor<WorkerFeatureData> = ({ worker }) =>
   worker.memory_info.rss;
 
 const ramFeature: NodeInfoFeature = {
+  id: "ram",
   ClusterFeatureRenderFn: ClusterRAM,
   NodeFeatureRenderFn: NodeRAM,
   WorkerFeatureRenderFn: WorkerRAM,

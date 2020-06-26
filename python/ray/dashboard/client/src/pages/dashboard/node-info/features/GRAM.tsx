@@ -97,6 +97,7 @@ export const WorkerGRAM: WorkerFeatureRenderFn = ({ worker, node }) => {
 };
 
 const gramFeature: NodeInfoFeature = {
+  id: "gram",
   ClusterFeatureRenderFn: ClusterGRAM,
   NodeFeatureRenderFn: NodeGRAM,
   WorkerFeatureRenderFn: WorkerGRAM,

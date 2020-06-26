@@ -6,6 +6,7 @@ import {
   ClusterFeatureRenderFn,
   Node,
   NodeFeatureRenderFn,
+  NodeInfoFeature,
   WorkerFeatureRenderFn,
 } from "./types";
 
@@ -58,7 +59,8 @@ const makeWorkerErrors = (
 
 const makeErrorsFeature = (
   setErrorDialog: (hostname: string, pid: number | null) => void,
-) => ({
+): NodeInfoFeature => ({
+  id: "errors",
   ClusterFeatureRenderFn: ClusterErrors,
   WorkerFeatureRenderFn: makeWorkerErrors(setErrorDialog),
   NodeFeatureRenderFn: makeNodeErrors(setErrorDialog),

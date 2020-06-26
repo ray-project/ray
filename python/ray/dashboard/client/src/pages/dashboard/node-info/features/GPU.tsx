@@ -85,6 +85,7 @@ export const WorkerGPU: WorkerFeatureRenderFn = ({ rayletWorker }) => {
 };
 
 const gpuFeature: NodeInfoFeature = {
+  id: "gpu",
   NodeFeatureRenderFn: NodeGPU,
   WorkerFeatureRenderFn: WorkerGPU,
 };

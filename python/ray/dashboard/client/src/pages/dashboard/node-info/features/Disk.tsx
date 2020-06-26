@@ -43,6 +43,7 @@ export const WorkerDisk: WorkerFeatureRenderFn = () => (
 );
 
 const diskFeature: NodeInfoFeature = {
+  id: "disk",
   NodeFeatureRenderFn: NodeDisk,
   WorkerFeatureRenderFn: WorkerDisk,
   nodeAccessor: nodeDiskAccessor,

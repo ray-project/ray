@@ -21,7 +21,7 @@ export const NodeHost: NodeFeatureRenderFn = ({ node }) => (
   </React.Fragment>
 );
 
-export const NodeHostAccessor: Accessor<NodeFeatureData> = ({ node }) =>
+export const nodeHostAccessor: Accessor<NodeFeatureData> = ({ node }) =>
   node.hostname;
 
 // Ray worker process titles have one of the following forms: `ray::IDLE`,
@@ -35,9 +35,11 @@ export const WorkerHost: WorkerFeatureRenderFn = ({ worker }) => (
 );
 
 const hostFeature: NodeInfoFeature = {
+  id: "host",
   ClusterFeatureRenderFn: ClusterHost,
   NodeFeatureRenderFn: NodeHost,
   WorkerFeatureRenderFn: WorkerHost,
+  nodeAccessor: nodeHostAccessor,
 };
 
 export default hostFeature;

@@ -1,3 +1,4 @@
+import { workers } from "cluster";
 import React from "react";
 import {
   ClusterFeatureRenderFn,
@@ -42,6 +43,7 @@ export const WorkerWorkers: WorkerFeatureRenderFn = ({ worker }) => (
 );
 
 const workersFeature: NodeInfoFeature = {
+  id: "workers",
   ClusterFeatureRenderFn: ClusterWorkers,
   NodeFeatureRenderFn: NodeWorkers,
   WorkerFeatureRenderFn: WorkerWorkers,

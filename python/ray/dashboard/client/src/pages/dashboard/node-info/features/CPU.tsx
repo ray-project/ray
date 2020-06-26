@@ -48,6 +48,7 @@ export const workerCPUAccessor: Accessor<WorkerFeatureData> = ({ worker }) => {
 };
 
 const cpuFeature: NodeInfoFeature = {
+  id: "cpu",
   ClusterFeatureRenderFn: ClusterCPU,
   NodeFeatureRenderFn: NodeCPU,
   WorkerFeatureRenderFn: WorkerCPU,

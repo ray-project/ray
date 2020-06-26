@@ -6,6 +6,7 @@ import {
   ClusterFeatureRenderFn,
   Node,
   NodeFeatureRenderFn,
+  NodeInfoFeature,
   WorkerFeatureRenderFn,
 } from "./types";
 
@@ -59,7 +60,8 @@ export const makeWorkerLogs = (
 
 const makeLogsFeature = (
   setLogDialog: (hostname: string, pid: number | null) => void,
-) => ({
+): NodeInfoFeature => ({
+  id: "logs",
   ClusterFeatureRenderFn: ClusterLogs,
   WorkerFeatureRenderFn: makeWorkerLogs(setLogDialog),
   NodeFeatureRenderFn: makeNodeLogs(setLogDialog),

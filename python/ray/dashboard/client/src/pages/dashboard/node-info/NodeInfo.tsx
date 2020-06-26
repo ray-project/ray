@@ -8,10 +8,11 @@ import {
 } from "@material-ui/core";
 import React, { useState } from "react";
 import { useSelector } from "react-redux";
+import { NodeInfoFeature } from "../../../../../../../../bazel-ray/python/ray/dashboard/client/src/pages/dashboard/node-info/features/types";
 import SortableTableHead, {
   HeaderInfo,
 } from "../../../common/SortableTableHead";
-import { getComparator, Order, stableSort } from "../../../common/tableUtils";
+import { getFnComparator, Order, stableSort } from "../../../common/tableUtils";
 import { sum } from "../../../common/util";
 import { StoreState } from "../../../store";
 import Errors from "./dialogs/errors/Errors";
@@ -26,6 +27,7 @@ import makeLogsFeature from "./features/Logs";
 import ramFeature from "./features/RAM";
 import receivedFeature from "./features/Received";
 import sentFeature from "./features/Sent";
+import { nodeInfoColumnId } from "./features/types";
 import uptimeFeature from "./features/Uptime";
 import workersFeature from "./features/Workers";
 
@@ -57,20 +59,6 @@ type DialogState = {
   pid: number | null;
 } | null;
 
-type nodeInfoColumnId =
-  | "host"
-  | "workers"
-  | "uptime"
-  | "cpu"
-  | "ram"
-  | "gpu"
-  | "gram"
-  | "disk"
-  | "sent"
-  | "received"
-  | "logs"
-  | "errors";
-
 const nodeInfoHeaders: HeaderInfo<nodeInfoColumnId>[] = [
   { id: "host", label: "Host", numeric: true, sortable: true },
   { id: "workers", label: "PID", numeric: true, sortable: false },
@@ -92,7 +80,6 @@ const NodeInfo: React.FC<{}> = () => {
   const [isGrouped, setIsGrouped] = useState(true);
   const [order, setOrder] = React.useState<Order>("asc");
   const toggleOrder = () => setOrder(order === "asc" ? "desc" : "asc");
-
   const [orderBy, setOrderBy] = React.useState<string | null>(null);
   const classes = useNodeInfoStyles();
   const { nodeInfo, rayletInfo } = useSelector(nodeInfoSelector);
@@ -103,7 +90,7 @@ const NodeInfo: React.FC<{}> = () => {
   const clusterTotalWorkers = sum(
     nodeInfo.clients.map((c) => c.workers.length),
   );
-  const nodeInfoFeatures = [
+  const nodeInfoFeatures: NodeInfoFeature[] = [
     hostFeature,
     workersFeature,
     uptimeFeature,
@@ -117,12 +104,28 @@ const NodeInfo: React.FC<{}> = () => {
     makeLogsFeature((hostname, pid) => setLogDialog({ hostname, pid })),
     makeErrorsFeature((hostname, pid) => setErrorDialog({ hostname, pid })),
   ];
-
+  const sortNodeAccessor = nodeInfoFeatures.find(
+    (feature) => feature.id === orderBy,
+  )?.nodeAccessor;
+  const sortNodeComparator =
+    sortNodeAccessor && getFnComparator(order, sortNodeAccessor);
+  const sortWorkerAccessor = nodeInfoFeatures.find(
+    (feature) => feature.id === orderBy,
+  )?.workerAccessor;
+  const sortWorkerComparator =
+    sortWorkerAccessor && getFnComparator(order, sortWorkerAccessor);
   return (
     <React.Fragment>
       <Table className={classes.table}>
         <SortableTableHead
-          onRequestSort={() => {}}
+          onRequestSort={(_, property) => {
+            if (property === orderBy) {
+              toggleOrder();
+            } else {
+              setOrderBy(property);
+              setOrder("asc");
+            }
+          }}
           headerInfo={nodeInfoHeaders}
           order={order}
           orderBy={orderBy}
@@ -130,18 +133,24 @@ const NodeInfo: React.FC<{}> = () => {
         />
         <TableBody>
           {nodeInfo.clients.map((client) => {
+            const idleSortedClusterWorkers = [...client.workers].sort(
+              (w1, w2) => {
+                if (w2.cmdline[0] === "ray::IDLE") {
+                  return -1;
+                }
+                if (w1.cmdline[0] === "ray::IDLE") {
+                  return 1;
+                }
+                return w1.pid < w2.pid ? -1 : 1;
+              },
+            );
+            const sortedClusterWorkers = sortWorkerComparator
+              ? stableSort(idleSortedClusterWorkers, sortWorkerComparator)
+              : idleSortedClusterWorkers;
             return (
               <NodeRowGroup
                 key={client.ip}
-                clusterWorkers={[...client.workers].sort((w1, w2) => {
-                  if (w2.cmdline[0] === "ray::IDLE") {
-                    return -1;
-                  }
-                  if (w1.cmdline[0] === "ray::IDLE") {
-                    return 1;
-                  }
-                  return w1.pid < w2.pid ? -1 : 1;
-                })}
+                clusterWorkers={}
                 node={client}
                 raylet={
                   client.ip in rayletInfo.nodes

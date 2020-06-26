@@ -34,6 +34,7 @@ export const WorkerSent: WorkerFeatureRenderFn = () => (
 );
 
 const sentFeature: NodeInfoFeature = {
+  id: "sent",
   ClusterFeatureRenderFn: ClusterSent,
   NodeFeatureRenderFn: NodeSent,
   WorkerFeatureRenderFn: WorkerSent,
