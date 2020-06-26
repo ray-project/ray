@@ -41,14 +41,23 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
   ///
   /// \param context The context of redis.
   /// \param address The address of gcs server.
-  /// \param retry_count The maximum number of retries to get gcs server rpc address.
+  /// \param max_attempts The maximum number of times to get gcs server rpc address.
   /// \return Returns true if gcs server address is obtained, False otherwise.
   bool GetGcsServerAddressFromRedis(redisContext *context,
                                     std::pair<std::string, int> *address,
-                                    int retry_count = 1);
+                                    int max_attempts = 1);
 
-  /// A periodic timer that fires on every gcs server address check period.
+  /// Fire a periodic timer to check if GCS sever address has changed.
   void Tick();
+
+  /// This function is used to redo subscription and reconnect to GCS RPC server when gcs
+  /// service failure is detected.
+  ///
+  /// \param type The type of GCS service failure.
+  void GcsServiceFailureDetected(rpc::GcsServiceFailureType type);
+
+  /// Reconnect to GCS RPC server.
+  void ReconnectGcsServer();
 
   std::unique_ptr<RedisGcsClient> redis_gcs_client_;
 
