@@ -128,12 +128,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void RemoveLocalReference(const CObjectID &object_id)
         void PromoteObjectToPlasma(const CObjectID &object_id)
         void PromoteToPlasmaAndGetOwnershipInfo(const CObjectID &object_id,
-                                                CTaskID *owner_id,
                                                 CAddress *owner_address)
         void RegisterOwnershipInfoAndResolveFuture(
                 const CObjectID &object_id,
                 const CObjectID &outer_object_id,
-                const CTaskID &owner_id,
                 const CAddress &owner_address)
 
         CRayStatus SetClientOptions(c_string client_name, int64_t limit)

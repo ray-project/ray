@@ -953,13 +953,15 @@ def set_log_file(stdout_name, stderr_name):
     return stdout_path, stderr_path
 
 
-def print_logs(redis_client, threads_stopped):
+def print_logs(redis_client, threads_stopped, job_id):
     """Prints log messages from workers on all of the nodes.
 
     Args:
         redis_client: A client to the primary Redis shard.
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
+        job_id (JobID): The id of the driver's job
+
     """
     pubsub_client = redis_client.pubsub(ignore_subscribe_messages=True)
     pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL)
@@ -981,8 +983,19 @@ def print_logs(redis_client, threads_stopped):
                 threads_stopped.wait(timeout=0.01)
                 continue
             num_consecutive_messages_received += 1
+            if (num_consecutive_messages_received % 100 == 0
+                    and num_consecutive_messages_received > 0):
+                logger.warning(
+                    "The driver may not be able to keep up with the "
+                    "stdout/stderr of the workers. To avoid forwarding logs "
+                    "to the driver, use 'ray.init(log_to_driver=False)'.")
 
             data = json.loads(ray.utils.decode(msg["data"]))
+
+            # Don't show logs from other drivers.
+            if data["job"] and ray.utils.binary_to_hex(
+                    job_id.binary()) != data["job"]:
+                continue
 
             def color_for(data):
                 if data["pid"] == "raylet":
@@ -1001,12 +1014,6 @@ def print_logs(redis_client, threads_stopped):
                         colorama.Style.DIM, color_for(data), data["pid"],
                         data["ip"], colorama.Style.RESET_ALL, line))
 
-            if (num_consecutive_messages_received % 100 == 0
-                    and num_consecutive_messages_received > 0):
-                logger.warning(
-                    "The driver may not be able to keep up with the "
-                    "stdout/stderr of the workers. To avoid forwarding logs "
-                    "to the driver, use 'ray.init(log_to_driver=False)'.")
     except (OSError, redis.exceptions.ConnectionError) as e:
         logger.error("print_logs: {}".format(e))
     finally:
@@ -1310,7 +1317,7 @@ def connect(node,
             worker.logger_thread = threading.Thread(
                 target=print_logs,
                 name="ray_print_logs",
-                args=(worker.redis_client, worker.threads_stopped))
+                args=(worker.redis_client, worker.threads_stopped, job_id))
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
 

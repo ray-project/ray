@@ -724,7 +724,7 @@ void PlasmaStore::DisconnectClient(int client_fd) {
   loop_->RemoveFileEvent(client_fd);
   // Close the socket.
   close(client_fd);
-  RAY_LOG(INFO) << "Disconnecting client on fd " << client_fd;
+  RAY_LOG(DEBUG) << "Disconnecting client on fd " << client_fd;
   // Release all the objects that the client was using.
   auto client = it->second.get();
   eviction_policy_.ClientDisconnected(client);
