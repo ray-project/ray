@@ -264,8 +264,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
 
   plasma::ObjectBuffer GetObject(plasma::PlasmaClient &client, ObjectID &object_id) {
     plasma::ObjectBuffer object_buffer;
-    plasma::ObjectID plasma_id = object_id;
-    RAY_CHECK_OK(client.Get(&plasma_id, 1, 0, &object_buffer));
+    RAY_CHECK_OK(client.Get(&object_id, 1, 0, &object_buffer));
     return object_buffer;
   }
 

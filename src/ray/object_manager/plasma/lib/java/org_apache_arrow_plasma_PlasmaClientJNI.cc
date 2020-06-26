@@ -31,15 +31,16 @@
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/client.h"
 
+using ray::ObjectID;
 using ray::Status;
 
-constexpr jsize OBJECT_ID_SIZE = sizeof(plasma::ObjectID) / sizeof(jbyte);
+constexpr jsize OBJECT_ID_SIZE = sizeof(ObjectID) / sizeof(jbyte);
 
-inline void jbyteArray_to_object_id(JNIEnv* env, jbyteArray a, plasma::ObjectID* oid) {
+inline void jbyteArray_to_object_id(JNIEnv* env, jbyteArray a, ObjectID* oid) {
   env->GetByteArrayRegion(a, 0, OBJECT_ID_SIZE, reinterpret_cast<jbyte*>(oid));
 }
 
-inline void object_id_to_jbyteArray(JNIEnv* env, jbyteArray a, plasma::ObjectID* oid) {
+inline void object_id_to_jbyteArray(JNIEnv* env, jbyteArray a, ObjectID* oid) {
   env->SetByteArrayRegion(a, 0, OBJECT_ID_SIZE, reinterpret_cast<jbyte*>(oid));
 }
 
@@ -96,7 +97,7 @@ JNIEXPORT jobject JNICALL Java_org_apache_arrow_plasma_PlasmaClientJNI_create(
     JNIEnv* env, jclass cls, jlong conn, jbyteArray object_id, jint size,
     jbyteArray metadata) {
   plasma::PlasmaClient* client = reinterpret_cast<plasma::PlasmaClient*>(conn);
-  plasma::ObjectID oid;
+  ObjectID oid;
   jbyteArray_to_object_id(env, object_id, &oid);
 
   // prepare metadata buffer
@@ -132,7 +133,7 @@ JNIEXPORT jobject JNICALL Java_org_apache_arrow_plasma_PlasmaClientJNI_create(
 JNIEXPORT jbyteArray JNICALL Java_org_apache_arrow_plasma_PlasmaClientJNI_hash(
     JNIEnv* env, jclass cls, jlong conn, jbyteArray object_id) {
   plasma::PlasmaClient* client = reinterpret_cast<plasma::PlasmaClient*>(conn);
-  plasma::ObjectID oid;
+  ObjectID oid;
   jbyteArray_to_object_id(env, object_id, &oid);
 
   unsigned char digest[plasma::kDigestSize];
@@ -151,7 +152,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_apache_arrow_plasma_PlasmaClientJNI_hash(
 JNIEXPORT void JNICALL Java_org_apache_arrow_plasma_PlasmaClientJNI_seal(
     JNIEnv* env, jclass cls, jlong conn, jbyteArray object_id) {
   plasma::PlasmaClient* client = reinterpret_cast<plasma::PlasmaClient*>(conn);
-  plasma::ObjectID oid;
+  ObjectID oid;
   jbyteArray_to_object_id(env, object_id, &oid);
 
   throw_exception_if_not_OK(env, client->Seal(oid));
@@ -160,7 +161,7 @@ JNIEXPORT void JNICALL Java_org_apache_arrow_plasma_PlasmaClientJNI_seal(
 JNIEXPORT void JNICALL Java_org_apache_arrow_plasma_PlasmaClientJNI_release(
     JNIEnv* env, jclass cls, jlong conn, jbyteArray object_id) {
   plasma::PlasmaClient* client = reinterpret_cast<plasma::PlasmaClient*>(conn);
-  plasma::ObjectID oid;
+  ObjectID oid;
   jbyteArray_to_object_id(env, object_id, &oid);
 
   throw_exception_if_not_OK(env, client->Release(oid));
@@ -169,7 +170,7 @@ JNIEXPORT void JNICALL Java_org_apache_arrow_plasma_PlasmaClientJNI_release(
 JNIEXPORT void JNICALL Java_org_apache_arrow_plasma_PlasmaClientJNI_delete(
     JNIEnv* env, jclass cls, jlong conn, jbyteArray object_id) {
   plasma::PlasmaClient* client = reinterpret_cast<plasma::PlasmaClient*>(conn);
-  plasma::ObjectID oid;
+  ObjectID oid;
   jbyteArray_to_object_id(env, object_id, &oid);
 
   throw_exception_if_not_OK(env, client->Delete(oid));
@@ -180,7 +181,7 @@ JNIEXPORT jobjectArray JNICALL Java_org_apache_arrow_plasma_PlasmaClientJNI_get(
   plasma::PlasmaClient* client = reinterpret_cast<plasma::PlasmaClient*>(conn);
 
   jsize num_oids = env->GetArrayLength(object_ids);
-  std::vector<plasma::ObjectID> oids(num_oids);
+  std::vector<ObjectID> oids(num_oids);
   std::vector<plasma::ObjectBuffer> obufs(num_oids);
   for (int i = 0; i < num_oids; ++i) {
     jbyteArray_to_object_id(
@@ -223,7 +224,7 @@ JNIEXPORT jobjectArray JNICALL Java_org_apache_arrow_plasma_PlasmaClientJNI_get(
 JNIEXPORT jboolean JNICALL Java_org_apache_arrow_plasma_PlasmaClientJNI_contains(
     JNIEnv* env, jclass cls, jlong conn, jbyteArray object_id) {
   plasma::PlasmaClient* client = reinterpret_cast<plasma::PlasmaClient*>(conn);
-  plasma::ObjectID oid;
+  ObjectID oid;
   jbyteArray_to_object_id(env, object_id, &oid);
 
   bool has_object;
