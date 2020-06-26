@@ -25,8 +25,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 from gym import core, spaces
-from dm_control import suite
-from dm_env import specs
+try:
+    from dm_env import specs
+except ImportError:
+    specs = None
+try:
+    from dm_control import suite
+except ImportError:
+    suite = None
 import numpy as np
 
 
@@ -80,6 +86,17 @@ class DMCEnv(core.Env):
         self._camera_id = camera_id
         self._frame_skip = frame_skip
         self._channels_first = channels_first
+
+        if specs is None:
+            raise RuntimeError((
+                "The `specs` module from `dm_env` was not imported. Make sure "
+                "`dm_env` is installed and visible in the current python "
+                "environment."))
+        if suite is None:
+            raise RuntimeError(
+                ("The `suite` module from `dm_control` was not imported. Make "
+                 "sure `dm_control` is installed and visible in the current "
+                 "python enviornment."))
 
         # create task
         self._env = suite.load(
