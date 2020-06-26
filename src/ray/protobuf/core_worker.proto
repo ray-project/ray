@@ -152,8 +152,13 @@ message GetObjectStatusRequest {
 
 message GetObjectStatusReply {
   enum ObjectStatus {
+<<<<<<< HEAD
   CREATED = 0;
   OUT_OF_SCOPE = 1;
+=======
+    CREATED = 0;
+    OUT_OF_SCOPE = 1;
+>>>>>>> 490cddc250a3fe7c1b48169faf214a5441b3df36
   }
   ObjectStatus status = 1;
 }
