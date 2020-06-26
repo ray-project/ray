@@ -253,7 +253,7 @@ def build_q_losses(policy, model, _, train_batch):
 
 
 def adam_optimizer(policy, config):
-    return tf.train.AdamOptimizer(
+    return tf1.train.AdamOptimizer(
         learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
 
 

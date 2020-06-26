@@ -97,7 +97,7 @@ class EpsilonGreedy(Exploration):
             tf.equal(q_values, tf.float32.min),
             tf.ones_like(q_values) * tf.float32.min, tf.ones_like(q_values))
         random_actions = tf.squeeze(
-            tf1.multinomial(random_valid_action_logits, 1), axis=1)
+            tf.random.categorical(random_valid_action_logits, 1), axis=1)
 
         chose_random = tf.random.uniform(
             tf.stack([batch_size]),
@@ -112,7 +112,7 @@ class EpsilonGreedy(Exploration):
             ),
             false_fn=lambda: exploit_action)
 
-        assign_op = tf.assign(self.last_timestep, timestep)
+        assign_op = tf1.assign(self.last_timestep, timestep)
         with tf1.control_dependencies([assign_op]):
             return action, tf.zeros_like(action, dtype=tf.float32)
 

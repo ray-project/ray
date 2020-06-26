@@ -42,8 +42,10 @@ def try_import_tf(error=False):
     # Try to reuse already imported tf module. This will avoid going through
     # the initial import steps below and thereby switching off v2_behavior
     # (switching off v2 behavior twice breaks all-framework tests for eager).
+    was_imported = False
     if "tensorflow" in sys.modules:
         tf_module = sys.modules["tensorflow"]
+        was_imported = True
 
     else:
         try:
@@ -56,8 +58,8 @@ def try_import_tf(error=False):
     # Try "reducing" tf to tf.compat.v1.
     try:
         tf1_module = tf_module.compat.v1
-        # Disable v2 eager mode.
-        tf1_module.disable_v2_behavior()
+        if not was_imported:
+            tf1_module.disable_v2_behavior()
     # No compat.v1 -> return tf as is.
     except AttributeError:
         tf1_module = tf_module
@@ -227,8 +229,3 @@ def get_activation_fn(name, framework="tf"):
 
     raise ValueError("Unknown activation ({}) for framework={}!".format(
         name, framework))
-
-# This call should never happen inside a module's functions/classes
-# as it would re-disable tf-eager.
-# tf1, tf, tfv = try_import_tf()
-#torch, _ = try_import_torch()
