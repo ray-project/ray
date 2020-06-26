@@ -24,21 +24,6 @@ logger = logging.getLogger(__name__)
 
 
 def build_sac_model(policy, obs_space, action_space, config):
-    if config["model"].get("custom_model"):
-        logger.warning(
-            "Setting use_state_preprocessor=True since a custom model "
-            "was specified.")
-        config["use_state_preprocessor"] = True
-    if not isinstance(action_space, (Box, Discrete)):
-        raise UnsupportedSpaceException(
-            "Action space {} is not supported for SAC.".format(action_space))
-    if isinstance(action_space, Box) and len(action_space.shape) > 1:
-        raise UnsupportedSpaceException(
-            "Action space has multiple dimensions "
-            "{}. ".format(action_space.shape) +
-            "Consider reshaping this into a single dimension, "
-            "using a Tuple action space, or the multi-agent API.")
-
     # 2 cases:
     # 1) with separate state-preprocessor (before obs+action concat).
     # 2) no separate state-preprocessor: concat obs+actions right away.
@@ -425,6 +410,19 @@ def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy, config)
 
 
+def validate_spaces(pid, observation_space, action_space, config):
+    if not isinstance(action_space, (Box, Discrete)):
+        raise UnsupportedSpaceException(
+            "Action space ({}) of {} is not supported for "
+            "SAC.".format(action_space, pid))
+    if isinstance(action_space, Box) and len(action_space.shape) > 1:
+        raise UnsupportedSpaceException(
+            "Action space ({}) of {} has multiple dimensions "
+            "{}. ".format(action_space, pid, action_space.shape) +
+            "Consider reshaping this into a single dimension, "
+            "using a Tuple action space, or the multi-agent API.")
+
+
 SACTFPolicy = build_tf_policy(
     name="SACTFPolicy",
     get_default_config=lambda: ray.rllib.agents.sac.sac.DEFAULT_CONFIG,
@@ -439,6 +437,7 @@ SACTFPolicy = build_tf_policy(
     mixins=[
         TargetNetworkMixin, ActorCriticOptimizerMixin, ComputeTDErrorMixin
     ],
+    validate_spaces=validate_spaces,
     before_init=setup_early_mixins,
     before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,

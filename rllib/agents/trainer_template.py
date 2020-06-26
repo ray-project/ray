@@ -1,6 +1,6 @@
-from typing import Callable, Optional, List, Iterable
 import logging
 import time
+from typing import Callable, Optional, List, Iterable
 
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -36,6 +36,7 @@ def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict):
 def build_trainer(
         name: str,
         default_policy: Optional[Policy],
+        *,
         default_config: TrainerConfigDict = None,
         validate_config: Callable[[TrainerConfigDict], None] = None,
         get_initial_state=None,  # DEPRECATED
@@ -64,19 +65,20 @@ def build_trainer(
         default_policy (cls): the default Policy class to use
         default_config (dict): The default config dict of the algorithm,
             otherwise uses the Trainer default config.
-        validate_config (func): optional callback that checks a given config
-            for correctness. It may mutate the config as needed.
-        get_policy_class (func): optional callback that takes a config and
-            returns the policy class to override the default with
-        before_init (func): optional function to run at the start of trainer
-            init that takes the trainer instance as argument
-        after_init (func): optional function to run at the end of trainer init
-            that takes the trainer instance as argument
-        before_evaluate_fn (func): callback to run before evaluation. This
-            takes the trainer instance as argument.
+        validate_config (Optional[callable]): Optional callable that takes the
+            config to check for correctness. It may mutate the config as
+            needed.
+        get_policy_class (Optional[callable]): Optional callable that takes a
+            config and returns the policy class to override the default with.
+        before_init (Optional[callable]): Optional callable to run at the start
+            of trainer init that takes the trainer instance as argument.
+        after_init (Optional[callable]): Optional callable to run at the end of
+            trainer init that takes the trainer instance as argument.
+        before_evaluate_fn (Optional[callable]): callback to run before
+            evaluation. This takes the trainer instance as argument.
         mixins (list): list of any class mixins for the returned trainer class.
             These mixins will be applied in order and will have higher
-            precedence than the Trainer class
+            precedence than the Trainer class.
         execution_plan (func): Setup the distributed execution workflow.
 
     Returns:

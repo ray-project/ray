@@ -113,30 +113,31 @@ class ObjectRecoveryManagerTest : public ::testing::Test {
         ref_counter_(std::make_shared<ReferenceCounter>(
             rpc::Address(), /*distributed_ref_counting_enabled=*/true,
             /*lineage_pinning_enabled=*/true)),
-        manager_(rpc::Address(),
-                 [&](const std::string &ip, int port) { return raylet_client_; },
-                 raylet_client_,
-                 [&](const ObjectID &object_id, const ObjectLookupCallback &callback) {
-                   object_directory_->AsyncGetLocations(object_id, callback);
-                   return Status::OK();
-                 },
-                 task_resubmitter_, ref_counter_, memory_store_,
-                 [&](const ObjectID &object_id, bool pin_object) {
-                   RAY_CHECK(failed_reconstructions_.count(object_id) == 0);
-                   failed_reconstructions_[object_id] = pin_object;
+        manager_(
+            rpc::Address(),
+            [&](const std::string &ip, int port) { return raylet_client_; },
+            raylet_client_,
+            [&](const ObjectID &object_id, const ObjectLookupCallback &callback) {
+              object_directory_->AsyncGetLocations(object_id, callback);
+              return Status::OK();
+            },
+            task_resubmitter_, ref_counter_, memory_store_,
+            [&](const ObjectID &object_id, bool pin_object) {
+              RAY_CHECK(failed_reconstructions_.count(object_id) == 0);
+              failed_reconstructions_[object_id] = pin_object;
 
-                   std::string meta =
-                       std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
-                   auto metadata = const_cast<uint8_t *>(
-                       reinterpret_cast<const uint8_t *>(meta.data()));
-                   auto meta_buffer =
-                       std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-                   auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
-                   RAY_CHECK(memory_store_->Put(data, object_id));
+              std::string meta =
+                  std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+              auto metadata =
+                  const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+              auto meta_buffer =
+                  std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+              auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
+              RAY_CHECK(memory_store_->Put(data, object_id));
 
-                   ref_counter_->UpdateObjectPinnedAtRaylet(object_id, local_raylet_id_);
-                 },
-                 /*lineage_reconstruction_enabled=*/true) {}
+              ref_counter_->UpdateObjectPinnedAtRaylet(object_id, local_raylet_id_);
+            },
+            /*lineage_reconstruction_enabled=*/true) {}
 
   ClientID local_raylet_id_;
   std::unordered_map<ObjectID, bool> failed_reconstructions_;
@@ -151,7 +152,7 @@ class ObjectRecoveryManagerTest : public ::testing::Test {
 
 TEST_F(ObjectRecoveryManagerTest, TestNoReconstruction) {
   ObjectID object_id = ObjectID::FromRandom();
-  ref_counter_->AddOwnedObject(object_id, {}, TaskID::Nil(), rpc::Address(), "", 0, true);
+  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
   ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_TRUE(object_directory_->Flush() == 1);
@@ -161,7 +162,7 @@ TEST_F(ObjectRecoveryManagerTest, TestNoReconstruction) {
 
 TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
   ObjectID object_id = ObjectID::FromRandom();
-  ref_counter_->AddOwnedObject(object_id, {}, TaskID::Nil(), rpc::Address(), "", 0, true);
+  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
   std::vector<rpc::Address> addresses({rpc::Address()});
   object_directory_->SetLocations(object_id, addresses);
 
@@ -174,7 +175,7 @@ TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
 
 TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
   ObjectID object_id = ObjectID::FromRandom();
-  ref_counter_->AddOwnedObject(object_id, {}, TaskID::Nil(), rpc::Address(), "", 0, true);
+  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
   task_resubmitter_->AddTask(object_id.TaskId(), {});
 
   ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
@@ -186,7 +187,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
 
 TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
   ObjectID object_id = ObjectID::FromRandom();
-  ref_counter_->AddOwnedObject(object_id, {}, TaskID::Nil(), rpc::Address(), "", 0, true);
+  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
   ref_counter_->AddLocalReference(object_id, "");
 
   ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
@@ -215,8 +216,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionChain) {
   std::vector<ObjectID> dependencies;
   for (int i = 0; i < 3; i++) {
     ObjectID object_id = ObjectID::FromRandom();
-    ref_counter_->AddOwnedObject(object_id, {}, TaskID::Nil(), rpc::Address(), "", 0,
-                                 true);
+    ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
     task_resubmitter_->AddTask(object_id.TaskId(), dependencies);
     dependencies = {object_id};
     object_ids.push_back(object_id);
