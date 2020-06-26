@@ -39,12 +39,15 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     // libraries such as libstreaming_java.so.
     // See BUILD.bazel:libcore_worker_library_java.so
     final RayConfig rayConfig = RayConfig.getInstance();
-    if (rayConfig.getRedisAddress() != null && rayConfig.workerMode == WorkerType.DRIVER) {
+    if (rayConfig.getRedisAddress() != null) {
+
+      if (rayConfig.workerMode == WorkerType.DRIVER) {
       // Fetch session dir from GCS if this is a driver that is connecting to the existing GCS.
       RedisClient client = new RedisClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
       final String sessionDir = client.get("session_dir", null);
       Preconditions.checkNotNull(sessionDir);
       rayConfig.setSessionDir(sessionDir);
+      }
 
       GcsClient tempGcsClient =
           new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
