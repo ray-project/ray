@@ -16,19 +16,25 @@
 
 namespace ray {
 
-void FutureResolver::ResolveFutureAsync(const ObjectID &object_id, const TaskID &owner_id,
+void FutureResolver::ResolveFutureAsync(const ObjectID &object_id,
                                         const rpc::Address &owner_address) {
   absl::MutexLock lock(&mu_);
-  auto it = owner_clients_.find(owner_id);
+  const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
+  if (rpc_address_.worker_id() == owner_address.worker_id()) {
+    // We do not need to resolve objects that we own. This can happen if a task
+    // with a borrowed reference executes on the object's owning worker.
+    return;
+  }
+  auto it = owner_clients_.find(owner_worker_id);
   if (it == owner_clients_.end()) {
     auto client =
         std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(owner_address));
-    it = owner_clients_.emplace(owner_id, std::move(client)).first;
+    it = owner_clients_.emplace(owner_worker_id, std::move(client)).first;
   }
 
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());
-  request.set_owner_id(owner_id.Binary());
+  request.set_owner_worker_id(owner_worker_id.Binary());
   RAY_CHECK_OK(it->second->GetObjectStatus(
       request,
       [this, object_id](const Status &status, const rpc::GetObjectStatusReply &reply) {

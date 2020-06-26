@@ -1,0 +1,47 @@
+# EXPERIMENTAL: an example of configuring a mixed-worker cluster. Currently
+# multi-worker autoscaling only works if you use the request_resources() call.
+cluster_name: auto_instance_type
+min_workers: 1
+max_workers: 40
+
+# Cloud-provider specific configuration.
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+
+# Tell the autoscaler the allowed node types and the resources they provide.
+# This only has an effect if you use the experimental request_resources() call.
+available_instance_types:
+    m4.xlarge:
+        resources: {"CPU": 4}
+        max_workers: 10
+    m4.4xlarge:
+        resources: {"CPU": 16}
+        max_workers: 10
+    p2.xlarge:
+        resources: {"CPU": 4, "GPU": 1}
+        max_workers: 4
+    p2.8xlarge:
+        resources: {"CPU": 32, "GPU": 8}
+        max_workers: 2
+
+# Configure the cluster for very conservative auto-scaling otherwise.
+target_utilization_fraction: 1.0
+idle_timeout_minutes: 2
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: ubuntu
+
+# Provider-specific config for the head node, e.g. instance type.
+head_node:
+    InstanceType: m4.xlarge
+    ImageId: latest_dlami
+
+# Provider-specific config for the worker nodes, e.g. instance type.
+# NOTE: the instance type can be overriden by the resource demand scheduler.
+# The instance type set here is only used as the default fallback.
+worker_nodes:
+    InstanceType: m4.xlarge
+    ImageId: latest_dlami

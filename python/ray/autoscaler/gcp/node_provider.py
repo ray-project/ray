@@ -3,11 +3,10 @@ from threading import RLock
 import time
 import logging
 
-from googleapiclient import discovery
-
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
-from ray.autoscaler.gcp.config import MAX_POLLS, POLL_INTERVAL
+from ray.autoscaler.gcp.config import MAX_POLLS, POLL_INTERVAL, \
+        fetch_gcp_credentials_from_provider_config, _create_compute
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +42,10 @@ class GCPNodeProvider(NodeProvider):
         NodeProvider.__init__(self, provider_config, cluster_name)
 
         self.lock = RLock()
-        self.compute = discovery.build("compute", "v1")
+        gcp_credentials = fetch_gcp_credentials_from_provider_config(
+            provider_config)
+
+        self.compute = _create_compute(gcp_credentials)
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
