@@ -229,7 +229,7 @@ class SessionRunner:
         exec_cluster(
             config_file=self.project_definition.cluster_yaml(),
             cmd=cmd,
-            docker=False,
+            run_env=config.get("run_env", "auto"),
             screen=False,
             tmux=config.get("tmux", False),
             stop=False,
