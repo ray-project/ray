@@ -1,9 +1,9 @@
-import { Typography, Tooltip, Box } from "@material-ui/core";
+import { Box, Tooltip, Typography } from "@material-ui/core";
 import React from "react";
 import { GPUStats } from "../../../../api";
+import { RightPaddedTypography } from "../../../../common/CustomTypography";
 import { MiBRatio } from "../../../../common/formatUtils";
 import UsageBar from "../../../../common/UsageBar";
-import {RightPaddedTypography} from "../../../../common/CustomTypography";
 import { getWeightedAverage, sum } from "../../../../common/util";
 import {
   ClusterFeatureComponent,
@@ -63,8 +63,8 @@ export const NodeGRAM: NodeFeatureComponent = ({ node }) => {
       utilization: gpu.memory_used,
       total: gpu.memory_total,
       slot: i,
-    }
-    return <GRAMEntry {...props}/>
+    };
+    return <GRAMEntry {...props} />;
   });
   return (
     <div style={{ minWidth: 60 }}>
@@ -80,44 +80,51 @@ export const NodeGRAM: NodeFeatureComponent = ({ node }) => {
 };
 
 type GRAMEntryProps = {
-  gpuName: string,
-  slot: number,
-  utilization: number,
-  total: number,
+  gpuName: string;
+  slot: number;
+  utilization: number;
+  total: number;
 };
 
-const GRAMEntry: React.FC<GRAMEntryProps> = ({ gpuName, slot, utilization, total}) => {
+const GRAMEntry: React.FC<GRAMEntryProps> = ({
+  gpuName,
+  slot,
+  utilization,
+  total,
+}) => {
   const utilizationPercent = (utilization / total) * 100;
   const ratioStr = MiBRatio(utilization, total);
   return (
-    <Box display="flex" style={{minWidth: GRAM_COL_WIDTH}}>
+    <Box display="flex" style={{ minWidth: GRAM_COL_WIDTH }}>
       <Tooltip title={gpuName}>
-          <RightPaddedTypography variant="h6">[{slot}]:</RightPaddedTypography>
+        <RightPaddedTypography variant="h6">[{slot}]:</RightPaddedTypography>
       </Tooltip>
-      <UsageBar percent={utilizationPercent} 
-                text={ratioStr} />
+      <UsageBar percent={utilizationPercent} text={ratioStr} />
     </Box>
-  )
+  );
 };
 
 export const WorkerGRAM: WorkerFeatureComponent = ({ worker, node }) => {
   const workerGRAMEntries = node.gpus
     .map((gpu, i) => {
-      const process = gpu.processes.find((process) => process.pid === worker.pid);
-      if (!process) return undefined;
+      const process = gpu.processes.find(
+        (process) => process.pid === worker.pid,
+      );
+      if (!process) {return undefined;}
       const props = {
         gpuName: gpu.name,
         total: gpu.memory_total,
         utilization: process.gpu_memory_usage,
         slot: i,
       };
-      return (<GRAMEntry {...props} />)
-    }).filter(entry => entry !== undefined);
-    
+      return <GRAMEntry {...props} />;
+    })
+    .filter((entry) => entry !== undefined);
+
   return workerGRAMEntries.length === 0 ? (
-      <Typography color="textSecondary" component="span" variant="inherit">
-        N/A
-      </Typography>
+    <Typography color="textSecondary" component="span" variant="inherit">
+      N/A
+    </Typography>
   ) : (
     <div style={{ minWidth: GRAM_COL_WIDTH }}>{workerGRAMEntries}</div>
   );

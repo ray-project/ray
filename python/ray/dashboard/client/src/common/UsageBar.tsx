@@ -1,4 +1,4 @@
-import { createStyles, Theme, makeStyles, Typography} from "@material-ui/core";
+import { createStyles, makeStyles, Theme, Typography } from "@material-ui/core";
 import React from "react";
 
 const blend = (
@@ -24,14 +24,15 @@ const useUsageBarStyles = makeStyles((theme: Theme) =>
       paddingLeft: theme.spacing(1),
       paddingRight: theme.spacing(1),
     },
-  }));
+  }),
+);
 
 type UsageBarProps = {
   percent: number;
   text: string;
 };
 
-const UsageBar: React.FC<UsageBarProps> = ({percent, text}) => {
+const UsageBar: React.FC<UsageBarProps> = ({ percent, text }) => {
   const classes = useUsageBarStyles();
   const safePercent = Math.max(Math.min(percent, 100), 0);
   const minColor = [0, 255, 0];
@@ -54,11 +55,14 @@ const UsageBar: React.FC<UsageBarProps> = ({percent, text}) => {
   // gradient background otherwise.
   return (
     <span className={classes.root}>
-      <span className={classes.inner} style={{ background: gradient, flexGrow: 1 }}>
+      <span
+        className={classes.inner}
+        style={{ background: gradient, flexGrow: 1 }}
+      >
         <Typography align="center">{text}</Typography>
       </span>
     </span>
   );
-}
+};
 
 export default UsageBar;
