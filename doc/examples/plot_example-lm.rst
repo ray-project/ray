@@ -4,7 +4,7 @@ Fault-Tolerant Fairseq Training
 This document provides a walkthrough of adapting the `Fairseq library <https://github.com/pytorch/fairseq>`__ to perform fault-tolerant distributed training on AWS.
 As an example, we use the WikiText-103 dataset to pretrain the RoBERTa model following `this tutorial <https://github.com/pytorch/fairseq/blob/master/examples/roberta/README.pretraining.md>`__. The pipeline and configurations in this document will work for other models supported by Fairseq, such as sequence-to-sequence machine translation models.
 
-To run this example, you will need to install Ray on your local machine to use Ray cluster launcher.
+To run this example, you will need to install Ray on your local machine to use the Ray cluster launcher.
 
 You can view the `code for this example`_.
 
@@ -309,4 +309,3 @@ To test the fault-tolerance, you can run the following command on your local mac
 .. code-block:: bash
 
   ray kill-random-node lm-cluster.yaml
-
