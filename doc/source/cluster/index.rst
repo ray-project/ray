@@ -29,12 +29,10 @@ Here is an example of using the Cluster Launcher on AWS:
     # out the command that can be used to SSH into the cluster head node.
     $ ray up ray/python/ray/autoscaler/aws/example-full.yaml
 
-Using the Ray cluster
----------------------
+Running a Ray program on the Ray cluster
+----------------------------------------
 
-To run a distributed Ray program, you'll need to execute your program on the same machine as one of the nodes.
-
-For example, start up Python on one of the nodes in the cluster:
+To run a distributed Ray program, you'll need to execute your program on the same machine as one of the nodes. For example, start up Python on one of the nodes in the cluster:
 
 .. code-block:: python
 
@@ -92,7 +90,7 @@ should look something like ``123.45.67.89:6379``).
   ray start --address=<address>
 
 If you wish to specify that a machine has 10 CPUs and 1 GPU, you can do this
-with the flags ``--num-cpus=10`` and ``--num-gpus=1``. See the `Configuration <configure.html>`__ page for more information.
+with the flags ``--num-cpus=10`` and ``--num-gpus=1``. See the :ref:`Configuration <configuring-ray>` page for more information.
 
 Now we've started all of the Ray processes on each node Ray. This includes
 

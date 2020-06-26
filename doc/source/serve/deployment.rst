@@ -20,7 +20,7 @@ Deploying a Model with Ray Serve
 ================================
 
 Let's get started deploying our first Ray Serve application. The first thing you'll need
-to do is start a Ray cluster. You can do that using the Ray autoscaler, but in our case
+to do is start a Ray cluster. You can do that using the Ray cluster launcher, but in our case
 we'll create it on our local machine. To learn more about Ray Clusters see :ref:`cluster-index`.
 
 Starting the Cluster
@@ -149,7 +149,7 @@ In order to deploy Ray Serve on Kubernetes, we need to do the following:
 There are multiple ways to start a Ray cluster on Kubernetes, see :ref:`ray-k8s-deploy` for more information.
 Here, we will be using the :ref:`Ray Cluster Launcher <ref-automatic-cluster>` tool, which has support for Kubernetes as a backend.
 
-The autoscaler takes in a yaml config file that describes the cluster.
+The cluster launcher takes in a yaml config file that describes the cluster.
 Here, we'll be using the `Kubernetes default config`_ with a few small modifications.
 First, we need to make sure that the head node of the cluster, where Ray Serve will run its HTTP server, is exposed as a Kubernetes `Service`_.
 There is already a default head node service defined in the ``services`` field of the config, so we just need to make sure that it's exposing the right port: 8000, which Ray Serve binds on by default.

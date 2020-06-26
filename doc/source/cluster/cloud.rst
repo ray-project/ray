@@ -9,6 +9,9 @@ This section provides instructions for configuring the Ray Cluster Launcher to u
     :local:
     :backlinks: none
 
+See this blog post for a `step by step guide`_ to using the Ray Cluster Launcher.
+
+.. _`step by step guide`: https://medium.com/distributed-computing-with-ray/a-step-by-step-guide-to-scaling-your-first-python-application-in-the-cloud-8761fe331ef1
 
 AWS (EC2)
 ---------
@@ -171,6 +174,8 @@ Test that it works by running the following commands from your local machine:
 
     # Tear down the cluster
     $ ray down ray/python/ray/autoscaler/kubernetes/example-full.yaml
+
+.. tip:: This section describes the easiest way to launch a Ray cluster on Kubernetes. See this :ref:`document for advanced usage <ray-k8s-deploy>` of Kubernetes with Ray.
 
 .. _cluster-private-setup:
 

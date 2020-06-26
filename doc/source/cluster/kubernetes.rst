@@ -5,9 +5,7 @@ Deploying on Kubernetes
 
 .. note::
 
-  The easiest way to run a Ray cluster is by using the built-in autoscaler,
-  which has support for running on top of Kubernetes. Please see the :ref:`autoscaler
-  documentation <ray-launch-k8s>` for details.
+  This document is mainly for advanced Kubernetes usage. The easiest way to run a Ray cluster on Kubernetes is by using the built-in Cluster Launcher. Please see the :ref:`Cluster Launcher documentation <ray-launch-k8s>` for details.
 
 This document assumes that you have access to a Kubernetes cluster and have
 ``kubectl`` installed locally and configured to access the cluster. It will
