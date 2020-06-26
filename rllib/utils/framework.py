@@ -45,14 +45,6 @@ def try_import_tf(error=False):
     if "tensorflow" in sys.modules:
         tf_module = sys.modules["tensorflow"]
 
-    # try:
-    #    # Try "reducing" tf to tf.compat.v1.
-    #    import tensorflow.compat.v1 as tf
-    #    tf.logging.set_verbosity(tf.logging.ERROR)
-    #    # Disable v2 eager mode.
-    #    tf.disable_v2_behavior()
-    #    return tf
-    # except ImportError:
     else:
         try:
             import tensorflow as tf_module
@@ -60,16 +52,12 @@ def try_import_tf(error=False):
             if error:
                 raise e
             return None, None, None
-    # return tf
-    # import tensorflow as tf
-    # except ImportError as e:
-    #    if error:
-    #        raise e
-    #    return None
 
     # Try "reducing" tf to tf.compat.v1.
     try:
         tf1_module = tf_module.compat.v1
+        # Disable v2 eager mode.
+        tf1_module.disable_v2_behavior()
     # No compat.v1 -> return tf as is.
     except AttributeError:
         tf1_module = tf_module

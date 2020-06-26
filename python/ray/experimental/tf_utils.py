@@ -85,7 +85,7 @@ class TensorFlowVariables:
         if input_variables is not None:
             variable_list += input_variables
 
-        if not tf.executing_eagerly():
+        if not tf1.executing_eagerly():
             for v in variable_list:
                 self.variables[v.op.node_def.name] = v
 
@@ -94,7 +94,7 @@ class TensorFlowVariables:
 
             # Create new placeholders to put in custom weights.
             for k, var in self.variables.items():
-                self.placeholders[k] = tf.placeholder(
+                self.placeholders[k] = tf1.placeholder(
                     var.value().dtype,
                     var.get_shape().as_list(),
                     name="Placeholder_" + k)
@@ -122,7 +122,7 @@ class TensorFlowVariables:
 
     def _check_sess(self):
         """Checks if the session is set, and if not throw an error message."""
-        if tf.executing_eagerly():
+        if tf1.executing_eagerly():
             return
         assert self.sess is not None, \
             "The session is not set. Set the session either by passing it " \
