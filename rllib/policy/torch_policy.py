@@ -240,6 +240,9 @@ class TorchPolicy(Policy):
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
         loss_out = force_list(
             self._loss(self, self.model, self.dist_class, train_batch))
+        # Call Model's custom-loss with Policy loss outputs and train_batch.
+        if self.model:
+            loss_out = self.model.custom_loss(loss_out, train_batch)
         assert len(loss_out) == len(self._optimizers)
         # assert not any(torch.isnan(l) for l in loss_out)
 
