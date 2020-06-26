@@ -55,7 +55,6 @@ class error_code;
     }                                  \
   } while (0)
 
-
 #define RAY_RETURN_NOT_OK_ELSE(s, else_) \
   do {                                   \
     ::ray::Status _s = (s);              \

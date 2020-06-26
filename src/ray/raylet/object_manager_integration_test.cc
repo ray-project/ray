@@ -30,9 +30,7 @@ std::string test_executable;
 // TODO(hme): Get this working once the dust settles.
 class TestObjectManagerBase : public ::testing::Test {
  public:
-  TestObjectManagerBase() {
-    RAY_LOG(INFO) << "TestObjectManagerBase: started.";
-  }
+  TestObjectManagerBase() { RAY_LOG(INFO) << "TestObjectManagerBase: started."; }
 
   NodeManagerConfig GetNodeManagerConfig(std::string raylet_socket_name,
                                          std::string store_socket_name) {
@@ -105,8 +103,7 @@ class TestObjectManagerBase : public ::testing::Test {
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<Buffer> data;
-    RAY_CHECK_OK(
-        client.Create(object_id, data_size, metadata, metadata_size, &data));
+    RAY_CHECK_OK(client.Create(object_id, data_size, metadata, metadata_size, &data));
     RAY_CHECK_OK(client.Seal(object_id));
     return object_id;
   }
