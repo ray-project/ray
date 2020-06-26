@@ -41,7 +41,6 @@ def get_async(object_id):
     # Setup
     async_api_init()
     loop = asyncio.get_event_loop()
-    core_worker = ray.worker.global_worker.core_worker
 
     # Here's the callback used to implement async get logic.
     # What we want:
@@ -96,9 +95,7 @@ def get_async(object_id):
     inner_future = loop.create_future()
     # We must add the done_callback before sending to in_memory_store_get
     inner_future.add_done_callback(done_callback)
-    core_worker.in_memory_store_get_async(object_id, inner_future)
-    # A hack to keep reference to inner_future so it doesn't get GC.
-    user_future.inner_future = inner_future
+    ray.worker.global_worker.in_memory_store_get_async(object_id, inner_future)
     # A hack to keep a reference to the object ID for ref counting.
     user_future.object_id = object_id
 

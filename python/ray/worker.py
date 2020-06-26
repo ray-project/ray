@@ -124,6 +124,9 @@ class Worker:
         # postprocessor must take two arguments ("object_ids", and "values").
         self._post_get_hooks = []
 
+        # Keep a reference to pending futures to stop them from getting GC'd
+        self.active_futures = set()
+
     @property
     def connected(self):
         return self.node is not None
@@ -369,6 +372,11 @@ class Worker:
         ray.utils.set_sigterm_handler(sigterm_handler)
         self.core_worker.run_task_loop()
         sys.exit(0)
+
+    def in_memory_store_get_async(self, object_id, future):
+        self.active_futures.add(future)
+        future.add_done_callback(lambda fut: self.active_futures.remove(fut))
+        self.core_worker.in_memory_store_get_async(object_id, future)
 
 
 def get_gpu_ids():
