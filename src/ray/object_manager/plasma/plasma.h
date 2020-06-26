@@ -34,7 +34,7 @@
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/compat.h"
 
-#include "arrow/status.h"
+#include "ray/common/status.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/util/logging.h"
@@ -45,6 +45,7 @@ using arrow::cuda::CudaIpcMemHandle;
 
 namespace plasma {
 
+using ray::Status;
 using ray::object_manager::protocol::ObjectInfoT;
 
 #define HANDLE_SIGPIPE(s, fd_)                                              \

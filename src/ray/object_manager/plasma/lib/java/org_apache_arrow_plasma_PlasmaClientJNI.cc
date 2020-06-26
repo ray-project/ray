@@ -28,7 +28,10 @@
 #include <string>
 #include <vector>
 
+#include "ray/common/status.h"
 #include "ray/object_manager/plasma/client.h"
+
+using ray::Status;
 
 constexpr jsize OBJECT_ID_SIZE = sizeof(plasma::ObjectID) / sizeof(jbyte);
 
@@ -40,7 +43,7 @@ inline void object_id_to_jbyteArray(JNIEnv* env, jbyteArray a, plasma::ObjectID*
   env->SetByteArrayRegion(a, 0, OBJECT_ID_SIZE, reinterpret_cast<jbyte*>(oid));
 }
 
-inline void throw_exception_if_not_OK(JNIEnv* env, const arrow::Status& status) {
+inline void throw_exception_if_not_OK(JNIEnv* env, const Status& status) {
   if (!status.ok()) {
     jclass Exception =
         env->FindClass("org/apache/arrow/plasma/exceptions/PlasmaClientException");
@@ -109,13 +112,13 @@ JNIEXPORT jobject JNICALL Java_org_apache_arrow_plasma_PlasmaClientJNI_create(
 
   std::shared_ptr<Buffer> data;
   Status s = client->Create(oid, size, md, md_size, &data);
-  if (plasma::IsPlasmaObjectExists(s)) {
+  if (s.IsObjectExists()) {
     jclass exceptionClass =
         env->FindClass("org/apache/arrow/plasma/exceptions/DuplicateObjectException");
     env->ThrowNew(exceptionClass, oid.Hex().c_str());
     return nullptr;
   }
-  if (plasma::IsPlasmaStoreFull(s)) {
+  if (s.IsObjectStoreFull()) {
     jclass exceptionClass =
         env->FindClass("org/apache/arrow/plasma/exceptions/PlasmaOutOfMemoryException");
     env->ThrowNew(exceptionClass, "");

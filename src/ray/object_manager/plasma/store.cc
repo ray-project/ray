@@ -41,8 +41,6 @@
 #include <utility>
 #include <vector>
 
-#include "arrow/status.h"
-
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/fling.h"
@@ -199,7 +197,7 @@ Status PlasmaStore::AllocateCudaMemory(
 
 Status PlasmaStore::FreeCudaMemory(int device_num, int64_t size, uint8_t* pointer) {
   ARROW_ASSIGN_OR_RAISE(auto context, manager_->GetContext(device_num - 1));
-  RETURN_NOT_OK(context->Free(pointer, size));
+  RAY_RETURN_NOT_OK(context->Free(pointer, size));
   return Status::OK();
 }
 #endif
@@ -691,7 +689,7 @@ void PlasmaStore::EvictObjects(const std::vector<ObjectID>& object_ids) {
   }
 
   if (external_store_ && !object_ids.empty()) {
-    RAY_ARROW_CHECK_OK(external_store_->Put(object_ids, evicted_object_data));
+    RAY_CHECK_OK(external_store_->Put(object_ids, evicted_object_data));
     for (auto entry : evicted_entries) {
       PlasmaAllocator::Free(entry->pointer, entry->data_size + entry->metadata_size);
       entry->pointer = nullptr;
@@ -918,7 +916,7 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       int64_t data_size;
       int64_t metadata_size;
       int device_num;
-      RETURN_NOT_OK(ReadCreateRequest(input, input_size, &object_id, &evict_if_full,
+      RAY_RETURN_NOT_OK(ReadCreateRequest(input, input_size, &object_id, &evict_if_full,
                                       &data_size, &metadata_size, &device_num));
       PlasmaError error_code = CreateObject(object_id, evict_if_full, data_size,
                                             metadata_size, device_num, client, &object);
@@ -941,7 +939,7 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       bool evict_if_full;
       std::string data;
       std::string metadata;
-      RETURN_NOT_OK(ReadCreateAndSealRequest(input, input_size, &object_id,
+      RAY_RETURN_NOT_OK(ReadCreateAndSealRequest(input, input_size, &object_id,
                                              &evict_if_full, &data, &metadata));
       // CreateAndSeal currently only supports device_num = 0, which corresponds
       // to the host.
@@ -973,7 +971,7 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       std::vector<std::string> data;
       std::vector<std::string> metadata;
 
-      RETURN_NOT_OK(ReadCreateAndSealBatchRequest(
+      RAY_RETURN_NOT_OK(ReadCreateAndSealBatchRequest(
           input, input_size, &object_ids, &evict_if_full, &data, &metadata));
 
       // CreateAndSeal currently only supports device_num = 0, which corresponds
@@ -1019,7 +1017,7 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       HANDLE_SIGPIPE(SendCreateAndSealBatchReply(client->fd, error_code), client->fd);
     } break;
     case fb::MessageType::PlasmaAbortRequest: {
-      RETURN_NOT_OK(ReadAbortRequest(input, input_size, &object_id));
+      RAY_RETURN_NOT_OK(ReadAbortRequest(input, input_size, &object_id));
       RAY_CHECK(AbortObject(object_id, client) == 1) << "To abort an object, the only "
                                                           "client currently using it "
                                                           "must be the creator.";
@@ -1028,17 +1026,17 @@ Status PlasmaStore::ProcessMessage(Client* client) {
     case fb::MessageType::PlasmaGetRequest: {
       std::vector<ObjectID> object_ids_to_get;
       int64_t timeout_ms;
-      RETURN_NOT_OK(ReadGetRequest(input, input_size, object_ids_to_get, &timeout_ms));
+      RAY_RETURN_NOT_OK(ReadGetRequest(input, input_size, object_ids_to_get, &timeout_ms));
       ProcessGetRequest(client, object_ids_to_get, timeout_ms);
     } break;
     case fb::MessageType::PlasmaReleaseRequest: {
-      RETURN_NOT_OK(ReadReleaseRequest(input, input_size, &object_id));
+      RAY_RETURN_NOT_OK(ReadReleaseRequest(input, input_size, &object_id));
       ReleaseObject(object_id, client);
     } break;
     case fb::MessageType::PlasmaDeleteRequest: {
       std::vector<ObjectID> object_ids;
       std::vector<PlasmaError> error_codes;
-      RETURN_NOT_OK(ReadDeleteRequest(input, input_size, &object_ids));
+      RAY_RETURN_NOT_OK(ReadDeleteRequest(input, input_size, &object_ids));
       error_codes.reserve(object_ids.size());
       for (auto& object_id : object_ids) {
         error_codes.push_back(DeleteObject(object_id));
@@ -1046,7 +1044,7 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       HANDLE_SIGPIPE(SendDeleteReply(client->fd, object_ids, error_codes), client->fd);
     } break;
     case fb::MessageType::PlasmaContainsRequest: {
-      RETURN_NOT_OK(ReadContainsRequest(input, input_size, &object_id));
+      RAY_RETURN_NOT_OK(ReadContainsRequest(input, input_size, &object_id));
       if (ContainsObject(object_id) == ObjectStatus::OBJECT_FOUND) {
         HANDLE_SIGPIPE(SendContainsReply(client->fd, object_id, 1), client->fd);
       } else {
@@ -1054,14 +1052,14 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       }
     } break;
     case fb::MessageType::PlasmaSealRequest: {
-      RETURN_NOT_OK(ReadSealRequest(input, input_size, &object_id));
+      RAY_RETURN_NOT_OK(ReadSealRequest(input, input_size, &object_id));
       SealObjects({object_id});
       HANDLE_SIGPIPE(SendSealReply(client->fd, object_id, PlasmaError::OK), client->fd);
     } break;
     case fb::MessageType::PlasmaEvictRequest: {
       // This code path should only be used for testing.
       int64_t num_bytes;
-      RETURN_NOT_OK(ReadEvictRequest(input, input_size, &num_bytes));
+      RAY_RETURN_NOT_OK(ReadEvictRequest(input, input_size, &num_bytes));
       std::vector<ObjectID> objects_to_evict;
       int64_t num_bytes_evicted =
           eviction_policy_.ChooseObjectsToEvict(num_bytes, &objects_to_evict);
@@ -1070,7 +1068,7 @@ Status PlasmaStore::ProcessMessage(Client* client) {
     } break;
     case fb::MessageType::PlasmaRefreshLRURequest: {
       std::vector<ObjectID> object_ids;
-      RETURN_NOT_OK(ReadRefreshLRURequest(input, input_size, &object_ids));
+      RAY_RETURN_NOT_OK(ReadRefreshLRURequest(input, input_size, &object_ids));
       eviction_policy_.RefreshObjects(object_ids);
       HANDLE_SIGPIPE(SendRefreshLRUReply(client->fd), client->fd);
     } break;
@@ -1088,7 +1086,7 @@ Status PlasmaStore::ProcessMessage(Client* client) {
     case fb::MessageType::PlasmaSetOptionsRequest: {
       std::string client_name;
       int64_t output_memory_quota;
-      RETURN_NOT_OK(
+      RAY_RETURN_NOT_OK(
           ReadSetOptionsRequest(input, input_size, &client_name, &output_memory_quota));
       client->name = client_name;
       bool success = eviction_policy_.SetClientQuota(client, output_memory_quota);

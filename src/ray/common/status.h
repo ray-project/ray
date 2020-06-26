@@ -55,6 +55,16 @@ class error_code;
     }                                  \
   } while (0)
 
+
+#define RAY_RETURN_NOT_OK_ELSE(s, else_) \
+  do {                                   \
+    ::ray::Status _s = (s);              \
+    if (!_s.ok()) {                      \
+      else_;                             \
+      return _s;                         \
+    }                                    \
+  } while (0)
+
 // If 'to_call' returns a bad status, CHECK immediately with a logged message
 // of 'msg' followed by the status.
 #define RAY_CHECK_OK_PREPEND(to_call, msg)                \
@@ -66,27 +76,6 @@ class error_code;
 // If the status is bad, CHECK immediately, appending the status to the
 // logged message.
 #define RAY_CHECK_OK(s) RAY_CHECK_OK_PREPEND(s, "Bad status")
-
-// This macro is used to replace the "ARROW_CHECK_OK_PREPEND" macro.
-#define RAY_ARROW_CHECK_OK_PREPEND(to_call, msg)          \
-  do {                                                    \
-    ::arrow::Status _s = (to_call);                       \
-    RAY_CHECK(_s.ok()) << (msg) << ": " << _s.ToString(); \
-  } while (0)
-
-// This macro is used to replace the "ARROW_CHECK_OK" macro.
-#define RAY_ARROW_CHECK_OK(s) RAY_ARROW_CHECK_OK_PREPEND(s, "Bad status")
-
-// If arrow status is not ok, return a ray IOError status
-// with the error message.
-#define RAY_ARROW_RETURN_NOT_OK(s)               \
-  do {                                           \
-    ::arrow::Status _s = (s);                    \
-    if (RAY_PREDICT_FALSE(!_s.ok())) {           \
-      return ray::Status::IOError(_s.message()); \
-      ;                                          \
-    }                                            \
-  } while (0)
 
 namespace ray {
 
