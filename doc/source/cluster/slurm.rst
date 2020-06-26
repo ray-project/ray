@@ -1,3 +1,5 @@
+.. _ray-slurm-deploy:
+
 Deploying on Slurm
 ==================
 
@@ -33,7 +35,7 @@ Clusters managed by Slurm may require that Ray is initialized as a part of the s
   srun --nodes=1 --ntasks=1 -w $node1 ray start --block --head --redis-port=6379 --redis-password=$redis_password & # Starting the head
   sleep 5
   # Make sure the head successfully starts before any worker does, otherwise
-  # the worker will not be able to connect to redis. In case of longer delay, 
+  # the worker will not be able to connect to redis. In case of longer delay,
   # adjust the sleeptime above to ensure proper order.
 
   for ((  i=1; i<=$worker_num; i++ ))

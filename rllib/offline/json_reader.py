@@ -45,7 +45,7 @@ class JsonReader(InputReader):
                 logger.warning(
                     "Treating input directory as glob pattern: {}".format(
                         inputs))
-            if urlparse(inputs).scheme:
+            if urlparse(inputs).scheme not in ["d", ""]:
                 raise ValueError(
                     "Don't know how to glob over `{}`, ".format(inputs) +
                     "please specify a list of files to read instead.")
