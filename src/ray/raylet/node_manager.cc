@@ -3404,6 +3404,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
     // an `AsyncGet` instead.
     if (!store_client_.Get(object_ids, /*timeout_ms=*/0, &plasma_results).ok()) {
       RAY_LOG(WARNING) << "Failed to get objects to be pinned from object store.";
+      // TODO(suquark): Maybe "Status::ObjectNotFound" is more accurate here.
       send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
       return;
     }
