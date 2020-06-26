@@ -1252,10 +1252,8 @@ void CoreWorker::RemoveActorHandleReference(const ActorID &actor_id) {
 ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &serialized,
                                                       const ObjectID &outer_object_id) {
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(serialized));
-  return actor_manager_->RegisterActorHandle(std::move(actor_handle),
-                                             outer_object_id,
-                                             GetCallerId(),
-                                             CurrentCallSite(),
+  return actor_manager_->RegisterActorHandle(std::move(actor_handle), outer_object_id,
+                                             GetCallerId(), CurrentCallSite(),
                                              rpc_address_);
 }
 
@@ -1296,10 +1294,8 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
           auto actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(*result));
           actor_id = actor_handle->GetActorID();
           actor_manager_->AddActorHandle(std::move(actor_handle),
-                                         /*is_owner_handle=*/false,
-                                         GetCallerId(),
-                                         CurrentCallSite(),
-                                         rpc_address_);
+                                         /*is_owner_handle=*/false, GetCallerId(),
+                                         CurrentCallSite(), rpc_address_);
         } else {
           RAY_LOG(INFO) << "Failed to look up actor with name: " << name;
           // Use a NIL actor ID to signal that the actor wasn't found.

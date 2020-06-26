@@ -19,7 +19,7 @@
 
 namespace ray {
 
-ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_handle, 
+ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                           const ObjectID &outer_object_id,
                                           const TaskID &caller_id,
                                           const std::string &call_site,
@@ -29,11 +29,11 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
   const rpc::Address owner_address = actor_handle->GetOwnerAddress();
 
   RAY_UNUSED(AddActorHandle(std::move(actor_handle),
-                            /*is_owner_handle=*/false,
-                            caller_id, call_site, caller_address));
+                            /*is_owner_handle=*/false, caller_id, call_site,
+                            caller_address));
   ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
-  reference_counter_->AddBorrowedObject(actor_handle_id, outer_object_id,
-                                        owner_id, owner_address);
+  reference_counter_->AddBorrowedObject(actor_handle_id, outer_object_id, owner_id,
+                                        owner_address);
   return actor_id;
 }
 

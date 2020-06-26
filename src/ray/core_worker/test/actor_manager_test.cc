@@ -35,9 +35,10 @@ class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
 
   ~MockActorInfoAccessor() {}
 
-  ray::Status AsyncSubscribe(const ActorID &actor_id,
-                             const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-                             const gcs::StatusCallback &done) {
+  ray::Status AsyncSubscribe(
+      const ActorID &actor_id,
+      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const gcs::StatusCallback &done) {
     auto callback_entry = std::make_pair(actor_id, subscribe);
     callback_map_.emplace(actor_id, subscribe);
     return Status::OK();
@@ -56,7 +57,8 @@ class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
     return callback_map_.find(actor_id) != callback_map_.end();
   }
 
-  absl::flat_hash_map<ActorID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>> callback_map_;
+  absl::flat_hash_map<ActorID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>
+      callback_map_;
 };
 
 class MockGcsClient : public gcs::RedisGcsClient {
@@ -132,14 +134,15 @@ class ActorManagerTest : public ::testing::Test {
     const auto caller_address = rpc::Address();
     const auto call_site = "";
     RayFunction function(ray::Language::PYTHON,
-                        ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
+                         ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
 
-    auto actor_handle = absl::make_unique<ActorHandle>(actor_id, TaskID::Nil(), rpc::Address(), job_id,
-                                                      ObjectID::FromRandom(), function.GetLanguage(),
-                                                      function.GetFunctionDescriptor(), "", 0);
+    auto actor_handle = absl::make_unique<ActorHandle>(
+        actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
+        function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
     EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
         .WillRepeatedly(testing::Return(true));
-    actor_manager_->AddActorHandle(move(actor_handle), true, task_id, call_site, caller_address);
+    actor_manager_->AddActorHandle(move(actor_handle), true, task_id, call_site,
+                                   caller_address);
     return actor_id;
   }
 
@@ -159,9 +162,9 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandle) {
   const auto call_site = "";
   RayFunction function(ray::Language::PYTHON,
                        ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
-  auto actor_handle = absl::make_unique<ActorHandle>(actor_id, TaskID::Nil(), rpc::Address(), job_id,
-                                                     ObjectID::FromRandom(), function.GetLanguage(),
-                                                     function.GetFunctionDescriptor(), "", 0);
+  auto actor_handle = absl::make_unique<ActorHandle>(
+      actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
+      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
   EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
       .WillRepeatedly(testing::Return(true));
 
@@ -172,14 +175,15 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandle) {
   ASSERT_TRUE(actor_info_accessor_->CheckSubscriptionRequested(actor_id));
   ASSERT_TRUE(actor_manager_->CheckActorHandleExists(actor_id));
 
-  auto actor_handle2 = absl::make_unique<ActorHandle>(actor_id, TaskID::Nil(), rpc::Address(), job_id,
-                                                     ObjectID::FromRandom(), function.GetLanguage(),
-                                                     function.GetFunctionDescriptor(), "", 0);
+  auto actor_handle2 = absl::make_unique<ActorHandle>(
+      actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
+      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
   // Make sure the same actor id adding will fail.
   ASSERT_FALSE(actor_manager_->AddActorHandle(move(actor_handle2), true, task_id,
                                               call_site, caller_address));
   // Make sure we can get an actor handle correctly.
-  std::unique_ptr<ActorHandle> &actor_handle_to_get = actor_manager_->GetActorHandle(actor_id);
+  std::unique_ptr<ActorHandle> &actor_handle_to_get =
+      actor_manager_->GetActorHandle(actor_id);
   // ActorHandle *actor_handle_to_get = nullptr;
   // ASSERT_TRUE(actor_manager_->GetActorHandle(actor_id, &actor_handle_to_get).ok());
   // ASSERT_TRUE(actor_handle_to_get->GetActorID() == actor_id);
@@ -202,9 +206,9 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
   const auto call_site = "";
   RayFunction function(ray::Language::PYTHON,
                        ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
-  auto actor_handle = absl::make_unique<ActorHandle>(actor_id, TaskID::Nil(), rpc::Address(), job_id,
-                                                     ObjectID::FromRandom(), function.GetLanguage(),
-                                                     function.GetFunctionDescriptor(), "", 0);
+  auto actor_handle = absl::make_unique<ActorHandle>(
+      actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
+      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
   EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
       .WillRepeatedly(testing::Return(true));
   ObjectID outer_object_id = ObjectID::Nil();
@@ -216,7 +220,8 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
       std::move(actor_handle), outer_object_id, task_id, call_site, caller_address);
   ASSERT_TRUE(returned_actor_id == actor_id);
   // Let's try to get the handle and make sure it works.
-  std::unique_ptr<ActorHandle> &actor_handle_to_get = actor_manager_->GetActorHandle(actor_id);
+  std::unique_ptr<ActorHandle> &actor_handle_to_get =
+      actor_manager_->GetActorHandle(actor_id);
   ASSERT_TRUE(actor_handle_to_get->GetActorID() == actor_id);
   ASSERT_TRUE(actor_handle_to_get->CreationJobID() == job_id);
 }
@@ -230,7 +235,8 @@ TEST_F(ActorManagerTest, TestActorStateNotificationPending) {
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(
       rpc::ActorTableData_ActorState::ActorTableData_ActorState_PENDING);
-  ASSERT_TRUE(actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
+  ASSERT_TRUE(
+      actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
 }
 
 TEST_F(ActorManagerTest, TestActorStateNotificationRestarting) {
@@ -242,7 +248,8 @@ TEST_F(ActorManagerTest, TestActorStateNotificationRestarting) {
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(
       rpc::ActorTableData_ActorState::ActorTableData_ActorState_RESTARTING);
-  ASSERT_TRUE(actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
+  ASSERT_TRUE(
+      actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
 }
 
 TEST_F(ActorManagerTest, TestActorStateNotificationDead) {
@@ -254,7 +261,8 @@ TEST_F(ActorManagerTest, TestActorStateNotificationDead) {
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(
       rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
-  ASSERT_TRUE(actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
+  ASSERT_TRUE(
+      actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
 }
 
 TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
@@ -266,7 +274,8 @@ TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(
       rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
-  ASSERT_TRUE(actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
+  ASSERT_TRUE(
+      actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
 }
 
 }  // namespace ray

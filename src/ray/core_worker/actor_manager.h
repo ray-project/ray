@@ -52,9 +52,9 @@ class ActorManager {
   /// \param[in] caller_id The caller's task ID
   /// \param[in] call_site The caller's site.
   /// \return The ActorID of the deserialized handle.
-  ActorID RegisterActorHandle(std::unique_ptr<ActorHandle> actor_handle, 
-                              const ObjectID &outer_object_id,
-                              const TaskID &caller_id, const std::string &call_site,
+  ActorID RegisterActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+                              const ObjectID &outer_object_id, const TaskID &caller_id,
+                              const std::string &call_site,
                               const rpc::Address &caller_address);
 
   /// Get a handle to an actor.
