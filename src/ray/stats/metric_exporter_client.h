@@ -13,8 +13,6 @@
 // limitations under the License.
 
 #pragma once
-#ifndef RAY_METRIC_EXPORTER_CLIENT_H
-#define RAY_METRIC_EXPORTER_CLIENT_H
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 
 #include "ray/stats/metric.h"
@@ -67,4 +65,3 @@ class OpentsdbExporterClient : public MetricExporterDecorator {
 
 }  // namespace stats
 }  // namespace ray
-#endif

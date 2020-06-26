@@ -13,8 +13,6 @@
 // limitations under the License.
 
 #pragma once
-#ifndef RAY_METRIC_EXPORTER_H
-#define RAY_METRIC_EXPORTER_H
 #include "absl/memory/memory.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
@@ -88,5 +86,3 @@ class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
 
 }  // namespace stats
 }  // namespace ray
-
-#endif
