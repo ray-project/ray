@@ -96,9 +96,4 @@ struct ObjectTableEntry {
 /// Mapping from ObjectIDs to information about the object.
 typedef std::unordered_map<ObjectID, std::unique_ptr<ObjectTableEntry>> ObjectTable;
 
-/// Globally accessible reference to plasma store configuration.
-/// TODO(pcm): This can be avoided with some refactoring of existing code
-/// by making it possible to pass a context object through dlmalloc.
-struct PlasmaStoreInfo;
-extern const PlasmaStoreInfo* plasma_config;
 }  // namespace plasma

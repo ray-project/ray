@@ -171,4 +171,7 @@ std::unique_ptr<uint8_t[]> CreateObjectInfoBuffer(ObjectInfoT* object_info);
 std::unique_ptr<uint8_t[]> CreatePlasmaNotificationBuffer(
     const std::vector<ObjectInfoT>& object_info);
 
+/// Globally accessible reference to plasma store configuration.
+extern const PlasmaStoreInfo* plasma_config;
+
 }  // namespace plasma
