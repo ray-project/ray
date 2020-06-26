@@ -1,7 +1,9 @@
 from abc import ABCMeta, abstractmethod
 import gym
 import numpy as np
+from typing import Dict, List, Optional
 
+from ray.rllib.evaluation.trajectory import Trajectory
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
@@ -9,6 +11,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
+from ray.rllib.utils.types import AgentID
 
 torch, _ = try_import_torch()
 tree = try_import_tree()
@@ -79,12 +82,12 @@ class Policy(metaclass=ABCMeta):
         """Computes actions for the current policy.
 
         Args:
-            obs_batch (Union[List,np.ndarray]): Batch of observations.
+            obs_batch (Union[List, np.ndarray]): Batch of observations.
             state_batches (Optional[list]): List of RNN state input batches,
                 if any.
-            prev_action_batch (Optional[List,np.ndarray]): Batch of previous
+            prev_action_batch (Optional[List, np.ndarray]): Batch of previous
                 action values.
-            prev_reward_batch (Optional[List,np.ndarray]): Batch of previous
+            prev_reward_batch (Optional[List, np.ndarray]): Batch of previous
                 rewards.
             info_batch (info): Batch of info objects.
             episodes (list): MultiAgentEpisode for each obs in obs_batch.
@@ -193,11 +196,12 @@ class Policy(metaclass=ABCMeta):
     @DeveloperAPI
     def _compute_actions_from_trajectories(
             self,
-            trajectories,
-            explore=None,
-            timestep=None,
+            trajectories: List[Trajectory],
+            other_trajectories: Dict[AgentID, Trajectory],
+            explore: bool = None,
+            timestep: Optional[int] = None,
             **kwargs):
-        """Computes actions for the current policy.
+        """Computes actions for the current policy based on .
 
         Only used so far by the Sampler iff `_fast_sampling=True` (also only
         supported for torch).
@@ -205,9 +209,11 @@ class Policy(metaclass=ABCMeta):
         Args:
             trajectories (List[Trajectory]): A List of Trajectory data used
                 to create a view for the Model forward call.
+            other_trajectories (Dict[AgentID, Trajectory]): Optional dict
+                mapping AgentIDs to Trajectory objects.
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
-            timestep (int): The current (sampling) time step.
+            timestep (Optional[int]): The current (sampling) time step.
             kwargs: forward compatibility placeholder
 
         Returns:
