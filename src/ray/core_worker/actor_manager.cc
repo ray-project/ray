@@ -19,106 +19,34 @@
 
 namespace ray {
 
-ActorID ActorManager::DeserializeAndRegisterActorHandle(
-    const std::string &serialized, const ObjectID &outer_object_id,
-    const TaskID &caller_id, const std::string &call_site,
-    const rpc::Address &caller_address) {
-  std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(serialized));
-  const auto actor_id = actor_handle->GetActorID();
-  const auto owner_id = actor_handle->GetOwnerId();
-  const auto owner_address = actor_handle->GetOwnerAddress();
+ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_handle, 
+                                          const ObjectID &outer_object_id,
+                                          const TaskID &caller_id,
+                                          const std::string &call_site,
+                                          const rpc::Address &caller_address) {
+  const ActorID actor_id = actor_handle->GetActorID();
+  const TaskID owner_id = actor_handle->GetOwnerId();
+  const rpc::Address owner_address = actor_handle->GetOwnerAddress();
 
-  RAY_UNUSED(AddActorHandle(std::move(actor_handle), /*is_owner_handle=*/false, caller_id,
-                            call_site, caller_address));
-
+  RAY_UNUSED(AddActorHandle(std::move(actor_handle),
+                            /*is_owner_handle=*/false,
+                            caller_id, call_site, caller_address));
   ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
-  reference_counter_->AddBorrowedObject(actor_handle_id, outer_object_id, owner_id,
-                                        owner_address);
-
+  reference_counter_->AddBorrowedObject(actor_handle_id, outer_object_id,
+                                        owner_id, owner_address);
   return actor_id;
 }
 
-Status ActorManager::SerializeActorHandle(const ActorID &actor_id, std::string *output,
-                                          ObjectID *actor_handle_id) const {
-  ActorHandle *actor_handle = nullptr;
-  auto status = GetActorHandle(actor_id, &actor_handle);
-  if (status.ok()) {
-    actor_handle->Serialize(output);
-    *actor_handle_id = ObjectID::ForActorHandle(actor_id);
-  }
-  return status;
-}
-
-Status ActorManager::GetActorHandle(const ActorID &actor_id,
-                                    ActorHandle **actor_handle) const {
+std::unique_ptr<ActorHandle> &ActorManager::GetActorHandle(const ActorID &actor_id) {
   absl::MutexLock lock(&mutex_);
   auto it = actor_handles_.find(actor_id);
-  if (it == actor_handles_.end()) {
-    return Status::Invalid("Handle for actor does not exist");
-  }
-  *actor_handle = it->second.get();
-  return Status::OK();
+  RAY_CHECK(it != actor_handles_.end());
+  return it->second;
 }
 
-Status ActorManager::GetNamedActorHandle(const std::string &name,
-                                         ActorHandle **actor_handle,
-                                         const TaskID &caller_id,
-                                         const std::string &call_site,
-                                         const rpc::Address &caller_address) {
-  RAY_CHECK(RayConfig::instance().gcs_actor_service_enabled());
-  RAY_CHECK(!name.empty());
-
-  // This call needs to be blocking because we can't return until the actor
-  // handle is created, which requires the response from the RPC. This is
-  // implemented using a condition variable that's captured in the RPC
-  // callback. There should be no risk of deadlock because we don't hold any
-  // locks during the call and the RPCs run on a separate thread.
-  ActorID actor_id;
-  std::shared_ptr<bool> ready = std::make_shared<bool>(false);
-  std::shared_ptr<std::mutex> m = std::make_shared<std::mutex>();
-  std::shared_ptr<std::condition_variable> cv =
-      std::make_shared<std::condition_variable>();
-  std::unique_lock<std::mutex> lk(*m);
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
-      name, [this, &actor_id, name, ready, m, cv, caller_id, call_site, caller_address](
-                Status status, const boost::optional<gcs::ActorTableData> &result) {
-        if (status.ok() && result) {
-          auto actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(*result));
-          actor_id = actor_handle->GetActorID();
-          AddActorHandle(std::move(actor_handle), /*is_owner_handle=*/false, caller_id,
-                         call_site, caller_address);
-        } else {
-          RAY_LOG(INFO) << "Failed to look up actor with name: " << name;
-          // Use a NIL actor ID to signal that the actor wasn't found.
-          actor_id = ActorID::Nil();
-        }
-
-        // Notify the main thread that the RPC has finished.
-        {
-          std::unique_lock<std::mutex> lk(*m);
-          *ready = true;
-        }
-        cv->notify_one();
-      }));
-
-  // Block until the RPC completes. Set a timeout to avoid hangs if the
-  // GCS service crashes.
-  cv->wait_for(lk, std::chrono::seconds(5), [ready] { return *ready; });
-  if (!*ready) {
-    return Status::TimedOut("Timed out trying to get named actor.");
-  }
-
-  Status status;
-  if (actor_id.IsNil()) {
-    std::stringstream stream;
-    stream << "Failed to look up actor with name '" << name
-           << "'. It is either you look up the named actor you didn't create or the named"
-              "actor hasn't been created because named actor creation is asynchronous.";
-    status = Status::NotFound(stream.str());
-  } else {
-    status = GetActorHandle(actor_id, actor_handle);
-  }
-  return status;
+bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
+  absl::MutexLock lock(&mutex_);
+  return actor_handles_.find(actor_id) != actor_handles_.end();
 }
 
 bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
@@ -157,12 +85,15 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
             // If we own the actor and the actor handle is no longer in scope,
             // terminate the actor. We do not do this if the GCS service is
             // enabled since then the GCS will terminate the actor for us.
-            if (RayConfig::instance().gcs_actor_service_enabled()) {
+            // TODO(sang): Remove this block once gcs_actor_service is enabled by default.
+            if (!RayConfig::instance().gcs_actor_service_enabled()) {
               RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id
                             << " has gone out of scope, sending message to actor "
                             << actor_id << " to do a clean exit.";
-              RAY_CHECK_OK(
-                  KillActor(actor_id, /*force_kill=*/false, /*no_restart=*/false));
+              RAY_CHECK(CheckActorHandleExists(actor_id));
+              direct_actor_submitter_->KillActor(actor_id,
+                                                 /*force_kill=*/false,
+                                                 /*no_restart=*/false);
             }
           }
 
@@ -196,14 +127,6 @@ void ActorManager::AddActorOutOfScopeCallback(
                   .emplace(actor_id, std::move(actor_out_of_scope_callbacks))
                   .second);
   }
-}
-
-Status ActorManager::KillActor(const ActorID &actor_id, bool force_kill,
-                               bool no_restart) {
-  ActorHandle *actor_handle = nullptr;
-  RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
-  direct_actor_submitter_->KillActor(actor_id, force_kill, no_restart);
-  return Status::OK();
 }
 
 void ActorManager::HandleActorStateNotification(const ActorID &actor_id,

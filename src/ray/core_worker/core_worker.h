@@ -585,12 +585,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                          const TaskOptions &task_options,
                          std::vector<ObjectID> *return_ids);
 
-  // /// Tell an actor to exit immediately, without completing outstanding work.
-  // ///
-  // /// \param[in] actor_id ID of the actor to kill.
-  // /// \param[in] no_restart If set to true, the killed actor will not be
-  // /// restarted anymore.
-  // /// \param[out] Status
+  /// Tell an actor to exit immediately, without completing outstanding work.
+  ///
+  /// \param[in] actor_id ID of the actor to kill.
+  /// \param[in] no_restart If set to true, the killed actor will not be
+  /// restarted anymore.
+  /// \param[out] Status
   Status KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
 
   /// Stops the task associated with the given Object ID.
