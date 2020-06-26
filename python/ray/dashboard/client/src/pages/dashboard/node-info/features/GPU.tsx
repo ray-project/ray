@@ -1,14 +1,17 @@
-import { Typography, Tooltip } from "@material-ui/core";
+import { Typography, Tooltip, Box, styled, Theme, makeStyles, createStyles} from "@material-ui/core";
 import React from "react";
 import UsageBar from "../../../../common/UsageBar";
+import {RightPaddedTypography} from "../../../../common/CustomTypography";
 import { getWeightedAverage, sum } from "../../../../common/util";
-import { ResourceSlot, GPUStats } from "../../../../api";
+import { ResourceSlot, GPUStats, ResourceAllocations } from "../../../../api";
 import {
   ClusterFeatureComponent,
   Node,
   NodeFeatureComponent,
   WorkerFeatureComponent,
 } from "./types";
+
+const GPU_COL_WIDTH = 120;
 
 const clusterUtilization = (nodes: Array<Node>): number => {
   const utils = nodes
@@ -32,7 +35,7 @@ const nodeAverageUtilization = (node: Node): number => {
 export const ClusterGPU: ClusterFeatureComponent = ({ nodes }) => {
   const clusterAverageUtilization = clusterUtilization(nodes);
   return (
-    <div style={{ minWidth: 60 }}>
+    <div style={{ minWidth: GPU_COL_WIDTH }}>
       {isNaN(clusterAverageUtilization) ? (
         <Typography color="textSecondary" component="span" variant="inherit">
           N/A
@@ -50,7 +53,7 @@ export const ClusterGPU: ClusterFeatureComponent = ({ nodes }) => {
 export const NodeGPU: NodeFeatureComponent = ({ node }) => {
   const hasGPU = (node.gpus !== undefined) && (node.gpus.length !== 0)
   return (
-    <div style={{ minWidth: 60 }}>
+    <div style={{ minWidth: GPU_COL_WIDTH }}>
       {hasGPU ? (
         node.gpus.map((gpu, i) => <NodeGPUEntry gpu={gpu} slot={i} />)
       ) : (
@@ -66,16 +69,30 @@ type NodeGPUEntryProps = {
   slot: number;
   gpu: GPUStats;
 }
-const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ slot, gpu }) => {
-  const utilPercent = gpu.utilization_gpu * 100;
+
+const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ gpu, slot }) => {
   return (
-    <div>
+    <Box display="flex" style={{minWidth: GPU_COL_WIDTH}}>
       <Tooltip title={gpu.name}>
-        <Typography>[{slot}]</Typography>
+          <RightPaddedTypography variant="h6">[{slot}]:</RightPaddedTypography>
       </Tooltip>
-      <UsageBar percent={utilPercent} text={`${utilPercent.toFixed(1)}`} />
-    </div>
+      <UsageBar percent={gpu.utilization_gpu} 
+                text={`${gpu.utilization_gpu.toFixed(1)}%`} />
+    </Box>
   )
+}
+
+type WorkerGPUEntryProps = {
+  resourceSlot: ResourceSlot;
+  slot: number;
+}
+
+const WorkerGPUEntry: React.FC<WorkerGPUEntryProps> = ({resourceSlot, slot}) => {
+  const {allocation} = resourceSlot;
+  return (
+    <Typography variant="h6">[{slot}]: {allocation}</Typography>
+  );
+    
 }
 
 export const WorkerGPU: WorkerFeatureComponent = ({ rayletWorker }) => {
@@ -89,13 +106,9 @@ export const WorkerGPU: WorkerFeatureComponent = ({ rayletWorker }) => {
       </Typography>
     );
   } else {
-    const aggregateAllocation = sum(
-      workerUsedGPUResources.resourceSlots.map(
-        (resourceSlot) => resourceSlot.allocation,
-      ),
-    );
-    const plural = aggregateAllocation === 1 ? "" : "s";
-    message = <b>{`${aggregateAllocation} GPU${plural} in use`}</b>;
+    message = workerUsedGPUResources.resourceSlots.map(
+        (resourceSlot, i) => <WorkerGPUEntry resourceSlot={resourceSlot} slot={i} />
+      )
   }
   return <div style={{ minWidth: 60 }}>{message}</div>;
 };
