@@ -222,18 +222,33 @@ bool NodeResources::operator==(const NodeResources &other) {
 
 std::string NodeResources::DebugString(StringIdMap string_to_in_map) const {
   std::stringstream buffer;
-  buffer << " {";
-  for (size_t i = 0; i < static_cast<size_t>(this->predefined_resources.size()); i++) {
+  buffer << " {\n";
+  for (size_t i = 0; i < this->predefined_resources.size(); i++) {
+    buffer << "\t";
+    switch (i) {
+    case CPU:
+      buffer << "CPU: ";
+      break;
+    case MEM:
+      buffer << "MEM: ";
+      break;
+    case GPU:
+      buffer << "GPU: ";
+      break;
+    case TPU:
+      buffer << "TPU: ";
+      break;
+    default:
+      RAY_CHECK(false) << "This should never happen.";
+      break;
+    }
     buffer << "(" << this->predefined_resources[i].total << ":"
-           << this->predefined_resources[i].available << ") ";
+            << this->predefined_resources[i].available << ")\n";
   }
-  buffer << "}";
-
-  buffer << "  {";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << string_to_in_map.Get(it->first) << ":(" << it->second.total << ":"
-           << it->second.available << ") ";
+    buffer << "\t" << string_to_in_map.Get(it->first) << ":(" << it->second.total << ":"
+          << it->second.available << ")\n";
   }
   buffer << "}" << std::endl;
   return buffer.str();
@@ -273,18 +288,33 @@ bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
 
 std::string NodeResourceInstances::DebugString(StringIdMap string_to_int_map) const {
   std::stringstream buffer;
-  buffer << " {";
+  buffer << "{\n";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
+    buffer << "\t";
+    switch (i) {
+      case CPU:
+        buffer << "CPU: ";
+        break;
+      case MEM:
+        buffer << "MEM: ";
+        break;
+      case GPU:
+        buffer << "GPU: ";
+        break;
+      case TPU:
+        buffer << "TPU: ";
+        break;
+      default:
+        RAY_CHECK(false) << "This should never happen.";
+        break;
+    }
     buffer << "(" << VectorToString(predefined_resources[i].total) << ":"
-           << VectorToString(this->predefined_resources[i].available) << ") ";
+           << VectorToString(this->predefined_resources[i].available) << ")\n";
   }
-  buffer << "}";
-
-  buffer << " {";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << string_to_int_map.Get(it->first) << ":(" << VectorToString(it->second.total)
-           << ":" << VectorToString(it->second.available) << ") ";
+    buffer << "\t" << string_to_int_map.Get(it->first) << ":(" << VectorToString(it->second.total)
+           << ":" << VectorToString(it->second.available) << ")\n";
   }
   buffer << "}" << std::endl;
   return buffer.str();
@@ -763,10 +793,10 @@ void ClusterResourceScheduler::DeleteResource(const std::string &client_id_strin
 
 std::string ClusterResourceScheduler::DebugString(void) const {
   std::stringstream buffer;
-  buffer << "\n Local id: " << local_node_id_;
+  buffer << "\nLocal id: " << local_node_id_;
   buffer << " Local resources: " << local_resources_.DebugString(string_to_int_map_);
   for (auto &node : nodes_) {
-    buffer << "   node id: " << node.first;
+    buffer << "node id: " << node.first;
     buffer << node.second.DebugString(string_to_int_map_);
   }
   return buffer.str();

@@ -1093,6 +1093,7 @@ Status CoreWorker::SetResource(const std::string &resource_name, const double ca
 void CoreWorker::SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
                             const TaskOptions &task_options,
                             std::vector<ObjectID> *return_ids, int max_retries) {
+  RAY_LOG(INFO) << "[CoreWorker] Received task submission.";
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =

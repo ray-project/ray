@@ -111,6 +111,7 @@ ObjectID TaskSpecification::ReturnId(size_t return_index) const {
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
   return (ArgIdCount(arg_index) != 0);
+
 }
 
 size_t TaskSpecification::ArgIdCount(size_t arg_index) const {
@@ -258,7 +259,15 @@ std::string TaskSpecification::DebugString() const {
   std::ostringstream stream;
   stream << "Type=" << TaskType_Name(message_->type())
          << ", Language=" << Language_Name(message_->language())
-         << ", function_descriptor=";
+         << ", Resources: {";
+
+  // Print resource description.
+  for (auto entry : GetRequiredResources().GetResourceMap()) {
+    stream << entry.first << ": " << entry.second << ", ";
+  }
+  stream << "}";
+
+  stream << ", function_descriptor=";
 
   // Print function descriptor.
   stream << FunctionDescriptor()->ToString();

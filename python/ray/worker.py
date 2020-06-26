@@ -932,16 +932,18 @@ def print_logs(redis_client, threads_stopped):
                 else:
                     return colorama.Fore.CYAN
 
-            if data["ip"] == localhost:
-                for line in data["lines"]:
-                    print("{}{}(pid={}){} {}".format(
-                        colorama.Style.DIM, color_for(data), data["pid"],
-                        colorama.Style.RESET_ALL, line))
-            else:
-                for line in data["lines"]:
-                    print("{}{}(pid={}, ip={}){} {}".format(
-                        colorama.Style.DIM, color_for(data), data["pid"],
-                        data["ip"], colorama.Style.RESET_ALL, line))
+            # if data["ip"] == localhost:
+            #     for line in data["lines"]:
+            #         print("{}{}(pid={}){} {}".format(
+            #             colorama.Style.DIM, color_for(data), data["pid"],
+            #             colorama.Style.RESET_ALL, line))
+            # else:
+            #     for line in data["lines"]:
+            #         print("{}{}(pid={}, ip={}){} {}".format(
+            #             colorama.Style.DIM, color_for(data), data["pid"],
+            #             data["ip"], colorama.Style.RESET_ALL, line))
+            for line in data["lines"]:
+                print(">", line)
 
             if (num_consecutive_messages_received % 100 == 0
                     and num_consecutive_messages_received > 0):

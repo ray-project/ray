@@ -113,7 +113,7 @@ class LogMonitor:
             self.logs_dir))
         # segfaults and other serious errors are logged here
         raylet_err_paths = glob.glob("{}/raylet*.err".format(self.logs_dir))
-        for file_path in log_file_paths + raylet_err_paths:
+        for file_path in log_file_paths:
             if os.path.isfile(
                     file_path) and file_path not in self.log_filenames:
                 self.log_filenames.add(file_path)
