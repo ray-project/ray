@@ -28,29 +28,37 @@ namespace ray {
 
 using ::testing::_;
 
-std::shared_ptr<ActorHandle> CreateActorHandle(ActorID &actor_id, JobID &job_id) {
-  RayFunction function(ray::Language::PYTHON,
-                       ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
-  return std::make_shared<ActorHandle>(actor_id, TaskID::Nil(), rpc::Address(), job_id,
-                                       ObjectID::FromRandom(), function.GetLanguage(),
-                                       function.GetFunctionDescriptor(), "", 0);
-}
-
 class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
  public:
   MockActorInfoAccessor(gcs::RedisGcsClient *client)
       : gcs::RedisActorInfoAccessor(client) {}
 
-  MOCK_METHOD2(AsyncRegister,
-               ray::Status(const std::shared_ptr<gcs::ActorTableData> &data_ptr,
-                           const gcs::StatusCallback &callback));
-  MOCK_METHOD3(
-      AsyncSubscribe,
-      ray::Status(const ActorID &actor_id,
-                  const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-                  const gcs::StatusCallback &done));
-
   ~MockActorInfoAccessor() {}
+
+  ray::Status AsyncSubscribe(
+      const ActorID &actor_id,
+      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const gcs::StatusCallback &done) {
+    auto callback_entry = std::make_pair(actor_id, subscribe);
+    callback_map_.emplace(actor_id, subscribe);
+    return Status::OK();
+  }
+
+  bool ActorStateNotificationPublished(const ActorID &actor_id,
+                                       const gcs::ActorTableData &actor_data) {
+    auto it = callback_map_.find(actor_id);
+    if (it == callback_map_.end()) return false;
+    auto actor_state_notification_callback = it->second;
+    actor_state_notification_callback(actor_id, actor_data);
+    return true;
+  }
+
+  bool CheckSubscriptionRequested(const ActorID &actor_id) {
+    return callback_map_.find(actor_id) != callback_map_.end();
+  }
+
+  absl::flat_hash_map<ActorID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>
+      callback_map_;
 };
 
 class MockGcsClient : public gcs::RedisGcsClient {
@@ -83,15 +91,17 @@ class MockReferenceCounter : public ReferenceCounterInterface {
 
   MOCK_METHOD2(AddLocalReference,
                void(const ObjectID &object_id, const std::string &call_sit));
-  MOCK_METHOD4(AddBorrowedObject,
+
+  MOCK_METHOD3(AddBorrowedObject,
                bool(const ObjectID &object_id, const ObjectID &outer_id,
-                    const TaskID &owner_id, const rpc::Address &owner_address));
-  MOCK_METHOD8(AddOwnedObject,
+                    const rpc::Address &owner_address));
+
+  MOCK_METHOD7(AddOwnedObject,
                void(const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
-                    const TaskID &owner_id, const rpc::Address &owner_address,
-                    const std::string &call_site, const int64_t object_size,
-                    bool is_reconstructable,
+                    const rpc::Address &owner_address, const std::string &call_site,
+                    const int64_t object_size, bool is_reconstructable,
                     const absl::optional<ClientID> &pinned_at_raylet_id));
+
   MOCK_METHOD2(SetDeleteCallback,
                bool(const ObjectID &object_id,
                     const std::function<void(const ObjectID &)> callback));
@@ -119,6 +129,25 @@ class ActorManagerTest : public ::testing::Test {
 
   void TearDown() { actor_manager_.reset(); }
 
+  ActorID AddActorHandle() const {
+    JobID job_id = JobID::FromInt(1);
+    const TaskID task_id = TaskID::ForDriverTask(job_id);
+    ActorID actor_id = ActorID::Of(job_id, task_id, 1);
+    const auto caller_address = rpc::Address();
+    const auto call_site = "";
+    RayFunction function(ray::Language::PYTHON,
+                         ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
+
+    auto actor_handle = absl::make_unique<ActorHandle>(
+        actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
+        function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
+    EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
+        .WillRepeatedly(testing::Return(true));
+    actor_manager_->AddActorHandle(move(actor_handle), true, task_id, call_site,
+                                   caller_address);
+    return actor_id;
+  }
+
   gcs::GcsClientOptions options_;
   std::shared_ptr<MockGcsClient> gcs_client_mock_;
   MockActorInfoAccessor *actor_info_accessor_;
@@ -127,86 +156,91 @@ class ActorManagerTest : public ::testing::Test {
   std::shared_ptr<ActorManager> actor_manager_;
 };
 
-TEST_F(ActorManagerTest, TestAddAndGetActorHandle) {
+TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
   JobID job_id = JobID::FromInt(1);
   const TaskID task_id = TaskID::ForDriverTask(job_id);
   ActorID actor_id = ActorID::Of(job_id, task_id, 1);
   const auto caller_address = rpc::Address();
   const auto call_site = "";
-  std::shared_ptr<ActorHandle> actor_handle = CreateActorHandle(actor_id, job_id);
-  EXPECT_CALL(*actor_info_accessor_, AsyncSubscribe(_, _, _))
-      .WillRepeatedly(testing::Return(Status::OK()));
+  RayFunction function(ray::Language::PYTHON,
+                       ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
+  auto actor_handle = absl::make_unique<ActorHandle>(
+      actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
+      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
   EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
       .WillRepeatedly(testing::Return(true));
 
   // Add an actor handle.
   ASSERT_TRUE(actor_manager_->AddActorHandle(move(actor_handle), true, task_id, call_site,
                                              caller_address));
-  std::shared_ptr<ActorHandle> actor_handle2 = CreateActorHandle(actor_id, job_id);
+  // Make sure the subscription request is sent to GCS.
+  ASSERT_TRUE(actor_info_accessor_->CheckSubscriptionRequested(actor_id));
+  ASSERT_TRUE(actor_manager_->CheckActorHandleExists(actor_id));
+
+  auto actor_handle2 = absl::make_unique<ActorHandle>(
+      actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
+      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
   // Make sure the same actor id adding will fail.
   ASSERT_FALSE(actor_manager_->AddActorHandle(move(actor_handle2), true, task_id,
                                               call_site, caller_address));
   // Make sure we can get an actor handle correctly.
-  ActorHandle *actor_handle_to_get = nullptr;
-  ASSERT_TRUE(actor_manager_->GetActorHandle(actor_id, &actor_handle_to_get).ok());
+  std::unique_ptr<ActorHandle> &actor_handle_to_get =
+      actor_manager_->GetActorHandle(actor_id);
   ASSERT_TRUE(actor_handle_to_get->GetActorID() == actor_id);
+
+  // Check after the actor is created, if it is connected to an actor.
+  EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _)).Times(1);
+  rpc::ActorTableData actor_table_data;
+  actor_table_data.set_actor_id(actor_id.Binary());
+  actor_table_data.set_state(
+      rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+  actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data);
+
+  // Now actor state is updated to DEAD. Make sure it is diconnected.
+  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _)).Times(1);
+  actor_table_data.set_actor_id(actor_id.Binary());
+  actor_table_data.set_state(
+      rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
+  actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data);
 }
 
-TEST_F(ActorManagerTest, TestGetNotExistingActorHandles) {
-  // Get actor handle that does not exist should fail.
+TEST_F(ActorManagerTest, TestCheckActorHandleDoesntExists) {
   JobID job_id = JobID::FromInt(2);
   const TaskID task_id = TaskID::ForDriverTask(job_id);
   ActorID actor_id = ActorID::Of(job_id, task_id, 1);
-  ActorHandle *actor_handle_that_doesnt_exist = nullptr;
-  ASSERT_TRUE(actor_manager_->GetActorHandle(actor_id, &actor_handle_that_doesnt_exist)
-                  .IsInvalid());
+  ASSERT_FALSE(actor_manager_->CheckActorHandleExists(actor_id));
 }
 
-TEST_F(ActorManagerTest, TestSerializeAndDeserializeActorHandles) {
+TEST_F(ActorManagerTest, RegisterActorHandles) {
   JobID job_id = JobID::FromInt(1);
   const TaskID task_id = TaskID::ForDriverTask(job_id);
   ActorID actor_id = ActorID::Of(job_id, task_id, 1);
   const auto caller_address = rpc::Address();
   const auto call_site = "";
-  EXPECT_CALL(*actor_info_accessor_, AsyncSubscribe(_, _, _))
-      .WillRepeatedly(testing::Return(Status::OK()));
+  RayFunction function(ray::Language::PYTHON,
+                       ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
+  auto actor_handle = absl::make_unique<ActorHandle>(
+      actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
+      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
   EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
       .WillRepeatedly(testing::Return(true));
-
-  // Make sure serialization fails when actor handle is not registered
-  std::string serialized_bytes;
-  ObjectID actor_handle_id;
-  ASSERT_TRUE(
-      actor_manager_->SerializeActorHandle(actor_id, &serialized_bytes, &actor_handle_id)
-          .IsInvalid());
-  // Add an actor handle.
-  std::shared_ptr<ActorHandle> actor_handle = CreateActorHandle(actor_id, job_id);
-  ASSERT_TRUE(actor_manager_->AddActorHandle(move(actor_handle), true, task_id, call_site,
-                                             caller_address));
-  // Serialize actor_handle first
-  ASSERT_TRUE(
-      actor_manager_->SerializeActorHandle(actor_id, &serialized_bytes, &actor_handle_id)
-          .ok());
-  // Make sure deserialization & register works.
   ObjectID outer_object_id = ObjectID::Nil();
-  // Sinece DeserializeAndRegisterActorHandle happens in a non-owner worker, we should
+
+  // Sinece RegisterActor happens in a non-owner worker, we should
   // make sure it borrows an object.
-  EXPECT_CALL(*reference_counter_, AddBorrowedObject(_, _, _, _));
-  ActorID returned_actor_id = actor_manager_->DeserializeAndRegisterActorHandle(
-      serialized_bytes, outer_object_id, task_id, call_site, caller_address);
+  EXPECT_CALL(*reference_counter_, AddBorrowedObject(_, _, _));
+  ActorID returned_actor_id = actor_manager_->RegisterActorHandle(
+      std::move(actor_handle), outer_object_id, task_id, call_site, caller_address);
   ASSERT_TRUE(returned_actor_id == actor_id);
   // Let's try to get the handle and make sure it works.
-  ActorHandle *actor_handle_to_get = nullptr;
-  ASSERT_TRUE(actor_manager_->GetActorHandle(actor_id, &actor_handle_to_get).ok());
+  std::unique_ptr<ActorHandle> &actor_handle_to_get =
+      actor_manager_->GetActorHandle(actor_id);
   ASSERT_TRUE(actor_handle_to_get->GetActorID() == actor_id);
   ASSERT_TRUE(actor_handle_to_get->CreationJobID() == job_id);
 }
 
 TEST_F(ActorManagerTest, TestActorStateNotificationPending) {
-  JobID job_id = JobID::FromInt(1);
-  const TaskID task_id = TaskID::ForDriverTask(job_id);
-  ActorID actor_id = ActorID::Of(job_id, task_id, 1);
-
+  ActorID actor_id = AddActorHandle();
   // Nothing happens if state is pending.
   EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _)).Times(0);
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _)).Times(0);
@@ -214,14 +248,12 @@ TEST_F(ActorManagerTest, TestActorStateNotificationPending) {
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(
       rpc::ActorTableData_ActorState::ActorTableData_ActorState_PENDING);
-  actor_manager_->HandleActorStateNotification(actor_id, actor_table_data);
+  ASSERT_TRUE(
+      actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
 }
 
 TEST_F(ActorManagerTest, TestActorStateNotificationRestarting) {
-  JobID job_id = JobID::FromInt(1);
-  const TaskID task_id = TaskID::ForDriverTask(job_id);
-  ActorID actor_id = ActorID::Of(job_id, task_id, 1);
-
+  ActorID actor_id = AddActorHandle();
   // Should disconnect to an actor when actor is restarting.
   EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _)).Times(0);
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _)).Times(1);
@@ -229,14 +261,12 @@ TEST_F(ActorManagerTest, TestActorStateNotificationRestarting) {
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(
       rpc::ActorTableData_ActorState::ActorTableData_ActorState_RESTARTING);
-  actor_manager_->HandleActorStateNotification(actor_id, actor_table_data);
+  ASSERT_TRUE(
+      actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
 }
 
 TEST_F(ActorManagerTest, TestActorStateNotificationDead) {
-  JobID job_id = JobID::FromInt(1);
-  const TaskID task_id = TaskID::ForDriverTask(job_id);
-  ActorID actor_id = ActorID::Of(job_id, task_id, 1);
-
+  ActorID actor_id = AddActorHandle();
   // Should disconnect to an actor when actor is dead.
   EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _)).Times(0);
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _)).Times(1);
@@ -244,14 +274,12 @@ TEST_F(ActorManagerTest, TestActorStateNotificationDead) {
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(
       rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
-  actor_manager_->HandleActorStateNotification(actor_id, actor_table_data);
+  ASSERT_TRUE(
+      actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
 }
 
 TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
-  JobID job_id = JobID::FromInt(1);
-  const TaskID task_id = TaskID::ForDriverTask(job_id);
-  ActorID actor_id = ActorID::Of(job_id, task_id, 1);
-
+  ActorID actor_id = AddActorHandle();
   // Should connect to an actor when actor is alive.
   EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _)).Times(1);
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _)).Times(0);
@@ -259,7 +287,8 @@ TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(
       rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
-  actor_manager_->HandleActorStateNotification(actor_id, actor_table_data);
+  ASSERT_TRUE(
+      actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
 }
 
 }  // namespace ray

@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_SCHEDULING_SCHEDULING_H
-#define RAY_COMMON_SCHEDULING_SCHEDULING_H
+#pragma once
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -536,5 +535,3 @@ class ClusterResourceScheduler {
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
 };
-
-#endif  // RAY_COMMON_SCHEDULING_SCHEDULING_H

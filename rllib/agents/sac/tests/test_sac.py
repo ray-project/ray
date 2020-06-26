@@ -13,8 +13,8 @@ from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, relu
-from ray.rllib.utils.test_utils import check, framework_iterator, \
-    check_compute_action
+from ray.rllib.utils.test_utils import check, check_compute_single_action, \
+    framework_iterator
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
 tf = try_import_tf()
@@ -67,7 +67,8 @@ class TestSAC(unittest.TestCase):
                 for i in range(num_iterations):
                     results = trainer.train()
                     print(results)
-                check_compute_action(trainer)
+                check_compute_single_action(trainer)
+                trainer.stop()
 
     def test_sac_loss_function(self):
         """Tests SAC loss function results across all frameworks."""
@@ -164,7 +165,7 @@ class TestSAC(unittest.TestCase):
 
             # Set all weights (of all nets) to fixed values.
             if weights_dict is None:
-                assert fw == "tf"  # Start with the tf vars-dict.
+                assert fw in ["tf", "tfe"]  # Start with the tf vars-dict.
                 weights_dict = policy.get_weights()
             else:
                 assert fw == "torch"  # Then transfer that to torch Model.
@@ -176,7 +177,7 @@ class TestSAC(unittest.TestCase):
             if fw == "tf":
                 log_alpha = weights_dict["default_policy/log_alpha"]
             elif fw == "torch":
-                # Actually convert to torch tensors.
+                # Actually convert to torch tensors (by accessing everything).
                 input_ = policy._lazy_tensor_dict(input_)
                 input_ = {k: input_[k] for k in input_.keys()}
                 log_alpha = policy.model.log_alpha.detach().numpy()[0]

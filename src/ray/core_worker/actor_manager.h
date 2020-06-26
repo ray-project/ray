@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_ACTOR_MANAGER_H
-#define RAY_CORE_WORKER_ACTOR_MANAGER_H
+#pragma once
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/core_worker/actor_handle.h"
@@ -29,7 +28,7 @@ namespace ray {
 /// by raylet.
 class ActorManager {
  public:
-  ActorManager(
+  explicit ActorManager(
       std::shared_ptr<gcs::GcsClient> gcs_client,
       std::shared_ptr<CoreWorkerDirectActorTaskSubmitterInterface> direct_actor_submitter,
       std::shared_ptr<ReferenceCounterInterface> reference_counter)
@@ -39,55 +38,36 @@ class ActorManager {
 
   ~ActorManager() {}
 
-  /// Add an actor handle from a serialized string.
+  friend class ActorManagerTest;
+
+  /// Register an actor handle.
   ///
   /// This should be called when an actor handle is given to us by another task
   /// or actor. This may be called even if we already have a handle to the same
   /// actor.
   ///
-  /// \param[in] serialized The serialized actor handle.
+  /// \param[in] actor_handle The actor handle.
   /// \param[in] outer_object_id The object ID that contained the serialized
   /// actor handle, if any.
   /// \param[in] caller_id The caller's task ID
   /// \param[in] call_site The caller's site.
   /// \return The ActorID of the deserialized handle.
-  ActorID DeserializeAndRegisterActorHandle(const std::string &serialized,
-                                            const ObjectID &outer_object_id,
-                                            const TaskID &caller_id,
-                                            const std::string &call_site,
-                                            const rpc::Address &caller_address);
-
-  /// Serialize an actor handle.
-  ///
-  /// This should be called when passing an actor handle to another task or
-  /// actor.
-  ///
-  /// \param[in] actor_id The ID of the actor handle to serialize.
-  /// \param[out] The serialized handle.
-  /// \param[out] The ID used to track references to the actor handle. If the
-  /// serialized actor handle in the language frontend is stored inside an
-  /// object, then this must be recorded in the worker's ReferenceCounter.
-  /// \return Status::Invalid if we don't have the specified handle.
-  Status SerializeActorHandle(const ActorID &actor_id, std::string *output,
-                              ObjectID *actor_handle_id) const;
+  ActorID RegisterActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+                              const ObjectID &outer_object_id, const TaskID &caller_id,
+                              const std::string &call_site,
+                              const rpc::Address &caller_address);
 
   /// Get a handle to an actor.
   ///
   /// \param[in] actor_id The actor handle to get.
-  /// \param[out] actor_handle A handle to the requested actor.
-  /// \return Status::Invalid if we don't have this actor handle.
-  Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
+  /// \return reference to the actor_handle's pointer.
+  /// NOTE: Returned actorHandle should not be stored anywhere.
+  std::unique_ptr<ActorHandle> &GetActorHandle(const ActorID &actor_id);
 
-  /// Get a handle to a named actor.
-  ///
-  /// \param[in] name The name of the actor whose handle to get.
-  /// \param[out] actor_handle A handle to the requested actor.
-  /// \param[in] caller_id The caller's task ID
-  /// \param[in] call_site The caller's site.
-  /// \return Status::NotFound if an actor with the specified name wasn't found.
-  Status GetNamedActorHandle(const std::string &name, ActorHandle **actor_handle,
-                             const TaskID &caller_id, const std::string &call_site,
-                             const rpc::Address &caller_address);
+  /// Check if an actor handle that corresponds to an actor_id exists.
+  /// \param[in] actor_id The actor id of a handle.
+  /// \return True if the actor_handle for an actor_id exists. False otherwise.
+  bool CheckActorHandleExists(const ActorID &actor_id);
 
   /// Give this worker a handle to an actor.
   ///
@@ -104,7 +84,7 @@ class ActorManager {
   /// \param[in] call_site The caller's site.
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
-  bool AddActorHandle(std::shared_ptr<ActorHandle> actor_handle, bool is_owner_handle,
+  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle,
                       const TaskID &caller_id, const std::string &call_site,
                       const rpc::Address &caller_address);
 
@@ -117,21 +97,6 @@ class ActorManager {
       const ActorID &actor_id,
       std::function<void(const ActorID &)> actor_out_of_scope_callbacks);
 
-  /// Tell an actor to exit immediately, without completing outstanding work.
-  ///
-  /// \param[in] actor_id ID of the actor to kill.
-  /// \param[in] no_restart If set to true, the killed actor will not be
-  /// restarted anymore.
-  /// \param[out] Status
-  Status KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
-
-  /// Handle actor state notification published from GCS.
-  ///
-  /// \param[in] actor_id The actor id of this notification.
-  /// \param[in] actor_data The GCS actor data.
-  void HandleActorStateNotification(const ActorID &actor_id,
-                                    const gcs::ActorTableData &actor_data);
-
   /// Get a list of actor_ids from existing actor handles.
   /// This is used for debugging purpose.
   std::vector<ObjectID> GetActorHandleIDsFromHandles();
@@ -140,21 +105,29 @@ class ActorManager {
   void ResolveActorsLocationNotPersistedToGCS();
 
  private:
+  /// Handle actor state notification published from GCS.
+  ///
+  /// \param[in] actor_id The actor id of this notification.
+  /// \param[in] actor_data The GCS actor data.
+  void HandleActorStateNotification(const ActorID &actor_id,
+                                    const gcs::ActorTableData &actor_data);
   /// GCS client
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   /// Interface to submit tasks directly to other actors.
   std::shared_ptr<CoreWorkerDirectActorTaskSubmitterInterface> direct_actor_submitter_;
 
-  /// Keeps track of object ID reference counts.
+  /// Used to keep track of actor handle reference counts.
+  /// All actor handle related ref counting logic should be included here.
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
 
   /// Map from actor ID to a handle to that actor.
-  absl::flat_hash_map<ActorID, std::shared_ptr<ActorHandle>> actor_handles_
+  /// Actor handle is a logical abstraction that holds actor handle's states.
+  absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(mutex_);
 
-  /// Map from actor ID to a callback to call when all local handles to that
-  /// actor have gone out of scpoe.
+  /// Map from actor ID to a callback. Callback is called when
+  /// the corresponding handles are gone out of scope.
   absl::flat_hash_map<ActorID, std::function<void(const ActorID &)>>
       actor_out_of_scope_callbacks_ GUARDED_BY(mutex_);
 
@@ -168,5 +141,3 @@ class ActorManager {
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_ACTOR_MANAGER_H

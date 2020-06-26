@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_NETWORK_UTIL_H
-#define RAY_COMMON_NETWORK_UTIL_H
+#pragma once
 
 #include <boost/asio.hpp>
 #include <boost/asio/deadline_timer.hpp>
@@ -125,4 +124,3 @@ std::string GetValidLocalIp(int port, int64_t timeout_ms);
 bool Ping(const std::string &ip, int port, int64_t timeout_ms);
 
 bool CheckFree(int port);
-#endif  // RAY_COMMON_NETWORK_UTIL_H

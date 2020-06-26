@@ -1,11 +1,9 @@
 package io.ray.test;
 
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.WaitResult;
-import io.ray.api.options.CallOptions;
 import io.ray.api.runtimecontext.NodeInfo;
 import java.util.List;
 import org.testng.Assert;
@@ -24,9 +22,9 @@ public class DynamicResourceTest extends BaseTest {
     // Call a task in advance to warm up the cluster to avoid being too slow to start workers.
     TestUtils.warmUpCluster();
 
-    CallOptions op1 =
-        new CallOptions.Builder().setResources(ImmutableMap.of("A", 10.0)).createCallOptions();
-    ObjectRef<String> obj = Ray.call(DynamicResourceTest::sayHi, op1);
+    ObjectRef<String> obj = Ray.task(DynamicResourceTest::sayHi)
+        .setResource("A", 10.0)
+        .remote();
     WaitResult<String> result = Ray.wait(ImmutableList.of(obj), 1, 1000);
     Assert.assertEquals(result.getReady().size(), 0);
 

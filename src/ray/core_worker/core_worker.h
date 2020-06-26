@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_CORE_WORKER_H
-#define RAY_CORE_WORKER_CORE_WORKER_H
+#pragma once
 
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
@@ -34,7 +33,6 @@
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/subscription_executor.h"
-#include "ray/object_manager/object_store_notification_manager.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -354,11 +352,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Postcondition: Get(object_id) is valid.
   ///
   /// \param[in] object_id The object ID to serialize.
-  /// \param[out] owner_id The ID of the object's owner. This should be
   /// appended to the serialized object ID.
   /// \param[out] owner_address The address of the object's owner. This should
   /// be appended to the serialized object ID.
-  void PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id, TaskID *owner_id,
+  void PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
                                           rpc::Address *owner_address);
 
   /// Add a reference to an ObjectID that was deserialized by the language
@@ -373,11 +370,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// any. This may be nil if the object ID was inlined directly in a task spec
   /// or if it was passed out-of-band by the application (deserialized from a
   /// byte string).
-  /// \param[out] owner_id The ID of the object's owner.
   /// \param[out] owner_address The address of the object's owner.
   void RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id,
                                              const ObjectID &outer_object_id,
-                                             const TaskID &owner_id,
                                              const rpc::Address &owner_address);
 
   ///
@@ -581,17 +576,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status error if the task is invalid or if the task submission
   /// failed. Tasks can be invalid for direct actor calls because not all tasks
   /// are currently supported.
-  Status SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
-                         const std::vector<TaskArg> &args,
-                         const TaskOptions &task_options,
-                         std::vector<ObjectID> *return_ids);
+  void SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
+                       const std::vector<TaskArg> &args, const TaskOptions &task_options,
+                       std::vector<ObjectID> *return_ids);
 
-  // /// Tell an actor to exit immediately, without completing outstanding work.
-  // ///
-  // /// \param[in] actor_id ID of the actor to kill.
-  // /// \param[in] no_restart If set to true, the killed actor will not be
-  // /// restarted anymore.
-  // /// \param[out] Status
+  /// Tell an actor to exit immediately, without completing outstanding work.
+  ///
+  /// \param[in] actor_id ID of the actor to kill.
+  /// \param[in] no_restart If set to true, the killed actor will not be
+  /// restarted anymore.
+  /// \param[out] Status
   Status KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
 
   /// Stops the task associated with the given Object ID.
@@ -663,10 +657,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Get a handle to an actor.
   ///
+  /// NOTE: This function should be called ONLY WHEN we know actor handle exists.
+  ///
   /// \param[in] actor_id The actor handle to get.
   /// \param[out] actor_handle A handle to the requested actor.
   /// \return Status::Invalid if we don't have this actor handle.
-  Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
+  void GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
 
   /// Get a handle to a named actor.
   ///
@@ -1082,5 +1078,3 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_CORE_WORKER_H

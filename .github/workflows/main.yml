@@ -86,6 +86,7 @@ jobs:
         . ./ci/travis/ci.sh build
         . ./ci/travis/ci.sh upload_wheels || true
         . ./ci/travis/ci.sh test_python
+        #. ./ci/travis/ci.sh test_core || true
         . ./ci/travis/ci.sh test_wheels
     - name: Run Clang Include-What-You-Use
       continue-on-error: true

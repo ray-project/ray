@@ -94,7 +94,8 @@ def run_test_project(project_dir, command, args):
 
 def test_session_start_default_project():
     result, mock_calls, test_dir = run_test_project(
-        "session-tests/project-pass", session_start, ["default"])
+        os.path.join("session-tests", "project-pass"), session_start,
+        ["default"])
 
     loaded_project = ray.projects.ProjectDefinition(test_dir)
     assert result.exit_code == 0
@@ -138,7 +139,8 @@ def test_session_start_default_project():
 
 def test_session_execute_default_project():
     result, mock_calls, test_dir = run_test_project(
-        "session-tests/project-pass", session_execute, ["default"])
+        os.path.join("session-tests", "project-pass"), session_execute,
+        ["default"])
 
     loaded_project = ray.projects.ProjectDefinition(test_dir)
     assert result.exit_code == 0
@@ -159,13 +161,14 @@ def test_session_execute_default_project():
     assert expected_commands == commands_executed
 
     result, mock_calls, test_dir = run_test_project(
-        "session-tests/project-pass", session_execute, ["--shell", "uptime"])
+        os.path.join("session-tests", "project-pass"), session_execute,
+        ["--shell", "uptime"])
     assert result.exit_code == 0
 
 
 def test_session_start_docker_fail():
-    result, _, _ = run_test_project("session-tests/with-docker-fail",
-                                    session_start, [])
+    result, _, _ = run_test_project(
+        os.path.join("session-tests", "with-docker-fail"), session_start, [])
 
     assert result.exit_code == 1
     assert ("Docker support in session is currently "
@@ -173,8 +176,9 @@ def test_session_start_docker_fail():
 
 
 def test_session_invalid_config_errored():
-    result, _, _ = run_test_project("session-tests/invalid-config-fail",
-                                    session_start, [])
+    result, _, _ = run_test_project(
+        os.path.join("session-tests", "invalid-config-fail"), session_start,
+        [])
 
     assert result.exit_code == 1
     assert "validation failed" in result.output
@@ -184,7 +188,7 @@ def test_session_invalid_config_errored():
 
 def test_session_create_command():
     result, mock_calls, test_dir = run_test_project(
-        "session-tests/commands-test", session_start,
+        os.path.join("session-tests", "commands-test"), session_start,
         ["first", "--a", "1", "--b", "2"])
 
     # Verify the project can be loaded.
@@ -202,7 +206,7 @@ def test_session_create_command():
 def test_session_create_multiple():
     for args in [{"a": "*", "b": "2"}, {"a": "1", "b": "*"}]:
         result, mock_calls, test_dir = run_test_project(
-            "session-tests/commands-test", session_start,
+            os.path.join("session-tests", "commands-test"), session_start,
             ["first", "--a", args["a"], "--b", args["b"]])
 
         loaded_project = ray.projects.ProjectDefinition(test_dir)
@@ -227,14 +231,14 @@ def test_session_create_multiple():
 
     # Using multiple wildcards shouldn't work
     result, mock_calls, test_dir = run_test_project(
-        "session-tests/commands-test", session_start,
+        os.path.join("session-tests", "commands-test"), session_start,
         ["first", "--a", "*", "--b", "*"])
     assert result.exit_code == 1
 
 
 def test_session_commands():
     result, mock_calls, test_dir = run_test_project(
-        "session-tests/commands-test", session_commands, [])
+        os.path.join("session-tests", "commands-test"), session_commands, [])
 
     assert "This is the first parameter" in result.output
     assert "This is the second parameter" in result.output

@@ -394,26 +394,34 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
     }
 
     # The following patches only affect __fake_remote.
-    find_checkpoint_dir = TrainableUtil.find_checkpoint_dir
-    with patch("ray.tune.logger.get_node_syncer") as mock_get_node_syncer:
-        trainable_util = "ray.tune.ray_trial_executor.TrainableUtil"
-        with patch(trainable_util + ".find_checkpoint_dir") as mock_find_dir:
+    def hide_remote_path(path_function):
+        def hidden_path_func(checkpoint_path):
+            """Converts back to local path first."""
+            if MOCK_REMOTE_DIR in checkpoint_path:
+                checkpoint_path = checkpoint_path[len(MOCK_REMOTE_DIR):]
+                checkpoint_path = os.path.join("/", checkpoint_path)
+            return path_function(checkpoint_path)
+
+        return hidden_path_func
+
+    trainable_util = "ray.tune.ray_trial_executor.TrainableUtil"
+    _find_ckpt = trainable_util + ".find_checkpoint_dir"
+    find_func = TrainableUtil.find_checkpoint_dir
+    _pickle_ckpt = trainable_util + ".pickle_checkpoint"
+    pickle_func = TrainableUtil.pickle_checkpoint
+
+    with patch(_find_ckpt) as mock_find, patch(_pickle_ckpt) as mock_pkl_ckpt:
+        # __fake_remote trainables save to a separate "remote" directory.
+        # TrainableUtil will not check this path unless we mock it.
+        mock_find.side_effect = hide_remote_path(find_func)
+        mock_pkl_ckpt.side_effect = hide_remote_path(pickle_func)
+        with patch("ray.tune.logger.get_node_syncer") as mock_get_node_syncer:
 
             def mock_get_syncer_fn(local_dir, remote_dir, sync_function):
                 client = mock_storage_client()
                 return MockNodeSyncer(local_dir, remote_dir, client)
 
             mock_get_node_syncer.side_effect = mock_get_syncer_fn
-
-            def mock_find_dir_fn(checkpoint_path):
-                """Converts back to local path first."""
-                checkpoint_path = checkpoint_path[len(MOCK_REMOTE_DIR):]
-                checkpoint_path = os.path.join("/", checkpoint_path)
-                return find_checkpoint_dir(checkpoint_path)
-
-            # __fake_remote trainables save to a separate "remote" directory.
-            # TrainableUtil will not check this path unless we mock it.
-            mock_find_dir.side_effect = mock_find_dir_fn
 
             # Test recovery of trial that has been checkpointed
             t1 = Trial(trainable_id, **kwargs)
@@ -428,7 +436,6 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
             cluster.remove_node(node)
             cluster.wait_for_nodes()
             shutil.rmtree(os.path.dirname(t1.checkpoint.value))
-
             runner.step()  # Collect result 3, kick off + fail result 4
             runner.step()  # Dispatch restore
             runner.step()  # Process restore + step 4

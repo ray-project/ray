@@ -243,15 +243,15 @@ Detached Actors
 When original actor handles goes out of scope or the driver that originally
 created the actor exits, ray will clean up the actor by default. If you want
 to make sure the actor is kept alive, you can use
-``_remote(name="some_name", detached=True)`` to keep the actor alive after
-the driver exits. The actor will have a globally unique name and can be 
-accessed across different drivers. 
+``_remote(name="some_name")`` to keep the actor alive after
+the driver exits. The actor will have a globally unique name and can be
+accessed across different drivers.
 
 For example, you can instantiate and register a persistent actor as follows:
 
 .. code-block:: python
 
-  counter = Counter.options(name="CounterActor", detached=True).remote()
+  counter = Counter.options(name="CounterActor").remote()
 
 The CounterActor will be kept alive even after the driver running above script
 exits. Therefore it is possible to run the following script in a different
@@ -259,20 +259,5 @@ driver:
 
 .. code-block:: python
 
-  counter = ray.util.get_actor("CounterActor")
+  counter = ray.get_actor("CounterActor")
   print(ray.get(counter.get_counter.remote()))
-
-Note that just creating a named actor is allowed, this actor will be cleaned
-up after driver exits:
-
-.. code-block:: python
-
-  Counter.options(name="CounterActor").remote()
-
-However, creating a detached actor without name is not allowed because there
-will be no way to retrieve the actor handle and the resource is leaked.
-
-.. code-block:: python
-
-  # Can't do this!
-  Counter.options(detached=True).remote()

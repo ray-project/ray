@@ -8,6 +8,8 @@ import time
 import numpy as np
 import pytest
 
+from unittest.mock import MagicMock, patch
+
 import ray
 import ray.cluster_utils
 import ray.test_utils
@@ -671,6 +673,15 @@ def test_internal_config_when_connecting(ray_start_cluster):
     # This would not raise an exception if object pinning was enabled.
     with pytest.raises(ray.exceptions.UnreconstructableError):
         ray.get(oid)
+
+
+def test_get_correct_node_ip():
+    with patch("ray.worker") as worker_mock:
+        node_mock = MagicMock()
+        node_mock.node_ip_address = "10.0.0.111"
+        worker_mock._global_node = node_mock
+        found_ip = ray.services.get_node_ip_address()
+        assert found_ip == "10.0.0.111"
 
 
 if __name__ == "__main__":
