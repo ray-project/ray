@@ -241,8 +241,9 @@ class DiagGaussian(TFActionDistribution):
         assert isinstance(other, DiagGaussian)
         return tf.reduce_sum(
             other.log_std - self.log_std +
-            (tf.math.square(self.std) + tf.math.square(self.mean - other.mean))
-            / (2.0 * tf.math.square(other.std)) - 0.5,
+            (tf.math.square(self.std) +
+             tf.math.square(self.mean - other.mean)) /
+            (2.0 * tf.math.square(other.std)) - 0.5,
             axis=1)
 
     @override(ActionDistribution)

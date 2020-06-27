@@ -1,9 +1,9 @@
 
 #pragma once
 
-#include <ray/api/wait_result.h>
-
 #include <memory>
+
+#include <ray/api/wait_result.h>
 #include <msgpack.hpp>
 
 namespace ray {
