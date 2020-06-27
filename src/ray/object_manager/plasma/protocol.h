@@ -22,13 +22,13 @@
 #include <unordered_map>
 #include <vector>
 
-#include "arrow/status.h"
+#include "ray/common/status.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
 
 namespace plasma {
 
-using arrow::Status;
+using ray::Status;
 
 using flatbuf::MessageType;
 using flatbuf::PlasmaError;

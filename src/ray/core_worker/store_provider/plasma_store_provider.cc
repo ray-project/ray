@@ -37,7 +37,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     get_current_call_site_ = []() { return "<no callsite callback>"; };
   }
   buffer_tracker_ = std::make_shared<BufferTracker>();
-  RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket));
+  RAY_CHECK_OK(store_client_.Connect(store_socket));
 }
 
 CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
@@ -47,7 +47,7 @@ CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
 Status CoreWorkerPlasmaStoreProvider::SetClientOptions(std::string name,
                                                        int64_t limit_bytes) {
   std::lock_guard<std::mutex> guard(store_client_mutex_);
-  RAY_ARROW_RETURN_NOT_OK(store_client_.SetClientOptions(name, limit_bytes));
+  RAY_RETURN_NOT_OK(store_client_.SetClientOptions(name, limit_bytes));
   return Status::OK();
 }
 
@@ -88,7 +88,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
   bool evict_if_full = max_retries == 0 ? true : evict_if_full_;
   while (should_retry) {
     should_retry = false;
-    arrow::Status plasma_status;
+    Status plasma_status;
     std::shared_ptr<arrow::Buffer> arrow_buffer;
     {
       std::lock_guard<std::mutex> guard(store_client_mutex_);
@@ -99,7 +99,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
       // Always try to evict after the first attempt.
       evict_if_full = true;
     }
-    if (plasma::IsPlasmaStoreFull(plasma_status)) {
+    if (plasma_status.IsObjectStoreFull()) {
       std::ostringstream message;
       message << "Failed to put object " << object_id << " in object store because it "
               << "is full. Object size is " << data_size << " bytes.";
@@ -122,12 +122,12 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                           "in the cluster."
                        << "\n---\n";
       }
-    } else if (plasma::IsPlasmaObjectExists(plasma_status)) {
+    } else if (plasma_status.IsObjectExists()) {
       RAY_LOG(WARNING) << "Trying to put an object that already existed in plasma: "
                        << object_id << ".";
       status = Status::OK();
     } else {
-      RAY_ARROW_RETURN_NOT_OK(plasma_status);
+      RAY_RETURN_NOT_OK(plasma_status);
       *data = std::make_shared<PlasmaBuffer>(PlasmaBuffer(arrow_buffer));
       status = Status::OK();
     }
@@ -138,7 +138,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
 Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
   {
     std::lock_guard<std::mutex> guard(store_client_mutex_);
-    RAY_ARROW_RETURN_NOT_OK(store_client_.Seal(object_id));
+    RAY_RETURN_NOT_OK(store_client_.Seal(object_id));
   }
   return Status::OK();
 }
@@ -146,7 +146,7 @@ Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
 Status CoreWorkerPlasmaStoreProvider::Release(const ObjectID &object_id) {
   {
     std::lock_guard<std::mutex> guard(store_client_mutex_);
-    RAY_ARROW_RETURN_NOT_OK(store_client_.Release(object_id));
+    RAY_RETURN_NOT_OK(store_client_.Release(object_id));
   }
   return Status::OK();
 }
@@ -162,7 +162,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
   std::vector<plasma::ObjectBuffer> plasma_results;
   {
     std::lock_guard<std::mutex> guard(store_client_mutex_);
-    RAY_ARROW_RETURN_NOT_OK(store_client_.Get(batch_ids, timeout_ms, &plasma_results));
+    RAY_RETURN_NOT_OK(store_client_.Get(batch_ids, timeout_ms, &plasma_results));
   }
 
   // Add successfully retrieved objects to the result map and remove them from
@@ -311,7 +311,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
                                                bool *has_object) {
   std::lock_guard<std::mutex> guard(store_client_mutex_);
-  RAY_ARROW_RETURN_NOT_OK(store_client_.Contains(object_id, has_object));
+  RAY_RETURN_NOT_OK(store_client_.Contains(object_id, has_object));
   return Status::OK();
 }
 
