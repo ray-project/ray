@@ -157,6 +157,12 @@ DEFAULT_CONFIG = with_common_config({
 
 
 def validate_config(config):
+    if config["model"]["custom_model"]:
+        logger.warning(
+            "Setting use_state_preprocessor=True since a custom model "
+            "was specified.")
+        config["use_state_preprocessor"] = True
+
     # TODO(sven): Remove at some point.
     #  Backward compatibility of noise-based exploration config.
     schedule_max_timesteps = None
@@ -191,8 +197,7 @@ def validate_config(config):
 
     if config.get("parameter_noise", DEPRECATED_VALUE) != DEPRECATED_VALUE:
         deprecation_warning("parameter_noise", "exploration_config={"
-                            "type=ParameterNoise"
-                            "}")
+                            "type=ParameterNoise}")
 
     if config["exploration_config"]["type"] == "ParameterNoise":
         if config["batch_mode"] != "complete_episodes":
