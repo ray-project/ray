@@ -376,6 +376,37 @@ TEST_F(GcsActorSchedulerTest, TestSpillback) {
   ASSERT_EQ(actor->GetWorkerID(), worker_id);
 }
 
+TEST_F(GcsActorSchedulerTest, TestReschedule) {
+  auto node1 = Mocker::GenNodeInfo();
+  auto node_id_1 = ClientID::FromBinary(node1->node_id());
+  gcs_node_manager_->AddNode(node1);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto job_id = JobID::FromInt(1);
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
+  rpc::Address address;
+  WorkerID worker_id = WorkerID::FromRandom();
+  address.set_raylet_id(node_id_1.Binary());
+  address.set_worker_id(worker_id.Binary());
+  actor->UpdateAddress(address);
+
+  // Reschedule the actor with 1 available node, and the actor creation request should be
+  // send to the worker..
+  gcs_actor_scheduler_->Reschedule(actor);
+  ASSERT_EQ(0, raylet_client_->num_workers_requested);
+  ASSERT_EQ(0, raylet_client_->callbacks.size());
+  ASSERT_EQ(1, worker_client_->callbacks.size());
+
+  // Reply the actor creation request, then the actor should be scheduled successfully.
+  ASSERT_TRUE(worker_client_->ReplyPushTask());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
+
+  ASSERT_EQ(0, failure_actors_.size());
+  ASSERT_EQ(1, success_actors_.size());
+  ASSERT_EQ(actor, success_actors_.front());
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
