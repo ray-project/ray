@@ -431,12 +431,35 @@ message RegisterWorkerReply {
   GcsStatus status = 1;
 }
 
+message GetWorkerInfoRequest {
+  // ID of this worker.
+  bytes worker_id = 1;
+}
+
+message GetWorkerInfoReply {
+  GcsStatus status = 1;
+  // Data of worker.
+  WorkerTableData worker_table_data = 2;
+}
+
+message AddWorkerInfoRequest {
+  WorkerTableData worker_data = 1;
+}
+
+message AddWorkerInfoReply {
+  GcsStatus status = 1;
+}
+
 // Service for worker info access.
 service WorkerInfoGcsService {
   // Report a worker failure to GCS Service.
   rpc ReportWorkerFailure(ReportWorkerFailureRequest) returns (ReportWorkerFailureReply);
   // Register a worker to GCS Service.
   rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerReply);
+  // Get worker information from Gcs Service by worker id.
+  rpc GetWorkerInfo(GetWorkerInfoRequest) returns (GetWorkerInfoReply);
+  // Add worker information to Gcs Service.
+  rpc AddWorkerInfo(AddWorkerInfoRequest) returns (AddWorkerInfoReply);
 }
 
 message CreateActorRequest {

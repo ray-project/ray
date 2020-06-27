@@ -180,5 +180,28 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetActorCheckpointId(
   return actor_checkpoint_id_data;
 }
 
+std::unique_ptr<std::string> GlobalStateAccessor::GetWorkerInfo(
+    const WorkerID &worker_id) {
+  std::unique_ptr<std::string> worker_table_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Workers().AsyncGet(
+      worker_id, TransformForOptionalItemCallback<rpc::WorkerTableData>(worker_table_data,
+                                                                        promise)));
+  promise.get_future().get();
+  return worker_table_data;
+}
+
+Status GlobalStateAccessor::AddWorkerInfo(
+    const std::shared_ptr<rpc::WorkerTableData> &data_ptr) {
+  std::promise<bool> promise;
+  RAY_CHECK_OK(
+      gcs_client_->Workers().AsyncAdd(data_ptr, [&promise](const Status &status) {
+        RAY_CHECK_OK(status);
+        promise.set_value(true);
+      }));
+  promise.get_future().get();
+  return Status::OK();
+}
+
 }  // namespace gcs
 }  // namespace ray

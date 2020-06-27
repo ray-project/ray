@@ -109,6 +109,20 @@ class GlobalStateAccessor {
   /// deserialized with protobuf function.
   std::unique_ptr<std::string> GetActorCheckpointId(const ActorID &actor_id);
 
+  /// Get information of a worker from GCS Service.
+  ///
+  /// \param worker_id The ID of worker to look up in the GCS Service.
+  /// \return Worker info. To support multi-language, we serialize each WorkerTableData
+  /// and return the serialized string. Where used, it needs to be deserialized with
+  /// protobuf function.
+  std::unique_ptr<std::string> GetWorkerInfo(const WorkerID &worker_id);
+
+  /// Add information of a worker to GCS Service.
+  ///
+  /// \param data_ptr The data of worker to added in the GCS Service.
+  /// \return operation status.
+  Status AddWorkerInfo(const std::shared_ptr<rpc::WorkerTableData> &data_ptr);
+
  private:
   /// MultiItem transformation helper in template style.
   ///

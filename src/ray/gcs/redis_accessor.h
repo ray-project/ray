@@ -447,6 +447,12 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
       const std::unordered_map<std::string, std::string> &worker_info,
       const StatusCallback &callback) override;
 
+  Status AsyncGet(const WorkerID &worker_id,
+                  const OptionalItemCallback<rpc::WorkerTableData> &callback) override;
+
+  Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
+                  const StatusCallback &callback) override;
+
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
  private:

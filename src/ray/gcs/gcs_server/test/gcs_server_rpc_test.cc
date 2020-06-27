@@ -406,6 +406,36 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  boost::optional<rpc::WorkerTableData> GetWorkerInfo(const std::string &worker_id) {
+    rpc::GetWorkerInfoRequest request;
+    request.set_worker_id(worker_id);
+    boost::optional<rpc::WorkerTableData> worker_table_data_opt;
+    std::promise<bool> promise;
+    client_->GetWorkerInfo(
+        request, [&worker_table_data_opt, &promise](
+                     const Status &status, const rpc::GetWorkerInfoReply &reply) {
+          RAY_CHECK_OK(status);
+          if (reply.has_worker_table_data()) {
+            worker_table_data_opt = reply.worker_table_data();
+          } else {
+            worker_table_data_opt = boost::none;
+          }
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return worker_table_data_opt;
+  }
+
+  bool AddWorkerInfo(const rpc::AddWorkerInfoRequest &request) {
+    std::promise<bool> promise;
+    client_->AddWorkerInfo(
+        request, [&promise](const Status &status, const rpc::AddWorkerInfoReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
   bool WaitReady(const std::future<bool> &future, uint64_t timeout_ms) {
     auto status = future.wait_for(std::chrono::milliseconds(timeout_ms));
     return status == std::future_status::ready;

@@ -1314,5 +1314,36 @@ Status ServiceBasedWorkerInfoAccessor::AsyncRegisterWorker(
   return Status::OK();
 }
 
+Status ServiceBasedWorkerInfoAccessor::AsyncGet(
+    const WorkerID &worker_id,
+    const OptionalItemCallback<rpc::WorkerTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting worker info, worker id = " << worker_id;
+  rpc::GetWorkerInfoRequest request;
+  request.set_worker_id(worker_id.Binary());
+  client_impl_->GetGcsRpcClient().GetWorkerInfo(
+      request, [callback](const Status &status, const rpc::GetWorkerInfoReply &reply) {
+        if (reply.has_worker_table_data()) {
+          callback(status, reply.worker_table_data());
+        } else {
+          callback(status, boost::none);
+        }
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedWorkerInfoAccessor::AsyncAdd(
+    const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
+    const StatusCallback &callback) {
+  rpc::AddWorkerInfoRequest request;
+  request.mutable_worker_data()->CopyFrom(*data_ptr);
+  client_impl_->GetGcsRpcClient().AddWorkerInfo(
+      request, [callback](const Status &status, const rpc::AddWorkerInfoReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+      });
+  return Status::OK();
+}
+
 }  // namespace gcs
 }  // namespace ray

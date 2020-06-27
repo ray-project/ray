@@ -670,6 +670,23 @@ class WorkerInfoAccessor {
       const std::unordered_map<std::string, std::string> &worker_info,
       const StatusCallback &callback) = 0;
 
+  /// Get worker specification from GCS asynchronously.
+  ///
+  /// \param worker_id The ID of worker to look up in the GCS.
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGet(const WorkerID &worker_id,
+                          const OptionalItemCallback<rpc::WorkerTableData> &callback) = 0;
+
+  /// Add a worker to GCS asynchronously.
+  ///
+  /// \param data_ptr The worker that will be add to GCS.
+  /// \param callback Callback that will be called after worker has been added
+  /// to GCS.
+  /// \return Status
+  virtual Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
+                          const StatusCallback &callback) = 0;
+
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   /// PubSub server restart will cause GCS server restart. In this case, we need to
