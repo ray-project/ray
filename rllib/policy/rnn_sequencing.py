@@ -203,7 +203,7 @@ def chop_into_sequences(episode_ids,
     seq_len = 0
     unique_ids = np.add(
         np.add(episode_ids, agent_indices),
-        np.array(unroll_ids) << 32)
+        np.array(unroll_ids, dtype=np.int64) << 32)
     for uid in unique_ids:
         if (prev_id is not None and uid != prev_id) or \
                 seq_len >= max_seq_len:

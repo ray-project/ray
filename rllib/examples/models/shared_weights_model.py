@@ -26,9 +26,9 @@ class SharedWeightsModel1(TFModelV2):
                          model_config, name)
 
         inputs = tf.keras.layers.Input(observation_space.shape)
-        with tf.variable_scope(
-                tf.VariableScope(tf.AUTO_REUSE, "shared"),
-                reuse=tf.AUTO_REUSE,
+        with tf1.variable_scope(
+                tf1.VariableScope(tf1.AUTO_REUSE, "shared"),
+                reuse=tf1.AUTO_REUSE,
                 auxiliary_name_scope=False):
             last_layer = tf.keras.layers.Dense(
                 units=64, activation=tf.nn.relu, name="fc1")(inputs)
@@ -60,9 +60,9 @@ class SharedWeightsModel2(TFModelV2):
         inputs = tf.keras.layers.Input(observation_space.shape)
 
         # Weights shared with SharedWeightsModel1.
-        with tf.variable_scope(
-                tf.VariableScope(tf.AUTO_REUSE, "shared"),
-                reuse=tf.AUTO_REUSE,
+        with tf1.variable_scope(
+                tf1.VariableScope(tf1.AUTO_REUSE, "shared"),
+                reuse=tf1.AUTO_REUSE,
                 auxiliary_name_scope=False):
             last_layer = tf.keras.layers.Dense(
                 units=64, activation=tf.nn.relu, name="fc1")(inputs)
