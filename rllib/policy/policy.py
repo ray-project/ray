@@ -68,17 +68,16 @@ class Policy(metaclass=ABCMeta):
 
     @abstractmethod
     @DeveloperAPI
-    def compute_actions(
-            self,
-            obs_batch=None,
-            state_batches=None,
-            prev_action_batch=None,
-            prev_reward_batch=None,
-            info_batch=None,
-            episodes=None,
-            explore=None,
-            timestep=None,
-            **kwargs):
+    def compute_actions(self,
+                        obs_batch=None,
+                        state_batches=None,
+                        prev_action_batch=None,
+                        prev_reward_batch=None,
+                        info_batch=None,
+                        episodes=None,
+                        explore=None,
+                        timestep=None,
+                        **kwargs):
         """Computes actions for the current policy.
 
         Args:

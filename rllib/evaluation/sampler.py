@@ -377,7 +377,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
 def _env_runner(worker: "RolloutWorker",
                 base_env: BaseEnv,
                 extra_batch_callback: Callable[[SampleBatchType], None],
-                policies,
+                policies: Dict[PolicyID, Policy],
                 policy_mapping_fn: Callable[[AgentID], PolicyID],
                 rollout_fragment_length: int,
                 horizon: int,
@@ -399,7 +399,8 @@ def _env_runner(worker: "RolloutWorker",
         worker (RolloutWorker): Reference to the current rollout worker.
         base_env (BaseEnv): Env implementing BaseEnv.
         extra_batch_callback (fn): function to send extra batch data to.
-        policies (dict): Map of policy ids to Policy instances.
+        policies (Dict[PolicyID, Policy]): Map of policy ids to Policy
+            instances.
         policy_mapping_fn (func): Function that maps agent ids to policy ids.
             This is called when an agent first enters the environment. The
             agent is then "bound" to the returned policy for the episode.
@@ -922,17 +923,18 @@ def _do_policy_eval(
     return eval_results
 
 
-def _get_actions_for_env(*,
-                         to_eval: Dict[PolicyID, List[PolicyEvalData]],
-                         eval_results: Dict[PolicyID, Tuple[
-                             TensorStructType, StateBatch, dict]],
-                         active_episodes: Dict[str, MultiAgentEpisode],
-                         active_envs: Set[int],
-                         off_policy_actions: MultiEnvDict,
-                         policies: Dict[PolicyID, Policy],
-                         clip_actions: bool,
-                         _fast_sampling: bool = False
-                         ) -> Dict[EnvID, Dict[AgentID, EnvActionType]]:
+def _process_policy_eval_results(
+        *,
+        to_eval: Dict[PolicyID, List[PolicyEvalData]],
+        eval_results: Dict[PolicyID, Tuple[
+            TensorStructType, StateBatch, dict]],
+        active_episodes: Dict[str, MultiAgentEpisode],
+        active_envs: Set[int],
+        off_policy_actions: MultiEnvDict,
+        policies: Dict[PolicyID, Policy],
+        clip_actions: bool,
+        _fast_sampling: bool = False
+) -> Dict[EnvID, Dict[AgentID, EnvActionType]]:
     """Process the output of policy neural network evaluation.
 
     Records policy evaluation results into the given episode objects and
