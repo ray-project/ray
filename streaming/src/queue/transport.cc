@@ -1,5 +1,4 @@
 #include "transport.h"
-
 #include "utils.h"
 
 namespace ray {

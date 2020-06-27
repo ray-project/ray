@@ -20,14 +20,12 @@
 
 #include <signal.h>
 #include <stdlib.h>
-
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
 
 #ifdef RAY_USE_GLOG
 #include <sys/stat.h>
-
 #include "glog/logging.h"
 #endif
 
