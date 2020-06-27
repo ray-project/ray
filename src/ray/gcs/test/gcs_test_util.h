@@ -127,8 +127,8 @@ struct Mocker {
     return error_table_data;
   }
 
-  static std::shared_ptr<rpc::WorkerFailureData> GenWorkerFailureData() {
-    auto worker_failure_data = std::make_shared<rpc::WorkerFailureData>();
+  static std::shared_ptr<rpc::WorkerTableData> GenWorkerFailureData() {
+    auto worker_failure_data = std::make_shared<rpc::WorkerTableData>();
     worker_failure_data->set_timestamp(std::time(nullptr));
     return worker_failure_data;
   }

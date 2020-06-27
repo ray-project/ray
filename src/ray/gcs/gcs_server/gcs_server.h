@@ -39,6 +39,7 @@ struct GcsServerConfig {
 class GcsNodeManager;
 class GcsActorManager;
 class GcsJobManager;
+class GcsWorkerManager;
 
 /// The GcsServer will take over all requests from ServiceBasedGcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.
@@ -97,7 +98,7 @@ class GcsServer {
   virtual std::unique_ptr<rpc::ErrorInfoHandler> InitErrorInfoHandler();
 
   /// The worker info handler
-  virtual std::unique_ptr<rpc::WorkerInfoHandler> InitWorkerInfoHandler();
+  virtual std::unique_ptr<GcsWorkerManager> InitGcsWorkerManager();
 
  private:
   /// Store the address of GCS server in Redis.
@@ -141,7 +142,7 @@ class GcsServer {
   std::unique_ptr<rpc::ErrorInfoHandler> error_info_handler_;
   std::unique_ptr<rpc::ErrorInfoGrpcService> error_info_service_;
   /// Worker info handler and service
-  std::unique_ptr<rpc::WorkerInfoHandler> worker_info_handler_;
+  std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
   std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
   /// Backend client
   std::shared_ptr<RedisGcsClient> redis_gcs_client_;

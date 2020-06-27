@@ -411,7 +411,7 @@ service ErrorInfoGcsService {
 }
 
 message ReportWorkerFailureRequest {
-  WorkerFailureData worker_failure = 1;
+  WorkerTableData worker_failure = 1;
 }
 
 message ReportWorkerFailureReply {

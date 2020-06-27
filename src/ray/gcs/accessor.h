@@ -647,7 +647,7 @@ class WorkerInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeToWorkerFailures(
-      const SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe,
+      const SubscribeCallback<WorkerID, rpc::WorkerTableData> &subscribe,
       const StatusCallback &done) = 0;
 
   /// Report a worker failure to GCS asynchronously.
@@ -656,7 +656,7 @@ class WorkerInfoAccessor {
   /// \param callback Callback that will be called when report is complate.
   /// \param Status
   virtual Status AsyncReportWorkerFailure(
-      const std::shared_ptr<rpc::WorkerFailureData> &data_ptr,
+      const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
       const StatusCallback &callback) = 0;
 
   /// Register a worker to GCS asynchronously.

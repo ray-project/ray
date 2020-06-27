@@ -1252,12 +1252,12 @@ ServiceBasedWorkerInfoAccessor::ServiceBasedWorkerInfoAccessor(
     : client_impl_(client_impl) {}
 
 Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
-    const SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe,
+    const SubscribeCallback<WorkerID, rpc::WorkerTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-      rpc::WorkerFailureData worker_failure_data;
+      rpc::WorkerTableData worker_failure_data;
       worker_failure_data.ParseFromString(data);
       subscribe(WorkerID::FromBinary(id), worker_failure_data);
     };
@@ -1276,7 +1276,7 @@ void ServiceBasedWorkerInfoAccessor::AsyncResubscribe(bool is_pubsub_server_rest
 }
 
 Status ServiceBasedWorkerInfoAccessor::AsyncReportWorkerFailure(
-    const std::shared_ptr<rpc::WorkerFailureData> &data_ptr,
+    const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
     const StatusCallback &callback) {
   rpc::Address worker_address = data_ptr->worker_address();
   RAY_LOG(DEBUG) << "Reporting worker failure, " << worker_address.DebugString();

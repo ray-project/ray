@@ -41,7 +41,7 @@ enum TablePrefix {
   ACTOR_CHECKPOINT_ID = 16;
   NODE_RESOURCE = 17;
   DIRECT_ACTOR = 18;
-  WORKER_FAILURE = 19;
+  WORKERS = 19;
   TABLE_PREFIX_MAX = 20;
 }
 
@@ -297,7 +297,7 @@ message ActorCheckpointIdData {
   repeated uint64 timestamps = 3;
 }
 
-message WorkerFailureData {
+message WorkerTableData {
   // Is worker failure data
   // true: worker failure data; false: register worker data
   bool is_worker_failure = 1;

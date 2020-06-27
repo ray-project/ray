@@ -735,7 +735,7 @@ TEST_F(GcsServerTest, TestErrorInfo) {
 }
 
 TEST_F(GcsServerTest, TestWorkerInfo) {
-  rpc::WorkerFailureData worker_failure_data;
+  rpc::WorkerTableData worker_failure_data;
   worker_failure_data.mutable_worker_address()->set_ip_address("127.0.0.1");
   worker_failure_data.mutable_worker_address()->set_port(5566);
   rpc::ReportWorkerFailureRequest report_worker_failure_request;
@@ -753,6 +753,16 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   register_driver_request.set_worker_type(rpc::WorkerType::WORKER);
   register_driver_request.mutable_worker_info()->insert({"stderr", "test"});
   ASSERT_TRUE(RegisterWorker(register_driver_request));
+
+  boost::optional<rpc::WorkerTableData> result =
+      GetWorkerInfo(register_worker_request.worker_id());
+  ASSERT_TRUE(result->worker_address().worker_id() ==
+              register_worker_request.worker_id());
+
+  auto worker_data = Mocker::GenWorkerFailureData();
+  rpc::AddWorkerInfoRequest add_worker_request;
+  add_worker_request.mutable_worker_data()->CopyFrom(*worker_data);
+  ASSERT_TRUE(AddWorkerInfo(add_worker_request));
 }
 
 }  // namespace ray

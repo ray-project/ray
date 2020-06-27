@@ -436,10 +436,10 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
   virtual ~RedisWorkerInfoAccessor() = default;
 
   Status AsyncSubscribeToWorkerFailures(
-      const SubscribeCallback<WorkerID, WorkerFailureData> &subscribe,
+      const SubscribeCallback<WorkerID, WorkerTableData> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncReportWorkerFailure(const std::shared_ptr<WorkerFailureData> &data_ptr,
+  Status AsyncReportWorkerFailure(const std::shared_ptr<WorkerTableData> &data_ptr,
                                   const StatusCallback &callback) override;
 
   Status AsyncRegisterWorker(
@@ -452,7 +452,7 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
  private:
   RedisGcsClient *client_impl_{nullptr};
 
-  typedef SubscriptionExecutor<WorkerID, WorkerFailureData, WorkerFailureTable>
+  typedef SubscriptionExecutor<WorkerID, WorkerTableData, WorkerTable>
       WorkerFailureSubscriptionExecutor;
   WorkerFailureSubscriptionExecutor worker_failure_sub_executor_;
 };
