@@ -1612,10 +1612,10 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
     RAY_LOG(INFO) << "[DispatchScheduledTasksToWorkers] Allocating resources for " << spec.DebugString();
     bool schedulable = new_resource_scheduler_->AllocateLocalTaskResources(
         spec.GetRequiredResources().GetResourceMap(), allocated_instances);
-    RAY_LOG(INFO) << "[DispatchScheduledTasksToWorkers] New scheduler state: " << new_resource_scheduler_->DebugString();
     if (!schedulable) {
+      RAY_LOG(INFO) << "[DispatchScheduledTasksToWorkers] Failed to schedule, will try again later.";
       // TODO (Alex) : Don't merge this line for now...
-      RAY_CHECK(false) << "This should never happen...";
+      // RAY_CHECK(false) << "This should never happen...";
       // Not enough resources to schedule this task.
       // Put it back at the end of the dispatch queue.
       tasks_to_dispatch_.push_back(task);
@@ -1624,6 +1624,7 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
       continue;
     }
 
+    RAY_LOG(INFO) << "[DispatchScheduledTasksToWorkers] Success! new state: " << new_resource_scheduler_->DebugString();
     worker->SetOwnerAddress(spec.CallerAddress());
     if (spec.IsActorCreationTask()) {
       // The actor belongs to this worker now.
@@ -1671,6 +1672,7 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
         RAY_LOG(INFO) << "[NewSchedulerSchedulePendingTasks] Waiting for args...";
         WaitForTaskArgsRequests(work);
       } else {
+        // Should spill over to a different node.
         RAY_LOG(INFO) << "[NewSchedulerSchedulePendingTasks] Doing something?!?!";
         new_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
                                                              request_resources);
