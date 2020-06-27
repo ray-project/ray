@@ -107,7 +107,7 @@ class ActorManager {
   /// It is required because core workers persist actor information to
   /// GCS after it resolves all local dependencies. It means that, there's
   /// no way for a worker to figure out if the actor is dead or not, which
-  /// can lead a worker to hang forever. 
+  /// can lead a worker to hang forever.
   void ResolveActorsLocations();
 
  private:
@@ -122,7 +122,8 @@ class ActorManager {
   ///
   /// \param[in] actor_id The actor handle to get.
   /// \return reference to the actor_handle's pointer.
-  std::unique_ptr<ActorHandle> &GetActorHandleInternal(const ActorID &actor_id) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  std::unique_ptr<ActorHandle> &GetActorHandleInternal(const ActorID &actor_id)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// GCS client
   std::shared_ptr<gcs::GcsClient> gcs_client_;

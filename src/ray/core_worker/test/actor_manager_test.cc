@@ -38,15 +38,25 @@ class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
   ray::Status AsyncSubscribe(
       const ActorID &actor_id,
       const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const gcs::StatusCallback &done) {
+      const gcs::StatusCallback &done) override {
     auto callback_entry = std::make_pair(actor_id, subscribe);
     callback_map_.emplace(actor_id, subscribe);
     return Status::OK();
   }
-  
-  ray::Status AsyncGet(const ActorID &actor_id,
-                       const gcs::OptionalItemCallback<rpc::ActorTableData> &callback) {
-    async_get_callback_map.emplace(callback);
+
+  ray::Status AsyncGet(
+      const ActorID &actor_id,
+      const gcs::OptionalItemCallback<rpc::ActorTableData> &callback) override {
+    async_get_callback_map.emplace(actor_id, callback);
+    return Status::OK();
+  }
+
+  void InvokeAsyncGetCallback(const ActorID &actor_id, ray::Status status,
+                              const boost::optional<gcs::ActorTableData> &result) {
+    auto it = async_get_callback_map.find(actor_id);
+    RAY_CHECK(it != async_get_callback_map.end());
+    auto callback = it->second;
+    callback(status, result);
   }
 
   bool ActorStateNotificationPublished(const ActorID &actor_id,
@@ -65,7 +75,8 @@ class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
   absl::flat_hash_map<ActorID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>
       callback_map_;
 
-  std::flat_hash_map<ActorID, gcs::OptionalItemCallback<rpc::ActorTableData>> async_get_callback_map;
+  absl::flat_hash_map<ActorID, gcs::OptionalItemCallback<rpc::ActorTableData>>
+      async_get_callback_map;
 };
 
 // SANG-TODO Impelement
@@ -76,8 +87,26 @@ class MockWorkerInfoAccessor : public gcs::RedisWorkerInfoAccessor {
 
   ~MockWorkerInfoAccessor() {}
 
-  // Implement this
-  //AsyncGetWorkerFailure
+  ray::Status AsyncGetWorkerFailure(
+      const WorkerID &worker_id,
+      const gcs::OptionalItemCallback<rpc::WorkerFailureData> &callback) override {
+    RAY_LOG(ERROR) << "Sang worker id, " << worker_id;
+    async_get_callback_map.emplace(worker_id, callback);
+    return Status::OK();
+  }
+
+  void InvokeAsyncGetWorkerFailureCallback(
+      const WorkerID &worker_id, ray::Status status,
+      const boost::optional<gcs::WorkerFailureData> &result) {
+    RAY_LOG(ERROR) << "Sang worker id requested, " << worker_id;
+    auto it = async_get_callback_map.find(worker_id);
+    RAY_CHECK(it != async_get_callback_map.end());
+    auto callback = it->second;
+    callback(status, result);
+  }
+
+  absl::flat_hash_map<WorkerID, gcs::OptionalItemCallback<rpc::WorkerFailureData>>
+      async_get_callback_map;
 };
 
 // SANG-TODO Impelement
@@ -88,8 +117,7 @@ class MockNodeInfoAccessor : public gcs::RedisNodeInfoAccessor {
 
   ~MockNodeInfoAccessor() {}
 
-  // Implement this
-  //Get
+  MOCK_CONST_METHOD1(Get, boost::optional<rpc::GcsNodeInfo>(const ClientID &node_id));
 };
 
 class MockGcsClient : public gcs::RedisGcsClient {
@@ -154,7 +182,8 @@ class ActorManagerTest : public ::testing::Test {
         node_info_accessor_(new MockNodeInfoAccessor(gcs_client_mock_.get())),
         direct_actor_submitter_(new MockDirectActorSubmitter()),
         reference_counter_(new MockReferenceCounter()) {
-    gcs_client_mock_->Init(actor_info_accessor_, worker_info_accessor_, node_info_accessor_);
+    gcs_client_mock_->Init(actor_info_accessor_, worker_info_accessor_,
+                           node_info_accessor_);
   }
 
   ~ActorManagerTest() {}
@@ -183,6 +212,14 @@ class ActorManagerTest : public ::testing::Test {
     actor_manager_->AddActorHandle(move(actor_handle), true, task_id, call_site,
                                    caller_address);
     return actor_id;
+  }
+
+  // This function accesses a private member of actor_manager_ to
+  // check if actor_id is persisted to the actor_resolution_map.
+  bool CheckActorIdInResolutionMap(const ActorID &actor_id) {
+    absl::MutexLock lock(&actor_manager_->mutex_);
+    auto it = actor_manager_->actors_pending_location_resolution_.find(actor_id);
+    return it != actor_manager_->actors_pending_location_resolution_.end();
   }
 
   gcs::GcsClientOptions options_;
@@ -328,6 +365,146 @@ TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
       rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
   ASSERT_TRUE(
       actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
+}
+
+TEST_F(ActorManagerTest, TestActorLocationResolutionNormal) {
+  ActorID actor_id = AddActorHandle();
+  std::unique_ptr<ActorHandle> &actor_handle = actor_manager_->GetActorHandle(actor_id);
+  ASSERT_FALSE(actor_handle->IsPersistedToGCS());
+  ASSERT_TRUE(CheckActorIdInResolutionMap(actor_id));
+
+  // Make sure state is properly updated after GCS notifies the actor information is
+  // persisted.
+  rpc::ActorTableData actor_table_data;
+  actor_table_data.set_actor_id(actor_id.Binary());
+  actor_table_data.set_state(
+      rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+  actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data);
+  ASSERT_TRUE(actor_handle->IsPersistedToGCS());
+  actor_manager_->ResolveActorsLocations();
+  // Location should've been resolved.
+  ASSERT_FALSE(CheckActorIdInResolutionMap(actor_id));
+}
+
+// Actor should be disconnected if worker failure event
+// is reported before it receives a state update from GCS.
+TEST_F(ActorManagerTest, TestActorLocationResolutionWorkerFailed) {
+  ActorID actor_id = AddActorHandle();
+  std::unique_ptr<ActorHandle> &actor_handle = actor_manager_->GetActorHandle(actor_id);
+  const WorkerID &worker_id =
+      WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
+  ASSERT_TRUE(CheckActorIdInResolutionMap(actor_id));
+
+  actor_manager_->ResolveActorsLocations();
+  rpc::WorkerFailureData worker_failure_data;
+
+  // If the RPC request fails, do nothing.
+  worker_info_accessor_->InvokeAsyncGetWorkerFailureCallback(
+      worker_id, ray::Status::Invalid(""),
+      boost::optional<gcs::WorkerFailureData>(worker_failure_data));
+  ASSERT_TRUE(CheckActorIdInResolutionMap(actor_id));
+
+  // If worker failure data is returned, actor handle is disconnected from an actor.
+  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _)).Times(1);
+  worker_info_accessor_->InvokeAsyncGetWorkerFailureCallback(
+      worker_id, ray::Status::OK(),
+      boost::optional<gcs::WorkerFailureData>(worker_failure_data));
+
+  // If async get callback failed, it won't do anything.
+  actor_info_accessor_->InvokeAsyncGetCallback(actor_id, ray::Status::Invalid(""),
+                                               boost::none);
+  ASSERT_TRUE(CheckActorIdInResolutionMap(actor_id));
+
+  // If async get callback succeed, and there's no actor data,
+  // it means the actor is dead before it is persisted.
+  // Disconnect an actor and delete the entry from resolution list.
+  actor_info_accessor_->InvokeAsyncGetCallback(actor_id, ray::Status::OK(), boost::none);
+  // The actor_id should've been deleted from the resolution list.
+  ASSERT_FALSE(CheckActorIdInResolutionMap(actor_id));
+  ASSERT_FALSE(actor_handle->IsPersistedToGCS());
+  // NOTE: There's no way to get notification from GCS at this point because the worker
+  // failed before
+  //       the actor information is persisted to GCS.
+}
+
+// Actor should be disconnected if the node of an actor failed.
+// is reported before it receives a state update from GCS.
+TEST_F(ActorManagerTest, TestActorLocationResolutionNodeFailed) {
+  ActorID actor_id = AddActorHandle();
+  std::unique_ptr<ActorHandle> &actor_handle = actor_manager_->GetActorHandle(actor_id);
+  const ClientID &node_id =
+      ClientID::FromBinary(actor_handle->GetOwnerAddress().raylet_id());
+  ASSERT_TRUE(CheckActorIdInResolutionMap(actor_id));
+
+  actor_manager_->ResolveActorsLocations();
+  rpc::GcsNodeInfo node_info;
+  node_info.set_state(rpc::GcsNodeInfo_GcsNodeState_DEAD);
+  // Node failure will be reported.
+  EXPECT_CALL(*node_info_accessor_, Get(node_id))
+      .WillRepeatedly(testing::Return(boost::optional<rpc::GcsNodeInfo>(node_info)));
+
+  const WorkerID &worker_id =
+      WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
+  // There's no worker failure.
+  worker_info_accessor_->InvokeAsyncGetWorkerFailureCallback(worker_id, ray::Status::OK(),
+                                                             boost::none);
+  // If async get callback succeed, and there's no actor data,
+  // it means the actor is dead before it is persisted.
+  // Disconnect an actor and delete the entry from resolution list.
+  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _)).Times(1);
+  actor_info_accessor_->InvokeAsyncGetCallback(actor_id, ray::Status::OK(), boost::none);
+  // The actor_id should've been deleted from the resolution list.
+  ASSERT_FALSE(CheckActorIdInResolutionMap(actor_id));
+  ASSERT_FALSE(actor_handle->IsPersistedToGCS());
+}
+
+// There's one race condition that has to be tested. Sometimes,
+// it is possible that the actor information is persisted to GCS "after"
+// the node or worker failure is confirmed from our code.
+// In this case, the resolution protocol should not disconnect an actor.
+TEST_F(ActorManagerTest, TestActorLocationResolutionRaceConditionActorRegistered) {
+  ActorID actor_id = AddActorHandle();
+  std::unique_ptr<ActorHandle> &actor_handle = actor_manager_->GetActorHandle(actor_id);
+  const ClientID &node_id =
+      ClientID::FromBinary(actor_handle->GetOwnerAddress().raylet_id());
+  ASSERT_TRUE(CheckActorIdInResolutionMap(actor_id));
+
+  actor_manager_->ResolveActorsLocations();
+  rpc::GcsNodeInfo node_info;
+  node_info.set_state(rpc::GcsNodeInfo_GcsNodeState_DEAD);
+  // Node failure will be reported.
+  EXPECT_CALL(*node_info_accessor_, Get(node_id))
+      .WillRepeatedly(testing::Return(boost::optional<rpc::GcsNodeInfo>(node_info)));
+
+  const WorkerID &worker_id =
+      WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
+  // There's no worker failure.
+  worker_info_accessor_->InvokeAsyncGetWorkerFailureCallback(worker_id, ray::Status::OK(),
+                                                             boost::none);
+
+  // Let's suppose here, the actor is persisted to GCS.
+  // In this case, we should not disconnect.
+  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _)).Times(0);
+  rpc::ActorTableData actor_table_data;
+  actor_table_data.set_actor_id(actor_id.Binary());
+  actor_table_data.set_state(
+      rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+
+  // GCS reports the actor information. Do nothing.
+  actor_info_accessor_->InvokeAsyncGetCallback(
+      actor_id, ray::Status::OK(),
+      boost::optional<gcs::ActorTableData>(actor_table_data));
+  // The actor_id should've been deleted from the resolution list.
+  ASSERT_TRUE(CheckActorIdInResolutionMap(actor_id));
+  ASSERT_FALSE(actor_handle->IsPersistedToGCS());
+
+  // Now, GCS publishes the actor information.
+  actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data);
+  ASSERT_TRUE(actor_handle->IsPersistedToGCS());
+
+  // In the next resolution check, this actor will be removed from the resolution map.
+  actor_manager_->ResolveActorsLocations();
+  ASSERT_FALSE(CheckActorIdInResolutionMap(actor_id));
 }
 
 }  // namespace ray

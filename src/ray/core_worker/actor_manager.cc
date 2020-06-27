@@ -40,7 +40,8 @@ std::unique_ptr<ActorHandle> &ActorManager::GetActorHandle(const ActorID &actor_
   return GetActorHandleInternal(actor_id);
 }
 
-std::unique_ptr<ActorHandle> &ActorManager::GetActorHandleInternal(const ActorID &actor_id) {
+std::unique_ptr<ActorHandle> &ActorManager::GetActorHandleInternal(
+    const ActorID &actor_id) {
   auto it = actor_handles_.find(actor_id);
   RAY_CHECK(it != actor_handles_.end());
   return it->second;
@@ -198,10 +199,13 @@ void ActorManager::ResolveActorsLocations() {
           WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id()),
           [this, actor_id, node_id](
               Status status, const boost::optional<gcs::WorkerFailureData> &result) {
-            bool worker_or_node_failed = false;
+            if (!status.ok()) {
+              return;
+            }
 
+            bool worker_or_node_failed = false;
             // If a worker failure events is found.
-            if (status.ok() && result) {
+            if (result) {
               worker_or_node_failed = true;
             } else {
               // Check node failure. We should do this because worker failure event is not
@@ -224,10 +228,11 @@ void ActorManager::ResolveActorsLocations() {
                   [this, actor_id](Status status,
                                    const boost::optional<gcs::ActorTableData> &result) {
                     absl::MutexLock lock(&mutex_);
-                    std::unique_ptr<ActorHandle> &actor_handle = GetActorHandleInternal(actor_id);
+                    std::unique_ptr<ActorHandle> &actor_handle =
+                        GetActorHandleInternal(actor_id);
                     if (status.ok() && !result && !actor_handle->IsPersistedToGCS()) {
-                        direct_actor_submitter_->DisconnectActor(actor_id, /*dead*/ true);
-                        actors_pending_location_resolution_.erase(actor_id);
+                      direct_actor_submitter_->DisconnectActor(actor_id, /*dead*/ true);
+                      actors_pending_location_resolution_.erase(actor_id);
                     }
                   }));
             }
