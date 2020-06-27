@@ -43,6 +43,11 @@ class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
     callback_map_.emplace(actor_id, subscribe);
     return Status::OK();
   }
+  
+  ray::Status AsyncGet(const ActorID &actor_id,
+                       const gcs::OptionalItemCallback<rpc::ActorTableData> &callback) {
+    async_get_callback_map.emplace(callback);
+  }
 
   bool ActorStateNotificationPublished(const ActorID &actor_id,
                                        const gcs::ActorTableData &actor_data) {
@@ -59,81 +64,41 @@ class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
 
   absl::flat_hash_map<ActorID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>
       callback_map_;
+
+  std::flat_hash_map<ActorID, gcs::OptionalItemCallback<rpc::ActorTableData>> async_get_callback_map;
 };
 
 // SANG-TODO Impelement
 class MockWorkerInfoAccessor : public gcs::RedisWorkerInfoAccessor {
  public:
-  MockActorInfoAccessor(gcs::RedisGcsClient *client)
-      : gcs::RedisActorInfoAccessor(client) {}
+  MockWorkerInfoAccessor(gcs::RedisGcsClient *client)
+      : gcs::RedisWorkerInfoAccessor(client) {}
 
-  ~MockActorInfoAccessor() {}
+  ~MockWorkerInfoAccessor() {}
 
-  ray::Status AsyncSubscribe(
-      const ActorID &actor_id,
-      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const gcs::StatusCallback &done) {
-    auto callback_entry = std::make_pair(actor_id, subscribe);
-    callback_map_.emplace(actor_id, subscribe);
-    return Status::OK();
-  }
-
-  bool ActorStateNotificationPublished(const ActorID &actor_id,
-                                       const gcs::ActorTableData &actor_data) {
-    auto it = callback_map_.find(actor_id);
-    if (it == callback_map_.end()) return false;
-    auto actor_state_notification_callback = it->second;
-    actor_state_notification_callback(actor_id, actor_data);
-    return true;
-  }
-
-  bool CheckSubscriptionRequested(const ActorID &actor_id) {
-    return callback_map_.find(actor_id) != callback_map_.end();
-  }
-
-  absl::flat_hash_map<ActorID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>
-      callback_map_;
+  // Implement this
+  //AsyncGetWorkerFailure
 };
 
 // SANG-TODO Impelement
 class MockNodeInfoAccessor : public gcs::RedisNodeInfoAccessor {
  public:
-  MockActorInfoAccessor(gcs::RedisGcsClient *client)
-      : gcs::RedisActorInfoAccessor(client) {}
+  MockNodeInfoAccessor(gcs::RedisGcsClient *client)
+      : gcs::RedisNodeInfoAccessor(client) {}
 
-  ~MockActorInfoAccessor() {}
+  ~MockNodeInfoAccessor() {}
 
-  ray::Status AsyncSubscribe(
-      const ActorID &actor_id,
-      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const gcs::StatusCallback &done) {
-    auto callback_entry = std::make_pair(actor_id, subscribe);
-    callback_map_.emplace(actor_id, subscribe);
-    return Status::OK();
-  }
-
-  bool ActorStateNotificationPublished(const ActorID &actor_id,
-                                       const gcs::ActorTableData &actor_data) {
-    auto it = callback_map_.find(actor_id);
-    if (it == callback_map_.end()) return false;
-    auto actor_state_notification_callback = it->second;
-    actor_state_notification_callback(actor_id, actor_data);
-    return true;
-  }
-
-  bool CheckSubscriptionRequested(const ActorID &actor_id) {
-    return callback_map_.find(actor_id) != callback_map_.end();
-  }
-
-  absl::flat_hash_map<ActorID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>
-      callback_map_;
+  // Implement this
+  //Get
 };
 
 class MockGcsClient : public gcs::RedisGcsClient {
  public:
   MockGcsClient(const gcs::GcsClientOptions &options) : gcs::RedisGcsClient(options) {}
 
-  void Init(MockActorInfoAccessor *actor_accesor_mock, MockWorkerInfoAccessor *worker_accessor_mock, MockNodeInfoAccessor *node_accessor_mock) {
+  void Init(MockActorInfoAccessor *actor_accesor_mock,
+            MockWorkerInfoAccessor *worker_accessor_mock,
+            MockNodeInfoAccessor *node_accessor_mock) {
     actor_accessor_.reset(actor_accesor_mock);
     node_accessor_.reset(node_accessor_mock);
     worker_accessor_.reset(worker_accessor_mock);
@@ -185,9 +150,11 @@ class ActorManagerTest : public ::testing::Test {
       : options_("", 1, ""),
         gcs_client_mock_(new MockGcsClient(options_)),
         actor_info_accessor_(new MockActorInfoAccessor(gcs_client_mock_.get())),
+        worker_info_accessor_(new MockWorkerInfoAccessor(gcs_client_mock_.get())),
+        node_info_accessor_(new MockNodeInfoAccessor(gcs_client_mock_.get())),
         direct_actor_submitter_(new MockDirectActorSubmitter()),
         reference_counter_(new MockReferenceCounter()) {
-    gcs_client_mock_->Init(actor_info_accessor_);
+    gcs_client_mock_->Init(actor_info_accessor_, worker_info_accessor_, node_info_accessor_);
   }
 
   ~ActorManagerTest() {}
@@ -221,6 +188,8 @@ class ActorManagerTest : public ::testing::Test {
   gcs::GcsClientOptions options_;
   std::shared_ptr<MockGcsClient> gcs_client_mock_;
   MockActorInfoAccessor *actor_info_accessor_;
+  MockWorkerInfoAccessor *worker_info_accessor_;
+  MockNodeInfoAccessor *node_info_accessor_;
   std::shared_ptr<MockDirectActorSubmitter> direct_actor_submitter_;
   std::shared_ptr<MockReferenceCounter> reference_counter_;
   std::shared_ptr<ActorManager> actor_manager_;
