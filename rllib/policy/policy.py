@@ -153,8 +153,8 @@ class Policy(metaclass=ABCMeta):
             episodes = [episode]
         if state is not None:
             state_batch = [
-                s.unsqueeze(0)
-                if torch and isinstance(s, torch.Tensor) else [s]
+                s.unsqueeze(0) if torch and isinstance(s, torch.Tensor) else
+                np.expand_dims(s, 0)
                 for s in state
             ]
 
