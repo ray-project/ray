@@ -1,4 +1,3 @@
-from gym.spaces import Space
 import logging
 import time
 from typing import Callable, Optional, List, Iterable

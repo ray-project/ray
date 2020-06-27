@@ -94,7 +94,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
         gaussian_sample = tf.random.normal(
             shape=[self.action_space.low.size], stddev=self.stddev)
         ou_new = self.ou_theta * -self.ou_state + \
-                 self.ou_sigma * gaussian_sample
+            self.ou_sigma * gaussian_sample
         ou_state_new = tf1.assign_add(self.ou_state, ou_new)
         high_m_low = self.action_space.high - self.action_space.low
         high_m_low = tf.where(
@@ -125,9 +125,9 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
         logp = tf.zeros(shape=(batch_size,), dtype=tf.float32)
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
-        assign_op = \
-            tf1.assign_add(self.last_timestep, 1) if timestep is None else \
-                tf1.assign(self.last_timestep, timestep)
+        assign_op = (
+            tf1.assign_add(self.last_timestep, 1) if timestep is None else
+            tf1.assign(self.last_timestep, timestep))
         with tf1.control_dependencies([assign_op, ou_state_new]):
             return action, logp
 

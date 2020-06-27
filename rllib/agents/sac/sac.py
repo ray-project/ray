@@ -1,11 +1,9 @@
-from gym.spaces import Box, Discrete
 import logging
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
-from ray.rllib.utils.error import UnsupportedSpaceException
 
 logger = logging.getLogger(__name__)
 

@@ -1,4 +1,3 @@
-from gym.spaces import Box
 import logging
 
 from ray.rllib.agents.trainer import with_common_config

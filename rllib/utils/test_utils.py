@@ -273,7 +273,8 @@ def check_compute_single_action(trainer,
             if isinstance(trainer.workers, list):
                 obs_space = trainer.workers[0].env.observation_space
             else:
-                obs_space = trainer.workers.local_worker().env.observation_space
+                obs_space = \
+                    trainer.workers.local_worker().env.observation_space
         else:
             method_to_test = pol.compute_single_action
             obs_space = pol.observation_space
