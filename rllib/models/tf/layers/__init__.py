@@ -6,6 +6,9 @@ from ray.rllib.models.tf.layers.skip_connection import SkipConnection
 from ray.rllib.models.tf.layers.multi_head_attention import MultiHeadAttention
 
 __all__ = [
-    "GRUGate", "MultiHeadAttention", "NoisyLayer",
-    "RelativeMultiHeadAttention", "SkipConnection"
+    "GRUGate",
+    "MultiHeadAttention",
+    "NoisyLayer",
+    "RelativeMultiHeadAttention",
+    "SkipConnection"
 ]

@@ -26,11 +26,13 @@
 #include <string>
 #include <vector>
 
-#include "arrow/status.h"
+#include "ray/common/status.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/compat.h"
 
 namespace plasma {
+
+using ray::Status;
 
 namespace flatbuf {
 
@@ -43,8 +45,6 @@ enum class MessageType : int64_t;
 // message length, plasma protocol version) with one that is serialized
 // using flatbuffers.
 constexpr int64_t kPlasmaProtocolVersion = 0x0000000000000000;
-
-using arrow::Status;
 
 Status WriteBytes(int fd, uint8_t* cursor, size_t length);
 

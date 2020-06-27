@@ -16,7 +16,11 @@ class NoisyLayer(tf.keras.layers.Layer):
     vanish along the training procedure
     """
 
-    def __init__(self, prefix, out_size, sigma0, activation="relu"):
+    def __init__(self,
+                 prefix,
+                 out_size,
+                 sigma0,
+                 activation="relu"):
         """Initializes a NoisyLayer object.
 
         Args:
@@ -49,7 +53,8 @@ class NoisyLayer(tf.keras.layers.Layer):
             trainable=True,
             tf_name=self.prefix + "_sigma_w",
             shape=[in_size, self.out_size],
-            dtype=tf.float32)
+            dtype=tf.float32
+        )
 
         self.sigma_b = get_variable(
             value=tf.keras.initializers.Constant(

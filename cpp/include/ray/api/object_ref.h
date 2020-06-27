@@ -2,8 +2,9 @@
 #pragma once
 
 #include <memory>
-#include <msgpack.hpp>
 #include <utility>
+
+#include <msgpack.hpp>
 
 #include "ray/core.h"
 

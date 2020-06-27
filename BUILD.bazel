@@ -270,7 +270,6 @@ cc_library(
     name = "plasma_client",
     srcs = [
         "src/ray/object_manager/plasma/client.cc",
-        "src/ray/object_manager/plasma/common.cc",
         "src/ray/object_manager/plasma/fling.cc",
         "src/ray/object_manager/plasma/io.cc",
         "src/ray/object_manager/plasma/malloc.cc",

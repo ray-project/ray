@@ -43,7 +43,9 @@ std::unique_ptr<ActorHandle> &ActorManager::GetActorHandle(const ActorID &actor_
 std::unique_ptr<ActorHandle> &ActorManager::GetActorHandleInternal(
     const ActorID &actor_id) {
   auto it = actor_handles_.find(actor_id);
-  RAY_CHECK(it != actor_handles_.end());
+  RAY_CHECK(it != actor_handles_.end())
+      << "Cannot find an actor handle of id, " << actor_id
+      << ". This method should be called only when you ensure actor handles exists.";
   return it->second;
 }
 
