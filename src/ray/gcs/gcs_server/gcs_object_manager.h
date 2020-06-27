@@ -59,16 +59,24 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   /// \param done Callback that will be called when load is complete.
   void LoadInitialData(const EmptyCallback &done);
 
- protected:
   struct TimestampCompare {
     bool operator()(const std::pair<ClientID, int64_t> &lhs,
                     const std::pair<ClientID, int64_t> &rhs) const {
-      return lhs.second > rhs.second;
+      if (lhs.first == rhs.first && lhs.second == rhs.second) {
+        return false;
+      } else {
+        if (lhs.second != rhs.second) {
+          return rhs.second > lhs.second;
+        } else {
+          return rhs.first.Hex() > lhs.first.Hex();
+        }
+      }
     }
   };
 
   typedef std::set<std::pair<ClientID, int64_t>, TimestampCompare> LocationSet;
 
+ protected:
   /// Add a location of objects.
   /// If the GCS server restarts, this function is used to reload data from storage.
   ///
