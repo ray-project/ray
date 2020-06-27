@@ -130,3 +130,12 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                 self._value_branch_separate(self._last_flat_in)).squeeze(1)
         else:
             return self._value_branch(self._features).squeeze(1)
+
+    @override(ModelV2)
+    def get_view_requirements(self, is_training=False):
+        """Default implementation for simple RL model.
+
+        Takes current observation as only required input.
+        """
+        # Single requirement: Pass current obs as input.
+        return {"obs": {"timesteps": 0}}
