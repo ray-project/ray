@@ -2,7 +2,6 @@ from dataclasses import dataclass
 import numpy as np
 from typing import Dict, List
 
-from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.types import TensorType
 
@@ -51,7 +50,7 @@ class ViewRequirement:
 
 
 def get_trajectory_view(
-    model: ModelV2,
+    model: "ModelV2",
     trajectories: List["Trajectory"],
     is_training: bool = False) -> Dict[str, TensorType]:
     """Returns the view (input_dict) for a Model's forward pass given some data.
