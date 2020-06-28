@@ -120,36 +120,6 @@ struct PlasmaObject {
   }
 };
 
-enum class ObjectStatus : int {
-  /// The object was not found.
-  OBJECT_NOT_FOUND = 0,
-  /// The object was found.
-  OBJECT_FOUND = 1
-};
-
-/// The plasma store information that is exposed to the eviction policy.
-struct PlasmaStoreInfo {
-  /// Objects that are in the Plasma store.
-  ObjectTable objects;
-  /// Boolean flag indicating whether to start the object store with hugepages
-  /// support enabled. Huge pages are substantially larger than normal memory
-  /// pages (e.g. 2MB or 1GB instead of 4KB) and using them can reduce
-  /// bookkeeping overhead from the OS.
-  bool hugepages_enabled;
-  /// A (platform-dependent) directory where to create the memory-backed file.
-  std::string directory;
-};
-
-/// Get an entry from the object table and return NULL if the object_id
-/// is not present.
-///
-/// \param store_info The PlasmaStoreInfo that contains the object table.
-/// \param object_id The object_id of the entry we are looking for.
-/// \return The entry associated with the object_id or NULL if the object_id
-///         is not present.
-ObjectTableEntry* GetObjectTableEntry(PlasmaStoreInfo* store_info,
-                                      const ObjectID& object_id);
-
 /// Print a warning if the status is less than zero. This should be used to check
 /// the success of messages sent to plasma clients. We print a warning instead of
 /// failing because the plasma clients are allowed to die. This is used to handle
@@ -171,7 +141,17 @@ std::unique_ptr<uint8_t[]> CreateObjectInfoBuffer(ObjectInfoT* object_info);
 std::unique_ptr<uint8_t[]> CreatePlasmaNotificationBuffer(
     const std::vector<ObjectInfoT>& object_info);
 
-/// Globally accessible reference to plasma store configuration.
-extern const PlasmaStoreInfo* plasma_config;
+struct PlasmaStoreInfo {
+  /// Boolean flag indicating whether to start the object store with hugepages
+  /// support enabled. Huge pages are substantially larger than normal memory
+  /// pages (e.g. 2MB or 1GB instead of 4KB) and using them can reduce
+  /// bookkeeping overhead from the OS.
+  bool hugepages_enabled;
+  /// A (platform-dependent) directory where to create the memory-backed file.
+  std::string shared_memory_directory;
+}
+
+/// Globally accessible plasma store configuration.
+extern PlasmaStoreInfo plasma_config;
 
 }  // namespace plasma

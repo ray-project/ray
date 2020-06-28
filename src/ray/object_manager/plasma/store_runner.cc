@@ -96,10 +96,11 @@ void PlasmaStoreRunner::Start() {
   RAY_LOG(DEBUG) << "starting server listening on " << socket_name_;
 
   // Create the event loop.
+  plasma_config.plasma_directory = plasma_directory_;
+  plasma_config.hugepages_enabled = hugepages_enabled_;
+  object_directory.reset(new ObjectDirectory());
   loop_.reset(new EventLoop);
-  store_.reset(new PlasmaStore(loop_.get(), plasma_directory_, hugepages_enabled_,
-                               socket_name_, external_store));
-  plasma_config = store_->GetPlasmaStoreInfo();
+  store_.reset(new PlasmaStore(loop_.get(), socket_name_, external_store));
 
   // We are using a single memory-mapped file by mallocing and freeing a single
   // large amount of space up front. According to the documentation,

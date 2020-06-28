@@ -30,6 +30,9 @@
 
 namespace plasma {
 
+// Declare the class here to avoid recursive header import.
+class ObjectDirectory;
+
 class LRUCache {
  public:
   LRUCache(const std::string& name, int64_t size)
@@ -110,7 +113,7 @@ class QuotaAwarePolicy {
   /// \param store_info Information about the Plasma store that is exposed
   ///        to the eviction policy.
   /// \param max_size Max size in bytes total of objects to store.
-  explicit QuotaAwarePolicy(PlasmaStoreInfo* store_info, int64_t max_size);
+  explicit QuotaAwarePolicy(ObjectDirectory* store_info, int64_t max_size);
 
   /// This method will be called when the Plasma store needs more space, perhaps
   /// to create a new object. When this method is called, the eviction
@@ -207,14 +210,11 @@ class QuotaAwarePolicy {
   /// Returns whether we are enforcing memory quotas for an operation.
   bool HasQuota(Client* client, bool is_create);
 
-  /// Returns the size of the object
-  int64_t GetObjectSize(const ObjectID& object_id) const;
-
   /// The number of bytes pinned by applications.
   int64_t pinned_memory_bytes_;
 
   /// Pointer to the plasma store info.
-  PlasmaStoreInfo* store_info_;
+  ObjectDirectory* store_info_;
 
   /// Datastructure for the LRU cache.
   LRUCache cache_;

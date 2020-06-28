@@ -32,7 +32,7 @@
 #include "ray/object_manager/plasma/external_store.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
-#include "ray/object_manager/plasma/quota_aware_policy.h"
+#include "ray/object_manager/plasma/object_directory.h"
 
 namespace plasma {
 
@@ -58,14 +58,10 @@ class PlasmaStore {
   using NotificationMap = std::unordered_map<int, NotificationQueue>;
 
   // TODO: PascalCase PlasmaStore methods.
-  PlasmaStore(EventLoop* loop, std::string directory, bool hugepages_enabled,
-              const std::string& socket_name,
+  PlasmaStore(EventLoop* loop, const std::string& socket_name,
               std::shared_ptr<ExternalStore> external_store);
 
   ~PlasmaStore();
-
-  /// Get a const pointer to the internal PlasmaStoreInfo object.
-  const PlasmaStoreInfo* GetPlasmaStoreInfo();
 
   /// Create a new object. The client must do a call to release_object to tell
   /// the store when it is done with the object.
@@ -139,13 +135,6 @@ class PlasmaStore {
   /// \param object_ids The vector of Object IDs of the objects to be sealed.
   void SealObjects(const std::vector<ObjectID>& object_ids);
 
-  /// Check if the plasma store contains an object:
-  ///
-  /// \param object_id Object ID that will be checked.
-  /// \return OBJECT_FOUND if the object is in the store, OBJECT_NOT_FOUND if
-  /// not
-  ObjectStatus ContainsObject(const ObjectID& object_id);
-
   /// Record the fact that a particular client is no longer using an object.
   ///
   /// \param object_id The object ID of the object that is being released.
@@ -189,14 +178,9 @@ class PlasmaStore {
   }
 
  private:
-  void PushNotification(ObjectInfoT* object_notification);
-
   void PushNotifications(const std::vector<ObjectInfoT>& object_notifications);
 
-  void PushNotification(ObjectInfoT* object_notification, int client_fd);
-
-  void AddToClientObjectIds(const ObjectID& object_id, ObjectTableEntry* entry,
-                            Client* client);
+  void PushNotifications(const std::vector<ObjectInfoT>& object_notifications, int client_fd);
 
   /// Remove a GetRequest and clean up the relevant data structures.
   ///
@@ -215,8 +199,6 @@ class PlasmaStore {
   int RemoveFromClientObjectIds(const ObjectID& object_id, ObjectTableEntry* entry,
                                 Client* client);
 
-  void EraseFromObjectTable(const ObjectID& object_id);
-
   uint8_t* AllocateMemory(size_t size, bool evict_if_full, int* fd, int64_t* map_size,
                           ptrdiff_t* offset, Client* client, bool is_create);
 #ifdef PLASMA_CUDA
@@ -228,11 +210,6 @@ class PlasmaStore {
 
   /// Event loop of the plasma store.
   EventLoop* loop_;
-  /// The plasma store information, including the object tables, that is exposed
-  /// to the eviction policy.
-  PlasmaStoreInfo store_info_;
-  /// The state that is managed by the eviction policy.
-  QuotaAwarePolicy eviction_policy_;
   /// Input buffer. This is allocated only once to avoid mallocs for every
   /// call to process_message.
   std::vector<uint8_t> input_buffer_;

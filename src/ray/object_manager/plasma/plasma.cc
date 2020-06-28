@@ -87,13 +87,4 @@ std::unique_ptr<uint8_t[]> CreatePlasmaNotificationBuffer(
   return notification;
 }
 
-ObjectTableEntry* GetObjectTableEntry(PlasmaStoreInfo* store_info,
-                                      const ObjectID& object_id) {
-  auto it = store_info->objects.find(object_id);
-  if (it == store_info->objects.end()) {
-    return NULL;
-  }
-  return it->second.get();
-}
-
 }  // namespace plasma

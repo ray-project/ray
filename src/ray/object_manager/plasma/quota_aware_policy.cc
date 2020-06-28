@@ -18,6 +18,7 @@
 #include "ray/object_manager/plasma/quota_aware_policy.h"
 
 #include "ray/util/logging.h"
+#include "ray/object_manager/plasma/object_directory.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 
 #include <algorithm>
@@ -92,7 +93,7 @@ int64_t LRUCache::ChooseObjectsToEvict(int64_t num_bytes_required,
   return bytes_evicted;
 }
 
-QuotaAwarePolicy::QuotaAwarePolicy(PlasmaStoreInfo* store_info, int64_t max_size)
+QuotaAwarePolicy::QuotaAwarePolicy(ObjectDirectory* store_info, int64_t max_size)
     : pinned_memory_bytes_(0), store_info_(store_info), cache_("global lru", max_size) {}
 
 int64_t QuotaAwarePolicy::ChooseObjectsToEvict(int64_t num_bytes_required,
@@ -124,11 +125,6 @@ bool QuotaAwarePolicy::RequireSpace(int64_t size, std::vector<ObjectID>* objects
   return num_bytes_evicted >= required_space && num_bytes_evicted > 0;
 }
 
-int64_t QuotaAwarePolicy::GetObjectSize(const ObjectID& object_id) const {
-  auto entry = store_info_->objects[object_id].get();
-  return entry->data_size + entry->metadata_size;
-}
-
 bool QuotaAwarePolicy::HasQuota(Client* client, bool is_create) {
   if (!is_create) {
     return false;  // no quota enforcement on read requests yet
@@ -138,11 +134,12 @@ bool QuotaAwarePolicy::HasQuota(Client* client, bool is_create) {
 
 void QuotaAwarePolicy::ObjectCreated(const ObjectID& object_id, Client* client,
                                      bool is_create) {
+  int64_t size = store_info_->GetObjectSize(object_id);
   if (HasQuota(client, is_create)) {
-    per_client_cache_[client]->Add(object_id, GetObjectSize(object_id));
+    per_client_cache_[client]->Add(object_id, size);
     owned_by_client_[object_id] = client;
   } else {
-    cache_.Add(object_id, GetObjectSize(object_id));
+    cache_.Add(object_id, size);
   }
 }
 
@@ -204,7 +201,7 @@ bool QuotaAwarePolicy::EnforcePerClientQuota(Client* client, int64_t size, bool 
 }
 
 void QuotaAwarePolicy::BeginObjectAccess(const ObjectID& object_id) {
-  pinned_memory_bytes_ += GetObjectSize(object_id);
+  pinned_memory_bytes_ += store_info_->GetObjectSize(object_id);
   if (owned_by_client_.find(object_id) != owned_by_client_.end()) {
     shared_for_read_.insert(object_id);
   } else {
@@ -214,7 +211,7 @@ void QuotaAwarePolicy::BeginObjectAccess(const ObjectID& object_id) {
 }
 
 void QuotaAwarePolicy::EndObjectAccess(const ObjectID& object_id) {
-  auto size = GetObjectSize(object_id);
+  auto size = store_info_->GetObjectSize(object_id);
   pinned_memory_bytes_ -= size;
   if (owned_by_client_.find(object_id) != owned_by_client_.end()) {
     shared_for_read_.erase(object_id);
@@ -259,7 +256,7 @@ void QuotaAwarePolicy::ClientDisconnected(Client* client) {
     if (!shared_for_read_.count(obj)) {
       // only add it to the global LRU if we have it in pinned mode
       // otherwise, EndObjectAccess will add it later
-      cache_.Add(obj, GetObjectSize(obj));
+      cache_.Add(obj, store_info_->GetObjectSize(obj));
     }
     owned_by_client_.erase(obj);
     shared_for_read_.erase(obj);
