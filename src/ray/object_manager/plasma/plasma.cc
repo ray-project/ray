@@ -21,11 +21,11 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/plasma/common.h"
-#include "ray/object_manager/plasma/common_generated.h"
 #include "ray/object_manager/plasma/protocol.h"
 
-namespace fb = plasma::flatbuf;
+namespace fb = ray::object_manager::protocol;
 
 namespace plasma {
 
@@ -38,14 +38,14 @@ int WarnIfSigpipe(int status, int client_sock) {
     return 0;
   }
   if (errno == EPIPE || errno == EBADF || errno == ECONNRESET) {
-    ARROW_LOG(WARNING) << "Received SIGPIPE, BAD FILE DESCRIPTOR, or ECONNRESET when "
+    RAY_LOG(WARNING) << "Received SIGPIPE, BAD FILE DESCRIPTOR, or ECONNRESET when "
                           "sending a message to client on fd "
                        << client_sock
                        << ". The client on the other end may "
                           "have hung up.";
     return errno;
   }
-  ARROW_LOG(FATAL) << "Failed to write message to client on fd " << client_sock << ".";
+  RAY_LOG(FATAL) << "Failed to write message to client on fd " << client_sock << ".";
   return -1;  // This is never reached.
 }
 
@@ -70,9 +70,9 @@ std::unique_ptr<uint8_t[]> CreateObjectInfoBuffer(fb::ObjectInfoT* object_info) 
 }
 
 std::unique_ptr<uint8_t[]> CreatePlasmaNotificationBuffer(
-    std::vector<fb::ObjectInfoT>& object_info) {
+    const std::vector<fb::ObjectInfoT>& object_info) {
   flatbuffers::FlatBufferBuilder fbb;
-  std::vector<flatbuffers::Offset<plasma::flatbuf::ObjectInfo>> info;
+  std::vector<flatbuffers::Offset<fb::ObjectInfo>> info;
   for (size_t i = 0; i < object_info.size(); ++i) {
     info.push_back(fb::CreateObjectInfo(fbb, &object_info[i]));
   }

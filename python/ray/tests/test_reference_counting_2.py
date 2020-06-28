@@ -23,6 +23,7 @@ def one_worker_100MiB(request):
     config = json.dumps({
         "object_store_full_max_retries": 2,
         "task_retry_delay_ms": 0,
+        "initial_reconstruction_timeout_milliseconds": 1000,
     })
     yield ray.init(
         num_cpus=1,
@@ -280,6 +281,59 @@ def test_recursively_return_borrowed_object_id(one_worker_100MiB, use_ray_put,
 
     # Reference should be gone, check that returned ID gets evicted.
     _fill_object_store_and_get(final_oid_bytes, succeed=False)
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_borrowed_id_failure(one_worker_100MiB, failure):
+    @ray.remote
+    class Parent:
+        def __init__(self):
+            pass
+
+        def pass_ref(self, ref, borrower):
+            self.ref = ref[0]
+            ray.get(borrower.receive_ref.remote(ref))
+            if failure:
+                sys.exit(-1)
+
+        def ping(self):
+            return
+
+    @ray.remote
+    class Borrower:
+        def __init__(self):
+            self.ref = None
+
+        def receive_ref(self, ref):
+            self.ref = ref[0]
+
+        def resolve_ref(self):
+            assert self.ref is not None
+            if failure:
+                with pytest.raises(ray.exceptions.UnreconstructableError):
+                    ray.get(self.ref)
+            else:
+                ray.get(self.ref)
+
+        def ping(self):
+            return
+
+    parent = Parent.remote()
+    borrower = Borrower.remote()
+    ray.get(borrower.ping.remote())
+
+    obj = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
+    if failure:
+        with pytest.raises(ray.exceptions.RayActorError):
+            ray.get(parent.pass_ref.remote([obj], borrower))
+    else:
+        ray.get(parent.pass_ref.remote([obj], borrower))
+    obj_bytes = obj.binary()
+    del obj
+
+    _fill_object_store_and_get(obj_bytes, succeed=not failure)
+    # The borrower should not hang when trying to get the object's value.
+    ray.get(borrower.resolve_ref.remote())
 
 
 if __name__ == "__main__":

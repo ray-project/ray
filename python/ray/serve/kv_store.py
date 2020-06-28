@@ -45,3 +45,14 @@ class RayInternalKVStore:
             raise TypeError("key must be a string, got: {}.".format(type(key)))
 
         return ray_kv._internal_kv_get(self._format_key(key))
+
+    def delete(self, key):
+        """Delete the value associated with the given key from the store.
+
+        Args:
+            key (str)
+        """
+
+        if not isinstance(key, str):
+            raise TypeError("key must be a string, got: {}.".format(type(key)))
+        return ray_kv._internal_kv_del(self._format_key(key))

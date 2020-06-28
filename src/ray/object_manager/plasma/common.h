@@ -44,15 +44,15 @@ enum class PlasmaErrorCode : int8_t {
   PlasmaObjectAlreadySealed = 4,
 };
 
-ARROW_EXPORT arrow::Status MakePlasmaError(PlasmaErrorCode code, std::string message);
+RAY_EXPORT arrow::Status MakePlasmaError(PlasmaErrorCode code, std::string message);
 /// Return true iff the status indicates an already existing Plasma object.
-ARROW_EXPORT bool IsPlasmaObjectExists(const arrow::Status& status);
+RAY_EXPORT bool IsPlasmaObjectExists(const arrow::Status& status);
 /// Return true iff the status indicates a non-existent Plasma object.
-ARROW_EXPORT bool IsPlasmaObjectNonexistent(const arrow::Status& status);
+RAY_EXPORT bool IsPlasmaObjectNonexistent(const arrow::Status& status);
 /// Return true iff the status indicates an already sealed Plasma object.
-ARROW_EXPORT bool IsPlasmaObjectAlreadySealed(const arrow::Status& status);
+RAY_EXPORT bool IsPlasmaObjectAlreadySealed(const arrow::Status& status);
 /// Return true iff the status indicates the Plasma store reached its capacity limit.
-ARROW_EXPORT bool IsPlasmaStoreFull(const arrow::Status& status);
+RAY_EXPORT bool IsPlasmaStoreFull(const arrow::Status& status);
 
 /// Size of object hash digests.
 constexpr int64_t kDigestSize = sizeof(uint64_t);
