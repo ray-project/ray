@@ -42,13 +42,14 @@ class ModelV2:
         This method should create any variables used by the model.
 
         Args:
-            obs_space (gym.spaces.Space): Observation space of the target gym env.
-                This may have an `original_space` attribute that specifies how to
-                unflatten the tensor into a ragged tensor.
-            action_space (gym.spaces.Space): Action space of the target gym env.
+            obs_space (gym.spaces.Space): Observation space of the target gym
+                env. This may have an `original_space` attribute that
+                specifies how to unflatten the tensor into a ragged tensor.
+            action_space (gym.spaces.Space): Action space of the target gym
+                env.
             num_outputs (int): Number of output units of the model.
-            model_config (ModelConfigDict): Config for the model, documented in
-                ModelCatalog.
+            model_config (ModelConfigDict): Config for the model, documented
+                in ModelCatalog.
             name (str): Name (scope) for the model.
             framework (str): Either "tf" or "torch".
         """

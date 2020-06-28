@@ -53,17 +53,19 @@ def get_trajectory_view(
     model: "ModelV2",
     trajectories: List["Trajectory"],
     is_training: bool = False) -> Dict[str, TensorType]:
-    """Returns the view (input_dict) for a Model's forward pass given some data.
+    """Returns an input_dict for a Model's forward pass given some data.
 
     Args:
         model (ModelV2): The ModelV2 object for which to generate the view
             (input_dict) from `data`.
-        trajectories (List[Trajectory]): The data from which to generate an input_dict.
+        trajectories (List[Trajectory]): The data from which to generate
+            an input_dict.
         is_training (bool): Whether the view should be generated for training
             purposes or inference (default).
 
     Returns:
-        Dict[str, TensorType]: The input_dict to be passed into the ModelV2 for inference/training.
+        Dict[str, TensorType]: The input_dict to be passed into the ModelV2
+            for inference/training.
     """
     # Get Model's view requirements.
     view_reqs = model.get_view_requirements(is_training=is_training)
