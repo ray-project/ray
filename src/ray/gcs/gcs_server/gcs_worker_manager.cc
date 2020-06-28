@@ -32,7 +32,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
       RAY_LOG(ERROR) << "Failed to report worker failure, "
                      << worker_address.DebugString();
     } else {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(WORKER_FAILURE_CHANNEL, worker_id.Binary(),
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(WORKER_CHANNEL, worker_id.Binary(),
                                          worker_failure_data->SerializeAsString(),
                                          nullptr));
     }

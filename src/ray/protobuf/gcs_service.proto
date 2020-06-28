@@ -456,9 +456,9 @@ service WorkerInfoGcsService {
   rpc ReportWorkerFailure(ReportWorkerFailureRequest) returns (ReportWorkerFailureReply);
   // Register a worker to GCS Service.
   rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerReply);
-  // Get worker information from Gcs Service by worker id.
+  // Get worker information from GCS Service by worker id.
   rpc GetWorkerInfo(GetWorkerInfoRequest) returns (GetWorkerInfoReply);
-  // Add worker information to Gcs Service.
+  // Add worker information to GCS Service.
   rpc AddWorkerInfo(AddWorkerInfoRequest) returns (AddWorkerInfoReply);
 }
 

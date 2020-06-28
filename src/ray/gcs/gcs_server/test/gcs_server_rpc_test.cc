@@ -765,6 +765,7 @@ TEST_F(GcsServerTest, TestErrorInfo) {
 }
 
 TEST_F(GcsServerTest, TestWorkerInfo) {
+  // Report worker failure
   rpc::WorkerTableData worker_failure_data;
   worker_failure_data.mutable_worker_address()->set_ip_address("127.0.0.1");
   worker_failure_data.mutable_worker_address()->set_port(5566);
@@ -772,27 +773,31 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   report_worker_failure_request.mutable_worker_failure()->CopyFrom(worker_failure_data);
   ASSERT_TRUE(ReportWorkerFailure(report_worker_failure_request));
 
+  // Register a worker of type WORKER
   rpc::RegisterWorkerRequest register_worker_request;
   register_worker_request.set_worker_id(WorkerID::FromRandom().Binary());
   register_worker_request.set_worker_type(rpc::WorkerType::WORKER);
-  register_worker_request.mutable_worker_info()->insert({"stderr", "test"});
+  register_worker_request.mutable_worker_info()->insert({{"stderr", "test"}});
   ASSERT_TRUE(RegisterWorker(register_worker_request));
 
+  // Register a worker of type DRIVER
   rpc::RegisterWorkerRequest register_driver_request;
   register_driver_request.set_worker_id(WorkerID::FromRandom().Binary());
-  register_driver_request.set_worker_type(rpc::WorkerType::WORKER);
-  register_driver_request.mutable_worker_info()->insert({"stderr", "test"});
+  register_driver_request.set_worker_type(rpc::WorkerType::DRIVER);
+  register_driver_request.mutable_worker_info()->insert({{"stderr", "test"}});
   ASSERT_TRUE(RegisterWorker(register_driver_request));
 
+  // Add worker info
+  auto worker_data = Mocker::GenWorkerTableData();
+  rpc::AddWorkerInfoRequest add_worker_request;
+  add_worker_request.mutable_worker_data()->CopyFrom(*worker_data);
+  ASSERT_TRUE(AddWorkerInfo(add_worker_request));
+
+  // Get worker info
   boost::optional<rpc::WorkerTableData> result =
       GetWorkerInfo(register_worker_request.worker_id());
   ASSERT_TRUE(result->worker_address().worker_id() ==
               register_worker_request.worker_id());
-
-  auto worker_data = Mocker::GenWorkerFailureData();
-  rpc::AddWorkerInfoRequest add_worker_request;
-  add_worker_request.mutable_worker_data()->CopyFrom(*worker_data);
-  ASSERT_TRUE(AddWorkerInfo(add_worker_request));
 }
 
 }  // namespace ray

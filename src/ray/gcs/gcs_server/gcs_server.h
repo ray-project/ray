@@ -97,7 +97,7 @@ class GcsServer {
   /// The error info handler
   virtual std::unique_ptr<rpc::ErrorInfoHandler> InitErrorInfoHandler();
 
-  /// The worker info handler
+  /// The worker manager
   virtual std::unique_ptr<GcsWorkerManager> InitGcsWorkerManager();
 
  private:
@@ -141,8 +141,9 @@ class GcsServer {
   /// Error info handler and service
   std::unique_ptr<rpc::ErrorInfoHandler> error_info_handler_;
   std::unique_ptr<rpc::ErrorInfoGrpcService> error_info_service_;
-  /// Worker info handler and service
+  /// The gcs worker manager
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
+  /// Worker info service
   std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
   /// Backend client
   std::shared_ptr<RedisGcsClient> redis_gcs_client_;

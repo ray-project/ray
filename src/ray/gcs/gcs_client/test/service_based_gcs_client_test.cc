@@ -837,10 +837,11 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerInfo) {
   ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
 
   // Report a worker failure to GCS.
-  auto worker_failure_data = Mocker::GenWorkerFailureData();
+  auto worker_failure_data = Mocker::GenWorkerTableData();
   ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
   WaitPendingDone(worker_failure_count, 1);
 
+  // Register a worker to GCS.
   auto worker_id = WorkerID::FromRandom();
   auto worker_type = rpc::WorkerType::WORKER;
   ASSERT_TRUE(RegisterWorker(worker_type, worker_id, {{"stderr", "test"}}));
@@ -1083,7 +1084,7 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerTableResubscribe) {
   RestartGcsServer();
 
   // Report a worker failure to GCS and check if resubscribe works.
-  auto worker_failure_data = Mocker::GenWorkerFailureData();
+  auto worker_failure_data = Mocker::GenWorkerTableData();
   ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
   WaitPendingDone(worker_failure_count, 1);
 }

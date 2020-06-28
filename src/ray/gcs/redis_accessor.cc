@@ -810,7 +810,6 @@ Status RedisWorkerInfoAccessor::AsyncReportWorkerFailure(
   }
 
   WorkerID worker_id = WorkerID::FromBinary(data_ptr->worker_address().worker_id());
-  data_ptr->set_is_worker_failure(true);
   WorkerTable &worker_failure_table = client_impl_->worker_table();
   return worker_failure_table.Add(JobID::Nil(), worker_id, data_ptr, on_done);
 }
@@ -819,52 +818,36 @@ Status RedisWorkerInfoAccessor::AsyncRegisterWorker(
     rpc::WorkerType worker_type, const WorkerID &worker_id,
     const std::unordered_map<std::string, std::string> &worker_info,
     const StatusCallback &callback) {
-  WorkerTable::WriteCallback on_done = nullptr;
-  if (callback != nullptr) {
-    on_done = [callback](RedisGcsClient *client, const WorkerID &id,
-                         const WorkerTableData &data) { callback(Status::OK()); };
+  std::vector<std::string> args;
+  args.emplace_back("HMSET");
+  if (worker_type == rpc::WorkerType::DRIVER) {
+    args.emplace_back("Drivers:" + worker_id.Binary());
+  } else {
+    args.emplace_back("Workers:" + worker_id.Binary());
   }
-  auto worker_data = std::make_shared<WorkerTableData>();
-  worker_data->set_is_worker_failure(false);
-  worker_data->mutable_worker_address()->set_worker_id(worker_id.Binary());
-  worker_data->set_worker_type(worker_type);
-  worker_data->mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
+  for (const auto &entry : worker_info) {
+    args.push_back(entry.first);
+    args.push_back(entry.second);
+  }
 
-  WorkerTable worker_table = client_impl_->worker_table();
-  return worker_table.Add(JobID::Nil(), worker_id, worker_data, on_done);
+  auto status = client_impl_->primary_context()->RunArgvAsync(args);
+  if (callback) {
+    // TODO (kfstorm): Invoke the callback asynchronously.
+    callback(status);
+  }
+  return status;
 }
 
 Status RedisWorkerInfoAccessor::AsyncGet(
     const WorkerID &worker_id,
     const OptionalItemCallback<rpc::WorkerTableData> &callback) {
-  RAY_CHECK(callback != nullptr);
-  auto on_done = [callback](RedisGcsClient *client, const WorkerID &worker_id,
-                            const WorkerTableData &data) {
-    callback(Status::OK(), data);
-  };
-
-  auto on_failure = [callback](RedisGcsClient *client, const WorkerID &worker_id) {
-    if (callback != nullptr) {
-      callback(Status::Invalid("Get worker info failed."), boost::none);
-    }
-  };
-
-  return client_impl_->worker_table().Lookup(JobID::Nil(), worker_id, on_done,
-                                             on_failure);
+  return Status::Invalid("Not implemented");
 }
 
 Status RedisWorkerInfoAccessor::AsyncAdd(
     const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
     const StatusCallback &callback) {
-  WorkerTable::WriteCallback on_done = nullptr;
-  if (callback != nullptr) {
-    on_done = [callback](RedisGcsClient *client, const WorkerID &worker_id,
-                         const WorkerTableData &data) { callback(Status::OK()); };
-  }
-
-  WorkerID worker_id = WorkerID::FromBinary(data_ptr->worker_address().worker_id());
-  WorkerTable &worker_table = client_impl_->worker_table();
-  return worker_table.Add(JobID::Nil(), worker_id, data_ptr, on_done);
+  return Status::Invalid("Not implemented");
 }
 
 }  // namespace gcs

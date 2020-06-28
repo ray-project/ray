@@ -191,7 +191,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetWorkerInfo(
   return worker_table_data;
 }
 
-Status GlobalStateAccessor::AddWorkerInfo(
+bool GlobalStateAccessor::AddWorkerInfo(
     const std::shared_ptr<rpc::WorkerTableData> &data_ptr) {
   std::promise<bool> promise;
   RAY_CHECK_OK(
@@ -200,7 +200,7 @@ Status GlobalStateAccessor::AddWorkerInfo(
         promise.set_value(true);
       }));
   promise.get_future().get();
-  return Status::OK();
+  return true;
 }
 
 }  // namespace gcs

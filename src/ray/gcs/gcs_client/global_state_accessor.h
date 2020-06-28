@@ -120,8 +120,8 @@ class GlobalStateAccessor {
   /// Add information of a worker to GCS Service.
   ///
   /// \param data_ptr The data of worker to added in the GCS Service.
-  /// \return operation status.
-  Status AddWorkerInfo(const std::shared_ptr<rpc::WorkerTableData> &data_ptr);
+  /// \return Is operation success.
+  bool AddWorkerInfo(const std::shared_ptr<rpc::WorkerTableData> &data_ptr);
 
  private:
   /// MultiItem transformation helper in template style.

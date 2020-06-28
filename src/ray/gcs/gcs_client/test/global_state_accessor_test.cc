@@ -226,6 +226,16 @@ TEST_F(GlobalStateAccessorTest, TestActorTable) {
   }
 }
 
+TEST_F(GlobalStateAccessorTest, TestWorkerTable) {
+  // Add worker info
+  auto worker_table_data = Mocker::GenWorkerTableData();
+  ASSERT_TRUE(global_state_->AddWorkerInfo(worker_table_data));
+
+  // Get worker info
+  auto worker_id = WorkerID::FromBinary(worker_table_data->worker_address().worker_id());
+  ASSERT_TRUE(global_state_->GetWorkerInfo(worker_id));
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

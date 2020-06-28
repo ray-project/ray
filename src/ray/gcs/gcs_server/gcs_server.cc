@@ -195,7 +195,7 @@ void GcsServer::InitGcsActorManager() {
     gcs_actor_manager_->OnWorkerDead(node_id, worker_id,
                                      worker_failure_data.intentional_disconnect());
   };
-  RAY_CHECK_OK(gcs_pub_sub_->SubscribeAll(WORKER_FAILURE_CHANNEL, on_subscribe, nullptr));
+  RAY_CHECK_OK(gcs_pub_sub_->SubscribeAll(WORKER_CHANNEL, on_subscribe, nullptr));
 }
 
 void GcsServer::InitGcsJobManager() {

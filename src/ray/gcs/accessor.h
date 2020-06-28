@@ -678,10 +678,10 @@ class WorkerInfoAccessor {
   virtual Status AsyncGet(const WorkerID &worker_id,
                           const OptionalItemCallback<rpc::WorkerTableData> &callback) = 0;
 
-  /// Add a worker to GCS asynchronously.
+  /// Add worker information to GCS asynchronously.
   ///
   /// \param data_ptr The worker that will be add to GCS.
-  /// \param callback Callback that will be called after worker has been added
+  /// \param callback Callback that will be called after worker information has been added
   /// to GCS.
   /// \return Status
   virtual Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,

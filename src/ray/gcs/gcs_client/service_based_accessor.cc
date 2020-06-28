@@ -1261,8 +1261,7 @@ Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
       worker_failure_data.ParseFromString(data);
       subscribe(WorkerID::FromBinary(id), worker_failure_data);
     };
-    return client_impl_->GetGcsPubSub().SubscribeAll(WORKER_FAILURE_CHANNEL, on_subscribe,
-                                                     done);
+    return client_impl_->GetGcsPubSub().SubscribeAll(WORKER_CHANNEL, on_subscribe, done);
   };
   return subscribe_operation_(done);
 }
@@ -1321,12 +1320,14 @@ Status ServiceBasedWorkerInfoAccessor::AsyncGet(
   rpc::GetWorkerInfoRequest request;
   request.set_worker_id(worker_id.Binary());
   client_impl_->GetGcsRpcClient().GetWorkerInfo(
-      request, [callback](const Status &status, const rpc::GetWorkerInfoReply &reply) {
+      request,
+      [worker_id, callback](const Status &status, const rpc::GetWorkerInfoReply &reply) {
         if (reply.has_worker_table_data()) {
           callback(status, reply.worker_table_data());
         } else {
           callback(status, boost::none);
         }
+        RAY_LOG(DEBUG) << "Finished getting worker info, worker id = " << worker_id;
       });
   return Status::OK();
 }

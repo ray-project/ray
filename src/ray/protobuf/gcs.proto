@@ -41,6 +41,7 @@ enum TablePrefix {
   ACTOR_CHECKPOINT_ID = 16;
   NODE_RESOURCE = 17;
   DIRECT_ACTOR = 18;
+  // WORKER is already used in WorkerType, so use WORKERS here.
   WORKERS = 19;
   TABLE_PREFIX_MAX = 20;
 }
