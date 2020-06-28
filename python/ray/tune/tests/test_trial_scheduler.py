@@ -1141,7 +1141,7 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
         pbt = self.basicSetup(perturbation_interval=2)
 
         class train(tune.Trainable):
-            def _train(self):
+            def step(self):
                 return {"mean_accuracy": self.training_iteration}
 
             def _save(self, path):
@@ -1176,7 +1176,7 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
             def _setup(self, config):
                 self.state = {"hi": 1}
 
-            def _train(self):
+            def step(self):
                 return {"mean_accuracy": self.training_iteration}
 
             def _save(self, path):

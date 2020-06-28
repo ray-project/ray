@@ -212,7 +212,7 @@ class FunctionRunner(Trainable):
             # now done or has raised an exception.
             pass
 
-    def _train(self):
+    def step(self):
         """Implements train() for a Function API.
 
         If the RunnerThread finishes without reporting "done",

@@ -18,7 +18,7 @@ def create_resettable_class():
             self.num_resets = 0
             self.iter = 0
 
-        def _train(self):
+        def step(self):
             self.iter += 1
             return {"num_resets": self.num_resets, "done": self.iter > 1}
 

@@ -25,7 +25,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
                 self.id = config["id"]
                 self.idx = 0
 
-            def _train(self):
+            def step(self):
                 val = self.scores_dict[self.id][self.idx]
                 self.idx += 1
                 return {"score": val}

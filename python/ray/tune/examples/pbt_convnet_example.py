@@ -35,7 +35,7 @@ class PytorchTrainble(tune.Trainable):
             lr=config.get("lr", 0.01),
             momentum=config.get("momentum", 0.9))
 
-    def _train(self):
+    def step(self):
         train(self.model, self.optimizer, self.train_loader)
         acc = test(self.model, self.test_loader)
         return {"mean_accuracy": acc}

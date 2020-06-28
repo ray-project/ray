@@ -35,7 +35,7 @@ class PBTBenchmarkExample(Trainable):
         self.lr = config["lr"]
         self.accuracy = 0.0  # end = 1000
 
-    def _train(self):
+    def step(self):
         midpoint = 100  # lr starts decreasing after acc > midpoint
         q_tolerance = 3  # penalize exceeding lr by more than this multiple
         noise_level = 2  # add gaussian noise to the acc increase

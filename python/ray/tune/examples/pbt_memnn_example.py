@@ -226,7 +226,7 @@ class MemNNModel(Trainable):
             metrics=["accuracy"])
         self.model = model
 
-    def _train(self):
+    def step(self):
         # train
         self.model.fit(
             [self.inputs_train, self.queries_train],

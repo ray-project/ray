@@ -61,7 +61,7 @@ def get_optimus_trainable(parent_cls):
             self.initial_samples_per_step = 500
             self.mock_data = open("/dev/urandom", "rb").read(1024)
 
-        def _train(self):
+        def step(self):
             self.iter += 1
             new_loss = self.func.eval(self.iter)
             time.sleep(0.5)

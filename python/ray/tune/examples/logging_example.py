@@ -30,7 +30,7 @@ class MyTrainableClass(Trainable):
     def _setup(self, config):
         self.timestep = 0
 
-    def _train(self):
+    def step(self):
         self.timestep += 1
         v = np.tanh(float(self.timestep) / self.config.get("width", 1))
         v *= self.config.get("height", 1)

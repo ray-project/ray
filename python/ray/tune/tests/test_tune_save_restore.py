@@ -22,7 +22,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         def _setup(self, config):
             self.state = {"hi": 1}
 
-        def _train(self):
+        def step(self):
             return {"timesteps_this_iter": 1, "done": True}
 
         def _save(self, checkpoint_dir):
@@ -157,7 +157,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             def _setup(self, config):
                 pass
 
-            def _train(self):
+            def step(self):
                 return {"score": 1}
 
             def _save(self, checkpoint_dir):

@@ -250,7 +250,7 @@ class PytorchTrainable(tune.Trainable):
         with FileLock(os.path.expanduser("~/.data.lock")):
             self.dataloader = get_data_loader()
 
-    def _train(self):
+    def step(self):
         lossG, lossD, is_score = train(
             self.netD, self.netG, self.optimizerG, self.optimizerD,
             self.criterion, self.dataloader, self._iteration, self.device)

@@ -44,7 +44,7 @@ class TrainMNIST(tune.Trainable):
             lr=config.get("lr", 0.01),
             momentum=config.get("momentum", 0.9))
 
-    def _train(self):
+    def step(self):
         train(
             self.model, self.optimizer, self.train_loader, device=self.device)
         acc = test(self.model, self.test_loader, self.device)

@@ -67,7 +67,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 del config
                 self._result_iter = copy.deepcopy(class_results)
 
-            def _train(self):
+            def step(self):
                 if sleep_per_iter:
                     time.sleep(sleep_per_iter)
                 res = self._result_iter.pop(0)  # This should not fail
@@ -233,7 +233,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             def default_resource_request(cls, config):
                 return Resources(cpu=config["cpu"], gpu=config["gpu"])
 
-            def _train(self):
+            def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
         register_trainable("B", B)
@@ -628,7 +628,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testTrialInfoAccess(self):
         class TestTrainable(Trainable):
-            def _train(self):
+            def step(self):
                 result = {"name": self.trial_name, "trial_id": self.trial_id}
                 print(result)
                 return result
@@ -659,7 +659,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     @patch("ray.tune.ray_trial_executor.TRIAL_CLEANUP_THRESHOLD", 3)
     def testLotsOfStops(self):
         class TestTrainable(Trainable):
-            def _train(self):
+            def step(self):
                 result = {"name": self.trial_name, "trial_id": self.trial_id}
                 return result
 
@@ -828,7 +828,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             def _setup(self, config):
                 self.state = {"hi": 1, "iter": 0}
 
-            def _train(self):
+            def step(self):
                 self.state["iter"] += 1
                 return {"timesteps_this_iter": 1, "done": True}
 
@@ -856,7 +856,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             def _setup(self, config):
                 self.state = {"hi": 1}
 
-            def _train(self):
+            def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
             def _save(self, path):
@@ -886,7 +886,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             def _setup(self, config):
                 self.state = {"hi": 1, "iter": 0}
 
-            def _train(self):
+            def step(self):
                 self.state["iter"] += 1
                 return {"timesteps_this_iter": 1, "done": True}
 

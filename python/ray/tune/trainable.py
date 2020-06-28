@@ -624,7 +624,8 @@ class Trainable:
                 "a future version of Ray. Use Trainable.step instead.")
         self._train()
 
-    def _train(self):
+    def step(self):
+        """This method is deprecated. Override 'step' instead."""
         raise NotImplementedError
 
     def save_checkpoint(self, tmp_checkpoint_dir):
@@ -669,6 +670,7 @@ class Trainable:
 
 
     def _save(self, tmp_checkpoint_dir):
+        """This method is deprecated. Override 'save_checkpoint' instead."""
         raise NotImplementedError
 
     def load_checkpoint(self, checkpoint):
@@ -720,6 +722,7 @@ class Trainable:
 
 
     def _restore(self, checkpoint):
+        """This method is deprecated. Override 'load_checkpoint' instead."""
         raise NotImplementedError
 
     def build(self, config):
@@ -736,6 +739,7 @@ class Trainable:
         self._setup(config)
 
     def _setup(self, config):
+        """This method is deprecated. Override 'build' instead."""
         pass
 
     def log_result(self, result):
@@ -755,6 +759,7 @@ class Trainable:
         self._log_result(config)
 
     def _log_result(self, result):
+        """This method is deprecated. Override 'log_result' instead."""
         self._result_logger.on_result(result)
 
     def cleanup(self):
@@ -773,6 +778,7 @@ class Trainable:
         self._stop()
 
     def _stop(self):
+        """This method is deprecated. Override 'cleanup' instead."""
         pass
 
     def _export_model(self, export_formats, export_dir):

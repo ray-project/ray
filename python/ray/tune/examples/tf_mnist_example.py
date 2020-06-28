@@ -90,7 +90,7 @@ class MNISTTrainable(tune.Trainable):
         self.tf_train_step = train_step
         self.tf_test_step = test_step
 
-    def _train(self):
+    def step(self):
         self.train_loss.reset_states()
         self.train_accuracy.reset_states()
         self.test_loss.reset_states()

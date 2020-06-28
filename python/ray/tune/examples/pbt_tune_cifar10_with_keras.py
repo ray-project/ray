@@ -120,7 +120,7 @@ class Cifar10Model(Trainable):
             metrics=["accuracy"])
         self.model = model
 
-    def _train(self):
+    def step(self):
         x_train, y_train = self.train_data
         x_train, y_train = x_train[:NUM_SAMPLES], y_train[:NUM_SAMPLES]
         x_test, y_test = self.test_data
