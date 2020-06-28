@@ -276,7 +276,7 @@ class TrialRunner:
         with open(tmp_file_name, "w") as f:
             json.dump(runner_state, f, indent=2, cls=_TuneFunctionEncoder)
 
-        os.rename(tmp_file_name, self.checkpoint_file)
+        os.replace(tmp_file_name, self.checkpoint_file)
         if force:
             self._syncer.sync_up()
         else:

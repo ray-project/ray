@@ -30,9 +30,7 @@ public class SourceStreamTask extends StreamTask {
   public void run() {
     LOG.info("Source stream task thread start.");
 
-    while (running) {
-      sourceProcessor.run();
-    }
+    sourceProcessor.run();
   }
 
   @Override

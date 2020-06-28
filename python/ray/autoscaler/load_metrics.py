@@ -128,8 +128,8 @@ class LoadMetrics:
         return nodes_used, resources_used, resources_total
 
     def info_string(self):
-        return ", ".join(
-            ["{}={}".format(k, v) for k, v in sorted(self._info().items())])
+        return " - " + "\n - ".join(
+            ["{}: {}".format(k, v) for k, v in sorted(self._info().items())])
 
     def _info(self):
         nodes_used, resources_used, resources_total = self.get_resource_usage()
@@ -160,6 +160,7 @@ class LoadMetrics:
                     format_resource(rid, resources_used[rid]),
                     format_resource(rid, resources_total[rid]), rid)
                 for rid in sorted(resources_used)
+                if not rid.startswith("node:")
             ]),
             "NumNodesConnected": len(self.static_resources_by_ip),
             "NumNodesUsed": round(nodes_used, 2),
