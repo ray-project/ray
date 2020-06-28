@@ -1,11 +1,13 @@
 import functools
 import numpy as np
 import time
+from typing import Dict, List, Optional
 
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
-from ray.rllib.policy.policy import get_trajectory_view, Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
+from ray.rllib.policy.trajectory_view import get_trajectory_view
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -13,6 +15,7 @@ from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
+from ray.rllib.utils.types import AgentID
 
 torch, _ = try_import_torch()
 
@@ -186,11 +189,10 @@ class TorchPolicy(Policy):
                                               extra_fetches))
 
     @override(Policy)
-    @DeveloperAPI
-    def _compute_actions_from_trajectories(
+    def compute_actions_from_trajectories(
             self,
-            trajectories: List[Trajectory],
-            other_trajectories: Dict[AgentID, Trajectory],
+            trajectories: List["Trajectory"],
+            other_trajectories: Dict[AgentID, "Trajectory"],
             explore: bool = None,
             timestep: Optional[int] = None,
             **kwargs):
@@ -200,8 +202,8 @@ class TorchPolicy(Policy):
 
         with torch.no_grad():
             # Create a view and pass that to Model as `input_dict`.
-            input_dict = self._lazy_tensor_dict(
-                get_trajectory_view(self.model, trajectories, is_training=False))
+            input_dict = self._lazy_tensor_dict(get_trajectory_view(
+                self.model, trajectories, is_training=False))
             # TODO: (sven) support RNNs w/ fast sampling.
             state_batches = []
             seq_lens = None

@@ -3,9 +3,8 @@ import gym
 import numpy as np
 from typing import Dict, List, Optional
 
-from ray.rllib.evaluation.trajectory import Trajectory
 from ray.rllib.utils import try_import_tree
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.from_config import from_config
@@ -192,11 +191,11 @@ class Policy(metaclass=ABCMeta):
         return single_action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
-    @DeveloperAPI
-    def _compute_actions_from_trajectories(
+    @ExperimentalAPI
+    def compute_actions_from_trajectories(
             self,
-            trajectories: List[Trajectory],
-            other_trajectories: Dict[AgentID, Trajectory],
+            trajectories: List["Trajectory"],
+            other_trajectories: Dict[AgentID, "Trajectory"],
             explore: bool = None,
             timestep: Optional[int] = None,
             **kwargs):
@@ -466,36 +465,3 @@ def clip_action(action, action_space):
         return a
 
     return tree.map_structure(map_, action, action_space)
-
-
-def get_trajectory_view(
-    model: ModelV2,
-    trajectories: List[Trajectory],
-    is_training: bool = False) -> Dict[str, TensorType]:
-    """Returns the view (input_dict) for a Model's forward pass given some data.
-
-    Args:
-        model (ModelV2): The ModelV2 object for which to generate the view
-            (input_dict) from `data`.
-        trajectories (List[Trajectory]): The data from which to generate an input_dict.
-        is_training (bool): Whether the view should be generated for training
-            purposes or inference (default).
-
-    Returns:
-        Dict[str, TensorType]: The input_dict to be passed into the ModelV2 for inference/training.
-    """
-    # Get Model's view requirements.
-    view_reqs = model.get_view_requirements(is_training=is_training)
-    # Construct the view dict.
-    view = {}
-    for col, _ in view_reqs.items():
-        # Create the batch of data from the different buffers in `data`.
-        # TODO: (sven): Here, we actually do create a copy of the data (from a
-        #   list). The only way to avoid this entirely would be to keep a
-        #   single(!) np buffer per column across all currently ongoing
-        #   agents + episodes (which seems very hard to realize).
-        view[col] = np.array([
-            t.buffers[col][t.cursor + config["timesteps"]]
-            for t in trajectories
-        ])
-    return view
