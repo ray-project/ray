@@ -48,7 +48,7 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
                                     int max_attempts = 1);
 
   /// Fire a periodic timer to check if GCS sever address has changed.
-  void Tick();
+  void PeriodicallyCheckGcsServerAddress();
 
   /// This function is used to redo subscription and reconnect to GCS RPC server when gcs
   /// service failure is detected.

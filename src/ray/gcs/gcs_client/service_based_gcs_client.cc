@@ -74,7 +74,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
 
   // Init gcs service address check timer.
   detect_timer_.reset(new boost::asio::deadline_timer(io_service));
-  Tick();
+  PeriodicallyCheckGcsServerAddress();
 
   is_connected_ = true;
 
@@ -131,12 +131,12 @@ bool ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
   return false;
 }
 
-void ServiceBasedGcsClient::Tick() {
+void ServiceBasedGcsClient::PeriodicallyCheckGcsServerAddress() {
   std::pair<std::string, int> address;
   if (get_server_address_func_(&address)) {
-    // In order to avoid repeated subscriptions, we added a check of current gcs
-    // server address.
     if (address != current_gcs_server_address_) {
+      // If GCS server address has changed, invoke the `GcsServiceFailureDetected`
+      // callback.
       current_gcs_server_address_ = address;
       GcsServiceFailureDetected(rpc::GcsServiceFailureType::GCS_SERVER_RESTART);
     }
@@ -152,20 +152,23 @@ void ServiceBasedGcsClient::Tick() {
     }
     RAY_CHECK(!error) << "Checking gcs server address failed with error: "
                       << error.message();
-    Tick();
+    PeriodicallyCheckGcsServerAddress();
   });
 }
 
 void ServiceBasedGcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type) {
   switch (type) {
   case rpc::GcsServiceFailureType::RPC_DISCONNECT:
-    // If the GCS server address does not change, reconnect to the GCS RPC server.
+    // If the GCS server address does not change, reconnect to GCS server.
     ReconnectGcsServer();
     break;
   case rpc::GcsServiceFailureType::GCS_SERVER_RESTART:
-    // If GCS sever address has changed, redo subscription and reconnect to GCS RPC
-    // server.
+    // If GCS sever address has changed, reconnect to GCS server and redo
+    // subscription.
     ReconnectGcsServer();
+    // NOTE(ffbin): Currently we don't support the case where the pub-sub server restarts,
+    // because we use the same Redis server for both GCS storage and pub-sub. So the
+    // following flag is alway false.
     resubscribe_func_(false);
     break;
   default:
@@ -179,7 +182,7 @@ void ServiceBasedGcsClient::ReconnectGcsServer() {
   int index = 0;
   for (; index < RayConfig::instance().ping_gcs_rpc_server_max_retries(); ++index) {
     if (get_server_address_func_(&address)) {
-      RAY_LOG(DEBUG) << "Attempt to reconnect to GCS server: " << address.first << ":"
+      RAY_LOG(DEBUG) << "Attemptting to reconnect to GCS server: " << address.first << ":"
                      << address.second;
       if (Ping(address.first, address.second, 100)) {
         RAY_LOG(INFO) << "Reconnected to GCS server: " << address.first << ":"
