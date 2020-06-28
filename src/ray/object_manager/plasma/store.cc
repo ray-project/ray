@@ -814,11 +814,7 @@ Status PlasmaStore::ProcessMessage(Client* client) {
 
       // If the object was successfully created, fill out the object data and seal it.
       if (error_code == PlasmaError::OK) {
-        auto entry = GetObjectTableEntry(&store_info_, object_id);
-        RAY_CHECK(entry != nullptr);
-        // Write the inlined data and metadata into the allocated object.
-        std::memcpy(entry->pointer, data.data(), data.size());
-        std::memcpy(entry->pointer + data.size(), metadata.data(), metadata.size());
+        object_directory->MemcpyToObject(object_id, data, metadata);
         SealObjects({object_id});
         // Remove the client from the object's array of clients because the
         // object is not being used by any client. The client was added to the
@@ -856,12 +852,7 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       // if error, abort the previous i objects immediately
       if (error_code == PlasmaError::OK) {
         for (i = 0; i < object_ids.size(); i++) {
-          auto entry = GetObjectTableEntry(&store_info_, object_ids[i]);
-          RAY_CHECK(entry != nullptr);
-          // Write the inlined data and metadata into the allocated object.
-          std::memcpy(entry->pointer, data[i].data(), data[i].size());
-          std::memcpy(entry->pointer + data[i].size(), metadata[i].data(),
-                      metadata[i].size());
+          object_directory->MemcpyToObject(object_ids[i], data[i], metadata[i]);
         }
 
         SealObjects(object_ids);

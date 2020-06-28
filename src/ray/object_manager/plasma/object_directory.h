@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <cstring>
 #include <ctime>
 
 #include "absl/container/flat_hash_map.h"
@@ -298,7 +299,7 @@ class ObjectDirectory {
     auto &entry = it->second;
     RAY_CHECK(entry->pointer != nullptr);
     return std::make_shared<arrow::MutableBuffer>(
-        entry->pointer, entry->data_size + entry->metadata_size)
+        entry->pointer, entry->data_size + entry->metadata_size);
   }
 
   void MarkObjectAsReconstructed(const ObjectID& object_id, PlasmaObject* object) {
@@ -322,7 +323,7 @@ class ObjectDirectory {
     AddToClientObjectIds(object_id, object_table_[object_id].get(), client);
   }
 
-   void RegisterSealedObjectToClient(const ObjectID& object_id, Client* client, PlasmaObject* object) {
+  void RegisterSealedObjectToClient(const ObjectID& object_id, Client* client, PlasmaObject* object) {
     absl::MutexLock lock(&object_table_mutex_);
     auto it = object_table_.find(object_id);
     RAY_CHECK(it != object_table_.end());
@@ -330,6 +331,16 @@ class ObjectDirectory {
     PlasmaObject_init(object, entry.get());
     // Record that this client is using this object.
     AddToClientObjectIds(object_id, entry.get(), client);
+  }
+
+  void MemcpyToObject(const ObjectID& object_id, const std::string &data, const std::string &metadata) {
+    absl::MutexLock lock(&object_table_mutex_);
+    auto it = object_table_.find(object_id);
+    RAY_CHECK(it != object_table_.end());
+    auto &entry = it->second;
+    // Write the inlined data and metadata into the allocated object.
+    std::memcpy(entry->pointer, data.data(), data.size());
+    std::memcpy(entry->pointer + data.size(), metadata.data(), metadata.size());
   }
 
  private:
