@@ -71,19 +71,19 @@ The Ray Command Line API
 
 .. _ray-up-doc:
 
-.. click:: ray.scripts.scripts:create_or_update
+.. click:: ray.scripts.scripts:up
    :prog: ray up
    :show-nested:
 
 .. _ray-down-doc:
 
-.. click:: ray.scripts.scripts:teardown
+.. click:: ray.scripts.scripts:down
    :prog: ray down
    :show-nested:
 
 .. _ray-exec-doc:
 
-.. click:: ray.scripts.scripts:exec_cmd
+.. click:: ray.scripts.scripts:exec
    :prog: ray exec
    :show-nested:
 
@@ -113,8 +113,8 @@ The Ray Command Line API
 
 .. _ray-stat-doc:
 
-.. click:: ray.scripts.scripts:stat
-   :prog: ray stat
+.. click:: ray.scripts.scripts:statistics
+   :prog: ray statistics
    :show-nested:
 
 .. _ray-memory-doc:

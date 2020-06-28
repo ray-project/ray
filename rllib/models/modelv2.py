@@ -335,7 +335,7 @@ _cache = {}
 def _unpack_obs(obs, space, tensorlib=tf):
     """Unpack a flattened Dict or Tuple observation array/tensor.
 
-    Arguments:
+    Args:
         obs: The flattened observation tensor, with last dimension equal to
             the flat size and any number of batch dimensions. For example, for
             Box(4,), the obs may have shape [B, 4], or [B, N, M, 4] in case

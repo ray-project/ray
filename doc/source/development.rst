@@ -34,7 +34,10 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
     git remote add upstream https://github.com/ray-project/ray.git
     # Make sure you are up-to-date on master.
 
-4. Replace Python files in the installed package with your local editable copy. We provide a simple script to help you do this: ``ray/python/ray/setup-dev.py``. Running the script will remove the  ``ray/tune``, ``ray/rllib``, ``ray/autoscaler`` dir (among other directories) bundled with the ``ray`` pip package, and replace them with links to your local code.
+3. Replace Python files in the installed package with your local editable copy. We provide a simple script to help you do this: ``python python/ray/setup-dev.py``.
+Running the script will remove the  ``ray/tune``, ``ray/rllib``, ``ray/autoscaler`` dir (among other directories) bundled with the ``ray`` pip package, and replace them with links to your local code. This way, changing files in your git clone will directly affect the behavior of your installed ray.
+
+.. warning:: Do not run ``pip uninstall ray`` or ``pip install -U`` (for Ray or Ray wheels) if setting up your environment this way. To uninstall or upgrade, you must first ``rm -rf`` the pip-installation site (usually a ``site-packages/ray`` location), then do a pip reinstall (see 1. above), and finally run the above `setup-dev.py` script again.
 
 .. code-block:: shell
 
@@ -42,8 +45,6 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
     python python/ray/setup-dev.py
     # This replaces miniconda3/lib/python3.7/site-packages/ray/tune
     # with your local `ray/python/ray/tune`.
-
-.. warning:: Do not run ``pip uninstall ray`` or ``pip install -U`` (for Ray or Ray wheels) if setting up your environment this way. To uninstall or upgrade, you must ``rm -rf`` the installation site (usually a ``site-packages/ray`` location).
 
 Building Ray (full)
 -------------------

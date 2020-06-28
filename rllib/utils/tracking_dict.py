@@ -19,7 +19,7 @@ class UsageTrackingDict(dict):
 
     def copy(self):
         copy = UsageTrackingDict(**dict.copy(self))
-        copy.get_interceptor = self.get_interceptor
+        copy.set_get_interceptor(self.get_interceptor)
         return copy
 
     def __getitem__(self, key):

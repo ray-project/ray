@@ -252,6 +252,8 @@ def check_compute_single_action(trainer,
 
     Args:
         trainer (Trainer): The Trainer object to test.
+        include_state (bool): Whether to include the initial state of the
+            Policy's Model in the `compute_action` call.
         include_prev_action_reward (bool): Whether to include the prev-action
             and -reward in the `compute_action` call.
 
@@ -284,6 +286,8 @@ def check_compute_single_action(trainer,
                 call_kwargs = {}
                 if what is trainer:
                     call_kwargs["full_fetch"] = full_fetch
+                else:
+                    call_kwargs["clip_actions"] = True
 
                 obs = obs_space.sample()
                 if isinstance(obs_space, gym.spaces.Box):
