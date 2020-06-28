@@ -22,8 +22,9 @@ bool IdempotentFilter::Filter(const std::string &id, int64_t timestamp) {
   auto it = cache_.find(id);
   if (it == cache_.end()) {
     cache_[id] = timestamp;
-  } else if (it->second >= timestamp) {
+  } else if (it->second < timestamp) {
     it->second = timestamp;
+  } else {
     return false;
   }
   return true;
