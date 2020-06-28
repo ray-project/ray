@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 
 check_shell_scripts_bazel() {
-  "${ROOT_DIR}"/bazel.py run_shellcheck "mnemonic(\"Genrule\", deps(//:*))" "$@"
+  "${ROOT_DIR}"/bazel.py shellcheck "mnemonic(\"Genrule\", deps(//:*))" "$@"
 }
 
 check_shell_scripts_git() {

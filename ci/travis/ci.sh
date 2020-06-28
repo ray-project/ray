@@ -373,6 +373,8 @@ _lint() {
     # Run TypeScript and HTML linting.
     lint_web
   fi
+
+  true || "${ROOT_DIR}"/check-shell-scripts.sh  # Enable this when all errors are fixed.
 }
 
 lint() {
