@@ -273,7 +273,11 @@ def check_compute_single_action(trainer,
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
             if isinstance(trainer.workers, list):
-                obs_space = trainer.workers[0].env.observation_space
+                obs_space = trainer.get_policy().observation_space
+                try:
+                    obs_space = obs_space.original_space
+                except AttributeError:
+                    pass
             else:
                 obs_space = \
                     trainer.workers.local_worker().env.observation_space

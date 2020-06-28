@@ -29,7 +29,7 @@ class ARSTFPolicy:
         self.single_threaded = config.get("single_threaded", False)
         self.sess = make_session(single_threaded=self.single_threaded)
 
-        self.inputs = tf.placeholder(tf.float32,
+        self.inputs = tf1.placeholder(tf.float32,
                                      [None] + list(self.preprocessor.shape))
 
         # Policy network.

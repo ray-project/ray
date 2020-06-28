@@ -75,13 +75,13 @@ class TestDistributions(unittest.TestCase):
     def test_categorical(self):
         """Tests the Categorical ActionDistribution (tf only)."""
         num_samples = 100000
-        logits = tf.placeholder(tf.float32, shape=(None, 10))
+        logits = tf1.placeholder(tf.float32, shape=(None, 10))
         z = 8 * (np.random.rand(10) - 0.5)
         data = np.tile(z, (num_samples, 1))
         c = Categorical(logits, {})  # dummy config dict
         sample_op = c.sample()
-        sess = tf.Session()
-        sess.run(tf.global_variables_initializer())
+        sess = tf1.Session()
+        sess.run(tf1.global_variables_initializer())
         samples = sess.run(sample_op, feed_dict={logits: data})
         counts = np.zeros(10)
         for sample in samples:
