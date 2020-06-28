@@ -140,7 +140,7 @@ message ActorTableData {
   // Name of the actor. Only populated if is_detached is true.
   string name = 12;
   // Timestamp that the actor is created or reconstructed.
-  double timestamp = 13;
+  int64 timestamp = 13;
   // The task specification of this actor's creation task.
   TaskSpec task_spec = 14;
   // Resource mapping ids acquired by the leased worker. This field is only set when this
