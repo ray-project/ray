@@ -1,7 +1,7 @@
 .. _tune-pytorch-lightning:
 
-Using Tune to tune PyTorch Lightning models
-===========================================
+Using PyTorch Lightning with Tune
+=================================
 
 PyTorch Lightning is a framework which brings structure into training PyTorch models. It
 aims to avoid boilerplate code, so you don't have to write the same training
@@ -27,6 +27,10 @@ use it plug and play for your existing models, assuming their parameters are con
 
         $ pip install ray torch torchvision pytorch-lightning
 
+.. contents::
+    :local:
+    :backlinks: none
+
 PyTorch Lightning classifier for MNIST
 --------------------------------------
 Let's first start with the basic PyTorch Lightning implementation of an MNIST classifier.
@@ -35,7 +39,7 @@ This classifier does not include any tuning code at this point.
 Our example builds on the MNIST example from the `blog post we talked about
 earlier <https://towardsdatascience.com/from-pytorch-to-pytorch-lightning-a-gentle-introduction-b371b7caaf09>`_.
 
-First, we run some imports
+First, we run some imports:
 
 .. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
    :language: python
@@ -45,7 +49,7 @@ First, we run some imports
 And then there is the Lightning model adapted from the blog post.
 Note that we left out the test set validation and made the model parameters
 configurable through a ``config`` dict that is passed on initialization.
-Also, we are able to specify a ``data_dir`` where the MNIST data will be stored.
+Also, we specify a ``data_dir`` where the MNIST data will be stored.
 Lastly, we added a new metric, the validation accuracy, to the logs.
 
 .. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
@@ -82,6 +86,9 @@ First, we need some additional imports:
    :start-after: __import_tune_begin__
    :end-before: __import_tune_end__
 
+Talking to Tune with a PyTorch Lightning callback
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 PyTorch Lightning introduced `Callbacks <https://pytorch-lightning.readthedocs.io/en/latest/callbacks.html>`_
 that can be used to plug custom functions into the training loop. This way the original
 ``LightningModule`` does not have to be altered at all. Also, we could use the same
@@ -94,6 +101,9 @@ The callback just reports some metrics back to Tune after each validation epoch:
    :start-after: __tune_callback_begin__
    :end-before: __tune_callback_end__
 
+Adding the Tune training function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Then we specify our training function. Note that we added the ``data_dir`` as a config
 parameter here, even though it should not be tuned. We just need to specify it to avoid
 that each training run downloads the full MNIST dataset. Instead, we want to access
@@ -104,18 +114,46 @@ a shared data location.
    :start-after: __tune_train_begin__
    :end-before: __tune_train_end__
 
-Lastly, we need to start Tune. In this example, we first create a temporary ``data_dir``
-where we store the MNIST datasets so that they can be used by all training runs.
-Then, we configure the parameter search space. We would like to choose between three
+Sharing the data
+~~~~~~~~~~~~~~~~
+
+All our trials are using the MNIST data. To avoid that each training instance downloads
+their own MNIST dataset, we download it once and share the ``data_dir`` between runs.
+
+.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
+   :language: python
+   :start-after: __tune_asha_begin__
+   :end-before: __tune_asha_end__
+   :lines: 2-3
+   :dedent: 4
+
+We also delete this data after training to avoid filling up our disk or memory space.
+
+.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
+   :language: python
+   :start-after: __tune_asha_begin__
+   :end-before: __tune_asha_end__
+   :lines: 27
+   :dedent: 4
+
+Configuring the search space
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Now we configure the parameter search space. We would like to choose between three
 different layer and batch sizes. The learning rate should be sampled uniformly between
 ``0.0001`` and ``0.1``. The ``tune.loguniform()`` function is syntactic sugar to make
 sampling between these different orders of magnitude easier, specifically
 we are able to also sample small values.
 
-We instantiate a ``CLIReporter`` to specify which metrics we would like to see in our
-output tables in the command line. If we didn't specify this, Tune would print all
-hyperparameters by default, but since ``data_dir`` is not a real hyperparameter, we
-can avoid printing it by omitting it in the ``parameter_columns`` parameter.
+.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
+   :language: python
+   :start-after: __tune_asha_begin__
+   :end-before: __tune_asha_end__
+   :lines: 4-10
+   :dedent: 4
+
+Selecting a scheduler
+~~~~~~~~~~~~~~~~~~~~~
 
 In this example, we use an `Asynchronous Hyperband <https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/>`_
 scheduler. This scheduler decides at each iteration which trials are likely to perform
@@ -126,6 +164,37 @@ configurations.
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
+   :lines: 11-16
+   :dedent: 4
+
+
+Changing the CLI output
+~~~~~~~~~~~~~~~~~~~~~~~
+
+We instantiate a ``CLIReporter`` to specify which metrics we would like to see in our
+output tables in the command line. If we didn't specify this, Tune would print all
+hyperparameters by default, but since ``data_dir`` is not a real hyperparameter, we
+can avoid printing it by omitting it in the ``parameter_columns`` parameter.
+
+.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
+   :language: python
+   :start-after: __tune_asha_begin__
+   :end-before: __tune_asha_end__
+   :lines: 17-19
+   :dedent: 4
+
+Putting it together
+~~~~~~~~~~~~~~~~~~~
+
+Lastly, we need to start Tune with ``tune.run()``.
+
+The full code looks like this:
+
+.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
+   :language: python
+   :start-after: __tune_asha_begin__
+   :end-before: __tune_asha_end__
+
 
 In the example above, Tune runs 10 trials with different hyperparameter configurations.
 An example output could look like so:
@@ -162,7 +231,12 @@ and which might eventually even show better performance than other configuration
 Another popular method for hyperparameter tuning, called
 `Population Based Training <https://deepmind.com/blog/article/population-based-training-neural-networks>`_,
 instead perturbs hyperparameters during the training run. Tune implements PBT, and
-we only need to make some slight adjustments to our code. First, we need to introduce
+we only need to make some slight adjustments to our code.
+
+Adding checkpoints to the PyTorch Lightning module
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+First, we need to introduce
 another callback to save model checkpoints:
 
 .. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
@@ -178,7 +252,10 @@ We also include checkpoint loading in our training function:
    :end-before: __tune_train_checkpoint_end__
 
 
-And lastly we need to call Tune slightly differently:
+Configuring and running Population Based Training
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+We need to call Tune slightly differently:
 
 .. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
    :language: python
