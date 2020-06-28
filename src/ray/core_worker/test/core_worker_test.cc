@@ -895,7 +895,7 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodesFailure) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 9);
+  RAY_CHECK(argc == 8);
   ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);
   ray::TEST_RAYLET_EXEC_PATH = std::string(argv[2]);
 
