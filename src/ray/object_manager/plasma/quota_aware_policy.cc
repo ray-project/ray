@@ -16,17 +16,116 @@
 // under the License.
 
 #include "ray/object_manager/plasma/quota_aware_policy.h"
-#include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 
 #include <algorithm>
-#include <memory>
 #include <sstream>
 
 namespace plasma {
 
+void LRUCache::Add(const ObjectID& key, int64_t size) {
+  auto it = item_map_.find(key);
+  RAY_CHECK(it == item_map_.end());
+  // Note that it is important to use a list so the iterators stay valid.
+  item_list_.emplace_front(key, size);
+  item_map_.emplace(key, item_list_.begin());
+  used_capacity_ += size;
+}
+
+int64_t LRUCache::Remove(const ObjectID& key) {
+  auto it = item_map_.find(key);
+  if (it == item_map_.end()) {
+    return -1;
+  }
+  int64_t size = it->second->second;
+  used_capacity_ -= size;
+  item_list_.erase(it->second);
+  item_map_.erase(it);
+  RAY_CHECK(used_capacity_ >= 0) << DebugString();
+  return size;
+}
+
+void LRUCache::AdjustCapacity(int64_t delta) {
+  RAY_LOG(INFO) << "adjusting global lru capacity from " << Capacity() << " to "
+                  << (Capacity() + delta) << " (max " << OriginalCapacity() << ")";
+  capacity_ += delta;
+  RAY_CHECK(used_capacity_ >= 0) << DebugString();
+}
+
+int64_t LRUCache::Capacity() const { return capacity_; }
+
+int64_t LRUCache::OriginalCapacity() const { return original_capacity_; }
+
+int64_t LRUCache::RemainingCapacity() const { return capacity_ - used_capacity_; }
+
+void LRUCache::Foreach(std::function<void(const ObjectID&)> f) {
+  for (auto& pair : item_list_) {
+    f(pair.first);
+  }
+}
+
+std::string LRUCache::DebugString() const {
+  std::stringstream result;
+  result << "\n(" << name_ << ") capacity: " << Capacity();
+  result << "\n(" << name_
+         << ") used: " << 100. * (1. - (RemainingCapacity() / (double)OriginalCapacity()))
+         << "%";
+  result << "\n(" << name_ << ") num objects: " << item_map_.size();
+  result << "\n(" << name_ << ") num evictions: " << num_evictions_total_;
+  result << "\n(" << name_ << ") bytes evicted: " << bytes_evicted_total_;
+  return result.str();
+}
+
+int64_t LRUCache::ChooseObjectsToEvict(int64_t num_bytes_required,
+                                       std::vector<ObjectID>* objects_to_evict) {
+  int64_t bytes_evicted = 0;
+  auto it = item_list_.end();
+  while (bytes_evicted < num_bytes_required && it != item_list_.begin()) {
+    it--;
+    objects_to_evict->push_back(it->first);
+    bytes_evicted += it->second;
+    bytes_evicted_total_ += it->second;
+    num_evictions_total_ += 1;
+  }
+  return bytes_evicted;
+}
+
 QuotaAwarePolicy::QuotaAwarePolicy(PlasmaStoreInfo* store_info, int64_t max_size)
-    : EvictionPolicy(store_info, max_size) {}
+    : pinned_memory_bytes_(0), store_info_(store_info), cache_("global lru", max_size) {}
+
+int64_t QuotaAwarePolicy::ChooseObjectsToEvict(int64_t num_bytes_required,
+                                             std::vector<ObjectID>* objects_to_evict) {
+  int64_t bytes_evicted =
+      cache_.ChooseObjectsToEvict(num_bytes_required, objects_to_evict);
+  // Update the LRU cache.
+  for (auto& object_id : *objects_to_evict) {
+    cache_.Remove(object_id);
+  }
+  return bytes_evicted;
+}
+
+bool QuotaAwarePolicy::RequireSpace(int64_t size, std::vector<ObjectID>* objects_to_evict) {
+  // Check if there is enough space to create the object.
+  int64_t required_space =
+      PlasmaAllocator::Allocated() + size - PlasmaAllocator::GetFootprintLimit();
+  // Try to free up at least as much space as we need right now but ideally
+  // up to 20% of the total capacity.
+  int64_t space_to_free =
+      std::max(required_space, PlasmaAllocator::GetFootprintLimit() / 5);
+  RAY_LOG(DEBUG) << "not enough space to create this object, so evicting objects";
+  // Choose some objects to evict, and update the return pointers.
+  int64_t num_bytes_evicted = ChooseObjectsToEvict(space_to_free, objects_to_evict);
+  RAY_LOG(INFO) << "There is not enough space to create this object, so evicting "
+                  << objects_to_evict->size() << " objects to free up "
+                  << num_bytes_evicted << " bytes. The number of bytes in use (before "
+                  << "this eviction) is " << PlasmaAllocator::Allocated() << ".";
+  return num_bytes_evicted >= required_space && num_bytes_evicted > 0;
+}
+
+int64_t QuotaAwarePolicy::GetObjectSize(const ObjectID& object_id) const {
+  auto entry = store_info_->objects[object_id].get();
+  return entry->data_size + entry->metadata_size;
+}
 
 bool QuotaAwarePolicy::HasQuota(Client* client, bool is_create) {
   if (!is_create) {
@@ -41,7 +140,7 @@ void QuotaAwarePolicy::ObjectCreated(const ObjectID& object_id, Client* client,
     per_client_cache_[client]->Add(object_id, GetObjectSize(object_id));
     owned_by_client_[object_id] = client;
   } else {
-    EvictionPolicy::ObjectCreated(object_id, client, is_create);
+    cache_.Add(object_id, GetObjectSize(object_id));
   }
 }
 
@@ -108,7 +207,9 @@ void QuotaAwarePolicy::BeginObjectAccess(const ObjectID& object_id) {
     pinned_memory_bytes_ += GetObjectSize(object_id);
     return;
   }
-  EvictionPolicy::BeginObjectAccess(object_id);
+  // If the object is in the LRU cache, remove it.
+  cache_.Remove(object_id);
+  pinned_memory_bytes_ += GetObjectSize(object_id);
 }
 
 void QuotaAwarePolicy::EndObjectAccess(const ObjectID& object_id) {
@@ -117,7 +218,10 @@ void QuotaAwarePolicy::EndObjectAccess(const ObjectID& object_id) {
     pinned_memory_bytes_ -= GetObjectSize(object_id);
     return;
   }
-  EvictionPolicy::EndObjectAccess(object_id);
+  auto size = GetObjectSize(object_id);
+  // Add the object to the LRU cache.
+  cache_.Add(object_id, size);
+  pinned_memory_bytes_ -= size;
 }
 
 void QuotaAwarePolicy::RemoveObject(const ObjectID& object_id) {
@@ -127,7 +231,8 @@ void QuotaAwarePolicy::RemoveObject(const ObjectID& object_id) {
     shared_for_read_.erase(object_id);
     return;
   }
-  EvictionPolicy::RemoveObject(object_id);
+  // If the object is in the LRU cache, remove it.
+  cache_.Remove(object_id);
 }
 
 void QuotaAwarePolicy::RefreshObjects(const std::vector<ObjectID>& object_ids) {
@@ -137,7 +242,12 @@ void QuotaAwarePolicy::RefreshObjects(const std::vector<ObjectID>& object_ids) {
       per_client_cache_[owned_by_client_[object_id]]->Add(object_id, size);
     }
   }
-  EvictionPolicy::RefreshObjects(object_ids);
+  for (const auto& object_id : object_ids) {
+    int64_t size = cache_.Remove(object_id);
+    if (size != -1) {
+      cache_.Add(object_id, size);
+    }
+  }
 }
 
 void QuotaAwarePolicy::ClientDisconnected(Client* client) {
