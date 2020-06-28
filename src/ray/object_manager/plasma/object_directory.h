@@ -60,9 +60,9 @@ enum class ObjectStatus : int {
 /// This type is used by the Plasma store. It is here because it is exposed to
 /// the eviction policy.
 struct ObjectTableEntry {
-  ObjectTableEntry();
+  ObjectTableEntry() : pointer(nullptr), ref_count(0) {}
 
-  ~ObjectTableEntry();
+  ~ObjectTableEntry() { pointer = nullptr; }
 
   /// Memory mapped file containing the object.
   int fd;
