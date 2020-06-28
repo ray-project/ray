@@ -513,7 +513,6 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 TEST_F(ServiceBasedGcsClientTest, TestIdempotentFilter) {
   gcs::IdempotentFilter filter;
   auto job_id = JobID::FromInt(1);
-  ;
   ASSERT_TRUE(filter.Filter(job_id.Binary(), 10));
   ASSERT_FALSE(filter.Filter(job_id.Binary(), 10));
   ASSERT_FALSE(filter.Filter(job_id.Binary(), 9));
@@ -933,16 +932,6 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
 
   // Restart GCS server.
   RestartGcsServer();
-
-  // When GCS client detects that GCS server has restarted, but the pub-sub server
-  // didn't restart, it will fetch data again from the GCS server. So we'll receive
-  // another notification of ALIVE state.
-  WaitPendingDone(num_subscribe_all_notifications, 2);
-  WaitPendingDone(num_subscribe_one_notifications, 2);
-  CheckActorData(subscribe_all_notifications[1],
-                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
-  CheckActorData(subscribe_one_notifications[1],
-                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
 
   // Update the actor state to DEAD.
   actor_table_data->set_timestamp(std::time(nullptr));
