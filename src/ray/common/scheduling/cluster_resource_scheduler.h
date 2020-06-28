@@ -17,6 +17,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
+#include "ray/common/scheduling/fixed_point.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/util/logging.h"
 
@@ -28,73 +29,6 @@
 enum PredefinedResources { CPU, MEM, GPU, TPU, PredefinedResources_MAX };
 // Specify resources that consists of unit-size instances.
 static std::unordered_set<int64_t> UnitInstanceResources{GPU, TPU};
-
-/// Fixed point data type.
-class FixedPoint {
-#define RESOURCE_UNIT_SCALING 1000
- private:
-  int64_t i_;
-
- public:
-  FixedPoint(double d = 0) { i_ = (int64_t)(d * RESOURCE_UNIT_SCALING); }
-
-  FixedPoint operator+(FixedPoint const &ru) {
-    FixedPoint res;
-    res.i_ = i_ + ru.i_;
-    return res;
-  }
-
-  FixedPoint operator+=(FixedPoint const &ru) {
-    i_ += ru.i_;
-    return *this;
-  }
-
-  FixedPoint operator-(FixedPoint const &ru) {
-    FixedPoint res;
-    res.i_ = i_ - ru.i_;
-    return res;
-  }
-
-  FixedPoint operator-=(FixedPoint const &ru) {
-    i_ -= ru.i_;
-    return *this;
-  }
-
-  FixedPoint operator-() const {
-    FixedPoint res;
-    res.i_ = -i_;
-    return res;
-  }
-
-  FixedPoint operator+(double const d) {
-    FixedPoint res;
-    res.i_ = i_ + (int64_t)(d * RESOURCE_UNIT_SCALING);
-    return res;
-  }
-
-  FixedPoint operator-(double const d) {
-    FixedPoint res;
-    res.i_ = i_ - (int64_t)(d * RESOURCE_UNIT_SCALING);
-    return res;
-  }
-
-  FixedPoint operator=(double const d) {
-    i_ = (int64_t)(d * RESOURCE_UNIT_SCALING);
-    ;
-    return *this;
-  }
-
-  friend bool operator<(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator>(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator<=(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator>=(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator==(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator!=(FixedPoint const &ru1, FixedPoint const &ru2);
-
-  double Double() { return (double)i_ / RESOURCE_UNIT_SCALING; };
-
-  friend std::ostream &operator<<(std::ostream &out, const FixedPoint &ru);
-};
 
 /// Helper function to compare two vectors with FixedPoint values.
 bool EqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2);
