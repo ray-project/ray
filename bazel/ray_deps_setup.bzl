@@ -89,14 +89,10 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_redis_hiredis",
         build_file = "//bazel:BUILD.hiredis",
-        url = "https://github.com/redis/hiredis/archive/33152ad163a21f568fb40eeeb88b79365886b4ea.tar.gz",
-        sha256 = "9a91274dfd131111227b39ffa3cf7b446fbbd7ee2e5a94c8e7d8ad334b4ff255",
+        url = "https://github.com/redis/hiredis/archive/392de5d7f97353485df1237872cb682842e8d83f.tar.gz",
+        sha256 = "2101650d39a8f13293f263e9da242d2c6dee0cda08d343b2939ffe3d95cf3b8b",
         patches = [
-            "//thirdparty/patches:hiredis-connect-rename.patch",
             "//thirdparty/patches:hiredis-windows-msvc.patch",
-            "//thirdparty/patches:hiredis-windows-sigpipe.patch",
-            "//thirdparty/patches:hiredis-windows-sockets.patch",
-            "//thirdparty/patches:hiredis-windows-strerror.patch",
         ],
     )
 
