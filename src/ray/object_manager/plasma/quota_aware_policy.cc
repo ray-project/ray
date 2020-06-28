@@ -16,6 +16,8 @@
 // under the License.
 
 #include "ray/object_manager/plasma/quota_aware_policy.h"
+
+#include "ray/util/logging.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 
 #include <algorithm>
@@ -202,26 +204,24 @@ bool QuotaAwarePolicy::EnforcePerClientQuota(Client* client, int64_t size, bool 
 }
 
 void QuotaAwarePolicy::BeginObjectAccess(const ObjectID& object_id) {
+  pinned_memory_bytes_ += GetObjectSize(object_id);
   if (owned_by_client_.find(object_id) != owned_by_client_.end()) {
     shared_for_read_.insert(object_id);
-    pinned_memory_bytes_ += GetObjectSize(object_id);
-    return;
+  } else {
+    // If the object is in the LRU cache, remove it.
+    cache_.Remove(object_id);
   }
-  // If the object is in the LRU cache, remove it.
-  cache_.Remove(object_id);
-  pinned_memory_bytes_ += GetObjectSize(object_id);
 }
 
 void QuotaAwarePolicy::EndObjectAccess(const ObjectID& object_id) {
+  auto size = GetObjectSize(object_id);
+  pinned_memory_bytes_ -= size;
   if (owned_by_client_.find(object_id) != owned_by_client_.end()) {
     shared_for_read_.erase(object_id);
-    pinned_memory_bytes_ -= GetObjectSize(object_id);
-    return;
+  } else {
+    // Add the object to the LRU cache.
+    cache_.Add(object_id, size);
   }
-  auto size = GetObjectSize(object_id);
-  // Add the object to the LRU cache.
-  cache_.Add(object_id, size);
-  pinned_memory_bytes_ -= size;
 }
 
 void QuotaAwarePolicy::RemoveObject(const ObjectID& object_id) {
@@ -241,8 +241,6 @@ void QuotaAwarePolicy::RefreshObjects(const std::vector<ObjectID>& object_ids) {
       int64_t size = per_client_cache_[owned_by_client_[object_id]]->Remove(object_id);
       per_client_cache_[owned_by_client_[object_id]]->Add(object_id, size);
     }
-  }
-  for (const auto& object_id : object_ids) {
     int64_t size = cache_.Remove(object_id);
     if (size != -1) {
       cache_.Add(object_id, size);
