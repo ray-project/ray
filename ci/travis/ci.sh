@@ -17,6 +17,10 @@ keep_alive() {
   "${WORKSPACE_DIR}"/ci/keep_alive "$@"
 }
 
+bazel_preclean() {
+  "${ROOT_DIR}"/bazel.py preclean "mnemonic(\"Genrule\", deps(//:*))"
+}
+
 # Calls the provided command with set -x temporarily suppressed
 suppress_xtrace() {
   {
@@ -276,7 +280,7 @@ build_wheels() {
         local local_dir="python/dist"
         for pyversion in "${pyversions[@]}"; do
           if [ -z "${pyversion}" ]; then continue; fi
-          "${ROOT_DIR}"/bazel-preclean.sh
+          bazel_preclean
           git clean -q -f -f -x -d -e "${local_dir}" -e python/ray/dashboard/client
           git checkout -q -f -- .
           cp -R -f -a -T -- "${backup_conda}" "${CONDA_PREFIX}"
@@ -292,7 +296,7 @@ build_wheels() {
         done
 
         mv -n -T -- "${backup_conda}" "${CONDA_PREFIX}"
-        "${ROOT_DIR}"/bazel-preclean.sh
+        bazel_preclean
         if [ 0 -eq "${ray_uninstall_status}" ]; then  # If Ray was previously installed, restore it
           install_ray
         fi

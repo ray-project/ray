@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 
 import ast
+import errno
 import json
 import os
 import re
 import subprocess
+import stat
 import sys
 
 from collections import defaultdict, OrderedDict
@@ -117,6 +119,45 @@ def parse_aquery_shell_calls(aquery_results):
                 yield [pair[1] for pair in val if pair[0] == "arguments"]
 
 
+def parse_aquery_output_artifacts(aquery_results):
+    artifacts = {}
+    for (key, val) in aquery_results:
+        if key == "artifacts":
+            [artifact_id] = [pair[1] for pair in val if pair[0] == "id"]
+            [exec_path] = [pair[1] for pair in val if pair[0] == "exec_path"]
+            artifacts[artifact_id] = exec_path
+        elif key == "actions":
+            output_ids = [pair[1] for pair in val if pair[0] == "output_ids"]
+            for output_id in output_ids:
+                yield artifacts[output_id]
+
+
+def preclean(bazel_aquery):
+    """Cleans up any genrule() outputs for the provided target(s).
+
+    This is useful for forcing genrule actions to re-run, because the _true_
+    outputs of those actions can include a larger set of files (e.g. files
+    copied to the workspace) which Bazel is unable to detect changes to (or
+    delete changes of).
+
+    Usually, you would run this script along with 'git clean -f', to make sure
+    Bazel re-copies outputs the next time a build occurs.
+    """
+    result = 0
+    bazel = Bazel()
+    aquery_results = bazel.aquery("--include_artifacts=true", bazel_aquery)
+    for path in parse_aquery_output_artifacts(aquery_results):
+        try:
+            if sys.platform == "win32":
+                os.chmod(path, stat.S_IWRITE)  # Needed to remove read-only bit
+            os.remove(path)
+        except IOError as ex:
+            if ex.errno != errno.ENOENT:
+                sys.stderr.write(str(ex) + "\n")
+                result = result or ex.errno
+    return result
+
+
 def shellcheck(bazel_aquery, *shellcheck_args):
     bazel = Bazel()
     shellcheck_args = list(shellcheck_args) or ["shellcheck"]
@@ -170,6 +211,8 @@ def main(program, command, *command_args):
     result = 0
     if command == shellcheck.__name__:
         result = shellcheck(*command_args)
+    elif command == preclean.__name__:
+        result = preclean(*command_args)
     else:
         raise ValueError("Unrecognized command: " + command)
     return result
