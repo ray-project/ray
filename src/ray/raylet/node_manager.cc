@@ -341,22 +341,40 @@ void NodeManager::Heartbeat() {
   auto heartbeat_data = std::make_shared<HeartbeatTableData>();
   SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
   heartbeat_data->set_client_id(self_node_id_.Binary());
+
   // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet directly.
   // TODO(atumanov): implement a ResourceSet const_iterator.
-  for (const auto &resource_pair :
-       local_resources.GetAvailableResources().GetResourceMap()) {
-    heartbeat_data->add_resources_available_label(resource_pair.first);
-    heartbeat_data->add_resources_available_capacity(resource_pair.second);
+  if (!last_heartbeat_resources_.GetAvailableResources().IsEqual(
+          local_resources.GetAvailableResources())) {
+    for (const auto &resource_pair :
+         local_resources.GetAvailableResources().GetResourceMap()) {
+      heartbeat_data->add_resources_available_label(resource_pair.first);
+      heartbeat_data->add_resources_available_capacity(resource_pair.second);
+    }
+    last_heartbeat_resources_.SetAvailableResources(
+        ResourceSet(local_resources.GetAvailableResources()));
   }
-  for (const auto &resource_pair : local_resources.GetTotalResources().GetResourceMap()) {
-    heartbeat_data->add_resources_total_label(resource_pair.first);
-    heartbeat_data->add_resources_total_capacity(resource_pair.second);
+  if (!last_heartbeat_resources_.GetTotalResources().IsEqual(
+          local_resources.GetTotalResources())) {
+    for (const auto &resource_pair :
+         local_resources.GetTotalResources().GetResourceMap()) {
+      heartbeat_data->add_resources_total_label(resource_pair.first);
+      heartbeat_data->add_resources_total_capacity(resource_pair.second);
+    }
+    last_heartbeat_resources_.SetTotalResources(
+        ResourceSet(local_resources.GetTotalResources()));
   }
 
   local_resources.SetLoadResources(local_queues_.GetResourceLoad());
-  for (const auto &resource_pair : local_resources.GetLoadResources().GetResourceMap()) {
-    heartbeat_data->add_resource_load_label(resource_pair.first);
-    heartbeat_data->add_resource_load_capacity(resource_pair.second);
+  if (!last_heartbeat_resources_.GetLoadResources().IsEqual(
+          local_resources.GetLoadResources())) {
+    for (const auto &resource_pair :
+         local_resources.GetLoadResources().GetResourceMap()) {
+      heartbeat_data->add_resource_load_label(resource_pair.first);
+      heartbeat_data->add_resource_load_capacity(resource_pair.second);
+    }
+    last_heartbeat_resources_.SetLoadResources(
+        ResourceSet(local_resources.GetLoadResources()));
   }
 
   // Set the global gc bit on the outgoing heartbeat message.
@@ -748,21 +766,28 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
 
   SchedulingResources &remote_resources = it->second;
 
-  ResourceSet remote_total(VectorFromProtobuf(heartbeat_data.resources_total_label()),
-                           VectorFromProtobuf(heartbeat_data.resources_total_capacity()));
-  ResourceSet remote_available(
-      VectorFromProtobuf(heartbeat_data.resources_available_label()),
-      VectorFromProtobuf(heartbeat_data.resources_available_capacity()));
-  ResourceSet remote_load(VectorFromProtobuf(heartbeat_data.resource_load_label()),
-                          VectorFromProtobuf(heartbeat_data.resource_load_capacity()));
-  // TODO(atumanov): assert that the load is a non-empty ResourceSet.
-  remote_resources.SetAvailableResources(std::move(remote_available));
-  // Extract the load information and save it locally.
-  remote_resources.SetLoadResources(std::move(remote_load));
+  if (heartbeat_data.resources_total_label_size() > 0) {
+    ResourceSet remote_total(
+        VectorFromProtobuf(heartbeat_data.resources_total_label()),
+        VectorFromProtobuf(heartbeat_data.resources_total_capacity()));
+    remote_resources.SetTotalResources(std::move(remote_total));
+  }
+  if (heartbeat_data.resources_available_label_size() > 0) {
+    ResourceSet remote_available(
+        VectorFromProtobuf(heartbeat_data.resources_available_label()),
+        VectorFromProtobuf(heartbeat_data.resources_available_capacity()));
+    remote_resources.SetAvailableResources(std::move(remote_available));
+  }
+  if (heartbeat_data.resource_load_label_size() > 0) {
+    ResourceSet remote_load(VectorFromProtobuf(heartbeat_data.resource_load_label()),
+                            VectorFromProtobuf(heartbeat_data.resource_load_capacity()));
+    // Extract the load information and save it locally.
+    remote_resources.SetLoadResources(std::move(remote_load));
+  }
 
   if (new_scheduler_enabled_ && client_id != self_node_id_) {
     new_resource_scheduler_->AddOrUpdateNode(
-        client_id.Binary(), remote_total.GetResourceMap(),
+        client_id.Binary(), remote_resources.GetTotalResources().GetResourceMap(),
         remote_resources.GetAvailableResources().GetResourceMap());
     NewSchedulerSchedulePendingTasks();
     return;

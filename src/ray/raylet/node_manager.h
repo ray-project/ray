@@ -676,6 +676,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The time that the last heartbeat was sent at. Used to make sure we are
   /// keeping up with heartbeats.
   uint64_t last_heartbeat_at_ms_;
+  SchedulingResources last_heartbeat_resources_;
   /// The time that the last debug string was logged to the console.
   uint64_t last_debug_dump_at_ms_;
   /// The time that we last sent a FreeObjects request to other nodes for

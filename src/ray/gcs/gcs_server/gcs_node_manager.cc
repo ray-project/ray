@@ -48,7 +48,12 @@ void GcsNodeManager::NodeFailureDetector::HandleHeartbeat(
   }
 
   iter->second = num_heartbeats_timeout_;
-  heartbeat_buffer_[node_id] = heartbeat_data;
+  if (heartbeat_data.should_global_gc() ||
+      heartbeat_data.resources_available_label_size() > 0 ||
+      heartbeat_data.resources_total_label_size() > 0 ||
+      heartbeat_data.resource_load_label_size() > 0) {
+    heartbeat_buffer_[node_id] = heartbeat_data;
+  }
 }
 
 /// A periodic timer that checks for timed out clients.
