@@ -481,20 +481,6 @@ cc_binary(
     ],
 )
 
-cc_binary(
-    name = "raylet_monitor",
-    srcs = [
-        "src/ray/raylet/monitor.cc",
-        "src/ray/raylet/monitor.h",
-        "src/ray/raylet/monitor_main.cc",
-    ],
-    copts = COPTS,
-    deps = [
-        ":gcs",
-        ":ray_util",
-    ],
-)
-
 cc_library(
     name = "gcs_pub_sub_lib",
     srcs = glob(
@@ -723,7 +709,7 @@ cc_binary(
 cc_test(
     name = "core_worker_test",
     srcs = ["src/ray/core_worker/test/core_worker_test.cc"],
-    args = ["$(location //:plasma_store_server) $(location raylet) $(location raylet_monitor) $(location mock_worker) $(location gcs_server) $(location redis-cli) $(location redis-server) $(location libray_redis_module.so)"],
+    args = ["$(location //:plasma_store_server) $(location raylet) $(location mock_worker) $(location gcs_server) $(location redis-cli) $(location redis-server) $(location libray_redis_module.so)"],
     copts = COPTS,
     data = [
         "//:gcs_server",
@@ -731,7 +717,6 @@ cc_test(
         "//:mock_worker",
         "//:plasma_store_server",
         "//:raylet",
-        "//:raylet_monitor",
         "//:redis-cli",
         "//:redis-server",
     ],
@@ -1831,7 +1816,6 @@ genrule(
         "//:redis-cli",
         "//:libray_redis_module.so",
         "//:raylet",
-        "//:raylet_monitor",
         "//:gcs_server",
         "//:plasma_store_server",
         "//streaming:copy_streaming_py_proto",
@@ -1857,7 +1841,6 @@ genrule(
         cp -f $(location //:redis-cli) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/" &&
         cp -f $(locations //:libray_redis_module.so) "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/" &&
-        cp -f $(location //:raylet_monitor) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
         cp -f $(location //:plasma_store_server) "$$WORK_DIR/python/ray/core/src/plasma/" &&
         cp -f $(location //:raylet) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
         cp -f $(location //:gcs_server) "$$WORK_DIR/python/ray/core/src/ray/gcs/" &&
