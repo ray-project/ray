@@ -98,12 +98,11 @@ type WorkerGPUEntryProps = {
 
 const WorkerGPUEntry: React.FC<WorkerGPUEntryProps> = ({
   resourceSlot,
-  slot,
 }) => {
-  const { allocation } = resourceSlot;
+  const { allocation, slot } = resourceSlot;
   return (
     <Typography variant="h6">
-      [{slot}]: {allocation}
+      [{slot ?? "?"}]: {allocation}
     </Typography>
   );
 };
