@@ -387,55 +387,15 @@ class ObjectDirectory {
   }
 
   /// Evict objects returned by the eviction policy.
+  /// This code path should only be used for testing.
   ///
-  /// \param object_ids Object IDs of the objects to be evicted.
-  void EvictObjects(const std::vector<ObjectID>& object_ids) {
+  /// \param num_bytes The amount of memory we could like to evict.
+  void EvictObjects(int64_t num_bytes, int64_t *num_bytes_evicted) {
     absl::MutexLock lock(&object_table_mutex_);
-    if (object_ids.empty()) {
-      return;
-    }
-
-    std::vector<ObjectTableEntry*> evicted_objects_entries;
-    std::vector<std::shared_ptr<arrow::Buffer>> evicted_object_data;
-    std::vector<ObjectInfoT> infos;
-    for (const auto& object_id : object_ids) {
-      RAY_LOG(DEBUG) << "evicting object " << object_id.Hex();
-      auto it = object_table_.find(object_id);
-      // TODO(rkn): This should probably not fail, but should instead throw an
-      // error. Maybe we should also support deleting objects that have been
-      // created but not sealed.
-      RAY_CHECK(it != object_table_.end()) << "To evict an object it must be in the object table.";
-      auto& entry = it->second;
-      RAY_CHECK(entry->state == ObjectState::PLASMA_SEALED)
-          << "To evict an object it must have been sealed.";
-      RAY_CHECK(entry->ref_count == 0)
-          << "To evict an object, there must be no clients currently using it.";
-      // If there is a backing external store, then mark object for eviction to
-      // external store, free the object data pointer and keep a placeholder
-      // entry in ObjectTable
-      if (external_store_) {
-        evicted_objects_entries.push_back(entry.get());
-        evicted_object_data.emplace_back(entry->GetArrowBuffer());
-      } else {
-        // If there is no backing external store, just erase the object entry
-        // and send a deletion notification.
-        entry->FreeObject();
-        // Inform all subscribers that the object has been deleted.
-        ObjectInfoT notification;
-        notification.object_id = object_id.Binary();
-        notification.is_deletion = true;
-        infos.emplace_back(notification);
-      }
-    }
-
-    if (external_store_) {
-      RAY_CHECK_OK(external_store_->Put(object_ids, evicted_object_data));
-      for (auto entry : evicted_objects_entries) {
-        entry->FreeObject();
-      }
-    } else {
-      notifications_callback_(infos);
-    }
+    std::vector<ObjectID> objects_to_evict;
+    *num_bytes_evicted =
+        eviction_policy_.ChooseObjectsToEvict(num_bytes, &objects_to_evict);
+    EvictObjectsInternal(objects_to_evict);
   }
 
   /// Delete a specific object by object_id that have been created in the hash table.
@@ -501,15 +461,15 @@ class ObjectDirectory {
     auto& entry = it->second;
     RAY_CHECK(entry->state == ObjectState::PLASMA_SEALED)
         << "To abort an object it must have been sealed.";
-    auto it = client->object_ids.find(object_id);
-    if (it == client->object_ids.end()) {
+    auto cit = client->object_ids.find(object_id);
+    if (cit == client->object_ids.end()) {
       // If the client requesting the abort is not the creator, do not
       // perform the abort.
       return 0;
     } else {
       // The client requesting the abort is the creator. Free the object.
       EraseObject(object_id);
-      client->object_ids.erase(it);
+      client->object_ids.erase(cit);
       return 1;
     }
   }
@@ -586,6 +546,57 @@ class ObjectDirectory {
     return it->second.get();
   }
 
+  /// Evict objects.
+  ///
+  /// \param object_ids Object IDs of the objects to be evicted.
+  void EvictObjectsInternal(const std::vector<ObjectID>& object_ids) {
+    if (object_ids.empty()) {
+      return;
+    }
+
+    std::vector<ObjectTableEntry*> evicted_objects_entries;
+    std::vector<std::shared_ptr<arrow::Buffer>> evicted_object_data;
+    std::vector<ObjectInfoT> infos;
+    for (const auto& object_id : object_ids) {
+      RAY_LOG(DEBUG) << "evicting object " << object_id.Hex();
+      auto it = object_table_.find(object_id);
+      // TODO(rkn): This should probably not fail, but should instead throw an
+      // error. Maybe we should also support deleting objects that have been
+      // created but not sealed.
+      RAY_CHECK(it != object_table_.end()) << "To evict an object it must be in the object table.";
+      auto& entry = it->second;
+      RAY_CHECK(entry->state == ObjectState::PLASMA_SEALED)
+          << "To evict an object it must have been sealed.";
+      RAY_CHECK(entry->ref_count == 0)
+          << "To evict an object, there must be no clients currently using it.";
+      // If there is a backing external store, then mark object for eviction to
+      // external store, free the object data pointer and keep a placeholder
+      // entry in ObjectTable
+      if (external_store_) {
+        evicted_objects_entries.push_back(entry.get());
+        evicted_object_data.emplace_back(entry->GetArrowBuffer());
+      } else {
+        // If there is no backing external store, just erase the object entry
+        // and send a deletion notification.
+        entry->FreeObject();
+        // Inform all subscribers that the object has been deleted.
+        ObjectInfoT notification;
+        notification.object_id = object_id.Binary();
+        notification.is_deletion = true;
+        infos.emplace_back(notification);
+      }
+    }
+
+    if (external_store_) {
+      RAY_CHECK_OK(external_store_->Put(object_ids, evicted_object_data));
+      for (auto entry : evicted_objects_entries) {
+        entry->FreeObject();
+      }
+    } else {
+      notifications_callback_(infos);
+    }
+  }
+
   // If this client is not already using the object, add the client to the
   // object's list of clients, otherwise do nothing.
   void AddToClientObjectIds(
@@ -625,7 +636,7 @@ class ObjectDirectory {
           // Above code does not really delete an object. Instead, it just put an
           // object to LRU cache which will be cleaned when the memory is not enough.
           deletion_cache_.erase(object_id);
-          EvictObjects({object_id});
+          EvictObjectsInternal({object_id});
         }
       }
       // Return 1 to indicate that the client was removed.
@@ -663,7 +674,7 @@ class ObjectDirectory {
       if (!quota_ok) {
         return Status::OutOfMemory("Cannot assign enough quota to the client.");
       }
-      EvictObjects(client_objects_to_evict);
+      EvictObjectsInternal(client_objects_to_evict);
     }
 
     // Try to evict objects until there is enough space.
@@ -682,7 +693,7 @@ class ObjectDirectory {
       // Tell the eviction policy how much space we need to create this object.
       std::vector<ObjectID> objects_to_evict;
       bool success = eviction_policy_.RequireSpace(size, &objects_to_evict);
-      EvictObjects(objects_to_evict);
+      EvictObjectsInternal(objects_to_evict);
       // Return an error to the client if not enough space could be freed to
       // create the object.
       if (!success) {
@@ -690,7 +701,7 @@ class ObjectDirectory {
       }
     }
   }
- 
+
   /// A mutex to protect plasma memory allocator.
   // absl::Mutex plasma_allocator_mutex_;
   /// A mutex to protect 'objects_'.

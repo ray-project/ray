@@ -63,44 +63,6 @@ class PlasmaStore {
 
   ~PlasmaStore();
 
-  /// Create a new object. The client must do a call to release_object to tell
-  /// the store when it is done with the object.
-  ///
-  /// \param object_id Object ID of the object to be created.
-  /// \param evict_if_full If this is true, then when the object store is full,
-  ///        try to evict objects that are not currently referenced before
-  ///        creating the object. Else, do not evict any objects and
-  ///        immediately return an PlasmaError::OutOfMemory.
-  /// \param data_size Size in bytes of the object to be created.
-  /// \param metadata_size Size in bytes of the object metadata.
-  /// \param device_num The number of the device where the object is being
-  ///        created.
-  ///        device_num = 0 corresponds to the host,
-  ///        device_num = 1 corresponds to GPU0,
-  ///        device_num = 2 corresponds to GPU1, etc.
-  /// \param client The client that created the object.
-  /// \param result The object that has been created.
-  /// \return One of the following error codes:
-  ///  - PlasmaError::OK, if the object was created successfully.
-  ///  - PlasmaError::ObjectExists, if an object with this ID is already
-  ///    present in the store. In this case, the client should not call
-  ///    plasma_release.
-  ///  - PlasmaError::OutOfMemory, if the store is out of memory and
-  ///    cannot create the object. In this case, the client should not call
-  ///    plasma_release.
-  PlasmaError CreateObject(const ObjectID& object_id, bool evict_if_full,
-                           int64_t data_size, int64_t metadata_size, int device_num,
-                           Client* client, PlasmaObject* result);
-
-  /// Abort a created but unsealed object. If the client is not the
-  /// creator, then the abort will fail.
-  ///
-  /// \param object_id Object ID of the object to be aborted.
-  /// \param client The client who created the object. If this does not
-  ///   match the creator of the object, then the abort will fail.
-  /// \return 1 if the abort succeeds, else 0.
-  int AbortObject(const ObjectID& object_id, Client* client);
-
   /// Delete a specific object by object_id that have been created in the hash table.
   ///
   /// \param object_id Object ID of the object to be deleted.
@@ -109,11 +71,6 @@ class PlasmaStore {
   ///  - PlasmaError::ObjectNonexistent, if ths object isn't existed.
   ///  - PlasmaError::ObjectInUse, if the object is in use.
   PlasmaError DeleteObject(ObjectID& object_id);
-
-  /// Evict objects returned by the eviction policy.
-  ///
-  /// \param object_ids Object IDs of the objects to be evicted.
-  void EvictObjects(const std::vector<ObjectID>& object_ids);
 
   /// Process a get request from a client. This method assumes that we will
   /// eventually have these objects sealed. If one of the objects has not yet
@@ -134,12 +91,6 @@ class PlasmaStore {
   ///
   /// \param object_ids The vector of Object IDs of the objects to be sealed.
   void SealObjects(const std::vector<ObjectID>& object_ids);
-
-  /// Record the fact that a particular client is no longer using an object.
-  ///
-  /// \param object_id The object ID of the object that is being released.
-  /// \param client The client making this request.
-  void ReleaseObject(const ObjectID& object_id, Client* client);
 
   /// Subscribe a file descriptor to updates about new sealed objects.
   ///

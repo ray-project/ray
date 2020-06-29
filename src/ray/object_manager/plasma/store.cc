@@ -120,11 +120,11 @@ PlasmaStore::PlasmaStore(EventLoop* loop, const std::string& socket_name,
 // TODO(pcm): Get rid of this destructor by using RAII to clean up data.
 PlasmaStore::~PlasmaStore() {}
 
-// Create a new object buffer in the hash table.
-PlasmaError PlasmaStore::CreateObject(const ObjectID& object_id, bool evict_if_full,
-                                      int64_t data_size, int64_t metadata_size,
-                                      int device_num, Client* client,
-                                      PlasmaObject* result) {
+// A helper function to create a new object.
+PlasmaError CreateObject(const ObjectID& object_id, bool evict_if_full,
+                         int64_t data_size, int64_t metadata_size,
+                         int device_num, Client* client,
+                         PlasmaObject* result) {
   RAY_LOG(DEBUG) << "creating object " << object_id.Hex();
   Status status = object_directory->CreateObject(
       object_id, evict_if_full, data_size, metadata_size, device_num, client, result);
@@ -322,10 +322,6 @@ void PlasmaStore::ProcessGetRequest(Client* client,
   }
 }
 
-void PlasmaStore::ReleaseObject(const ObjectID& object_id, Client* client) {
-  object_directory->ReleaseObject(object_id, client);
-}
-
 void PlasmaStore::SealObjects(const std::vector<ObjectID>& object_ids) {
   std::vector<ObjectInfoT> infos;
   object_directory->SealObjects(object_ids, &infos);
@@ -333,10 +329,6 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID>& object_ids) {
   for (size_t i = 0; i < object_ids.size(); ++i) {
     UpdateObjectGetRequests(object_ids[i]);
   }
-}
-
-int PlasmaStore::AbortObject(const ObjectID& object_id, Client* client) {
-  return object_directory->AbortObject(object_id, client);
 }
 
 PlasmaError PlasmaStore::DeleteObject(ObjectID& object_id) {
@@ -350,10 +342,6 @@ PlasmaError PlasmaStore::DeleteObject(ObjectID& object_id) {
   notification.is_deletion = true;
   PushNotifications({notification});
   return PlasmaError::OK;
-}
-
-void PlasmaStore::EvictObjects(const std::vector<ObjectID>& object_ids) {
-  object_directory->EvictObjects(object_ids);
 }
 
 void PlasmaStore::ConnectClient(int listener_sock) {
@@ -628,7 +616,7 @@ Status PlasmaStore::ProcessMessage(Client* client) {
         }
       } else {
         for (size_t j = 0; j < i; j++) {
-          AbortObject(object_ids[j], client);
+          object_directory->AbortObject(object_ids[j], client);
         }
       }
 
@@ -636,9 +624,8 @@ Status PlasmaStore::ProcessMessage(Client* client) {
     } break;
     case fb::MessageType::PlasmaAbortRequest: {
       RAY_RETURN_NOT_OK(ReadAbortRequest(input, input_size, &object_id));
-      RAY_CHECK(AbortObject(object_id, client) == 1) << "To abort an object, the only "
-                                                          "client currently using it "
-                                                          "must be the creator.";
+      RAY_CHECK(object_directory->AbortObject(object_id, client) == 1)
+          << "To abort an object, the only client currently using it must be the creator.";
       HANDLE_SIGPIPE(SendAbortReply(client->fd, object_id), client->fd);
     } break;
     case fb::MessageType::PlasmaGetRequest: {
@@ -649,7 +636,7 @@ Status PlasmaStore::ProcessMessage(Client* client) {
     } break;
     case fb::MessageType::PlasmaReleaseRequest: {
       RAY_RETURN_NOT_OK(ReadReleaseRequest(input, input_size, &object_id));
-      ReleaseObject(object_id, client);
+      object_directory->ReleaseObject(object_id, client);
     } break;
     case fb::MessageType::PlasmaDeleteRequest: {
       std::vector<ObjectID> object_ids;
@@ -678,10 +665,8 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       // This code path should only be used for testing.
       int64_t num_bytes;
       RAY_RETURN_NOT_OK(ReadEvictRequest(input, input_size, &num_bytes));
-      std::vector<ObjectID> objects_to_evict;
-      int64_t num_bytes_evicted =
-          eviction_policy_.ChooseObjectsToEvict(num_bytes, &objects_to_evict);
-      EvictObjects(objects_to_evict);
+      int64_t num_bytes_evicted;
+      object_directory->EvictObjects(num_bytes, &num_bytes_evicted);
       HANDLE_SIGPIPE(SendEvictReply(client->fd, num_bytes_evicted), client->fd);
     } break;
     case fb::MessageType::PlasmaRefreshLRURequest: {
