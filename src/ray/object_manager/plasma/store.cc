@@ -265,44 +265,24 @@ void PlasmaStore::ProcessGetRequest(Client* client,
                                     int64_t timeout_ms) {
   // Create a get request for this object.
   auto get_req = new GetRequest(client, object_ids);
-  std::vector<ObjectID> evicted_ids;
-  for (auto object_id : object_ids) {
-    // Check if this object is already present locally. If so, record that the
-    // object is being used and mark it as accounted for.
-    switch (object_directory->GetObjectState(object_id)) {
-      case ObjectState::PLASMA_SEALED: {
-        get_req->SatisfyWithSealedObject(object_id);
-        break;
-      }
-      case ObjectState::PLASMA_EVICTED: {
-        // TODO(suquark): Should we update plasma object data here?
-        Status status = object_directory->RecreateObject(object_id, /*evict_inf_full=*/true, client);
-        if (status.ok()) {
-          evicted_ids.push_back(object_id);
-        }
-        break;
-      }
-      default: {
-        // Add a placeholder plasma object to the get request to indicate that the
-        // object is not present. This will be parsed by the client. We set the
-        // data size to -1 to indicate that the object is not present.
-        get_req->objects[object_id].data_size = -1;
-        // Add the get request to the relevant data structures.
-        object_get_requests_[object_id].push_back(get_req);
-        break;
-      }
-    }
+  std::vector<ObjectID> sealed_objects;
+  std::vector<ObjectID> reconstructed_objects;
+  std::vector<ObjectID> nonexistent_objects;
+  object_directory->GetObjects(object_ids, client, &sealed_objects, &reconstructed_objects, &nonexistent_objects);
+  for (const auto& object_id: sealed_objects) {
+    get_req->SatisfyWithSealedObject(object_id);
   }
-
-  if (!evicted_ids.empty()) {
-    Status status = object_directory->FetchObjectsFromExternalStore(evicted_ids);
-    if (status.ok()) {
-      for (const auto& evicted_id : evicted_ids) {
-        get_req->SatisfyWithReconstructedObject(evicted_id);
-      }
-    }
+  for (const auto& object_id: reconstructed_objects) {
+    get_req->SatisfyWithReconstructedObject(object_id);
   }
-
+  for (const auto& object_id: nonexistent_objects) {
+    // Add a placeholder plasma object to the get request to indicate that the
+    // object is not present. This will be parsed by the client. We set the
+    // data size to -1 to indicate that the object is not present.
+    get_req->objects[object_id].data_size = -1;
+    // Add the get request to the relevant data structures.
+    object_get_requests_[object_id].push_back(get_req);
+  }
   // If all of the objects are present already or if the timeout is 0, return to
   // the client.
   if (get_req->Fulfilled() || timeout_ms == 0) {
