@@ -835,7 +835,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             def save_checkpoint(self, path):
                 return self.state
 
-            def _restore(self, state):
+            def load_checkpoint(self, state):
                 self.state = state
 
         sync_client = mock_storage_client()
@@ -862,7 +862,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             def save_checkpoint(self, path):
                 return self.state
 
-            def _restore(self, state):
+            def load_checkpoint(self, state):
                 self.state = state
 
         test_trainable = TestTrain()
@@ -893,7 +893,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             def save_checkpoint(self, path):
                 return self.state
 
-            def _restore(self, state):
+            def load_checkpoint(self, state):
                 self.state = state
 
         test_trainable = TestTrain()

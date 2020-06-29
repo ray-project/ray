@@ -313,7 +313,7 @@ class FunctionRunner(Trainable):
         out.write(data_dict)
         return out.getvalue()
 
-    def _restore(self, checkpoint):
+    def load_checkpoint(self, checkpoint):
         # This should be removed once Trainables are refactored.
         if "tune_checkpoint_path" in checkpoint:
             del checkpoint["tune_checkpoint_path"]

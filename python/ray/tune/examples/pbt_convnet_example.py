@@ -45,7 +45,7 @@ class PytorchTrainble(tune.Trainable):
         torch.save(self.model.state_dict(), checkpoint_path)
         return checkpoint_path
 
-    def _restore(self, checkpoint_path):
+    def load_checkpoint(self, checkpoint_path):
         self.model.load_state_dict(torch.load(checkpoint_path))
 
     def _export_model(self, export_formats, export_dir):

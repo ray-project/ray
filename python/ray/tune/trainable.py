@@ -635,8 +635,8 @@ class Trainable:
             Do not rely on absolute paths in the implementation of ``save_checkpoint``
             and ``load_checkpoint``.
 
-        Use ``validate_save_restore`` to catch ``save_checkpoint``/``load_checkpoint`` errors
-        before execution.
+        Use ``validate_save_restore`` to catch ``save_checkpoint``/
+        ``load_checkpoint`` errors before execution.
 
         >>> from ray.tune.utils import validate_save_restore
         >>> validate_save_restore(MyTrainableClass)

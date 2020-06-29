@@ -33,7 +33,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
             def save_checkpoint(self, checkpoint_dir):
                 pass
 
-            def _restore(self, checkpoint_path):
+            def load_checkpoint(self, checkpoint_path):
                 pass
 
         self.MockTrainable = MockTrainable

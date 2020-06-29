@@ -80,7 +80,7 @@ def get_optimus_trainable(parent_cls):
                 "iter": self.iter
             }
 
-        def _restore(self, checkpoint):
+        def load_checkpoint(self, checkpoint):
             self.func = cloudpickle.loads(checkpoint["func"])
             self.data = checkpoint["data"]
             self.iter = checkpoint["iter"]

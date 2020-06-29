@@ -634,7 +634,7 @@ def test_cluster_interrupt(start_connected_cluster, tmpdir):
         def save_checkpoint(self, path):
             return self.state
 
-        def _restore(self, state):
+        def load_checkpoint(self, state):
             self.state = state
 
     # Removes indent from class.

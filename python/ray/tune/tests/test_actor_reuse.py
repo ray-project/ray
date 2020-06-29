@@ -25,7 +25,7 @@ def create_resettable_class():
         def save_checkpoint(self, chkpt_dir):
             return {"iter": self.iter}
 
-        def _restore(self, item):
+        def load_checkpoint(self, item):
             self.iter = item["iter"]
 
         def reset_config(self, new_config):

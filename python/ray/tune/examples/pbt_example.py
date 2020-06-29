@@ -72,7 +72,7 @@ class PBTBenchmarkExample(Trainable):
             "lr": self.lr,
         }
 
-    def _restore(self, checkpoint):
+    def load_checkpoint(self, checkpoint):
         self.accuracy = checkpoint["accuracy"]
 
     def reset_config(self, new_config):

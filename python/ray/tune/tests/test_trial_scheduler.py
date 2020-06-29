@@ -1182,7 +1182,7 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
             def save_checkpoint(self, path):
                 return self.state
 
-            def _restore(self, state):
+            def load_checkpoint(self, state):
                 self.state = state
 
         trial_hyperparams = {

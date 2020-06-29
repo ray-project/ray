@@ -267,7 +267,7 @@ class PytorchTrainable(tune.Trainable):
 
         return checkpoint_dir
 
-    def _restore(self, checkpoint_dir):
+    def load_checkpoint(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint")
         checkpoint = torch.load(path)
         self.netD.load_state_dict(checkpoint["netDmodel"])

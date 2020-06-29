@@ -247,7 +247,7 @@ class MemNNModel(Trainable):
         self.model.save(file_path)
         return file_path
 
-    def _restore(self, path):
+    def load_checkpoint(self, path):
         # See https://stackoverflow.com/a/42763323
         del self.model
         self.model = load_model(path)
