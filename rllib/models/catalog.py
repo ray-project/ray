@@ -416,7 +416,8 @@ class ModelCatalog:
                            name, **model_kwargs)
         else:
             raise NotImplementedError(
-                "Framework must be 'tf' or 'torch': {}".format(framework))
+                "`framework` must be 'tf|tfe|torch', but is "
+                "{}!".format(framework))
 
     @staticmethod
     @DeveloperAPI

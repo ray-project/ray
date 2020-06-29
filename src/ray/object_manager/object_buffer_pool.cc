@@ -23,7 +23,7 @@ ObjectBufferPool::ObjectBufferPool(const std::string &store_socket_name,
                                    uint64_t chunk_size)
     : default_chunk_size_(chunk_size) {
   store_socket_name_ = store_socket_name;
-  RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket_name_.c_str(), "", 0, 300));
+  RAY_CHECK_OK(store_client_.Connect(store_socket_name_.c_str(), "", 0, 300));
 }
 
 ObjectBufferPool::~ObjectBufferPool() {
@@ -38,7 +38,7 @@ ObjectBufferPool::~ObjectBufferPool() {
   }
   RAY_CHECK(get_buffer_state_.empty());
   RAY_CHECK(create_buffer_state_.empty());
-  RAY_ARROW_CHECK_OK(store_client_.Disconnect());
+  RAY_CHECK_OK(store_client_.Disconnect());
 }
 
 uint64_t ObjectBufferPool::GetNumChunks(uint64_t data_size) {
@@ -57,7 +57,7 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Ge
   std::lock_guard<std::mutex> lock(pool_mutex_);
   if (get_buffer_state_.count(object_id) == 0) {
     plasma::ObjectBuffer object_buffer;
-    RAY_ARROW_CHECK_OK(store_client_.Get(&object_id, 1, 0, &object_buffer));
+    RAY_CHECK_OK(store_client_.Get(&object_id, 1, 0, &object_buffer));
     if (object_buffer.data == nullptr) {
       RAY_LOG(ERROR) << "Failed to get object";
       return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
@@ -85,14 +85,14 @@ void ObjectBufferPool::ReleaseGetChunk(const ObjectID &object_id, uint64_t chunk
   GetBufferState &buffer_state = get_buffer_state_[object_id];
   buffer_state.references--;
   if (buffer_state.references == 0) {
-    RAY_ARROW_CHECK_OK(store_client_.Release(object_id));
+    RAY_CHECK_OK(store_client_.Release(object_id));
     get_buffer_state_.erase(object_id);
   }
 }
 
 void ObjectBufferPool::AbortGet(const ObjectID &object_id) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
-  RAY_ARROW_CHECK_OK(store_client_.Release(object_id));
+  RAY_CHECK_OK(store_client_.Release(object_id));
   get_buffer_state_.erase(object_id);
 }
 
@@ -104,8 +104,7 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
     int64_t object_size = data_size - metadata_size;
     // Try to create shared buffer.
     std::shared_ptr<Buffer> data;
-    arrow::Status s =
-        store_client_.Create(object_id, object_size, NULL, metadata_size, &data);
+    Status s = store_client_.Create(object_id, object_size, NULL, metadata_size, &data);
     std::vector<boost::asio::mutable_buffer> buffer;
     if (!s.ok()) {
       // Create failed. The object may already exist locally. If something else went
@@ -165,8 +164,8 @@ void ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_t chunk
   create_buffer_state_[object_id].chunk_state[chunk_index] = CreateChunkState::SEALED;
   create_buffer_state_[object_id].num_seals_remaining--;
   if (create_buffer_state_[object_id].num_seals_remaining == 0) {
-    RAY_ARROW_CHECK_OK(store_client_.Seal(object_id));
-    RAY_ARROW_CHECK_OK(store_client_.Release(object_id));
+    RAY_CHECK_OK(store_client_.Seal(object_id));
+    RAY_CHECK_OK(store_client_.Release(object_id));
     create_buffer_state_.erase(object_id);
     RAY_LOG(DEBUG) << "Have received all chunks for object " << object_id
                    << ", last chunk index: " << chunk_index;
@@ -174,8 +173,8 @@ void ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_t chunk
 }
 
 void ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
-  RAY_ARROW_CHECK_OK(store_client_.Release(object_id));
-  RAY_ARROW_CHECK_OK(store_client_.Abort(object_id));
+  RAY_CHECK_OK(store_client_.Release(object_id));
+  RAY_CHECK_OK(store_client_.Abort(object_id));
   create_buffer_state_.erase(object_id);
 }
 
@@ -199,7 +198,7 @@ std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(
 
 void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
-  RAY_ARROW_CHECK_OK(store_client_.Delete(object_ids));
+  RAY_CHECK_OK(store_client_.Delete(object_ids));
 }
 
 std::string ObjectBufferPool::DebugString() const {

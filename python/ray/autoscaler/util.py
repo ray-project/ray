@@ -14,6 +14,10 @@ REQUIRED, OPTIONAL = True, False
 RAY_SCHEMA_PATH = os.path.join(
     os.path.dirname(ray.autoscaler.__file__), "ray-schema.json")
 
+# Internal kv keys for storing debug status.
+DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
+DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
+
 
 class ConcurrentCounter:
     def __init__(self):

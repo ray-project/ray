@@ -63,7 +63,7 @@ class Executor {
         callback(status, reply);                                                       \
         delete executor;                                                               \
       } else {                                                                         \
-        Reconnect();                                                                   \
+        gcs_service_failure_detected_(GcsServiceFailureType::RPC_DISCONNECT);          \
         executor->Retry();                                                             \
       }                                                                                \
     };                                                                                 \
@@ -82,17 +82,34 @@ class GcsRpcClient {
   /// \param[in] address Address of gcs server.
   /// \param[in] port Port of the gcs server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  /// \param[in] get_server_address The function used for getting address when reconnect
-  /// rpc server.
-  GcsRpcClient(const std::string &address, const int port,
-               ClientCallManager &client_call_manager,
-               std::function<std::pair<std::string, int>()> get_server_address = nullptr,
-               std::function<void(bool)> reconnected_callback = nullptr)
-      : client_call_manager_(client_call_manager),
-        get_server_address_(std::move(get_server_address)),
-        reconnected_callback_(std::move(reconnected_callback)) {
-    Init(address, port, client_call_manager);
+  /// \param[in] gcs_service_failure_detected The function is used to redo subscription
+  /// and reconnect to GCS RPC server when gcs service failure is detected.
+  GcsRpcClient(
+      const std::string &address, const int port, ClientCallManager &client_call_manager,
+      std::function<void(GcsServiceFailureType)> gcs_service_failure_detected = nullptr)
+      : gcs_service_failure_detected_(std::move(gcs_service_failure_detected)) {
+    Reset(address, port, client_call_manager);
   };
+
+  void Reset(const std::string &address, const int port,
+             ClientCallManager &client_call_manager) {
+    job_info_grpc_client_ = std::unique_ptr<GrpcClient<JobInfoGcsService>>(
+        new GrpcClient<JobInfoGcsService>(address, port, client_call_manager));
+    actor_info_grpc_client_ = std::unique_ptr<GrpcClient<ActorInfoGcsService>>(
+        new GrpcClient<ActorInfoGcsService>(address, port, client_call_manager));
+    node_info_grpc_client_ = std::unique_ptr<GrpcClient<NodeInfoGcsService>>(
+        new GrpcClient<NodeInfoGcsService>(address, port, client_call_manager));
+    object_info_grpc_client_ = std::unique_ptr<GrpcClient<ObjectInfoGcsService>>(
+        new GrpcClient<ObjectInfoGcsService>(address, port, client_call_manager));
+    task_info_grpc_client_ = std::unique_ptr<GrpcClient<TaskInfoGcsService>>(
+        new GrpcClient<TaskInfoGcsService>(address, port, client_call_manager));
+    stats_grpc_client_ = std::unique_ptr<GrpcClient<StatsGcsService>>(
+        new GrpcClient<StatsGcsService>(address, port, client_call_manager));
+    error_info_grpc_client_ = std::unique_ptr<GrpcClient<ErrorInfoGcsService>>(
+        new GrpcClient<ErrorInfoGcsService>(address, port, client_call_manager));
+    worker_info_grpc_client_ = std::unique_ptr<GrpcClient<WorkerInfoGcsService>>(
+        new GrpcClient<WorkerInfoGcsService>(address, port, client_call_manager));
+  }
 
   /// Add job info to gcs server.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, AddJob, job_info_grpc_client_, )
@@ -215,70 +232,7 @@ class GcsRpcClient {
                              worker_info_grpc_client_, )
 
  private:
-  void Init(const std::string &address, const int port,
-            ClientCallManager &client_call_manager) {
-    job_info_grpc_client_ = std::unique_ptr<GrpcClient<JobInfoGcsService>>(
-        new GrpcClient<JobInfoGcsService>(address, port, client_call_manager));
-    actor_info_grpc_client_ = std::unique_ptr<GrpcClient<ActorInfoGcsService>>(
-        new GrpcClient<ActorInfoGcsService>(address, port, client_call_manager));
-    node_info_grpc_client_ = std::unique_ptr<GrpcClient<NodeInfoGcsService>>(
-        new GrpcClient<NodeInfoGcsService>(address, port, client_call_manager));
-    object_info_grpc_client_ = std::unique_ptr<GrpcClient<ObjectInfoGcsService>>(
-        new GrpcClient<ObjectInfoGcsService>(address, port, client_call_manager));
-    task_info_grpc_client_ = std::unique_ptr<GrpcClient<TaskInfoGcsService>>(
-        new GrpcClient<TaskInfoGcsService>(address, port, client_call_manager));
-    stats_grpc_client_ = std::unique_ptr<GrpcClient<StatsGcsService>>(
-        new GrpcClient<StatsGcsService>(address, port, client_call_manager));
-    error_info_grpc_client_ = std::unique_ptr<GrpcClient<ErrorInfoGcsService>>(
-        new GrpcClient<ErrorInfoGcsService>(address, port, client_call_manager));
-    worker_info_grpc_client_ = std::unique_ptr<GrpcClient<WorkerInfoGcsService>>(
-        new GrpcClient<WorkerInfoGcsService>(address, port, client_call_manager));
-  }
-
-  void Reconnect() {
-    absl::MutexLock lock(&mutex_);
-    if (get_server_address_) {
-      std::pair<std::string, int> address;
-      int index = 0;
-      for (; index < RayConfig::instance().ping_gcs_rpc_server_max_retries(); ++index) {
-        address = get_server_address_();
-        RAY_LOG(DEBUG) << "Attempt to reconnect to GCS server: " << address.first << ":"
-                       << address.second;
-        if (Ping(address.first, address.second, 100)) {
-          RAY_LOG(INFO) << "Reconnected to GCS server: " << address.first << ":"
-                        << address.second;
-          break;
-        }
-        usleep(RayConfig::instance().ping_gcs_rpc_server_interval_milliseconds() * 1000);
-      }
-
-      if (index < RayConfig::instance().ping_gcs_rpc_server_max_retries()) {
-        Init(address.first, address.second, client_call_manager_);
-        if (reconnected_callback_) {
-          // TODO(ffbin): Once we separate the pubsub server and storage addresses, we can
-          // judge whether pubsub server is restarted. Currently, we only support the
-          // scenario where pubsub server does not restart.
-          reconnected_callback_(false);
-        }
-      } else {
-        RAY_LOG(FATAL) << "Couldn't reconnect to GCS server. The last attempted GCS "
-                          "server address was "
-                       << address.first << ":" << address.second;
-      }
-    }
-  }
-
-  absl::Mutex mutex_;
-
-  ClientCallManager &client_call_manager_;
-  std::function<std::pair<std::string, int>()> get_server_address_;
-
-  /// The callback that will be called when we reconnect to GCS server.
-  /// Currently, we use this function to reestablish subscription to GCS.
-  /// Note, we use ping to detect whether the reconnection is successful. If the ping
-  /// succeeds but the RPC connection fails, this function might be called called again.
-  /// So it needs to be idempotent.
-  std::function<void(bool)> reconnected_callback_;
+  std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;
 
   /// The gRPC-generated stub.
   std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;

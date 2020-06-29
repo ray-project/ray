@@ -41,8 +41,6 @@ namespace ray {
 #define STATUS_CODE_TYPE_ERROR "Type error"
 #define STATUS_CODE_INVALID "Invalid"
 #define STATUS_CODE_IO_ERROR "IOError"
-#define STATUS_CODE_OBJECT_EXISTS "ObjectExists"
-#define STATUS_CODE_OBJECT_STORE_FULL "ObjectStoreFull"
 #define STATUS_CODE_UNKNOWN_ERROR "Unknown error"
 #define STATUS_CODE_NOT_IMPLEMENTED "NotImplemented"
 #define STATUS_CODE_REDIS_ERROR "RedisError"
@@ -52,6 +50,11 @@ namespace ray {
 #define STATUS_CODE_UNEXPECTED_SYSTEM_EXIT "UnexpectedSystemExit"
 #define STATUS_CODE_UNKNOWN "Unknown"
 #define STATUS_CODE_NOT_FOUND "NotFound"
+// object store status
+#define STATUS_CODE_OBJECT_EXISTS "ObjectExists"
+#define STATUS_CODE_OBJECT_NOT_FOUND "ObjectNotFound"
+#define STATUS_CODE_OBJECT_STORE_ALREADY_SEALED "ObjectAlreadySealed"
+#define STATUS_CODE_OBJECT_STORE_FULL "ObjectStoreFull"
 
 Status::Status(StatusCode code, const std::string &msg) {
   assert(code != StatusCode::OK);
@@ -81,8 +84,6 @@ std::string Status::CodeAsString() const {
       {StatusCode::TypeError, STATUS_CODE_TYPE_ERROR},
       {StatusCode::Invalid, STATUS_CODE_INVALID},
       {StatusCode::IOError, STATUS_CODE_IO_ERROR},
-      {StatusCode::ObjectExists, STATUS_CODE_OBJECT_EXISTS},
-      {StatusCode::ObjectStoreFull, STATUS_CODE_OBJECT_STORE_FULL},
       {StatusCode::UnknownError, STATUS_CODE_UNKNOWN_ERROR},
       {StatusCode::NotImplemented, STATUS_CODE_NOT_IMPLEMENTED},
       {StatusCode::RedisError, STATUS_CODE_REDIS_ERROR},
@@ -90,7 +91,12 @@ std::string Status::CodeAsString() const {
       {StatusCode::Interrupted, STATUS_CODE_INTERRUPTED},
       {StatusCode::IntentionalSystemExit, STATUS_CODE_INTENTIONAL_SYSTEM_EXIT},
       {StatusCode::UnexpectedSystemExit, STATUS_CODE_UNEXPECTED_SYSTEM_EXIT},
-      {StatusCode::NotFound, STATUS_CODE_NOT_FOUND}};
+      {StatusCode::NotFound, STATUS_CODE_NOT_FOUND},
+      {StatusCode::ObjectExists, STATUS_CODE_OBJECT_EXISTS},
+      {StatusCode::ObjectNotFound, STATUS_CODE_OBJECT_NOT_FOUND},
+      {StatusCode::ObjectAlreadySealed, STATUS_CODE_OBJECT_STORE_ALREADY_SEALED},
+      {StatusCode::ObjectStoreFull, STATUS_CODE_OBJECT_STORE_FULL},
+  };
 
   if (!code_to_str.count(code())) {
     return STATUS_CODE_UNKNOWN;
