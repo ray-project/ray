@@ -1093,7 +1093,6 @@ Status CoreWorker::SetResource(const std::string &resource_name, const double ca
 void CoreWorker::SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
                             const TaskOptions &task_options,
                             std::vector<ObjectID> *return_ids, int max_retries) {
-  RAY_LOG(INFO) << "[CoreWorker] Received task submission.";
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
@@ -1172,12 +1171,12 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   return status;
 }
 
-Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
-                                   const std::vector<TaskArg> &args,
-                                   const TaskOptions &task_options,
-                                   std::vector<ObjectID> *return_ids) {
+void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
+                                 const std::vector<TaskArg> &args,
+                                 const TaskOptions &task_options,
+                                 std::vector<ObjectID> *return_ids) {
   ActorHandle *actor_handle = nullptr;
-  RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
+  RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
 
   // Add one for actor cursor object id for tasks.
   const int num_returns = task_options.num_returns + 1;
@@ -1200,16 +1199,16 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   return_ids->pop_back();
 
   // Submit task.
-  Status status;
   TaskSpecification task_spec = builder.Build();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec, actor_id);
   } else {
     task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
                                   CurrentCallSite(), actor_handle->MaxTaskRetries());
-    status = direct_actor_submitter_->SubmitTask(task_spec);
+    io_service_.post([this, task_spec]() {
+      RAY_UNUSED(direct_actor_submitter_->SubmitTask(task_spec));
+    });
   }
-  return status;
 }
 
 Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill) {

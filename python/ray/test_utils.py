@@ -259,8 +259,7 @@ class Semaphore:
 
 
 def dicts_equal(dict1, dict2, abs_tol=1e-4):
-    '''Compares to dicts whose values may be floating point numbers for
-    equality'''
+    """Compares to dicts whose values may be floating point numbers."""
 
     if dict1.keys() != dict2.keys():
         return False

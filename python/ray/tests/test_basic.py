@@ -125,18 +125,13 @@ def test_many_fractional_resources(shutdown_only):
             resource: value[0][1]
             for resource, value in ray.get_resource_ids().items()
         }
-        print("-------------------")
-        print("Accepted resources:", accepted_resources)
-        print("True resources", true_resources)
-        print(ray.test_utils.dicts_equal(true_resources, accepted_resources))
-        print("-------------------")
         if block:
             ray.get(g.remote())
         return ray.test_utils.dicts_equal(true_resources, accepted_resources)
 
     # Check that the resource are assigned correctly.
     result_ids = []
-    for rand1, rand2, rand3 in np.random.uniform(size=(10, 3)):
+    for rand1, rand2, rand3 in np.random.uniform(size=(100, 3)):
         resource_set = {"CPU": int(rand1 * 10000) / 10000}
         result_ids.append(f._remote([False, resource_set], num_cpus=rand1))
 
@@ -164,10 +159,7 @@ def test_many_fractional_resources(shutdown_only):
                 num_cpus=rand1,
                 num_gpus=rand2,
                 resources={"Custom": rand3}))
-
-    results = ray.get(result_ids)
-    print("results: ", results)
-    assert all(results)
+    assert all(result_ids)
 
     # Check that the available resources at the end are the same as the
     # beginning.

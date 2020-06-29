@@ -106,7 +106,7 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// Whether to enable the new scheduler. The new scheduler is designed
 /// only to work with  direct calls. Once direct calls afre becoming
 /// the default, this scheduler will also become the default.
-RAY_CONFIG(bool, new_scheduler_enabled, true)
+RAY_CONFIG(bool, new_scheduler_enabled, false)
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -301,5 +301,5 @@ RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 600)
 RAY_CONFIG(bool, plasma_store_as_thread, false)
 
 RAY_CONFIG(bool, gcs_actor_service_enabled,
-           true || (getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") != nullptr &&
-                    getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == std::string("true")))
+           getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") != nullptr &&
+               getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == std::string("true"))

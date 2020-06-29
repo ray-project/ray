@@ -19,7 +19,7 @@
 namespace ray {
 
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
-  RAY_LOG(INFO) << "[CoreWorker] Submit task " << task_spec.TaskId();
+  RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
     if (actor_create_callback_ && task_spec.IsActorCreationTask()) {
@@ -117,7 +117,6 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     if (queue_entry->second.empty()) {
       task_queues_.erase(queue_entry);
       RAY_LOG(DEBUG) << "Task queue empty, canceling lease request";
-      RAY_LOG(INFO) << "[OnWorkerIdle] Cancelling worker lease if needed";
       CancelWorkerLeaseIfNeeded(scheduling_key);
     }
   }
@@ -147,13 +146,10 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
             // the request queued. This can happen if: a) due to message
             // reordering, the raylet has not yet received the worker lease
             // request, or b) we have already returned the worker lease
-
             // request. In the former case, we should try the cancellation
             // request again. In the latter case, the in-flight lease request
             // should already have been removed from our local state, so we no
             // longer need to cancel.
-            RAY_LOG(INFO) << "[CancelWorkerLeaseIfNeeded] Retrying cancel worker lease";
-            RAY_LOG(WARNING) << "Cancelling worker lease failed.";
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
         }));
@@ -199,8 +195,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   TaskSpecification &resource_spec = it->second.front();
   TaskID task_id = resource_spec.TaskId();
-  RAY_LOG(INFO) << "[DirectTaskTransport] Lease requested " << task_id;
-  RAY_LOG(INFO) << "[DirectTaskTransport] Lease resources: " << resource_spec.DebugString();
+  RAY_LOG(DEBUG) << "Lease requested " << task_id;
   RAY_UNUSED(lease_client->RequestWorkerLease(
       resource_spec, [this, scheduling_key](const Status &status,
                                             const rpc::RequestWorkerLeaseReply &reply) {
@@ -214,12 +209,12 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
         if (status.ok()) {
           if (reply.canceled()) {
-            RAY_LOG(INFO) << "Lease canceled " << task_id;
+            RAY_LOG(DEBUG) << "Lease canceled " << task_id;
             RequestNewWorkerIfNeeded(scheduling_key);
           } else if (!reply.worker_address().raylet_id().empty()) {
             // We got a lease for a worker. Add the lease client state and try to
             // assign work to the worker.
-            RAY_LOG(INFO) << "Lease granted " << task_id;
+            RAY_LOG(DEBUG) << "Lease granted " << task_id;
             rpc::WorkerAddress addr(reply.worker_address());
             AddWorkerLeaseClient(addr, std::move(lease_client));
             auto resources_copy = reply.resource_mapping();
@@ -326,7 +321,6 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
 
           if (scheduled_tasks->second.empty()) {
             task_queues_.erase(scheduling_key);
-            RAY_LOG(INFO) << "[CancelTask] Cancelling worker lease if needed";
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
           RAY_UNUSED(task_finisher_->PendingTaskFailed(task_spec.TaskId(),
