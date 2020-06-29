@@ -497,7 +497,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
-                _fast_sampling=policy_config.get("_fast_sampling", False))
+                _use_trajectory_view_api=policy_config.get(
+                    "_use_trajectory_view_api", False))
             # Start the Sampler thread.
             self.sampler.start()
         else:
@@ -518,7 +519,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
-                _fast_sampling=policy_config.get("_fast_sampling", False))
+                _use_trajectory_view_api=policy_config.get(
+                    "_use_trajectory_view_api", False))
 
         self.input_reader: InputReader = input_creator(self.io_context)
         self.output_writer: OutputWriter = output_creator(self.io_context)

@@ -3,7 +3,6 @@ import numpy as np
 from typing import Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 
@@ -13,9 +12,11 @@ torch, _ = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI
 class PolicyTrajectories:
     """Aggregator for many single-agent SampleBatches (all using same Policy).
+
+    Note: This is an experimental class only used when
+    `config._use_trajectory_view_api` = True.
 
     Each incoming SampleBatch must be from a Trajectory object (collecting
     data for one single agent).
@@ -28,7 +29,6 @@ class PolicyTrajectories:
     re-allocation).
     """
 
-    @PublicAPI
     def __init__(self, buffer_size: Optional[int]):
         """Initializes a PolicyTrajectories object.
 
@@ -45,7 +45,6 @@ class PolicyTrajectories:
         self.cursor = 0
         self.sample_batch_offset = 0
 
-    @PublicAPI
     def add_sample_batch(self, sample_batch):
         """Add the given batch of values to this batch.
 
@@ -69,7 +68,6 @@ class PolicyTrajectories:
 
         self.cursor += ts
 
-    @PublicAPI
     def get_sample_batch_and_reset(self) -> SampleBatch:
         """Returns a SampleBatch carrying all previously added data.
 

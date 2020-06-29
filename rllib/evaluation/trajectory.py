@@ -3,7 +3,6 @@ import numpy as np
 from typing import Dict, Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.types import AgentID, EnvID, PolicyID, TensorType
@@ -14,9 +13,11 @@ torch, _ = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI
 class Trajectory:
     """A trajectory of a (single) agent throughout one episode.
+
+    Note: This is an experimental class only used when
+    `config._use_trajectory_view_api` = True.
 
     Collects all data produced by the environment during stepping of the agent
     as well as all model outputs associated with the agent's Policy into
@@ -35,7 +36,6 @@ class Trajectory:
     # Disambiguate unrolls within a single episode.
     _next_unroll_id = 0
 
-    @PublicAPI
     def __init__(self, buffer_size: Optional[int] = None):
         """Initializes a Trajectory object.
 
@@ -70,7 +70,6 @@ class Trajectory:
         """The timestep in the (currently ongoing) trajectory."""
         return self.cursor - self.trajectory_offset
 
-    @PublicAPI
     def add_init_obs(self,
                      env_id: EnvID,
                      agent_id: AgentID,
@@ -108,7 +107,6 @@ class Trajectory:
         self.agent_id = agent_id
         self.policy_id = policy_id
 
-    @PublicAPI
     def add_action_reward_next_obs(self,
                                    env_id: EnvID,
                                    agent_id: AgentID,
@@ -152,7 +150,6 @@ class Trajectory:
         if self.cursor == self.buffer_size:
             self._extend_buffers(values)
 
-    @PublicAPI
     def get_sample_batch_and_reset(self) -> SampleBatch:
         """Returns a SampleBatch carrying all previously added data.
 

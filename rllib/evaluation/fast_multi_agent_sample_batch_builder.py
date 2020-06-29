@@ -9,7 +9,6 @@ from ray.rllib.evaluation.policy_trajectories import PolicyTrajectories
 from ray.rllib.evaluation.trajectory import Trajectory
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.types import AgentID, EnvID, PolicyID, TensorType
@@ -18,12 +17,13 @@ from ray.util.debug import log_once
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
 class _FastMultiAgentSampleBatchBuilder:
     """Builds SampleBatches for each policy (and agent) in a multi-agent env.
 
-    Once `_fast_sampling` becomes the default in configs: This class will
-    deprecate the `SampleBatchBuilder` class.
+    Note: This is an experimental class only used when
+    `config._use_trajectory_view_api` = True.
+    Once `_use_trajectory_view_api` becomes the default in configs:
+    This class will deprecate the `SampleBatchBuilder` class.
 
     Input data is collected in `Trajectory` objects (per-agent), which
     efficiently preallocate memory over n timesteps and re-use the same memory
@@ -92,7 +92,6 @@ class _FastMultiAgentSampleBatchBuilder:
 
         return self.total() > 0
 
-    @DeveloperAPI
     def add_init_obs(self,
                      env_id: EnvID,
                      agent_id: AgentID,
@@ -121,7 +120,6 @@ class _FastMultiAgentSampleBatchBuilder:
         self.single_agent_trajectories[agent_id].add_init_obs(
             env_id, agent_id, policy_id, obs)
 
-    @DeveloperAPI
     def add_action_reward_next_obs(self,
                                    env_id: EnvID,
                                    agent_id: AgentID,
@@ -240,7 +238,6 @@ class _FastMultiAgentSampleBatchBuilder:
                     "of all live agents when setting '__all__' done to True. "
                     "Alternatively, set no_done_at_end=True to allow this.")
 
-    @DeveloperAPI
     def get_multi_agent_batch_and_reset(
         self,
         episode: Optional[MultiAgentEpisode] = None) -> MultiAgentBatch:
