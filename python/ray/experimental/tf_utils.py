@@ -42,8 +42,8 @@ class TensorFlowVariables:
         Args:
             output (tf.Operation, List[tf.Operation]): The tensorflow
                 operation to extract all variables from.
-            sess (tf.Session): Session used for running the get and set
-                methods.
+            sess (Optional[tf.Session]): Optional tf.Session used for running
+                the get and set methods in tf graph mode.
             input_variables (List[tf.Variables]): Variables to include in the
                 list.
         """

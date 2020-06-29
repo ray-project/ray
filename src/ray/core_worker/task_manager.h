@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_TASK_MANAGER_H
-#define RAY_CORE_WORKER_TASK_MANAGER_H
+#pragma once
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -78,15 +77,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Add a task that is pending execution.
   ///
-  /// \param[in] caller_id The TaskID of the calling task.
   /// \param[in] caller_address The rpc address of the calling task.
   /// \param[in] spec The spec of the pending task.
   /// \param[in] max_retries Number of times this task may be retried
   /// on failure.
   /// \return Void.
-  void AddPendingTask(const TaskID &caller_id, const rpc::Address &caller_address,
-                      const TaskSpecification &spec, const std::string &call_site,
-                      int max_retries = 0);
+  void AddPendingTask(const rpc::Address &caller_address, const TaskSpecification &spec,
+                      const std::string &call_site, int max_retries = 0);
 
   /// Resubmit a task that has completed execution before. This is used to
   /// reconstruct objects stored in Plasma that were lost.
@@ -279,5 +276,3 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_TASK_MANAGER_H

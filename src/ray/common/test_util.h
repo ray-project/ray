@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_TEST_UTIL_H
-#define RAY_COMMON_TEST_UTIL_H
+#pragma once
 
 #include <unistd.h>
 
@@ -107,9 +106,6 @@ class TestSetupUtil {
                                  const std::string &resource);
   static void StopRaylet(const std::string &raylet_socket_name);
 
-  static std::string StartRayletMonitor(const std::string &redis_address);
-  static void StopRayletMonitor(const std::string &raylet_monitor_socket_name);
-
  private:
   static int StartUpRedisServer(const int &port);
   static void ShutDownRedisServer(const int &port);
@@ -117,5 +113,3 @@ class TestSetupUtil {
 };
 
 }  // namespace ray
-
-#endif  // RAY_UTIL_TEST_UTIL_H

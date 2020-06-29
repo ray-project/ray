@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_SERVER_TEST_UTIL_H
-#define RAY_GCS_SERVER_TEST_UTIL_H
+#pragma once
 
 #include <memory>
 #include <utility>
@@ -290,7 +289,7 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
+    void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
   };
 
   class MockedErrorInfoAccessor : public gcs::ErrorInfoAccessor {
@@ -317,5 +316,3 @@ struct GcsServerMocker {
 };
 
 }  // namespace ray
-
-#endif  // RAY_GCS_SERVER_TEST_UTIL_H

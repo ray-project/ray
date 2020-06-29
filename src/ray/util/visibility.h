@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_UTIL_VISIBILITY_H
-#define RAY_UTIL_VISIBILITY_H
+#pragma once
 
 #if defined(_WIN32) || defined(__CYGWIN__)
 #if defined(_MSC_VER)
@@ -56,5 +55,3 @@
 #else
 #define RAY_TEMPLATE_EXPORT
 #endif
-
-#endif  // RAY_UTIL_VISIBILITY_H

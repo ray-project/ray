@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_GCS_SERVER_H
-#define RAY_GCS_GCS_SERVER_H
+#pragma once
 
 #include <ray/gcs/pubsub/gcs_pub_sub.h>
 #include <ray/gcs/redis_gcs_client.h>
@@ -39,6 +38,7 @@ struct GcsServerConfig {
 
 class GcsNodeManager;
 class GcsActorManager;
+class GcsJobManager;
 
 /// The GcsServer will take over all requests from ServiceBasedGcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.
@@ -81,8 +81,8 @@ class GcsServer {
   /// Initialize the gcs actor manager.
   virtual void InitGcsActorManager();
 
-  /// The job info handler
-  virtual std::unique_ptr<rpc::JobInfoHandler> InitJobInfoHandler();
+  /// Initialize the gcs job manager.
+  virtual void InitGcsJobManager();
 
   /// The object manager
   virtual std::unique_ptr<GcsObjectManager> InitObjectManager();
@@ -122,7 +122,7 @@ class GcsServer {
   /// The gcs actor manager
   std::shared_ptr<GcsActorManager> gcs_actor_manager_;
   /// Job info handler and service
-  std::unique_ptr<rpc::JobInfoHandler> job_info_handler_;
+  std::unique_ptr<GcsJobManager> gcs_job_manager_;
   std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;
   /// Actor info service
   std::unique_ptr<rpc::ActorInfoGrpcService> actor_info_service_;
@@ -156,5 +156,3 @@ class GcsServer {
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif

@@ -2,7 +2,7 @@ import logging
 
 import ray
 from ray.rllib.agents.ddpg.ddpg_tf_policy import build_ddpg_models, \
-    get_distribution_inputs_and_class
+    get_distribution_inputs_and_class, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
 from ray.rllib.models.torch.torch_action_dist import TorchDeterministic
@@ -269,6 +269,7 @@ DDPGTorchPolicy = build_torch_policy(
     postprocess_fn=postprocess_nstep_and_prio,
     extra_grad_process_fn=gradients_fn,
     optimizer_fn=make_ddpg_optimizers,
+    validate_spaces=validate_spaces,
     before_init=before_init_fn,
     after_init=setup_late_mixins,
     action_distribution_fn=get_distribution_inputs_and_class,

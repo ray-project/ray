@@ -63,13 +63,22 @@ export const NodeGPU: NodeFeatureComponent = ({ node }) => {
 
 export const WorkerGPU: WorkerFeatureComponent = ({ rayletWorker }) => {
   const workerRes = rayletWorker?.coreWorkerStats.usedResources;
-  const workerUsedGPUResources = workerRes?.["GPU"] || NaN;
-  const message = isNaN(workerUsedGPUResources) ? (
-    <Typography color="textSecondary" component="span" variant="inherit">
-      N/A
-    </Typography>
-  ) : (
-    <b>`${workerUsedGPUResources} GPUs in use`</b>
-  );
+  const workerUsedGPUResources = workerRes?.["GPU"];
+  let message;
+  if (workerUsedGPUResources === undefined) {
+    message = (
+      <Typography color="textSecondary" component="span" variant="inherit">
+        N/A
+      </Typography>
+    );
+  } else {
+    const aggregateAllocation = sum(
+      workerUsedGPUResources.resourceSlots.map(
+        (resourceSlot) => resourceSlot.allocation,
+      ),
+    );
+    const plural = aggregateAllocation === 1 ? "" : "s";
+    message = <b>{`${aggregateAllocation} GPU${plural} in use`}</b>;
+  }
   return <div style={{ minWidth: 60 }}>{message}</div>;
 };

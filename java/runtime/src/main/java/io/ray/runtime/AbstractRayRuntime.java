@@ -11,7 +11,7 @@ import io.ray.api.WaitResult;
 import io.ray.api.exception.RayException;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
-import io.ray.api.function.PyRemoteFunction;
+import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
 import io.ray.api.id.ObjectId;
 import io.ray.api.options.ActorCreationOptions;
@@ -107,15 +107,14 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public ObjectRef call(PyRemoteFunction pyRemoteFunction, Object[] args,
-                        CallOptions options) {
+  public ObjectRef call(PyFunction pyFunction, Object[] args, CallOptions options) {
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
-        pyRemoteFunction.moduleName,
+        pyFunction.moduleName,
         "",
-        pyRemoteFunction.functionName);
+        pyFunction.functionName);
     // Python functions always have a return value, even if it's `None`.
     return callNormalFunction(functionDescriptor, args,
-        /*returnType=*/Optional.of(pyRemoteFunction.returnType), options);
+        /*returnType=*/Optional.of(pyFunction.returnType), options);
   }
 
   @Override

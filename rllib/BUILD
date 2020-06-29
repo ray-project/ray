@@ -296,7 +296,7 @@ py_test(
 py_test(
     name = "run_regression_tests_repeat_after_me_torch",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_tf"],
+    tags = ["learning_tests_torch"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/repeatafterme-ppo-lstm.yaml"],
@@ -433,6 +433,14 @@ py_test(
     srcs = ["agents/dqn/tests/test_simple_q.py"]
 )
 
+# DYNATrainer
+py_test(
+    name = "test_dyna",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/dyna/tests/test_dyna.py"]
+)
+
 # ES
 py_test(
     name = "test_es",
@@ -463,6 +471,14 @@ py_test(
     srcs = ["agents/marwil/tests/test_marwil.py"]
 )
 
+# MAMLTrainer
+py_test(
+    name = "test_maml",
+    tags = ["agents_dir"],
+    size = "small",
+    srcs = ["agents/maml/tests/test_maml.py"]
+)
+
 # PGTrainer
 py_test(
     name = "test_pg",
@@ -476,11 +492,10 @@ py_test(
     name = "test_ppo",
     tags = ["agents_dir"],
     size = "large",
-    srcs = ["agents/ppo/tests/test_ppo.py",
-            "agents/ppo/tests/test.py"]  # TODO(sven): Move down once PR 6889 merged
+    srcs = ["agents/ppo/tests/test_ppo.py"]
 )
 
-# DDPPO
+# PPO: DDPPO
 py_test(
     name = "test_ddppo",
     tags = ["agents_dir"],
@@ -488,7 +503,7 @@ py_test(
     srcs = ["agents/ppo/tests/test_ddppo.py"]
 )
 
-# APPO
+# PPO: APPO
 py_test(
     name = "test_appo",
     tags = ["agents_dir"],
@@ -496,7 +511,15 @@ py_test(
     srcs = ["agents/ppo/tests/test_appo.py"]
 )
 
-# SAC
+# QMixTrainer
+py_test(
+    name = "test_qmix",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/qmix/tests/test_qmix.py"]
+)
+
+# SACTrainer
 py_test(
     name = "test_sac",
     tags = ["agents_dir"],
@@ -892,19 +915,6 @@ py_test(
 )
 
 py_test(
-    name = "test_ppo_tf_cartpole_v1_lstm",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "CartPole-v1",
-        "--run", "PPO",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"simple_optimizer\": false, \"num_sgd_iter\": 2, \"model\": {\"use_lstm\": true}}'",
-        "--ray-num-cpus", "4"
-        ]
-)
-
-py_test(
     name = "test_ppo_tf_cartpole_v1_lstm_simple_optimizer",
     main = "train.py", srcs = ["train.py"],
     tags = ["quick_train"],
@@ -916,19 +926,6 @@ py_test(
         "--ray-num-cpus", "4"
         ]
 )
-
-# TODO(sven): Fix LSTM auto-wrapping for torch models. This test case did not(!) exist in Jenkins.
-#py_test(
-#    name = "test_ppo_torch_cartpole_v1_lstm_simple_optimizer",
-#    main = "train.py", srcs = ["train.py"],
-#    args = [
-#        "--env", "CartPole-v1",
-#        "--run", "PPO",
-#        "--stop", "'{\"training_iteration\": 1}'",
-#        "--config", "'{\"framework\": \"torch\", \"simple_optimizer\": true, \"num_sgd_iter\": 2, \"model\": {\"use_lstm\": true}}'",
-#        "--ray-num-cpus", "4"
-#        ]
-#)
 
 py_test(
     name = "test_ppo_tf_cartpole_v1_complete_episode_batches",
@@ -963,30 +960,6 @@ py_test(
         "--run", "PPO",
         "--stop", "'{\"training_iteration\": 2}'",
         "--config", "'{\"framework\": \"tf\", \"remote_worker_envs\": true, \"num_envs_per_worker\": 2, \"num_workers\": 1, \"train_batch_size\": 100, \"sgd_minibatch_size\": 50}'"
-        ]
-)
-
-py_test(
-    name = "test_ppo_tf_montezuma_revenge_v0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "MontezumaRevenge-v0",
-        "--run", "PPO",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"kl_coeff\": 1.0, \"num_sgd_iter\": 10, \"lr\": 1e-4, \"sgd_minibatch_size\": 64, \"train_batch_size\": 2000, \"num_workers\": 1, \"model\": {\"dim\": 40, \"conv_filters\": [[16, [8, 8], 4], [32, [4, 4], 2], [512, [5, 5], 1]]}}'"
-        ]
-)
-
-py_test(
-    name = "test_ppo_torch_montezuma_revenge_v0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "MontezumaRevenge-v0",
-        "--run", "PPO",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"torch\", \"kl_coeff\": 1.0, \"num_sgd_iter\": 10, \"lr\": 1e-4, \"sgd_minibatch_size\": 64, \"train_batch_size\": 2000, \"num_workers\": 1, \"model\": {\"dim\": 40, \"conv_filters\": [[16, [8, 8], 4], [32, [4, 4], 2], [512, [5, 5], 1]]}}'"
         ]
 )
 
@@ -1135,13 +1108,6 @@ py_test(
     tags = ["tests_dir", "tests_dir_A"],
     size = "large",
     srcs = ["tests/test_attention_net_learning.py"]
-)
-
-py_test(
-    name = "tests/test_avail_actions_qmix",
-    tags = ["tests_dir", "tests_dir_A"],
-    size = "medium",
-    srcs = ["tests/test_avail_actions_qmix.py"]
 )
 
 py_test(

@@ -6,6 +6,7 @@ import io.ray.streaming.api.stream.StreamSink;
 import io.ray.streaming.client.JobClient;
 import io.ray.streaming.jobgraph.JobGraph;
 import io.ray.streaming.jobgraph.JobGraphBuilder;
+import io.ray.streaming.jobgraph.JobGraphOptimizer;
 import io.ray.streaming.util.Config;
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -56,7 +57,8 @@ public class StreamingContext implements Serializable {
    */
   public void execute(String jobName) {
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(this.streamSinks, jobName);
-    this.jobGraph = jobGraphBuilder.build();
+    JobGraph originalJobGraph = jobGraphBuilder.build();
+    this.jobGraph = new JobGraphOptimizer(originalJobGraph).optimize();
     jobGraph.printJobGraph();
     LOG.info("JobGraph digraph\n{}", jobGraph.generateDigraph());
 

@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-include "common.fbs";
-
 // Plasma protocol specification
 namespace plasma.flatbuf;
 
@@ -45,9 +43,6 @@ enum MessageType:long {
   // See if the store contains an object (will be deprecated).
   PlasmaContainsRequest,
   PlasmaContainsReply,
-  // List all objects in the store.
-  PlasmaListRequest,
-  PlasmaListReply,
   // Get information for a newly connecting client.
   PlasmaConnectRequest,
   PlasmaConnectReply,
@@ -179,8 +174,6 @@ table PlasmaCreateAndSealRequest {
   data: string;
   // The object's metadata.
   metadata: string;
-  // Hash of the object data.
-  digest: string;
 }
 
 table PlasmaCreateAndSealReply {
@@ -194,7 +187,6 @@ table PlasmaCreateAndSealBatchRequest {
     evict_if_full: bool;
     data: [string];
     metadata: [string];
-    digest: [string];
 }
 
 table PlasmaCreateAndSealBatchReply {
@@ -215,8 +207,6 @@ table PlasmaAbortReply {
 table PlasmaSealRequest {
   // ID of the object to be sealed.
   object_id: string;
-  // Hash of the object data.
-  digest: string;
 }
 
 table PlasmaSealReply {
@@ -294,13 +284,6 @@ table PlasmaContainsReply {
   has_object: int;
 }
 
-table PlasmaListRequest {
-}
-
-table PlasmaListReply {
-  objects: [ObjectInfo];
-}
-
 // PlasmaConnect is used by a plasma client the first time it connects with the
 // store. This is not really necessary, but is used to get some information
 // about the store such as its memory capacity.
@@ -324,10 +307,6 @@ table PlasmaEvictReply {
 }
 
 table PlasmaSubscribeRequest {
-}
-
-table PlasmaNotification {
-  object_info: [ObjectInfo];
 }
 
 table PlasmaDataRequest {

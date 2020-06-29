@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_GLOBAL_STATE_ACCESSOR_H
-#define RAY_GCS_GLOBAL_STATE_ACCESSOR_H
+#pragma once
 
 #include "ray/rpc/server_call.h"
 #include "service_based_gcs_client.h"
@@ -151,5 +150,3 @@ class GlobalStateAccessor {
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif  // RAY_GCS_GLOBAL_STATE_ACCESSOR_H

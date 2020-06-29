@@ -16,9 +16,9 @@
 
 #include "error_info_handler_impl.h"
 #include "gcs_actor_manager.h"
+#include "gcs_job_manager.h"
 #include "gcs_node_manager.h"
 #include "gcs_object_manager.h"
-#include "job_info_handler_impl.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "stats_handler_impl.h"
@@ -61,18 +61,6 @@ void GcsServer::Start() {
   InitGcsActorManager();
 
   // Register rpc service.
-  job_info_handler_ = InitJobInfoHandler();
-  job_info_service_.reset(new rpc::JobInfoGrpcService(main_service_, *job_info_handler_));
-  rpc_server_.RegisterService(*job_info_service_);
-
-  actor_info_service_.reset(
-      new rpc::ActorInfoGrpcService(main_service_, *gcs_actor_manager_));
-  rpc_server_.RegisterService(*actor_info_service_);
-
-  node_info_service_.reset(
-      new rpc::NodeInfoGrpcService(main_service_, *gcs_node_manager_));
-  rpc_server_.RegisterService(*node_info_service_);
-
   gcs_object_manager_ = InitObjectManager();
   object_info_service_.reset(
       new rpc::ObjectInfoGrpcService(main_service_, *gcs_object_manager_));
@@ -82,6 +70,18 @@ void GcsServer::Start() {
   task_info_service_.reset(
       new rpc::TaskInfoGrpcService(main_service_, *task_info_handler_));
   rpc_server_.RegisterService(*task_info_service_);
+
+  InitGcsJobManager();
+  job_info_service_.reset(new rpc::JobInfoGrpcService(main_service_, *gcs_job_manager_));
+  rpc_server_.RegisterService(*job_info_service_);
+
+  actor_info_service_.reset(
+      new rpc::ActorInfoGrpcService(main_service_, *gcs_actor_manager_));
+  rpc_server_.RegisterService(*actor_info_service_);
+
+  node_info_service_.reset(
+      new rpc::NodeInfoGrpcService(main_service_, *gcs_node_manager_));
+  rpc_server_.RegisterService(*node_info_service_);
 
   stats_handler_ = InitStatsHandler();
   stats_service_.reset(new rpc::StatsGrpcService(main_service_, *stats_handler_));
@@ -198,9 +198,12 @@ void GcsServer::InitGcsActorManager() {
   RAY_CHECK_OK(gcs_pub_sub_->SubscribeAll(WORKER_FAILURE_CHANNEL, on_subscribe, nullptr));
 }
 
-std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
-  return std::unique_ptr<rpc::DefaultJobInfoHandler>(
-      new rpc::DefaultJobInfoHandler(gcs_table_storage_, gcs_pub_sub_));
+void GcsServer::InitGcsJobManager() {
+  gcs_job_manager_ =
+      std::unique_ptr<GcsJobManager>(new GcsJobManager(gcs_table_storage_, gcs_pub_sub_));
+  gcs_job_manager_->AddJobFinishedListener([this](std::shared_ptr<JobID> job_id) {
+    gcs_actor_manager_->OnJobFinished(*job_id);
+  });
 }
 
 std::unique_ptr<GcsObjectManager> GcsServer::InitObjectManager() {

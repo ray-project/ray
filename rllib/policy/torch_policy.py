@@ -1,6 +1,8 @@
+import functools
 import numpy as np
 import time
 
+from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
@@ -112,15 +114,17 @@ class TorchPolicy(Policy):
         with torch.no_grad():
             seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
             input_dict = self._lazy_tensor_dict({
-                SampleBatch.CUR_OBS: obs_batch,
+                SampleBatch.CUR_OBS: np.asarray(obs_batch),
                 "is_training": False,
             })
             if prev_action_batch is not None:
-                input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
+                input_dict[SampleBatch.PREV_ACTIONS] = \
+                    np.asarray(prev_action_batch)
             if prev_reward_batch is not None:
-                input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
+                input_dict[SampleBatch.PREV_REWARDS] = \
+                    np.asarray(prev_reward_batch)
             state_batches = [
-                self._convert_to_tensor(s) for s in (state_batches or [])
+                convert_to_torch_tensor(s) for s in (state_batches or [])
             ]
 
             if self.action_sampler_fn:
@@ -149,6 +153,13 @@ class TorchPolicy(Policy):
                     dist_class = self.dist_class
                     dist_inputs, state_out = self.model(
                         input_dict, state_batches, seq_lens)
+                if not (isinstance(dist_class, functools.partial)
+                        or issubclass(dist_class, TorchDistributionWrapper)):
+                    raise ValueError(
+                        "`dist_class` ({}) not a TorchDistributionWrapper "
+                        "subclass! Make sure your `action_distribution_fn` or "
+                        "`make_model_and_action_dist` return a correct "
+                        "distribution class.".format(dist_class.__name__))
                 action_dist = dist_class(dist_inputs, self.model)
 
                 # Get the exploration action from the forward results.
@@ -231,6 +242,9 @@ class TorchPolicy(Policy):
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
         loss_out = force_list(
             self._loss(self, self.model, self.dist_class, train_batch))
+        # Call Model's custom-loss with Policy loss outputs and train_batch.
+        if self.model:
+            loss_out = self.model.custom_loss(loss_out, train_batch)
         assert len(loss_out) == len(self._optimizers)
         # assert not any(torch.isnan(l) for l in loss_out)
 
@@ -399,16 +413,8 @@ class TorchPolicy(Policy):
 
     def _lazy_tensor_dict(self, postprocessed_batch):
         train_batch = UsageTrackingDict(postprocessed_batch)
-        train_batch.set_get_interceptor(self._convert_to_tensor)
+        train_batch.set_get_interceptor(convert_to_torch_tensor)
         return train_batch
-
-    def _convert_to_tensor(self, arr):
-        if torch.is_tensor(arr):
-            return arr.to(self.device)
-        tensor = torch.from_numpy(np.asarray(arr))
-        if tensor.dtype == torch.double:
-            tensor = tensor.float()
-        return tensor.to(self.device)
 
     @override(Policy)
     def export_model(self, export_dir):

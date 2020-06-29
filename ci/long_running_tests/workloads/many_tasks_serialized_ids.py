@@ -18,7 +18,7 @@ num_nodes = 10
 message = ("Make sure there is enough memory on this machine to run this "
            "workload. We divide the system memory by 2 to provide a buffer.")
 assert (num_nodes * object_store_memory + num_redis_shards * redis_max_memory <
-        ray.utils.get_system_memory() / 2)
+        ray.utils.get_system_memory() / 2), message
 
 # Simulate a cluster on one machine.
 
@@ -35,7 +35,7 @@ for i in range(num_nodes):
         resources={str(i): 2},
         object_store_memory=object_store_memory,
         redis_max_memory=redis_max_memory,
-        webui_host="0.0.0.0",
+        dashboard_host="0.0.0.0",
         _internal_config=config,
     )
 ray.init(address=cluster.address)

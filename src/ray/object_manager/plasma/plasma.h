@@ -15,8 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef PLASMA_PLASMA_H
-#define PLASMA_PLASMA_H
+#pragma once
 
 #include <errno.h>
 #include <inttypes.h>
@@ -32,12 +31,13 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ray/common/status.h"
 #include "ray/object_manager/plasma/compat.h"
 
-#include "arrow/status.h"
-#include "arrow/util/logging.h"
-#include "arrow/util/macros.h"
+#include "ray/common/status.h"
+#include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/plasma/common.h"
+#include "ray/util/logging.h"
 
 #ifdef PLASMA_CUDA
 using arrow::cuda::CudaIpcMemHandle;
@@ -45,16 +45,15 @@ using arrow::cuda::CudaIpcMemHandle;
 
 namespace plasma {
 
-namespace flatbuf {
-struct ObjectInfoT;
-}  // namespace flatbuf
+using ray::Status;
+using ray::object_manager::protocol::ObjectInfoT;
 
 #define HANDLE_SIGPIPE(s, fd_)                                              \
   do {                                                                      \
     Status _s = (s);                                                        \
     if (!_s.ok()) {                                                         \
       if (errno == EPIPE || errno == EBADF || errno == ECONNRESET) {        \
-        ARROW_LOG(WARNING)                                                  \
+        RAY_LOG(WARNING)                                                  \
             << "Received SIGPIPE, BAD FILE DESCRIPTOR, or ECONNRESET when " \
                "sending a message to client on fd "                         \
             << fd_                                                          \
@@ -167,11 +166,12 @@ ObjectTableEntry* GetObjectTableEntry(PlasmaStoreInfo* store_info,
 /// \return The errno set.
 int WarnIfSigpipe(int status, int client_sock);
 
-std::unique_ptr<uint8_t[]> CreateObjectInfoBuffer(flatbuf::ObjectInfoT* object_info);
+std::unique_ptr<uint8_t[]> CreateObjectInfoBuffer(ObjectInfoT* object_info);
 
 std::unique_ptr<uint8_t[]> CreatePlasmaNotificationBuffer(
-    std::vector<flatbuf::ObjectInfoT>& object_info);
+    const std::vector<ObjectInfoT>& object_info);
+
+/// Globally accessible reference to plasma store configuration.
+extern const PlasmaStoreInfo* plasma_config;
 
 }  // namespace plasma
-
-#endif  // PLASMA_PLASMA_H

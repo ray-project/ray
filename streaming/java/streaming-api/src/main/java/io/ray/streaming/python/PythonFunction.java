@@ -100,6 +100,14 @@ public class PythonFunction implements Function {
     return functionInterface;
   }
 
+  public String toSimpleString() {
+    if (function != null) {
+      return "binary function";
+    } else {
+      return String.format("%s-%s.%s", functionInterface, moduleName, functionName);
+    }
+  }
+
   @Override
   public String toString() {
     StringJoiner stringJoiner = new StringJoiner(", ",

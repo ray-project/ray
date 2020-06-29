@@ -1,5 +1,4 @@
-#ifndef _STREAMING_QUEUE_MESSAGE_H_
-#define _STREAMING_QUEUE_MESSAGE_H_
+#pragma once
 
 #include "protobuf/streaming_queue.pb.h"
 #include "ray/common/buffer.h"
@@ -232,4 +231,3 @@ class TestCheckStatusRspMsg : public Message {
 
 }  // namespace streaming
 }  // namespace ray
-#endif

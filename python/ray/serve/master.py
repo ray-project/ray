@@ -1,5 +1,5 @@
 import asyncio
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 import os
 import random
 import time
@@ -13,7 +13,9 @@ from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.metric.exporter import MetricExporterActor
 from ray.serve.router import Router
-from ray.serve.utils import (format_actor_name, get_random_letters, logger)
+from ray.serve.exceptions import RayServeException
+from ray.serve.utils import (format_actor_name, get_random_letters, logger,
+                             try_schedule_resources_on_nodes)
 
 import numpy as np
 
@@ -21,6 +23,43 @@ import numpy as np
 # after writing each checkpoint with the specified probability.
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.0
 CHECKPOINT_KEY = "serve-master-checkpoint"
+
+# Feature flag for master actor resource checking. If true, master actor will
+# error if the desired replicas exceed current resource availability.
+_RESOURCE_CHECK_ENABLED = True
+
+
+class TrafficPolicy:
+    def __init__(self, traffic_dict):
+        self.traffic_dict = dict()
+        self.shadow_dict = dict()
+        self.set_traffic_dict(traffic_dict)
+
+    def set_traffic_dict(self, traffic_dict):
+        prob = 0
+        for backend, weight in traffic_dict.items():
+            if weight < 0:
+                raise ValueError(
+                    "Attempted to assign a weight of {} to backend '{}'. "
+                    "Weights cannot be negative.".format(weight, backend))
+            prob += weight
+
+        # These weights will later be plugged into np.random.choice, which
+        # uses a tolerance of 1e-8.
+        if not np.isclose(prob, 1, atol=1e-8):
+            raise ValueError("Traffic dictionary weights must sum to 1, "
+                             "currently they sum to {}".format(prob))
+        self.traffic_dict = traffic_dict
+
+    def set_shadow(self, backend, proportion):
+        if proportion == 0 and backend in self.shadow_dict:
+            del self.shadow_dict[backend]
+        else:
+            self.shadow_dict[backend] = proportion
+
+
+BackendInfo = namedtuple("BackendInfo",
+                         ["worker_class", "backend_config", "replica_config"])
 
 
 @ray.remote
@@ -55,11 +94,11 @@ class ServeMaster:
         # namespace child actors and checkpoints.
         self.instance_name = instance_name
         # Used to read/write checkpoints.
-        self.kv_store = RayInternalKVStore()
+        self.kv_store = RayInternalKVStore(namespace=instance_name)
         # path -> (endpoint, methods).
-        self.routes = {}
-        # backend -> (backend_worker, backend_config, replica_config).
-        self.backends = {}
+        self.routes = dict()
+        # backend -> BackendInfo.
+        self.backends = dict()
         # backend -> replica_tags.
         self.replicas = defaultdict(list)
         # replicas that should be started if recovering from a checkpoint.
@@ -72,7 +111,7 @@ class ServeMaster:
         # endpoints that should be removed from the router if recovering from a
         # checkpoint.
         self.endpoints_to_remove = list()
-        # endpoint -> traffic_dict
+        # endpoint -> TrafficPolicy
         self.traffic_policies = dict()
         # Dictionary of backend tag to dictionaries of replica tag to worker.
         # TODO(edoakes): consider removing this and just using the names.
@@ -106,10 +145,7 @@ class ServeMaster:
         # a checkpoint to the event loop. Other state-changing calls acquire
         # this lock and will be blocked until recovering from the checkpoint
         # finishes.
-        checkpoint_key = CHECKPOINT_KEY
-        if self.instance_name is not None:
-            checkpoint_key = "{}:{}".format(self.instance_name, checkpoint_key)
-        checkpoint = self.kv_store.get(checkpoint_key)
+        checkpoint = self.kv_store.get(CHECKPOINT_KEY)
         if checkpoint is None:
             logger.debug("No checkpoint found")
         else:
@@ -255,9 +291,9 @@ class ServeMaster:
                 await self.router.add_new_worker.remote(
                     backend_tag, replica_tag, worker)
 
-        for backend, (_, backend_config, _) in self.backends.items():
+        for backend, info in self.backends.items():
             await self.router.set_backend_config.remote(
-                backend, backend_config)
+                backend, info.backend_config)
             await self.broadcast_backend_config(backend)
 
         # Push configuration state to the HTTP proxy.
@@ -279,8 +315,8 @@ class ServeMaster:
     def get_backend_configs(self):
         """Fetched by the router on startup."""
         backend_configs = {}
-        for backend, (_, backend_config, _) in self.backends.items():
-            backend_configs[backend] = backend_config
+        for backend, info in self.backends.items():
+            backend_configs[backend] = info.backend_config
         return backend_configs
 
     def get_traffic_policies(self):
@@ -303,19 +339,18 @@ class ServeMaster:
         """
         logger.debug("Starting worker '{}' for backend '{}'.".format(
             replica_tag, backend_tag))
-        (backend_worker, backend_config,
-         replica_config) = self.backends[backend_tag]
+        backend_info = self.backends[backend_tag]
 
         replica_name = format_actor_name(replica_tag, self.instance_name)
-        worker_handle = ray.remote(backend_worker).options(
+        worker_handle = ray.remote(backend_info.worker_class).options(
             name=replica_name,
             max_restarts=-1,
             max_task_retries=-1,
-            **replica_config.ray_actor_options).remote(
+            **backend_info.replica_config.ray_actor_options).remote(
                 backend_tag,
                 replica_tag,
-                replica_config.actor_init_args,
-                backend_config,
+                backend_info.replica_config.actor_init_args,
+                backend_info.backend_config,
                 instance_name=self.instance_name)
         # TODO(edoakes): we should probably have a timeout here.
         await worker_handle.ready.remote()
@@ -424,7 +459,25 @@ class ServeMaster:
         current_num_replicas = len(self.replicas[backend_tag])
         delta_num_replicas = num_replicas - current_num_replicas
 
+        backend_info = self.backends[backend_tag]
         if delta_num_replicas > 0:
+            can_schedule = try_schedule_resources_on_nodes(
+                requirements=[
+                    backend_info.replica_config.resource_dict
+                    for _ in range(delta_num_replicas)
+                ],
+                ray_nodes=ray.nodes())
+            if _RESOURCE_CHECK_ENABLED and not all(can_schedule):
+                num_possible = sum(can_schedule)
+                raise RayServeException(
+                    "Cannot scale backend {} to {} replicas. Ray Serve tried "
+                    "to add {} replicas but the resources only allows {} "
+                    "to be added. To fix this, consider scaling to replica to "
+                    "{} or add more resources to the cluster. You can check "
+                    "avaiable resources with ray.nodes().".format(
+                        backend_tag, num_replicas, delta_num_replicas,
+                        num_possible, current_num_replicas + num_possible))
+
             logger.debug("Adding {} replicas to backend {}".format(
                 delta_num_replicas, backend_tag))
             for _ in range(delta_num_replicas):
@@ -452,18 +505,27 @@ class ServeMaster:
     def get_all_backends(self):
         """Returns a dictionary of backend tag to backend config dict."""
         backends = {}
-        for backend_tag, (_, config, _) in self.backends.items():
-            backends[backend_tag] = config.__dict__
+        for backend_tag, backend_info in self.backends.items():
+            backends[backend_tag] = backend_info.backend_config.__dict__
         return backends
 
     def get_all_endpoints(self):
         """Returns a dictionary of endpoint to endpoint config."""
         endpoints = {}
         for route, (endpoint, methods) in self.routes.items():
+            if endpoint in self.traffic_policies:
+                traffic_policy = self.traffic_policies[endpoint]
+                traffic_dict = traffic_policy.traffic_dict
+                shadow_dict = traffic_policy.shadow_dict
+            else:
+                traffic_dict = {}
+                shadow_dict = {}
+
             endpoints[endpoint] = {
                 "route": route if route.startswith("/") else None,
                 "methods": methods,
-                "traffic": self.traffic_policies.get(endpoint, {})
+                "traffic": traffic_dict,
+                "shadows": shadow_dict,
             }
         return endpoints
 
@@ -473,37 +535,50 @@ class ServeMaster:
                              " that is not registered.".format(endpoint_name))
 
         assert isinstance(traffic_dict,
-                          dict), "Traffic policy must be dictionary"
-        prob = 0
-        for backend, weight in traffic_dict.items():
-            if weight < 0:
-                raise ValueError(
-                    "Attempted to assign a weight of {} to backend '{}'. "
-                    "Weights cannot be negative.".format(weight, backend))
-            prob += weight
+                          dict), "Traffic policy must be a dictionary."
+
+        for backend in traffic_dict:
             if backend not in self.backends:
                 raise ValueError(
                     "Attempted to assign traffic to a backend '{}' that "
                     "is not registered.".format(backend))
 
-        # These weights will later be plugged into np.random.choice, which
-        # uses a tolerance of 1e-8.
-        assert np.isclose(
-            prob, 1, atol=1e-8
-        ), "weights must sum to 1, currently they sum to {}".format(prob)
-
-        self.traffic_policies[endpoint_name] = traffic_dict
+        traffic_policy = TrafficPolicy(traffic_dict)
+        self.traffic_policies[endpoint_name] = traffic_policy
 
         # NOTE(edoakes): we must write a checkpoint before pushing the
         # update to avoid inconsistent state if we crash after pushing the
         # update.
         self._checkpoint()
-        await self.router.set_traffic.remote(endpoint_name, traffic_dict)
+        await self.router.set_traffic.remote(endpoint_name, traffic_policy)
 
     async def set_traffic(self, endpoint_name, traffic_dict):
         """Sets the traffic policy for the specified endpoint."""
         async with self.write_lock:
             await self._set_traffic(endpoint_name, traffic_dict)
+
+    async def shadow_traffic(self, endpoint_name, backend_tag, proportion):
+        """Shadow traffic from the endpoint to the backend."""
+        async with self.write_lock:
+            if endpoint_name not in self.get_all_endpoints():
+                raise ValueError("Attempted to shadow traffic from an "
+                                 "endpoint '{}' that is not registered."
+                                 .format(endpoint_name))
+
+            if backend_tag not in self.backends:
+                raise ValueError(
+                    "Attempted to shadow traffic to a backend '{}' that "
+                    "is not registered.".format(backend_tag))
+
+            self.traffic_policies[endpoint_name].set_shadow(
+                backend_tag, proportion)
+
+            # NOTE(edoakes): we must write a checkpoint before pushing the
+            # update to avoid inconsistent state if we crash after pushing the
+            # update.
+            self._checkpoint()
+            await self.router.set_traffic.remote(
+                endpoint_name, self.traffic_policies[endpoint_name])
 
     async def create_endpoint(self, endpoint, traffic_dict, route, methods):
         """Create a new endpoint with the specified route and methods.
@@ -589,8 +664,8 @@ class ServeMaster:
 
             # Save creator that starts replicas, the arguments to be passed in,
             # and the configuration for the backends.
-            self.backends[backend_tag] = (backend_worker, backend_config,
-                                          replica_config)
+            self.backends[backend_tag] = BackendInfo(
+                backend_worker, backend_config, replica_config)
 
             self._scale_replicas(backend_tag, backend_config.num_replicas)
 
@@ -614,8 +689,9 @@ class ServeMaster:
                 return
 
             # Check that the specified backend isn't used by any endpoints.
-            for endpoint, traffic_dict in self.traffic_policies.items():
-                if backend_tag in traffic_dict:
+            for endpoint, traffic_policy in self.traffic_policies.items():
+                if (backend_tag in traffic_policy.traffic_dict
+                        or backend_tag in traffic_policy.shadow_dict):
                     raise ValueError("Backend '{}' is used by endpoint '{}' "
                                      "and cannot be deleted. Please remove "
                                      "the backend from all endpoints and try "
@@ -644,12 +720,9 @@ class ServeMaster:
             assert (backend_tag in self.backends
                     ), "Backend {} is not registered.".format(backend_tag)
             assert isinstance(config_options, dict)
-            backend_worker, backend_config, replica_config = self.backends[
-                backend_tag]
 
-            backend_config.update(config_options)
-            self.backends[backend_tag] = (backend_worker, backend_config,
-                                          replica_config)
+            self.backends[backend_tag].backend_config.update(config_options)
+            backend_config = self.backends[backend_tag].backend_config
 
             # Scale the replicas with the new configuration.
             self._scale_replicas(backend_tag, backend_config.num_replicas)
@@ -670,7 +743,7 @@ class ServeMaster:
             await self.broadcast_backend_config(backend_tag)
 
     async def broadcast_backend_config(self, backend_tag):
-        _, backend_config, _ = self.backends[backend_tag]
+        backend_config = self.backends[backend_tag].backend_config
         broadcast_futures = []
         for replica_tag in self.replicas[backend_tag]:
             try:
@@ -687,4 +760,15 @@ class ServeMaster:
         """Get the current config for the specified backend."""
         assert (backend_tag in self.backends
                 ), "Backend {} is not registered.".format(backend_tag)
-        return self.backends[backend_tag][2]
+        return self.backends[backend_tag].backend_config
+
+    async def shutdown(self):
+        """Shuts down the serve instance completely."""
+        async with self.write_lock:
+            ray.kill(self.http_proxy, no_restart=True)
+            ray.kill(self.router, no_restart=True)
+            ray.kill(self.metric_exporter, no_restart=True)
+            for replica_dict in self.workers.values():
+                for replica in replica_dict.values():
+                    ray.kill(replica, no_restart=True)
+            self.kv_store.delete(CHECKPOINT_KEY)
