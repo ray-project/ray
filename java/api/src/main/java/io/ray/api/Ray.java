@@ -153,12 +153,12 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Get a handle to a named actor.
+   * Get a handle to a global named actor.
    * <p>
-   * Gets a handle to a named actor with the given name. The actor must
-   * have been created with name specified.
+   * Gets a handle to a global named actor with the given name. The actor must
+   * have been created with global name specified.
    *
-   * @param name The name of the named actor.
+   * @param name The global name of the named actor.
    * @return an ActorHandle to the actor if the actor of specified name exists or an
    * Optional.empty()
    */
