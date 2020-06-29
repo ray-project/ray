@@ -89,7 +89,7 @@ public class RayCallTest extends BaseTest {
     TestUtils.LargeObject largeObject = new TestUtils.LargeObject();
     Assert.assertNotNull(Ray.task(RayCallTest::testLargeObject, largeObject).remote().get());
     ByteBuffer buffer1 = ByteBuffer.wrap("foo".getBytes(StandardCharsets.UTF_8));
-    ByteBuffer buffer2 = Ray.call(RayCallTest::testByteBuffer, buffer1).get();
+    ByteBuffer buffer2 = Ray.task(RayCallTest::testByteBuffer, buffer1).remote().get();
     byte[] bytes = new byte[buffer2.remaining()];
     buffer2.get(bytes);
     Assert.assertEquals("foo", new String(bytes, StandardCharsets.UTF_8));

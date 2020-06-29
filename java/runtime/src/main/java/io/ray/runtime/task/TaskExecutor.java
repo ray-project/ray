@@ -162,7 +162,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
       LOGGER.error("Error executing task " + taskId, e);
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
         boolean hasReturn = rayFunction != null && rayFunction.hasReturn();
-        boolean isCrossLanguage = functionDescriptor.signature.equals("");
+        boolean isCrossLanguage = parseFunctionDescriptor(rayFunctionInfo).signature.equals("");
         if (hasReturn || isCrossLanguage) {
           returnObjects.add(ObjectSerializer
               .serialize(new RayTaskException("Error executing task " + taskId, e)));
