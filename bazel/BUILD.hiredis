@@ -6,6 +6,8 @@ COPTS = [] + select({
     ],
 })
 
+# This library is for internal hiredis use, because hiredis assumes a
+# different include prefix for itself than external libraries do.
 cc_library(
     name = "_hiredis",
     hdrs = [
