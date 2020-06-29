@@ -159,7 +159,7 @@ def test_many_fractional_resources(shutdown_only):
                 num_cpus=rand1,
                 num_gpus=rand2,
                 resources={"Custom": rand3}))
-    assert all(result_ids)
+    assert all(ray.get(result_ids))
 
     # Check that the available resources at the end are the same as the
     # beginning.

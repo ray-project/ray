@@ -922,8 +922,6 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
   }
 
   if (soft) {
-    // TODO (Alex): Don't merge this line
-    RAY_CHECK(false) << "Soft resources aren't actually implemented yet.";
     // Just get as many resources as available.
     for (size_t i = 0; i < available.size(); i++) {
       if (available[i] >= remaining_demand) {

@@ -764,7 +764,6 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
     new_resource_scheduler_->AddOrUpdateNode(
         client_id.Binary(), remote_total.GetResourceMap(),
         remote_resources.GetAvailableResources().GetResourceMap());
-    RAY_LOG(INFO) << "[HeartbeatAdded] Scheduling...";
     NewSchedulerSchedulePendingTasks();
     return;
   }
@@ -1246,7 +1245,6 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<Worker> &worker) {
 
   // Local resource availability changed: invoke scheduling policy for local node.
   if (new_scheduler_enabled_) {
-    RAY_LOG(INFO) << "[HandleWorkerAvailable] Scheduling...";
     NewSchedulerSchedulePendingTasks();
   } else {
     cluster_resource_map_[self_node_id_].SetLoadResources(
@@ -1371,7 +1369,6 @@ void NodeManager::ProcessDisconnectClientMessage(
 
     // Since some resources may have been released, we can try to dispatch more tasks. YYY
     if (new_scheduler_enabled_) {
-      RAY_LOG(INFO) << "[ProcessDisconnectClientMessage] Scheduling...";
       NewSchedulerSchedulePendingTasks();
     } else {
       DispatchTasks(local_queues_.GetReadyTasksByClass());
@@ -1609,15 +1606,9 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
 
     std::shared_ptr<TaskResourceInstances> allocated_instances(
         new TaskResourceInstances());
-    RAY_LOG(INFO) << "[DispatchScheduledTasksToWorkers] Allocating resources for "
-                  << spec.DebugString();
     bool schedulable = new_resource_scheduler_->AllocateLocalTaskResources(
         spec.GetRequiredResources().GetResourceMap(), allocated_instances);
     if (!schedulable) {
-      RAY_LOG(INFO) << "[DispatchScheduledTasksToWorkers] Failed to schedule, will try "
-                       "again later.";
-      // TODO (Alex) : Don't merge this line for now...
-      // RAY_CHECK(false) << "This should never happen...";
       // Not enough resources to schedule this task.
       // Put it back at the end of the dispatch queue.
       tasks_to_dispatch_.push_back(task);
@@ -1626,8 +1617,6 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
       continue;
     }
 
-    RAY_LOG(INFO) << "[DispatchScheduledTasksToWorkers] Success! new state: "
-                  << new_resource_scheduler_->DebugString();
     worker->SetOwnerAddress(spec.CallerAddress());
     if (spec.IsActorCreationTask()) {
       // The actor belongs to this worker now.
@@ -1647,10 +1636,6 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
 void NodeManager::NewSchedulerSchedulePendingTasks() {
   RAY_CHECK(new_scheduler_enabled_);
   size_t queue_size = tasks_to_schedule_.size();
-  RAY_LOG(INFO) << "[NewSchedulerSchedulePendingTasks] Queue size at start: "
-                << queue_size;
-  RAY_LOG(INFO) << "[NewSchedulerSchedulePendingTasks] Scheduler state: "
-                << new_resource_scheduler_->DebugString();
 
   // Check every task in task_to_schedule queue to see
   // whether it can be scheduled. This avoids head-of-line
@@ -1674,11 +1659,9 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
     } else {
       RAY_LOG(INFO) << "Scheduling task: " << task.DebugString();
       if (node_id_string == self_node_id_.Binary()) {
-        RAY_LOG(INFO) << "[NewSchedulerSchedulePendingTasks] Waiting for args...";
         WaitForTaskArgsRequests(work);
       } else {
         // Should spill over to a different node.
-        RAY_LOG(INFO) << "[NewSchedulerSchedulePendingTasks] Doing something?!?!";
         new_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
                                                              request_resources);
 
@@ -1692,9 +1675,7 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
       }
     }
   }
-  RAY_LOG(INFO) << "DONE scheduling, dispatching now.";
   DispatchScheduledTasksToWorkers();
-  RAY_LOG(INFO) << "DONE dispatching.";
 }
 
 void NodeManager::WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work) {
@@ -1725,8 +1706,6 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   Task task(task_message);
   bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
-
-  RAY_LOG(INFO) << "Worker lease request " << task.GetTaskSpecification().DebugString();
 
   if (is_actor_creation_task) {
     actor_id = task.GetTaskSpecification().ActorCreationId();
@@ -1806,7 +1785,6 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
         },
         task);
     tasks_to_schedule_.push_back(work);
-    RAY_LOG(INFO) << "[HandleRequestWorkerLease] Scheduling...";
     NewSchedulerSchedulePendingTasks();
     return;
   }
@@ -2306,7 +2284,6 @@ void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &wor
       worker->SetBorrowedCPUInstances(borrowed_cpu_instances);
       worker->MarkBlocked();
     }
-    RAY_LOG(INFO) << "[HandleDirectCallTaskBlocked] Scheduling...";
     NewSchedulerSchedulePendingTasks();
     return;
   }
@@ -2335,7 +2312,6 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
       new_resource_scheduler_->AddCPUResourceInstances(worker->GetBorrowedCPUInstances());
       worker->MarkUnblocked();
     }
-    RAY_LOG(INFO) << "[HandleDirectCallTaskUnblocked] Scheduling...";
     NewSchedulerSchedulePendingTasks();
     return;
   }
@@ -2972,7 +2948,6 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
         waiting_tasks_.erase(it);
       }
     }
-    RAY_LOG(INFO) << "[HandleObjectLocal] Scheduling...";
     NewSchedulerSchedulePendingTasks();
   } else {
     if (ready_task_ids.size() > 0) {
