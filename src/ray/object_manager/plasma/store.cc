@@ -318,9 +318,7 @@ void PlasmaStore::ProcessGetRequest(Client* client,
 }
 
 void PlasmaStore::SealObjects(const std::vector<ObjectID>& object_ids) {
-  std::vector<ObjectInfoT> infos;
-  object_directory->SealObjects(object_ids, &infos);
-  PushNotifications(infos);
+  object_directory->SealObjects(object_ids);
   for (size_t i = 0; i < object_ids.size(); ++i) {
     UpdateObjectGetRequests(object_ids[i]);
   }

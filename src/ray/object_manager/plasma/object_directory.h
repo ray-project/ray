@@ -358,9 +358,9 @@ class ObjectDirectory {
   ///
   /// \param object_ids The vector of Object IDs of the objects to be sealed.
   /// \param infos The summary info of sealed objects.
-  void SealObjects(const std::vector<ObjectID>& object_ids,
-                   std::vector<ObjectInfoT> *infos) {
-    infos->reserve(object_ids.size());
+  void SealObjects(const std::vector<ObjectID>& object_ids) {
+    std::vector<ObjectInfoT> infos;
+    infos.reserve(object_ids.size());
     RAY_LOG(DEBUG) << "sealing " << object_ids.size() << " objects";
     absl::MutexLock lock(&object_table_mutex_);
     for (size_t i = 0; i < object_ids.size(); ++i) {
@@ -376,8 +376,9 @@ class ObjectDirectory {
       object_info.object_id = object_ids[i].Binary();
       object_info.data_size = entry->data_size;
       object_info.metadata_size = entry->metadata_size;
-      infos->push_back(object_info);
+      infos.push_back(object_info);
     }
+    notifications_callback_(infos);
   }
 
   /// Evict objects returned by the eviction policy.

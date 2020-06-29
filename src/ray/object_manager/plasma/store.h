@@ -77,12 +77,6 @@ class PlasmaStore {
   void ProcessGetRequest(Client* client, const std::vector<ObjectID>& object_ids,
                          int64_t timeout_ms);
 
-  /// Seal a vector of objects. The objects are now immutable and can be accessed with
-  /// get.
-  ///
-  /// \param object_ids The vector of Object IDs of the objects to be sealed.
-  void SealObjects(const std::vector<ObjectID>& object_ids);
-
   /// Subscribe a file descriptor to updates about new sealed objects.
   ///
   /// \param client The client making this request.
@@ -123,6 +117,12 @@ class PlasmaStore {
   void PushNotifications(const std::vector<ObjectInfoT>& object_notifications);
 
  private:
+  /// Seal a vector of objects. The objects are now immutable and can be accessed with
+  /// get.
+  ///
+  /// \param object_ids The vector of Object IDs of the objects to be sealed.
+  void SealObjects(const std::vector<ObjectID>& object_ids);
+
   void PushNotifications(const std::vector<ObjectInfoT>& object_notifications, int client_fd);
 
   /// Remove a GetRequest and clean up the relevant data structures.
