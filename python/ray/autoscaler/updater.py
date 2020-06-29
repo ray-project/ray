@@ -255,8 +255,10 @@ class SSHCommandRunner:
             **kwargs):
         ssh_options = ssh_options or self.base_ssh_options
 
-        assert isinstance(ssh_options,
-                          SSHOptions), "ssh_options must be of type SSHOptions"
+        assert isinstance(
+            ssh_options, SSHOptions
+        ), "ssh_options must be of type SSHOptions, got {}".format(
+            type(ssh_options))
 
         self.set_ssh_ip_if_required()
 
