@@ -333,17 +333,6 @@ class ObjectDirectory {
     return Status::OK();
   }
 
-  /// Forcefully delete an object in the store.
-  ///
-  /// \param object_id Object ID of the object to be deleted.
-  /// \param evict_only Only free the memory of the object.
-  void EraseObject(const ObjectID& object_id) {
-    absl::MutexLock lock(&object_table_mutex_);
-    auto entry_node = object_table_.extract(object_id);
-    auto& entry = entry_node.mapped();
-    entry->FreeObject();
-  }
-
   /// Seal a vector of objects. The objects are now immutable and can be accessed with
   /// get.
   ///
@@ -433,30 +422,28 @@ class ObjectDirectory {
   ///  - PlasmaError::ObjectNonexistent, if ths object isn't existed.
   ///  - PlasmaError::ObjectInUse, if the object is in use.
   PlasmaError DeleteObject(const ObjectID& object_id) {
-    {
-      absl::MutexLock lock(&object_table_mutex_);
-      auto it = object_table_.find(object_id);
-      // TODO(rkn): This should probably not fail, but should instead throw an
-      // error. Maybe we should also support deleting objects that have been
-      // created but not sealed.
-      if (it == object_table_.end()) {
-        // To delete an object it must be in the object table.
-        return PlasmaError::ObjectNonexistent;
-      }
-      auto& entry = it->second;
-      if (entry->state != ObjectState::PLASMA_SEALED) {
-        // To delete an object it must have been sealed.
-        // Put it into deletion cache, it will be deleted later.
-        deletion_cache_.emplace(object_id);
-        return PlasmaError::ObjectNotSealed;
-      }
+    absl::MutexLock lock(&object_table_mutex_);
+    auto it = object_table_.find(object_id);
+    // TODO(rkn): This should probably not fail, but should instead throw an
+    // error. Maybe we should also support deleting objects that have been
+    // created but not sealed.
+    if (it == object_table_.end()) {
+      // To delete an object it must be in the object table.
+      return PlasmaError::ObjectNonexistent;
+    }
+    auto& entry = it->second;
+    if (entry->state != ObjectState::PLASMA_SEALED) {
+      // To delete an object it must have been sealed.
+      // Put it into deletion cache, it will be deleted later.
+      deletion_cache_.emplace(object_id);
+      return PlasmaError::ObjectNotSealed;
+    }
 
-      if (entry->ref_count != 0) {
-        // To delete an object, there must be no clients currently using it.
-        // Put it into deletion cache, it will be deleted later.
-        deletion_cache_.emplace(object_id);
-        return PlasmaError::ObjectInUse;
-      }
+    if (entry->ref_count != 0) {
+      // To delete an object, there must be no clients currently using it.
+      // Put it into deletion cache, it will be deleted later.
+      deletion_cache_.emplace(object_id);
+      return PlasmaError::ObjectInUse;
     }
     eviction_policy_.RemoveObject(object_id);
     EraseObject(object_id);
@@ -474,6 +461,63 @@ class ObjectDirectory {
     RAY_CHECK(entry != nullptr);
     // Remove the client from the object's array of clients.
     RAY_CHECK(RemoveFromClientObjectIds(object_id, entry, client, external_store, notifications_callback) == 1);
+  }
+
+  /// Abort a created but unsealed object. If the client is not the
+  /// creator, then the abort will fail.
+  ///
+  /// \param object_id Object ID of the object to be aborted.
+  /// \param client The client who created the object. If this does not
+  ///   match the creator of the object, then the abort will fail.
+  /// \return 1 if the abort succeeds, else 0.
+  int AbortObject(const ObjectID& object_id, Client* client) {
+    auto it = object_table_.find(object_id);
+    // TODO(rkn): This should probably not fail, but should instead throw an
+    // error. Maybe we should also support deleting objects that have been
+    // created but not sealed.
+    RAY_CHECK(it != object_table_.end()) << "To abort an object it must be in the object table.";
+    auto& entry = it->second;
+    RAY_CHECK(entry->state == ObjectState::PLASMA_SEALED)
+        << "To abort an object it must have been sealed.";
+    auto it = client->object_ids.find(object_id);
+    if (it == client->object_ids.end()) {
+      // If the client requesting the abort is not the creator, do not
+      // perform the abort.
+      return 0;
+    } else {
+      // The client requesting the abort is the creator. Free the object.
+      EraseObject(object_id);
+      client->object_ids.erase(it);
+      return 1;
+    }
+  }
+
+  void DisconnectClient(Client* client,
+                        const std::shared_ptr<ExternalStore> &external_store,
+                        const std::function<void(const std::vector<ObjectInfoT>&)> &notifications_callback) {
+    absl::MutexLock lock(&object_table_mutex_);
+    eviction_policy_.ClientDisconnected(client);
+    absl::flat_hash_map<ObjectID, ObjectTableEntry*> sealed_objects;
+    for (const auto& object_id : client->object_ids) {
+      auto it = object_table_.find(object_id);
+      if (it == object_table_.end()) {
+        continue;
+      }
+
+      if (it->second->state == ObjectState::PLASMA_SEALED) {
+        // Add sealed objects to a temporary list of object IDs. Do not perform
+        // the remove here, since it potentially modifies the object_ids table.
+        sealed_objects[it->first] = it->second.get();
+      } else {
+        // Abort unsealed object.
+        // Don't call AbortObject() because client->object_ids would be modified.
+        EraseObject(object_id);
+      }
+    }
+
+    for (const auto& entry : sealed_objects) {
+      RemoveFromClientObjectIds(entry.first, entry.second, client, external_store, notifications_callback);
+    }
   }
 
   std::shared_ptr<arrow::MutableBuffer> GetArrowBuffer(const ObjectID& object_id) {
@@ -580,6 +624,16 @@ class ObjectDirectory {
       // Return 0 to indicate that the client was not removed.
       return 0;
     }
+  }
+
+  /// Forcefully delete an object in the store.
+  ///
+  /// \param object_id Object ID of the object to be deleted.
+  /// \param evict_only Only free the memory of the object.
+  void EraseObject(const ObjectID& object_id) {
+    auto entry_node = object_table_.extract(object_id);
+    auto& entry = entry_node.mapped();
+    entry->FreeObject();
   }
 
   /// Allocate memory

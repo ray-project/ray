@@ -342,7 +342,7 @@ void PlasmaStore::ProcessGetRequest(Client* client,
 void PlasmaStore::ReleaseObject(const ObjectID& object_id, Client* client) {
   object_directory->ReleaseObject(object_id, client, external_store_, [this] (const std::vector<ObjectInfoT> infos) {
     PushNotifications(infos);
-  })
+  });
 }
 
 void PlasmaStore::SealObjects(const std::vector<ObjectID>& object_ids) {
@@ -355,22 +355,7 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID>& object_ids) {
 }
 
 int PlasmaStore::AbortObject(const ObjectID& object_id, Client* client) {
-  ObjectState state = object_directory->GetObjectState(object_id);
-  RAY_CHECK(state != ObjectState::OBJECT_NOT_FOUND)
-      << "To abort an object it must be in the object table.";
-  RAY_CHECK(state != ObjectState::PLASMA_SEALED)
-      << "To abort an object it must not have been sealed.";
-  auto it = client->object_ids.find(object_id);
-  if (it == client->object_ids.end()) {
-    // If the client requesting the abort is not the creator, do not
-    // perform the abort.
-    return 0;
-  } else {
-    // The client requesting the abort is the creator. Free the object.
-    object_directory->EraseObject(object_id);
-    client->object_ids.erase(it);
-    return 1;
-  }
+  return object_directory->AbortObject(object_id, client);
 }
 
 PlasmaError PlasmaStore::DeleteObject(ObjectID& object_id) {
@@ -419,31 +404,12 @@ void PlasmaStore::DisconnectClient(int client_fd) {
   RAY_LOG(DEBUG) << "Disconnecting client on fd " << client_fd;
   // Release all the objects that the client was using.
   auto client = it->second.get();
-  eviction_policy_.ClientDisconnected(client);
-  std::unordered_map<ObjectID, ObjectTableEntry*> sealed_objects;
-  for (const auto& object_id : client->object_ids) {
-    auto it = store_info_.objects.find(object_id);
-    if (it == store_info_.objects.end()) {
-      continue;
-    }
-
-    if (it->second->state == ObjectState::PLASMA_SEALED) {
-      // Add sealed objects to a temporary list of object IDs. Do not perform
-      // the remove here, since it potentially modifies the object_ids table.
-      sealed_objects[it->first] = it->second.get();
-    } else {
-      // Abort unsealed object.
-      // Don't call AbortObject() because client->object_ids would be modified.
-      object_directory->EraseObject(object_id);
-    }
-  }
+  object_directory->DisconnectClient(client, external_store_, [this](const std::vector<ObjectInfoT> infos) {
+    PushNotifications(infos);
+  });
 
   /// Remove all of the client's GetRequests.
   RemoveGetRequestsForClient(client);
-
-  for (const auto& entry : sealed_objects) {
-    RemoveFromClientObjectIds(entry.first, entry.second, client);
-  }
 
   if (client->notification_fd > 0) {
     // This client has subscribed for notifications.
