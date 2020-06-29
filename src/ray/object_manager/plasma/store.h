@@ -177,9 +177,10 @@ class PlasmaStore {
     }
   }
 
- private:
+  /// Push notifications to listeners.
   void PushNotifications(const std::vector<ObjectInfoT>& object_notifications);
 
+ private:
   void PushNotifications(const std::vector<ObjectInfoT>& object_notifications, int client_fd);
 
   /// Remove a GetRequest and clean up the relevant data structures.

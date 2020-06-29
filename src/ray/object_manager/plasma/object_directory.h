@@ -178,9 +178,11 @@ void PlasmaObject_init(PlasmaObject* object, ObjectTableEntry* entry) {
 
 class ObjectDirectory {
  public:
-  ObjectDirectory(const std::shared_ptr<ExternalStore> &external_store) :
+  ObjectDirectory(const std::shared_ptr<ExternalStore> &external_store,
+                  const std::function<void(const std::vector<ObjectInfoT>&)> &notifications_callback) :
     eviction_policy_(this, PlasmaAllocator::GetFootprintLimit()),
-    external_store_(external_store) {}
+    external_store_(external_store),
+    notifications_callback_(notifications_callback) {}
 
   /// Get the size of the object.
   ///
@@ -260,8 +262,7 @@ class ObjectDirectory {
   ///  - PlasmaError::OutOfMemory, if the store is out of memory and
   ///    cannot create the object. In this case, the client should not call
   ///    plasma_release.
-  Status RecreateObject(const ObjectID& object_id, bool evict_if_full, Client* client,
-                        const std::function<void(const std::vector<ObjectInfoT>&)> &notifications_callback) {
+  Status RecreateObject(const ObjectID& object_id, bool evict_if_full, Client* client) {
     absl::MutexLock lock(&object_table_mutex_);
     auto it = object_table_.find(object_id);
     // TODO(rkn): This should probably not fail, but should instead throw an
@@ -275,7 +276,7 @@ class ObjectDirectory {
     auto& entry = it->second;
     auto ptr = std::unique_ptr<ObjectTableEntry>(new ObjectTableEntry());
     Status s = AllocateMemory(object_id, entry.get(), entry->ObjectSize(), evict_if_full, client, /*is_create=*/false,
-                              entry->device_num, notifications_callback);
+                              entry->device_num);
     if (!s.ok()) {
       return Status::OutOfMemory("Cannot allocate the object.");
     }
@@ -336,8 +337,7 @@ class ObjectDirectory {
   Status CreateObject(const ObjectID& object_id, bool evict_if_full,
                       int64_t data_size, int64_t metadata_size,
                       int device_num, Client* client,
-                      PlasmaObject* result,
-                      const std::function<void(const std::vector<ObjectInfoT>&)> &notifications_callback) {
+                      PlasmaObject* result) {
     absl::MutexLock lock(&object_table_mutex_);
     if (object_table_.count(object_id) > 0) {
       // There is already an object with the same ID in the Plasma Store, so
@@ -349,7 +349,7 @@ class ObjectDirectory {
     RAY_CHECK(total_size > 0) << "Memory allocation size must be a positive number.";
     auto entry = std::unique_ptr<ObjectTableEntry>(new ObjectTableEntry());
     Status s = AllocateMemory(object_id, entry.get(), total_size, evict_if_full, client, /*is_create=*/true,
-                              device_num, notifications_callback);
+                              device_num);
     if (!s.ok()) {
       return Status::OutOfMemory("Cannot allocate the object.");
     }
@@ -389,8 +389,7 @@ class ObjectDirectory {
   /// Evict objects returned by the eviction policy.
   ///
   /// \param object_ids Object IDs of the objects to be evicted.
-  void EvictObjects(const std::vector<ObjectID>& object_ids,
-                    const std::function<void(const std::vector<ObjectInfoT>&)> &notifications_callback) {
+  void EvictObjects(const std::vector<ObjectID>& object_ids) {
     absl::MutexLock lock(&object_table_mutex_);
     if (object_ids.empty()) {
       return;
@@ -435,7 +434,7 @@ class ObjectDirectory {
         entry->FreeObject();
       }
     } else {
-      notifications_callback(infos);
+      notifications_callback_(infos);
     }
   }
 
@@ -479,12 +478,11 @@ class ObjectDirectory {
   ///
   /// \param object_id The object ID of the object that is being released.
   /// \param client The client making this request.
-  void ReleaseObject(const ObjectID& object_id, Client* client,
-                     const std::function<void(const std::vector<ObjectInfoT>&)> &notifications_callback) {
+  void ReleaseObject(const ObjectID& object_id, Client* client) {
     auto entry = GetObjectTableEntry(object_id);
     RAY_CHECK(entry != nullptr);
     // Remove the client from the object's array of clients.
-    RAY_CHECK(RemoveFromClientObjectIds(object_id, entry, client, notifications_callback) == 1);
+    RAY_CHECK(RemoveFromClientObjectIds(object_id, entry, client) == 1);
   }
 
   /// Abort a created but unsealed object. If the client is not the
@@ -516,8 +514,7 @@ class ObjectDirectory {
     }
   }
 
-  void DisconnectClient(Client* client,
-                        const std::function<void(const std::vector<ObjectInfoT>&)> &notifications_callback) {
+  void DisconnectClient(Client* client) {
     absl::MutexLock lock(&object_table_mutex_);
     eviction_policy_.ClientDisconnected(client);
     absl::flat_hash_map<ObjectID, ObjectTableEntry*> sealed_objects;
@@ -539,7 +536,7 @@ class ObjectDirectory {
     }
 
     for (const auto& entry : sealed_objects) {
-      RemoveFromClientObjectIds(entry.first, entry.second, client, notifications_callback);
+      RemoveFromClientObjectIds(entry.first, entry.second, client);
     }
   }
 
@@ -611,8 +608,7 @@ class ObjectDirectory {
   }
 
   int RemoveFromClientObjectIds(
-      const ObjectID& object_id, ObjectTableEntry* entry, Client* client,
-      const std::function<void(const std::vector<ObjectInfoT>&)> &notifications_callback) {
+      const ObjectID& object_id, ObjectTableEntry* entry, Client* client) {
     auto it = client->object_ids.find(object_id);
     if (it != client->object_ids.end()) {
       client->object_ids.erase(it);
@@ -629,7 +625,7 @@ class ObjectDirectory {
           // Above code does not really delete an object. Instead, it just put an
           // object to LRU cache which will be cleaned when the memory is not enough.
           deletion_cache_.erase(object_id);
-          EvictObjects({object_id}, notifications_callback);
+          EvictObjects({object_id});
         }
       }
       // Return 1 to indicate that the client was removed.
@@ -652,8 +648,7 @@ class ObjectDirectory {
 
   /// Allocate memory
   Status AllocateMemory(const ObjectID& object_id, ObjectTableEntry* entry, size_t size, bool evict_if_full,
-                        Client* client, bool is_create, int device_num,
-                        const std::function<void(const std::vector<ObjectInfoT>&)> &notifications_callback) {
+                        Client* client, bool is_create, int device_num) {
     // Make sure the object pointer is not already allocated
     RAY_CHECK(!entry->pointer);
     if (device_num != 0) {
@@ -668,7 +663,7 @@ class ObjectDirectory {
       if (!quota_ok) {
         return Status::OutOfMemory("Cannot assign enough quota to the client.");
       }
-      EvictObjects(client_objects_to_evict, notifications_callback);
+      EvictObjects(client_objects_to_evict);
     }
 
     // Try to evict objects until there is enough space.
@@ -687,7 +682,7 @@ class ObjectDirectory {
       // Tell the eviction policy how much space we need to create this object.
       std::vector<ObjectID> objects_to_evict;
       bool success = eviction_policy_.RequireSpace(size, &objects_to_evict);
-      EvictObjects(objects_to_evict, notifications_callback);
+      EvictObjects(objects_to_evict);
       // Return an error to the client if not enough space could be freed to
       // create the object.
       if (!success) {
@@ -712,6 +707,8 @@ class ObjectDirectory {
   /// Manages worker threads for handling asynchronous/multi-threaded requests
   /// for reading/writing data to/from external store.
   std::shared_ptr<ExternalStore> external_store_;
+  /// A callback function for notifications about objects creation and removal.
+  std::function<void(const std::vector<ObjectInfoT>&)> notifications_callback_;
 };
 
 extern std::unique_ptr<ObjectDirectory> object_directory;

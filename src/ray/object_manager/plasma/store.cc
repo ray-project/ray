@@ -127,10 +127,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID& object_id, bool evict_if_f
                                       PlasmaObject* result) {
   RAY_LOG(DEBUG) << "creating object " << object_id.Hex();
   Status status = object_directory->CreateObject(
-      object_id, evict_if_full, data_size, metadata_size, device_num, client, result,
-      [this](const std::vector<ObjectInfoT> &infos) {
-    PushNotifications(infos);
-  });
+      object_id, evict_if_full, data_size, metadata_size, device_num, client, result);
   if (status.ok()) {
     return PlasmaError::OK;
   } else if (status.IsObjectExists()) {
@@ -279,10 +276,7 @@ void PlasmaStore::ProcessGetRequest(Client* client,
       }
       case ObjectState::PLASMA_EVICTED: {
         // TODO(suquark): Should we update plasma object data here?
-        Status status = object_directory->RecreateObject(object_id, /*evict_inf_full=*/true, client,
-            [this](const std::vector<ObjectInfoT> &infos) {
-          PushNotifications(infos);
-        });
+        Status status = object_directory->RecreateObject(object_id, /*evict_inf_full=*/true, client);
         if (status.ok()) {
           evicted_ids.push_back(object_id);
         } else {
@@ -329,9 +323,7 @@ void PlasmaStore::ProcessGetRequest(Client* client,
 }
 
 void PlasmaStore::ReleaseObject(const ObjectID& object_id, Client* client) {
-  object_directory->ReleaseObject(object_id, client, [this] (const std::vector<ObjectInfoT> infos) {
-    PushNotifications(infos);
-  });
+  object_directory->ReleaseObject(object_id, client);
 }
 
 void PlasmaStore::SealObjects(const std::vector<ObjectID>& object_ids) {
@@ -361,9 +353,7 @@ PlasmaError PlasmaStore::DeleteObject(ObjectID& object_id) {
 }
 
 void PlasmaStore::EvictObjects(const std::vector<ObjectID>& object_ids) {
-  object_directory->EvictObjects(object_ids, [this](const std::vector<ObjectInfoT> infos) {
-    PushNotifications(infos);
-  });
+  object_directory->EvictObjects(object_ids);
 }
 
 void PlasmaStore::ConnectClient(int listener_sock) {
@@ -393,9 +383,7 @@ void PlasmaStore::DisconnectClient(int client_fd) {
   RAY_LOG(DEBUG) << "Disconnecting client on fd " << client_fd;
   // Release all the objects that the client was using.
   auto client = it->second.get();
-  object_directory->DisconnectClient(client, [this](const std::vector<ObjectInfoT> infos) {
-    PushNotifications(infos);
-  });
+  object_directory->DisconnectClient(client);
 
   /// Remove all of the client's GetRequests.
   RemoveGetRequestsForClient(client);
