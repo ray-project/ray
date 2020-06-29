@@ -81,7 +81,7 @@ public class GlobalStateAccessor {
   public byte[] getInternalConfig() {
     synchronized (GlobalStateAccessor.class) {
       Preconditions.checkState(globalStateAccessorNativePointer != 0,
-          "Get Internal Config when global state accessor have been destroyed.");
+          "Get internal config when global state accessor have been destroyed.");
       return nativeGetInternalConfig(globalStateAccessorNativePointer);
     }
   }

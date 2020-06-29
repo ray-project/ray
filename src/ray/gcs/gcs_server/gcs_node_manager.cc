@@ -286,7 +286,8 @@ void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &re
 void GcsNodeManager::HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
                                              rpc::SetInternalConfigReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {
-  auto on_done = [reply, send_reply_callback](const Status status) {
+  auto on_done = [reply, send_reply_callback, request](const Status status) {
+    RAY_LOG(DEBUG) << "Set internal config: " << request.config().DebugString();
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
   RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(UniqueID::Nil(),

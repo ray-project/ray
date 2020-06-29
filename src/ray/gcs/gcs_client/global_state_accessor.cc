@@ -165,9 +165,6 @@ std::string GlobalStateAccessor::GetInternalConfig() {
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetInternalConfig(on_done));
   promise.get_future().get();
 
-  // config_proto.mutable_config()->insert()
-  // config.auto x = config_proto.mutable_config();
-
   return config_proto.SerializeAsString();
 }
 
