@@ -15,8 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef PLASMA_STORE_H
-#define PLASMA_STORE_H
+#pragma once
 
 #include <deque>
 #include <memory>
@@ -138,10 +137,7 @@ class PlasmaStore {
   /// get.
   ///
   /// \param object_ids The vector of Object IDs of the objects to be sealed.
-  /// \param digests The vector of digests of the objects. This is used to tell if two
-  /// objects with the same object ID are the same.
-  void SealObjects(const std::vector<ObjectID>& object_ids,
-                   const std::vector<std::string>& digests);
+  void SealObjects(const std::vector<ObjectID>& object_ids);
 
   /// Check if the plasma store contains an object:
   ///
@@ -246,5 +242,3 @@ class PlasmaStore {
 };
 
 }  // namespace plasma
-
-#endif  // PLASMA_STORE_H

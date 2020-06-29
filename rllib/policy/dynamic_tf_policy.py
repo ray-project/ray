@@ -9,8 +9,9 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.utils import try_import_tf, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
 tf = try_import_tf()

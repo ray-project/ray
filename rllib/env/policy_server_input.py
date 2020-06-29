@@ -9,7 +9,7 @@ from socketserver import ThreadingMixIn
 import ray.cloudpickle as pickle
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.env.policy_client import PolicyClient, \
-    create_embedded_rollout_worker
+    _create_embedded_rollout_worker
 from ray.rllib.utils.annotations import override, PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -114,7 +114,7 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
         with lock:
             if child_rollout_worker is None:
                 (child_rollout_worker,
-                 inference_thread) = create_embedded_rollout_worker(
+                 inference_thread) = _create_embedded_rollout_worker(
                      rollout_worker.creation_args(), report_data)
                 child_rollout_worker.set_weights(rollout_worker.get_weights())
 

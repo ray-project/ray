@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RAYLET_TASK_DEPENDENCY_MANAGER_H
-#define RAY_RAYLET_TASK_DEPENDENCY_MANAGER_H
+#pragma once
 
 // clang-format off
 #include "ray/common/id.h"
@@ -268,5 +267,3 @@ class TaskDependencyManager {
 }  // namespace raylet
 
 }  // namespace ray
-
-#endif  // RAY_RAYLET_TASK_DEPENDENCY_MANAGER_H

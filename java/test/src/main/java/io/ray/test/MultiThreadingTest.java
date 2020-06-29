@@ -149,7 +149,7 @@ public class MultiThreadingTest extends BaseTest {
         Ray::getRuntimeContext,
         () -> Ray.task(MultiThreadingTest::echo, 1).remote(),
         () -> Ray.actor(Echo::new).remote(),
-        () -> fooActor.task(Echo::echo, 1),
+        () -> fooActor.task(Echo::echo, 1).remote(),
     };
   }
 

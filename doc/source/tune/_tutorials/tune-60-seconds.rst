@@ -35,7 +35,7 @@ Here's an example of specifying the objective function using :ref:`the function-
 
 Now, there's two Trainable APIs - one being the :ref:`function-based API <tune-function-api>` that we demonstrated above.
 
-The other is a :ref:`class-based API <tune-class-api>` that enables :ref:`checkpointing and pausing <tune-trainable-save-restore>`. Here's an example of specifying the objective function using the :ref:`class-based API <tune-class-api>`:
+The other is a :ref:`class-based API <tune-class-api>`. Here's an example of specifying the objective function using the :ref:`class-based API <tune-class-api>`:
 
 .. code-block:: python
 

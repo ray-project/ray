@@ -52,8 +52,8 @@ public class WorkerLifecycleController {
           .setMaxRestarts(-1)
           .remote();
     } else {
-      actor = Ray.actor(new PyActorClass(
-              "ray.streaming.runtime.worker", "JobWorker"))
+      actor = Ray.actor(
+          PyActorClass.of("ray.streaming.runtime.worker", "JobWorker"))
           .setResources(executionVertex.getResource())
           .setMaxRestarts(-1)
           .remote();

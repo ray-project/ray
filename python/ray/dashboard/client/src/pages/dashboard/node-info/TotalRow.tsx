@@ -12,6 +12,8 @@ import { NodeInfoResponse } from "../../../api";
 import { ClusterCPU } from "./features/CPU";
 import { ClusterDisk } from "./features/Disk";
 import { makeClusterErrors } from "./features/Errors";
+import { ClusterGPU } from "./features/GPU";
+import { ClusterGRAM } from "./features/GRAM";
 import { ClusterHost } from "./features/Host";
 import { makeClusterLogs } from "./features/Logs";
 import { ClusterRAM } from "./features/RAM";
@@ -72,6 +74,8 @@ class TotalRow extends React.Component<Props & WithStyles<typeof styles>> {
       { ClusterFeature: ClusterUptime },
       { ClusterFeature: ClusterCPU },
       { ClusterFeature: ClusterRAM },
+      { ClusterFeature: ClusterGPU },
+      { ClusterFeature: ClusterGRAM },
       { ClusterFeature: ClusterDisk },
       { ClusterFeature: ClusterSent },
       { ClusterFeature: ClusterReceived },

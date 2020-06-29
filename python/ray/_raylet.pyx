@@ -102,13 +102,14 @@ include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
 include "includes/ray_exception.pxi"
 
+# Expose GCC & Clang macro to report whether C++ optimizations were enabled during compilation.
+OPTIMIZED = __OPTIMIZE__
 
 logger = logging.getLogger(__name__)
 
 
 def gcs_actor_service_enabled():
     return (
-        RayConfig.instance().gcs_service_enabled() and
         RayConfig.instance().gcs_actor_service_enabled())
 
 

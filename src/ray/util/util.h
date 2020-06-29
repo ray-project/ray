@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_UTIL_UTIL_H
-#define RAY_UTIL_UTIL_H
+#pragma once
 
 #include <chrono>
 #include <iterator>
@@ -166,5 +165,3 @@ void FillRandom(T *data) {
     (*data)[i] = static_cast<uint8_t>(dist(generator));
   }
 }
-
-#endif  // RAY_UTIL_UTIL_H

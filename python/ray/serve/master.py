@@ -13,7 +13,9 @@ from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.metric.exporter import MetricExporterActor
 from ray.serve.router import Router
-from ray.serve.utils import (format_actor_name, get_random_letters, logger)
+from ray.serve.exceptions import RayServeException
+from ray.serve.utils import (format_actor_name, get_random_letters, logger,
+                             try_schedule_resources_on_nodes)
 
 import numpy as np
 
@@ -21,6 +23,10 @@ import numpy as np
 # after writing each checkpoint with the specified probability.
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.0
 CHECKPOINT_KEY = "serve-master-checkpoint"
+
+# Feature flag for master actor resource checking. If true, master actor will
+# error if the desired replicas exceed current resource availability.
+_RESOURCE_CHECK_ENABLED = True
 
 
 @ray.remote
@@ -424,7 +430,25 @@ class ServeMaster:
         current_num_replicas = len(self.replicas[backend_tag])
         delta_num_replicas = num_replicas - current_num_replicas
 
+        _, _, replica_config = self.backends[backend_tag]
         if delta_num_replicas > 0:
+            can_schedule = try_schedule_resources_on_nodes(
+                requirements=[
+                    replica_config.resource_dict
+                    for _ in range(delta_num_replicas)
+                ],
+                ray_nodes=ray.nodes())
+            if _RESOURCE_CHECK_ENABLED and not all(can_schedule):
+                num_possible = sum(can_schedule)
+                raise RayServeException(
+                    "Cannot scale backend {} to {} replicas. Ray Serve tried "
+                    "to add {} replicas but the resources only allows {} "
+                    "to be added. To fix this, consider scaling to replica to "
+                    "{} or add more resources to the cluster. You can check "
+                    "avaiable resources with ray.nodes().".format(
+                        backend_tag, num_replicas, delta_num_replicas,
+                        num_possible, current_num_replicas + num_possible))
+
             logger.debug("Adding {} replicas to backend {}".format(
                 delta_num_replicas, backend_tag))
             for _ in range(delta_num_replicas):

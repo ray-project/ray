@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_GCS_TABLE_STORAGE_H_
-#define RAY_GCS_GCS_TABLE_STORAGE_H_
+#pragma once
 
 #include <utility>
 
@@ -426,5 +425,3 @@ class InMemoryGcsTableStorage : public GcsTableStorage {
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif  // RAY_GCS_GCS_TABLE_STORAGE_H_
