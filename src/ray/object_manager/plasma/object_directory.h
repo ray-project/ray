@@ -152,6 +152,11 @@ struct ObjectTableEntry {
     create_time = std::time(nullptr);
     construct_duration = -1;
   }
+
+  std::shared_ptr<arrow::MutableBuffer> GetArrowBuffer() {
+    RAY_CHECK(pointer);
+    return std::make_shared<arrow::MutableBuffer>(pointer, data_size + metadata_size);
+  }
 };
 
 void PlasmaObject_init(PlasmaObject* object, ObjectTableEntry* entry) {
@@ -404,7 +409,7 @@ class ObjectDirectory {
       // entry in ObjectTable
       if (external_store) {
         evicted_objects_entries.push_back(entry.get());
-        evicted_object_data.emplace_back(object_directory->GetArrowBuffer(object_id));
+        evicted_object_data.emplace_back(entry->GetArrowBuffer());
       } else {
         // If there is no backing external store, just erase the object entry
         // and send a deletion notification.
@@ -483,9 +488,7 @@ class ObjectDirectory {
     auto it = object_table_.find(object_id);
     RAY_CHECK(it != object_table_.end());
     auto &entry = it->second;
-    RAY_CHECK(entry->pointer != nullptr);
-    return std::make_shared<arrow::MutableBuffer>(
-        entry->pointer, entry->data_size + entry->metadata_size);
+    return entry->GetArrowBuffer();
   }
 
   void MarkObjectAsReconstructed(const ObjectID& object_id, PlasmaObject* object) {
@@ -497,16 +500,6 @@ class ObjectDirectory {
     entry->state = ObjectState::PLASMA_SEALED;
     entry->construct_duration =  std::time(nullptr) - entry->create_time;
     PlasmaObject_init(object, entry.get());
-  }
-
-  void RegisterObjectToClient(const ObjectID& object_id, Client* client, bool is_create) {
-    absl::MutexLock lock(&object_table_mutex_);
-    // Notify the eviction policy that this object was created. This must be done
-    // immediately before the call to AddToClientObjectIds so that the
-    // eviction policy does not have an opportunity to evict the object.
-    eviction_policy_.ObjectCreated(object_id, client, is_create);
-    // Record that this client is using this object.
-    AddToClientObjectIds(object_id, object_table_[object_id].get(), client);
   }
 
   void RegisterSealedObjectToClient(const ObjectID& object_id, Client* client, PlasmaObject* object) {
@@ -542,6 +535,15 @@ class ObjectDirectory {
       return nullptr;
     }
     return it->second.get();
+  }
+
+  void RegisterObjectToClient(const ObjectID& object_id, Client* client, bool is_create) {
+    // Notify the eviction policy that this object was created. This must be done
+    // immediately before the call to AddToClientObjectIds so that the
+    // eviction policy does not have an opportunity to evict the object.
+    eviction_policy_.ObjectCreated(object_id, client, is_create);
+    // Record that this client is using this object.
+    AddToClientObjectIds(object_id, object_table_[object_id].get(), client);
   }
 
   // If this client is not already using the object, add the client to the

@@ -79,13 +79,13 @@ struct GetRequest {
   /// satisfied.
   int64_t num_satisfied_;
 
-  void SatisfyWithSealedObject(const ObjectId& object_id) {
+  void SatisfyWithSealedObject(const ObjectID& object_id) {
     object_directory->RegisterSealedObjectToClient(object_id, client, &objects[object_id]);
     num_satisfied_ += 1;
   }
 
-  void SatisfyWithReconstructedObject(const ObjectId& object_id) {
-    object_directory->MarkObjectAsReconstructed(object_id, &objects[evicted_id]);
+  void SatisfyWithReconstructedObject(const ObjectID& object_id) {
+    object_directory->MarkObjectAsReconstructed(object_id, &objects[object_id]);
     num_satisfied_ += 1;
   }
 
