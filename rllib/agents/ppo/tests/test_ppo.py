@@ -1,5 +1,7 @@
 import copy
+from gym.spaces import Discrete, Box
 import numpy as np
+import time
 import unittest
 
 import ray
@@ -72,6 +74,71 @@ class TestPPO(unittest.TestCase):
                         include_prev_action_reward=True,
                         include_state=lstm)
                     trainer.stop()
+
+    def test_ppo_trajectory_view_api(self):
+        """Test whether a PPOTrainer runs faster with `_fast_sampling` option.
+        """
+        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
+
+        from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+        from ray.tune import register_env
+        register_env("ma_cart", lambda c: MultiAgentCartPole(
+            {"num_agents": 2}))
+
+        config["num_workers"] = 0
+        config["num_envs_per_worker"] = 2
+        config["num_sgd_iter"] = 2
+        action_space = Discrete(2)
+        obs_space = Box(-5.0, 5.0, (4, ))
+        policies = {
+            "pol0": (None, obs_space, action_space, {}),
+        }
+
+        def policy_fn(agent_id):
+            return "pol0"
+
+        config["multiagent"] = {
+            "policies": policies,
+            "policy_mapping_fn": policy_fn,
+        }
+        num_iterations = 5
+        # Only works in torch so far.
+        for _ in framework_iterator(config, frameworks="torch"):
+            config["_use_trajectory_view_api"] = False
+            trainer = ppo.PPOTrainer(config=config, env="ma_cart")
+            start = time.time()
+            for i in range(num_iterations):
+                results = trainer.train()
+            duration_wo = time.time() - start
+            preprocessing_wo = results["sampler_perf"]["mean_processing_ms"]
+            inference_wo = results["sampler_perf"]["mean_inference_ms"]
+            print("w/o _fast_sampling: Duration: {}s mean-preprocessing={}ms "
+                  "mean-inference={}ms".format(duration_wo, preprocessing_wo,
+                                               inference_wo))
+            trainer.stop()
+
+            config["_use_trajectory_view_api"] = True
+            trainer = ppo.PPOTrainer(config=config, env="ma_cart")
+            start = time.time()
+            for i in range(num_iterations):
+                results = trainer.train()
+            duration_w = time.time() - start
+            preprocessing_w = results["sampler_perf"]["mean_processing_ms"]
+            inference_w = results["sampler_perf"]["mean_inference_ms"]
+            print("w/ traj.view API: Duration: {}s mean-preprocessing={}ms "
+                  "mean-inference={}ms".format(duration_w, preprocessing_w,
+                                               inference_w))
+            trainer.stop()
+
+            # Assert `_fasts_sampling` is faster across all affected metrics.
+            self.assertLess(duration_w, duration_wo)
+            self.assertLess(preprocessing_w, preprocessing_wo)
+            self.assertLess(inference_w, inference_wo)
+
+            # Check learning success.
+            print("w/ traj.view API: reward={}".format(
+                results["episode_reward_mean"]))
+            self.assertGreater(results["episode_reward_mean"], 80.0)
 
     def test_ppo_fake_multi_gpu_learning(self):
         """Test whether PPOTrainer can learn CartPole w/ faked multi-GPU."""

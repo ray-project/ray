@@ -10,6 +10,8 @@ from typing import Any, Callable, Dict, List, Iterable, Optional, Set, Tuple,\
 
 from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.fast_multi_agent_sample_batch_builder import \
+    _FastMultiAgentSampleBatchBuilder
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
@@ -439,8 +441,8 @@ def _env_runner(worker: "RolloutWorker",
             terminal condition, and other fields as dictated by `policy`.
     """
 
-    # Try to get Env's max_episode_steps prop. If it doesn't exist, catch
-    # error and continue.
+    # Try to get Env's `max_episode_steps` prop. If it doesn't exist, ignore
+    # error and continue with max_episode_steps=None.
     max_episode_steps = None
     try:
         max_episode_steps = base_env.get_unwrapped()[0].spec.max_episode_steps
@@ -474,6 +476,9 @@ def _env_runner(worker: "RolloutWorker",
     def get_batch_builder():
         if batch_builder_pool:
             return batch_builder_pool.pop()
+        elif _use_trajectory_view_api:
+            return _FastMultiAgentSampleBatchBuilder(
+                policies, clip_rewards, callbacks, buffer_size=horizon)
         else:
             return MultiAgentSampleBatchBuilder(policies, clip_rewards,
                                                 callbacks)
@@ -499,6 +504,9 @@ def _env_runner(worker: "RolloutWorker",
 
     active_episodes: Dict[str, MultiAgentEpisode] = defaultdict(new_episode)
 
+    eval_results = None
+    eval_idx_map = None
+
     while True:
         perf_stats.iters += 1
         t0 = time.time()
@@ -517,12 +525,14 @@ def _env_runner(worker: "RolloutWorker",
         t1 = time.time()
         # type: Set[EnvID], Dict[PolicyID, List[PolicyEvalData]],
         #       List[Union[RolloutMetrics, SampleBatchType]]
-        active_envs, to_eval, outputs = _process_observations(
+        active_envs, to_eval, outputs, eval_idx_map = _process_observations(
             worker=worker,
             base_env=base_env,
             policies=policies,
             batch_builder_pool=batch_builder_pool,
             active_episodes=active_episodes,
+            prev_policy_outputs=eval_results,
+            prev_eval_idx_map=eval_idx_map,
             unfiltered_obs=unfiltered_obs,
             rewards=rewards,
             dones=dones,
@@ -580,6 +590,10 @@ def _process_observations(
         policies: Dict[PolicyID, Policy],
         batch_builder_pool: List[MultiAgentSampleBatchBuilder],
         active_episodes: Dict[str, MultiAgentEpisode],
+        prev_policy_outputs: Dict[PolicyID, Tuple[TensorStructType, StateBatch,
+                                                  dict]],
+        prev_eval_idx_map: Dict[PolicyID, Dict[EnvID, Dict[AgentID, int]]],
+        unfiltered_obs: Dict[EnvID, Dict[AgentID, EnvObsType]],
         rewards: Dict[EnvID, Dict[AgentID, float]],
         dones: Dict[EnvID, Dict[AgentID, bool]],
         infos: Dict[EnvID, Dict[AgentID, EnvInfoDict]],
@@ -605,8 +619,14 @@ def _process_observations(
             SampleBatchBuilder object for recycling.
         active_episodes (Dict[str, MultiAgentEpisode]): Mapping from
             episode ID to currently ongoing MultiAgentEpisode object.
-        unfiltered_obs (dict): Doubly keyed dict of env-ids -> agent ids ->
-            unfiltered observation tensor, returned by a `BaseEnv.poll()` call.
+        prev_policy_outputs (Dict[str,List]): The prev policy output dict
+            (by policy-id -> List[action, state outs, extra fetches]).
+        prev_eval_idx_map (dict): Map allowing to retrieve the slot for an
+            action/extra-fetch from a `policy_output` given policy-id, env-id,
+            and agent-id.
+        unfiltered_obs (dict): Doubly keyed dict of env-ids -> agent ids
+            -> unfiltered observation tensor, returned by a `BaseEnv.poll()`
+            call.
         rewards (dict): Doubly keyed dict of env-ids -> agent ids ->
             rewards tensor, returned by a `BaseEnv.poll()` call.
         dones (dict): Doubly keyed dict of env-ids -> agent ids ->
@@ -649,7 +669,9 @@ def _process_observations(
 
     large_batch_threshold: int = max(1000, rollout_fragment_length * 10) if \
         rollout_fragment_length != float("inf") else 5000
+    eval_idx_map = defaultdict(partial(defaultdict, dict))
 
+    # For each environment.
     # type: EnvID, Dict[AgentID, EnvObsType]
     for env_id, agent_obs in unfiltered_obs.items():
         is_new_episode: bool = env_id not in active_episodes
@@ -727,12 +749,13 @@ def _process_observations(
 
             agent_done = bool(all_agents_done or dones[env_id].get(agent_id))
             if not agent_done:
-                to_eval[policy_id].append(
-                    PolicyEvalData(env_id, agent_id, filtered_obs,
-                                   infos[env_id].get(agent_id, {}),
-                                   episode.rnn_state_for(agent_id),
-                                   episode.last_action_for(agent_id),
-                                   rewards[env_id][agent_id] or 0.0))
+                if not _use_trajectory_view_api:
+                    item = PolicyEvalData(env_id, agent_id, filtered_obs,
+                                          infos[env_id].get(agent_id, {}),
+                                          episode.rnn_state_for(agent_id),
+                                          episode.last_action_for(agent_id),
+                                          rewards[env_id][agent_id] or 0.0)
+                    to_eval[policy_id].append(item)
 
             last_observation: EnvObsType = episode.last_observation_for(
                 agent_id)
@@ -741,8 +764,9 @@ def _process_observations(
             episode._set_last_info(agent_id, infos[env_id].get(agent_id, {}))
 
             # Record transition info if applicable.
-            if (last_observation is not None and infos[env_id].get(
-                    agent_id, {}).get("training_enabled", True)):
+            if (not _use_trajectory_view_api and last_observation is not None
+                    and infos[env_id].get(
+                        agent_id, {}).get("training_enabled", True)):
                 episode.batch_builder.add_values(
                     agent_id,
                     policy_id,
@@ -760,6 +784,41 @@ def _process_observations(
                     infos=infos[env_id].get(agent_id, {}),
                     new_obs=filtered_obs,
                     **episode.last_pi_info_for(agent_id))
+            elif _use_trajectory_view_api:
+                if last_observation is None:
+                    episode.batch_builder.add_init_obs(env_id, agent_id,
+                                                       policy_id, filtered_obs)
+                else:
+                    eval_idx = prev_eval_idx_map[policy_id][env_id][agent_id]
+                    episode.batch_builder.add_action_reward_next_obs(
+                        env_id,
+                        agent_id,
+                        policy_id,
+                        t=episode.length - 1,
+                        eps_id=episode.episode_id,
+                        agent_index=episode._agent_index(agent_id),
+                        # Action taken at timestep t.
+                        actions=prev_policy_outputs[policy_id][0][eval_idx],
+                        # Reward received after taking a at timestep t.
+                        rewards=rewards[env_id][agent_id],
+                        # After taking a, did we reach terminal?
+                        dones=(False if (no_done_at_end
+                                         or (hit_horizon and soft_horizon))
+                               else agent_done),
+                        # Next observation.
+                        new_obs=filtered_obs,
+                        # TODO: (sven) add env infos to buffers as well.
+                        **{
+                            k: v[eval_idx]
+                            for k, v in prev_policy_outputs[policy_id][2]
+                            .items()
+                        })
+                if not agent_done:
+                    eval_idx_map[policy_id][env_id][agent_id] = len(
+                        to_eval[policy_id])
+                    to_eval[policy_id].append(
+                        episode.batch_builder.single_agent_trajectories[
+                            agent_id])
 
         # Invoke the step callback after the step is logged to the episode
         callbacks.on_episode_step(
@@ -778,7 +837,20 @@ def _process_observations(
             # and add it to "outputs".
             if (all_agents_done and not multiple_episodes_in_batch) or \
                     episode.batch_builder.count >= rollout_fragment_length:
-                outputs.append(episode.batch_builder.build_and_reset(episode))
+                # TODO: (sven) Case: rollout_fragment_length reached: Do not
+                #  store any data in `episode` anymore
+                #  (useless for get_view_requirements when t<<-1, e.g.
+                #  attention), but keep last episode data around in
+                #  SampleBatchBuilder
+                #  to be able to still reference into it
+                #  should a model require this.
+                if _use_trajectory_view_api:
+                    outputs.append(
+                        episode.batch_builder.get_multi_agent_batch_and_reset(
+                            episode))
+                else:
+                    outputs.append(
+                        episode.batch_builder.build_and_reset(episode))
             # Make sure postprocessor stays within one episode.
             elif all_agents_done:
                 episode.batch_builder.postprocess_batch_so_far(episode)
@@ -833,16 +905,26 @@ def _process_observations(
                     filtered_obs: EnvObsType = _get_or_raise(
                         obs_filters, policy_id)(prep_obs)
                     episode._set_last_observation(agent_id, filtered_obs)
-                    to_eval[policy_id].append(
-                        PolicyEvalData(
+
+                    if _use_trajectory_view_api:
+                        # Add initial obs to buffer.
+                        episode.batch_builder.add_init_obs(
+                            env_id, agent_id, policy_id, filtered_obs)
+                        item = episode.batch_builder.single_agent_trajectories[
+                            agent_id]
+                    else:
+                        item = PolicyEvalData(
                             env_id, agent_id, filtered_obs,
                             episode.last_info_for(agent_id) or {},
                             episode.rnn_state_for(agent_id),
                             np.zeros_like(
                                 flatten_to_single_ndarray(
-                                    policy.action_space.sample())), 0.0))
+                                    policy.action_space.sample())), 0.0)
+                    eval_idx_map[policy_id][env_id][agent_id] = len(
+                        to_eval[policy_id])
+                    to_eval[policy_id].append(item)
 
-    return active_envs, to_eval, outputs
+    return active_envs, to_eval, outputs, eval_idx_map
 
 
 def _do_policy_eval(
@@ -856,13 +938,15 @@ def _do_policy_eval(
     """Call compute_actions on collected episode/model data to get next action.
 
     Args:
+        to_eval (Dict[PolicyID, List[PolicyEvalData]]): Mapping of policy
+            IDs to lists of PolicyEvalData objects (items in these lists will
+            be the batch's items for the model forward pass).
+        policies (Dict[PolicyID, Policy]): Mapping from policy ID to Policy
+            obj.
+        active_episodes (defaultdict[str,MultiAgentEpisode]): Mapping from
+            episode ID to currently ongoing MultiAgentEpisode object.
         tf_sess (Optional[tf.Session]): Optional tensorflow session to use for
             batching TF policy evaluations.
-        to_eval (Dict[PolicyID, List[PolicyEvalData]]): Mapping of policy IDs
-            to lists of PolicyEvalData objects.
-        policies (Dict[PolicyID, Policy]): Mapping from policy ID to Policy.
-        active_episodes (Dict[str, MultiAgentEpisode]): Mapping from
-            episode ID to currently ongoing MultiAgentEpisode object.
         _use_trajectory_view_api (bool): Whether to use the (experimental)
             `_fast_sampling` procedure to collect samples. Default: False.
 
@@ -905,18 +989,23 @@ def _do_policy_eval(
                 prev_reward_batch=prev_reward_batch,
                 timestep=policy.global_timestep)
         else:
-            rnn_in_cols: StateBatch = [
-                np.stack([row[i] for row in rnn_in])
-                for i in range(len(rnn_in[0]))
-            ]
-            eval_results[policy_id] = policy.compute_actions(
-                [t.obs for t in eval_data],
-                state_batches=rnn_in_cols,
-                prev_action_batch=[t.prev_action for t in eval_data],
-                prev_reward_batch=[t.prev_reward for t in eval_data],
-                info_batch=[t.info for t in eval_data],
-                episodes=[active_episodes[t.env_id] for t in eval_data],
-                timestep=policy.global_timestep)
+            if _use_trajectory_view_api:
+                eval_results[policy_id] = policy.compute_actions(
+                    trajectories=eval_data, timestep=policy.global_timestep)
+            else:
+                rnn_in = [t.rnn_state for t in eval_data]
+                rnn_in_cols: StateBatch = [
+                    np.stack([row[i] for row in rnn_in])
+                    for i in range(len(rnn_in[0]))
+                ]
+                eval_results[policy_id] = policy.compute_actions(
+                    [t.obs for t in eval_data],
+                    state_batches=rnn_in_cols,
+                    prev_action_batch=[t.prev_action for t in eval_data],
+                    prev_reward_batch=[t.prev_reward for t in eval_data],
+                    info_batch=[t.info for t in eval_data],
+                    episodes=[active_episodes[t.env_id] for t in eval_data],
+                    timestep=policy.global_timestep)
     if builder:
         # type: PolicyID, Tuple[TensorStructType, StateBatch, dict]
         for pid, v in pending_fetches.items():
