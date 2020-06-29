@@ -320,43 +320,38 @@ class DockerCommandRunner(SSHCommandRunner):
         self.docker_name = docker_config["container_name"]
         self.docker_config = docker_config
         self.home_dir = None
-        self.ensure_docker_installed()
+        self.check_docker_installed()
+        self.ssh_private_key = self.ssh_command_runner.ssh_private_key
 
     def run(self,
             cmd,
             timeout=120,
             exit_on_fail=False,
             port_forward=None,
-            with_output=False):
+            with_output=False,
+            ssh_options=None):
 
         return self.ssh_command_runner.run(
             cmd,
             timeout=timeout,
             exit_on_fail=exit_on_fail,
             port_forward=None,
-            with_output=False)
+            with_output=False,
+            ssh_options=ssh_options)
 
-    def ensure_docker_installed(self):
-        try:
-            self.ssh_command_runner.run("command -v docker")
-            return
-        except Exception:
-            logger.info("Docker not installed, installing now")
-
+    def check_docker_installed(self):
         install_commands = [
             "curl -fsSL https://get.docker.com -o get-docker.sh",
             "sudo sh get-docker.sh", "sudo usermod -aG docker $USER",
             "sudo systemctl restart docker -f"
         ]
-        for cmd in install_commands:
-            self.ssh_command_runner.run(
-                cmd,
-                ssh_options=SSHOptions(
-                    self.ssh_command_runner.ssh_private_key))
-
-        logger.info("Docker install finished!")
-
-        # Restore initial SSH options.
+        try:
+            self.ssh_command_runner.run("command -v docker")
+            return
+        except Exception:
+            logger.error(
+                "Docker not installed, please add the following commands to "
+                "initialization_commands:\n" + "\n".join(install_commands))
 
     def check_container_status(self):
         no_exist = "not_present"
@@ -528,6 +523,12 @@ class NodeUpdater:
                     self.log_prefix + "Initialization commands",
                     show_status=True):
                 for cmd in self.initialization_commands:
+                    if isinstance(self.cmd_runner,
+                                  (DockerCommandRunner, SSHCommandRunner)):
+                        self.cmd_runner.run(
+                            cmd,
+                            ssh_options=SSHOptions(
+                                self.cmd_runner.ssh_private_key))
                     self.cmd_runner.run(cmd)
 
             with LogTimer(
