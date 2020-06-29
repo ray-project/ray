@@ -26,18 +26,17 @@ def compute_advantages(rollout: SampleBatch,
     Given a rollout, compute its value targets and the advantage.
 
     Args:
-        rollout (SampleBatch): SampleBatch of a single trajectory (always
-            within the same episode).
-        last_r (float): Value estimation for last observation.
+        rollout (SampleBatch): SampleBatch of a single trajectory
+        last_r (float): Value estimation for last observation
         gamma (float): Discount factor.
-        lambda_ (float): Parameter for GAE.
-        use_gae (bool): Using Generalized Advantage Estimation.
+        lambda_ (float): Parameter for GAE
+        use_gae (bool): Using Generalized Advantage Estimation
         use_critic (bool): Whether to use critic (value estimates). Setting
-            this to False will use 0 as baseline.
+                           this to False will use 0 as baseline.
 
     Returns:
-        SampleBatch (SampleBatch): New SampleBatch with experience from rollout
-            and processed rewards.
+        SampleBatch (SampleBatch): Object with experience from rollout and
+            processed rewards.
     """
 
     traj = {}
