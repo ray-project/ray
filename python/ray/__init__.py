@@ -36,6 +36,7 @@ sys.path.insert(0, thirdparty_files)
 
 if sys.platform == "win32":
     import ray.compat  # noqa: E402
+    ray.compat.patch_psutil()
     ray.compat.patch_redis_empty_recv()
 
 # Expose ray ABI symbols which may be dependent by other shared
