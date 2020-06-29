@@ -120,67 +120,26 @@ PlasmaStore::PlasmaStore(EventLoop* loop, const std::string& socket_name,
 // TODO(pcm): Get rid of this destructor by using RAII to clean up data.
 PlasmaStore::~PlasmaStore() {}
 
-// Allocate memory
-Status PlasmaStore::AllocateMemory(ObjectTableEntry* entry, size_t size, bool evict_if_full,
-                                   Client* client, bool is_create, int device_num) {
-  if (device_num != 0) {
-    return entry->AllocateMemory(device_num, size);
-  }
-
-  // First free up space from the client's LRU queue if quota enforcement is on.
-  if (evict_if_full) {
-    std::vector<ObjectID> client_objects_to_evict;
-    bool quota_ok = eviction_policy_.EnforcePerClientQuota(client, size, is_create,
-                                                          &client_objects_to_evict);
-    if (!quota_ok) {
-      return Status::OutOfMemory("Cannot assign enough quota to the client.");
-    }
-    EvictObjects(client_objects_to_evict);
-  }
-
-  // Try to evict objects until there is enough space.
-  while (true) {
-    Status s = entry->AllocateMemory(device_num, size);
-    if (s.ok() || !evict_if_full) {
-      return s;
-    }
-    // Tell the eviction policy how much space we need to create this object.
-    std::vector<ObjectID> objects_to_evict;
-    bool success = eviction_policy_.RequireSpace(size, &objects_to_evict);
-    EvictObjects(objects_to_evict);
-    // Return an error to the client if not enough space could be freed to
-    // create the object.
-    if (!success) {
-      return Status::OutOfMemory("Fail to require enough space for the client.");
-    }
-  }
-}
-
 // Create a new object buffer in the hash table.
 PlasmaError PlasmaStore::CreateObject(const ObjectID& object_id, bool evict_if_full,
                                       int64_t data_size, int64_t metadata_size,
                                       int device_num, Client* client,
                                       PlasmaObject* result) {
   RAY_LOG(DEBUG) << "creating object " << object_id.Hex();
-
-  if (object_directory->ContainsObject(object_id) == ObjectStatus::OBJECT_FOUND) {
-    // There is already an object with the same ID in the Plasma Store, so
-    // ignore this request.
+  Status status = object_directory->CreateObject(
+      object_id, evict_if_full, data_size, metadata_size, device_num, client, result,
+      external_store_, [this](const std::vector<ObjectInfoT> &infos) {
+    PushNotifications(infos);
+  });
+  if (status.ok()) {
+    return PlasmaError::OK;
+  } else if (status.IsObjectExists()) {
     return PlasmaError::ObjectExists;
-  }
-
-  int64_t total_size = data_size + metadata_size;
-  RAY_CHECK(total_size > 0) << "Memory allocation size must be a positive number.";
-  auto ptr = std::unique_ptr<ObjectTableEntry>(new ObjectTableEntry());
-  Status s = AllocateMemory(ptr.get(), total_size, evict_if_full, client, /*is_create=*/true, device_num);
-  if (!s.ok()) {
+  } else if (status.IsOutOfMemory()) {
     return PlasmaError::OutOfMemory;
+  } else {
+    RAY_LOG(FATAL) << "Unexpected error: " << status.ToString();
   }
-  entry->data_size = data_size;
-  entry->metadata_size = metadata_size;
-  PlasmaObject_init(result, entry.get());
-  object_directory->RegisterObjectToClient(object_id, client, /*is_create=*/true);
-  return PlasmaError::OK;
 }
 
 void PlasmaStore::RemoveGetRequest(GetRequest* get_request) {
@@ -282,7 +241,7 @@ void PlasmaStore::UpdateObjectGetRequests(const ObjectID& object_id) {
   size_t num_requests = get_requests.size();
   for (size_t i = 0; i < num_requests; ++i) {
     auto get_req = get_requests[index];
-    gre_req->SatisfyWithSealedObject(object_id);
+    get_req->SatisfyWithSealedObject(object_id);
 
     // If this get request is done, reply to the client.
     if (get_req->Fulfilled()) {
@@ -319,11 +278,12 @@ void PlasmaStore::ProcessGetRequest(Client* client,
         break;
       }
       case ObjectState::PLASMA_EVICTED: {
-        // Make sure the object pointer is not already allocated
-        RAY_CHECK(!entry->pointer);
-        Status s = AllocateMemory(entry, entry->ObjectSize(), /*evict_inf_full=*/true, client, /*is_create=*/false, entry->device_num);
-        if (s.ok()) {
-          object_directory->RegisterObjectToClient(object_id, client, /*is_create=*/false);
+        // TODO(suquark): Should we update plasma object data here?
+        Status status = object_directory->RecreateObject(object_id, /*evict_inf_full=*/true, client,
+            external_store_, [this](const std::vector<ObjectInfoT> &infos) {
+          PushNotifications(infos);
+        });
+        if (status.ok()) {
           evicted_ids.push_back(object_id);
         } else {
           // We are out of memory and cannot allocate memory for this object.

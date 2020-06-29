@@ -196,9 +196,6 @@ class PlasmaStore {
 
   void UpdateObjectGetRequests(const ObjectID& object_id);
 
-  Status AllocateMemory(ObjectTableEntry* entry, size_t size, bool evict_if_full,
-                        Client* client, bool is_create, int device_num);
-
   /// Event loop of the plasma store.
   EventLoop* loop_;
   /// Input buffer. This is allocated only once to avoid mallocs for every
