@@ -175,66 +175,66 @@ class TorchPolicy(Policy):
 
     def _compute_action_helper(self, input_dict, state_batches, seq_lens,
                                explore, timestep):
-            """Shared forward pass logic (w/ and w/o trajectory view API).
+        """Shared forward pass logic (w/ and w/o trajectory view API).
 
-            Returns:
-                Tuple:
-                    - actions, state_out, extra_fetches, logp.
-            """
-            if self.action_sampler_fn:
-                action_dist = dist_inputs = None
-                state_out = []
-                actions, logp = self.action_sampler_fn(
-                    self,
-                    self.model,
-                    input_dict[SampleBatch.CUR_OBS],
-                    explore=explore,
-                    timestep=timestep)
-            else:
-                # Call the exploration before_compute_actions hook.
-                self.exploration.before_compute_actions(
-                    explore=explore, timestep=timestep)
-                if self.action_distribution_fn:
-                    dist_inputs, dist_class, state_out = \
-                        self.action_distribution_fn(
-                            self,
-                            self.model,
-                            input_dict[SampleBatch.CUR_OBS],
-                            explore=explore,
-                            timestep=timestep,
-                            is_training=False)
-                else:
-                    dist_class = self.dist_class
-                    dist_inputs, state_out = self.model(
-                        input_dict, state_batches, seq_lens)
-
-                if not (isinstance(dist_class, functools.partial)
-                        or issubclass(dist_class, TorchDistributionWrapper)):
-                    raise ValueError(
-                        "`dist_class` ({}) not a TorchDistributionWrapper "
-                        "subclass! Make sure your `action_distribution_fn` or "
-                        "`make_model_and_action_dist` return a correct "
-                        "distribution class.".format(dist_class.__name__))
-                action_dist = dist_class(dist_inputs, self.model)
-
-                # Get the exploration action from the forward results.
-                actions, logp = \
-                    self.exploration.get_exploration_action(
-                        action_distribution=action_dist,
+        Returns:
+            Tuple:
+                - actions, state_out, extra_fetches, logp.
+        """
+        if self.action_sampler_fn:
+            action_dist = dist_inputs = None
+            state_out = []
+            actions, logp = self.action_sampler_fn(
+                self,
+                self.model,
+                input_dict[SampleBatch.CUR_OBS],
+                explore=explore,
+                timestep=timestep)
+        else:
+            # Call the exploration before_compute_actions hook.
+            self.exploration.before_compute_actions(
+                explore=explore, timestep=timestep)
+            if self.action_distribution_fn:
+                dist_inputs, dist_class, state_out = \
+                    self.action_distribution_fn(
+                        self,
+                        self.model,
+                        input_dict[SampleBatch.CUR_OBS],
+                        explore=explore,
                         timestep=timestep,
-                        explore=explore)
+                        is_training=False)
+            else:
+                dist_class = self.dist_class
+                dist_inputs, state_out = self.model(
+                    input_dict, state_batches, seq_lens)
 
-            input_dict[SampleBatch.ACTIONS] = actions
+            if not (isinstance(dist_class, functools.partial)
+                    or issubclass(dist_class, TorchDistributionWrapper)):
+                raise ValueError(
+                    "`dist_class` ({}) not a TorchDistributionWrapper "
+                    "subclass! Make sure your `action_distribution_fn` or "
+                    "`make_model_and_action_dist` return a correct "
+                    "distribution class.".format(dist_class.__name__))
+            action_dist = dist_class(dist_inputs, self.model)
 
-            # Add default and custom fetches.
-            extra_fetches = self.extra_action_out(input_dict, state_batches,
-                                                  self.model, action_dist)
+            # Get the exploration action from the forward results.
+            actions, logp = \
+                self.exploration.get_exploration_action(
+                    action_distribution=action_dist,
+                    timestep=timestep,
+                    explore=explore)
 
-            # Action-dist inputs.
-            if dist_inputs is not None:
-                extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
+        input_dict[SampleBatch.ACTIONS] = actions
 
-            return actions, state_out, extra_fetches, logp
+        # Add default and custom fetches.
+        extra_fetches = self.extra_action_out(input_dict, state_batches,
+                                              self.model, action_dist)
+
+        # Action-dist inputs.
+        if dist_inputs is not None:
+            extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
+
+        return actions, state_out, extra_fetches, logp
 
     @override(Policy)
     def compute_log_likelihoods(self,
