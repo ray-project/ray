@@ -7,8 +7,7 @@ from ray.rllib.models.preprocessors import get_preprocessor, \
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.trajectory_view import ViewRequirement
-from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, \
-    PublicAPI
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.spaces.repeated import Repeated
@@ -241,11 +240,12 @@ class ModelV2:
             i += 1
         return self.__call__(input_dict, states, train_batch.get("seq_lens"))
 
-    @ExperimentalAPI
     def get_view_requirements(
             self,
             is_training: bool = False) -> Dict[str, ViewRequirement]:
         """Returns a list of ViewRequirements for this Model (or None).
+
+        Note: This is an experimental API method.
 
         A ViewRequirement object tells the caller of this Model, which
         data at which timesteps are needed by this Model. This could be a

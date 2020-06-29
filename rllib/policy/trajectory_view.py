@@ -2,14 +2,14 @@ from dataclasses import dataclass
 import numpy as np
 from typing import Dict, List
 
-from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.types import TensorType
 
 
-@ExperimentalAPI
 @dataclass
 class ViewRequirement:
     """Single view requirement (for one column in a ModelV2 input_dict).
+
+    Note: This is an experimental class.
 
     ModelV2 returns a Dict[str, ViewRequirement] upon calling
     `ModelV2.get_view_requirements()`, where the str key represents the column
@@ -50,9 +50,9 @@ class ViewRequirement:
 
 
 def get_trajectory_view(
-    model: "ModelV2",
-    trajectories: List["Trajectory"],
-    is_training: bool = False) -> Dict[str, TensorType]:
+        model: "ModelV2",
+        trajectories: List["Trajectory"],
+        is_training: bool = False) -> Dict[str, TensorType]:
     """Returns an input_dict for a Model's forward pass given some data.
 
     Args:

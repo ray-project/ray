@@ -129,7 +129,58 @@ class TorchPolicy(Policy):
             state_batches = [
                 convert_to_torch_tensor(s) for s in (state_batches or [])
             ]
+            actions, state_out, extra_fetches, logp = \
+                self._compute_action_helper(
+                    input_dict, state_batches, seq_lens, explore, timestep)
 
+            # Action-logp and action-prob.
+            if logp is not None:
+                logp = convert_to_non_torch_type(logp)
+                extra_fetches[SampleBatch.ACTION_PROB] = np.exp(logp)
+                extra_fetches[SampleBatch.ACTION_LOGP] = logp
+
+            return convert_to_non_torch_type(
+                (actions, state_out, extra_fetches))
+
+    @override(Policy)
+    def compute_actions_from_trajectories(
+            self,
+            trajectories: List["Trajectory"],
+            other_trajectories: Dict[AgentID, "Trajectory"],
+            explore: bool = None,
+            timestep: Optional[int] = None,
+            **kwargs):
+
+        explore = explore if explore is not None else self.config["explore"]
+        timestep = timestep if timestep is not None else self.global_timestep
+
+        with torch.no_grad():
+            # Create a view and pass that to Model as `input_dict`.
+            input_dict = self._lazy_tensor_dict(get_trajectory_view(
+                self.model, trajectories, is_training=False))
+            # TODO: (sven) support RNNs w/ fast sampling.
+            state_batches = []
+            seq_lens = None
+
+            actions, state_out, extra_fetches, logp = \
+                self._compute_action_helper(
+                    input_dict, state_batches, seq_lens, explore, timestep)
+
+            # Leave outputs as is (torch.Tensors): Action-logp and action-prob.
+            if logp is not None:
+                extra_fetches[SampleBatch.ACTION_PROB] = torch.exp(logp)
+                extra_fetches[SampleBatch.ACTION_LOGP] = logp
+
+            return actions, state_out, extra_fetches
+
+    def _compute_action_helper(self, input_dict, state_batches, seq_lens,
+                               explore, timestep):
+            """Shared forward pass logic (w/ and w/o trajectory view API).
+
+            Returns:
+                Tuple:
+                    - actions, state_out, extra_fetches, logp.
+            """
             if self.action_sampler_fn:
                 action_dist = dist_inputs = None
                 state_out = []
@@ -156,6 +207,7 @@ class TorchPolicy(Policy):
                     dist_class = self.dist_class
                     dist_inputs, state_out = self.model(
                         input_dict, state_batches, seq_lens)
+
                 if not (isinstance(dist_class, functools.partial)
                         or issubclass(dist_class, TorchDistributionWrapper)):
                     raise ValueError(
@@ -177,93 +229,12 @@ class TorchPolicy(Policy):
             # Add default and custom fetches.
             extra_fetches = self.extra_action_out(input_dict, state_batches,
                                                   self.model, action_dist)
-            # Action-logp and action-prob.
-            if logp is not None:
-                logp = convert_to_non_torch_type(logp)
-                extra_fetches[SampleBatch.ACTION_PROB] = np.exp(logp)
-                extra_fetches[SampleBatch.ACTION_LOGP] = logp
-            # Action-dist inputs.
-            if dist_inputs is not None:
-                extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
-            return convert_to_non_torch_type((actions, state_out,
-                                              extra_fetches))
 
-    @override(Policy)
-    def compute_actions_from_trajectories(
-            self,
-            trajectories: List["Trajectory"],
-            other_trajectories: Dict[AgentID, "Trajectory"],
-            explore: bool = None,
-            timestep: Optional[int] = None,
-            **kwargs):
-
-        explore = explore if explore is not None else self.config["explore"]
-        timestep = timestep if timestep is not None else self.global_timestep
-
-        with torch.no_grad():
-            # Create a view and pass that to Model as `input_dict`.
-            input_dict = self._lazy_tensor_dict(get_trajectory_view(
-                self.model, trajectories, is_training=False))
-            # TODO: (sven) support RNNs w/ fast sampling.
-            state_batches = []
-            seq_lens = None
-
-            if self.action_sampler_fn:
-                action_dist = dist_inputs = None
-                state_out = []
-                actions, logp = self.action_sampler_fn(
-                    self,
-                    self.model,
-                    input_dict[SampleBatch.OBS],
-                    explore=explore,
-                    timestep=timestep)
-            else:
-                # Call the exploration before_compute_actions hook.
-                self.exploration.before_compute_actions(
-                    explore=explore, timestep=timestep)
-                if self.action_distribution_fn:
-                    dist_inputs, dist_class, state_out = \
-                        self.action_distribution_fn(
-                            self,
-                            self.model,
-                            input_dict[SampleBatch.OBS],
-                            explore=explore,
-                            timestep=timestep,
-                            is_training=False)
-                else:
-                    dist_class = self.dist_class
-                    dist_inputs, state_out = self.model(
-                        input_dict, state_batches, seq_lens)
-                if not (isinstance(dist_class, functools.partial)
-                        or issubclass(dist_class, TorchDistributionWrapper)):
-                    raise ValueError(
-                        "`dist_class` ({}) not a TorchDistributionWrapper "
-                        "subclass! Make sure your `action_distribution_fn` or "
-                        "`make_model_and_action_dist` return a correct "
-                        "distribution class.".format(dist_class.__name__))
-                action_dist = dist_class(dist_inputs, self.model)
-
-                # Get the exploration action from the forward results.
-                actions, logp = \
-                    self.exploration.get_exploration_action(
-                        action_distribution=action_dist,
-                        timestep=timestep,
-                        explore=explore)
-
-            input_dict[SampleBatch.ACTIONS] = actions
-
-            # Add default and custom fetches.
-            extra_fetches = self.extra_action_out(input_dict, state_batches,
-                                                  self.model, action_dist)
             # Action-dist inputs.
             if dist_inputs is not None:
                 extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
 
-            # Leave outputs as is (torch.Tensors): Action-logp and action-prob.
-            if logp is not None:
-                extra_fetches[SampleBatch.ACTION_PROB] = torch.exp(logp)
-                extra_fetches[SampleBatch.ACTION_LOGP] = logp
-            return actions, state_out, extra_fetches
+            return actions, state_out, extra_fetches, logp
 
     @override(Policy)
     def compute_log_likelihoods(self,

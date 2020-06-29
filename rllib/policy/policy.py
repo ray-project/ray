@@ -4,13 +4,13 @@ import numpy as np
 from typing import Dict, List, Optional
 
 from ray.rllib.utils import try_import_tree
-from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
-from ray.rllib.utils.types import AgentID, TensorType
+from ray.rllib.utils.types import AgentID
 
 torch, _ = try_import_torch()
 tree = try_import_tree()
@@ -191,7 +191,6 @@ class Policy(metaclass=ABCMeta):
         return single_action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
-    @ExperimentalAPI
     def compute_actions_from_trajectories(
             self,
             trajectories: List["Trajectory"],
@@ -200,6 +199,8 @@ class Policy(metaclass=ABCMeta):
             timestep: Optional[int] = None,
             **kwargs):
         """Computes actions for the current policy based on .
+
+        Note: This is an experimental API method.
 
         Only used so far by the Sampler iff `_fast_sampling=True` (also only
         supported for torch).

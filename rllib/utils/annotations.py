@@ -45,17 +45,3 @@ def DeveloperAPI(obj):
     """
 
     return obj
-
-
-def ExperimentalAPI(obj):
-    """Annotation for documenting experimental APIs (classes/methods).
-
-    Experimental APIs are not guaranteed to work yet for all possible
-    configuration combinations or may even still be in a "disconnected" state
-    (not used by any code).
-
-    Subclasses that inherit from a ``@ExperimentalAPI`` base class can be
-    assumed part of the RLlib developer API as well.
-    """
-
-    return obj
