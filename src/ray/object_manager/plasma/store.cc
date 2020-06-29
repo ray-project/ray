@@ -128,7 +128,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID& object_id, bool evict_if_f
   RAY_LOG(DEBUG) << "creating object " << object_id.Hex();
   Status status = object_directory->CreateObject(
       object_id, evict_if_full, data_size, metadata_size, device_num, client, result,
-      external_store_, [this](const std::vector<ObjectInfoT> &infos) {
+      [this](const std::vector<ObjectInfoT> &infos) {
     PushNotifications(infos);
   });
   if (status.ok()) {
@@ -280,7 +280,7 @@ void PlasmaStore::ProcessGetRequest(Client* client,
       case ObjectState::PLASMA_EVICTED: {
         // TODO(suquark): Should we update plasma object data here?
         Status status = object_directory->RecreateObject(object_id, /*evict_inf_full=*/true, client,
-            external_store_, [this](const std::vector<ObjectInfoT> &infos) {
+            [this](const std::vector<ObjectInfoT> &infos) {
           PushNotifications(infos);
         });
         if (status.ok()) {
@@ -306,21 +306,10 @@ void PlasmaStore::ProcessGetRequest(Client* client,
   }
 
   if (!evicted_ids.empty()) {
-    std::vector<std::shared_ptr<Buffer>> buffers;
-    for (const auto& evicted_id : evicted_ids) {
-      buffers.emplace_back(object_directory->GetArrowBuffer(evicted_id));
-    }
-    // FIXME: Why external_store_ is not checked here?
-    if (external_store_->Get(evicted_ids, buffers).ok()) {
+    Status status = object_directory->FetchObjectsFromExternalStore(evicted_ids);
+    if (status.ok()) {
       for (const auto& evicted_id : evicted_ids) {
         get_req->SatisfyWithReconstructedObject(evicted_id);
-      }
-    } else {
-      // We tried to get the objects from the external store, but could not get them.
-      // Set the state of these objects back to PLASMA_EVICTED so some other request
-      // can try again.
-      for (const auto& evicted_id : evicted_ids) {
-        object_directory->SetObjectState(evicted_id, ObjectState::PLASMA_EVICTED);
       }
     }
   }
@@ -340,7 +329,7 @@ void PlasmaStore::ProcessGetRequest(Client* client,
 }
 
 void PlasmaStore::ReleaseObject(const ObjectID& object_id, Client* client) {
-  object_directory->ReleaseObject(object_id, client, external_store_, [this] (const std::vector<ObjectInfoT> infos) {
+  object_directory->ReleaseObject(object_id, client, [this] (const std::vector<ObjectInfoT> infos) {
     PushNotifications(infos);
   });
 }
@@ -372,7 +361,7 @@ PlasmaError PlasmaStore::DeleteObject(ObjectID& object_id) {
 }
 
 void PlasmaStore::EvictObjects(const std::vector<ObjectID>& object_ids) {
-  object_directory->EvictObjects(object_ids, external_store_, [this](const std::vector<ObjectInfoT> infos) {
+  object_directory->EvictObjects(object_ids, [this](const std::vector<ObjectInfoT> infos) {
     PushNotifications(infos);
   });
 }
@@ -404,7 +393,7 @@ void PlasmaStore::DisconnectClient(int client_fd) {
   RAY_LOG(DEBUG) << "Disconnecting client on fd " << client_fd;
   // Release all the objects that the client was using.
   auto client = it->second.get();
-  object_directory->DisconnectClient(client, external_store_, [this](const std::vector<ObjectInfoT> infos) {
+  object_directory->DisconnectClient(client, [this](const std::vector<ObjectInfoT> infos) {
     PushNotifications(infos);
   });
 
