@@ -56,7 +56,7 @@ class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
   /// \param points, memory metric vector instance
   void ExportToPoints(const opencensus::stats::ViewData::DataMap<DTYPE> &view_data,
                       const std::string &metric_name, std::vector<std::string> &keys,
-                      MetricPoints &points) {
+                      std::vector<MetricPoint> &points) {
     for (const auto &row : view_data) {
       std::unordered_map<std::string, std::string> tags;
       for (size_t i = 0; i < keys.size(); ++i) {

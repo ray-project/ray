@@ -148,9 +148,6 @@ struct MetricPoint {
   double value;
   std::unordered_map<std::string, std::string> tags;
 };
-
-using MetricPoints = std::vector<MetricPoint>;
-
 }  // namespace stats
 
 }  // namespace ray

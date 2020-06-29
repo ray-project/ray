@@ -19,7 +19,7 @@
 namespace ray {
 namespace stats {
 
-void StdoutExporterClient::ReportMetrics(const MetricPoints &points) {
+void StdoutExporterClient::ReportMetrics(const std::vector<MetricPoint> &points) {
   RAY_LOG(DEBUG) << "Metric point size : " << points.size();
 }
 
@@ -27,7 +27,7 @@ MetricExporterDecorator::MetricExporterDecorator(
     std::shared_ptr<MetricExporterClient> exporter)
     : exporter_(exporter) {}
 
-void MetricExporterDecorator::ReportMetrics(const MetricPoints &points) {
+void MetricExporterDecorator::ReportMetrics(const std::vector<MetricPoint> &points) {
   if (exporter_) {
     exporter_->ReportMetrics(points);
   }

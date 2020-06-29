@@ -22,7 +22,7 @@ namespace stats {
 /// Interface class for abstract metrics exporter client.
 class MetricExporterClient {
  public:
-  virtual void ReportMetrics(const MetricPoints &points) = 0;
+  virtual void ReportMetrics(const std::vector<MetricPoint> &points) = 0;
   virtual ~MetricExporterClient() = default;
 };
 
@@ -31,7 +31,7 @@ class MetricExporterClient {
 /// use stdout as the default concrete class.
 class StdoutExporterClient : public MetricExporterClient {
  public:
-  void ReportMetrics(const MetricPoints &points) override;
+  void ReportMetrics(const std::vector<MetricPoint> &points) override;
 };
 
 /// The decoration mode is that the user can apply it by configuring different
@@ -46,7 +46,7 @@ class StdoutExporterClient : public MetricExporterClient {
 class MetricExporterDecorator : public MetricExporterClient {
  public:
   MetricExporterDecorator(std::shared_ptr<MetricExporterClient> exporter);
-  virtual void ReportMetrics(const MetricPoints &points);
+  virtual void ReportMetrics(const std::vector<MetricPoint> &points);
 
  private:
   std::shared_ptr<MetricExporterClient> exporter_;
@@ -56,7 +56,7 @@ class OpentsdbExporterClient : public MetricExporterDecorator {
  public:
   OpentsdbExporterClient(std::shared_ptr<MetricExporterClient> exporter)
       : MetricExporterDecorator(exporter) {}
-  void ReportMetrics(const MetricPoints &points) override {
+  void ReportMetrics(const std::vector<MetricPoint> &points) override {
     MetricExporterDecorator::ReportMetrics(points);
     // TODO(lingxuan.zlx): opentsdb client is used for report to backend
     // storage.

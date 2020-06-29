@@ -40,7 +40,7 @@ class MockExporterClient1 : public MetricExporterDecorator {
     lastest_hist_max = 0.0;
   }
 
-  void ReportMetrics(const MetricPoints &points) override {
+  void ReportMetrics(const std::vector<MetricPoint> &points) override {
     MetricExporterDecorator::ReportMetrics(points);
     client1_count += points.size();
     client1_value = points.back().value;
@@ -59,7 +59,7 @@ class MockExporterClient1 : public MetricExporterDecorator {
   static double GetLastestHistMax() { return lastest_hist_max; }
 
  private:
-  void RecordLastHistData(const MetricPoints &points) {
+  void RecordLastHistData(const std::vector<MetricPoint> &points) {
     for (auto &point : points) {
       if (point.metric_name.find(".min") != std::string::npos) {
         lastest_hist_min = point.value;
@@ -87,7 +87,7 @@ class MockExporterClient2 : public MetricExporterDecorator {
       : MetricExporterDecorator(exporter) {
     client2_count = 0;
   }
-  void ReportMetrics(const MetricPoints &points) override {
+  void ReportMetrics(const std::vector<MetricPoint> &points) override {
     MetricExporterDecorator::ReportMetrics(points);
     client2_count += points.size();
     RAY_LOG(DEBUG) << "Client 2 " << client2_count << " last metric "
@@ -149,7 +149,7 @@ TEST_F(MetricExporterClientTest, decorator_test) {
   ASSERT_EQ(1, MockExporterClient2::GetCount());
 }
 
-TEST_F(MetricExporterClientTest, F) {
+TEST_F(MetricExporterClientTest, exporter_client_caculation_test) {
   const stats::TagKeyType tag1 = stats::TagKeyType::Register("k1");
   const stats::TagKeyType tag2 = stats::TagKeyType::Register("k2");
   stats::Count random_counter("ray.random.counter", "", "", {tag1, tag2});
