@@ -208,16 +208,6 @@ class ObjectDirectory {
     return ObjectState::OBJECT_NOT_FOUND;
   }
 
-  /// Set the state of the object.
-  ///
-  /// \param object_id Object ID of the object.
-  /// \param state The new state for the object.
-  void SetObjectState(const ObjectID& object_id, ObjectState state) {
-    absl::MutexLock lock(&object_table_mutex_);
-    auto it = object_table_.find(object_id);
-    object_table_[object_id]->state = state;
-  }
-
   void GetSealedObjectsInfo(std::vector<ObjectInfoT>* infos) {
     absl::MutexLock lock(&object_table_mutex_);
     for (const auto& entry : object_table_) {
@@ -278,6 +268,10 @@ class ObjectDirectory {
     Status s = AllocateMemory(object_id, entry.get(), entry->ObjectSize(), evict_if_full, client, /*is_create=*/false,
                               entry->device_num);
     if (!s.ok()) {
+      // We are out of memory and cannot allocate memory for this object.
+      // Change the state of the object back to PLASMA_EVICTED so some
+      // other request can try again.
+      entry->state = ObjectState::PLASMA_EVICTED;
       return Status::OutOfMemory("Cannot allocate the object.");
     }
     return Status::OK();

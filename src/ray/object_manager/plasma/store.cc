@@ -279,11 +279,6 @@ void PlasmaStore::ProcessGetRequest(Client* client,
         Status status = object_directory->RecreateObject(object_id, /*evict_inf_full=*/true, client);
         if (status.ok()) {
           evicted_ids.push_back(object_id);
-        } else {
-          // We are out of memory and cannot allocate memory for this object.
-          // Change the state of the object back to PLASMA_EVICTED so some
-          // other request can try again.
-          object_directory->SetObjectState(object_id, ObjectState::PLASMA_EVICTED);
         }
         break;
       }
