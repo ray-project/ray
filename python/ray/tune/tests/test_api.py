@@ -663,7 +663,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 result = {"name": self.trial_name, "trial_id": self.trial_id}
                 return result
 
-            def _stop(self):
+            def cleanup(self):
                 time.sleep(2)
                 open(os.path.join(self.logdir, "marker"), "a").close()
                 return 1
@@ -832,7 +832,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 self.state["iter"] += 1
                 return {"timesteps_this_iter": 1, "done": True}
 
-            def _save(self, path):
+            def save_checkpoint(self, path):
                 return self.state
 
             def _restore(self, state):
@@ -859,7 +859,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
-            def _save(self, path):
+            def save_checkpoint(self, path):
                 return self.state
 
             def _restore(self, state):
@@ -890,7 +890,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 self.state["iter"] += 1
                 return {"timesteps_this_iter": 1, "done": True}
 
-            def _save(self, path):
+            def save_checkpoint(self, path):
                 return self.state
 
             def _restore(self, state):

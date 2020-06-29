@@ -1144,7 +1144,7 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
             def step(self):
                 return {"mean_accuracy": self.training_iteration}
 
-            def _save(self, path):
+            def save_checkpoint(self, path):
                 checkpoint = os.path.join(path, "checkpoint")
                 with open(checkpoint, "w") as f:
                     f.write("OK")
@@ -1179,7 +1179,7 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
             def step(self):
                 return {"mean_accuracy": self.training_iteration}
 
-            def _save(self, path):
+            def save_checkpoint(self, path):
                 return self.state
 
             def _restore(self, state):

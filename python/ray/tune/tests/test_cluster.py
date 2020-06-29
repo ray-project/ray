@@ -631,7 +631,7 @@ def test_cluster_interrupt(start_connected_cluster, tmpdir):
             time.sleep(0.5)
             return {"done": self.state["hi"] >= 4}
 
-        def _save(self, path):
+        def save_checkpoint(self, path):
             return self.state
 
         def _restore(self, state):

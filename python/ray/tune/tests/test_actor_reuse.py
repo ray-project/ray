@@ -22,7 +22,7 @@ def create_resettable_class():
             self.iter += 1
             return {"num_resets": self.num_resets, "done": self.iter > 1}
 
-        def _save(self, chkpt_dir):
+        def save_checkpoint(self, chkpt_dir):
             return {"iter": self.iter}
 
         def _restore(self, item):

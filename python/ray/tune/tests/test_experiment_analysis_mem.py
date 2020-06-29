@@ -30,7 +30,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
                 self.idx += 1
                 return {"score": val}
 
-            def _save(self, checkpoint_dir):
+            def save_checkpoint(self, checkpoint_dir):
                 pass
 
             def _restore(self, checkpoint_path):

@@ -624,7 +624,7 @@ class Trainable:
                 "a future version of Ray. Use Trainable.step instead.")
         self._train()
 
-    def step(self):
+    def _train(self):
         """This method is deprecated. Override 'step' instead."""
         raise NotImplementedError
 

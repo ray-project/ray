@@ -71,7 +71,7 @@ def get_optimus_trainable(parent_cls):
                 "samples": self.initial_samples_per_step
             }
 
-        def _save(self, checkpoint_dir):
+        def save_checkpoint(self, checkpoint_dir):
             time.sleep(0.5)
             return {
                 "func": cloudpickle.dumps(self.func),

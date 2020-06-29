@@ -256,7 +256,7 @@ class PytorchTrainable(tune.Trainable):
             self.criterion, self.dataloader, self._iteration, self.device)
         return {"lossg": lossG, "lossd": lossD, "is_score": is_score}
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint")
         torch.save({
             "netDmodel": self.netD.state_dict(),

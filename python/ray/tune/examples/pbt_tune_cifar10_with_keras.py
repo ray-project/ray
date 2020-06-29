@@ -161,7 +161,7 @@ class Cifar10Model(Trainable):
         _, accuracy = self.model.evaluate(x_test, y_test, verbose=0)
         return {"mean_accuracy": accuracy}
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         file_path = checkpoint_dir + "/model"
         self.model.save(file_path)
         return file_path
@@ -171,7 +171,7 @@ class Cifar10Model(Trainable):
         del self.model
         self.model = load_model(path)
 
-    def _stop(self):
+    def cleanup(self):
         # If need, save your model when exit.
         # saved_path = self.model.save(self.logdir)
         # print("save model at: ", saved_path)

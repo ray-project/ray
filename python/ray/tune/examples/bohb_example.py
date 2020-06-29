@@ -30,7 +30,7 @@ class MyTrainableClass(Trainable):
         # objectives such as loss or accuracy.
         return {"episode_reward_mean": v}
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint")
         with open(path, "w") as f:
             f.write(json.dumps({"timestep": self.timestep}))

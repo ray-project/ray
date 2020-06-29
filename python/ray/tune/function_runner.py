@@ -330,7 +330,7 @@ class FunctionRunner(Trainable):
         checkpoint_path = TrainableUtil.create_from_pickle(obj, checkpoint_dir)
         self.restore(checkpoint_path)
 
-    def _stop(self):
+    def cleanup(self):
         # If everything stayed in synch properly, this should never happen.
         if not self._results_queue.empty():
             logger.warning(

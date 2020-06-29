@@ -50,7 +50,7 @@ class TrainMNIST(tune.Trainable):
         acc = test(self.model, self.test_loader, self.device)
         return {"mean_accuracy": acc}
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         checkpoint_path = os.path.join(checkpoint_dir, "model.pth")
         torch.save(self.model.state_dict(), checkpoint_path)
         return checkpoint_path

@@ -94,7 +94,7 @@ class RunExperimentTest(unittest.TestCase):
             def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
-            def _save(self, path):
+            def save_checkpoint(self, path):
                 checkpoint = os.path.join(path, "checkpoint")
                 with open(checkpoint, "w") as f:
                     f.write("OK")

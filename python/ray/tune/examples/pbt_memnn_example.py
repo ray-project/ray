@@ -242,7 +242,7 @@ class MemNNModel(Trainable):
             verbose=0)
         return {"mean_accuracy": accuracy}
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         file_path = checkpoint_dir + "/model"
         self.model.save(file_path)
         return file_path

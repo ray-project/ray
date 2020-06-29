@@ -66,7 +66,7 @@ class PBTBenchmarkExample(Trainable):
             "done": self.accuracy > midpoint * 2,
         }
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         return {
             "accuracy": self.accuracy,
             "lr": self.lr,
