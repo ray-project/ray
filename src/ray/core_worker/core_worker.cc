@@ -1366,17 +1366,13 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
 
   // This call needs to be blocking because we can't return until the actor
   // handle is created, which requires the response from the RPC. This is
-  // implemented using a condition variable that's captured in the RPC
-  // callback. There should be no risk of deadlock because we don't hold any
+  // implemented using a promise that's captured in the RPC callback.
+  // There should be no risk of deadlock because we don't hold any
   // locks during the call and the RPCs run on a separate thread.
   ActorID actor_id;
-  std::shared_ptr<bool> ready = std::make_shared<bool>(false);
-  std::shared_ptr<std::mutex> m = std::make_shared<std::mutex>();
-  std::shared_ptr<std::condition_variable> cv =
-      std::make_shared<std::condition_variable>();
-  std::unique_lock<std::mutex> lk(*m);
+  auto ready_promise = std::promise<void>();
   RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
-      name, [this, &actor_id, name, ready, m, cv](
+      name, [this, &actor_id, name, &ready_promise](
                 Status status, const boost::optional<gcs::ActorTableData> &result) {
         if (status.ok() && result) {
           auto actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(*result));
@@ -1387,19 +1383,13 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
           // Use a NIL actor ID to signal that the actor wasn't found.
           actor_id = ActorID::Nil();
         }
-
-        // Notify the main thread that the RPC has finished.
-        {
-          std::unique_lock<std::mutex> lk(*m);
-          *ready = true;
-        }
-        cv->notify_one();
+        ready_promise.set_value();
       }));
 
   // Block until the RPC completes. Set a timeout to avoid hangs if the
   // GCS service crashes.
-  cv->wait_for(lk, std::chrono::seconds(5), [ready] { return *ready; });
-  if (!*ready) {
+  if (ready_promise.get_future().wait_for(std::chrono::seconds(5)) !=
+      std::future_status::ready) {
     return Status::TimedOut("Timed out trying to get named actor.");
   }
 
