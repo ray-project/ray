@@ -21,25 +21,26 @@
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
 namespace ray {
-namespace rpc {
+namespace gcs {
 
 /// This implementation class of `JobInfoHandler`.
-class GcsJobInfoHandler : public rpc::JobInfoHandler {
+class GcsJobManager : public rpc::JobInfoHandler {
  public:
-  explicit GcsJobInfoHandler(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                             std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub)
+  explicit GcsJobManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                         std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub)
       : gcs_table_storage_(std::move(gcs_table_storage)),
         gcs_pub_sub_(std::move(gcs_pub_sub)) {}
 
-  void HandleAddJob(const AddJobRequest &request, AddJobReply *reply,
-                    SendReplyCallback send_reply_callback) override;
+  void HandleAddJob(const rpc::AddJobRequest &request, rpc::AddJobReply *reply,
+                    rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleMarkJobFinished(const MarkJobFinishedRequest &request,
-                             MarkJobFinishedReply *reply,
-                             SendReplyCallback send_reply_callback) override;
+  void HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &request,
+                             rpc::MarkJobFinishedReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetAllJobInfo(const GetAllJobInfoRequest &request, GetAllJobInfoReply *reply,
-                           SendReplyCallback send_reply_callback) override;
+  void HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest &request,
+                           rpc::GetAllJobInfoReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
 
   void AddJobFinishedListener(
       std::function<void(std::shared_ptr<JobID>)> listener) override;
@@ -54,5 +55,5 @@ class GcsJobInfoHandler : public rpc::JobInfoHandler {
   void ClearJobInfos(const JobID &job_id);
 };
 
-}  // namespace rpc
+}  // namespace gcs
 }  // namespace ray
