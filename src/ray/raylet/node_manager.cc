@@ -1609,11 +1609,13 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
 
     std::shared_ptr<TaskResourceInstances> allocated_instances(
         new TaskResourceInstances());
-    RAY_LOG(INFO) << "[DispatchScheduledTasksToWorkers] Allocating resources for " << spec.DebugString();
+    RAY_LOG(INFO) << "[DispatchScheduledTasksToWorkers] Allocating resources for "
+                  << spec.DebugString();
     bool schedulable = new_resource_scheduler_->AllocateLocalTaskResources(
         spec.GetRequiredResources().GetResourceMap(), allocated_instances);
     if (!schedulable) {
-      RAY_LOG(INFO) << "[DispatchScheduledTasksToWorkers] Failed to schedule, will try again later.";
+      RAY_LOG(INFO) << "[DispatchScheduledTasksToWorkers] Failed to schedule, will try "
+                       "again later.";
       // TODO (Alex) : Don't merge this line for now...
       // RAY_CHECK(false) << "This should never happen...";
       // Not enough resources to schedule this task.
@@ -1624,7 +1626,8 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
       continue;
     }
 
-    RAY_LOG(INFO) << "[DispatchScheduledTasksToWorkers] Success! new state: " << new_resource_scheduler_->DebugString();
+    RAY_LOG(INFO) << "[DispatchScheduledTasksToWorkers] Success! new state: "
+                  << new_resource_scheduler_->DebugString();
     worker->SetOwnerAddress(spec.CallerAddress());
     if (spec.IsActorCreationTask()) {
       // The actor belongs to this worker now.
@@ -1644,8 +1647,10 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
 void NodeManager::NewSchedulerSchedulePendingTasks() {
   RAY_CHECK(new_scheduler_enabled_);
   size_t queue_size = tasks_to_schedule_.size();
-  RAY_LOG(INFO) << "[NewSchedulerSchedulePendingTasks] Queue size at start: " << queue_size;
-  RAY_LOG(INFO) << "[NewSchedulerSchedulePendingTasks] Scheduler state: " << new_resource_scheduler_->DebugString();
+  RAY_LOG(INFO) << "[NewSchedulerSchedulePendingTasks] Queue size at start: "
+                << queue_size;
+  RAY_LOG(INFO) << "[NewSchedulerSchedulePendingTasks] Scheduler state: "
+                << new_resource_scheduler_->DebugString();
 
   // Check every task in task_to_schedule queue to see
   // whether it can be scheduled. This avoids head-of-line
@@ -1732,7 +1737,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     data->mutable_task()->mutable_task_spec()->CopyFrom(
         task.GetTaskSpecification().GetMessage());
     RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
-}
+  }
 
   if (new_scheduler_enabled_) {
     auto task_spec = task.GetTaskSpecification();

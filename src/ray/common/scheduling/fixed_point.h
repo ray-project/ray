@@ -7,7 +7,6 @@
 
 /// Fixed point data type.
 class FixedPoint {
-
  private:
   int64_t i_;
 

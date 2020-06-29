@@ -5,7 +5,7 @@
 FixedPoint::FixedPoint(double d) {
   // We need to round, not truncate because floating point multiplication can
   // leave a number slightly smaller than the intended whole number.
-  i_ = (uint64_t) ((d * RESOURCE_UNIT_SCALING) + 0.5);
+  i_ = (uint64_t)((d * RESOURCE_UNIT_SCALING) + 0.5);
 }
 
 FixedPoint FixedPoint::operator+(FixedPoint const &ru) {
@@ -53,6 +53,4 @@ FixedPoint FixedPoint::operator=(double const d) {
   return *this;
 }
 
-double FixedPoint::Double() {
-  return round(i_) / RESOURCE_UNIT_SCALING;
-};
+double FixedPoint::Double() { return round(i_) / RESOURCE_UNIT_SCALING; };
