@@ -1652,11 +1652,9 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
         new_resource_scheduler_->GetBestSchedulableNode(request_resources, &violations);
     if (node_id_string.empty()) {
       /// There is no node that has available resources to run the request.
-      RAY_LOG(INFO) << "Skipping task: " << task.DebugString();
       tasks_to_schedule_.push_back(work);
       continue;
     } else {
-      RAY_LOG(INFO) << "Scheduling task: " << task.DebugString();
       if (node_id_string == self_node_id_.Binary()) {
         WaitForTaskArgsRequests(work);
       } else {
