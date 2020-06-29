@@ -305,7 +305,7 @@ class ParameterNoise(Exploration):
             added_noises.append(
                 tf.assign(
                     noise,
-                    tf.random_normal(
+                    tf.random.normal(
                         shape=noise.shape,
                         stddev=self.stddev,
                         dtype=tf.float32)))

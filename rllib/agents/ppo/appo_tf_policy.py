@@ -78,7 +78,7 @@ class PPOSurrogateLoss:
         # The baseline loss
         delta = values - value_targets
         self.value_targets = value_targets
-        self.vf_loss = 0.5 * reduce_mean_valid(tf.square(delta))
+        self.vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
 
         # The entropy loss
         self.entropy = reduce_mean_valid(actions_entropy)
@@ -159,7 +159,7 @@ class VTraceSurrogateLoss:
                 behaviour_policy_logits=behaviour_logits,
                 target_policy_logits=old_policy_behaviour_logits,
                 actions=tf.unstack(actions, axis=2),
-                discounts=tf.to_float(~dones) * discount,
+                discounts=tf.cast(~dones, tf.float32) * discount,
                 rewards=rewards,
                 values=values,
                 bootstrap_value=bootstrap_value,
@@ -185,7 +185,7 @@ class VTraceSurrogateLoss:
         # The baseline loss
         delta = values - self.vtrace_returns.vs
         self.value_targets = self.vtrace_returns.vs
-        self.vf_loss = 0.5 * reduce_mean_valid(tf.square(delta))
+        self.vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
 
         # The entropy loss
         self.entropy = reduce_mean_valid(actions_entropy)
@@ -350,7 +350,7 @@ def stats(policy, train_batch):
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
         "policy_loss": policy.loss.pi_loss,
         "entropy": policy.loss.entropy,
-        "var_gnorm": tf.global_norm(policy.model.trainable_variables()),
+        "var_gnorm": tf.linalg.global_norm(policy.model.trainable_variables()),
         "vf_loss": policy.loss.vf_loss,
         "vf_explained_var": explained_variance(
             tf.reshape(policy.loss.value_targets, [-1]),

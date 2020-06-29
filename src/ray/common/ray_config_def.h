@@ -297,8 +297,12 @@ RAY_CONFIG(int64_t, ping_gcs_rpc_server_interval_milliseconds, 1000)
 /// Maximum number of times to retry ping gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 600)
 
-// Whether start the Plasma Store as a Raylet thread.
+/// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, plasma_store_as_thread, false)
+
+/// The interval at which the gcs client will check if the address of gcs service has
+/// changed. When the address changed, we will resubscribe again.
+RAY_CONFIG(int64_t, gcs_service_address_check_interval_milliseconds, 1000)
 
 RAY_CONFIG(bool, gcs_actor_service_enabled,
            getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") != nullptr &&

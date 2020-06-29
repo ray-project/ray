@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 
 import ray
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
@@ -10,7 +11,8 @@ from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
     LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import explained_variance, sequence_mask
+from ray.rllib.utils.torch_ops import convert_to_torch_tensor, \
+    explained_variance, sequence_mask
 
 torch, nn = try_import_torch()
 
@@ -185,14 +187,15 @@ class ValueNetworkMixin:
 
             def value(ob, prev_action, prev_reward, *state):
                 model_out, _ = self.model({
-                    SampleBatch.CUR_OBS: self._convert_to_tensor([ob]),
-                    SampleBatch.PREV_ACTIONS: self._convert_to_tensor(
-                        [prev_action]),
-                    SampleBatch.PREV_REWARDS: self._convert_to_tensor(
-                        [prev_reward]),
+                    SampleBatch.CUR_OBS: convert_to_torch_tensor(
+                        np.asarray([ob])),
+                    SampleBatch.PREV_ACTIONS: convert_to_torch_tensor(
+                        np.asarray([prev_action])),
+                    SampleBatch.PREV_REWARDS: convert_to_torch_tensor(
+                        np.asarray([prev_reward])),
                     "is_training": False,
-                }, [self._convert_to_tensor(s) for s in state],
-                                          self._convert_to_tensor([1]))
+                }, [convert_to_torch_tensor(np.asarray(s)) for s in state],
+                    convert_to_torch_tensor(np.asarray([1])))
                 return self.model.value_function()[0]
 
         else:
