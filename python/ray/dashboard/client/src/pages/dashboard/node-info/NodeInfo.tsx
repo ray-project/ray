@@ -153,11 +153,11 @@ const NodeInfo: React.FC<{}> = () => {
             });
             const sortedClusterWorkers = sortWorkerComparator
               ? stableSort(workerFeatureData, sortWorkerComparator)
-              : idleSortedClusterWorkers;
+              : workerFeatureData;
             return (
               <NodeRowGroup
                 key={client.ip}
-                clusterWorkers={sortedClusterWorkers}
+                workerFeatureData={sortedClusterWorkers}
                 features={nodeInfoFeatures}
                 initialExpanded={nodeInfo.clients.length <= 1}
               />

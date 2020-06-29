@@ -46,16 +46,16 @@ type Node = ArrayType<NodeInfoResponse["clients"]>;
 
 type NodeRowGroupProps = {
   features: NodeInfoFeature[];
+  rayletInfo?: string;
   workerFeatureData: WorkerFeatureData[];
   initialExpanded: boolean;
 };
 
 const NodeRowGroup: React.FC<NodeRowGroupProps> = ({
-  node,
-  raylet,
   features,
-  clusterWorkers,
   initialExpanded,
+  rayletInfo,
+  workerFeatureData
 }) => {
   const [expanded, setExpanded] = useState<boolean>(initialExpanded);
   const toggleExpand = () => setExpanded(!expanded);
@@ -85,23 +85,18 @@ const NodeRowGroup: React.FC<NodeRowGroupProps> = ({
       </TableRow>
       {expanded && (
         <React.Fragment>
-          {raylet !== null && raylet.extraInfo !== undefined && (
+          {rayletInfo !== undefined && (
             <TableRow hover>
               <TableCell className={classes.cell} />
               <TableCell
                 className={classNames(classes.cell, classes.extraInfo)}
                 colSpan={features.length}
               >
-                {raylet.extraInfo}
+                {rayletInfo}
               </TableCell>
             </TableRow>
           )}
-          {clusterWorkers.map((worker, index: number) => {
-            const rayletWorker =
-              raylet?.workersStats.find(
-                (rayletWorker) => worker.pid === rayletWorker.pid,
-              ) || null;
-            const featureData = { rayletWorker, node, worker };
+          {workerFeatureData.map((featureData, index: number) => {
             return (
               <NodeWorkerRow
                 key={index}
