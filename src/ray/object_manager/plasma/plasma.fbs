@@ -45,9 +45,6 @@ enum MessageType:long {
   // See if the store contains an object (will be deprecated).
   PlasmaContainsRequest,
   PlasmaContainsReply,
-  // List all objects in the store.
-  PlasmaListRequest,
-  PlasmaListReply,
   // Get information for a newly connecting client.
   PlasmaConnectRequest,
   PlasmaConnectReply,
@@ -179,8 +176,6 @@ table PlasmaCreateAndSealRequest {
   data: string;
   // The object's metadata.
   metadata: string;
-  // Hash of the object data.
-  digest: string;
 }
 
 table PlasmaCreateAndSealReply {
@@ -194,7 +189,6 @@ table PlasmaCreateAndSealBatchRequest {
     evict_if_full: bool;
     data: [string];
     metadata: [string];
-    digest: [string];
 }
 
 table PlasmaCreateAndSealBatchReply {
@@ -215,8 +209,6 @@ table PlasmaAbortReply {
 table PlasmaSealRequest {
   // ID of the object to be sealed.
   object_id: string;
-  // Hash of the object data.
-  digest: string;
 }
 
 table PlasmaSealReply {
@@ -292,13 +284,6 @@ table PlasmaContainsReply {
   object_id: string;
   // 1 if the object is in the store and 0 otherwise.
   has_object: int;
-}
-
-table PlasmaListRequest {
-}
-
-table PlasmaListReply {
-  objects: [ObjectInfo];
 }
 
 // PlasmaConnect is used by a plasma client the first time it connects with the

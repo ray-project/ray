@@ -90,25 +90,22 @@ Status ReadCreateReply(uint8_t* data, size_t size, ObjectID* object_id,
                        PlasmaObject* object, int* store_fd, int64_t* mmap_size);
 
 Status SendCreateAndSealRequest(int sock, const ObjectID& object_id, bool evict_if_full,
-                                const std::string& data, const std::string& metadata,
-                                unsigned char* digest);
+                                const std::string& data, const std::string& metadata);
 
 Status ReadCreateAndSealRequest(uint8_t* data, size_t size, ObjectID* object_id,
                                 bool* evict_if_full, std::string* object_data,
-                                std::string* metadata, std::string* digest);
+                                std::string* metadata);
 
 Status SendCreateAndSealBatchRequest(int sock, const std::vector<ObjectID>& object_ids,
                                      bool evict_if_full,
                                      const std::vector<std::string>& data,
-                                     const std::vector<std::string>& metadata,
-                                     const std::vector<std::string>& digests);
+                                     const std::vector<std::string>& metadata);
 
 Status ReadCreateAndSealBatchRequest(uint8_t* data, size_t size,
                                      std::vector<ObjectID>* object_id,
                                      bool* evict_if_full,
                                      std::vector<std::string>* object_data,
-                                     std::vector<std::string>* metadata,
-                                     std::vector<std::string>* digests);
+                                     std::vector<std::string>* metadata);
 
 Status SendCreateAndSealReply(int sock, PlasmaError error);
 
@@ -128,10 +125,9 @@ Status ReadAbortReply(uint8_t* data, size_t size, ObjectID* object_id);
 
 /* Plasma Seal message functions. */
 
-Status SendSealRequest(int sock, ObjectID object_id, const std::string& digest);
+Status SendSealRequest(int sock, ObjectID object_id);
 
-Status ReadSealRequest(uint8_t* data, size_t size, ObjectID* object_id,
-                       std::string* digest);
+Status ReadSealRequest(uint8_t* data, size_t size, ObjectID* object_id);
 
 Status SendSealReply(int sock, ObjectID object_id, PlasmaError error);
 
@@ -186,16 +182,6 @@ Status SendContainsReply(int sock, ObjectID object_id, bool has_object);
 
 Status ReadContainsReply(uint8_t* data, size_t size, ObjectID* object_id,
                          bool* has_object);
-
-/* Plasma List message functions. */
-
-Status SendListRequest(int sock);
-
-Status ReadListRequest(uint8_t* data, size_t size);
-
-Status SendListReply(int sock, const ObjectTable& objects);
-
-Status ReadListReply(uint8_t* data, size_t size, ObjectTable* objects);
 
 /* Plasma Connect message functions. */
 
