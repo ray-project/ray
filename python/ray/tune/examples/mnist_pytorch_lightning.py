@@ -1,5 +1,6 @@
 # flake8: noqa
 # yapf: disable
+
 # __import_lightning_begin__
 import torch
 import pytorch_lightning as pl
@@ -246,6 +247,7 @@ def tune_mnist_pbt():
         progress_reporter=reporter)
     shutil.rmtree(data_dir)
 # __tune_pbt_end__
+
 
 if __name__ == "__main__":
     # tune_mnist_asha()  # ASHA scheduler
