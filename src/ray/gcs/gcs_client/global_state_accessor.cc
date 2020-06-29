@@ -191,6 +191,15 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetWorkerInfo(
   return worker_table_data;
 }
 
+std::vector<std::string> GlobalStateAccessor::GetAllWorkerInfo() {
+  std::vector<std::string> worker_table_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Workers().AsyncGetAll(
+      TransformForMultiItemCallback<rpc::WorkerTableData>(worker_table_data, promise)));
+  promise.get_future().get();
+  return worker_table_data;
+}
+
 bool GlobalStateAccessor::AddWorkerInfo(
     const std::shared_ptr<rpc::WorkerTableData> &data_ptr) {
   std::promise<bool> promise;

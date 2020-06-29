@@ -235,6 +235,10 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, GetWorkerInfo,
                              worker_info_grpc_client_, )
 
+  /// Get information of all workers from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, GetAllWorkerInfo,
+                             worker_info_grpc_client_, )
+
   /// Add worker information to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, AddWorkerInfo,
                              worker_info_grpc_client_, )

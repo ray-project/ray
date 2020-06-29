@@ -1332,6 +1332,19 @@ Status ServiceBasedWorkerInfoAccessor::AsyncGet(
   return Status::OK();
 }
 
+Status ServiceBasedWorkerInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<rpc::WorkerTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting all worker info.";
+  rpc::GetAllWorkerInfoRequest request;
+  client_impl_->GetGcsRpcClient().GetAllWorkerInfo(
+      request, [callback](const Status &status, const rpc::GetAllWorkerInfoReply &reply) {
+        auto result = VectorFromProtobuf(reply.worker_table_data());
+        callback(status, result);
+        RAY_LOG(DEBUG) << "Finished getting all worker info, status = " << status;
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedWorkerInfoAccessor::AsyncAdd(
     const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
     const StatusCallback &callback) {

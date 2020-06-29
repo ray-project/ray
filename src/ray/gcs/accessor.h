@@ -678,6 +678,12 @@ class WorkerInfoAccessor {
   virtual Status AsyncGet(const WorkerID &worker_id,
                           const OptionalItemCallback<rpc::WorkerTableData> &callback) = 0;
 
+  /// Get all worker info from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finished.
+  /// \return Status
+  virtual Status AsyncGetAll(const MultiItemCallback<rpc::WorkerTableData> &callback) = 0;
+
   /// Add worker information to GCS asynchronously.
   ///
   /// \param data_ptr The worker that will be add to GCS.

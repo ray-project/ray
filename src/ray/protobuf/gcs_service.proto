@@ -442,6 +442,15 @@ message GetWorkerInfoReply {
   WorkerTableData worker_table_data = 2;
 }
 
+message GetAllWorkerInfoRequest {
+}
+
+message GetAllWorkerInfoReply {
+  GcsStatus status = 1;
+  // Data of worker
+  repeated WorkerTableData worker_table_data = 2;
+}
+
 message AddWorkerInfoRequest {
   WorkerTableData worker_data = 1;
 }
@@ -458,6 +467,8 @@ service WorkerInfoGcsService {
   rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerReply);
   // Get worker information from GCS Service by worker id.
   rpc GetWorkerInfo(GetWorkerInfoRequest) returns (GetWorkerInfoReply);
+  // Get information of all workers from GCS Service.
+  rpc GetAllWorkerInfo(GetAllWorkerInfoRequest) returns (GetAllWorkerInfoReply);
   // Add worker information to GCS Service.
   rpc AddWorkerInfo(AddWorkerInfoRequest) returns (AddWorkerInfoReply);
 }

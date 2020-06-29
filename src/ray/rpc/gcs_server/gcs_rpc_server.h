@@ -435,6 +435,10 @@ class WorkerInfoGcsServiceHandler {
                                    GetWorkerInfoReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleGetAllWorkerInfo(const GetAllWorkerInfoRequest &request,
+                                      GetAllWorkerInfoReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleAddWorkerInfo(const AddWorkerInfoRequest &request,
                                    AddWorkerInfoReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
@@ -459,6 +463,7 @@ class WorkerInfoGrpcService : public GrpcService {
     WORKER_INFO_SERVICE_RPC_HANDLER(ReportWorkerFailure);
     WORKER_INFO_SERVICE_RPC_HANDLER(RegisterWorker);
     WORKER_INFO_SERVICE_RPC_HANDLER(GetWorkerInfo);
+    WORKER_INFO_SERVICE_RPC_HANDLER(GetAllWorkerInfo);
     WORKER_INFO_SERVICE_RPC_HANDLER(AddWorkerInfo);
   }
 

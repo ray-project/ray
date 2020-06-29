@@ -117,6 +117,13 @@ class GlobalStateAccessor {
   /// protobuf function.
   std::unique_ptr<std::string> GetWorkerInfo(const WorkerID &worker_id);
 
+  /// Get information of all workers from GCS Service.
+  ///
+  /// \return All worker info. To support multi-language, we serialize each
+  /// WorkerTableData and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::vector<std::string> GetAllWorkerInfo();
+
   /// Add information of a worker to GCS Service.
   ///
   /// \param data_ptr The data of worker to added in the GCS Service.

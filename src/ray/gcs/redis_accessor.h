@@ -450,6 +450,8 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
   Status AsyncGet(const WorkerID &worker_id,
                   const OptionalItemCallback<rpc::WorkerTableData> &callback) override;
 
+  Status AsyncGetAll(const MultiItemCallback<rpc::WorkerTableData> &callback) override;
+
   Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
                   const StatusCallback &callback) override;
 

@@ -98,6 +98,24 @@ void GcsWorkerManager::HandleGetWorkerInfo(const rpc::GetWorkerInfoRequest &requ
   }
 }
 
+void GcsWorkerManager::HandleGetAllWorkerInfo(
+    const rpc::GetAllWorkerInfoRequest &request, rpc::GetAllWorkerInfoReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Getting all worker info.";
+  auto on_done = [reply, send_reply_callback](
+                     const std::unordered_map<WorkerID, WorkerTableData> &result) {
+    for (auto &data : result) {
+      reply->add_worker_table_data()->CopyFrom(data.second);
+    }
+    RAY_LOG(DEBUG) << "Finished getting all worker info.";
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  };
+  Status status = gcs_table_storage_->WorkerTable().GetAll(on_done);
+  if (!status.ok()) {
+    on_done(std::unordered_map<WorkerID, WorkerTableData>());
+  }
+}
+
 void GcsWorkerManager::HandleAddWorkerInfo(const rpc::AddWorkerInfoRequest &request,
                                            rpc::AddWorkerInfoReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {

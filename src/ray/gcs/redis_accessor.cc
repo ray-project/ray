@@ -844,6 +844,11 @@ Status RedisWorkerInfoAccessor::AsyncGet(
   return Status::Invalid("Not implemented");
 }
 
+Status RedisWorkerInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<rpc::WorkerTableData> &callback) {
+  return Status::Invalid("Not implemented");
+}
+
 Status RedisWorkerInfoAccessor::AsyncAdd(
     const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
     const StatusCallback &callback) {

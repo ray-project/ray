@@ -426,6 +426,23 @@ class GcsServerTest : public ::testing::Test {
     return worker_table_data_opt;
   }
 
+  std::vector<rpc::WorkerTableData> GetAllWorkerInfo() {
+    std::vector<rpc::WorkerTableData> worker_table_data;
+    rpc::GetAllWorkerInfoRequest request;
+    std::promise<bool> promise;
+    client_->GetAllWorkerInfo(
+        request, [&worker_table_data, &promise](const Status &status,
+                                                const rpc::GetAllWorkerInfoReply &reply) {
+          RAY_CHECK_OK(status);
+          for (int index = 0; index < reply.worker_table_data_size(); ++index) {
+            worker_table_data.push_back(reply.worker_table_data(index));
+          }
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return worker_table_data;
+  }
+
   bool AddWorkerInfo(const rpc::AddWorkerInfoRequest &request) {
     std::promise<bool> promise;
     client_->AddWorkerInfo(
@@ -766,12 +783,15 @@ TEST_F(GcsServerTest, TestErrorInfo) {
 
 TEST_F(GcsServerTest, TestWorkerInfo) {
   // Report worker failure
-  rpc::WorkerTableData worker_failure_data;
-  worker_failure_data.mutable_worker_address()->set_ip_address("127.0.0.1");
-  worker_failure_data.mutable_worker_address()->set_port(5566);
+  auto worker_failure_data = Mocker::GenWorkerTableData();
+  worker_failure_data->mutable_worker_address()->set_ip_address("127.0.0.1");
+  worker_failure_data->mutable_worker_address()->set_port(5566);
   rpc::ReportWorkerFailureRequest report_worker_failure_request;
-  report_worker_failure_request.mutable_worker_failure()->CopyFrom(worker_failure_data);
+  report_worker_failure_request.mutable_worker_failure()->CopyFrom(*worker_failure_data);
   ASSERT_TRUE(ReportWorkerFailure(report_worker_failure_request));
+  std::vector<rpc::WorkerTableData> worker_table_data = GetAllWorkerInfo();
+  ASSERT_TRUE(worker_table_data.size() == 1);
+  ASSERT_TRUE(worker_table_data[0].worker_address().port() == 5566);
 
   // Register a worker of type WORKER
   rpc::RegisterWorkerRequest register_worker_request;
@@ -789,6 +809,7 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
 
   // Add worker info
   auto worker_data = Mocker::GenWorkerTableData();
+  worker_data->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
   rpc::AddWorkerInfoRequest add_worker_request;
   add_worker_request.mutable_worker_data()->CopyFrom(*worker_data);
   ASSERT_TRUE(AddWorkerInfo(add_worker_request));
