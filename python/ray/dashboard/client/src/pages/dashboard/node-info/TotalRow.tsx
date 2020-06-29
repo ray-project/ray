@@ -1,10 +1,9 @@
 import {
   createStyles,
+  makeStyles,
   TableCell,
   TableRow,
   Theme,
-  WithStyles,
-  withStyles,
 } from "@material-ui/core";
 import LayersIcon from "@material-ui/icons/Layers";
 import React from "react";
@@ -12,6 +11,8 @@ import { NodeInfoResponse } from "../../../api";
 import { ClusterCPU } from "./features/CPU";
 import { ClusterDisk } from "./features/Disk";
 import { makeClusterErrors } from "./features/Errors";
+import { ClusterGPU } from "./features/GPU";
+import { ClusterGRAM } from "./features/GRAM";
 import { ClusterHost } from "./features/Host";
 import { makeClusterLogs } from "./features/Logs";
 import { ClusterRAM } from "./features/RAM";
@@ -20,7 +21,7 @@ import { ClusterSent } from "./features/Sent";
 import { ClusterUptime } from "./features/Uptime";
 import { ClusterWorkers } from "./features/Workers";
 
-const styles = (theme: Theme) =>
+const useTotalRowStyles = makeStyles((theme: Theme) =>
   createStyles({
     cell: {
       borderTopColor: theme.palette.divider,
@@ -37,9 +38,10 @@ const styles = (theme: Theme) =>
       fontSize: "1.5em",
       verticalAlign: "middle",
     },
-  });
+  }),
+);
 
-type Props = {
+type TotalRowProps = {
   nodes: NodeInfoResponse["clients"];
   clusterTotalWorkers: number;
   logCounts: {
@@ -56,42 +58,40 @@ type Props = {
   };
 };
 
-class TotalRow extends React.Component<Props & WithStyles<typeof styles>> {
-  render() {
-    const {
-      classes,
-      nodes,
-      clusterTotalWorkers,
-      logCounts,
-      errorCounts,
-    } = this.props;
+const TotalRow: React.FC<TotalRowProps> = ({
+  nodes,
+  clusterTotalWorkers,
+  logCounts,
+  errorCounts,
+}) => {
+  const classes = useTotalRowStyles();
+  const features = [
+    { ClusterFeature: ClusterHost },
+    { ClusterFeature: ClusterWorkers(clusterTotalWorkers) },
+    { ClusterFeature: ClusterUptime },
+    { ClusterFeature: ClusterCPU },
+    { ClusterFeature: ClusterRAM },
+    { ClusterFeature: ClusterGPU },
+    { ClusterFeature: ClusterGRAM },
+    { ClusterFeature: ClusterDisk },
+    { ClusterFeature: ClusterSent },
+    { ClusterFeature: ClusterReceived },
+    { ClusterFeature: makeClusterLogs(logCounts) },
+    { ClusterFeature: makeClusterErrors(errorCounts) },
+  ];
 
-    const features = [
-      { ClusterFeature: ClusterHost },
-      { ClusterFeature: ClusterWorkers(clusterTotalWorkers) },
-      { ClusterFeature: ClusterUptime },
-      { ClusterFeature: ClusterCPU },
-      { ClusterFeature: ClusterRAM },
-      { ClusterFeature: ClusterDisk },
-      { ClusterFeature: ClusterSent },
-      { ClusterFeature: ClusterReceived },
-      { ClusterFeature: makeClusterLogs(logCounts) },
-      { ClusterFeature: makeClusterErrors(errorCounts) },
-    ];
-
-    return (
-      <TableRow hover>
-        <TableCell className={classes.cell}>
-          <LayersIcon className={classes.totalIcon} />
+  return (
+    <TableRow hover>
+      <TableCell className={classes.cell}>
+        <LayersIcon className={classes.totalIcon} />
+      </TableCell>
+      {features.map(({ ClusterFeature }, index) => (
+        <TableCell className={classes.cell} key={index}>
+          <ClusterFeature nodes={nodes} />
         </TableCell>
-        {features.map(({ ClusterFeature }, index) => (
-          <TableCell className={classes.cell} key={index}>
-            <ClusterFeature nodes={nodes} />
-          </TableCell>
-        ))}
-      </TableRow>
-    );
-  }
-}
+      ))}
+    </TableRow>
+  );
+};
 
-export default withStyles(styles)(TotalRow);
+export default TotalRow;

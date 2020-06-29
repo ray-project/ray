@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RPC_OBJECT_MANAGER_CLIENT_H
-#define RAY_RPC_OBJECT_MANAGER_CLIENT_H
+#pragma once
 
 #include <grpcpp/grpcpp.h>
 #include <grpcpp/resource_quota.h>
@@ -93,5 +92,3 @@ class ObjectManagerClient {
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif  // RAY_RPC_OBJECT_MANAGER_CLIENT_H

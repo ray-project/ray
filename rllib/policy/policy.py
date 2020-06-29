@@ -1,7 +1,6 @@
 from abc import ABCMeta, abstractmethod
 import gym
 import numpy as np
-from typing import Any
 
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -17,12 +16,6 @@ tree = try_import_tree()
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
 LEARNER_STATS_KEY = "learner_stats"
-
-# Represents a generic identifier for an agent (e.g., "agent1").
-AgentID = Any
-
-# Represents a generic identifier for a policy (e.g., "pol1").
-PolicyID = str
 
 
 @DeveloperAPI
@@ -160,12 +153,12 @@ class Policy(metaclass=ABCMeta):
             episodes = [episode]
         if state is not None:
             state_batch = [
-                s.unsqueeze(0)
-                if torch and isinstance(s, torch.Tensor) else [s]
+                s.unsqueeze(0) if torch and isinstance(s, torch.Tensor) else
+                np.expand_dims(s, 0)
                 for s in state
             ]
 
-        batched_action, state_out, info = self.compute_actions(
+        out = self.compute_actions(
             [obs],
             state_batch,
             prev_action_batch=prev_action_batch,
@@ -175,7 +168,16 @@ class Policy(metaclass=ABCMeta):
             explore=explore,
             timestep=timestep)
 
-        single_action = unbatch(batched_action)
+        # Some policies don't return a tuple, but always just a single action.
+        # E.g. ES and ARS.
+        if not isinstance(out, tuple):
+            single_action = out
+            state_out = []
+            info = {}
+        # Normal case: Policy should return (action, state, info) tuple.
+        else:
+            batched_action, state_out, info = out
+            single_action = unbatch(batched_action)
         assert len(single_action) == 1
         single_action = single_action[0]
 

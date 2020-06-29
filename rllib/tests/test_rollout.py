@@ -66,9 +66,6 @@ class TestRollout(unittest.TestCase):
     def test_a3c(self):
         rollout_test("A3C")
 
-    def test_ars(self):
-        rollout_test("ARS")
-
     def test_ddpg(self):
         rollout_test("DDPG", env="Pendulum-v0")
 

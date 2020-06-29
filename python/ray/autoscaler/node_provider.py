@@ -3,7 +3,7 @@ import logging
 import os
 import yaml
 
-from ray.autoscaler.updater import SSHCommandRunner
+from ray.autoscaler.updater import SSHCommandRunner, DockerCommandRunner
 
 logger = logging.getLogger(__name__)
 
@@ -211,8 +211,30 @@ class NodeProvider:
         """Clean-up when a Provider is no longer required."""
         pass
 
-    def get_command_runner(self, log_prefix, node_id, auth_config,
-                           cluster_name, process_runner, use_internal_ip):
+    def create_node_of_type(self, node_config, tags, instance_type, count):
+        """Creates a number of nodes with a given instance type.
+
+        This is an optional method only required if using the resource
+        demand scheduler.
+        """
+        assert instance_type is not None
+        raise NotImplementedError
+
+    def get_instance_type(self, node_config):
+        """Returns the instance type of this node config.
+
+        This is an optional method only required if using the resource
+        demand scheduler."""
+        return None
+
+    def get_command_runner(self,
+                           log_prefix,
+                           node_id,
+                           auth_config,
+                           cluster_name,
+                           process_runner,
+                           use_internal_ip,
+                           docker_config=None):
         """ Returns the CommandRunner class used to perform SSH commands.
 
         Args:
@@ -226,7 +248,19 @@ class NodeProvider:
             in the CommandRunner. E.g., subprocess.
         use_internal_ip(bool): whether the node_id belongs to an internal ip
             or external ip.
+        docker_config(dict): If set, the docker information of the docker
+            container that commands should be run on.
         """
-
-        return SSHCommandRunner(log_prefix, node_id, self, auth_config,
-                                cluster_name, process_runner, use_internal_ip)
+        common_args = {
+            "log_prefix": log_prefix,
+            "node_id": node_id,
+            "provider": self,
+            "auth_config": auth_config,
+            "cluster_name": cluster_name,
+            "process_runner": process_runner,
+            "use_internal_ip": use_internal_ip
+        }
+        if docker_config and docker_config["container_name"] != "":
+            return DockerCommandRunner(docker_config, **common_args)
+        else:
+            return SSHCommandRunner(**common_args)

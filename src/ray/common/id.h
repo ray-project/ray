@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_ID_H_
-#define RAY_ID_H_
+#pragma once
 
 #include <inttypes.h>
 #include <limits.h>
@@ -25,7 +24,6 @@
 #include <random>
 #include <string>
 
-#include "plasma/common.h"
 #include "ray/common/constants.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
@@ -274,16 +272,6 @@ class ObjectID : public BaseID<ObjectID> {
 
   static size_t Size() { return kLength; }
 
-  /// Generate ObjectID by the given binary string of a plasma id.
-  ///
-  /// \param from The binary string of the given plasma id.
-  /// \return The ObjectID converted from a binary string of the plasma id.
-  static ObjectID FromPlasmaIdBinary(const std::string &from);
-
-  plasma::ObjectID ToPlasmaId() const;
-
-  ObjectID(const plasma::UniqueID &from);
-
   /// Get the index of this object in the task that created it.
   ///
   /// \return The index of object creation according to the task that created
@@ -505,4 +493,3 @@ DEFINE_UNIQUE_ID(ObjectID);
 
 #undef DEFINE_UNIQUE_ID
 }  // namespace std
-#endif  // RAY_ID_H_

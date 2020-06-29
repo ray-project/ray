@@ -76,12 +76,6 @@ class MockServer {
 
 class TestObjectManagerBase : public ::testing::Test {
  public:
-  TestObjectManagerBase() {
-#ifdef _WIN32
-    RAY_CHECK(false) << "port system() calls to Windows before running this test";
-#endif
-  }
-
   void SetUp() {
     flushall_redis();
 
@@ -119,13 +113,13 @@ class TestObjectManagerBase : public ::testing::Test {
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
-    RAY_ARROW_CHECK_OK(client1.Connect(socket_name_1));
-    RAY_ARROW_CHECK_OK(client2.Connect(socket_name_2));
+    RAY_CHECK_OK(client1.Connect(socket_name_1));
+    RAY_CHECK_OK(client2.Connect(socket_name_2));
   }
 
   void TearDown() {
-    arrow::Status client1_status = client1.Disconnect();
-    arrow::Status client2_status = client2.Disconnect();
+    Status client1_status = client1.Disconnect();
+    Status client2_status = client2.Disconnect();
     ASSERT_TRUE(client1_status.ok() && client2_status.ok());
 
     gcs_client_1->Disconnect();
@@ -148,9 +142,8 @@ class TestObjectManagerBase : public ::testing::Test {
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<arrow::Buffer> data;
-    RAY_ARROW_CHECK_OK(
-        client.Create(object_id.ToPlasmaId(), data_size, metadata, metadata_size, &data));
-    RAY_ARROW_CHECK_OK(client.Seal(object_id.ToPlasmaId()));
+    RAY_CHECK_OK(client.Create(object_id, data_size, metadata, metadata_size, &data));
+    RAY_CHECK_OK(client.Seal(object_id));
     return object_id;
   }
 

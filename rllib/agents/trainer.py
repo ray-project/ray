@@ -1,4 +1,5 @@
 from datetime import datetime
+import numpy as np
 import copy
 import logging
 import math
@@ -6,25 +7,27 @@ import os
 import pickle
 import time
 import tempfile
-from typing import Callable, List, Dict, Union, Any
+from typing import Callable, List, Dict, Union
 
 import ray
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.env import EnvType
 from ray.rllib.env.normalize_actions import NormalizeActionWrapper
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.policy import Policy, PolicyID
+from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
-from ray.rllib.utils.framework import check_framework, try_import_tf, \
-    TensorStructType
+from ray.rllib.utils.spaces import space_utils
+from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.types import TrainerConfigDict, \
+    PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType, PolicyID
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
@@ -149,8 +152,7 @@ COMMON_CONFIG = {
     # tf: TensorFlow
     # tfe: TensorFlow eager
     # torch: PyTorch
-    # auto: "torch" if only PyTorch installed, "tf" otherwise.
-    "framework": "auto",
+    "framework": "tf",
     # Enable tracing in eager mode. This greatly improves performance, but
     # makes it slightly harder to debug since Python code won't be evaluated
     # after the initial eager pass. Only possible if framework=tfe.
@@ -338,18 +340,30 @@ COMMON_CONFIG = {
 
     # === Settings for Multi-Agent Environments ===
     "multiagent": {
-        # Map from policy ids to tuples of (policy_cls, obs_space,
-        # act_space, config). See rollout_worker.py for more info.
+        # Map of type MultiAgentPolicyConfigDict from policy ids to tuples
+        # of (policy_cls, obs_space, act_space, config). This defines the
+        # observation and action spaces of the policies and any extra config.
         "policies": {},
         # Function mapping agent ids to policy ids.
         "policy_mapping_fn": None,
-        # Optional whitelist of policies to train, or None for all policies.
+        # Optional list of policies to train, or None for all policies.
         "policies_to_train": None,
         # Optional function that can be used to enhance the local agent
         # observations to include more state.
         # See rllib/evaluation/observation_function.py for more info.
         "observation_fn": None,
+        # When replay_mode=lockstep, RLlib will replay all the agent
+        # transitions at a particular timestep together in a batch. This allows
+        # the policy to implement differentiable shared computations between
+        # agents it controls at that timestep. When replay_mode=independent,
+        # transitions are replayed independently per policy.
+        "replay_mode": "independent",
     },
+
+    # === Replay Settings ===
+    # The number of contiguous environment steps to replay at once. This may
+    # be set to greater than 1 to support recurrent models.
+    "replay_sequence_length": 1,
 
     # Deprecated keys:
     "use_pytorch": DEPRECATED_VALUE,  # Replaced by `framework=torch`.
@@ -360,13 +374,16 @@ COMMON_CONFIG = {
 
 
 @DeveloperAPI
-def with_common_config(extra_config):
+def with_common_config(
+        extra_config: PartialTrainerConfigDict) -> TrainerConfigDict:
     """Returns the given config dict merged with common agent confs."""
 
     return with_base_config(COMMON_CONFIG, extra_config)
 
 
-def with_base_config(base_config, extra_config):
+def with_base_config(
+        base_config: TrainerConfigDict,
+        extra_config: PartialTrainerConfigDict) -> TrainerConfigDict:
     """Returns the given config dict merged with a base agent conf."""
 
     config = copy.deepcopy(base_config)
@@ -407,7 +424,7 @@ class Trainer(Trainable):
 
     @PublicAPI
     def __init__(self,
-                 config: dict = None,
+                 config: TrainerConfigDict = None,
                  env: str = None,
                  logger_creator: Callable[[], Logger] = None):
         """Initialize an RLLib trainer.
@@ -453,7 +470,8 @@ class Trainer(Trainable):
 
     @classmethod
     @override(Trainable)
-    def default_resource_request(cls, config: dict) -> Resources:
+    def default_resource_request(
+            cls, config: PartialTrainerConfigDict) -> Resources:
         cf = dict(cls._default_config, **config)
         Trainer._validate_config(cf)
         num_workers = cf["num_workers"] + cf["evaluation_num_workers"]
@@ -471,7 +489,7 @@ class Trainer(Trainable):
 
     @override(Trainable)
     @PublicAPI
-    def train(self) -> dict:
+    def train(self) -> ResultDict:
         """Overrides super.train to synchronize global vars."""
 
         if self._has_policy_optimizer():
@@ -522,7 +540,7 @@ class Trainer(Trainable):
 
         return result
 
-    def _sync_filters_if_needed(self, workers):
+    def _sync_filters_if_needed(self, workers: WorkerSet):
         if self.config.get("observation_filter", "NoFilter") != "NoFilter":
             FilterManager.synchronize(
                 workers.local_worker().filters,
@@ -532,14 +550,14 @@ class Trainer(Trainable):
                 workers.local_worker().filters))
 
     @override(Trainable)
-    def _log_result(self, result: dict):
+    def _log_result(self, result: ResultDict):
         self.callbacks.on_train_result(trainer=self, result=result)
         # log after the callback is invoked, so that the user has a chance
         # to mutate the result
         Trainable._log_result(self, result)
 
     @override(Trainable)
-    def _setup(self, config: dict):
+    def _setup(self, config: PartialTrainerConfigDict):
         env = self._env_id
         if env:
             config["env"] = env
@@ -576,9 +594,7 @@ class Trainer(Trainable):
                 self.config["framework"] = "tfe"
             self.config.pop("eager")
 
-        # Check all dependencies and resolve "auto" framework.
-        self.config["framework"] = check_framework(self.config["framework"])
-        # Notify about eager/tracing support.
+        # Enable eager/tracing support.
         if tf and self.config["framework"] == "tfe":
             if not tf.executing_eagerly():
                 tf.enable_eager_execution()
@@ -669,8 +685,8 @@ class Trainer(Trainable):
         self.__setstate__(extra_data)
 
     @DeveloperAPI
-    def _make_workers(self, env_creator: Callable[[dict], EnvType],
-                      policy: type, config: dict,
+    def _make_workers(self, env_creator: Callable[[EnvContext], EnvType],
+                      policy: type, config: TrainerConfigDict,
                       num_workers: int) -> WorkerSet:
         """Default factory method for a WorkerSet running under this Trainer.
 
@@ -685,9 +701,6 @@ class Trainer(Trainable):
             config (dict): The Trainer's config.
             num_workers (int): Number of remote rollout workers to create.
                 0 for local only.
-            remote_config_updates (Optional[List[dict]]): A list of config
-                dicts to update `config` with for each Worker (len must be
-                same as `num_workers`).
 
         Returns:
             WorkerSet: The created WorkerSet.
@@ -700,7 +713,8 @@ class Trainer(Trainable):
             logdir=self.logdir)
 
     @DeveloperAPI
-    def _init(self, config, env_creator):
+    def _init(self, config: TrainerConfigDict,
+              env_creator: Callable[[EnvContext], EnvType]):
         """Subclasses should override this for custom initialization."""
         raise NotImplementedError
 
@@ -761,10 +775,10 @@ class Trainer(Trainable):
     @PublicAPI
     def compute_action(self,
                        observation: TensorStructType,
-                       state: List[Any] = None,
+                       state: List[TensorStructType] = None,
                        prev_action: TensorStructType = None,
-                       prev_reward: int = None,
-                       info: dict = None,
+                       prev_reward: float = None,
+                       info: EnvInfoDict = None,
                        policy_id: PolicyID = DEFAULT_POLICY_ID,
                        full_fetch: bool = False,
                        explore: bool = None) -> TensorStructType:
@@ -774,16 +788,17 @@ class Trainer(Trainable):
         self.get_policy(policy_id) and call compute_actions() on it directly.
 
         Arguments:
-            observation (obj): observation from the environment.
-            state (list): RNN hidden state, if any. If state is not None,
-                then all of compute_single_action(...) is returned
+            observation (TensorStructType): observation from the environment.
+            state (List[TensorStructType]): RNN hidden state, if any. If state
+                is not None, then all of compute_single_action(...) is returned
                 (computed action, rnn state(s), logits dictionary).
                 Otherwise compute_single_action(...)[0] is returned
                 (computed action).
-            prev_action (obj): previous action value, if any
-            prev_reward (int): previous reward, if any
-            info (dict): info object, if any
-            policy_id (str): Policy to query (only applies to multi-agent).
+            prev_action (TensorStructType): Previous action value, if any.
+            prev_reward (float): Previous reward, if any.
+            info (EnvInfoDict): info object, if any
+            policy_id (PolicyID): Policy to query (only applies to
+                multi-agent).
             full_fetch (bool): Whether to return extra action fetch results.
                 This is always set to True if RNN state is specified.
             explore (bool): Whether to pick an exploitation or exploration
@@ -819,13 +834,102 @@ class Trainer(Trainable):
         else:
             return result[0]  # backwards compatibility
 
+    def compute_actions(self,
+                        observations,
+                        state=None,
+                        prev_action=None,
+                        prev_reward=None,
+                        info=None,
+                        policy_id=DEFAULT_POLICY_ID,
+                        full_fetch=False,
+                        explore=None):
+        """Computes an action for the specified policy on the local Worker.
+
+        Note that you can also access the policy object through
+        self.get_policy(policy_id) and call compute_actions() on it directly.
+
+        Arguments:
+            observation (obj): observation from the environment.
+            state (dict): RNN hidden state, if any. If state is not None,
+                then all of compute_single_action(...) is returned
+                (computed action, rnn state(s), logits dictionary).
+                Otherwise compute_single_action(...)[0] is returned
+                (computed action).
+            prev_action (obj): previous action value, if any
+            prev_reward (int): previous reward, if any
+            info (dict): info object, if any
+            policy_id (str): Policy to query (only applies to multi-agent).
+            full_fetch (bool): Whether to return extra action fetch results.
+                This is always set to True if RNN state is specified.
+            explore (bool): Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
+
+        Returns:
+            any: The computed action if full_fetch=False, or
+            tuple: The full output of policy.compute_actions() if
+                full_fetch=True or we have an RNN-based Policy.
+        """
+        # Preprocess obs and states
+        stateDefined = state is not None
+        policy = self.get_policy(policy_id)
+        filtered_obs, filtered_state = [], []
+        for agent_id, ob in observations.items():
+            worker = self.workers.local_worker()
+            preprocessed = worker.preprocessors[policy_id].transform(ob)
+            filtered = worker.filters[policy_id](preprocessed, update=False)
+            filtered_obs.append(filtered)
+            if state is None:
+                continue
+            elif agent_id in state:
+                filtered_state.append(state[agent_id])
+            else:
+                filtered_state.append(policy.get_initial_state())
+
+        # Batch obs and states
+        obs_batch = np.stack(filtered_obs)
+        if state is None:
+            state = []
+        else:
+            state = list(zip(*filtered_state))
+            state = [np.stack(s) for s in state]
+
+        # Figure out the current (sample) time step and pass it into Policy.
+        self.global_vars["timestep"] += 1
+
+        # Batch compute actions
+        actions, states, infos = policy.compute_actions(
+            obs_batch,
+            state,
+            prev_action,
+            prev_reward,
+            info,
+            clip_actions=self.config["clip_actions"],
+            explore=explore,
+            timestep=self.global_vars["timestep"])
+
+        # Unbatch actions for the environment
+        atns, actions = space_utils.unbatch(actions), {}
+        for key, atn in zip(observations, atns):
+            actions[key] = atn
+
+        # Unbatch states into a dict
+        unbatched_states = {}
+        for idx, agent_id in enumerate(observations):
+            unbatched_states[agent_id] = [s[idx] for s in states]
+
+        # Return only actions or full tuple
+        if stateDefined or full_fetch:
+            return actions, unbatched_states, infos
+        else:
+            return actions
+
     @property
     def _name(self) -> str:
         """Subclasses should override this to declare their name."""
         raise NotImplementedError
 
     @property
-    def _default_config(self) -> dict:
+    def _default_config(self) -> TrainerConfigDict:
         """Subclasses should override this to declare their default config."""
         raise NotImplementedError
 
@@ -858,7 +962,9 @@ class Trainer(Trainable):
         self.workers.local_worker().set_weights(weights)
 
     @DeveloperAPI
-    def export_policy_model(self, export_dir, policy_id=DEFAULT_POLICY_ID):
+    def export_policy_model(self,
+                            export_dir: str,
+                            policy_id: PolicyID = DEFAULT_POLICY_ID):
         """Export policy model with given policy_id to local directory.
 
         Arguments:
@@ -926,14 +1032,15 @@ class Trainer(Trainable):
             selected_workers=selected_workers)
 
     @classmethod
-    def resource_help(cls, config: dict) -> str:
+    def resource_help(cls, config: TrainerConfigDict) -> str:
         return ("\n\nYou can adjust the resource requests of RLlib agents by "
                 "setting `num_workers`, `num_gpus`, and other configs. See "
                 "the DEFAULT_CONFIG defined by each agent for more info.\n\n"
                 "The config of this agent is: {}".format(config))
 
     @classmethod
-    def merge_trainer_configs(cls, config1: dict, config2: dict) -> dict:
+    def merge_trainer_configs(cls, config1: TrainerConfigDict,
+                              config2: PartialTrainerConfigDict) -> dict:
         config1 = copy.deepcopy(config1)
         # Error if trainer default has deprecated value.
         if config1["sample_batch_size"] != DEPRECATED_VALUE:
@@ -960,37 +1067,31 @@ class Trainer(Trainable):
                            cls._override_all_subkeys_if_type_changes)
 
     @staticmethod
-    def _validate_config(config: dict):
+    def _validate_config(config: PartialTrainerConfigDict):
         if "policy_graphs" in config["multiagent"]:
-            logger.warning(
-                "The `policy_graphs` config has been renamed to `policies`.")
-            # Backwards compatibility
-            config["multiagent"]["policies"] = config["multiagent"][
-                "policy_graphs"]
-            del config["multiagent"]["policy_graphs"]
+            deprecation_warning("policy_graphs", "policies")
+            # Backwards compatibility.
+            config["multiagent"]["policies"] = config["multiagent"].pop(
+                "policy_graphs")
         if "gpu" in config:
-            raise ValueError(
-                "The `gpu` config is deprecated, please use `num_gpus=0|1` "
-                "instead.")
+            deprecation_warning("gpu", "num_gpus=0|1", error=True)
         if "gpu_fraction" in config:
-            raise ValueError(
-                "The `gpu_fraction` config is deprecated, please use "
-                "`num_gpus=<fraction>` instead.")
+            deprecation_warning(
+                "gpu_fraction", "num_gpus=<fraction>", error=True)
         if "use_gpu_for_workers" in config:
-            raise ValueError(
-                "The `use_gpu_for_workers` config is deprecated, please use "
-                "`num_gpus_per_worker=1` instead.")
+            deprecation_warning(
+                "use_gpu_for_workers", "num_gpus_per_worker=1", error=True)
         if type(config["input_evaluation"]) != list:
             raise ValueError(
                 "`input_evaluation` must be a list of strings, got {}".format(
                     config["input_evaluation"]))
 
     def _try_recover(self):
-        """Try to identify and blacklist any unhealthy workers.
+        """Try to identify and remove any unhealthy workers.
 
         This method is called after an unexpected remote error is encountered
         from a worker. It issues check requests to all current workers and
-        blacklists any that respond with error. If no healthy workers remain,
+        removes any that respond with error. If no healthy workers remain,
         an error is raised.
         """
 
@@ -1018,7 +1119,7 @@ class Trainer(Trainable):
                 healthy_workers.append(w)
                 logger.info("Worker {} looks healthy".format(i + 1))
             except RayError:
-                logger.exception("Blacklisting worker {}".format(i + 1))
+                logger.exception("Removing unhealthy worker {}".format(i + 1))
                 try:
                     w.__ray_terminate__.remote()
                 except Exception:

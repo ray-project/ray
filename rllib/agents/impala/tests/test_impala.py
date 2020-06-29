@@ -3,18 +3,19 @@ import unittest
 import ray
 import ray.rllib.agents.impala as impala
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import framework_iterator, check_compute_action
+from ray.rllib.utils.test_utils import check_compute_single_action, \
+    framework_iterator
 
 tf = try_import_tf()
 
 
 class TestIMPALA(unittest.TestCase):
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         ray.init()
 
     @classmethod
-    def tearDownClass(cls):
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_impala_compilation(self):
@@ -22,7 +23,7 @@ class TestIMPALA(unittest.TestCase):
         config = impala.DEFAULT_CONFIG.copy()
         num_iterations = 1
 
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
             local_cfg = config.copy()
             for env in ["Pendulum-v0", "CartPole-v0"]:
                 print("Env={}".format(env))
@@ -33,17 +34,21 @@ class TestIMPALA(unittest.TestCase):
                 trainer = impala.ImpalaTrainer(config=local_cfg, env=env)
                 for i in range(num_iterations):
                     print(trainer.train())
-                check_compute_action(trainer)
+                check_compute_single_action(trainer)
                 trainer.stop()
 
                 # Test w/ LSTM.
                 print("w/ LSTM")
                 local_cfg["model"]["use_lstm"] = True
+                local_cfg["model"]["lstm_use_prev_action_reward"] = True
                 local_cfg["num_aggregation_workers"] = 2
                 trainer = impala.ImpalaTrainer(config=local_cfg, env=env)
                 for i in range(num_iterations):
                     print(trainer.train())
-                check_compute_action(trainer, include_state=True)
+                check_compute_single_action(
+                    trainer,
+                    include_state=True,
+                    include_prev_action_reward=True)
                 trainer.stop()
 
 

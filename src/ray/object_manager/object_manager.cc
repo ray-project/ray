@@ -13,6 +13,9 @@
 // limitations under the License.
 
 #include "ray/object_manager/object_manager.h"
+
+#include <chrono>
+
 #include "ray/common/common_protocol.h"
 #include "ray/stats/stats.h"
 #include "ray/util/util.h"
@@ -23,13 +26,35 @@ namespace object_manager_protocol = ray::object_manager::protocol;
 
 namespace ray {
 
+ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config) {
+  if (config.object_store_memory > 0) {
+    plasma::plasma_store_runner.reset(new plasma::PlasmaStoreRunner(
+        config.store_socket_name, config.object_store_memory, config.huge_pages,
+        config.plasma_directory, ""));
+    // Initialize object store.
+    store_thread_ =
+        std::thread(&plasma::PlasmaStoreRunner::Start, plasma::plasma_store_runner.get());
+    // Sleep for sometime until the store is working. This can suppress some
+    // connection warnings.
+    std::this_thread::sleep_for(std::chrono::microseconds(500));
+  }
+}
+
+ObjectStoreRunner::~ObjectStoreRunner() {
+  if (plasma::plasma_store_runner != nullptr) {
+    plasma::plasma_store_runner->Stop();
+    store_thread_.join();
+    plasma::plasma_store_runner.reset();
+  }
+}
+
 ObjectManager::ObjectManager(asio::io_service &main_service, const ClientID &self_node_id,
                              const ObjectManagerConfig &config,
                              std::shared_ptr<ObjectDirectoryInterface> object_directory)
     : self_node_id_(self_node_id),
       config_(config),
       object_directory_(std::move(object_directory)),
-      store_notification_(main_service, config_.store_socket_name),
+      object_store_internal_(config),
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       rpc_work_(rpc_service_),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
@@ -39,11 +64,20 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const ClientID &sel
       client_call_manager_(main_service, config_.rpc_service_threads_number) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
   main_service_ = &main_service;
-  store_notification_.SubscribeObjAdded(
+
+  if (plasma::plasma_store_runner) {
+    store_notification_ = std::make_shared<ObjectStoreNotificationManager>(main_service);
+    plasma::plasma_store_runner->SetNotificationListener(store_notification_);
+  } else {
+    store_notification_ = std::make_shared<ObjectStoreNotificationManagerIPC>(
+        main_service, config_.store_socket_name);
+  }
+
+  store_notification_->SubscribeObjAdded(
       [this](const object_manager::protocol::ObjectInfoT &object_info) {
         HandleObjectAdded(object_info);
       });
-  store_notification_.SubscribeObjDeleted(
+  store_notification_->SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
 
   // Start object manager rpc server and send & receive request threads
@@ -51,6 +85,12 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const ClientID &sel
 }
 
 ObjectManager::~ObjectManager() { StopRpcService(); }
+
+void ObjectManager::Stop() {
+  if (plasma::plasma_store_runner != nullptr) {
+    plasma::plasma_store_runner->Stop();
+  }
+}
 
 void ObjectManager::RunRpcService() { rpc_service_.run(); }
 
@@ -74,7 +114,7 @@ void ObjectManager::StopRpcService() {
 void ObjectManager::HandleObjectAdded(
     const object_manager::protocol::ObjectInfoT &object_info) {
   // Notify the object directory that the object has been added to this node.
-  ObjectID object_id = ObjectID::FromPlasmaIdBinary(object_info.object_id);
+  ObjectID object_id = ObjectID::FromBinary(object_info.object_id);
   RAY_LOG(DEBUG) << "Object added " << object_id;
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id].object_info = object_info;
@@ -112,13 +152,13 @@ void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
 
 ray::Status ObjectManager::SubscribeObjAdded(
     std::function<void(const object_manager::protocol::ObjectInfoT &)> callback) {
-  store_notification_.SubscribeObjAdded(callback);
+  store_notification_->SubscribeObjAdded(callback);
   return ray::Status::OK();
 }
 
 ray::Status ObjectManager::SubscribeObjDeleted(
     std::function<void(const ObjectID &)> callback) {
-  store_notification_.SubscribeObjDeleted(callback);
+  store_notification_->SubscribeObjDeleted(callback);
   return ray::Status::OK();
 }
 
@@ -843,7 +883,7 @@ std::string ObjectManager::DebugString() const {
   result << "\n- num pull requests: " << pull_requests_.size();
   result << "\n- num buffered profile events: " << profile_events_.size();
   result << "\n" << object_directory_->DebugString();
-  result << "\n" << store_notification_.DebugString();
+  result << "\n" << store_notification_->DebugString();
   result << "\n" << buffer_pool_.DebugString();
   return result.str();
 }

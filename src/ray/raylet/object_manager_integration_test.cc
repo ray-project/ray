@@ -30,12 +30,7 @@ std::string test_executable;
 // TODO(hme): Get this working once the dust settles.
 class TestObjectManagerBase : public ::testing::Test {
  public:
-  TestObjectManagerBase() {
-    RAY_LOG(INFO) << "TestObjectManagerBase: started.";
-#ifdef _WIN32
-    RAY_CHECK(false) << "port system() calls to Windows before running this test";
-#endif
-  }
+  TestObjectManagerBase() { RAY_LOG(INFO) << "TestObjectManagerBase: started."; }
 
   NodeManagerConfig GetNodeManagerConfig(std::string raylet_socket_name,
                                          std::string store_socket_name) {
@@ -83,26 +78,23 @@ class TestObjectManagerBase : public ::testing::Test {
         GetNodeManagerConfig("raylet_2", store_sock_2), om_config_2, gcs_client_2));
 
     // connect to stores.
-    RAY_ARROW_CHECK_OK(client1.Connect(store_sock_1));
-    RAY_ARROW_CHECK_OK(client2.Connect(store_sock_2));
+    RAY_CHECK_OK(client1.Connect(store_sock_1));
+    RAY_CHECK_OK(client2.Connect(store_sock_2));
   }
 
   void TearDown() {
-    arrow::Status client1_status = client1.Disconnect();
-    arrow::Status client2_status = client2.Disconnect();
+    Status client1_status = client1.Disconnect();
+    Status client2_status = client2.Disconnect();
     ASSERT_TRUE(client1_status.ok() && client2_status.ok());
 
     this->server1.reset();
     this->server2.reset();
 
-    int s = system("killall plasma_store_server &");
-    ASSERT_TRUE(!s);
+    ASSERT_EQ(TestSetupUtil::KillAllExecutable(plasma_store_server + GetExeSuffix()), 0);
 
     std::string cmd_str = test_executable.substr(0, test_executable.find_last_of("/"));
-    s = system(("rm " + cmd_str + "/raylet_1").c_str());
-    ASSERT_TRUE(!s);
-    s = system(("rm " + cmd_str + "/raylet_2").c_str());
-    ASSERT_TRUE(!s);
+    ASSERT_EQ(unlink((cmd_str + "/raylet_1").c_str()), 0);
+    ASSERT_EQ(unlink((cmd_str + "/raylet_2").c_str()), 0);
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
@@ -111,9 +103,8 @@ class TestObjectManagerBase : public ::testing::Test {
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<Buffer> data;
-    RAY_ARROW_CHECK_OK(
-        client.Create(object_id.ToPlasmaId(), data_size, metadata, metadata_size, &data));
-    RAY_ARROW_CHECK_OK(client.Seal(object_id.ToPlasmaId()));
+    RAY_CHECK_OK(client.Create(object_id, data_size, metadata, metadata_size, &data));
+    RAY_CHECK_OK(client.Seal(object_id));
     return object_id;
   }
 

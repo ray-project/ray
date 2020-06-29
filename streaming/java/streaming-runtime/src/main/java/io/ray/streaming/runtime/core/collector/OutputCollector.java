@@ -1,7 +1,7 @@
 package io.ray.streaming.runtime.core.collector;
 
-import io.ray.api.BaseActor;
-import io.ray.api.RayPyActor;
+import io.ray.api.BaseActorHandle;
+import io.ray.api.PyActorHandle;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.api.collector.Collector;
 import io.ray.streaming.api.partition.Partition;
@@ -21,7 +21,7 @@ public class OutputCollector implements Collector<Record> {
 
   private final DataWriter writer;
   private final ChannelID[] outputQueues;
-  private final Collection<BaseActor> targetActors;
+  private final Collection<BaseActorHandle> targetActors;
   private final Language[] targetLanguages;
   private final Partition partition;
   private final Serializer javaSerializer = new JavaSerializer();
@@ -29,13 +29,13 @@ public class OutputCollector implements Collector<Record> {
 
   public OutputCollector(DataWriter writer,
                          Collection<String> outputQueueIds,
-                         Collection<BaseActor> targetActors,
+                         Collection<BaseActorHandle> targetActors,
                          Partition partition) {
     this.writer = writer;
     this.outputQueues = outputQueueIds.stream().map(ChannelID::from).toArray(ChannelID[]::new);
     this.targetActors = targetActors;
     this.targetLanguages = targetActors.stream()
-        .map(actor -> actor instanceof RayPyActor ? Language.PYTHON : Language.JAVA)
+        .map(actor -> actor instanceof PyActorHandle ? Language.PYTHON : Language.JAVA)
         .toArray(Language[]::new);
     this.partition = partition;
     LOGGER.debug("OutputCollector constructed, outputQueueIds:{}, partition:{}.",

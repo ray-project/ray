@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_REDIS_CONTEXT_H
-#define RAY_GCS_REDIS_CONTEXT_H
+#pragma once
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
@@ -366,5 +365,3 @@ std::shared_ptr<CallbackReply> RedisContext::RunSync(
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_REDIS_CONTEXT_H

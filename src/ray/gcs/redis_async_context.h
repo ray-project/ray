@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_REDIS_ASYNC_CONTEXT_H
-#define RAY_GCS_REDIS_ASYNC_CONTEXT_H
+#pragma once
 
 #include <stdarg.h>
 #include <mutex>
@@ -83,5 +82,3 @@ class RedisAsyncContext {
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_REDIS_ASYNC_CONTEXT_H

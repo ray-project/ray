@@ -5,21 +5,21 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import SlimFC, AppendBiasLayer, \
     normc_initializer
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import get_activation_fn
-from ray.rllib.utils import try_import_torch
+from ray.rllib.utils.framework import get_activation_fn, try_import_torch
 
 torch, nn = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
 
-class FullyConnectedNetwork(TorchModelV2):
+class FullyConnectedNetwork(TorchModelV2, nn.Module):
     """Generic fully connected network."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
+        nn.Module.__init__(self)
 
         activation = get_activation_fn(
             model_config.get("fcnet_activation"), framework="torch")
@@ -90,17 +90,16 @@ class FullyConnectedNetwork(TorchModelV2):
         if not self.vf_share_layers:
             # Build a parallel set of hidden layers for the value net.
             prev_vf_layer_size = int(np.product(obs_space.shape))
-            self._value_branch_separate = []
+            vf_layers = []
             for size in hiddens:
-                self._value_branch_separate.append(
+                vf_layers.append(
                     SlimFC(
                         in_size=prev_vf_layer_size,
                         out_size=size,
                         activation_fn=activation,
                         initializer=normc_initializer(1.0)))
                 prev_vf_layer_size = size
-            self._value_branch_separate = nn.Sequential(
-                *self._value_branch_separate)
+            self._value_branch_separate = nn.Sequential(*vf_layers)
 
         self._value_branch = SlimFC(
             in_size=prev_layer_size,

@@ -22,7 +22,7 @@ for i in range(num_nodes):
         resources={str(i): 2},
         object_store_memory=object_store_memory,
         redis_max_memory=redis_max_memory,
-        webui_host="0.0.0.0")
+        dashboard_host="0.0.0.0")
 
 print("Downloading load testing tool")
 subprocess.call([
@@ -31,7 +31,7 @@ subprocess.call([
     "chmod +x hey_linux_amd64"
 ])
 
-ray.init(address=cluster.address, include_webui=True, webui_host="0.0.0.0")
+ray.init(address=cluster.address, dashboard_host="0.0.0.0")
 serve.init()
 
 
@@ -42,10 +42,9 @@ def echo(_):
     return ["hi {}".format(i) for i in range(serve.context.batch_size)]
 
 
-serve.create_endpoint("echo", "/echo")
 config = {"num_replicas": 30, "max_batch_size": 16}
 serve.create_backend("echo:v1", echo, config=config)
-serve.set_traffic("echo", {"echo:v1": 1})
+serve.create_endpoint("echo", backend="echo:v1", route="/echo")
 
 print("Warming up")
 for _ in range(5):

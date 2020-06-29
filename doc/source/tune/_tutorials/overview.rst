@@ -25,6 +25,11 @@ Take a look at any of the below tutorials to get started with Tune.
    :figure: /images/tune.png
    :description: :doc:`A walkthrough to setup your first Tune experiment <tune-tutorial>`
 
+.. customgalleryitem::
+   :tooltip: Tuning XGBoost parameters.
+   :figure: /images/xgboost_logo.png
+   :description: :doc:`A guide to tuning XGBoost parameters with Tune <tune-xgboost>`
+
 .. raw:: html
 
     </div>
@@ -34,6 +39,7 @@ Take a look at any of the below tutorials to get started with Tune.
 
    tune-60-seconds.rst
    tune-tutorial.rst
+   tune-xgboost.rst
 
 
 User Guides
@@ -161,6 +167,7 @@ PyTorch Examples
 XGBoost Example
 ~~~~~~~~~~~~~~~
 
+- :ref:`XGBoost tutorial <tune-xgboost>`: A guide to tuning XGBoost parameters with Tune.
 - `xgboost_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/xgboost_example.py>`__: Trains a basic XGBoost model with Tune with the function-based API and an XGBoost callback.
 
 
@@ -176,3 +183,15 @@ Contributed Examples
 - `pbt_tune_cifar10_with_keras <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_tune_cifar10_with_keras.py>`__: A contributed example of tuning a Keras model on CIFAR10 with the PopulationBasedTraining scheduler.
 - `genetic_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/genetic_example.py>`__: Optimizing the michalewicz function using the contributed GeneticSearch algorithm with AsyncHyperBandScheduler.
 - `tune_cifar10_gluon <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_cifar10_gluon.py>`__: MXNet Gluon example to use Tune with the function-based API on CIFAR-10 dataset.
+
+Open Source Projects using Tune
+-------------------------------
+
+Here are some of the popular open source repositories and research projects that leverage Tune. Feel free to submit a pull-request adding (or requesting a removal!) of a listed project.
+
+ - `Softlearning <https://github.com/rail-berkeley/softlearning>`_: Softlearning is a reinforcement learning framework for training maximum entropy policies in continuous domains. Includes the official implementation of the Soft Actor-Critic algorithm.
+ - `Flambe <https://github.com/asappresearch/flambe>`_: An ML framework to accelerate research and its path to production. See `flambe.ai <https://flambe.ai>`_.
+ - `Population Based Augmentation <https://github.com/arcelien/pba>`_: Population Based Augmentation (PBA) is a algorithm that quickly and efficiently learns data augmentation functions for neural network training. PBA matches state-of-the-art results on CIFAR with one thousand times less compute.
+ - `Fast AutoAugment by Kakao <https://github.com/kakaobrain/fast-autoaugment>`_: Fast AutoAugment (Accepted at NeurIPS 2019) learns augmentation policies using a more efficient search strategy based on density matching.
+ - `Allentune <https://github.com/allenai/allentune>`_: Hyperparameter Search for AllenNLP from AllenAI.
+ - `machinable <https://github.com/frthjf/machinable>`_: A modular configuration system for machine learning research. See `machinable.org <https://machinable.org>`_.
