@@ -304,6 +304,13 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID>& object_ids) {
   }
 }
 
+void PlasmaStore::SealObjectsAndRelease(const std::vector<ObjectID>& object_ids, Client* client) {
+  object_directory->SealObjectsAndRelease(object_ids, client);
+  for (size_t i = 0; i < object_ids.size(); ++i) {
+    UpdateObjectGetRequests(object_ids[i]);
+  }
+}
+
 void PlasmaStore::ConnectClient(int listener_sock) {
   int client_fd = AcceptClient(listener_sock);
 

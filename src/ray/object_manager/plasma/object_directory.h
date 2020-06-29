@@ -343,28 +343,23 @@ class ObjectDirectory {
   /// get.
   ///
   /// \param object_ids The vector of Object IDs of the objects to be sealed.
-  /// \param infos The summary info of sealed objects.
   void SealObjects(const std::vector<ObjectID>& object_ids) {
-    std::vector<ObjectInfoT> infos;
-    infos.reserve(object_ids.size());
-    RAY_LOG(DEBUG) << "sealing " << object_ids.size() << " objects";
     absl::MutexLock lock(&object_table_mutex_);
-    for (size_t i = 0; i < object_ids.size(); ++i) {
-      ObjectInfoT object_info;
-      auto entry = GetObjectTableEntry(object_ids[i]);
-      RAY_CHECK(entry != nullptr);
-      RAY_CHECK(entry->state == ObjectState::PLASMA_CREATED);
-      // Set the state of object to SEALED.
-      entry->state = ObjectState::PLASMA_SEALED;
-      // Set object construction duration.
-      entry->construct_duration = std::time(nullptr) - entry->create_time;
+    SealObjectsInternal(object_ids);
+  }
 
-      object_info.object_id = object_ids[i].Binary();
-      object_info.data_size = entry->data_size;
-      object_info.metadata_size = entry->metadata_size;
-      infos.push_back(object_info);
+  /// Seal a vector of objects. The objects are now immutable and can be accessed with
+  /// get. Then detach the objects from the clients after sealed. This is currently
+  /// only used for 'CreateAndSeal'.
+  ///
+  /// \param object_ids The vector of Object IDs of the objects to be sealed.
+  /// \param client The client that is currently holding the object.
+  void SealObjectsAndRelease(const std::vector<ObjectID>& object_ids, Client* client) {
+    absl::MutexLock lock(&object_table_mutex_);
+    SealObjectsInternal(object_ids);
+    for (auto object_id : object_ids) {
+      RemoveFromClientObjectIds(object_id, object_table_[object_id].get(), client)
     }
-    notifications_callback_(infos);
   }
 
   /// Evict objects returned by the eviction policy.
@@ -578,6 +573,33 @@ class ObjectDirectory {
     } else {
       notifications_callback_(infos);
     }
+  }
+
+  /// Seal a vector of objects. The objects are now immutable and can be accessed with
+  /// get.
+  ///
+  /// \param object_ids The vector of Object IDs of the objects to be sealed.
+  void SealObjectsInternal(const std::vector<ObjectID>& object_ids) {
+    std::vector<ObjectInfoT> infos;
+    infos.reserve(object_ids.size());
+    RAY_LOG(DEBUG) << "sealing " << object_ids.size() << " objects";
+    absl::MutexLock lock(&object_table_mutex_);
+    for (size_t i = 0; i < object_ids.size(); ++i) {
+      ObjectInfoT object_info;
+      auto entry = GetObjectTableEntry(object_ids[i]);
+      RAY_CHECK(entry != nullptr);
+      RAY_CHECK(entry->state == ObjectState::PLASMA_CREATED);
+      // Set the state of object to SEALED.
+      entry->state = ObjectState::PLASMA_SEALED;
+      // Set object construction duration.
+      entry->construct_duration = std::time(nullptr) - entry->create_time;
+
+      object_info.object_id = object_ids[i].Binary();
+      object_info.data_size = entry->data_size;
+      object_info.metadata_size = entry->metadata_size;
+      infos.push_back(object_info);
+    }
+    notifications_callback_(infos);
   }
 
   // If this client is not already using the object, add the client to the
