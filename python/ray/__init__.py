@@ -40,7 +40,7 @@ if sys.platform == "win32":
     ray.compat.patch_redis_empty_recv()
 
 if (platform.system() == "Linux"
-    and "Microsoft".lower() in platform.release().lower()):
+        and "Microsoft".lower() in platform.release().lower()):
     import ray.compat  # noqa: E402
     ray.compat.patch_psutil()
 
