@@ -8,7 +8,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
     MAX_LOG_NN_OUTPUT
-from ray.rllib.utils.space_utils import get_base_struct_from_space
+from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.torch_ops import atanh
 
 torch, nn = try_import_torch()
@@ -141,7 +141,7 @@ class TorchDiagGaussian(TorchDistributionWrapper):
     @override(ActionDistribution)
     def __init__(self, inputs, model):
         super().__init__(inputs, model)
-        mean, log_std = torch.chunk(inputs, 2, dim=1)
+        mean, log_std = torch.chunk(self.inputs, 2, dim=1)
         self.dist = torch.distributions.normal.Normal(mean, torch.exp(log_std))
 
     @override(ActionDistribution)
@@ -237,6 +237,11 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
         unsquashed = atanh(save_normed_values)
         return unsquashed
 
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.prod(action_space.shape) * 2
+
 
 class TorchBeta(TorchDistributionWrapper):
     """
@@ -284,6 +289,11 @@ class TorchBeta(TorchDistributionWrapper):
 
     def _unsquash(self, values):
         return (values - self.low) / (self.high - self.low)
+
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.prod(action_space.shape) * 2
 
 
 class TorchDeterministic(TorchDistributionWrapper):

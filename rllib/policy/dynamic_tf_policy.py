@@ -9,8 +9,9 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.utils import try_import_tf, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
 tf = try_import_tf()
@@ -156,11 +157,12 @@ class DynamicTFPolicy(TFPolicy):
             self.model = make_model(self, obs_space, action_space, config)
         else:
             self.model = ModelCatalog.get_model_v2(
-                obs_space,
-                action_space,
-                logit_dim,
-                self.config["model"],
-                framework="tf")
+                obs_space=obs_space,
+                action_space=action_space,
+                num_outputs=logit_dim,
+                model_config=self.config["model"],
+                framework="tf",
+                **self.config["model"].get("custom_model_config", {}))
 
         # Create the Exploration object to use for this Policy.
         self.exploration = self._create_exploration()

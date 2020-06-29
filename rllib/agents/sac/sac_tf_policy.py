@@ -9,8 +9,8 @@ from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio
 from ray.rllib.agents.sac.sac_tf_model import SACTFModel
 from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.tf.tf_action_dist import (Categorical, SquashedGaussian,
-                                                DiagGaussian)
+from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
+    DiagGaussian, SquashedGaussian
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -24,21 +24,6 @@ logger = logging.getLogger(__name__)
 
 
 def build_sac_model(policy, obs_space, action_space, config):
-    if config["model"].get("custom_model"):
-        logger.warning(
-            "Setting use_state_preprocessor=True since a custom model "
-            "was specified.")
-        config["use_state_preprocessor"] = True
-    if not isinstance(action_space, (Box, Discrete)):
-        raise UnsupportedSpaceException(
-            "Action space {} is not supported for SAC.".format(action_space))
-    if isinstance(action_space, Box) and len(action_space.shape) > 1:
-        raise UnsupportedSpaceException(
-            "Action space has multiple dimensions "
-            "{}. ".format(action_space.shape) +
-            "Consider reshaping this into a single dimension, "
-            "using a Tuple action space, or the multi-agent API.")
-
     # 2 cases:
     # 1) with separate state-preprocessor (before obs+action concat).
     # 2) no separate state-preprocessor: concat obs+actions right away.
@@ -51,8 +36,8 @@ def build_sac_model(policy, obs_space, action_space, config):
             logger.warning(
                 "When not using a state-preprocessor with SAC, `fcnet_hiddens`"
                 " will be set to an empty list! Any hidden layer sizes are "
-                "defined via `policy_model.hidden_layer_sizes` and "
-                "`Q_model.hidden_layer_sizes`.")
+                "defined via `policy_model.fcnet_hiddens` and "
+                "`Q_model.fcnet_hiddens`.")
             config["model"]["fcnet_hiddens"] = []
 
     # Force-ignore any additionally provided hidden layer sizes.
@@ -63,8 +48,9 @@ def build_sac_model(policy, obs_space, action_space, config):
         action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
-        framework="torch" if config["use_pytorch"] else "tf",
-        model_interface=SACTorchModel if config["use_pytorch"] else SACTFModel,
+        framework=config["framework"],
+        model_interface=SACTorchModel
+        if config["framework"] == "torch" else SACTFModel,
         name="sac_model",
         actor_hidden_activation=config["policy_model"]["fcnet_activation"],
         actor_hiddens=config["policy_model"]["fcnet_hiddens"],
@@ -79,8 +65,9 @@ def build_sac_model(policy, obs_space, action_space, config):
         action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
-        framework="torch" if config["use_pytorch"] else "tf",
-        model_interface=SACTorchModel if config["use_pytorch"] else SACTFModel,
+        framework=config["framework"],
+        model_interface=SACTorchModel
+        if config["framework"] == "torch" else SACTFModel,
         name="target_sac_model",
         actor_hidden_activation=config["policy_model"]["fcnet_activation"],
         actor_hiddens=config["policy_model"]["fcnet_hiddens"],
@@ -101,15 +88,14 @@ def postprocess_trajectory(policy,
 
 
 def get_dist_class(config, action_space):
-    assert config["_use_beta_distribution"] is False, \
-        "Beta-distr. not supported for tf!"
-
     if isinstance(action_space, Discrete):
-        action_dist_class = Categorical
+        return Categorical
     else:
-        action_dist_class = (SquashedGaussian
-                             if config["normalize_actions"] else DiagGaussian)
-    return action_dist_class
+        if config["normalize_actions"]:
+            return SquashedGaussian if \
+                not config["_use_beta_distribution"] else Beta
+        else:
+            return DiagGaussian
 
 
 def get_distribution_inputs_and_class(policy,
@@ -424,6 +410,19 @@ def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy, config)
 
 
+def validate_spaces(pid, observation_space, action_space, config):
+    if not isinstance(action_space, (Box, Discrete)):
+        raise UnsupportedSpaceException(
+            "Action space ({}) of {} is not supported for "
+            "SAC.".format(action_space, pid))
+    if isinstance(action_space, Box) and len(action_space.shape) > 1:
+        raise UnsupportedSpaceException(
+            "Action space ({}) of {} has multiple dimensions "
+            "{}. ".format(action_space, pid, action_space.shape) +
+            "Consider reshaping this into a single dimension, "
+            "using a Tuple action space, or the multi-agent API.")
+
+
 SACTFPolicy = build_tf_policy(
     name="SACTFPolicy",
     get_default_config=lambda: ray.rllib.agents.sac.sac.DEFAULT_CONFIG,
@@ -438,6 +437,7 @@ SACTFPolicy = build_tf_policy(
     mixins=[
         TargetNetworkMixin, ActorCriticOptimizerMixin, ComputeTDErrorMixin
     ],
+    validate_spaces=validate_spaces,
     before_init=setup_early_mixins,
     before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,

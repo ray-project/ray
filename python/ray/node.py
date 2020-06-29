@@ -4,6 +4,7 @@ import datetime
 import errno
 import os
 import logging
+import random
 import signal
 import socket
 import subprocess
@@ -16,7 +17,7 @@ import ray.ray_constants as ray_constants
 import ray.services
 import ray.utils
 from ray.resource_spec import ResourceSpec
-from ray.utils import try_to_create_directory, try_to_symlink
+from ray.utils import try_to_create_directory, try_to_symlink, open_log
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -24,6 +25,7 @@ from ray.utils import try_to_create_directory, try_to_symlink
 logger = logging.getLogger(__name__)
 
 SESSION_LATEST = "session_latest"
+NUMBER_OF_PORT_RETRIES = 40
 
 
 class Node:
@@ -105,7 +107,11 @@ class Node:
         self._localhost = socket.gethostbyname("localhost")
         self._ray_params = ray_params
         self._redis_address = ray_params.redis_address
-        self._config = ray_params._internal_config
+        self._config = ray_params._internal_config or {}
+
+        # Enable Plasma Store as a thread by default.
+        if "plasma_store_as_thread" not in self._config:
+            self._config["plasma_store_as_thread"] = True
 
         if head:
             redis_client = None
@@ -167,7 +173,8 @@ class Node:
                 # NOTE: There is a possible but unlikely race condition where
                 # the port is bound by another process between now and when the
                 # raylet starts.
-                self._ray_params.node_manager_port = self._get_unused_port()
+                self._ray_params.node_manager_port, self._socket = \
+                    self._get_unused_port(close_on_exit=False)
 
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
@@ -237,7 +244,8 @@ class Node:
                 self._ray_params.num_cpus, self._ray_params.num_gpus,
                 self._ray_params.memory, self._ray_params.object_store_memory,
                 self._ray_params.resources,
-                self._ray_params.redis_max_memory).resolve(is_head=self.head)
+                self._ray_params.redis_max_memory).resolve(
+                    is_head=self.head, node_ip_address=self.node_ip_address)
         return self._resource_spec
 
     @property
@@ -299,6 +307,14 @@ class Node:
     def node_manager_port(self):
         """Get the node manager's port."""
         return self._ray_params.node_manager_port
+
+    @property
+    def socket(self):
+        """Get the socket reserving the node manager's port"""
+        try:
+            return self._socket
+        except AttributeError:
+            return None
 
     @property
     def address_info(self):
@@ -368,14 +384,16 @@ class Node:
         raise FileExistsError(errno.EEXIST,
                               "No usable temporary filename found")
 
-    def new_log_files(self, name):
+    def get_log_file_names(self, name, unique=False):
         """Generate partially randomized filenames for log files.
 
         Args:
             name (str): descriptive string for this log file.
+            unique (bool): if true, a counter will be attached to `name` to
+                ensure the returned filename is not already used.
 
         Returns:
-            A tuple of two file handles for redirecting (stdout, stderr).
+            A tuple of two file names for redirecting (stdout, stderr).
         """
         redirect_output = self._ray_params.redirect_output
 
@@ -386,21 +404,40 @@ class Node:
         if not redirect_output:
             return None, None
 
-        log_stdout = self._make_inc_temp(
-            suffix=".out", prefix=name, directory_name=self._logs_dir)
-        log_stderr = self._make_inc_temp(
-            suffix=".err", prefix=name, directory_name=self._logs_dir)
-        # Line-buffer the output (mode 1).
-        log_stdout_file = open(log_stdout, "a", buffering=1)
-        log_stderr_file = open(log_stderr, "a", buffering=1)
-        return log_stdout_file, log_stderr_file
+        if unique:
+            log_stdout = self._make_inc_temp(
+                suffix=".out", prefix=name, directory_name=self._logs_dir)
+            log_stderr = self._make_inc_temp(
+                suffix=".err", prefix=name, directory_name=self._logs_dir)
+        else:
+            log_stdout = os.path.join(self._logs_dir, "{}.out".format(name))
+            log_stderr = os.path.join(self._logs_dir, "{}.err".format(name))
+        return log_stdout, log_stderr
 
-    def _get_unused_port(self):
+    def _get_unused_port(self, close_on_exit=True):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.bind(("", 0))
         port = s.getsockname()[1]
-        s.close()
-        return port
+
+        # Try to generate a port that is far above the 'next available' one.
+        # This solves issue #8254 where GRPC fails because the port assigned
+        # from this method has been used by a different process.
+        for _ in range(NUMBER_OF_PORT_RETRIES):
+            new_port = random.randint(port, 65535)
+            new_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                new_s.bind(("", new_port))
+            except OSError:
+                new_s.close()
+                continue
+            s.close()
+            if close_on_exit:
+                new_s.close()
+            return new_port, new_s
+        logger.error("Unable to succeed in selecting a random port.")
+        if close_on_exit:
+            s.close()
+        return port, s
 
     def _prepare_socket_file(self, socket_path, default_prefix):
         """Prepare the socket file for raylet and plasma.
@@ -417,7 +454,7 @@ class Node:
         if sys.platform == "win32":
             if socket_path is None:
                 result = "tcp://{}:{}".format(self._localhost,
-                                              self._get_unused_port())
+                                              self._get_unused_port()[0])
         else:
             if socket_path is None:
                 result = self._make_inc_temp(
@@ -454,9 +491,15 @@ class Node:
     def start_redis(self):
         """Start the Redis servers."""
         assert self._redis_address is None
-        redis_log_files = [self.new_log_files("redis")]
+        redis_out_name, redis_err_name = self.get_log_file_names(
+            "redis", unique=True)
+        redis_log_files = [(open_log(redis_out_name),
+                            open_log(redis_err_name))]
         for i in range(self._ray_params.num_redis_shards):
-            redis_log_files.append(self.new_log_files("redis-shard_" + str(i)))
+            shard_out_name, shard_err_name = self.get_log_file_names(
+                "redis-shard_{}".format(i), unique=True)
+            redis_log_files.append((open_log(shard_out_name),
+                                    open_log(shard_err_name)))
 
         (self._redis_address, redis_shards,
          process_infos) = ray.services.start_redis(
@@ -478,7 +521,10 @@ class Node:
 
     def start_log_monitor(self):
         """Start the log monitor."""
-        stdout_file, stderr_file = self.new_log_files("log_monitor")
+        log_out_name, log_err_name = self.get_log_file_names(
+            "log_monitor", unique=True)
+        stdout_file, stderr_file = open_log(log_out_name), open_log(
+            log_err_name)
         process_info = ray.services.start_log_monitor(
             self.redis_address,
             self._logs_dir,
@@ -493,7 +539,10 @@ class Node:
 
     def start_reporter(self):
         """Start the reporter."""
-        stdout_file, stderr_file = self.new_log_files("reporter")
+        reporter_out_name, reporter_err_name = self.get_log_file_names(
+            "reporter", unique=True)
+        stdout_file, stderr_file = (open_log(reporter_out_name),
+                                    open_log(reporter_err_name))
         process_info = ray.services.start_reporter(
             self.redis_address,
             stdout_file=stdout_file,
@@ -506,24 +555,28 @@ class Node:
                 process_info,
             ]
 
-    def start_dashboard(self, require_webui):
+    def start_dashboard(self, require_dashboard):
         """Start the dashboard.
 
         Args:
-            require_webui (bool): If true, this will raise an exception if we
-                fail to start the webui. Otherwise it will print a warning if
-                we fail to start the webui.
+            require_dashboard (bool): If true, this will raise an exception
+                if we fail to start the dashboard. Otherwise it will print
+                a warning if we fail to start the dashboard.
         """
-        stdout_file, stderr_file = self.new_log_files("dashboard")
+        dashboard_out_name, dashboard_err_name = self.get_log_file_names(
+            "dashboard", unique=True)
+        stdout_file, stderr_file = (open_log(dashboard_out_name),
+                                    open_log(dashboard_err_name))
         self._webui_url, process_info = ray.services.start_dashboard(
-            require_webui,
-            self._ray_params.webui_host,
+            require_dashboard,
+            self._ray_params.dashboard_host,
             self.redis_address,
             self._temp_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
-            fate_share=self.kernel_fate_share)
+            fate_share=self.kernel_fate_share,
+            port=self._ray_params.dashboard_port)
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
@@ -534,14 +587,18 @@ class Node:
 
     def start_plasma_store(self):
         """Start the plasma store."""
-        stdout_file, stderr_file = self.new_log_files("plasma_store")
+        plasma_out_name, plasma_err_name = self.get_log_file_names(
+            "plasma_store", unique=True)
+        stdout_file, stderr_file = (open_log(plasma_out_name),
+                                    open_log(plasma_err_name))
         process_info = ray.services.start_plasma_store(
             self.get_resource_spec(),
+            self._plasma_store_socket_name,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             plasma_directory=self._ray_params.plasma_directory,
             huge_pages=self._ray_params.huge_pages,
-            plasma_store_socket_name=self._plasma_store_socket_name,
+            keep_idle=bool(self._config.get("plasma_store_as_thread")),
             fate_share=self.kernel_fate_share)
         assert (
             ray_constants.PROCESS_TYPE_PLASMA_STORE not in self.all_processes)
@@ -552,7 +609,10 @@ class Node:
     def start_gcs_server(self):
         """Start the gcs server.
         """
-        stdout_file, stderr_file = self.new_log_files("gcs_server")
+        gcs_out_name, gcs_err_name = self.get_log_file_names(
+            "gcs_server", unique=True)
+        stdout_file, stderr_file = (open_log(gcs_out_name),
+                                    open_log(gcs_err_name))
         process_info = ray.services.start_gcs_server(
             self._redis_address,
             stdout_file=stdout_file,
@@ -575,7 +635,9 @@ class Node:
             use_profiler (bool): True if we should start the process in the
                 valgrind profiler.
         """
-        stdout_file, stderr_file = self.new_log_files("raylet")
+        raylet_out_name, raylet_err_name = self.get_log_file_names("raylet")
+        stdout_file, stderr_file = (open_log(raylet_out_name),
+                                    open_log(raylet_err_name))
         process_info = ray.services.start_raylet(
             self._redis_address,
             self._node_ip_address,
@@ -586,6 +648,8 @@ class Node:
             self._temp_dir,
             self._session_dir,
             self.get_resource_spec(),
+            self._ray_params.min_worker_port,
+            self._ray_params.max_worker_port,
             self._ray_params.object_manager_port,
             self._ray_params.redis_password,
             use_valgrind=use_valgrind,
@@ -596,14 +660,46 @@ class Node:
             include_java=self._ray_params.include_java,
             java_worker_options=self._ray_params.java_worker_options,
             load_code_from_local=self._ray_params.load_code_from_local,
-            fate_share=self.kernel_fate_share)
+            plasma_directory=self._ray_params.plasma_directory,
+            huge_pages=self._ray_params.huge_pages,
+            fate_share=self.kernel_fate_share,
+            socket_to_use=self.socket)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
-    def new_worker_redirected_log_file(self, worker_id):
-        """Create new logging files for workers to redirect its output."""
-        worker_stdout_file, worker_stderr_file = (
-            self.new_log_files("worker-" + ray.utils.binary_to_hex(worker_id)))
+    def get_job_redirected_log_file(self,
+                                    worker_id: bytes,
+                                    job_id: bytes = None):
+        """Determines (but does not create) logging files for workers to
+        redirect its output.
+
+        Args:
+            worker_id (bytes): A byte representation of the worker id.
+            job_id (bytes): A byte representation of the job id. If None,
+                provides a generic log file for the worker.
+
+        Returns:
+            (tuple) The stdout and stderr file names that the job should be
+        redirected to.
+        """
+        redirect_output = self._ray_params.redirect_output
+
+        if redirect_output is None:
+            # Make the default behavior match that of glog.
+            redirect_output = os.getenv("GLOG_logtostderr") != "1"
+
+        if not redirect_output:
+            return None, None
+
+        if job_id is not None:
+            name = "worker-{}-{}".format(
+                ray.utils.binary_to_hex(worker_id),
+                ray.utils.binary_to_hex(job_id))
+        else:
+            name = "worker-{}".format(ray.utils.binary_to_hex(worker_id))
+
+        worker_stdout_file, worker_stderr_file = self.get_log_file_names(
+            name, unique=False)
         return worker_stdout_file, worker_stderr_file
 
     def start_worker(self):
@@ -612,7 +708,10 @@ class Node:
 
     def start_monitor(self):
         """Start the monitor."""
-        stdout_file, stderr_file = self.new_log_files("monitor")
+        monitor_out_name, monitor_err_name = self.get_log_file_names(
+            "monitor", unique=True)
+        stdout_file, stderr_file = (open_log(monitor_out_name),
+                                    open_log(monitor_err_name))
         process_info = ray.services.start_monitor(
             self._redis_address,
             stdout_file=stdout_file,
@@ -623,22 +722,6 @@ class Node:
         assert ray_constants.PROCESS_TYPE_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_MONITOR] = [process_info]
 
-    def start_raylet_monitor(self):
-        """Start the raylet monitor."""
-        stdout_file, stderr_file = self.new_log_files("raylet_monitor")
-        process_info = ray.services.start_raylet_monitor(
-            self._redis_address,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
-            redis_password=self._ray_params.redis_password,
-            config=self._config,
-            fate_share=self.kernel_fate_share)
-        assert (ray_constants.PROCESS_TYPE_RAYLET_MONITOR not in
-                self.all_processes)
-        self.all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR] = [
-            process_info,
-        ]
-
     def start_head_processes(self):
         """Start head processes on the node."""
         logger.debug(
@@ -648,17 +731,14 @@ class Node:
         # If this is the head node, start the relevant head node processes.
         self.start_redis()
 
-        if ray_constants.GCS_SERVICE_ENABLED:
-            self.start_gcs_server()
-        else:
-            self.start_raylet_monitor()
+        self.start_gcs_server()
 
         self.start_monitor()
 
-        if self._ray_params.include_webui:
-            self.start_dashboard(require_webui=True)
-        elif self._ray_params.include_webui is None:
-            self.start_dashboard(require_webui=False)
+        if self._ray_params.include_dashboard:
+            self.start_dashboard(require_dashboard=True)
+        elif self._ray_params.include_dashboard is None:
+            self.start_dashboard(require_dashboard=False)
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""
@@ -837,16 +917,6 @@ class Node:
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_GCS_SERVER, check_alive=check_alive)
 
-    def kill_raylet_monitor(self, check_alive=True):
-        """Kill the raylet monitor.
-
-        Args:
-            check_alive (bool): Raise an exception if the process was already
-                dead.
-        """
-        self._kill_process_type(
-            ray_constants.PROCESS_TYPE_RAYLET_MONITOR, check_alive=check_alive)
-
     def kill_reaper(self, check_alive=True):
         """Kill the reaper process.
 
@@ -875,6 +945,12 @@ class Node:
         if ray_constants.PROCESS_TYPE_RAYLET in self.all_processes:
             self._kill_process_type(
                 ray_constants.PROCESS_TYPE_RAYLET,
+                check_alive=check_alive,
+                allow_graceful=allow_graceful)
+
+        if ray_constants.PROCESS_TYPE_GCS_SERVER in self.all_processes:
+            self._kill_process_type(
+                ray_constants.PROCESS_TYPE_GCS_SERVER,
                 check_alive=check_alive,
                 allow_graceful=allow_graceful)
 

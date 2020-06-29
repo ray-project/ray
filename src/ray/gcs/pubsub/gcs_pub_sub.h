@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_GCS_PUB_SUB_H_
-#define RAY_GCS_GCS_PUB_SUB_H_
+#pragma once
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 
 #include "ray/gcs/callback.h"
@@ -26,7 +26,15 @@ namespace ray {
 namespace gcs {
 
 #define JOB_CHANNEL "JOB"
+#define NODE_CHANNEL "NODE"
+#define NODE_RESOURCE_CHANNEL "NODE_RESOURCE"
+#define ACTOR_CHANNEL "ACTOR"
 #define WORKER_FAILURE_CHANNEL "WORKER_FAILURE"
+#define OBJECT_CHANNEL "OBJECT"
+#define TASK_CHANNEL "TASK"
+#define TASK_LEASE_CHANNEL "TASK_LEASE"
+#define HEARTBEAT_CHANNEL "HEARTBEAT"
+#define HEARTBEAT_BATCH_CHANNEL "HEARTBEAT_BATCH"
 
 /// \class GcsPubSub
 ///
@@ -49,8 +57,8 @@ class GcsPubSub {
   /// \param data The data of message to be published to redis.
   /// \param done Callback that will be called when the message is published to redis.
   /// \return Status
-  Status Publish(const std::string &channel, const std::string &id,
-                 const std::string &data, const StatusCallback &done);
+  virtual Status Publish(const std::string &channel, const std::string &id,
+                         const std::string &data, const StatusCallback &done);
 
   /// Subscribe to messages with the specified ID under the specified channel.
   ///
@@ -81,7 +89,58 @@ class GcsPubSub {
   Status Unsubscribe(const std::string &channel, const std::string &id);
 
  private:
-  Status SubscribeInternal(const std::string &channel, const Callback &subscribe,
+  /// Represents a caller's command to subscribe or unsubscribe to a given
+  /// channel.
+  struct Command {
+    /// SUBSCRIBE constructor.
+    Command(const Callback &subscribe_callback, const StatusCallback &done_callback)
+        : is_subscribe(true),
+          subscribe_callback(subscribe_callback),
+          done_callback(done_callback) {}
+    /// UNSUBSCRIBE constructor.
+    Command() : is_subscribe(false) {}
+    /// True if this is a SUBSCRIBE command and false if UNSUBSCRIBE.
+    const bool is_subscribe;
+    /// Callback that is called whenever a new pubsub message is received from
+    /// Redis. This should only be set if is_subscribe is true.
+    const Callback subscribe_callback;
+    /// Callback that is called once we have successfully subscribed to a
+    /// channel. This should only be set if is_subscribe is true.
+    const StatusCallback done_callback;
+  };
+
+  struct Channel {
+    Channel() {}
+    /// Queue of subscribe/unsubscribe commands to this channel. The queue
+    /// asserts that subscribe and unsubscribe commands alternate, i.e. there
+    /// cannot be more than one subscribe/unsubscribe command in a row. A
+    /// subscribe command can execute if the callback index below is not set,
+    /// i.e. this is the first subscribe command or the last unsubscribe
+    /// command's reply has been received. An unsubscribe command can execute
+    /// if the callback index is set, i.e. the last subscribe command's reply
+    /// has been received.
+    std::deque<Command> command_queue;
+    /// The current Redis callback index stored in the RedisContext for this
+    /// channel. This callback index is used to identify any pubsub
+    /// notifications meant for this channel. The callback index is set once we
+    /// have received a reply from Redis that we have subscribed. The callback
+    /// index is set back to -1 if we receive a reply from Redis that we have
+    /// unsubscribed.
+    int64_t callback_index = -1;
+    /// Whether we are pending a reply from Redis. We cannot send another
+    /// command from the queue until this has been reset to false.
+    bool pending_reply = false;
+  };
+
+  /// Execute the first queued command for the given channel, if possible.  A
+  /// subscribe command can execute if the channel's callback index is not set.
+  /// An unsubscribe command can execute if the channel's callback index is
+  /// set.
+  Status ExecuteCommandIfPossible(const std::string &channel_key,
+                                  GcsPubSub::Channel &channel)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  Status SubscribeInternal(const std::string &channel_name, const Callback &subscribe,
                            const StatusCallback &done,
                            const boost::optional<std::string> &id = boost::none);
 
@@ -93,10 +152,8 @@ class GcsPubSub {
   /// Mutex to protect the subscribe_callback_index_ field.
   absl::Mutex mutex_;
 
-  std::unordered_map<std::string, int64_t> subscribe_callback_index_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<std::string, Channel> channels_ GUARDED_BY(mutex_);
 };
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif  // RAY_GCS_GCS_PUB_SUB_H_

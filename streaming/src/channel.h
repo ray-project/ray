@@ -1,5 +1,4 @@
-#ifndef RAY_CHANNEL_H
-#define RAY_CHANNEL_H
+#pragma once
 
 #include "config/streaming_config.h"
 #include "queue/queue_handler.h"
@@ -198,5 +197,3 @@ class MockConsumer : public ConsumerChannel {
 
 }  // namespace streaming
 }  // namespace ray
-
-#endif  // RAY_CHANNEL_H

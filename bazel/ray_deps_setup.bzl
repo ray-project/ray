@@ -63,7 +63,11 @@ def auto_http_archive(*, name=None, url=None, urls=True,
         print("No implicit mirrors used because urls were explicitly provided")
 
     if strip_prefix == True:
-        strip_prefix = (url_path_parts[1] + "-" + url_filename_parts[0]
+        prefix_without_v = url_filename_parts[0]
+        if prefix_without_v.startswith("v") and prefix_without_v[1:2].isdigit():
+            # GitHub automatically strips a leading 'v' in version numbers
+            prefix_without_v = prefix_without_v[1:]
+        strip_prefix = (url_path_parts[1] + "-" + prefix_without_v
                         if is_github and url_path_parts[2:3] == ["archive"]
                         else url_filename_parts[0])
 
@@ -75,13 +79,14 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_antirez_redis",
         build_file = "//bazel:BUILD.redis",
-        url = "https://github.com/antirez/redis/archive/5.0.3.tar.gz",
-        sha256 = "7084e8bd9e5dedf2dbb2a1e1d862d0c46e66cc0872654bdc677f4470d28d84c5",
+        url = "https://github.com/antirez/redis/archive/5.0.9.tar.gz",
+        sha256 = "db9bf149e237126f9bb5f40fb72f33701819555d06f16e9a38b4949794214201",
         patches = [
             "//thirdparty/patches:hiredis-connect-rename.patch",
             "//thirdparty/patches:hiredis-windows-sigpipe.patch",
             "//thirdparty/patches:hiredis-windows-sockets.patch",
             "//thirdparty/patches:hiredis-windows-strerror.patch",
+            "//thirdparty/patches:redis-quiet.patch",
         ],
     )
 
@@ -155,23 +160,19 @@ def ray_deps_setup():
         url = "https://github.com/google/glog/archive/925858d9969d8ee22aabc3635af00a37891f4e25.tar.gz",
         sha256 = "fb86eca661497ac6f9ce2a106782a30215801bb8a7c8724c6ec38af05a90acf3",
         patches = [
+            "//thirdparty/patches:glog-log-pid-tid.patch",
             "//thirdparty/patches:glog-stack-trace.patch",
         ],
     )
 
     auto_http_archive(
-        name = "plasma",
+        name = "arrow",
         build_file = True,
         url = "https://github.com/apache/arrow/archive/af45b9212156980f55c399e2e88b4e19b4bb8ec1.tar.gz",
         sha256 = "2f0aaa50053792aa274b402f2530e63c1542085021cfef83beee9281412c12f6",
         patches = [
-            "//thirdparty/patches:arrow-headers-unused.patch",
             "//thirdparty/patches:arrow-windows-export.patch",
             "//thirdparty/patches:arrow-windows-nonstdc.patch",
-            "//thirdparty/patches:arrow-windows-sigpipe.patch",
-            "//thirdparty/patches:arrow-windows-socket.patch",
-            "//thirdparty/patches:arrow-windows-dlmalloc.patch",
-            "//thirdparty/patches:arrow-windows-tcp.patch",
         ],
     )
 
@@ -202,6 +203,7 @@ def ray_deps_setup():
         url = "https://github.com/jupp0r/prometheus-cpp/archive/60eaa4ea47b16751a8e8740b05fe70914c68a480.tar.gz",
         sha256 = "ec825b802487ac18b0d98e2e8b7961487b12562f8f82e424521d0a891d9e1373",
         patches = [
+            "//thirdparty/patches:prometheus-windows-headers.patch",
             # https://github.com/jupp0r/prometheus-cpp/pull/225
             "//thirdparty/patches:prometheus-windows-zlib.patch",
             "//thirdparty/patches:prometheus-windows-pollfd.patch",
@@ -214,8 +216,8 @@ def ray_deps_setup():
         url = "https://github.com/grpc/grpc/archive/4790ab6d97e634a1ede983be393f3bb3c132b2f7.tar.gz",
         sha256 = "df83bd8a08975870b8b254c34afbecc94c51a55198e6e3a5aab61d62f40b7274",
         patches = [
-            "//thirdparty/patches:grpc-command-quoting.patch",
             "//thirdparty/patches:grpc-cython-copts.patch",
+            "//thirdparty/patches:grpc-python.patch",
         ],
     )
 

@@ -5,7 +5,7 @@ A Basic Tune Tutorial
 
 .. image:: /images/tune-api.svg
 
-This tutorial will walk you through the following process to setup a Tune experiment. Specifically, we'll leverage ASHA and Bayesian Optimization (via HyperOpt) via the following steps:
+This tutorial will walk you through the following process to setup a Tune experiment using Pytorch. Specifically, we'll leverage ASHA and Bayesian Optimization (via HyperOpt) via the following steps:
 
   1. Integrating Tune into your workflow
   2. Specifying a TrialScheduler
@@ -66,7 +66,7 @@ We can then plot the performance of this trial.
    :start-after: __plot_begin__
    :end-before: __plot_end__
 
-.. important:: Tune will automatically run parallel trials across all available cores/GPUs on your machine or cluster. To limit the number of cores that Tune uses, you can call ``ray.init(num_cpus=<int>, num_gpus=<int>)`` before ``tune.run``.
+.. note:: Tune will automatically run parallel trials across all available cores/GPUs on your machine or cluster. To limit the number of cores that Tune uses, you can call ``ray.init(num_cpus=<int>, num_gpus=<int>)`` before ``tune.run``.
 
 
 Early Stopping with ASHA

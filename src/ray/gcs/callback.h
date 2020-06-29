@@ -12,16 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_CALLBACK_H
-#define RAY_GCS_CALLBACK_H
+#pragma once
 
 #include <boost/optional/optional.hpp>
+#include <unordered_map>
 #include <vector>
+
 #include "ray/common/status.h"
 
 namespace ray {
 
 namespace gcs {
+
+/// This callback is used to notify when a operation completes.
+using EmptyCallback = std::function<void()>;
 
 /// This callback is used to notify when a write/subscribe to GCS completes.
 /// \param status Status indicates whether the write/subscribe was successful.
@@ -53,18 +57,11 @@ using SubscribeCallback = std::function<void(const ID &id, const Data &result)>;
 template <typename Data>
 using ItemCallback = std::function<void(const Data &result)>;
 
-/// This callback is used to receive a large amount of results.
-/// \param status Status indicates whether the scan was successful.
-/// \param has_more Whether more data will be called back.
-/// If `has_more == true`, there are more data to be received. This callback will
-/// be called again.
-/// \param result The items returned by storage.
-template <typename Data>
-using SegmentedCallback =
-    std::function<void(Status status, bool has_more, const std::vector<Data> &result)>;
+/// This callback is used to receive multiple key-value items from GCS.
+/// \param result The key-value items returned by GCS.
+template <typename Key, typename Value>
+using MapCallback = std::function<void(const std::unordered_map<Key, Value> &result)>;
 
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_CALLBACK_H

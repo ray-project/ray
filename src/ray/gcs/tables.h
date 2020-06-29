@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_TABLES_H
-#define RAY_GCS_TABLES_H
+#pragma once
 
 #include <map>
 #include <string>
@@ -23,12 +22,11 @@
 #include "ray/common/constants.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/util/logging.h"
-
 #include "ray/gcs/callback.h"
 #include "ray/gcs/entry_change_notification.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/protobuf/gcs.pb.h"
+#include "ray/util/logging.h"
 
 struct redisAsyncContext;
 
@@ -717,8 +715,8 @@ class JobTable : public Log<JobID, JobTableData> {
 };
 
 /// Log-based Actor table starts with an ALIVE entry, which represents the first time the
-/// actor is created. This may be followed by 0 or more pairs of RECONSTRUCTING, ALIVE
-/// entries, which represent each time the actor fails (RECONSTRUCTING) and gets recreated
+/// actor is created. This may be followed by 0 or more pairs of RESTARTING, ALIVE
+/// entries, which represent each time the actor fails (RESTARTING) and gets recreated
 /// (ALIVE). These may be followed by a DEAD entry, which means that the actor has failed
 /// and will not be reconstructed.
 class LogBasedActorTable : public Log<ActorID, ActorTableData> {
@@ -1025,5 +1023,3 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_TABLES_H

@@ -34,29 +34,8 @@ exe_suffix = ".exe" if sys.platform == "win32" else ""
 # https://docs.python.org/3/faq/windows.html#is-a-pyd-file-the-same-as-a-dll
 pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 
-install_requires = [
-    "aiohttp",
-    "click",
-    "colorama",
-    "filelock",
-    "google",
-    "grpcio",
-    "jsonschema",
-    "msgpack >= 0.6.0, < 1.0.0",
-    "numpy >= 1.16",
-    "protobuf >= 3.8.0",
-    "py-spy >= 0.2.0",
-    "pyyaml",
-    "redis >= 3.3.2",
-]
-
-setup_requires = [
-    "cython >= 0.29.14",
-    "wheel",
-]
-
-pickle5_url = ("https://github.com/suquark/pickle5-backport/archive/"
-               "8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72.tar.gz")
+pickle5_url = ("https://github.com/pitrou/pickle5-backport/archive/"
+               "c0c1a158f59366696161e0dffdd10cfe17601372.tar.gz")
 
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
@@ -119,8 +98,8 @@ if os.getenv("RAY_USE_NEW_GCS") == "on":
 
 extras = {
     "debug": [],
-    "dashboard": ["requests"],
-    "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
+    "dashboard": ["requests", "gpustat"],
+    "serve": ["uvicorn", "flask", "blist", "requests"],
     "tune": ["tabulate", "tensorboardX", "pandas"]
 }
 
@@ -180,7 +159,8 @@ def download_pickle5(pickle5_dir):
             tf.close()
         relpath = "-".join(os.path.splitext(pickle5_name)[0].split("/")[2::2])
         src_dir = os.path.join(work_dir, relpath)
-        subprocess.check_call([python, "setup.py", "bdist_wheel"], cwd=src_dir)
+        args = [python, "setup.py", "--quiet", "bdist_wheel"]
+        subprocess.check_call(args, cwd=src_dir)
         for wheel in glob.glob(os.path.join(src_dir, "dist", "*.whl")):
             wzf = zipfile.ZipFile(wheel, "r")
             try:
@@ -189,7 +169,7 @@ def download_pickle5(pickle5_dir):
                 wzf.close()
 
 
-def build(bazel_targets):
+def build(build_python, build_java):
     if tuple(sys.version_info[:2]) not in SUPPORTED_PYTHONS:
         msg = ("Detected Python version {}, which is not supported. "
                "Only Python {} are supported.").format(
@@ -215,7 +195,17 @@ def build(bazel_targets):
                    " environment variable for Bazel.").format(name="BAZEL_SH")
             raise RuntimeError(msg)
 
-    download_pickle5(os.path.join(ROOT_DIR, "ray", "pickle5_files"))
+    # Check if the current Python already has pickle5 (either comes with newer
+    # Python versions, or has been installed by us before).
+    pickle5_available = sys.version_info >= (3, 8, 2)
+    if not pickle5_available:
+        try:
+            import pickle5
+            pickle5_available = True
+        except ImportError:
+            pass
+    if not pickle5_available:
+        download_pickle5(os.path.join(ROOT_DIR, "ray", "pickle5_files"))
 
     # Note: We are passing in sys.executable so that we use the same
     # version of Python to build packages inside the build.sh script. Note
@@ -232,7 +222,9 @@ def build(bazel_targets):
 
     bazel = os.getenv("BAZEL_EXECUTABLE", "bazel")
     return subprocess.check_call(
-        [bazel, "build", "--verbose_failures", "--"] + bazel_targets,
+        [bazel, "build", "--verbose_failures", "--"] +
+        (["//:ray_pkg"] if build_python else []) +
+        (["//java:ray_java_pkg"] if build_java else []),
         env=dict(os.environ, PYTHON3_BIN_PATH=sys.executable))
 
 
@@ -254,7 +246,12 @@ def move_file(target_dir, filename):
     os.makedirs(os.path.dirname(destination), exist_ok=True)
     if not os.path.exists(destination):
         print("Copying {} to {}.".format(source, destination))
-        shutil.copy(source, destination, follow_symlinks=True)
+        if sys.platform == "win32":
+            # Does not preserve file mode (needed to avoid read-only bit)
+            shutil.copyfile(source, destination, follow_symlinks=True)
+        else:
+            # Preserves file mode (needed to copy executable bit)
+            shutil.copy(source, destination, follow_symlinks=True)
 
 
 def find_version(*filepath):
@@ -267,8 +264,24 @@ def find_version(*filepath):
         raise RuntimeError("Unable to find version string.")
 
 
+install_requires = [
+    "aiohttp",
+    "click >= 7.0",
+    "colorama",
+    "filelock",
+    "google",
+    "grpcio",
+    "jsonschema",
+    "msgpack >= 0.6.0, < 2.0.0",
+    "numpy >= 1.16",
+    "protobuf >= 3.8.0",
+    "py-spy >= 0.2.0",
+    "pyyaml",
+    "redis >= 3.3.2, < 3.5.0",
+]
+
 def pip_run(build_ext):
-    build(["//:ray_pkg"] + (["//java:ray_java_pkg"] if BUILD_JAVA else []))
+    build(True, BUILD_JAVA)
 
     files_to_include = list(ray_files)
 
@@ -314,15 +327,15 @@ def api_main(program, *args):
     result = None
 
     if parsed_args.command == "build":
-        bazel_targets = []
+        kwargs = {}
         for lang in parsed_args.language.split(","):
             if "python" in lang:
-                bazel_targets.append("//:ray_pkg")
+                kwargs.update(build_python=True)
             elif "java" in lang:
-                bazel_targets.append("//java:ray_java_pkg")
+                kwargs.update(build_java=True)
             else:
                 raise ValueError("invalid language: {!r}".format(lang))
-        result = build(bazel_targets)
+        result = build(**kwargs)
     elif parsed_args.command == "help":
         parser.print_help()
     else:
@@ -346,34 +359,34 @@ if __name__ == "__main__":
         def has_ext_modules(self):
             return True
 
-    setuptools.setup(
-        name="ray",
-        version=find_version("ray", "__init__.py"),
-        author="Ray Team",
-        author_email="ray-dev@googlegroups.com",
-        description=("A system for parallel and distributed Python that "
-                     "unifies the ML ecosystem."),
-        long_description=io.open(
-            os.path.join(ROOT_DIR, os.path.pardir, "README.rst"),
-            "r",
-            encoding="utf-8").read(),
-        url="https://github.com/ray-project/ray",
-        keywords=("ray distributed parallel machine-learning "
-                  "reinforcement-learning deep-learning python"),
-        packages=setuptools.find_packages(),
-        cmdclass={"build_ext": build_ext},
-        # The BinaryDistribution argument triggers build_ext.
-        distclass=BinaryDistribution,
-        install_requires=install_requires,
-        setup_requires=setup_requires,
-        extras_require=extras,
-        entry_points={
-            "console_scripts": [
-                "ray=ray.scripts.scripts:main",
-                "rllib=ray.rllib.scripts:cli [rllib]",
-                "tune=ray.tune.scripts:cli"
-            ]
-        },
-        include_package_data=True,
-        zip_safe=False,
-        license="Apache 2.0")
+setuptools.setup(
+    name="ray",
+    version=find_version("ray", "__init__.py"),
+    author="Ray Team",
+    author_email="ray-dev@googlegroups.com",
+    description=("A system for parallel and distributed Python that "
+                 "unifies the ML ecosystem."),
+    long_description=io.open(
+        os.path.join(ROOT_DIR, os.path.pardir, "README.rst"),
+        "r",
+        encoding="utf-8").read(),
+    url="https://github.com/ray-project/ray",
+    keywords=("ray distributed parallel machine-learning "
+              "reinforcement-learning deep-learning python"),
+    packages=setuptools.find_packages(),
+    cmdclass={"build_ext": build_ext},
+    # The BinaryDistribution argument triggers build_ext.
+    distclass=BinaryDistribution,
+    install_requires=install_requires,
+    setup_requires=["cython >= 0.29.14", "wheel"],
+    extras_require=extras,
+    entry_points={
+        "console_scripts": [
+            "ray=ray.scripts.scripts:main",
+            "rllib=ray.rllib.scripts:cli [rllib]",
+            "tune=ray.tune.scripts:cli"
+        ]
+    },
+    include_package_data=True,
+    zip_safe=False,
+    license="Apache 2.0") if __name__ == "__main__" else None

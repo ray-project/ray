@@ -14,7 +14,6 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import FilterManager
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.memory import ray_get_and_free
 
 logger = logging.getLogger(__name__)
 
@@ -162,12 +161,17 @@ class Worker:
 
 
 def get_policy_class(config):
-    if config["use_pytorch"]:
+    if config["framework"] == "torch":
         from ray.rllib.agents.es.es_torch_policy import ESTorchPolicy
         policy_cls = ESTorchPolicy
     else:
         policy_cls = ESTFPolicy
     return policy_cls
+
+
+def validate_config(config):
+    if config["num_workers"] <= 0:
+        raise ValueError("`num_workers` must be > 0 for ES!")
 
 
 class ESTrainer(Trainer):
@@ -178,6 +182,7 @@ class ESTrainer(Trainer):
 
     @override(Trainer)
     def _init(self, config, env_creator):
+        validate_config(config)
         env_context = EnvContext(config["env_config"] or {}, worker_index=0)
         env = env_creator(env_context)
         policy_cls = get_policy_class(config)
@@ -203,6 +208,13 @@ class ESTrainer(Trainer):
         self.episodes_so_far = 0
         self.reward_list = []
         self.tstart = time.time()
+
+    @override(Trainer)
+    def get_policy(self, policy=DEFAULT_POLICY_ID):
+        if policy != DEFAULT_POLICY_ID:
+            raise ValueError("ES has no policy '{}'! Use {} "
+                             "instead.".format(policy, DEFAULT_POLICY_ID))
+        return self.policy
 
     @override(Trainer)
     def _train(self):
@@ -295,7 +307,10 @@ class ESTrainer(Trainer):
 
     @override(Trainer)
     def compute_action(self, observation, *args, **kwargs):
-        return self.policy.compute_actions(observation, update=False)[0]
+        action = self.policy.compute_actions(observation, update=False)[0]
+        if kwargs.get("full_fetch"):
+            return action, [], {}
+        return action
 
     @override(Trainer)
     def _stop(self):
@@ -314,7 +329,7 @@ class ESTrainer(Trainer):
                 worker.do_rollouts.remote(theta_id) for worker in self._workers
             ]
             # Get the results of the rollouts.
-            for result in ray_get_and_free(rollout_ids):
+            for result in ray.get(rollout_ids):
                 results.append(result)
                 # Update the number of episodes and the number of timesteps
                 # keeping in mind that result.noisy_lengths is a list of lists,

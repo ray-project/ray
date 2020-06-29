@@ -1,16 +1,25 @@
 package io.ray.streaming.runtime.worker.tasks;
 
+import io.ray.streaming.operator.SourceOperator;
 import io.ray.streaming.runtime.core.processor.Processor;
 import io.ray.streaming.runtime.core.processor.SourceProcessor;
 import io.ray.streaming.runtime.worker.JobWorker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class SourceStreamTask<IN> extends StreamTask {
-  private static final Logger LOGGER = LoggerFactory.getLogger(SourceStreamTask.class);
+public class SourceStreamTask extends StreamTask {
 
-  public SourceStreamTask(int taskId, Processor processor, JobWorker worker) {
-    super(taskId, processor, worker);
+  private static final Logger LOG = LoggerFactory.getLogger(SourceStreamTask.class);
+
+  private final SourceProcessor sourceProcessor;
+
+  /**
+   * SourceStreamTask for executing a {@link SourceOperator}.
+   * It is responsible for running the corresponding source operator.
+   */
+  public SourceStreamTask(int taskId, Processor sourceProcessor, JobWorker jobWorker) {
+    super(taskId, sourceProcessor, jobWorker);
+    this.sourceProcessor = (SourceProcessor) processor;
   }
 
   @Override
@@ -19,12 +28,13 @@ public class SourceStreamTask<IN> extends StreamTask {
 
   @Override
   public void run() {
-    final SourceProcessor<IN> sourceProcessor = (SourceProcessor<IN>) this.processor;
+    LOG.info("Source stream task thread start.");
+
     sourceProcessor.run();
   }
 
   @Override
-  protected void cancelTask() throws Exception {
+  protected void cancelTask() {
   }
 
 }

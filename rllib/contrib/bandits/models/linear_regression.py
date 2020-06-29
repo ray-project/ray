@@ -1,7 +1,9 @@
 import gym
+
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils import try_import_torch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
 
@@ -32,7 +34,7 @@ class OnlineLinearRegression(nn.Module):
     def partial_fit(self, x, y):
         # TODO: Handle batch of data rather than individual points
         self._check_inputs(x, y)
-        x = x.squeeze()
+        x = x.squeeze(0)
         y = y.item()
         self.time += 1
         self.delta_f += y * x
@@ -66,7 +68,8 @@ class OnlineLinearRegression(nn.Module):
         return batch_dots.sqrt()
 
     def forward(self, x, sample_theta=False):
-        """ Predict the scores on input batch using the underlying linear model
+        """ Predict scores on input batch using the underlying linear model.
+
         Args:
             x (torch.Tensor): Input feature tensor of shape
                 (batch_size, feature_dim)
@@ -83,9 +86,9 @@ class OnlineLinearRegression(nn.Module):
         assert x.ndim in [2, 3], \
             "Input context tensor must be 2 or 3 dimensional, where the" \
             " first dimension is batch size"
-        assert x.shape[
-            1] == self.d, f"Feature dimensions of weights ({self.d}) and " \
-                          f"context ({x.shape[1]}) do not match!"
+        assert x.shape[1] == self.d, \
+            "Feature dimensions of weights ({}) and context ({}) do not " \
+            "match!".format(self.d, x.shape[1])
         if y:
             assert torch.is_tensor(y) and y.numel() == 1,\
                 "Target should be a tensor;" \
@@ -111,7 +114,7 @@ class DiscreteLinearModel(TorchModelV2, nn.Module):
         self._cur_value = None
         self._cur_ctx = None
 
-    @override(TorchModelV2)
+    @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         x = input_dict["obs"]
         scores = self.predict(x)
@@ -132,12 +135,12 @@ class DiscreteLinearModel(TorchModelV2, nn.Module):
             return scores
 
     def partial_fit(self, x, y, arm):
-        assert 0 <= arm.item() < len(self.arms),\
-            f"Invalid arm: {arm.item()}." \
-            f"It should be 0 <= arm < {len(self.arms)}"
+        assert 0 <= arm.item() < len(self.arms), \
+            "Invalid arm: {}. It should be 0 <= arm < {}".format(
+                arm.item(), len(self.arms))
         self.arms[arm].partial_fit(x, y)
 
-    @override(TorchModelV2)
+    @override(ModelV2)
     def value_function(self):
         assert self._cur_value is not None, "must call forward() first"
         return self._cur_value
@@ -190,7 +193,7 @@ class ParametricLinearModel(TorchModelV2, nn.Module):
             assert x.size()[
                 0] == 1, "Only batch size of 1 is supported for now."
 
-    @override(TorchModelV2)
+    @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         x = input_dict["obs"]["item"]
         self._check_inputs(x)
@@ -214,7 +217,7 @@ class ParametricLinearModel(TorchModelV2, nn.Module):
         action_id = arm.item()
         self.arm.partial_fit(x[:, action_id], y)
 
-    @override(TorchModelV2)
+    @override(ModelV2)
     def value_function(self):
         assert self._cur_value is not None, "must call forward() first"
         return self._cur_value

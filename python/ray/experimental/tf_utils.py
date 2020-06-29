@@ -1,7 +1,8 @@
 from collections import deque, OrderedDict
 import numpy as np
 
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils import force_list
+from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()
 
@@ -41,14 +42,13 @@ class TensorFlowVariables:
         Args:
             output (tf.Operation, List[tf.Operation]): The tensorflow
                 operation to extract all variables from.
-            sess (tf.Session): Session used for running the get and set
-                methods.
+            sess (Optional[tf.Session]): Optional tf.Session used for running
+                the get and set methods in tf graph mode.
             input_variables (List[tf.Variables]): Variables to include in the
                 list.
         """
         self.sess = sess
-        if not isinstance(output, (list, tuple)):
-            output = [output]
+        output = force_list(output)
         queue = deque(output)
         variable_names = []
         explored_inputs = set(output)
@@ -161,10 +161,7 @@ class TensorFlowVariables:
             Dictionary mapping variable names to their weights.
         """
         self._check_sess()
-        return {
-            k: v.eval(session=self.sess)
-            for k, v in self.variables.items()
-        }
+        return self.sess.run(self.variables)
 
     def set_weights(self, new_weights):
         """Sets the weights to new_weights.

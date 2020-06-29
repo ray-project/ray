@@ -18,7 +18,7 @@ from ray.tune.utils import flatten_dict
 logger = logging.getLogger(__name__)
 
 tf = None
-VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32]
+VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32, np.int64]
 
 
 class Logger:
@@ -218,7 +218,9 @@ class TBXLogger(Logger):
                 valid_result[full_attr] = value
                 self._file_writer.add_scalar(
                     full_attr, value, global_step=step)
-            elif type(value) in [list, np.ndarray] and len(value) > 0:
+            elif (type(value) == list
+                  and len(value) > 0) or (type(value) == np.ndarray
+                                          and value.size > 0):
                 valid_result[full_attr] = value
                 try:
                     self._file_writer.add_histogram(

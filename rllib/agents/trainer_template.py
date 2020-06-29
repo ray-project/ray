@@ -1,38 +1,63 @@
 import logging
-import os
 import time
+from typing import Callable, Optional, List, Iterable
 
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
-from ray.rllib.optimizers import SyncSamplesOptimizer
+from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.execution.train_ops import TrainOneStep
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.policy import Policy
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.types import TrainerConfigDict, ResultDict
 
 logger = logging.getLogger(__name__)
 
 
+def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict):
+    # Collects experiences in parallel from multiple RolloutWorker actors.
+    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+
+    # Combine experiences batches until we hit `train_batch_size` in size.
+    # Then, train the policy on those experiences and update the workers.
+    train_op = rollouts \
+        .combine(ConcatBatches(
+            min_batch_size=config["train_batch_size"])) \
+        .for_each(TrainOneStep(workers))
+
+    # Add on the standard episode reward, etc. metrics reporting. This returns
+    # a LocalIterator[metrics_dict] representing metrics for each train step.
+    return StandardMetricsReporting(train_op, workers, config)
+
+
 @DeveloperAPI
-def build_trainer(name,
-                  default_policy,
-                  default_config=None,
-                  validate_config=None,
-                  get_initial_state=None,
-                  get_policy_class=None,
-                  before_init=None,
-                  make_workers=None,
-                  make_policy_optimizer=None,
-                  after_init=None,
-                  before_train_step=None,
-                  after_optimizer_step=None,
-                  after_train_result=None,
-                  collect_metrics_fn=None,
-                  before_evaluate_fn=None,
-                  mixins=None,
-                  execution_plan=None):
+def build_trainer(
+    name: str,
+    default_policy: Optional[Policy],
+    *,
+    default_config: TrainerConfigDict = None,
+    validate_config: Callable[[TrainerConfigDict], None] = None,
+    get_initial_state=None,  # DEPRECATED
+    get_policy_class: Callable[[TrainerConfigDict], Policy] = None,
+    before_init: Callable[[Trainer], None] = None,
+    make_workers=None,  # DEPRECATED
+    make_policy_optimizer=None,  # DEPRECATED
+    after_init: Callable[[Trainer], None] = None,
+    before_train_step=None,  # DEPRECATED
+    after_optimizer_step=None,  # DEPRECATED
+    after_train_result=None,  # DEPRECATED
+    collect_metrics_fn=None,  # DEPRECATED
+        before_evaluate_fn: Callable[[Trainer], None] = None,
+        mixins: List[type] = None,
+        execution_plan: Callable[[WorkerSet, TrainerConfigDict], Iterable[
+            ResultDict]] = default_execution_plan):
     """Helper function for defining a custom trainer.
 
     Functions will be run in this order to initialize the trainer:
-        1. Config setup: validate_config, get_initial_state, get_policy
-        2. Worker setup: before_init, make_workers, make_policy_optimizer
+        1. Config setup: validate_config, get_policy
+        2. Worker setup: before_init, execution_plan
         3. Post setup: after_init
 
     Arguments:
@@ -40,39 +65,21 @@ def build_trainer(name,
         default_policy (cls): the default Policy class to use
         default_config (dict): The default config dict of the algorithm,
             otherwise uses the Trainer default config.
-        validate_config (func): optional callback that checks a given config
-            for correctness. It may mutate the config as needed.
-        get_initial_state (func): optional function that returns the initial
-            state dict given the trainer instance as an argument. The state
-            dict must be serializable so that it can be checkpointed, and will
-            be available as the `trainer.state` variable.
-        get_policy_class (func): optional callback that takes a config and
-            returns the policy class to override the default with
-        before_init (func): optional function to run at the start of trainer
-            init that takes the trainer instance as argument
-        make_workers (func): override the method that creates rollout workers.
-            This takes in (trainer, env_creator, policy, config) as args.
-        make_policy_optimizer (func): optional function that returns a
-            PolicyOptimizer instance given (WorkerSet, config)
-        after_init (func): optional function to run at the end of trainer init
-            that takes the trainer instance as argument
-        before_train_step (func): optional callback to run before each train()
-            call. It takes the trainer instance as an argument.
-        after_optimizer_step (func): optional callback to run after each
-            step() call to the policy optimizer. It takes the trainer instance
-            and the policy gradient fetches as arguments.
-        after_train_result (func): optional callback to run at the end of each
-            train() call. It takes the trainer instance and result dict as
-            arguments, and may mutate the result dict as needed.
-        collect_metrics_fn (func): override the method used to collect metrics.
-            It takes the trainer instance as argumnt.
-        before_evaluate_fn (func): callback to run before evaluation. This
-            takes the trainer instance as argument.
+        validate_config (Optional[callable]): Optional callable that takes the
+            config to check for correctness. It may mutate the config as
+            needed.
+        get_policy_class (Optional[callable]): Optional callable that takes a
+            config and returns the policy class to override the default with.
+        before_init (Optional[callable]): Optional callable to run at the start
+            of trainer init that takes the trainer instance as argument.
+        after_init (Optional[callable]): Optional callable to run at the end of
+            trainer init that takes the trainer instance as argument.
+        before_evaluate_fn (Optional[callable]): callback to run before
+            evaluation. This takes the trainer instance as argument.
         mixins (list): list of any class mixins for the returned trainer class.
             These mixins will be applied in order and will have higher
-            precedence than the Trainer class
-        execution_plan (func): Experimental distributed execution
-            API. This overrides `make_policy_optimizer`.
+            precedence than the Trainer class.
+        execution_plan (func): Setup the distributed execution workflow.
 
     Returns:
         a Trainer instance that uses the specified args.
@@ -94,6 +101,7 @@ def build_trainer(name,
                 validate_config(config)
 
             if get_initial_state:
+                deprecation_warning("get_initial_state", "execution_plan")
                 self.state = get_initial_state(self)
             else:
                 self.state = {}
@@ -103,12 +111,9 @@ def build_trainer(name,
                 self._policy = get_policy_class(config)
             if before_init:
                 before_init(self)
-            use_exec_api = (execution_plan
-                            and (self.config["use_exec_api"]
-                                 or "RLLIB_EXEC_API" in os.environ))
-
             # Creating all workers (excluding evaluation workers).
-            if make_workers and not use_exec_api:
+            if make_workers and not execution_plan:
+                deprecation_warning("make_workers", "execution_plan")
                 self.workers = make_workers(self, env_creator, self._policy,
                                             config)
             else:
@@ -119,20 +124,12 @@ def build_trainer(name,
             self.optimizer = None
             self.execution_plan = execution_plan
 
-            if use_exec_api:
-                logger.warning(
-                    "The experimental distributed execution API is enabled "
-                    "for this algorithm. Disable this by setting "
-                    "'use_exec_api': False.")
-                self.train_exec_impl = execution_plan(self.workers, config)
-            elif make_policy_optimizer:
+            if make_policy_optimizer:
+                deprecation_warning("make_policy_optimizer", "execution_plan")
                 self.optimizer = make_policy_optimizer(self.workers, config)
             else:
-                optimizer_config = dict(
-                    config["optimizer"],
-                    **{"train_batch_size": config["train_batch_size"]})
-                self.optimizer = SyncSamplesOptimizer(self.workers,
-                                                      **optimizer_config)
+                assert execution_plan is not None
+                self.train_exec_impl = execution_plan(self.workers, config)
             if after_init:
                 after_init(self)
 
@@ -142,6 +139,7 @@ def build_trainer(name,
                 return self._train_exec_impl()
 
             if before_train_step:
+                deprecation_warning("before_train_step", "execution_plan")
                 before_train_step(self)
             prev_steps = self.optimizer.num_steps_sampled
 
@@ -151,6 +149,8 @@ def build_trainer(name,
                 fetches = self.optimizer.step()
                 optimizer_steps_this_iter += 1
                 if after_optimizer_step:
+                    deprecation_warning("after_optimizer_step",
+                                        "execution_plan")
                     after_optimizer_step(self, fetches)
                 if (time.time() - start >= self.config["min_iter_time_s"]
                         and self.optimizer.num_steps_sampled - prev_steps >=
@@ -158,6 +158,7 @@ def build_trainer(name,
                     break
 
             if collect_metrics_fn:
+                deprecation_warning("collect_metrics_fn", "execution_plan")
                 res = collect_metrics_fn(self)
             else:
                 res = self.collect_metrics()
@@ -168,15 +169,12 @@ def build_trainer(name,
                 info=res.get("info", {}))
 
             if after_train_result:
+                deprecation_warning("after_train_result", "execution_plan")
                 after_train_result(self, res)
             return res
 
         def _train_exec_impl(self):
-            if before_train_step:
-                logger.debug("Ignoring before_train_step callback")
             res = next(self.train_exec_impl)
-            if after_train_result:
-                logger.debug("Ignoring after_train_result callback")
             return res
 
         @override(Trainer)

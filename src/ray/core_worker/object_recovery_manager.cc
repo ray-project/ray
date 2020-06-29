@@ -33,7 +33,7 @@ Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
     {
       absl::MutexLock lock(&mu_);
       // Mark that we are attempting recovery for this object to prevent
-      // duplicate reconstructions of the same object.
+      // duplicate restarts of the same object.
       already_pending_recovery = !objects_pending_recovery_.insert(object_id).second;
     }
   }

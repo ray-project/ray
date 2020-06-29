@@ -5,7 +5,7 @@ cluster:
   config: ray-project/cluster.yaml
 
 commands:
-  - name: run
+  - name: test_workload
     help: "Start a long running stress test."
     command: |
       # Install nightly Ray wheels.
@@ -29,6 +29,7 @@ commands:
             "node_failures",
             "pbt",
             "serve",
+            "serve_failure",
             "many_tasks_serialized_ids",
           ]
     config:

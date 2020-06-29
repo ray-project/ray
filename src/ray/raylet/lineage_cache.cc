@@ -321,7 +321,7 @@ bool LineageCache::UnsubscribeTask(const TaskID &task_id) {
   bool subscribed = (it != subscribed_tasks_.end());
   if (subscribed) {
     // Cancel subscribe to the task.
-    RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribe(task_id, /*done*/ nullptr));
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribe(task_id));
     subscribed_tasks_.erase(it);
   }
   // Return whether we were previously subscribed to this task and are now

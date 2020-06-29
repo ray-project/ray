@@ -1,95 +1,132 @@
 import logging
+import gym
 import numpy as np
+from typing import Callable, List, Tuple
 
 from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.types import EnvType, EnvConfigDict, EnvObsType, \
+    EnvInfoDict, EnvActionType
 
 logger = logging.getLogger(__name__)
 
 
 @PublicAPI
 class VectorEnv:
-    """An environment that supports batch evaluation.
-
-    Subclasses must define the following attributes:
-
-    Attributes:
-        action_space (gym.Space): Action space of individual envs.
-        observation_space (gym.Space): Observation space of individual envs.
-        num_envs (int): Number of envs in this vector env.
+    """An environment that supports batch evaluation using clones of sub-envs.
     """
 
+    def __init__(self, observation_space: gym.Space, action_space: gym.Space,
+                 num_envs: int):
+        """Initializes a VectorEnv object.
+
+        Args:
+            observation_space (Space): The observation Space of a single
+                sub-env.
+            action_space (Space): The action Space of a single sub-env.
+            num_envs (int): The number of clones to make of the given sub-env.
+        """
+        self.observation_space = observation_space
+        self.action_space = action_space
+        self.num_envs = num_envs
+
     @staticmethod
-    def wrap(make_env=None,
-             existing_envs=None,
-             num_envs=1,
-             action_space=None,
-             observation_space=None):
-        return _VectorizedGymEnv(make_env, existing_envs or [], num_envs,
-                                 action_space, observation_space)
+    def wrap(make_env: Callable[[int], EnvType] = None,
+             existing_envs: List[gym.Env] = None,
+             num_envs: int = 1,
+             action_space: gym.Space = None,
+             observation_space: gym.Space = None,
+             env_config: EnvConfigDict = None):
+        return _VectorizedGymEnv(
+            make_env=make_env,
+            existing_envs=existing_envs or [],
+            num_envs=num_envs,
+            observation_space=observation_space,
+            action_space=action_space,
+            env_config=env_config)
 
     @PublicAPI
-    def vector_reset(self):
-        """Resets all environments.
+    def vector_reset(self) -> List[EnvObsType]:
+        """Resets all sub-environments.
 
         Returns:
-            obs (list): Vector of observations from each environment.
+            obs (List[any]): List of observations from each environment.
         """
         raise NotImplementedError
 
     @PublicAPI
-    def reset_at(self, index):
+    def reset_at(self, index: int) -> EnvObsType:
         """Resets a single environment.
 
         Returns:
-            obs (obj): Observations from the resetted environment.
+            obs (obj): Observations from the reset sub environment.
         """
         raise NotImplementedError
 
     @PublicAPI
-    def vector_step(self, actions):
-        """Vectorized step.
+    def vector_step(
+            self, actions: List[EnvActionType]
+    ) -> Tuple[List[EnvObsType], List[float], List[bool], List[EnvInfoDict]]:
+        """Performs a vectorized step on all sub environments using `actions`.
 
         Arguments:
-            actions (list): Actions for each env.
+            actions (List[any]): List of actions (one for each sub-env).
 
         Returns:
-            obs (list): New observations for each env.
-            rewards (list): Reward values for each env.
-            dones (list): Done values for each env.
-            infos (list): Info values for each env.
+            obs (List[any]): New observations for each sub-env.
+            rewards (List[any]): Reward values for each sub-env.
+            dones (List[any]): Done values for each sub-env.
+            infos (List[any]): Info values for each sub-env.
         """
         raise NotImplementedError
 
     @PublicAPI
-    def get_unwrapped(self):
-        """Returns the underlying env instances."""
+    def get_unwrapped(self) -> List[EnvType]:
+        """Returns the underlying sub environments.
+
+        Returns:
+            List[Env]: List of all underlying sub environments.
+        """
         raise NotImplementedError
 
 
 class _VectorizedGymEnv(VectorEnv):
-    """Internal wrapper for gym envs to implement VectorEnv.
-
-    Arguments:
-        make_env (func|None): Factory that produces a new gym env. Must be
-            defined if the number of existing envs is less than num_envs.
-        existing_envs (list): List of existing gym envs.
-        num_envs (int): Desired num gym envs to keep total.
+    """Internal wrapper to translate any gym envs into a VectorEnv object.
     """
 
     def __init__(self,
-                 make_env,
-                 existing_envs,
-                 num_envs,
+                 make_env=None,
+                 existing_envs=None,
+                 num_envs=1,
+                 *,
+                 observation_space=None,
                  action_space=None,
-                 observation_space=None):
+                 env_config=None):
+        """Initializes a _VectorizedGymEnv object.
+
+        Args:
+            make_env (Optional[callable]): Factory that produces a new gym env
+                taking a single `config` dict arg. Must be defined if the
+                number of `existing_envs` is less than `num_envs`.
+            existing_envs (Optional[List[Env]]): Optional list of already
+                instantiated sub environments.
+            num_envs (int): Total number of sub environments in this VectorEnv.
+            action_space (Optional[Space]): The action space. If None, use
+                existing_envs[0]'s action space.
+            observation_space (Optional[Space]): The observation space.
+                If None, use existing_envs[0]'s action space.
+            env_config (Optional[dict]): Additional sub env config to pass to
+                make_env as first arg.
+        """
         self.make_env = make_env
         self.envs = existing_envs
-        self.num_envs = num_envs
-        while len(self.envs) < self.num_envs:
+        while len(self.envs) < num_envs:
             self.envs.append(self.make_env(len(self.envs)))
-        self.action_space = action_space or self.envs[0].action_space
-        self.observation_space = observation_space or \
-            self.envs[0].observation_space
+
+        super().__init__(
+            observation_space=observation_space
+            or self.envs[0].observation_space,
+            action_space=action_space or self.envs[0].action_space,
+            num_envs=num_envs)
 
     @override(VectorEnv)
     def vector_reset(self):

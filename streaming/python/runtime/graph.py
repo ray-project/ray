@@ -1,12 +1,13 @@
 import enum
+import logging
 
 import ray
 import ray.streaming.generated.remote_call_pb2 as remote_call_pb
-import ray.streaming.generated.streaming_pb2 as streaming_pb
 import ray.streaming.operator as operator
 import ray.streaming.partition as partition
-from ray.streaming import function
 from ray.streaming.generated.streaming_pb2 import Language
+
+logger = logging.getLogger(__name__)
 
 
 class NodeType(enum.Enum):
@@ -25,78 +26,102 @@ class NodeType(enum.Enum):
     SINK = 2
 
 
-class ExecutionNode:
-    def __init__(self, node_pb):
-        self.node_id = node_pb.node_id
-        self.node_type = NodeType[streaming_pb.NodeType.Name(
-            node_pb.node_type)]
-        self.parallelism = node_pb.parallelism
-        if node_pb.language == Language.PYTHON:
-            func_bytes = node_pb.function  # python function descriptor
-            func = function.load_function(func_bytes)
-            self.stream_operator = operator.create_operator(func)
-        self.execution_tasks = [
-            ExecutionTask(task) for task in node_pb.execution_tasks
-        ]
-        self.input_edges = [
-            ExecutionEdge(edge, node_pb.language)
-            for edge in node_pb.input_edges
-        ]
-        self.output_edges = [
-            ExecutionEdge(edge, node_pb.language)
-            for edge in node_pb.output_edges
-        ]
-
-
 class ExecutionEdge:
     def __init__(self, edge_pb, language):
-        self.src_node_id = edge_pb.src_node_id
-        self.target_node_id = edge_pb.target_node_id
+        self.source_execution_vertex_id = edge_pb.source_execution_vertex_id
+        self.target_execution_vertex_id = edge_pb.target_execution_vertex_id
         partition_bytes = edge_pb.partition
-        if language == Language.PYTHON:
+        # Sink node doesn't have partition function,
+        # so we only deserialize partition_bytes when it's not None or empty
+        if language == Language.PYTHON and partition_bytes:
             self.partition = partition.load_partition(partition_bytes)
 
 
-class ExecutionTask:
-    def __init__(self, task_pb):
-        self.task_id = task_pb.task_id
-        self.task_index = task_pb.task_index
-        self.worker_actor = ray.actor.ActorHandle.\
-            _deserialization_helper(task_pb.worker_actor)
+class ExecutionVertex:
+    def __init__(self, vertex_pb):
+        self.execution_vertex_id = vertex_pb.execution_vertex_id
+        self.execution_job_vertex_Id = vertex_pb.execution_job_vertex_Id
+        self.execution_job_vertex_name = vertex_pb.execution_job_vertex_name
+        self.execution_vertex_index = vertex_pb.execution_vertex_index
+        self.parallelism = vertex_pb.parallelism
+        if vertex_pb.language == Language.PYTHON:
+            operator_bytes = vertex_pb.operator  # python operator descriptor
+            if vertex_pb.chained:
+                logger.info("Load chained operator")
+                self.stream_operator = operator.load_chained_operator(
+                    operator_bytes)
+            else:
+                logger.info("Load operator")
+                self.stream_operator = operator.load_operator(operator_bytes)
+        self.worker_actor = ray.actor.ActorHandle. \
+            _deserialization_helper(vertex_pb.worker_actor)
+        self.container_id = vertex_pb.container_id
+        self.build_time = vertex_pb.build_time
+        self.language = vertex_pb.language
+        self.config = vertex_pb.config
+        self.resource = vertex_pb.resource
 
 
-class ExecutionGraph:
-    def __init__(self, graph_pb: remote_call_pb.ExecutionGraph):
-        self._graph_pb = graph_pb
-        self.execution_nodes = [
-            ExecutionNode(node) for node in graph_pb.execution_nodes
+class ExecutionVertexContext:
+    def __init__(self,
+                 vertex_context_pb: remote_call_pb.ExecutionVertexContext):
+        self.execution_vertex = \
+            ExecutionVertex(vertex_context_pb.current_execution_vertex)
+        self.upstream_execution_vertices = [
+            ExecutionVertex(vertex)
+            for vertex in vertex_context_pb.upstream_execution_vertices
+        ]
+        self.downstream_execution_vertices = [
+            ExecutionVertex(vertex)
+            for vertex in vertex_context_pb.downstream_execution_vertices
+        ]
+        self.input_execution_edges = [
+            ExecutionEdge(edge, self.execution_vertex.language)
+            for edge in vertex_context_pb.input_execution_edges
+        ]
+        self.output_execution_edges = [
+            ExecutionEdge(edge, self.execution_vertex.language)
+            for edge in vertex_context_pb.output_execution_edges
         ]
 
+    def get_parallelism(self):
+        return self.execution_vertex.parallelism
+
+    def get_upstream_parallelism(self):
+        if self.upstream_execution_vertices:
+            return self.upstream_execution_vertices[0].parallelism
+        return 0
+
+    def get_downstream_parallelism(self):
+        if self.downstream_execution_vertices:
+            return self.downstream_execution_vertices[0].parallelism
+        return 0
+
+    @property
     def build_time(self):
-        return self._graph_pb.build_time
+        return self.execution_vertex.build_time
 
-    def execution_nodes(self):
-        return self.execution_nodes
+    @property
+    def stream_operator(self):
+        return self.execution_vertex.stream_operator
 
-    def get_execution_task_by_task_id(self, task_id):
-        for execution_node in self.execution_nodes:
-            for task in execution_node.execution_tasks:
-                if task.task_id == task_id:
-                    return task
-        raise Exception("Task %s does not exist!".format(task_id))
+    @property
+    def config(self):
+        return self.execution_vertex.config
 
-    def get_execution_node_by_task_id(self, task_id):
-        for execution_node in self.execution_nodes:
-            for task in execution_node.execution_tasks:
-                if task.task_id == task_id:
-                    return execution_node
-        raise Exception("Task %s does not exist!".format(task_id))
+    def get_task_id(self):
+        return self.execution_vertex.execution_vertex_id
 
-    def get_task_id2_worker_by_node_id(self, node_id):
-        for execution_node in self.execution_nodes:
-            if execution_node.node_id == node_id:
-                task_id2_worker = {}
-                for task in execution_node.execution_tasks:
-                    task_id2_worker[task.task_id] = task.worker_actor
-                return task_id2_worker
-        raise Exception("Node %s does not exist!".format(node_id))
+    def get_source_actor_by_vertex_id(self, execution_vertex_id):
+        for vertex in self.upstream_execution_vertices:
+            if vertex.execution_vertex_id == execution_vertex_id:
+                return vertex.worker_actor
+        raise Exception("ExecutionVertex %s does not exist!"
+                        .format(execution_vertex_id))
+
+    def get_target_actor_by_vertex_id(self, execution_vertex_id):
+        for vertex in self.downstream_execution_vertices:
+            if vertex.execution_vertex_id == execution_vertex_id:
+                return vertex.worker_actor
+        raise Exception("ExecutionVertex %s does not exist!"
+                        .format(execution_vertex_id))

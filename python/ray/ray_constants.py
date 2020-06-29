@@ -32,7 +32,11 @@ OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
 DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
 # The smallest cap on the memory used by Redis that we allow.
 REDIS_MINIMUM_MEMORY_BYTES = 10**7
+# If a user does not specify a port for the primary Ray service,
+# we attempt to start the service running at this port.
+DEFAULT_PORT = 6379
 
+DEFAULT_DASHBOARD_PORT = 8265
 # Default resource requirements for actors when no resource requirements are
 # specified.
 DEFAULT_ACTOR_METHOD_CPU_SIMPLE = 1
@@ -159,11 +163,6 @@ LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
                      " 'warning', 'error', 'critical'], default='info'")
 
-# A constant indicating that an actor doesn't need reconstructions.
-NO_RECONSTRUCTION = 0
-# A constant indicating that an actor should be reconstructed infinite times.
-INFINITE_RECONSTRUCTION = 2**30
-
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"
@@ -199,7 +198,6 @@ NODE_DEFAULT_IP = "127.0.0.1"
 # The Mach kernel page size in bytes.
 MACH_PAGE_SIZE_BYTES = 4096
 
-# RAY_GCS_SERVICE_ENABLED only set in ci job.
-# TODO(ffbin): Once we entirely migrate to service-based GCS, we should
-# remove it.
-GCS_SERVICE_ENABLED = env_bool("RAY_GCS_SERVICE_ENABLED", True)
+# Max 64 bit integer value, which is needed to ensure against overflow
+# in C++ when passing integer values cross-language.
+MAX_INT64_VALUE = 9223372036854775807

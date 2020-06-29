@@ -14,7 +14,7 @@ if __name__ == "__main__":
     # note: no ray.init(), to test it works without Ray
     trainer = A2CTrainer(
         env="CartPole-v0", config={
-            "use_pytorch": True,
+            "framework": "torch",
             "num_workers": 0
         })
     trainer.train()
@@ -23,3 +23,5 @@ if __name__ == "__main__":
 
     # Clean up.
     del os.environ["RLLIB_TEST_NO_TF_IMPORT"]
+
+    print("ok")

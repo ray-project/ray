@@ -15,10 +15,10 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import Deterministic
 from ray.rllib.models.torch.torch_action_dist import TorchDeterministic
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip, \
     make_tf_callable
 
@@ -36,28 +36,13 @@ TWIN_Q_TARGET_SCOPE = "twin_target_critic"
 
 
 def build_ddpg_models(policy, observation_space, action_space, config):
-    if config["model"]["custom_model"]:
-        logger.warning(
-            "Setting use_state_preprocessor=True since a custom model "
-            "was specified.")
-        config["use_state_preprocessor"] = True
-
-    if not isinstance(action_space, Box):
-        raise UnsupportedSpaceException(
-            "Action space {} is not supported for DDPG.".format(action_space))
-    elif len(action_space.shape) > 1:
-        raise UnsupportedSpaceException(
-            "Action space has multiple dimensions "
-            "{}. ".format(action_space.shape) +
-            "Consider reshaping this into a single dimension, "
-            "using a Tuple action space, or the multi-agent API.")
-
     if policy.config["use_state_preprocessor"]:
         default_model = None  # catalog decides
         num_outputs = 256  # arbitrary
         config["model"]["no_final_linear"] = True
     else:
-        default_model = TorchNoopModel if config["use_pytorch"] else NoopModel
+        default_model = TorchNoopModel if config["framework"] == "torch" \
+            else NoopModel
         num_outputs = int(np.product(observation_space.shape))
 
     policy.model = ModelCatalog.get_model_v2(
@@ -65,9 +50,9 @@ def build_ddpg_models(policy, observation_space, action_space, config):
         action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
-        framework="torch" if config["use_pytorch"] else "tf",
-        model_interface=DDPGTorchModel
-        if config["use_pytorch"] else DDPGTFModel,
+        framework=config["framework"],
+        model_interface=(DDPGTorchModel
+                         if config["framework"] == "torch" else DDPGTFModel),
         default_model=default_model,
         name="ddpg_model",
         actor_hidden_activation=config["actor_hidden_activation"],
@@ -84,9 +69,9 @@ def build_ddpg_models(policy, observation_space, action_space, config):
         action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
-        framework="torch" if config["use_pytorch"] else "tf",
-        model_interface=DDPGTorchModel
-        if config["use_pytorch"] else DDPGTFModel,
+        framework=config["framework"],
+        model_interface=(DDPGTorchModel
+                         if config["framework"] == "torch" else DDPGTFModel),
         default_model=default_model,
         name="target_ddpg_model",
         actor_hidden_activation=config["actor_hidden_activation"],
@@ -114,9 +99,9 @@ def get_distribution_inputs_and_class(policy,
     }, [], None)
     dist_inputs = model.get_policy_output(model_out)
 
-    return dist_inputs,\
-        TorchDeterministic if policy.config["use_pytorch"] else Deterministic,\
-        []  # []=state out
+    return dist_inputs, (TorchDeterministic
+                         if policy.config["framework"] == "torch" else
+                         Deterministic), []  # []=state out
 
 
 def ddpg_actor_critic_loss(policy, model, _, train_batch):
@@ -156,7 +141,7 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         if policy.config["smooth_target_policy"]:
             target_noise_clip = policy.config["target_noise_clip"]
             clipped_normal_sample = tf.clip_by_value(
-                tf.random_normal(
+                tf.random.normal(
                     tf.shape(policy_tp1),
                     stddev=policy.config["target_noise"]), -target_noise_clip,
                 target_noise_clip)
@@ -215,18 +200,20 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         twin_td_error = twin_q_t_selected - q_t_selected_target
         td_error = td_error + twin_td_error
         if use_huber:
-            errors = huber_loss(td_error, huber_threshold) \
-                + huber_loss(twin_td_error, huber_threshold)
+            errors = huber_loss(td_error, huber_threshold) + \
+                huber_loss(twin_td_error, huber_threshold)
         else:
-            errors = 0.5 * tf.square(td_error) + 0.5 * tf.square(twin_td_error)
+            errors = 0.5 * tf.math.square(td_error) + \
+                     0.5 * tf.math.square(twin_td_error)
     else:
         td_error = q_t_selected - q_t_selected_target
         if use_huber:
             errors = huber_loss(td_error, huber_threshold)
         else:
-            errors = 0.5 * tf.square(td_error)
+            errors = 0.5 * tf.math.square(td_error)
 
-    critic_loss = tf.reduce_mean(train_batch[PRIO_WEIGHTS] * errors)
+    critic_loss = tf.reduce_mean(
+        tf.cast(train_batch[PRIO_WEIGHTS], tf.float32) * errors)
     actor_loss = -tf.reduce_mean(q_t_det_policy)
 
     # Add l2-regularization if required.
@@ -416,8 +403,21 @@ def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy, config)
 
 
+def validate_spaces(pid, observation_space, action_space, config):
+    if not isinstance(action_space, Box):
+        raise UnsupportedSpaceException(
+            "Action space ({}) of {} is not supported for "
+            "DDPG.".format(action_space, pid))
+    elif len(action_space.shape) > 1:
+        raise UnsupportedSpaceException(
+            "Action space ({}) of {} has multiple dimensions "
+            "{}. ".format(action_space, pid, action_space.shape) +
+            "Consider reshaping this into a single dimension, "
+            "using a Tuple action space, or the multi-agent API.")
+
+
 DDPGTFPolicy = build_tf_policy(
-    name="DQNTFPolicy",
+    name="DDPGTFPolicy",
     get_default_config=lambda: ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG,
     make_model=build_ddpg_models,
     action_distribution_fn=get_distribution_inputs_and_class,
@@ -428,6 +428,7 @@ DDPGTFPolicy = build_tf_policy(
     gradients_fn=gradients_fn,
     apply_gradients_fn=build_apply_op,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
+    validate_spaces=validate_spaces,
     before_init=before_init_fn,
     before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,

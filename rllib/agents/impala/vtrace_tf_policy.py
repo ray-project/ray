@@ -13,8 +13,8 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
-from ray.rllib.utils.explained_variance import explained_variance
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_ops import explained_variance
 
 tf = try_import_tf()
 
@@ -80,7 +80,7 @@ class VTraceLoss:
                 behaviour_policy_logits=behaviour_logits,
                 target_policy_logits=target_logits,
                 actions=tf.unstack(actions, axis=2),
-                discounts=tf.to_float(~dones) * discount,
+                discounts=tf.cast(~dones, tf.float32) * discount,
                 rewards=rewards,
                 values=values,
                 bootstrap_value=bootstrap_value,
@@ -91,20 +91,20 @@ class VTraceLoss:
                                               tf.float32))
             self.value_targets = self.vtrace_returns.vs
 
-        # The policy gradients loss
+        # The policy gradients loss.
         self.pi_loss = -tf.reduce_sum(
             tf.boolean_mask(actions_logp * self.vtrace_returns.pg_advantages,
                             valid_mask))
 
-        # The baseline loss
+        # The baseline loss.
         delta = tf.boolean_mask(values - self.vtrace_returns.vs, valid_mask)
-        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
+        self.vf_loss = 0.5 * tf.reduce_sum(tf.math.square(delta))
 
-        # The entropy loss
+        # The entropy loss.
         self.entropy = tf.reduce_sum(
             tf.boolean_mask(actions_entropy, valid_mask))
 
-        # The summed weighted loss
+        # The summed weighted loss.
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
                            self.entropy * entropy_coeff)
 
@@ -177,7 +177,7 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     values = model.value_function()
 
     if policy.is_recurrent():
-        max_seq_len = tf.reduce_max(train_batch["seq_lens"]) - 1
+        max_seq_len = tf.reduce_max(train_batch["seq_lens"])
         mask = tf.sequence_mask(train_batch["seq_lens"], max_seq_len)
         mask = tf.reshape(mask, [-1])
     else:
@@ -228,7 +228,7 @@ def stats(policy, train_batch):
         "policy_loss": policy.loss.pi_loss,
         "entropy": policy.loss.entropy,
         "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
-        "var_gnorm": tf.global_norm(policy.model.trainable_variables()),
+        "var_gnorm": tf.linalg.global_norm(policy.model.trainable_variables()),
         "vf_loss": policy.loss.vf_loss,
         "vf_explained_var": explained_variance(
             tf.reshape(policy.loss.value_targets, [-1]),
@@ -238,7 +238,7 @@ def stats(policy, train_batch):
 
 def grad_stats(policy, train_batch, grads):
     return {
-        "grad_gnorm": tf.global_norm(grads),
+        "grad_gnorm": tf.linalg.global_norm(grads),
     }
 
 
@@ -249,12 +249,6 @@ def postprocess_trajectory(policy,
     # not used, so save some bandwidth
     del sample_batch.data[SampleBatch.NEXT_OBS]
     return sample_batch
-
-
-def validate_config(policy, obs_space, action_space, config):
-    if config["vtrace"] and not config["in_evaluation"]:
-        assert config["batch_mode"] == "truncate_episodes", \
-            "Must use `truncate_episodes` batch mode with V-trace."
 
 
 def choose_optimizer(policy, config):
@@ -289,7 +283,6 @@ VTraceTFPolicy = build_tf_policy(
     postprocess_fn=postprocess_trajectory,
     optimizer_fn=choose_optimizer,
     gradients_fn=clip_gradients,
-    before_init=validate_config,
     before_loss_init=setup_mixins,
     mixins=[LearningRateSchedule, EntropyCoeffSchedule],
     get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"])

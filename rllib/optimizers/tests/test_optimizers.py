@@ -12,7 +12,7 @@ from ray.rllib.optimizers import AsyncGradientsOptimizer, AsyncSamplesOptimizer
 from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.tests.mock_worker import _MockWorker
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()
 
@@ -72,8 +72,8 @@ class PPOCollectTest(unittest.TestCase):
                 "train_batch_size": 128,
                 "num_workers": 3,
             })
-        ppo.train()
-        self.assertEqual(ppo.optimizer.num_steps_sampled, 600)
+        result = ppo.train()
+        self.assertEqual(result["info"]["num_steps_sampled"], 600)
         ppo.stop()
 
         # Check we collect at least the specified amount of samples
@@ -84,8 +84,8 @@ class PPOCollectTest(unittest.TestCase):
                 "train_batch_size": 900,
                 "num_workers": 3,
             })
-        ppo.train()
-        self.assertEqual(ppo.optimizer.num_steps_sampled, 1000)
+        result = ppo.train()
+        self.assertEqual(result["info"]["num_steps_sampled"], 1200)
         ppo.stop()
 
         # Check in vectorized mode
@@ -97,8 +97,8 @@ class PPOCollectTest(unittest.TestCase):
                 "train_batch_size": 900,
                 "num_workers": 3,
             })
-        ppo.train()
-        self.assertEqual(ppo.optimizer.num_steps_sampled, 1200)
+        result = ppo.train()
+        self.assertEqual(result["info"]["num_steps_sampled"], 1200)
         ppo.stop()
 
 

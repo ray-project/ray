@@ -20,15 +20,11 @@ namespace rpc {
 void DefaultWorkerInfoHandler::HandleReportWorkerFailure(
     const ReportWorkerFailureRequest &request, ReportWorkerFailureReply *reply,
     SendReplyCallback send_reply_callback) {
-  Address worker_address = request.worker_failure().worker_address();
+  const Address worker_address = request.worker_failure().worker_address();
   RAY_LOG(DEBUG) << "Reporting worker failure, " << worker_address.DebugString();
   auto worker_failure_data = std::make_shared<WorkerFailureData>();
   worker_failure_data->CopyFrom(request.worker_failure());
-  auto need_reschedule = !worker_failure_data->intentional_disconnect();
-  auto node_id = ClientID::FromBinary(worker_address.raylet_id());
-  auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
-  gcs_actor_manager_.ReconstructActorOnWorker(node_id, worker_id, need_reschedule);
-
+  const auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
   auto on_done = [this, worker_address, worker_id, worker_failure_data, reply,
                   send_reply_callback](const Status &status) {
     if (!status.ok()) {
@@ -38,14 +34,12 @@ void DefaultWorkerInfoHandler::HandleReportWorkerFailure(
       RAY_CHECK_OK(gcs_pub_sub_->Publish(WORKER_FAILURE_CHANNEL, worker_id.Binary(),
                                          worker_failure_data->SerializeAsString(),
                                          nullptr));
-      RAY_LOG(DEBUG) << "Finished reporting worker failure, "
-                     << worker_address.DebugString();
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status =
-      gcs_client_.Workers().AsyncReportWorkerFailure(worker_failure_data, on_done);
+  Status status = gcs_table_storage_->WorkerFailureTable().Put(
+      worker_id, *worker_failure_data, on_done);
   if (!status.ok()) {
     on_done(status);
   }

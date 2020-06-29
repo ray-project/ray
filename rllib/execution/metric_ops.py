@@ -3,7 +3,8 @@ import time
 
 from ray.util.iter import LocalIterator
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
-from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER
+from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
+    _get_shared_metrics
 from ray.rllib.evaluation.worker_set import WorkerSet
 
 
@@ -86,7 +87,7 @@ class CollectMetrics:
         res = summarize_episodes(episodes, orig_episodes)
 
         # Add in iterator metrics.
-        metrics = LocalIterator.get_metrics()
+        metrics = _get_shared_metrics()
         timers = {}
         counters = {}
         info = {}
@@ -157,9 +158,9 @@ class OncePerTimestepsElapsed:
     def __call__(self, item):
         if self.delay_steps <= 0:
             return True
-        metrics = LocalIterator.get_metrics()
+        metrics = _get_shared_metrics()
         now = metrics.counters[STEPS_SAMPLED_COUNTER]
-        if now - self.last_called > self.delay_steps:
+        if now - self.last_called >= self.delay_steps:
             self.last_called = now
             return True
         return False

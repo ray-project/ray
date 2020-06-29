@@ -17,7 +17,7 @@ from ray.includes.common cimport (
     CBuffer,
     CRayObject
 )
-from ray.includes.libcoreworker cimport CFiberEvent
+from ray.includes.libcoreworker cimport CActorHandle, CFiberEvent
 from ray.includes.unique_ids cimport (
     CObjectID,
     CActorID
@@ -25,6 +25,18 @@ from ray.includes.unique_ids cimport (
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
 )
+
+cdef extern from *:
+   """
+   #if __OPTIMIZE__ && __OPTIMIZE__ == 1
+   #undef __OPTIMIZE__
+   int __OPTIMIZE__ = 1;
+   #define __OPTIMIZE__ 1
+   #else
+   int __OPTIMIZE__ = 0;
+   #endif
+   """
+   int __OPTIMIZE__
 
 cdef extern from "Python.h":
     # Note(simon): This is used to configure asyncio actor stack size.
@@ -86,6 +98,7 @@ cdef class CoreWorker:
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns)
     cdef yield_current_fiber(self, CFiberEvent &fiber_event)
+    cdef make_actor_handle(self, CActorHandle *c_actor_handle)
 
 cdef class FunctionDescriptor:
     cdef:

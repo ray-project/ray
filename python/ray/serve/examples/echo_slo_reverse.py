@@ -10,11 +10,7 @@ import ray
 import ray.serve as serve
 
 # initialize ray serve system.
-# blocking=True will wait for HTTP server to be ready to serve request.
-serve.init(blocking=True)
-
-# an endpoint is associated with an http URL.
-serve.create_endpoint("my_endpoint", "/echo")
+serve.init()
 
 
 # a backend can be a function or class.
@@ -25,8 +21,9 @@ def echo_v1(flask_request, response="hello from python!"):
     return response
 
 
-serve.create_backend(echo_v1, "echo:v1")
-serve.set_traffic("my_endpoint", {"echo:v1": 1.0})
+serve.create_backend("echo:v1", echo_v1)
+
+serve.create_endpoint("my_endpoint", backend="echo:v1", route="/echo")
 
 # wait for routing table to get populated
 time.sleep(2)

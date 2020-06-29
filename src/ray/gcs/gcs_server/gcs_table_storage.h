@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_GCS_TABLE_STORAGE_H_
-#define RAY_GCS_GCS_TABLE_STORAGE_H_
+#pragma once
 
 #include <utility>
 
+#include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/protobuf/gcs.pb.h"
 
@@ -73,9 +73,8 @@ class GcsTable {
   /// Get all data from the table asynchronously.
   ///
   /// \param callback Callback that will be called after data has been received.
-  /// If the callback return `has_more == true` mean there's more data to be received.
   /// \return Status
-  Status GetAll(const SegmentedCallback<std::pair<Key, Data>> &callback);
+  Status GetAll(const MapCallback<Key, Data> &callback);
 
   /// Delete data from the table asynchronously.
   ///
@@ -121,8 +120,7 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   /// \param job_id The key to lookup from the table.
   /// \param callback Callback that will be called after read finishes.
   /// \return Status
-  Status GetByJobId(const JobID &job_id,
-                    const SegmentedCallback<std::pair<Key, Data>> &callback);
+  Status GetByJobId(const JobID &job_id, const MapCallback<Key, Data> &callback);
 
   /// Delete all the data of the specified job id from the table asynchronously.
   ///
@@ -400,7 +398,30 @@ class RedisGcsTableStorage : public GcsTableStorage {
   }
 };
 
+/// \class InMemoryGcsTableStorage
+/// InMemoryGcsTableStorage is an implementation of `GcsTableStorage`
+/// that uses memory as storage.
+class InMemoryGcsTableStorage : public GcsTableStorage {
+ public:
+  explicit InMemoryGcsTableStorage(boost::asio::io_service &main_io_service) {
+    store_client_ = std::make_shared<InMemoryStoreClient>(main_io_service);
+    job_table_.reset(new GcsJobTable(store_client_));
+    actor_table_.reset(new GcsActorTable(store_client_));
+    actor_checkpoint_table_.reset(new GcsActorCheckpointTable(store_client_));
+    actor_checkpoint_id_table_.reset(new GcsActorCheckpointIdTable(store_client_));
+    task_table_.reset(new GcsTaskTable(store_client_));
+    task_lease_table_.reset(new GcsTaskLeaseTable(store_client_));
+    task_reconstruction_table_.reset(new GcsTaskReconstructionTable(store_client_));
+    object_table_.reset(new GcsObjectTable(store_client_));
+    node_table_.reset(new GcsNodeTable(store_client_));
+    node_resource_table_.reset(new GcsNodeResourceTable(store_client_));
+    heartbeat_table_.reset(new GcsHeartbeatTable(store_client_));
+    heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(store_client_));
+    error_info_table_.reset(new GcsErrorInfoTable(store_client_));
+    profile_table_.reset(new GcsProfileTable(store_client_));
+    worker_failure_table_.reset(new GcsWorkerFailureTable(store_client_));
+  }
+};
+
 }  // namespace gcs
 }  // namespace ray
-
-#endif  // RAY_GCS_GCS_TABLE_STORAGE_H_

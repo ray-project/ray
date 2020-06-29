@@ -31,6 +31,10 @@ DEFINE_int32(node_manager_port, -1, "The port of node manager.");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(redis_address, "", "The ip address of redis server.");
 DEFINE_int32(redis_port, -1, "The port of redis server.");
+DEFINE_int32(min_worker_port, 0,
+             "The lowest port that workers' gRPC servers will bind on.");
+DEFINE_int32(max_worker_port, 0,
+             "The highest port that workers' gRPC servers will bind on.");
 DEFINE_int32(num_initial_workers, 0, "Number of initial workers.");
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
@@ -44,6 +48,10 @@ DEFINE_bool(disable_stats, false, "Whether disable the stats.");
 DEFINE_string(stat_address, "127.0.0.1:8888", "The address that we report metrics to.");
 DEFINE_bool(enable_stdout_exporter, false,
             "Whether enable the stdout exporter for stats.");
+// store options
+DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
+DEFINE_string(plasma_directory, "", "The shared memory directory of the object store.");
+DEFINE_bool(huge_pages, false, "Whether enable huge pages");
 
 #ifndef RAYLET_TEST
 
@@ -62,6 +70,8 @@ int main(int argc, char *argv[]) {
   const std::string node_ip_address = FLAGS_node_ip_address;
   const std::string redis_address = FLAGS_redis_address;
   const int redis_port = static_cast<int>(FLAGS_redis_port);
+  const int min_worker_port = static_cast<int>(FLAGS_min_worker_port);
+  const int max_worker_port = static_cast<int>(FLAGS_max_worker_port);
   const int num_initial_workers = static_cast<int>(FLAGS_num_initial_workers);
   const int maximum_startup_concurrency =
       static_cast<int>(FLAGS_maximum_startup_concurrency);
@@ -75,6 +85,9 @@ int main(int argc, char *argv[]) {
   const bool disable_stats = FLAGS_disable_stats;
   const std::string stat_address = FLAGS_stat_address;
   const bool enable_stdout_exporter = FLAGS_enable_stdout_exporter;
+  const int64_t object_store_memory = FLAGS_object_store_memory;
+  const std::string plasma_directory = FLAGS_plasma_directory;
+  const bool huge_pages = FLAGS_huge_pages;
   gflags::ShutDownCommandLineFlags();
 
   // Initialize stats.
@@ -121,6 +134,8 @@ int main(int argc, char *argv[]) {
   node_manager_config.node_manager_port = node_manager_port;
   node_manager_config.num_initial_workers = num_initial_workers;
   node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
+  node_manager_config.min_worker_port = min_worker_port;
+  node_manager_config.max_worker_port = max_worker_port;
 
   if (!python_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(
@@ -158,6 +173,9 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().object_manager_pull_timeout_ms();
   object_manager_config.push_timeout_ms =
       RayConfig::instance().object_manager_push_timeout_ms();
+  object_manager_config.object_store_memory = object_store_memory;
+  object_manager_config.plasma_directory = plasma_directory;
+  object_manager_config.huge_pages = huge_pages;
 
   int num_cpus = static_cast<int>(static_resource_conf["CPU"]);
   object_manager_config.rpc_service_threads_number =
@@ -177,11 +195,8 @@ int main(int argc, char *argv[]) {
   ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
 
-  if (RayConfig::instance().gcs_service_enabled()) {
-    gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
-  } else {
-    gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);
-  }
+  gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
+
   RAY_CHECK_OK(gcs_client->Connect(main_service));
 
   std::unique_ptr<ray::raylet::Raylet> server(new ray::raylet::Raylet(

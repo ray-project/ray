@@ -1,16 +1,19 @@
 import asyncio
+import errno
 import json
 import fnmatch
 import os
 import subprocess
 import sys
-import tempfile
 import time
 import socket
 
 import ray
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
+
+if sys.platform == "win32":
+    import _winapi
 
 
 class RayTestTimeoutException(Exception):
@@ -27,11 +30,24 @@ def _pid_alive(pid):
     Returns:
         This returns false if the process is dead. Otherwise, it returns true.
     """
+    no_such_process = errno.EINVAL if sys.platform == "win32" else errno.ESRCH
+    alive = True
     try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
+        if sys.platform == "win32":
+            SYNCHRONIZE = 0x00100000  # access mask defined in <winnt.h>
+            handle = _winapi.OpenProcess(SYNCHRONIZE, False, pid)
+            try:
+                alive = (_winapi.WaitForSingleObject(handle, 0) !=
+                         _winapi.WAIT_OBJECT_0)
+            finally:
+                _winapi.CloseHandle(handle)
+        else:
+            os.kill(pid, 0)
+    except OSError as ex:
+        if ex.errno != no_such_process:
+            raise
+        alive = False
+    return alive
 
 
 def wait_for_pid_to_exit(pid, timeout=20):
@@ -87,13 +103,17 @@ def run_string_as_driver(driver_script):
     Returns:
         The script's output.
     """
-    # Save the driver script as a file so we can call it using subprocess.
-    with tempfile.NamedTemporaryFile() as f:
-        f.write(driver_script.encode("ascii"))
-        f.flush()
-        out = ray.utils.decode(
-            subprocess.check_output(
-                [sys.executable, f.name], stderr=subprocess.STDOUT))
+    proc = subprocess.Popen(
+        [sys.executable, "-"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+    with proc:
+        output = proc.communicate(driver_script.encode("ascii"))[0]
+        if proc.returncode:
+            raise subprocess.CalledProcessError(proc.returncode, proc.args,
+                                                output, proc.stderr)
+        out = ray.utils.decode(output)
     return out
 
 
@@ -106,14 +126,21 @@ def run_string_as_driver_nonblocking(driver_script):
     Returns:
         A handle to the driver process.
     """
-    # Save the driver script as a file so we can call it using subprocess. We
-    # do not delete this file because if we do then it may get removed before
-    # the Python process tries to run it.
-    with tempfile.NamedTemporaryFile(delete=False) as f:
-        f.write(driver_script.encode("ascii"))
-        f.flush()
-        return subprocess.Popen(
-            [sys.executable, f.name], stdout=subprocess.PIPE)
+    script = "; ".join([
+        "import sys",
+        "script = sys.stdin.read()",
+        "sys.stdin.close()",
+        "del sys",
+        "exec(\"del script\\n\" + script)",
+    ])
+    proc = subprocess.Popen(
+        [sys.executable, "-c", script],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE)
+    proc.stdin.write(driver_script.encode("ascii"))
+    proc.stdin.close()
+    return proc
 
 
 def flat_errors():
@@ -137,9 +164,7 @@ def wait_for_errors(error_type, num_errors, timeout=20):
         num_errors, error_type))
 
 
-def wait_for_condition(condition_predictor,
-                       timeout=1000,
-                       retry_interval_ms=100):
+def wait_for_condition(condition_predictor, timeout=30, retry_interval_ms=100):
     """A helper function that waits until a condition is met.
 
     Args:
@@ -217,12 +242,29 @@ class SignalActor:
     def __init__(self):
         self.ready_event = asyncio.Event()
 
-    def send(self):
+    def send(self, clear=False):
         self.ready_event.set()
+        if clear:
+            self.ready_event.clear()
 
     async def wait(self, should_wait=True):
         if should_wait:
             await self.ready_event.wait()
+
+
+@ray.remote(num_cpus=0)
+class Semaphore:
+    def __init__(self, value=1):
+        self._sema = asyncio.Semaphore(value=value)
+
+    async def acquire(self):
+        await self._sema.acquire()
+
+    async def release(self):
+        self._sema.release()
+
+    async def locked(self):
+        return self._sema.locked()
 
 
 @ray.remote
@@ -258,3 +300,17 @@ def wait_until_server_available(address,
         s.close()
         return True
     return False
+
+
+def get_other_nodes(cluster, exclude_head=False):
+    """Get all nodes except the one that we're connected to."""
+    return [
+        node for node in cluster.list_all_nodes() if
+        node._raylet_socket_name != ray.worker._global_node._raylet_socket_name
+        and (exclude_head is False or node.head is False)
+    ]
+
+
+def get_non_head_nodes(cluster):
+    """Get all non-head nodes."""
+    return list(filter(lambda x: x.head is False, cluster.list_all_nodes()))

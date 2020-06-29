@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RAYLET_MOCK_GCS_CLIENT_H
-#define RAY_RAYLET_MOCK_GCS_CLIENT_H
+#pragma once
 
 #include <cstdint>
 #include <functional>
@@ -101,5 +100,3 @@ class GcsClient {
   std::unique_ptr<ClientTable> client_table_;
 };
 }  // namespace ray
-
-#endif  // RAY_RAYLET_MOCK_GCS_CLIENT_H

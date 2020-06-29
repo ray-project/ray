@@ -2,7 +2,7 @@ import logging
 
 import ray
 from ray.rllib.agents.ddpg.ddpg_tf_policy import build_ddpg_models, \
-    get_distribution_inputs_and_class
+    get_distribution_inputs_and_class, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
 from ray.rllib.models.torch.torch_action_dist import TorchDeterministic
@@ -65,10 +65,9 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
                 mean=torch.zeros(policy_tp1.size()),
                 std=policy.config["target_noise"]), -target_noise_clip,
             target_noise_clip)
-        policy_tp1_smoothed = torch.clamp(
-            policy_tp1 + clipped_normal_sample,
-            policy.action_space.low * torch.ones_like(policy_tp1),
-            policy.action_space.high * torch.ones_like(policy_tp1))
+        policy_tp1_smoothed = torch.clamp(policy_tp1 + clipped_normal_sample,
+                                          policy.action_space.low.item(0),
+                                          policy.action_space.high.item(0))
     else:
         # No smoothing, just use deterministic actions.
         policy_tp1_smoothed = policy_tp1
@@ -80,6 +79,8 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
 
     # Q-values for current policy (no noise) in given current state
     q_t_det_policy = model.get_q_values(model_out_t, policy_t)
+
+    actor_loss = -torch.mean(q_t_det_policy)
 
     if twin_q:
         twin_q_t = model.get_twin_q_values(model_out_t,
@@ -128,7 +129,6 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
             errors = 0.5 * torch.pow(td_error, 2.0)
 
     critic_loss = torch.mean(train_batch[PRIO_WEIGHTS] * errors)
-    actor_loss = -torch.mean(q_t_det_policy)
 
     # Add l2-regularization if required.
     if l2_reg is not None:
@@ -155,17 +155,23 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     policy.td_error = td_error
     policy.q_t = q_t
 
-    # Return one loss value (even though we treat them separately in our
-    # 2 optimizers: actor and critic).
+    # Return two loss terms (corresponding to the two optimizers, we create).
     return policy.actor_loss, policy.critic_loss
 
 
 def make_ddpg_optimizers(policy, config):
-    # Create separate optimizers for actor & critic losses.
+    """Create separate optimizers for actor & critic losses."""
+
+    # Set epsilons to match tf.keras.optimizers.Adam's epsilon default.
     policy._actor_optimizer = torch.optim.Adam(
-        params=policy.model.policy_variables(), lr=config["actor_lr"])
+        params=policy.model.policy_variables(),
+        lr=config["actor_lr"],
+        eps=1e-7)
+
     policy._critic_optimizer = torch.optim.Adam(
-        params=policy.model.q_variables(), lr=config["critic_lr"])
+        params=policy.model.q_variables(), lr=config["critic_lr"], eps=1e-7)
+
+    # Return them in the same order as the respective loss terms are returned.
     return policy._actor_optimizer, policy._critic_optimizer
 
 
@@ -194,7 +200,8 @@ def build_ddpg_stats(policy, batch):
         "mean_q": torch.mean(policy.q_t),
         "max_q": torch.max(policy.q_t),
         "min_q": torch.min(policy.q_t),
-        "td_error": policy.td_error
+        "mean_td_error": torch.mean(policy.td_error),
+        "td_error": policy.td_error,
     }
     return stats
 
@@ -262,6 +269,7 @@ DDPGTorchPolicy = build_torch_policy(
     postprocess_fn=postprocess_nstep_and_prio,
     extra_grad_process_fn=gradients_fn,
     optimizer_fn=make_ddpg_optimizers,
+    validate_spaces=validate_spaces,
     before_init=before_init_fn,
     after_init=setup_late_mixins,
     action_distribution_fn=get_distribution_inputs_and_class,

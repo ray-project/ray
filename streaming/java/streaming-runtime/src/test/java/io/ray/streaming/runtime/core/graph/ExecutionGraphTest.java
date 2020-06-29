@@ -7,6 +7,7 @@ import io.ray.streaming.api.stream.DataStreamSource;
 import io.ray.streaming.api.stream.StreamSink;
 import io.ray.streaming.jobgraph.JobGraph;
 import io.ray.streaming.jobgraph.JobGraphBuilder;
+import io.ray.streaming.jobgraph.JobVertex;
 import io.ray.streaming.runtime.BaseUnitTest;
 import io.ray.streaming.runtime.config.StreamingConfig;
 import io.ray.streaming.runtime.config.master.ResourceConfig;
@@ -35,37 +36,39 @@ public class ExecutionGraphTest extends BaseUnitTest {
     StreamingConfig streamingConfig = new StreamingConfig(jobConf);
     GraphManager graphManager = new GraphManagerImpl(new JobRuntimeContext(streamingConfig));
     JobGraph jobGraph = buildJobGraph();
+    jobGraph.getJobConfig().put("streaming.task.resource.cpu.limitation.enable", "true");
+
     ExecutionGraph executionGraph = buildExecutionGraph(graphManager, jobGraph);
     List<ExecutionJobVertex> executionJobVertices = executionGraph.getExecutionJobVertexList();
 
-    Assert.assertEquals(executionJobVertices.size(), jobGraph.getJobVertexList().size());
+    Assert.assertEquals(executionJobVertices.size(), jobGraph.getJobVertices().size());
 
-    int totalVertexNum = jobGraph.getJobVertexList().stream()
-        .mapToInt(vertex -> vertex.getParallelism()).sum();
+    int totalVertexNum = jobGraph.getJobVertices().stream()
+        .mapToInt(JobVertex::getParallelism).sum();
     Assert.assertEquals(executionGraph.getAllExecutionVertices().size(), totalVertexNum);
     Assert.assertEquals(executionGraph.getAllExecutionVertices().size(),
         executionGraph.getExecutionVertexIdGenerator().get());
 
     executionGraph.getAllExecutionVertices().forEach(vertex -> {
         Assert.assertNotNull(vertex.getStreamOperator());
-        Assert.assertNotNull(vertex.getJobVertexName());
+        Assert.assertNotNull(vertex.getExecutionJobVertexName());
         Assert.assertNotNull(vertex.getVertexType());
         Assert.assertNotNull(vertex.getLanguage());
-        Assert.assertEquals(vertex.getVertexName(),
-          vertex.getJobVertexId() + "-" + vertex.getJobVertexName() + "-" + vertex.getVertexIndex());
+        Assert.assertEquals(vertex.getExecutionVertexName(),
+          vertex.getExecutionJobVertexName() + "-" + vertex.getExecutionVertexIndex());
     });
 
     int startIndex = 0;
     ExecutionJobVertex upStream = executionJobVertices.get(startIndex);
     ExecutionJobVertex downStream = executionJobVertices.get(startIndex + 1);
-    Assert.assertEquals(upStream.getOutputEdges().get(0).getTargetVertex(), downStream);
+    Assert.assertEquals(upStream.getOutputEdges().get(0).getTargetExecutionJobVertex(), downStream);
 
     List<ExecutionVertex> upStreamVertices = upStream.getExecutionVertices();
     List<ExecutionVertex> downStreamVertices = downStream.getExecutionVertices();
     upStreamVertices.forEach(vertex -> {
-        Assert.assertEquals(vertex.getResources().get(ResourceType.CPU.name()), 2.0);
-        vertex.getOutputEdges().stream().forEach(upStreamOutPutEdge -> {
-            Assert.assertTrue(downStreamVertices.contains(upStreamOutPutEdge.getTargetVertex()));
+        Assert.assertEquals(vertex.getResource().get(ResourceType.CPU.name()), 2.0);
+        vertex.getOutputEdges().forEach(upStreamOutPutEdge -> {
+            Assert.assertTrue(downStreamVertices.contains(upStreamOutPutEdge.getTargetExecutionVertex()));
         });
     });
   }
@@ -80,7 +83,7 @@ public class ExecutionGraphTest extends BaseUnitTest {
 
   public static JobGraph buildJobGraph() {
     StreamingContext streamingContext = StreamingContext.buildContext();
-    DataStream<String> dataStream = DataStreamSource.buildSource(streamingContext,
+    DataStream<String> dataStream = DataStreamSource.fromCollection(streamingContext,
         Lists.newArrayList("a", "b", "c"));
     StreamSink streamSink = dataStream.sink(x -> LOG.info(x));
 
