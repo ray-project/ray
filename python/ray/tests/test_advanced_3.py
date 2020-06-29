@@ -702,24 +702,6 @@ def test_ray_address_environment_variable(ray_start_cluster):
     ray.shutdown()
 
 
-def test_ray_internal_config(ray_start_cluster):
-    KEY = "initial_reconstruction_timeout_milliseconds"
-    VALUE = 12345
-
-    cluster = ray.cluster_utils.Cluster()
-    cluster.add_node(num_cpus=0, _internal_config=json.dumps({KEY: VALUE}))
-    cluster.add_node(num_cpus=2)
-
-    ray.init(address=cluster.address)
-
-    @ray.remote(num_cpus=2)
-    def f():
-        assert ray._config.initial_reconstruction_timeout_milliseconds(
-        ) == VALUE
-
-    ray.get([f.remote() for _ in range(5)])
-
-
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))
