@@ -194,20 +194,6 @@ class ObjectDirectory {
    return entry->data_size + entry->metadata_size;
   }
 
-  /// Get the state of the object.
-  ///
-  /// \param object_id Object ID of the object.
-  /// \return OBJECT_NOT_FOUND if the object is not in the store, otherwise
-  /// the object state in the entry.
-  ObjectState GetObjectState(const ObjectID& object_id) {
-    absl::MutexLock lock(&object_table_mutex_);
-    auto it = object_table_.find(object_id);
-    if (it != object_table_.end()) {
-      return it->second->state;
-    }
-    return ObjectState::OBJECT_NOT_FOUND;
-  }
-
   void GetSealedObjectsInfo(std::vector<ObjectInfoT>* infos) {
     absl::MutexLock lock(&object_table_mutex_);
     for (const auto& entry : object_table_) {
@@ -254,8 +240,8 @@ class ObjectDirectory {
             sealed_objects->push_back(object_id);
             break;
           case ObjectState::PLASMA_EVICTED: {
-            // TODO(suquark): Should we update plasma object data here?
-            Status s = AllocateMemory(object_id, entry.get(), entry->ObjectSize(), /*evict_inf_full=*/true, client, /*is_create=*/false,
+            Status s = AllocateMemory(object_id, entry.get(), entry->ObjectSize(),
+                                      /*evict_inf_full=*/true, client, /*is_create=*/false,
                                       entry->device_num);
             if (status.ok()) {
               evicted_ids.push_back(object_id);
@@ -281,6 +267,12 @@ class ObjectDirectory {
         }
         Status status = external_store_->Get(object_ids, buffers);
         if (status.ok()) {
+          // We have successfully reconstructed these objects. Mark these
+          // objects are sealed.
+          for (const auto& entry : entries) {
+            entry->state = ObjectState::PLASMA_SEALED;
+            entry->construct_duration =  std::time(nullptr) - entry->create_time;
+          }
           // Flush to reconstructed objects.
           RAY_CHECK(reconstructed_objects->empty());
           reconstructed_objects->swap(evicted_ids);
@@ -343,6 +335,7 @@ class ObjectDirectory {
     entry->data_size = data_size;
     entry->metadata_size = metadata_size;
     PlasmaObject_init(result, entry.get());
+    object_table_.emplace(object_id, std::move(entry));
     return Status::OK();
   }
 
@@ -498,9 +491,6 @@ class ObjectDirectory {
     auto it = object_table_.find(object_id);
     RAY_CHECK(it != object_table_.end());
     auto &entry = it->second;
-
-    entry->state = ObjectState::PLASMA_SEALED;
-    entry->construct_duration =  std::time(nullptr) - entry->create_time;
     PlasmaObject_init(object, entry.get());
   }
 

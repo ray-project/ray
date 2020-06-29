@@ -155,10 +155,6 @@ class PlasmaStore {
   NotificationMap pending_notifications_;
 
   std::unordered_map<int, std::unique_ptr<Client>> connected_clients_;
-
-  /// Manages worker threads for handling asynchronous/multi-threaded requests
-  /// for reading/writing data to/from external store.
-  std::shared_ptr<ExternalStore> external_store_;
 #ifdef PLASMA_CUDA
   arrow::cuda::CudaDeviceManager* manager_;
 #endif
