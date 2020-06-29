@@ -6,6 +6,7 @@ from ray.rllib.models.preprocessors import get_preprocessor, \
     RepeatedValuesPreprocessor
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.trajectory_view import ViewRequirement
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
@@ -40,13 +41,14 @@ class ModelV2:
         This method should create any variables used by the model.
 
         Args:
-            obs_space (gym.spaces.Space): Observation space of the target gym env.
-                This may have an `original_space` attribute that specifies how to
-                unflatten the tensor into a ragged tensor.
-            action_space (gym.spaces.Space): Action space of the target gym env.
+            obs_space (gym.spaces.Space): Observation space of the target gym
+                env. This may have an `original_space` attribute that
+                specifies how to unflatten the tensor into a ragged tensor.
+            action_space (gym.spaces.Space): Action space of the target gym
+                env.
             num_outputs (int): Number of output units of the model.
-            model_config (ModelConfigDict): Config for the model, documented in
-                ModelCatalog.
+            model_config (ModelConfigDict): Config for the model, documented
+                in ModelCatalog.
             name (str): Name (scope) for the model.
             framework (str): Either "tf" or "torch".
         """
@@ -59,6 +61,7 @@ class ModelV2:
         self.framework: str = framework
         self._last_output = None
 
+    @PublicAPI
     def get_initial_state(self):
         """Get the initial recurrent state values for the model.
 
@@ -75,6 +78,7 @@ class ModelV2:
         """
         return []
 
+    @PublicAPI
     def forward(self, input_dict, state, seq_lens):
         """Call the model with the given input tensors and state.
 
@@ -109,6 +113,7 @@ class ModelV2:
         """
         raise NotImplementedError
 
+    @PublicAPI
     def value_function(self):
         """Returns the value function output for the most recent forward pass.
 
@@ -121,6 +126,7 @@ class ModelV2:
         """
         raise NotImplementedError
 
+    @PublicAPI
     def custom_loss(self, policy_loss, loss_inputs):
         """Override to customize the loss function used to optimize this model.
 
@@ -142,6 +148,7 @@ class ModelV2:
         """
         return policy_loss
 
+    @PublicAPI
     def metrics(self):
         """Override to return custom metrics from your model.
 
@@ -210,6 +217,7 @@ class ModelV2:
         self._last_output = outputs
         return outputs, state
 
+    @PublicAPI
     def from_batch(self, train_batch, is_training=True):
         """Convenience function that calls this model with a tensor batch.
 
@@ -232,8 +240,12 @@ class ModelV2:
             i += 1
         return self.__call__(input_dict, states, train_batch.get("seq_lens"))
 
-    def get_view_requirements(self, is_training=False):
+    def get_view_requirements(
+            self,
+            is_training: bool = False) -> Dict[str, ViewRequirement]:
         """Returns a list of ViewRequirements for this Model (or None).
+
+        Note: This is an experimental API method.
 
         A ViewRequirement object tells the caller of this Model, which
         data at which timesteps are needed by this Model. This could be a
@@ -245,12 +257,16 @@ class ModelV2:
                 training or inference (default).
 
         Returns:
-            Optional[Dict[str, Dict]]: The view requirements as a dict mapping
+            Dict[str, ViewRequirement]: The view requirements as a dict mapping
                 column names e.g. "obs" to config dicts containing supported
                 fields.
                 TODO: (sven) Currently only `timesteps==0` can be setup.
         """
-        return None
+        # Default implementation for simple RL model:
+        # Single requirement: Pass current obs as input.
+        return {
+            SampleBatch.CUR_OBS: ViewRequirement(timesteps=0),
+        }
 
     def import_from_h5(self, h5_file):
         """Imports weights from an h5 file.
@@ -266,14 +282,17 @@ class ModelV2:
         """
         raise NotImplementedError
 
+    @PublicAPI
     def last_output(self):
         """Returns the last output returned from calling the model."""
         return self._last_output
 
+    @PublicAPI
     def context(self):
         """Returns a contextmanager for the current forward pass."""
         return NullContextManager()
 
+    @PublicAPI
     def variables(self, as_dict=False):
         """Returns the list (or a dict) of variables for this model.
 
@@ -287,6 +306,7 @@ class ModelV2:
         """
         raise NotImplementedError
 
+    @PublicAPI
     def trainable_variables(self, as_dict=False):
         """Returns the list of trainable variables for this model.
 
