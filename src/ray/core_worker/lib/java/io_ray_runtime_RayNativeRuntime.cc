@@ -163,7 +163,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, j
   ray::ActorHandle *actor_handle;
   auto status = ray::CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(
       native_actor_name, &actor_handle);
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   auto actor_id = actor_handle->GetActorID();
   jbyteArray bytes = env->NewByteArray(actor_id.Size());
   env->SetByteArrayRegion(bytes, 0, actor_id.Size(),
