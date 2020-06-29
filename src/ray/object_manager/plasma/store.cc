@@ -326,19 +326,6 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID>& object_ids) {
   }
 }
 
-PlasmaError PlasmaStore::DeleteObject(ObjectID& object_id) {
-  PlasmaError error_code = object_directory->DeleteObject(object_id);
-  if (error_code != PlasmaError::OK) {
-    return error_code;
-  }
-  // Inform all subscribers that the object has been deleted.
-  ObjectInfoT notification;
-  notification.object_id = object_id.Binary();
-  notification.is_deletion = true;
-  PushNotifications({notification});
-  return PlasmaError::OK;
-}
-
 void PlasmaStore::ConnectClient(int listener_sock) {
   int client_fd = AcceptClient(listener_sock);
 
@@ -639,7 +626,7 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       RAY_RETURN_NOT_OK(ReadDeleteRequest(input, input_size, &object_ids));
       error_codes.reserve(object_ids.size());
       for (auto& object_id : object_ids) {
-        error_codes.push_back(DeleteObject(object_id));
+        error_codes.push_back(object_directory->DeleteObject(object_id));
       }
       HANDLE_SIGPIPE(SendDeleteReply(client->fd, object_ids, error_codes), client->fd);
     } break;

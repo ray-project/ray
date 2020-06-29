@@ -63,15 +63,6 @@ class PlasmaStore {
 
   ~PlasmaStore();
 
-  /// Delete a specific object by object_id that have been created in the hash table.
-  ///
-  /// \param object_id Object ID of the object to be deleted.
-  /// \return One of the following error codes:
-  ///  - PlasmaError::OK, if the object was delete successfully.
-  ///  - PlasmaError::ObjectNonexistent, if ths object isn't existed.
-  ///  - PlasmaError::ObjectInUse, if the object is in use.
-  PlasmaError DeleteObject(ObjectID& object_id);
-
   /// Process a get request from a client. This method assumes that we will
   /// eventually have these objects sealed. If one of the objects has not yet
   /// been sealed, the client that requested the object will be notified when it

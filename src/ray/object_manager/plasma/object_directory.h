@@ -425,6 +425,11 @@ class ObjectDirectory {
     }
     eviction_policy_.RemoveObject(object_id);
     EraseObject(object_id);
+    // Inform all subscribers that the object has been deleted.
+    ObjectInfoT notification;
+    notification.object_id = object_id.Binary();
+    notification.is_deletion = true;
+    notifications_callback_({notification});
     return PlasmaError::OK;
   }
 
