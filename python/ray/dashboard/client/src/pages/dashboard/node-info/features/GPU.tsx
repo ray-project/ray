@@ -93,7 +93,6 @@ const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ gpu, slot }) => {
 
 type WorkerGPUEntryProps = {
   resourceSlot: ResourceSlot;
-  slot: number;
 };
 
 const WorkerGPUEntry: React.FC<WorkerGPUEntryProps> = ({
@@ -118,8 +117,18 @@ export const WorkerGPU: WorkerFeatureComponent = ({ rayletWorker }) => {
       </Typography>
     );
   } else {
-    message = workerUsedGPUResources.resourceSlots.map((resourceSlot, i) => (
-      <WorkerGPUEntry resourceSlot={resourceSlot} slot={i} />
+    message = workerUsedGPUResources.resourceSlots.sort((slot1, slot2) => {
+      if (!slot1.slot && !slot2.slot) {
+        return 0;
+      } else if (!slot1.slot) {
+        return 1;
+      } else if (!slot2.slot) {
+        return -1;
+      } else {
+        return slot1.slot - slot2.slot;
+      }
+    }).map(resourceSlot => (
+      <WorkerGPUEntry resourceSlot={resourceSlot} />
     ));
   }
   return <div style={{ minWidth: 60 }}>{message}</div>;
