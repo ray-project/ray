@@ -41,7 +41,7 @@ def PPOLoss(dist_class,
             return torch.min(
                 advantages * logp_ratio,
                 advantages * torch.clamp(logp_ratio, 1 - clip_param,
-                                              1 + clip_param))
+                                         1 + clip_param))
         return advantages * logp_ratio
 
     def kl_loss(curr_dist, prev_dist):
@@ -54,7 +54,7 @@ def PPOLoss(dist_class,
         # GAE Value Function Loss
         vf_loss1 = torch.pow(value_fn - value_targets, 2.0)
         vf_clipped = vf_preds + torch.clamp(value_fn - vf_preds,
-                                                 -vf_clip_param, vf_clip_param)
+                                            -vf_clip_param, vf_clip_param)
         vf_loss2 = torch.pow(vf_clipped - value_targets, 2.0)
         vf_loss = torch.max(vf_loss1, vf_loss2)
         return vf_loss
@@ -200,7 +200,7 @@ class MAMLLoss(object):
                 kls.append(kl_loss)
                 inner_ppo_loss.append(ppo_loss)
             inner_kls.append(kls)
-        
+
         mean_inner_kl = [torch.mean(torch.stack(kls)) for kls in inner_kls]
         self.mean_inner_kl = mean_inner_kl
 
@@ -230,7 +230,8 @@ class MAMLLoss(object):
         self.mean_entropy = entropy_loss
 
         self.inner_kl_loss = torch.mean(
-            torch.stack([a*b for a,b in zip(self.cur_kl_coeff,mean_inner_kl)]))
+            torch.stack(
+                [a * b for a, b in zip(self.cur_kl_coeff, mean_inner_kl)]))
         self.loss = torch.mean(torch.stack(ppo_obj)) + self.inner_kl_loss
         print("Meta-Loss: ", self.loss, ", Inner KL:", self.inner_kl_loss)
 
@@ -240,7 +241,6 @@ class MAMLLoss(object):
         def fc_network(inp, network_vars, hidden_nonlinearity,
                        output_nonlinearity, policy_config, hiddens_name,
                        logits_name):
-            bias_added = False
             x = inp
 
             hidden_w = []
@@ -254,7 +254,7 @@ class MAMLLoss(object):
                 else:
                     raise NameError
 
-            assert len(hidden_w)%2 == 0 and len(logits_w) == 2
+            assert len(hidden_w) % 2 == 0 and len(logits_w) == 2
 
             while len(hidden_w) != 0:
                 x = nn.functional.linear(x, hidden_w.pop(0), hidden_w.pop(0))
@@ -285,8 +285,11 @@ class MAMLLoss(object):
                                    "hidden_layers", "logits")
         if log_std is not None:
             pi_new_logits = torch.cat(
-            [pi_new_logits, log_std.unsqueeze(0).repeat([len(pi_new_logits),
-            1])], axis=1)
+                [
+                    pi_new_logits,
+                    log_std.unsqueeze(0).repeat([len(pi_new_logits), 1])
+                ],
+                axis=1)
 
         value_fn = fc_network(obs, valuen_vars, hidden_nonlinearity,
                               output_nonlinearity, policy_config,
@@ -296,8 +299,12 @@ class MAMLLoss(object):
 
     def compute_updated_variables(self, loss, network_vars, model):
 
-        grad = torch.autograd.grad(loss, inputs = model.parameters(), 
-            create_graph=True, retain_graph=True, only_inputs=True)
+        grad = torch.autograd.grad(
+            loss,
+            inputs=model.parameters(),
+            create_graph=True,
+            retain_graph=True,
+            only_inputs=True)
         adapted_vars = {}
         for i, tup in enumerate(network_vars.items()):
             name, var = tup
