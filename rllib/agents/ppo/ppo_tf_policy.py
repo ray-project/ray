@@ -174,7 +174,7 @@ def postprocess_ppo_gae(policy,
     else:
         next_state = []
         for i in range(policy.num_state_tensors()):
-            next_state.append([sample_batch["state_out_{}".format(i)][-1]])
+            next_state.append(sample_batch["state_out_{}".format(i)][-1])
         last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
                                sample_batch[SampleBatch.ACTIONS][-1],
                                sample_batch[SampleBatch.REWARDS][-1],

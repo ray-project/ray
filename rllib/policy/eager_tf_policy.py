@@ -239,7 +239,7 @@ def build_eager_tf_policy(name,
                 )
             self.exploration = self._create_exploration()
             self._state_in = [
-                tf.convert_to_tensor(s)
+                tf.convert_to_tensor([s])
                 for s in self.model.get_initial_state()
             ]
             input_dict = {
@@ -254,7 +254,7 @@ def build_eager_tf_policy(name,
                 dist_inputs, self.dist_class, _ = action_distribution_fn(
                     self, self.model, input_dict[SampleBatch.CUR_OBS])
             else:
-                self.model(input_dict, [tf.expand_dims(s, 0) for s in self._state_in],
+                self.model(input_dict, self._state_in,
                            tf.convert_to_tensor([1]))
 
             if before_loss_init:
@@ -618,8 +618,7 @@ def build_eager_tf_policy(name,
                 SampleBatch.DONES: np.array([False], dtype=np.bool),
                 SampleBatch.REWARDS: np.array([0], dtype=np.float32),
             }
-            if isinstance(self.action_space, Tuple) or isinstance(
-                    self.action_space, Dict):
+            if isinstance(self.action_space, (Dict, Tuple)):
                 dummy_batch[SampleBatch.ACTIONS] = [
                     flatten_to_single_ndarray(self.action_space.sample())
                 ]

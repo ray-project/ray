@@ -18,7 +18,6 @@ from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import check, framework_iterator, \
     check_compute_single_action
 
-tf, tf2, tfv = try_import_tf()
 
 # Fake CartPole episode of n time steps.
 FAKE_BATCH = {
@@ -40,7 +39,7 @@ FAKE_BATCH = {
 class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls):

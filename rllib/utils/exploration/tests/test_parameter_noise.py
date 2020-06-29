@@ -6,8 +6,6 @@ import ray.rllib.agents.dqn as dqn
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check, framework_iterator
 
-tf, tf2, tfv = try_import_tf()
-
 
 class TestParameterNoise(unittest.TestCase):
     def test_ddpg_parameter_noise(self):

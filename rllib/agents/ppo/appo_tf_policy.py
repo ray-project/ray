@@ -21,7 +21,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
 
-tf, tf2, tfv = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 POLICY_SCOPE = "func"
 TARGET_POLICY_SCOPE = "target_func"
