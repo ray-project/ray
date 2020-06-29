@@ -15,5 +15,9 @@
 #include "ray/object_manager/plasma/object_directory.h"
 
 namespace plasma {
-    std::unique_ptr<ObjectDirectory> object_directory;
+
+
+
+
+std::unique_ptr<ObjectDirectory> object_directory;
 }  // namespace plasma

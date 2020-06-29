@@ -196,17 +196,8 @@ class PlasmaStore {
 
   void UpdateObjectGetRequests(const ObjectID& object_id);
 
-  int RemoveFromClientObjectIds(const ObjectID& object_id, ObjectTableEntry* entry,
-                                Client* client);
-
-  uint8_t* AllocateMemory(size_t size, bool evict_if_full, int* fd, int64_t* map_size,
-                          ptrdiff_t* offset, Client* client, bool is_create);
-#ifdef PLASMA_CUDA
-  Status AllocateCudaMemory(int device_num, int64_t size, uint8_t** out_pointer,
-                            std::shared_ptr<CudaIpcMemHandle>* out_ipc_handle);
-
-  Status FreeCudaMemory(int device_num, int64_t size, uint8_t* out_pointer);
-#endif
+  Status AllocateMemory(ObjectTableEntry* entry, size_t size, bool evict_if_full,
+                        Client* client, bool is_create, int device_num);
 
   /// Event loop of the plasma store.
   EventLoop* loop_;
@@ -224,8 +215,6 @@ class PlasmaStore {
   NotificationMap pending_notifications_;
 
   std::unordered_map<int, std::unique_ptr<Client>> connected_clients_;
-
-  std::unordered_set<ObjectID> deletion_cache_;
 
   /// Manages worker threads for handling asynchronous/multi-threaded requests
   /// for reading/writing data to/from external store.

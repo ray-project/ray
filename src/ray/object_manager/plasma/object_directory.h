@@ -24,6 +24,7 @@
 
 #include "ray/common/id.h"
 #include "ray/object_manager/format/object_manager_generated.h"
+#include "ray/object_manager/plasma/external_store.h"
 #include "ray/object_manager/plasma/quota_aware_policy.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
 
@@ -94,12 +95,69 @@ struct ObjectTableEntry {
 #else
   std::shared_ptr<internal::CudaIpcPlaceholder> ipc_handle;
 #endif
+
+  int64_t ObjectSize() const {
+    return data_size + metadata_size;
+  }
+
+  void FreeObject() {
+    int64_t buff_size = ObjectSize();
+    if (device_num == 0) {
+      PlasmaAllocator::Free(pointer, buff_size);
+    } else {
+#ifdef PLASMA_CUDA
+      ARROW_ASSIGN_OR_RAISE(auto context, manager_->GetContext(device_num - 1));
+      RAY_CHECK_OK(context->Free(pointer, buff_size));
+#endif
+    }
+    pointer = nullptr;
+    state = ObjectState::PLASMA_EVICTED;
+  }
+
+  Status AllocateMemory(int device_id, size_t size) {
+    if (device_id == 0) {
+      // Allocate space for the new object. We use memalign instead of malloc
+      // in order to align the allocated region to a 64-byte boundary. This is not
+      // strictly necessary, but it is an optimization that could speed up the
+      // computation of a hash of the data (see compute_object_hash_parallel in
+      // plasma_client.cc). Note that even though this pointer is 64-byte aligned,
+      // it is not guaranteed that the corresponding pointer in the client will be
+      // 64-byte aligned, but in practice it often will be.
+      uint8_t* address = reinterpret_cast<uint8_t*>(PlasmaAllocator::Memalign(kBlockSize, size));
+      if (!address) {
+        return Status::ObjectStoreFull("Cannot allocate object.");
+      }
+      pointer = address;
+      GetMallocMapinfo(pointer, &fd, &map_size, &offset);
+      RAY_CHECK(fd != -1);
+    } else {
+#ifdef PLASMA_CUDA
+      RAY_DCHECK(device_id != 0);
+      ARROW_ASSIGN_OR_RAISE(auto context, manager_->GetContext(device_id - 1));
+      ARROW_ASSIGN_OR_RAISE(auto cuda_buffer, context->Allocate(static_cast<int64_t>(size)));
+      // The IPC handle will keep the buffer memory alive
+      Status s = cuda_buffer->ExportForIpc().Value(&ipc_handle);
+      if (!s.ok()) {
+        RAY_LOG(ERROR) << "Failed to allocate CUDA memory: " << s.ToString();
+        return s;
+      }
+      pointer = reinterpret_cast<uint8_t*>(cuda_buffer->address());
+#else
+    RAY_LOG(ERROR) << "device_num != 0 but CUDA not enabled";
+    return Status::OutOfMemory("CUDA is not enabled.");
+#endif
+    }
+    state = ObjectState::PLASMA_CREATED;
+    device_num = device_id;
+    create_time = std::time(nullptr);
+    construct_duration = -1;
+  }
 };
 
 void PlasmaObject_init(PlasmaObject* object, ObjectTableEntry* entry) {
   RAY_DCHECK(object != nullptr);
   RAY_DCHECK(entry != nullptr);
-  RAY_DCHECK(entry->state == ObjectState::PLASMA_SEALED);
+  // RAY_DCHECK(entry->state == ObjectState::PLASMA_SEALED);
 #ifdef PLASMA_CUDA
   if (entry->device_num != 0) {
     object->ipc_handle = entry->ipc_handle;
@@ -182,35 +240,11 @@ class ObjectDirectory {
   ///
   /// \param object_id Object ID of the object to be deleted.
   /// \param evict_only Only free the memory of the object.
-  void EraseObject(const ObjectID& object_id, bool evict_only=false) {
-    int64_t buff_size;
-    uint8_t* pointer;
-    int device_num;
-    {
-      absl::MutexLock lock(&object_table_mutex_);
-      if (evict_only) {
-        auto& entry = object_table_[object_id];
-        pointer = entry->pointer;
-        buff_size = entry->data_size + entry->metadata_size;
-        device_num = entry->device_num;
-        entry->pointer = nullptr;
-        entry->state = ObjectState::PLASMA_EVICTED;
-      } else {
-        auto entry_node = object_table_.extract(object_id);
-        auto& entry = entry_node.mapped();
-        pointer = entry->pointer;
-        buff_size = entry->data_size + entry->metadata_size;
-        device_num = entry->device_num;
-      }
-    }
-  
-    if (device_num == 0) {
-      PlasmaAllocator::Free(pointer, buff_size);
-    } else {
-#ifdef PLASMA_CUDA
-      RAY_CHECK_OK(FreeCudaMemory(device_num, buff_size, pointer));
-#endif
-    }
+  void EraseObject(const ObjectID& object_id) {
+    absl::MutexLock lock(&object_table_mutex_);
+    auto entry_node = object_table_.extract(object_id);
+    auto& entry = entry_node.mapped();
+    entry->FreeObject();
   }
 
   /// Seal a vector of objects. The objects are now immutable and can be accessed with
@@ -237,6 +271,57 @@ class ObjectDirectory {
       object_info.data_size = entry->data_size;
       object_info.metadata_size = entry->metadata_size;
       infos->push_back(object_info);
+    }
+  }
+
+  void EvictObjects(const std::vector<ObjectID>& object_ids,
+                    const std::shared_ptr<ExternalStore> &external_store,
+                    const std::function<void(const std::vector<ObjectInfoT>&)> &notifications_callback) {
+    absl::MutexLock lock(&object_table_mutex_);
+    if (object_ids.empty()) {
+      return;
+    }
+
+    std::vector<ObjectTableEntry*> evicted_objects_entries;
+    std::vector<std::shared_ptr<arrow::Buffer>> evicted_object_data;
+    std::vector<ObjectInfoT> infos;
+    for (const auto& object_id : object_ids) {
+      RAY_LOG(DEBUG) << "evicting object " << object_id.Hex();
+      auto it = object_table_.find(object_id);
+      // TODO(rkn): This should probably not fail, but should instead throw an
+      // error. Maybe we should also support deleting objects that have been
+      // created but not sealed.
+      RAY_CHECK(it != object_table_.end()) << "To evict an object it must be in the object table.";
+      auto& entry = it->second;
+      RAY_CHECK(entry->state == ObjectState::PLASMA_SEALED)
+          << "To evict an object it must have been sealed.";
+      RAY_CHECK(entry->ref_count == 0)
+          << "To evict an object, there must be no clients currently using it.";
+      // If there is a backing external store, then mark object for eviction to
+      // external store, free the object data pointer and keep a placeholder
+      // entry in ObjectTable
+      if (external_store) {
+        evicted_objects_entries.push_back(entry.get());
+        evicted_object_data.emplace_back(object_directory->GetArrowBuffer(object_id));
+      } else {
+        // If there is no backing external store, just erase the object entry
+        // and send a deletion notification.
+        entry->FreeObject();
+        // Inform all subscribers that the object has been deleted.
+        ObjectInfoT notification;
+        notification.object_id = object_id.Binary();
+        notification.is_deletion = true;
+        infos.emplace_back(notification);
+      }
+    }
+
+    if (external_store) {
+      RAY_CHECK_OK(external_store->Put(object_ids, evicted_object_data));
+      for (auto entry : evicted_objects_entries) {
+        entry->FreeObject();
+      }
+    } else {
+      notifications_callback(infos);
     }
   }
 
@@ -278,18 +363,17 @@ class ObjectDirectory {
     return PlasmaError::OK;
   }
 
-  void CheckObjectEvictable(const ObjectID& object_id) {
-    absl::MutexLock lock(&object_table_mutex_);
-    auto it = object_table_.find(object_id);
-    // TODO(rkn): This should probably not fail, but should instead throw an
-    // error. Maybe we should also support deleting objects that have been
-    // created but not sealed.
-    RAY_CHECK(it != object_table_.end()) << "To evict an object it must be in the object table.";
-    auto& entry = it->second;
-    RAY_CHECK(entry->state == ObjectState::PLASMA_SEALED)
-        << "To evict an object it must have been sealed.";
-    RAY_CHECK(entry->ref_count == 0)
-        << "To evict an object, there must be no clients currently using it.";
+  /// Record the fact that a particular client is no longer using an object.
+  ///
+  /// \param object_id The object ID of the object that is being released.
+  /// \param client The client making this request.
+  void ReleaseObject(const ObjectID& object_id, Client* client,
+                     const std::shared_ptr<ExternalStore> &external_store,
+                     const std::function<void(const std::vector<ObjectInfoT>&)> &notifications_callback) {
+    auto entry = GetObjectTableEntry(object_id);
+    RAY_CHECK(entry != nullptr);
+    // Remove the client from the object's array of clients.
+    RAY_CHECK(RemoveFromClientObjectIds(object_id, entry, client, external_store, notifications_callback) == 1);
   }
 
   std::shared_ptr<arrow::MutableBuffer> GetArrowBuffer(const ObjectID& object_id) {
@@ -378,6 +462,37 @@ class ObjectDirectory {
     // Add object id to the list of object ids that this client is using.
     client->object_ids.insert(object_id);
   }
+
+  int RemoveFromClientObjectIds(
+      const ObjectID& object_id, ObjectTableEntry* entry, Client* client,
+      const std::shared_ptr<ExternalStore> &external_store,
+      const std::function<void(const std::vector<ObjectInfoT>&)> &notifications_callback) {
+    auto it = client->object_ids.find(object_id);
+    if (it != client->object_ids.end()) {
+      client->object_ids.erase(it);
+      // Decrease reference count.
+      entry->ref_count--;
+
+      // If no more clients are using this object, notify the eviction policy
+      // that the object is no longer being used.
+      if (entry->ref_count == 0) {
+        if (deletion_cache_.count(object_id) == 0) {
+          // Tell the eviction policy that this object is no longer being used.
+          eviction_policy_.EndObjectAccess(object_id);
+        } else {
+          // Above code does not really delete an object. Instead, it just put an
+          // object to LRU cache which will be cleaned when the memory is not enough.
+          deletion_cache_.erase(object_id);
+          EvictObjects({object_id}, external_store, notifications_callback);
+        }
+      }
+      // Return 1 to indicate that the client was removed.
+      return 1;
+    } else {
+      // Return 0 to indicate that the client was not removed.
+      return 0;
+    }
+  }
  
   /// A mutex to protect plasma memory allocator.
   // absl::Mutex plasma_allocator_mutex_;
@@ -385,6 +500,8 @@ class ObjectDirectory {
   absl::Mutex object_table_mutex_;
   /// Mapping from ObjectIDs to information about the object.
   absl::flat_hash_map<ObjectID, std::unique_ptr<ObjectTableEntry>> object_table_;
+  /// Store objects that were requested to be deleted, but could not be deleted because
+  /// it is referenced by some clients, etc.
   absl::flat_hash_set<ObjectID> deletion_cache_;
   /// A mutex to protect 'eviction_policy_'.
   absl::Mutex eviction_policy_mutex_;
