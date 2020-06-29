@@ -6,7 +6,6 @@ import random
 from typing import List
 
 import ray
-from ray.rllib.execution.common import SampleBatchType
 from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, \
     DEFAULT_POLICY_ID
@@ -14,6 +13,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.util.iter import ParallelIteratorWorker
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
+from ray.rllib.utils.types import SampleBatchType
 
 # Constant that represents all policies in lockstep replay mode.
 _ALL_POLICIES = "__all__"

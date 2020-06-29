@@ -47,7 +47,7 @@ void TaskSpecification::ComputeResources() {
     // the actor tasks need not be scheduled.
 
     // Map the scheduling class descriptor to an integer for performance.
-    auto sched_cls = std::make_pair(GetRequiredResources(), FunctionDescriptor());
+    auto sched_cls = GetRequiredResources();
     absl::MutexLock lock(&mutex_);
     auto it = sched_cls_to_id_.find(sched_cls);
     if (it == sched_cls_to_id_.end()) {

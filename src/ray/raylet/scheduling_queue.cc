@@ -461,8 +461,7 @@ std::string SchedulingQueue::DebugString() const {
   for (const auto &pair : num_running_tasks_) {
     result << "\n- ";
     auto desc = TaskSpecification::GetSchedulingClassDescriptor(pair.first);
-    result << desc.second->ToString();
-    result << desc.first.ToString();
+    result << desc.ToString();
     result << ": " << pair.second;
     total += pair.second;
   }

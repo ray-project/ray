@@ -229,7 +229,7 @@ install_dependencies() {
       *) tf_version="${TF_VERSION:-2.1.0}";;
     esac
     pip_packages+=(scipy tensorflow=="${tf_version}" cython==0.29.0 gym \
-      opencv-python-headless pyyaml pandas==0.24.2 requests feather-format lxml openpyxl xlrd \
+      opencv-python-headless pyyaml pandas==1.0.5 requests feather-format lxml openpyxl xlrd \
       py-spy pytest pytest-timeout networkx tabulate aiohttp uvicorn dataclasses pygments werkzeug \
       kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio scikit-learn==0.22.2 numba \
       Pillow prometheus_client boto3)
