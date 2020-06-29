@@ -21,7 +21,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
                 4: [7, 5, 5, 5, 5, 5, 5, 5, 3]
             }
 
-            def _setup(self, config):
+            def build(self, config):
                 self.id = config["id"]
                 self.idx = 0
 

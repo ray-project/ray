@@ -63,7 +63,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 function_output.append(result)
 
         class _WrappedTrainable(Trainable):
-            def _setup(self, config):
+            def build(self, config):
                 del config
                 self._result_iter = copy.deepcopy(class_results)
 
@@ -825,7 +825,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testDurableTrainable(self):
         class TestTrain(DurableTrainable):
-            def _setup(self, config):
+            def build(self, config):
                 self.state = {"hi": 1, "iter": 0}
 
             def step(self):
@@ -853,7 +853,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testCheckpointDict(self):
         class TestTrain(Trainable):
-            def _setup(self, config):
+            def build(self, config):
                 self.state = {"hi": 1}
 
             def step(self):
@@ -883,7 +883,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testMultipleCheckpoints(self):
         class TestTrain(Trainable):
-            def _setup(self, config):
+            def build(self, config):
                 self.state = {"hi": 1, "iter": 0}
 
             def step(self):

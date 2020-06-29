@@ -31,7 +31,7 @@ class PBTBenchmarkExample(Trainable):
     faster convergence. Training will not converge without PBT.
     """
 
-    def _setup(self, config):
+    def build(self, config):
         self.lr = config["lr"]
         self.accuracy = 0.0  # end = 1000
 

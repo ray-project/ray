@@ -13,7 +13,7 @@ class FrequentPausesScheduler(FIFOScheduler):
 
 def create_resettable_class():
     class MyResettableClass(Trainable):
-        def _setup(self, config):
+        def build(self, config):
             self.config = config
             self.num_resets = 0
             self.iter = 0

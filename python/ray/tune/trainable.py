@@ -175,11 +175,11 @@ class Trainable:
     Calling ``save()`` should save the training state of a trainable to disk,
     and ``restore(path)`` should restore a trainable to the given state.
 
-    Generally you only need to implement ``_setup``, ``_train``,
-    ``_save``, and ``_restore`` when subclassing Trainable.
+    Generally you only need to implement ``build``, ``step``,
+    ``save_checkpoint``, and ``load_checkpoint`` when subclassing Trainable.
 
     Other implementation methods that may be helpful to override are
-    ``_log_result``, ``reset_config``, ``_stop``, and ``_export_model``.
+    ``log_result``, ``reset_config``, ``cleanup``, and ``_export_model``.
 
     When using Tune, Tune will convert this class into a Ray actor, which
     runs on a separate process. Tune will also change the current working
@@ -193,7 +193,7 @@ class Trainable:
         Sets up logging and points ``self.logdir`` to a directory in which
         training outputs should be placed.
 
-        Subclasses should prefer defining ``_setup()`` instead of overriding
+        Subclasses should prefer defining ``build()`` instead of overriding
         ``__init__()`` directly.
 
         Args:

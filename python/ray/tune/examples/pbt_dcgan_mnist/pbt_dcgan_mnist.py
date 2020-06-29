@@ -231,7 +231,7 @@ def train(netD, netG, optimG, optimD, criterion, dataloader, iteration,
 
 # __Trainable_begin__
 class PytorchTrainable(tune.Trainable):
-    def _setup(self, config):
+    def build(self, config):
         use_cuda = config.get("use_gpu") and torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.netD = Discriminator().to(self.device)

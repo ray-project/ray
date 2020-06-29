@@ -19,7 +19,7 @@ class MyTrainableClass(Trainable):
     maximum reward value reached.
     """
 
-    def _setup(self, config):
+    def build(self, config):
         self.timestep = 0
 
     def step(self):
