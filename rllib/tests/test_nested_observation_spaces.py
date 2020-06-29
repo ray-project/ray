@@ -254,7 +254,7 @@ class DictSpyModel(TFModelV2):
 
         with tf1.control_dependencies([spy_fn]):
             output = tf1.layers.dense(input_dict["obs"]["sensors"]["position"],
-                                     self.num_outputs)
+                                      self.num_outputs)
         return output, []
 
 

@@ -546,10 +546,12 @@ class TFPolicy(Policy):
                 tf1.saved_model.utils.build_tensor_info(self._seq_lens)
         if self._prev_action_input is not None:
             input_signature["prev_action"] = \
-                tf1.saved_model.utils.build_tensor_info(self._prev_action_input)
+                tf1.saved_model.utils.build_tensor_info(
+                    self._prev_action_input)
         if self._prev_reward_input is not None:
             input_signature["prev_reward"] = \
-                tf1.saved_model.utils.build_tensor_info(self._prev_reward_input)
+                tf1.saved_model.utils.build_tensor_info(
+                    self._prev_reward_input)
         input_signature["is_training"] = \
             tf1.saved_model.utils.build_tensor_info(self._is_training)
 

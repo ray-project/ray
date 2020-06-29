@@ -31,8 +31,8 @@ def restore_saved_model(export_dir):
         with tf1.Session(graph=g) as sess:
             meta_graph_def = \
                 tf1.saved_model.load(sess,
-                                    [tf1.saved_model.tag_constants.SERVING],
-                                    export_dir)
+                                     [tf1.saved_model.tag_constants.SERVING],
+                                     export_dir)
             print("Model restored!")
             print("Signature Def Information:")
             print(meta_graph_def.signature_def[signature_key])

@@ -11,7 +11,7 @@ from ray.rllib.models.tf.tf_action_dist import SquashedGaussian
 from ray.rllib.models.torch.torch_action_dist import TorchSquashedGaussian
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import fc, relu
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
     framework_iterator

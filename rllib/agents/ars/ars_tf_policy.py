@@ -30,7 +30,7 @@ class ARSTFPolicy:
         self.sess = make_session(single_threaded=self.single_threaded)
 
         self.inputs = tf1.placeholder(tf.float32,
-                                     [None] + list(self.preprocessor.shape))
+                                      [None] + list(self.preprocessor.shape))
 
         # Policy network.
         dist_class, dist_dim = ModelCatalog.get_action_dist(

@@ -366,7 +366,8 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                 out = obs
 
             for hidden in hiddens:
-                out = tf1.layers.dense(out, units=hidden, activation=activation)
+                out = tf1.layers.dense(
+                    out, units=hidden, activation=activation)
             feature = tf1.layers.dense(
                 out, units=act_space.shape[0], activation=None)
             sampler = tfp.distributions.RelaxedOneHotCategorical(

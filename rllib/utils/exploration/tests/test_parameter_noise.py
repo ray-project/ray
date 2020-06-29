@@ -3,7 +3,6 @@ import unittest
 
 import ray.rllib.agents.ddpg as ddpg
 import ray.rllib.agents.dqn as dqn
-from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check, framework_iterator
 
 
