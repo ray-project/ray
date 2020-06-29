@@ -110,7 +110,9 @@ export const WorkerGRAM: WorkerFeatureComponent = ({ worker, node }) => {
       const process = gpu.processes.find(
         (process) => process.pid === worker.pid,
       );
-      if (!process) {return undefined;}
+      if (!process) {
+        return undefined;
+      }
       const props = {
         gpuName: gpu.name,
         total: gpu.memory_total,

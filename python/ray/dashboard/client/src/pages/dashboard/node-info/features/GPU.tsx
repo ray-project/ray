@@ -1,8 +1,4 @@
-import {
-  Box,
-  Tooltip,
-  Typography,
-} from "@material-ui/core";
+import { Box, Tooltip, Typography } from "@material-ui/core";
 import React from "react";
 import { GPUStats, ResourceSlot } from "../../../../api";
 import { RightPaddedTypography } from "../../../../common/CustomTypography";
@@ -95,13 +91,11 @@ type WorkerGPUEntryProps = {
   resourceSlot: ResourceSlot;
 };
 
-const WorkerGPUEntry: React.FC<WorkerGPUEntryProps> = ({
-  resourceSlot,
-}) => {
+const WorkerGPUEntry: React.FC<WorkerGPUEntryProps> = ({ resourceSlot }) => {
   const { allocation, slot } = resourceSlot;
   return (
     <Typography variant="h6">
-      [{slot ?? "?"}]: {allocation}
+      [{slot === undefined ? "?" : slot}]: {allocation}
     </Typography>
   );
 };
@@ -117,19 +111,19 @@ export const WorkerGPU: WorkerFeatureComponent = ({ rayletWorker }) => {
       </Typography>
     );
   } else {
-    message = workerUsedGPUResources.resourceSlots.sort((slot1, slot2) => {
-      if (!slot1.slot && !slot2.slot) {
-        return 0;
-      } else if (!slot1.slot) {
-        return 1;
-      } else if (!slot2.slot) {
-        return -1;
-      } else {
-        return slot1.slot - slot2.slot;
-      }
-    }).map(resourceSlot => (
-      <WorkerGPUEntry resourceSlot={resourceSlot} />
-    ));
+    message = workerUsedGPUResources.resourceSlots
+      .sort((slot1, slot2) => {
+        if (slot1.slot === undefined && slot2.slot === undefined) {
+          return 0;
+        } else if (slot1.slot === undefined) {
+          return 1;
+        } else if (slot2.slot === undefined) {
+          return -1;
+        } else {
+          return slot1.slot - slot2.slot;
+        }
+      })
+      .map((resourceSlot) => <WorkerGPUEntry resourceSlot={resourceSlot} />);
   }
   return <div style={{ minWidth: 60 }}>{message}</div>;
 };
