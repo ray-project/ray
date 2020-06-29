@@ -1619,7 +1619,6 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
     worker->SetOwnerAddress(spec.CallerAddress());
     if (spec.IsActorCreationTask()) {
       // The actor belongs to this worker now.
-      worker->AssignActorId(spec.ActorCreationId());
       worker->SetLifetimeAllocatedInstances(allocated_instances);
     } else {
       worker->SetAllocatedInstances(allocated_instances);
