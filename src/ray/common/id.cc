@@ -71,22 +71,22 @@ constexpr ObjectIDFlagsType kObjectTypeFlagBitMask = 0x1 << kObjectTypeBitsOffse
 inline void SetCreatedByTaskFlag(bool created_by_task, ObjectIDFlagsType *flags) {
   const ObjectIDFlagsType object_type_bits =
       static_cast<ObjectIDFlagsType>(created_by_task) << kCreatedByTaskBitsOffset;
-  *flags = (*flags bitor object_type_bits);
+  *flags = (*flags | object_type_bits);
 }
 
 inline void SetObjectTypeFlag(ObjectType object_type, ObjectIDFlagsType *flags) {
   const ObjectIDFlagsType object_type_bits = static_cast<ObjectIDFlagsType>(object_type)
                                              << kObjectTypeBitsOffset;
-  *flags = (*flags bitor object_type_bits);
+  *flags = (*flags | object_type_bits);
 }
 
 inline bool CreatedByTask(ObjectIDFlagsType flags) {
-  return ((flags bitand kCreatedByTaskFlagBitMask) >> kCreatedByTaskBitsOffset) != 0x0;
+  return ((flags & kCreatedByTaskFlagBitMask) >> kCreatedByTaskBitsOffset) != 0x0;
 }
 
 inline ObjectType GetObjectType(ObjectIDFlagsType flags) {
   const ObjectIDFlagsType object_type =
-      (flags bitand kObjectTypeFlagBitMask) >> kObjectTypeBitsOffset;
+      (flags & kObjectTypeFlagBitMask) >> kObjectTypeBitsOffset;
   return static_cast<ObjectType>(object_type);
 }
 

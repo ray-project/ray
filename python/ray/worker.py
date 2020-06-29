@@ -46,12 +46,8 @@ from ray.exceptions import (
     ObjectStoreFullError,
 )
 from ray.function_manager import FunctionActorManager
-from ray.utils import (
-    _random_string,
-    check_oversized_pickle,
-    is_cython,
-    setup_logger,
-)
+from ray.utils import (_random_string, check_oversized_pickle, is_cython,
+                       setup_logger, create_and_init_new_worker_log, open_log)
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -481,8 +477,9 @@ def init(address=None,
          plasma_directory=None,
          huge_pages=False,
          include_java=False,
-         include_webui=None,
-         webui_host="localhost",
+         include_dashboard=None,
+         dashboard_host="localhost",
+         dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
          job_id=None,
          configure_logging=True,
          logging_level=logging.INFO,
@@ -574,14 +571,16 @@ def init(address=None,
             Store with hugetlbfs support. Requires plasma_directory.
         include_java: Boolean flag indicating whether or not to enable java
             workers.
-        include_webui: Boolean flag indicating whether or not to start the web
-            UI for the Ray dashboard, which displays the status of the Ray
+        include_dashboard: Boolean flag indicating whether or not to start the
+            Ray dashboard, which displays the status of the Ray
             cluster. If this argument is None, then the UI will be started if
             the relevant dependencies are present.
-        webui_host: The host to bind the web UI server to. Can either be
+        dashboard_host: The host to bind the dashboard server to. Can either be
             localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
             By default, this is set to localhost to prevent access from
             external machines.
+        dashboard_port: The port to bind the dashboard server to. Defaults to
+            8265.
         job_id: The ID of this job.
         configure_logging: True (default) if configuration of logging is
             allowed here. Otherwise, the user may want to configure it
@@ -700,8 +699,9 @@ def init(address=None,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             include_java=include_java,
-            include_webui=include_webui,
-            webui_host=webui_host,
+            include_dashboard=include_dashboard,
+            dashboard_host=dashboard_host,
+            dashboard_port=dashboard_port,
             memory=memory,
             object_store_memory=object_store_memory,
             redis_max_memory=redis_max_memory,
@@ -891,13 +891,77 @@ last_task_error_raise_time = 0
 UNCAUGHT_ERROR_GRACE_PERIOD = 5
 
 
-def print_logs(redis_client, threads_stopped):
+def _set_log_file(file_name, worker_pid, old_obj, setter_func):
+    # Line-buffer the output (mode 1).
+    f = create_and_init_new_worker_log(file_name, worker_pid)
+
+    # TODO (Alex): Python seems to always flush when writing. If that is no
+    # longer true, then we need to manually flush the old buffer.
+    # old_obj.flush()
+
+    # TODO (Alex): Flush the c/c++ userspace buffers if necessary.
+    # `fflush(stdout); cout.flush();`
+
+    fileno = old_obj.fileno()
+
+    # C++ logging requires redirecting the stdout file descriptor. Note that
+    # dup2 will automatically close the old file descriptor before overriding
+    # it.
+    os.dup2(f.fileno(), fileno)
+
+    # We also manually set sys.stdout and sys.stderr because that seems to
+    # have an effect on the output buffering. Without doing this, stdout
+    # and stderr are heavily buffered resulting in seemingly lost logging
+    # statements. We never want to close the stdout file descriptor, dup2 will
+    # close it when necessary and we don't want python's GC to close it.
+    setter_func(open_log(fileno, closefd=False))
+
+    return os.path.abspath(f.name)
+
+
+def set_log_file(stdout_name, stderr_name):
+    """Sets up logging for the current worker, creating the (fd backed) file and
+    flushing buffers as is necessary.
+
+    Args:
+        stdout_name (str): The file name that stdout should be written to.
+        stderr_name(str): The file name that stderr should be written to.
+
+    Returns:
+        (tuple) The absolute paths of the files that stdout and stderr will be
+    written to.
+
+    """
+    stdout_path = ""
+    stderr_path = ""
+    worker_pid = os.getpid()
+
+    # lambda cannot contain assignment
+    def stdout_setter(x):
+        sys.stdout = x
+
+    def stderr_setter(x):
+        sys.stderr = x
+
+    if stdout_name:
+        _set_log_file(stdout_name, worker_pid, sys.stdout, stdout_setter)
+
+    # The stderr case should be analogous to the stdout case
+    if stderr_name:
+        _set_log_file(stderr_name, worker_pid, sys.stderr, stderr_setter)
+
+    return stdout_path, stderr_path
+
+
+def print_logs(redis_client, threads_stopped, job_id):
     """Prints log messages from workers on all of the nodes.
 
     Args:
         redis_client: A client to the primary Redis shard.
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
+        job_id (JobID): The id of the driver's job
+
     """
     pubsub_client = redis_client.pubsub(ignore_subscribe_messages=True)
     pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL)
@@ -919,8 +983,19 @@ def print_logs(redis_client, threads_stopped):
                 threads_stopped.wait(timeout=0.01)
                 continue
             num_consecutive_messages_received += 1
+            if (num_consecutive_messages_received % 100 == 0
+                    and num_consecutive_messages_received > 0):
+                logger.warning(
+                    "The driver may not be able to keep up with the "
+                    "stdout/stderr of the workers. To avoid forwarding logs "
+                    "to the driver, use 'ray.init(log_to_driver=False)'.")
 
             data = json.loads(ray.utils.decode(msg["data"]))
+
+            # Don't show logs from other drivers.
+            if data["job"] and ray.utils.binary_to_hex(
+                    job_id.binary()) != data["job"]:
+                continue
 
             def color_for(data):
                 if data["pid"] == "raylet":
@@ -939,12 +1014,6 @@ def print_logs(redis_client, threads_stopped):
                         colorama.Style.DIM, color_for(data), data["pid"],
                         data["ip"], colorama.Style.RESET_ALL, line))
 
-            if (num_consecutive_messages_received % 100 == 0
-                    and num_consecutive_messages_received > 0):
-                logger.warning(
-                    "The driver may not be able to keep up with the "
-                    "stdout/stderr of the workers. To avoid forwarding logs "
-                    "to the driver, use 'ray.init(log_to_driver=False)'.")
     except (OSError, redis.exceptions.ConnectionError) as e:
         logger.error("print_logs: {}".format(e))
     finally:
@@ -1147,8 +1216,8 @@ def connect(node,
     worker.lock = threading.RLock()
 
     driver_name = ""
-    log_stdout_file_name = ""
-    log_stderr_file_name = ""
+    log_stdout_file_path = ""
+    log_stderr_file_path = ""
     if mode == SCRIPT_MODE:
         import __main__ as main
         driver_name = (main.__file__
@@ -1160,39 +1229,24 @@ def connect(node,
         redirect_worker_output_val = worker.redis_client.get("RedirectOutput")
         if (redirect_worker_output_val is not None
                 and int(redirect_worker_output_val) == 1):
-            log_stdout_file, log_stderr_file = (
-                node.new_worker_redirected_log_file(worker.worker_id))
-            # Redirect stdout/stderr at the file descriptor level. If we simply
-            # set sys.stdout and sys.stderr, then logging from C++ can fail to
-            # be redirected.
-            if log_stdout_file is not None:
-                os.dup2(log_stdout_file.fileno(), sys.stdout.fileno())
-            if log_stderr_file is not None:
-                os.dup2(log_stderr_file.fileno(), sys.stderr.fileno())
-            # We also manually set sys.stdout and sys.stderr because that seems
-            # to have an affect on the output buffering. Without doing this,
-            # stdout and stderr are heavily buffered resulting in seemingly
-            # lost logging statements.
-            if log_stdout_file is not None:
-                sys.stdout = log_stdout_file
-            if log_stderr_file is not None:
-                sys.stderr = log_stderr_file
-            # This should always be the first message to appear in the worker's
-            # stdout and stderr log files. The string "Ray worker pid:" is
-            # parsed in the log monitor process.
-            print("Ray worker pid: {}".format(os.getpid()))
-            print("Ray worker pid: {}".format(os.getpid()), file=sys.stderr)
-            sys.stdout.flush()
-            sys.stderr.flush()
-            log_stdout_file_name = os.path.abspath(
-                (log_stdout_file
-                 if log_stdout_file is not None else sys.stdout).name)
-            log_stderr_file_name = os.path.abspath(
-                (log_stderr_file
-                 if log_stderr_file is not None else sys.stderr).name)
+            log_stdout_file_name, log_stderr_file_name = (
+                node.get_job_redirected_log_file(worker.worker_id))
+            try:
+                log_stdout_file_path, log_stderr_file_path = \
+                    set_log_file(log_stdout_file_name, log_stderr_file_name)
+            except IOError:
+                raise IOError(
+                    "Workers must be able to redirect their output at"
+                    "the file descriptor level.")
     elif not LOCAL_MODE:
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
+
+    # TODO (Alex): `current_logging_job` tracks the current job so that we know
+    # when to switch log files. If all logging functionaility was moved to c++,
+    # the functionaility in `_raylet.pyx::switch_worker_log_if_necessary` could
+    # be moved to `CoreWorker::SetCurrentTaskId()`.
+    worker.current_logging_job_id = None
     redis_address, redis_port = node.redis_address.split(":")
     gcs_options = ray._raylet.GcsClientOptions(
         redis_address,
@@ -1212,8 +1266,8 @@ def connect(node,
         node.raylet_ip_address,
         (mode == LOCAL_MODE),
         driver_name,
-        log_stdout_file_name,
-        log_stderr_file_name,
+        log_stdout_file_path,
+        log_stderr_file_path,
     )
 
     # Create an object for interfacing with the global state.
@@ -1263,7 +1317,7 @@ def connect(node,
             worker.logger_thread = threading.Thread(
                 target=print_logs,
                 name="ray_print_logs",
-                args=(worker.redis_client, worker.threads_stopped))
+                args=(worker.redis_client, worker.threads_stopped, job_id))
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
 

@@ -1,11 +1,10 @@
 import pytest
 import collections
-import subprocess
-import tempfile
 import os
 import unittest
 from unittest.mock import MagicMock, Mock
 
+from ray.test_utils import run_string_as_driver
 from ray.tune.trial import Trial
 from ray.tune.progress_reporter import (CLIReporter, _fair_filter_trials,
                                         trial_progress_str)
@@ -284,19 +283,15 @@ class ProgressReporterTest(unittest.TestCase):
     def testEndToEndReporting(self):
         try:
             os.environ["_TEST_TUNE_TRIAL_UUID"] = "xxxxx"
-            with tempfile.NamedTemporaryFile(suffix=".py") as f:
-                f.write(END_TO_END_COMMAND.encode("utf-8"))
-                f.flush()
-                output = subprocess.check_output(["python3", f.name])
-                output = output.decode("utf-8")
-                try:
-                    assert EXPECTED_END_TO_END_START in output
-                    assert EXPECTED_END_TO_END_END in output
-                except Exception:
-                    print("*** BEGIN OUTPUT ***")
-                    print(output)
-                    print("*** END OUTPUT ***")
-                    raise
+            output = run_string_as_driver(END_TO_END_COMMAND)
+            try:
+                assert EXPECTED_END_TO_END_START in output
+                assert EXPECTED_END_TO_END_END in output
+            except Exception:
+                print("*** BEGIN OUTPUT ***")
+                print(output)
+                print("*** END OUTPUT ***")
+                raise
         finally:
             del os.environ["_TEST_TUNE_TRIAL_UUID"]
 
