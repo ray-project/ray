@@ -201,7 +201,8 @@ py_test(
 py_test(
     name = "test_autoscaler_yaml",
     size = "small",
-    srcs = SRCS + ["test_autoscaler_yaml.py", "additional_property.yaml"],
+    srcs = SRCS + ["test_autoscaler_yaml.py"],
+    data = ["additional_property.yaml"],
     deps = ["//:ray_lib"],
 )
 
