@@ -235,71 +235,64 @@ class ObjectDirectory {
               : ObjectStatus::OBJECT_NOT_FOUND;
   }
 
-  /// Recreate an evicted object.
-  ///
-  /// \param object_id Object ID of the object to be created.
-  /// \param evict_if_full If this is true, then when the object store is full,
-  ///        try to evict objects that are not currently referenced before
-  ///        creating the object. Else, do not evict any objects and
-  ///        immediately return an PlasmaError::OutOfMemory.
-  /// \param client The client that created the object.
-  /// \param result The object that has been created.
-  /// \return One of the following error codes:
-  ///  - Status::OK, if the object was created successfully.
-  ///  - Status::ObjectExists, if an object with this ID is already
-  ///    present in the store. In this case, the client should not call
-  ///    plasma_release.
-  ///  - PlasmaError::OutOfMemory, if the store is out of memory and
-  ///    cannot create the object. In this case, the client should not call
-  ///    plasma_release.
-  Status RecreateObject(const ObjectID& object_id, bool evict_if_full, Client* client) {
-    absl::MutexLock lock(&object_table_mutex_);
-    auto it = object_table_.find(object_id);
-    // TODO(rkn): This should probably not fail, but should instead throw an
-    // error. Maybe we should also support deleting objects that have been
-    // created but not sealed.
-    if (it != object_table_.end()) {
-      // There is already an object with the same ID in the Plasma Store, so
-      // ignore this request.
-      return Status::ObjectExists("The object already exists.");
-    }
-    auto& entry = it->second;
-    auto ptr = std::unique_ptr<ObjectTableEntry>(new ObjectTableEntry());
-    Status s = AllocateMemory(object_id, entry.get(), entry->ObjectSize(), evict_if_full, client, /*is_create=*/false,
-                              entry->device_num);
-    if (!s.ok()) {
-      // We are out of memory and cannot allocate memory for this object.
-      // Change the state of the object back to PLASMA_EVICTED so some
-      // other request can try again.
-      entry->state = ObjectState::PLASMA_EVICTED;
-      return Status::OutOfMemory("Cannot allocate the object.");
-    }
-    return Status::OK();
-  }
-
-  Status FetchObjectsFromExternalStore(const std::vector<ObjectID>& object_ids) {
-    std::vector<std::shared_ptr<Buffer>> buffers;
+  void GetObjects(const std::vector<ObjectID>& object_ids,
+                  Client* client,
+                  std::vector<ObjectID> *sealed_objects,
+                  std::vector<ObjectID> *reconstructed_objects,
+                  std::vector<ObjectID> *nonexistent_objects) {
+    std::vector<ObjectID> evicted_ids;
     std::vector<ObjectTableEntry*> entries;
-    Status status;
-    for (const auto& object_id : object_ids) {
-        auto it = object_table_.find(object_id);
-        RAY_CHECK(it != object_table_.end());
-        entries.push_back(it->second.get());
+
+    for (auto object_id : object_ids) {
+      auto it = object_table_.find(object_id);
+      if (it == object_table_.end()) {
+        nonexistent_objects->push_back(object_id);
+      } else {
+        auto& entry = it->second;
+        switch (entry->state) {
+          case ObjectState::PLASMA_SEALED:
+            sealed_objects->push_back(object_id);
+            break;
+          case ObjectState::PLASMA_EVICTED: {
+            // TODO(suquark): Should we update plasma object data here?
+            Status s = AllocateMemory(object_id, entry.get(), entry->ObjectSize(), /*evict_inf_full=*/true, client, /*is_create=*/false,
+                                      entry->device_num);
+            if (status.ok()) {
+              evicted_ids.push_back(object_id);
+            } else {
+              // We are out of memory and cannot allocate memory for this object.
+              // Change the state of the object back to PLASMA_EVICTED so some
+              // other request can try again.
+              entry->state = ObjectState::PLASMA_EVICTED;
+            }
+            break;
+          }
+          default:
+            nonexistent_objects->push_back(object_id);
+        }
+      }
     }
-    if (external_store_) {
+
+    if (!evicted_ids.empty()) {
+      if (external_store_) {
+        std::vector<std::shared_ptr<Buffer>> buffers;
+        for (const auto& entry : entries) {
+          buffers.emplace_back(entry->GetArrowBuffer());
+        }
+        Status status = external_store_->Get(object_ids, buffers);
+        if (status.ok()) {
+          // Flush to reconstructed objects.
+          RAY_CHECK(reconstructed_objects->empty());
+          reconstructed_objects->swap(evicted_ids);
+          return;
+        }
+      }
+      // We tried to get the objects from the external store, but could not get them.
+      // Set the state of these objects back to PLASMA_EVICTED so some other request
+      // can try again.
       for (const auto& entry : entries) {
-        buffers.emplace_back(entry->GetArrowBuffer());
+        entry->state = ObjectState::PLASMA_EVICTED;
       }
-      status = external_store_->Get(object_ids, buffers);
-      if (status.ok()) {
-        return status;
-      }
-    }
-    // We tried to get the objects from the external store, but could not get them.
-    // Set the state of these objects back to PLASMA_EVICTED so some other request
-    // can try again.
-    for (const auto& entry : entries) {
-      entry->state = ObjectState::PLASMA_EVICTED;
     }
   }
 
