@@ -272,7 +272,9 @@ def check_compute_single_action(trainer,
             method_to_test = trainer.compute_action
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
-            worker_set = getattr(trainer, "workers", trainer._workers)
+            worker_set = getattr(
+                trainer, "workers", getattr(trainer, "_workers", None))
+            assert worker_set
             if isinstance(worker_set, list):
                 obs_space = trainer.get_policy().observation_space
                 try:
