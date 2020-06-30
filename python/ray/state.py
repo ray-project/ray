@@ -609,8 +609,7 @@ class GlobalState:
             worker_table_data = gcs_utils.WorkerTableData.FromString(
                 worker_table[i])
             if not worker_table_data.is_worker_failure:
-                if worker_table_data.worker_type == \
-                        gcs_utils.WorkerType.WORKER:
+                if worker_table_data.worker_type == gcs_utils.WORKER:
                     worker_id = binary_to_hex(
                         worker_table_data.worker_address.worker_id)
                     worker_info = worker_table_data.worker_info

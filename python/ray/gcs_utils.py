@@ -20,15 +20,13 @@ from ray.core.generated.gcs_pb2 import (
     WorkerTableData,
 )
 
-from ray.core.generated.common_pb2 import WorkerType
-
 __all__ = [
     "ActorCheckpointIdData", "ActorTableData", "GcsNodeInfo", "JobTableData",
     "ErrorTableData", "ErrorType", "GcsEntry", "HeartbeatBatchTableData",
     "HeartbeatTableData", "ObjectTableData", "ProfileTableData", "TablePrefix",
     "TablePubsub", "TaskTableData", "ResourceMap", "ResourceTableData",
     "construct_error_message", "ObjectLocationInfo", "PubSubMessage",
-    "WorkerType", "WorkerTableData"
+    "WorkerTableData"
 ]
 
 FUNCTION_PREFIX = "RemoteFunction:"
@@ -58,6 +56,9 @@ TablePrefix_ERROR_INFO_string = "ERROR_INFO"
 TablePrefix_PROFILE_string = "PROFILE"
 TablePrefix_JOB_string = "JOB"
 TablePrefix_ACTOR_string = "ACTOR"
+
+WORKER = 0
+DRIVER = 1
 
 
 def construct_error_message(job_id, error_type, message, timestamp):
