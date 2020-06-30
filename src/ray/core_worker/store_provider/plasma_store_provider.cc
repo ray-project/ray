@@ -24,10 +24,12 @@ namespace ray {
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<raylet::RayletClient> raylet_client,
+    const std::shared_ptr<ReferenceCounter> reference_counter,
     std::function<Status()> check_signals, bool evict_if_full,
     std::function<void()> on_store_full,
     std::function<std::string()> get_current_call_site)
     : raylet_client_(raylet_client),
+      reference_counter_(reference_counter),
       check_signals_(check_signals),
       evict_if_full_(evict_if_full),
       on_store_full_(on_store_full) {
@@ -151,13 +153,28 @@ Status CoreWorkerPlasmaStoreProvider::Release(const ObjectID &object_id) {
   return Status::OK();
 }
 
+std::vector<rpc::Address> CoreWorkerPlasmaStoreProvider::GetOwnerAddresses(const std::vector<ObjectID> &object_ids) const {
+  std::vector<rpc::Address> owner_addresses;
+  for (const auto &object_id : object_ids) {
+    rpc::Address owner_addr;
+    auto has_owner = reference_counter_->GetOwner(object_id, &owner_addr);
+    RAY_CHECK(has_owner) << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+         "(ObjectID.from_binary(...)) cannot be passed to ray.get() or ray.wait() because Ray does not know which task will create them. "
+         "If this was not how your object ID was generated, please file an issue "
+         "at https://github.com/ray-project/ray/issues/";
+    owner_addresses.push_back(owner_addr);
+  }
+  return owner_addresses;
+}
+
 Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
     absl::flat_hash_set<ObjectID> &remaining, const std::vector<ObjectID> &batch_ids,
     int64_t timeout_ms, bool fetch_only, bool in_direct_call, const TaskID &task_id,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
+  const auto owner_addresses = GetOwnerAddresses(batch_ids);
   RAY_RETURN_NOT_OK(raylet_client_->FetchOrReconstruct(
-      batch_ids, fetch_only, /*mark_worker_blocked*/ !in_direct_call, task_id));
+      batch_ids, owner_addresses, fetch_only, /*mark_worker_blocked*/ !in_direct_call, task_id));
 
   std::vector<plasma::ObjectBuffer> plasma_results;
   {
@@ -335,8 +352,9 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
     if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
       RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked());
     }
+    const auto owner_addresses = GetOwnerAddresses(id_vector);
     RAY_RETURN_NOT_OK(
-        raylet_client_->Wait(id_vector, num_objects, call_timeout, /*wait_local*/ true,
+        raylet_client_->Wait(id_vector, owner_addresses, num_objects, call_timeout, /*wait_local*/ true,
                              /*mark_worker_blocked*/ !ctx.CurrentTaskIsDirectCall(),
                              ctx.GetCurrentTaskID(), &result_pair));
 

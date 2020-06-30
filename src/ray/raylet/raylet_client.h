@@ -232,7 +232,9 @@ class RayletClient : public PinObjectsInterface,
   /// \param result A pair with the first element containing the object ids that were
   /// found, and the second element the objects that were not found.
   /// \return ray::Status.
-  ray::Status Wait(const std::vector<ObjectID> &object_ids, int num_returns,
+  ray::Status Wait(const std::vector<ObjectID> &object_ids,
+      const std::vector<rpc::Address> &owner_addresses,
+      int num_returns,
                    int64_t timeout_milliseconds, bool wait_local,
                    bool mark_worker_blocked, const TaskID &current_task_id,
                    WaitResultPair *result);

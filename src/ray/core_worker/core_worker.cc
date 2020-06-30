@@ -354,7 +354,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
-      options_.store_socket, local_raylet_client_, options_.check_signals,
+      options_.store_socket, local_raylet_client_, reference_counter_, options_.check_signals,
       /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
       boost::bind(&CoreWorker::TriggerGlobalGC, this),
       boost::bind(&CoreWorker::CurrentCallSite, this)));
@@ -708,7 +708,7 @@ rpc::Address CoreWorker::GetOwnerAddress(const ObjectID &object_id) const {
   auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
   RAY_CHECK(has_owner)
       << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
-         "(ObjectID.from_binary(...)) cannot be used because Ray does not know "
+         "(ObjectID.from_binary(...)) cannot be passed as a task argument because Ray does not know "
          "which task will create them. "
          "If this was not how your object ID was generated, please file an issue "
          "at https://github.com/ray-project/ray/issues/";

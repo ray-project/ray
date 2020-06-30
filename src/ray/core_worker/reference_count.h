@@ -173,6 +173,9 @@ class ReferenceCounter {
   ///
   /// \param[in] object_id The ID of the object to look up.
   /// \param[out] owner_address The address of the object owner.
+  /// \return false if the object is out of scope or we do not yet have
+  /// ownership information. The latter can happen when object IDs are pasesd
+  /// out of band.
   bool GetOwner(const ObjectID &object_id, rpc::Address *owner_address = nullptr) const
       LOCKS_EXCLUDED(mutex_);
 
