@@ -42,6 +42,16 @@ AsyncGetResponse = namedtuple("AsyncGetResponse",
                               ["plasma_fallback_id", "result"])
 
 
+def new_get_async(object_id):
+    """C++ Asyncio version of ray.get"""
+    loop = asyncio.get_event_loop()
+    core_worker = ray.worker.global_worker.core_worker
+
+    future = loop.create_future()
+    core_worker.get_async(object_id, future)
+    return future
+
+
 def get_async(object_id):
     """Asyncio compatible version of ray.get"""
     # Delayed import because raylet import this file and
@@ -114,5 +124,10 @@ def get_async(object_id):
     user_future.inner_future = inner_future
     # A hack to keep a reference to the object ID for ref counting.
     user_future.object_id = object_id
+
+    # ## END RESULT { ONLY THIS }
+    # core_worker.get_async(object_id, future)
+    # return future
+    # ##
 
     return user_future

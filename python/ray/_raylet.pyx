@@ -1262,6 +1262,12 @@ cdef class CoreWorker:
             async_retry_with_plasma_callback,
             <void*>future)
 
+    def get_async(self, ObjectID object_id, future):
+        CCoreWorkerProcess.GetCoreWorker().GetAsyncNew(
+                object_id.native(),
+                async_set_result,
+                <void*>future)
+
     def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
         check_status(CCoreWorkerProcess.GetCoreWorker().PushError(
@@ -1294,6 +1300,24 @@ cdef class CoreWorker:
             resource_name.encode("ascii"), capacity,
             CClientID.FromBinary(client_id.binary()))
 
+cdef void async_set_result(shared_ptr[CRayObject] obj,
+                           CObjectID object_id,
+                           void *future) with gil:
+    cdef:
+        c_vector[shared_ptr[CRayObject]] objects_to_deserialize
+    py_future = <object>(future)
+    loop = py_future._loop
+
+    # Object is retrieved from in memory store.
+    # Here we go through the code path used to deserialize objects.
+    objects_to_deserialize.push_back(obj)
+    data_metadata_pairs = RayObjectsToDataMetadataPairs(
+        objects_to_deserialize)
+    ids_to_deserialize = [ObjectID(object_id.Binary())]
+    objects = ray.worker.global_worker.deserialize_objects(
+        data_metadata_pairs, ids_to_deserialize)
+    loop.call_soon_threadsafe(lambda: py_future.set_result(objects[0]))
+
 cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
                                     CObjectID object_id,
                                     void *future) with gil:
@@ -1318,6 +1342,7 @@ cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
 cdef void async_retry_with_plasma_callback(shared_ptr[CRayObject] obj,
                                            CObjectID object_id,
                                            void *future) with gil:
+    # This will be gone
     py_future = <object>(future)
     loop = py_future._loop
     loop.call_soon_threadsafe(lambda: py_future.set_result(

@@ -1999,6 +1999,36 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
   });
 }
 
+void CoreWorker::PlasmaCallback(SetResultCallback success,
+                                std::shared_ptr<RayObject> ray_object, ObjectID object_id,
+                                void *py_future) {
+  std::vector<std::shared_ptr<RayObject>> vec;
+  if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok() && vec.size() > 0) {
+    return success(vec.front(), object_id, py_future);
+  }
+
+  absl::MutexLock lock(&plasma_mutex_);
+  auto it = async_plasma_callbacks_.find(object_id);
+  auto plasma_arrived_callback = [this, success, object_id, py_future]() {
+    GetAsyncNew(object_id, success, py_future);
+  };
+
+  if (it == async_plasma_callbacks_.end()) {
+    async_plasma_callbacks_.emplace(
+        object_id, std::vector<std::function<void(void)>>{plasma_arrived_callback});
+  } else {
+    it->second.push_back({plasma_arrived_callback});
+  }
+}
+
+void CoreWorker::GetAsyncNew(const ObjectID &object_id,
+                             SetResultCallback success_callback, void *python_future) {
+  GetAsync(object_id, success_callback,
+           std::bind(&CoreWorker::PlasmaCallback, this, success_callback,
+                     std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
+           python_future);
+}
+
 void CoreWorker::SetPlasmaAddedCallback(PlasmaSubscriptionCallback subscribe_callback) {
   plasma_done_callback_ = subscribe_callback;
 }
@@ -2010,6 +2040,14 @@ void CoreWorker::SubscribeToPlasmaAdd(const ObjectID &object_id) {
 void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
                                          rpc::PlasmaObjectReadyReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
+  {
+    absl::MutexLock lock(&plasma_mutex_);
+    auto it = async_plasma_callbacks_.extract(ObjectID::FromBinary(request.object_id()));
+    for (auto callback : it.mapped()) {
+      callback();
+    }
+  }
+
   RAY_CHECK(plasma_done_callback_ != nullptr) << "Plasma done callback not defined.";
   // This callback needs to be asynchronous because it runs on the io_service_, so no
   // RPCs can be processed while it's running. This can easily lead to deadlock (for
@@ -2018,7 +2056,7 @@ void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &re
   plasma_done_callback_(ObjectID::FromBinary(request.object_id()), request.data_size(),
                         request.metadata_size());
   send_reply_callback(Status::OK(), nullptr, nullptr);
-}
+}  // namespace ray
 
 void CoreWorker::SetActorId(const ActorID &actor_id) {
   absl::MutexLock lock(&mutex_);

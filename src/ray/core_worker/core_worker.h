@@ -759,6 +759,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                 SetResultCallback fallback_callback, void *python_future);
 
+  /// Perform async get from in-memory store.
+  ///
+  /// \param[in] object_id The id to call get on.
+  /// \param[in] success_callback The callback to use the result object.
+  /// \param[in] python_future the void* object to be passed to SetResultCallback
+  /// \return void
+  void GetAsyncNew(const ObjectID &object_id, SetResultCallback success_callback,
+                   void *python_future);
+
   /// Connect to plasma store for async futures
   using PlasmaSubscriptionCallback = std::function<void(ray::ObjectID, int64_t, int64_t)>;
 
@@ -1067,6 +1076,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Plasma Callback
   PlasmaSubscriptionCallback plasma_done_callback_;
+
+  // Guard for Plasma Callback Map
+  mutable absl::Mutex plasma_mutex_;
+
+  // Plasma Callbacks
+  absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
+      async_plasma_callbacks_ GUARDED_BY(plasma_mutex_);
+
+  void PlasmaCallback(SetResultCallback success, std::shared_ptr<RayObject> ray_object,
+                      ObjectID object_id, void *py_future);
 
   /// Whether we are shutting down and not running further tasks.
   bool exiting_ = false;
