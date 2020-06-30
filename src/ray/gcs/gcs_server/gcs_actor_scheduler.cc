@@ -123,7 +123,8 @@ std::vector<ActorID> GcsActorScheduler::CancelOnNode(const ClientID &node_id) {
   return actor_ids;
 }
 
-void GcsActorScheduler::CancelLeasingRequest(const ClientID &node_id, const ActorID &actor_id) {
+void GcsActorScheduler::CancelLeasingRequest(const ClientID &node_id,
+                                             const ActorID &actor_id) {
   auto node_it = node_to_actors_when_leasing_.find(node_id);
   RAY_CHECK(node_it != node_to_actors_when_leasing_.end());
   node_it->second.erase(actor_id);

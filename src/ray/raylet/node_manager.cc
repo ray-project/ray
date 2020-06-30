@@ -947,7 +947,7 @@ void NodeManager::DispatchTasks(
       if (!local_available_resources_.Contains(task_resources)) {
         // All the tasks in it.second have the same resource shape, so
         // once the first task is not feasible, we can break out of this loop
-        RAY_LOG(ERROR) << "Sang resource not available. " << task_id; 
+        RAY_LOG(ERROR) << "Sang resource not available. " << task_id;
         break;
       }
 

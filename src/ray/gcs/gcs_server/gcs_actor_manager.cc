@@ -525,8 +525,8 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
       auto pending_it = std::find_if(pending_actors_.begin(), pending_actors_.end(),
                                      [actor_id](const std::shared_ptr<GcsActor> &actor) {
                                        return actor->GetActorID() == actor_id;
-                                     });  
-      // The actor was pending scheduling. Remove it from the queue.                                     
+                                     });
+      // The actor was pending scheduling. Remove it from the queue.
       if (pending_it != pending_actors_.end()) {
         pending_actors_.erase(pending_it);
       } else {
@@ -572,7 +572,8 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
     }
   }
 
-  // Find if actor is already created or in the creation process (lease request is granted)
+  // Find if actor is already created or in the creation process (lease request is
+  // granted)
   ActorID actor_id;
   auto iter = created_actors_.find(node_id);
   if (iter != created_actors_.end() && iter->second.count(worker_id)) {
@@ -595,9 +596,11 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
     return;
   }
 
-  // Otherwise, try to reconstruct the actor that was already created or in the creation process.
+  // Otherwise, try to reconstruct the actor that was already created or in the creation
+  // process.
   RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
-                << " failed, restarting actor " << actor_id << ", intentional exit: " << intentional_exit;
+                << " failed, restarting actor " << actor_id
+                << ", intentional exit: " << intentional_exit;
   ReconstructActor(actor_id, /*need_reschedule=*/!intentional_exit);
 }
 
@@ -641,7 +644,8 @@ void GcsActorManager::OnNodeDead(const ClientID &node_id) {
 
 void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_reschedule) {
   auto &actor = registered_actors_[actor_id];
-  RAY_CHECK(actor != nullptr) << "actor of actor id, " << actor_id << " is not registered";
+  RAY_CHECK(actor != nullptr) << "actor of actor id, " << actor_id
+                              << " is not registered";
   auto node_id = actor->GetNodeID();
   auto worker_id = actor->GetWorkerID();
   actor->UpdateAddress(rpc::Address());
