@@ -137,6 +137,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       object_pinning_enabled_(config.object_pinning_enabled),
       temp_dir_(config.temp_dir),
       object_manager_profile_timer_(io_service),
+      light_heartbeat_enabled_(RayConfig::instance().light_heartbeat_enabled()),
       initial_config_(config),
       local_available_resources_(config.resource_config),
       worker_pool_(
@@ -162,7 +163,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
       client_call_manager_(io_service),
-      light_heartbeat_enabled_(RayConfig::instance().light_heartbeat_enabled()),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(heartbeat_period_.count() > 0);

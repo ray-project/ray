@@ -28,9 +28,9 @@ GcsNodeManager::NodeFailureDetector::NodeFailureDetector(
     : gcs_table_storage_(std::move(gcs_table_storage)),
       on_node_death_callback_(std::move(on_node_death_callback)),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
+      light_heartbeat_enabled_(RayConfig::instance().light_heartbeat_enabled()),
       detect_timer_(io_service),
-      gcs_pub_sub_(std::move(gcs_pub_sub)),
-      light_heartbeat_enabled_(RayConfig::instance().light_heartbeat_enabled()) {
+      gcs_pub_sub_(std::move(gcs_pub_sub)) {
   Tick();
 }
 
