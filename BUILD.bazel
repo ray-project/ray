@@ -1233,6 +1233,16 @@ cc_binary(
     ],
 )
 
+cc_test(
+    name = "object_directory_stress_test",
+    srcs = ["src/ray/object_manager/test/object_directory_stress_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":plasma_store_server_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "platform_shims",
     srcs = [] + select({
