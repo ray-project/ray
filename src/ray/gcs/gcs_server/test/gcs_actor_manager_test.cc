@@ -98,7 +98,15 @@ class GcsActorManagerTest : public ::testing::Test {
 
   void WaitActorCreated(const ActorID &actor_id) {
     auto condition = [this, actor_id]() {
-      return gcs_actor_manager_->IsActorCreated(actor_id);
+      auto created_actors = gcs_actor_manager_->GetCreatedActors();
+      for (auto &node_iter : created_actors) {
+        for (auto &actor_iter : node_iter.second) {
+          if (actor_iter.second == actor_id) {
+            return true;
+          }
+        }
+      }
+      return false;
     };
     EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
   }

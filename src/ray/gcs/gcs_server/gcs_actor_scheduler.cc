@@ -66,8 +66,9 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
 
 void GcsActorScheduler::Reschedule(std::shared_ptr<GcsActor> actor) {
   if (!actor->GetWorkerID().IsNil()) {
-    RAY_LOG(INFO) << "Actor " << actor->GetActorID()
-                  << " owners a leased worker. Create actor directly on worker.";
+    RAY_LOG(INFO)
+        << "Actor " << actor->GetActorID()
+        << " is already tied to a leased worker. Create actor directly on worker.";
     auto leased_worker = std::make_shared<GcsLeasedWorker>(
         actor->GetAddress(),
         VectorFromProtobuf(actor->GetMutableActorTableData()->resource_mapping()),

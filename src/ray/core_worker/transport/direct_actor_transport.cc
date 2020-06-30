@@ -282,7 +282,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   const TaskSpecification task_spec(request.task_spec());
 
   // If GCS server is restarted after sending an actor creation task to this core worker,
-  // the restarted GCS server will send the same create actor task to the core worker
+  // the restarted GCS server will send the same actor creation task to the core worker
   // again. We just need to ignore it and reply ok.
   if (task_spec.IsActorCreationTask() &&
       worker_context_.GetCurrentActorID() == task_spec.ActorCreationId()) {

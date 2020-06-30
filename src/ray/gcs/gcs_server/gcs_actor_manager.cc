@@ -826,15 +826,9 @@ void GcsActorManager::OnJobFinished(const JobID &job_id) {
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().GetByJobId(job_id, on_done));
 }
 
-bool GcsActorManager::IsActorCreated(const ActorID &actor_id) const {
-  for (auto &node_iter : created_actors_) {
-    for (auto &actor_iter : node_iter.second) {
-      if (actor_iter.second == actor_id) {
-        return true;
-      }
-    }
-  }
-  return false;
+const absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, ActorID>>
+    &GcsActorManager::GetCreatedActors() const {
+  return created_actors_;
 }
 
 }  // namespace gcs
