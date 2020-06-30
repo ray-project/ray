@@ -83,8 +83,7 @@ Status ReadCreateRequest(uint8_t* data, size_t size, ObjectID* object_id,
                          bool* evict_if_full, int64_t* data_size, int64_t* metadata_size,
                          int* device_num);
 
-Status SendCreateReply(int sock, ObjectID object_id, PlasmaObject* object,
-                       PlasmaError error, int64_t mmap_size);
+Status SendCreateReply(int sock, ObjectID object_id, PlasmaObject* object, PlasmaError error);
 
 Status ReadCreateReply(uint8_t* data, size_t size, ObjectID* object_id,
                        PlasmaObject* object, int* store_fd, int64_t* mmap_size);

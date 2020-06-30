@@ -502,13 +502,8 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       PlasmaError error_code = CreateObjectStatusToPlasmaError(
         object_directory->CreateObject(
           object_id, evict_if_full, data_size, metadata_size, device_num, client, &object));
-      int64_t mmap_size = 0;
-      if (error_code == PlasmaError::OK && device_num == 0) {
-        mmap_size = object.map_size;
-      }
       HANDLE_SIGPIPE(
-          SendCreateReply(client->fd, object_id, &object, error_code, mmap_size),
-          client->fd);
+          SendCreateReply(client->fd, object_id, &object, error_code), client->fd);
       // Only send the file descriptor if it hasn't been sent (see analogous
       // logic in GetStoreFd in client.cc). Similar in ReturnFromGet.
       if (error_code == PlasmaError::OK && device_num == 0 &&

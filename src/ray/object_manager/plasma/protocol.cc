@@ -204,7 +204,7 @@ Status ReadCreateRequest(uint8_t* data, size_t size, ObjectID* object_id,
 }
 
 Status SendCreateReply(int sock, ObjectID object_id, PlasmaObject* object,
-                       PlasmaError error_code, int64_t mmap_size) {
+                       PlasmaError error_code) {
   flatbuffers::FlatBufferBuilder fbb;
   PlasmaObjectSpec plasma_object(object->store_fd, object->data_offset, object->data_size,
                                  object->metadata_offset, object->metadata_size,
@@ -224,7 +224,7 @@ Status SendCreateReply(int sock, ObjectID object_id, PlasmaObject* object,
   crb.add_plasma_object(&plasma_object);
   crb.add_object_id(object_string);
   crb.add_store_fd(object->store_fd);
-  crb.add_mmap_size(mmap_size);
+  crb.add_mmap_size(object->map_size);
   if (object->device_num != 0) {
 #ifdef PLASMA_CUDA
     crb.add_ipc_handle(ipc_handle);
@@ -247,8 +247,10 @@ Status ReadCreateReply(uint8_t* data, size_t size, ObjectID* object_id,
   object->data_size = message->plasma_object()->data_size();
   object->metadata_offset = message->plasma_object()->metadata_offset();
   object->metadata_size = message->plasma_object()->metadata_size();
+  object->map_size = message->mmap_size();
 
   *store_fd = message->store_fd();
+  // TODO(suquark): Remove mmap_size later when cleaning up client side.
   *mmap_size = message->mmap_size();
 
   object->device_num = message->plasma_object()->device_num();

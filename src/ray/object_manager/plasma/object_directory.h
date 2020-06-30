@@ -61,7 +61,7 @@ enum class ObjectStatus : int {
 /// This type is used by the Plasma store. It is here because it is exposed to
 /// the eviction policy.
 struct ObjectTableEntry {
-  ObjectTableEntry() : pointer(nullptr), ref_count(0) {}
+  ObjectTableEntry() : pointer(nullptr), map_size(0), ref_count(0) {}
 
   ~ObjectTableEntry() { pointer = nullptr; }
 
@@ -111,6 +111,7 @@ struct ObjectTableEntry {
 #endif
     }
     pointer = nullptr;
+    map_size = 0;
     state = ObjectState::PLASMA_EVICTED;
   }
 
@@ -142,6 +143,8 @@ struct ObjectTableEntry {
         return s;
       }
       pointer = reinterpret_cast<uint8_t*>(cuda_buffer->address());
+      // GPU objects do not have map_size.
+      map_size = 0;
 #else
     RAY_LOG(ERROR) << "device_num != 0 but CUDA not enabled";
     return Status::OutOfMemory("CUDA is not enabled.");
