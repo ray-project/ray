@@ -197,14 +197,15 @@ def build(build_python, build_java):
 
     # Check if the current Python already has pickle5 (either comes with newer
     # Python versions, or has been installed by us before).
-    pickle5_available = sys.version_info >= (3, 8, 2)
-    if not pickle5_available:
+    pickle5 = None
+    if sys.version_info >= (3, 8, 2):
+        import pickle as pickle5
+    else:
         try:
             import pickle5
-            pickle5_available = True
         except ImportError:
             pass
-    if not pickle5_available:
+    if not pickle5:
         download_pickle5(os.path.join(ROOT_DIR, "ray", "pickle5_files"))
 
     # Note: We are passing in sys.executable so that we use the same
@@ -279,6 +280,7 @@ install_requires = [
     "pyyaml",
     "redis >= 3.3.2, < 3.5.0",
 ]
+
 
 def pip_run(build_ext):
     build(True, BUILD_JAVA)
