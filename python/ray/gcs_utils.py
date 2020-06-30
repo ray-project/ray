@@ -17,6 +17,7 @@ from ray.core.generated.gcs_pb2 import (
     ResourceTableData,
     ObjectLocationInfo,
     PubSubMessage,
+    WorkerType,
     WorkerTableData,
 )
 
@@ -26,7 +27,7 @@ __all__ = [
     "HeartbeatTableData", "ObjectTableData", "ProfileTableData", "TablePrefix",
     "TablePubsub", "TaskTableData", "ResourceMap", "ResourceTableData",
     "construct_error_message", "ObjectLocationInfo", "PubSubMessage",
-    "WorkerTableData"
+    "WorkerType", "WorkerTableData"
 ]
 
 FUNCTION_PREFIX = "RemoteFunction:"

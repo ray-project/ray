@@ -14,8 +14,6 @@ from ray.utils import (decode, binary_to_hex, hex_to_binary)
 
 from ray._raylet import GlobalStateAccessor
 
-from ray.core.generated.common_pb2 import WORKER
-
 logger = logging.getLogger(__name__)
 
 
@@ -611,7 +609,8 @@ class GlobalState:
             worker_table_data = gcs_utils.WorkerTableData.FromString(
                 worker_table[i])
             if not worker_table_data.is_worker_failure:
-                if worker_table_data.worker_type == WORKER:
+                if worker_table_data.worker_type == \
+                        gcs_utils.WorkerType.WORKER:
                     worker_id = binary_to_hex(
                         worker_table_data.worker_address.worker_id)
                     worker_info = worker_table_data.worker_info

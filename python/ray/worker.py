@@ -49,8 +49,6 @@ from ray.function_manager import FunctionActorManager
 from ray.utils import (_random_string, check_oversized_pickle, is_cython,
                        setup_logger, create_and_init_new_worker_log, open_log)
 
-from ray.core.generated.common_pb2 import DRIVER
-
 SCRIPT_MODE = 0
 WORKER_MODE = 1
 LOCAL_MODE = 2
@@ -881,7 +879,7 @@ def custom_excepthook(type, value, tb):
             worker_data = ray.gcs_utils.WorkerTableData()
             worker_data.is_worker_failure = False
             worker_data.worker_address.worker_id = global_worker.worker_id
-            worker_data.worker_type = DRIVER
+            worker_data.worker_type = ray.gcs_utils.WorkerType.DRIVER
             worker_data.worker_info["exception"] = bytes(
                 error_message, encoding="utf-8")
             worker_data.timestamp = int(time.time())
