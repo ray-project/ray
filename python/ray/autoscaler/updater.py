@@ -259,9 +259,9 @@ class SSHCommandRunner:
             "{}@{}".format(self.ssh_user, self.ssh_ip)
         ]
         if cmd:
+            final_cmd += with_interactive(cmd)
             logger.info(self.log_prefix +
                         "Running {}".format(" ".join(final_cmd)))
-            final_cmd += with_interactive(cmd)
         else:
             # We do this because `-o ControlMaster` causes the `-N` flag to
             # still create an interactive shell in some ssh versions.
