@@ -194,7 +194,7 @@ class ValueNetworkMixin:
                     SampleBatch.PREV_REWARDS: convert_to_torch_tensor(
                         np.asarray([prev_reward])),
                     "is_training": False,
-                }, [convert_to_torch_tensor(np.asarray(s)) for s in state],
+                }, [convert_to_torch_tensor(np.asarray([s])) for s in state],
                     convert_to_torch_tensor(np.asarray([1])))
                 return self.model.value_function()[0]
 

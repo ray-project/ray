@@ -1,6 +1,6 @@
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 class GRUGate(tf.keras.layers.Layer):

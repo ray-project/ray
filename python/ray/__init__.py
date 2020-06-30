@@ -1,6 +1,7 @@
 import os
 import logging
 from os.path import dirname
+import platform
 import sys
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,11 @@ sys.path.insert(0, thirdparty_files)
 if sys.platform == "win32":
     import ray.compat  # noqa: E402
     ray.compat.patch_redis_empty_recv()
+
+if (platform.system() == "Linux"
+        and "Microsoft".lower() in platform.release().lower()):
+    import ray.compat  # noqa: E402
+    ray.compat.patch_psutil()
 
 # Expose ray ABI symbols which may be dependent by other shared
 # libraries such as _streaming.so. See BUILD.bazel:_raylet
