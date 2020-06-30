@@ -820,6 +820,7 @@ cc_test(
     srcs = ["src/ray/raylet/lineage_cache_test.cc"],
     copts = COPTS,
     deps = [
+        ":core_worker_lib",
         ":node_manager_fbs",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
