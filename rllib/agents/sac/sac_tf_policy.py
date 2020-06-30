@@ -318,18 +318,20 @@ def gradients_fn(policy, optimizer, loss):
             q_weights = policy.model.q_variables()
             if policy.config["twin_q"]:
                 half_cutoff = len(q_weights) // 2
-                critic_grads_and_vars = list(zip(tape.gradient(
-                    policy.critic_loss[0], q_weights[:half_cutoff]),
-                    q_weights[:half_cutoff])) + list(zip(tape.gradient(
-                    policy.critic_loss[1], q_weights[half_cutoff:]),
-                    q_weights[half_cutoff:]))
+                grads_1 = tape.gradient(
+                    policy.critic_loss[0], q_weights[:half_cutoff])
+                grads_2 = tape.gradient(
+                    policy.critic_loss[1], q_weights[half_cutoff:])
+                critic_grads_and_vars = \
+                    list(zip(grads_1, q_weights[:half_cutoff])) + \
+                    list(zip(grads_2, q_weights[half_cutoff:]))
             else:
                 critic_grads_and_vars = list(zip(tape.gradient(
                     policy.critic_loss[0], q_weights), q_weights))
 
             alpha_vars = [policy.model.log_alpha]
             alpha_grads_and_vars = list(zip(tape.gradient(
-                    policy.alpha_loss, alpha_vars), alpha_vars))
+                policy.alpha_loss, alpha_vars), alpha_vars))
         # Tf1.x: Use optimizer.compute_gradients()
         else:
             actor_grads_and_vars = policy._actor_optimizer.compute_gradients(
