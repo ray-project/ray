@@ -17,9 +17,10 @@ from ray.core.generated.gcs_pb2 import (
     ResourceTableData,
     ObjectLocationInfo,
     PubSubMessage,
-    WorkerType,
     WorkerTableData,
 )
+
+from ray.core.generated.common_pb2 import WorkerType
 
 __all__ = [
     "ActorCheckpointIdData", "ActorTableData", "GcsNodeInfo", "JobTableData",
