@@ -118,7 +118,7 @@ class MemoryMonitor:
                             used_gb - int(line.split(" ")[1]) / (1024**3)
             assert used_gb >= 0
             return used_gb, total_gb
-        
+
     def raise_if_low_memory(self):
         if time.time() - self.last_checked > self.check_interval:
             if "RAY_DEBUG_DISABLE_MEMORY_MONITOR" in os.environ:
