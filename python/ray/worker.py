@@ -880,8 +880,7 @@ def custom_excepthook(type, value, tb):
         try:
             worker_data = ray.gcs_utils.WorkerTableData()
             worker_data.is_worker_failure = False
-            worker_data.worker_address.worker_id = bytes(
-                global_worker.worker_id, encoding="utf-8")
+            worker_data.worker_address.worker_id = global_worker.worker_id
             worker_data.worker_type = DRIVER
             worker_data.worker_info["exception"] = bytes(
                 error_message, encoding="utf-8")
