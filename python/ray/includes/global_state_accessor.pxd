@@ -1,11 +1,12 @@
 from libcpp.string cimport string as c_string
 from libcpp cimport bool as c_bool
 from libcpp.vector cimport vector as c_vector
-from libcpp.memory cimport unique_ptr
+from libcpp.memory cimport unique_ptr, shared_ptr
 from ray.includes.unique_ids cimport (
     CActorID,
     CClientID,
     CObjectID,
+    CWorkerID,
 )
 
 cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
@@ -23,3 +24,6 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         c_vector[c_string] GetAllActorInfo()
         unique_ptr[c_string] GetActorInfo(const CActorID &actor_id)
         c_string GetNodeResourceInfo(const CClientID &node_id)
+        unique_ptr[c_string] GetWorkerInfo(const CWorkerID &worker_id)
+        c_vector[c_string] GetAllWorkerInfo()
+        c_bool AddWorkerInfo(const c_string &serialized_string)

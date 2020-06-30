@@ -200,8 +200,9 @@ std::vector<std::string> GlobalStateAccessor::GetAllWorkerInfo() {
   return worker_table_data;
 }
 
-bool GlobalStateAccessor::AddWorkerInfo(
-    const std::shared_ptr<rpc::WorkerTableData> &data_ptr) {
+bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
+  auto data_ptr = std::make_shared<WorkerTableData>();
+  data_ptr->ParseFromString(serialized_string);
   std::promise<bool> promise;
   RAY_CHECK_OK(
       gcs_client_->Workers().AsyncAdd(data_ptr, [&promise](const Status &status) {

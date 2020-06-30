@@ -14,6 +14,8 @@ from ray.utils import (decode, binary_to_hex, hex_to_binary)
 
 from ray._raylet import GlobalStateAccessor
 
+from ray.core.generated.common_pb2 import WORKER
+
 logger = logging.getLogger(__name__)
 
 
@@ -602,25 +604,34 @@ class GlobalState:
         """Get a dictionary mapping worker ID to worker information."""
         self._check_connected()
 
-        worker_keys = self.redis_client.keys("Worker*")
+        # Get all data in worker table
+        worker_table = self.global_state_accessor.get_worker_table()
         workers_data = {}
+        for i in range(len(worker_table)):
+            worker_table_data = gcs_utils.WorkerTableData.FromString(
+                worker_table[i])
+            if not worker_table_data.is_worker_failure:
+                if worker_table_data.worker_type == WORKER:
+                    worker_id = binary_to_hex(
+                        worker_table_data.worker_address.worker_id)
+                    worker_info = worker_table_data.worker_info
 
-        for worker_key in worker_keys:
-            worker_info = self.redis_client.hgetall(worker_key)
-            worker_id = binary_to_hex(worker_key[len("Workers:"):])
-
-            workers_data[worker_id] = {
-                "node_ip_address": decode(worker_info[b"node_ip_address"]),
-                "plasma_store_socket": decode(
-                    worker_info[b"plasma_store_socket"])
-            }
-            if b"stderr_file" in worker_info:
-                workers_data[worker_id]["stderr_file"] = decode(
-                    worker_info[b"stderr_file"])
-            if b"stdout_file" in worker_info:
-                workers_data[worker_id]["stdout_file"] = decode(
-                    worker_info[b"stdout_file"])
+                    workers_data[worker_id] = {
+                        "node_ip_address": decode(
+                            worker_info[b"node_ip_address"]),
+                        "plasma_store_socket": decode(
+                            worker_info[b"plasma_store_socket"])
+                    }
+                    if b"stderr_file" in worker_info:
+                        workers_data[worker_id]["stderr_file"] = decode(
+                            worker_info[b"stderr_file"])
+                    if b"stdout_file" in worker_info:
+                        workers_data[worker_id]["stdout_file"] = decode(
+                            worker_info[b"stdout_file"])
         return workers_data
+
+    def add_worker(self, serialized_string):
+        return self.global_state_accessor.add_worker_info(serialized_string)
 
     def _job_length(self):
         event_log_sets = self.redis_client.keys("event_log*")
@@ -995,3 +1006,16 @@ def errors(all_jobs=False):
     else:
         error_messages = state.error_messages(job_id=None)
     return error_messages
+
+
+def add_worker(serialized_string):
+    """Add a worker to the cluster.
+
+    Args:
+        serialized_string: Serialized WorkerTableData string, include all data of the
+            worker to be added to the cluster.
+
+    Returns:
+        Is the operation success.
+    """
+    return state.add_worker(serialized_string)

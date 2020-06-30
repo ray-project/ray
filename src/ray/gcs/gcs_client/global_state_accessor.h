@@ -126,9 +126,10 @@ class GlobalStateAccessor {
 
   /// Add information of a worker to GCS Service.
   ///
-  /// \param data_ptr The data of worker to added in the GCS Service.
+  /// \param serialized_string The serialized data of worker to be added in the GCS
+  /// Service, use string is convenient for python to use.
   /// \return Is operation success.
-  bool AddWorkerInfo(const std::shared_ptr<rpc::WorkerTableData> &data_ptr);
+  bool AddWorkerInfo(const std::string &serialized_string);
 
  private:
   /// MultiItem transformation helper in template style.
