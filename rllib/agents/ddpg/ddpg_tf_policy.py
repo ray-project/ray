@@ -154,7 +154,7 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         twin_q_t = model.get_twin_q_values(
             model_out_t, train_batch[SampleBatch.ACTIONS])
     # q_batchnorm_update_ops = list(
-    #     set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
+    #     set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
     # Target q-net(s) evaluation.
     q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
@@ -204,10 +204,10 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     if l2_reg is not None:
         for var in policy.model.policy_variables():
             if "bias" not in var.name:
-                actor_loss += (l2_reg * tf.nn.l2_loss(var))
+                actor_loss += (l2_reg * tf1.nn.l2_loss(var))
         for var in policy.model.q_variables():
             if "bias" not in var.name:
-                critic_loss += (l2_reg * tf.nn.l2_loss(var))
+                critic_loss += (l2_reg * tf1.nn.l2_loss(var))
 
     # Model self-supervised losses.
     if policy.config["use_state_preprocessor"]:
