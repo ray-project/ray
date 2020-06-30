@@ -1,0 +1,49 @@
+COPTS = [] + select({
+    "@bazel_tools//src/conditions:windows": [
+        "-D_CRT_DECLARE_NONSTDC_NAMES=0",  # don't define off_t, to avoid conflicts
+    ],
+    "//conditions:default": [
+    ],
+})
+
+# This library is for internal hiredis use, because hiredis assumes a
+# different include prefix for itself than external libraries do.
+cc_library(
+    name = "_hiredis",
+    hdrs = [
+        "dict.c",
+    ],
+    copts = COPTS,
+)
+
+cc_library(
+    name = "hiredis",
+    srcs = glob(
+        [
+            "*.c",
+            "*.h",
+        ],
+        exclude =
+        [
+            "test.c",
+        ],
+    ),
+    hdrs = glob([
+        "*.h",
+        "adapters/*.h",
+    ]),
+    copts = COPTS + select({
+        "@bazel_tools//src/conditions:windows": [
+            "-D" + "WIN32_REPLACE_FD_APIS",
+            "/FI" + "win32fd.h",
+        ],
+        "//conditions:default": [
+        ],
+    }),
+    include_prefix = "hiredis",
+    deps = [
+        ":_hiredis",
+        "@//:platform_shims",
+    ],
+    visibility = ["//visibility:public"],
+)

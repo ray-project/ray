@@ -34,7 +34,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         ...         "num_workers": 0,  # Run just 1 server, in the trainer.
         ...     }
         >>> while True:
-                pg.train()
+        >>>     pg.train()
 
         >>> client = PolicyClient("localhost:9900", inference_mode="local")
         >>> eps_id = client.start_episode()
