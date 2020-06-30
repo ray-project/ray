@@ -162,6 +162,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
       client_call_manager_(io_service),
+      light_heartbeat_enabled_(RayConfig::instance().light_heartbeat_enabled()),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(heartbeat_period_.count() > 0);
@@ -344,8 +345,9 @@ void NodeManager::Heartbeat() {
 
   // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet directly.
   // TODO(atumanov): implement a ResourceSet const_iterator.
-  if (!last_heartbeat_resources_.GetAvailableResources().IsEqual(
-          local_resources.GetAvailableResources())) {
+  if (!(light_heartbeat_enabled_ &&
+        last_heartbeat_resources_.GetAvailableResources().IsEqual(
+            local_resources.GetAvailableResources()))) {
     for (const auto &resource_pair :
          local_resources.GetAvailableResources().GetResourceMap()) {
       heartbeat_data->add_resources_available_label(resource_pair.first);
@@ -354,8 +356,8 @@ void NodeManager::Heartbeat() {
     last_heartbeat_resources_.SetAvailableResources(
         ResourceSet(local_resources.GetAvailableResources()));
   }
-  if (!last_heartbeat_resources_.GetTotalResources().IsEqual(
-          local_resources.GetTotalResources())) {
+  if (!(light_heartbeat_enabled_ && last_heartbeat_resources_.GetTotalResources().IsEqual(
+                                        local_resources.GetTotalResources()))) {
     for (const auto &resource_pair :
          local_resources.GetTotalResources().GetResourceMap()) {
       heartbeat_data->add_resources_total_label(resource_pair.first);
@@ -366,8 +368,8 @@ void NodeManager::Heartbeat() {
   }
 
   local_resources.SetLoadResources(local_queues_.GetResourceLoad());
-  if (!last_heartbeat_resources_.GetLoadResources().IsEqual(
-          local_resources.GetLoadResources())) {
+  if (!(light_heartbeat_enabled_ && last_heartbeat_resources_.GetLoadResources().IsEqual(
+                                        local_resources.GetLoadResources()))) {
     for (const auto &resource_pair :
          local_resources.GetLoadResources().GetResourceMap()) {
       heartbeat_data->add_resource_load_label(resource_pair.first);
@@ -766,19 +768,19 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
 
   SchedulingResources &remote_resources = it->second;
 
-  if (heartbeat_data.resources_total_label_size() > 0) {
+  if (!light_heartbeat_enabled_ || heartbeat_data.resources_total_label_size() > 0) {
     ResourceSet remote_total(
         VectorFromProtobuf(heartbeat_data.resources_total_label()),
         VectorFromProtobuf(heartbeat_data.resources_total_capacity()));
     remote_resources.SetTotalResources(std::move(remote_total));
   }
-  if (heartbeat_data.resources_available_label_size() > 0) {
+  if (!light_heartbeat_enabled_ || heartbeat_data.resources_available_label_size() > 0) {
     ResourceSet remote_available(
         VectorFromProtobuf(heartbeat_data.resources_available_label()),
         VectorFromProtobuf(heartbeat_data.resources_available_capacity()));
     remote_resources.SetAvailableResources(std::move(remote_available));
   }
-  if (heartbeat_data.resource_load_label_size() > 0) {
+  if (!light_heartbeat_enabled_ || heartbeat_data.resource_load_label_size() > 0) {
     ResourceSet remote_load(VectorFromProtobuf(heartbeat_data.resource_load_label()),
                             VectorFromProtobuf(heartbeat_data.resource_load_capacity()));
     // Extract the load information and save it locally.

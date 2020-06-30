@@ -29,7 +29,8 @@ GcsNodeManager::NodeFailureDetector::NodeFailureDetector(
       on_node_death_callback_(std::move(on_node_death_callback)),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       detect_timer_(io_service),
-      gcs_pub_sub_(std::move(gcs_pub_sub)) {
+      gcs_pub_sub_(std::move(gcs_pub_sub)),
+      light_heartbeat_enabled_(RayConfig::instance().light_heartbeat_enabled()) {
   Tick();
 }
 
@@ -48,7 +49,7 @@ void GcsNodeManager::NodeFailureDetector::HandleHeartbeat(
   }
 
   iter->second = num_heartbeats_timeout_;
-  if (heartbeat_data.should_global_gc() ||
+  if (!light_heartbeat_enabled_ || heartbeat_data.should_global_gc() ||
       heartbeat_data.resources_available_label_size() > 0 ||
       heartbeat_data.resources_total_label_size() > 0 ||
       heartbeat_data.resource_load_label_size() > 0) {
