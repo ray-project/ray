@@ -188,7 +188,15 @@ class HTTPProxyActor:
         asyncio.get_event_loop().create_task(self.run())
 
     async def run(self):
-        config = uvicorn.Config(self.app, lifespan="off", access_log=False)
+        # Note(simon): we have to use lower level uvicorn Config and Server
+        # class because we want to run the server as a coroutine. The only
+        # alternative is to call uvicorn.run which is blocking.
+        config = uvicorn.Config(
+            self.app,
+            host=self.host,
+            port=self.port,
+            lifespan="off",
+            access_log=False)
         server = uvicorn.Server(config=config)
         # TODO(edoakes): we need to override install_signal_handlers here
         # because the existing implementation fails if it isn't running in
