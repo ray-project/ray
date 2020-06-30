@@ -1,18 +1,25 @@
 import { Typography } from "@material-ui/core";
 import React from "react";
+import { RayletWorkerStats } from "../../../../api";
+import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import { getWeightedAverage, sum } from "../../../../common/util";
 import {
   ClusterFeatureRenderFn,
   Node,
+  NodeFeatureData,
   NodeFeatureRenderFn,
   NodeInfoFeature,
+  WorkerFeatureData,
   WorkerFeatureRenderFn,
 } from "./types";
 
-const clusterUtilization = (nodes: Array<Node>): number => {
+const clusterGPUUtilization = (nodes: Array<Node>): number => {
   const utils = nodes
-    .map((node) => ({ weight: node.gpus.length, value: nodeUtilization(node) }))
+    .map((node) => ({
+      weight: node.gpus.length,
+      value: nodeGPUUtilization(node),
+    }))
     .filter((util) => !isNaN(util.value));
   if (utils.length === 0) {
     return NaN;
@@ -20,7 +27,7 @@ const clusterUtilization = (nodes: Array<Node>): number => {
   return getWeightedAverage(utils);
 };
 
-const nodeUtilization = (node: Node): number => {
+const nodeGPUUtilization = (node: Node): number => {
   if (!node.gpus || node.gpus.length === 0) {
     return NaN;
   }
@@ -29,8 +36,11 @@ const nodeUtilization = (node: Node): number => {
   return avgUtilization;
 };
 
-export const ClusterGPU: ClusterFeatureRenderFn = ({ nodes }) => {
-  const clusterAverageUtilization = clusterUtilization(nodes);
+const nodeGPUAccessor: Accessor<NodeFeatureData> = ({ node }) =>
+  nodeGPUUtilization(node);
+
+const ClusterGPU: ClusterFeatureRenderFn = ({ nodes }) => {
+  const clusterAverageUtilization = clusterGPUUtilization(nodes);
   return (
     <div style={{ minWidth: 60 }}>
       {isNaN(clusterAverageUtilization) ? (
@@ -47,8 +57,8 @@ export const ClusterGPU: ClusterFeatureRenderFn = ({ nodes }) => {
   );
 };
 
-export const NodeGPU: NodeFeatureRenderFn = ({ node }) => {
-  const nodeUtil = nodeUtilization(node);
+const NodeGPU: NodeFeatureRenderFn = ({ node }) => {
+  const nodeUtil = nodeGPUUtilization(node);
   return (
     <div style={{ minWidth: 60 }}>
       {isNaN(nodeUtil) ? (
@@ -62,32 +72,46 @@ export const NodeGPU: NodeFeatureRenderFn = ({ node }) => {
   );
 };
 
-export const WorkerGPU: WorkerFeatureRenderFn = ({ rayletWorker }) => {
-  const workerRes = rayletWorker?.coreWorkerStats.usedResources;
-  const workerUsedGPUResources = workerRes?.["GPU"];
+const WorkerGPU: WorkerFeatureRenderFn = ({ rayletWorker }) => {
+  const aggregateAllocation = workerGPUUtilization(rayletWorker);
   let message;
-  if (workerUsedGPUResources === undefined) {
+  if (aggregateAllocation === undefined) {
     message = (
       <Typography color="textSecondary" component="span" variant="inherit">
         N/A
       </Typography>
     );
   } else {
-    const aggregateAllocation = sum(
-      workerUsedGPUResources.resourceSlots.map(
-        (resourceSlot) => resourceSlot.allocation,
-      ),
-    );
     const plural = aggregateAllocation === 1 ? "" : "s";
     message = <b>{`${aggregateAllocation} GPU${plural} in use`}</b>;
   }
   return <div style={{ minWidth: 60 }}>{message}</div>;
 };
 
+const workerGPUUtilization = (rayletWorker: RayletWorkerStats | null) => {
+  const workerRes = rayletWorker?.coreWorkerStats.usedResources;
+  const workerUsedGPUResources = workerRes?.["GPU"];
+  return (
+    workerUsedGPUResources &&
+    sum(
+      workerUsedGPUResources.resourceSlots.map(
+        (resourceSlot) => resourceSlot.allocation,
+      ),
+    )
+  );
+};
+
+const workerGPUAccessor: Accessor<WorkerFeatureData> = ({ rayletWorker }) => {
+  return workerGPUUtilization(rayletWorker) ?? 0;
+};
+
 const gpuFeature: NodeInfoFeature = {
   id: "gpu",
+  ClusterFeatureRenderFn: ClusterGPU,
   NodeFeatureRenderFn: NodeGPU,
   WorkerFeatureRenderFn: WorkerGPU,
+  nodeAccessor: nodeGPUAccessor,
+  workerAccessor: workerGPUAccessor,
 };
 
 export default gpuFeature;

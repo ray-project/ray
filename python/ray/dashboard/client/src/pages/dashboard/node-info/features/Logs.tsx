@@ -1,12 +1,15 @@
 import { Typography } from "@material-ui/core";
 import React from "react";
 import SpanButton from "../../../../common/SpanButton";
+import { Accessor } from "../../../../common/tableUtils";
 import { sum } from "../../../../common/util";
 import {
   ClusterFeatureRenderFn,
   Node,
+  NodeFeatureData,
   NodeFeatureRenderFn,
   NodeInfoFeature,
+  WorkerFeatureData,
   WorkerFeatureRenderFn,
 } from "./types";
 
@@ -26,7 +29,7 @@ const ClusterLogs: ClusterFeatureRenderFn = ({ nodes }) => {
   );
 };
 
-export const makeNodeLogs = (
+const makeNodeLogs = (
   setLogDialog: (hostname: string, pid: number | null) => void,
 ): NodeFeatureRenderFn => ({ node }) => {
   const logCount = nodeLogCount(node);
@@ -42,7 +45,10 @@ export const makeNodeLogs = (
   );
 };
 
-export const makeWorkerLogs = (
+const nodeLogsAccessor: Accessor<NodeFeatureData> = ({ node }) =>
+  node.log_count ? sum(Object.values(node.log_count)) : 0;
+
+const makeWorkerLogs = (
   setLogDialog: (hostname: string, pid: number | null) => void,
 ): WorkerFeatureRenderFn => ({ node, worker }) => {
   const workerLogCount = node.log_count?.[worker.pid] || 0;
@@ -58,6 +64,11 @@ export const makeWorkerLogs = (
   );
 };
 
+const workerLogsAccessor: Accessor<WorkerFeatureData> = ({ worker, node }) => {
+  const workerLogCount = node.log_count?.[worker.pid] || 0;
+  return workerLogCount;
+};
+
 const makeLogsFeature = (
   setLogDialog: (hostname: string, pid: number | null) => void,
 ): NodeInfoFeature => ({
@@ -65,6 +76,8 @@ const makeLogsFeature = (
   ClusterFeatureRenderFn: ClusterLogs,
   WorkerFeatureRenderFn: makeWorkerLogs(setLogDialog),
   NodeFeatureRenderFn: makeNodeLogs(setLogDialog),
+  workerAccessor: workerLogsAccessor,
+  nodeAccessor: nodeLogsAccessor,
 });
 
 export default makeLogsFeature;

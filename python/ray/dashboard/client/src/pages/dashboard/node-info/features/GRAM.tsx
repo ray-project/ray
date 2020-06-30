@@ -2,13 +2,16 @@ import { Typography } from "@material-ui/core";
 import React from "react";
 import { GPUStats } from "../../../../api";
 import { MiBRatio } from "../../../../common/formatUtils";
+import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import { getWeightedAverage, sum } from "../../../../common/util";
 import {
   ClusterFeatureRenderFn,
   Node,
+  NodeFeatureData,
   NodeFeatureRenderFn,
   NodeInfoFeature,
+  WorkerFeatureData,
   WorkerFeatureRenderFn,
 } from "./types";
 
@@ -21,6 +24,11 @@ const nodeGRAMUtilization = (node: Node) => {
   const avgUtilization = utilizationSum / node.gpus.length;
   // Convert to a percent before returning
   return avgUtilization * 100;
+};
+
+const nodeGRAMAccessor: Accessor<NodeFeatureData> = ({ node }) => {
+  const nodeGRAMUtil = nodeGRAMUtilization(node);
+  return isNaN(nodeGRAMUtil) ? -1 : nodeGRAMUtil;
 };
 
 const clusterGRAMUtilization = (nodes: Array<Node>) => {
@@ -70,16 +78,8 @@ export const NodeGRAM: NodeFeatureRenderFn = ({ node }) => {
 };
 
 export const WorkerGRAM: WorkerFeatureRenderFn = ({ worker, node }) => {
-  const workerProcessPerGPU = node.gpus
-    .map((gpu) => gpu.processes)
-    .map((processes) =>
-      processes.find((process) => process.pid === worker.pid),
-    );
-  const workerUtilPerGPU = workerProcessPerGPU.map(
-    (proc) => proc?.gpu_memory_usage || 0,
-  );
+  const usedGRAM = workerGRAMUtilization(worker, node);
   const totalNodeGRAM = sum(node.gpus.map((gpu) => gpu.memory_total));
-  const usedGRAM = sum(workerUtilPerGPU);
   return (
     <div style={{ minWidth: 60 }}>
       {node.gpus.length === 0 ? (
@@ -96,11 +96,32 @@ export const WorkerGRAM: WorkerFeatureRenderFn = ({ worker, node }) => {
   );
 };
 
+const workerGRAMUtilization = (worker: any, node: Node) => {
+  const workerProcessPerGPU = node.gpus
+    .map((gpu) => gpu.processes)
+    .map((processes) =>
+      processes.find((process) => process.pid === worker.pid),
+    );
+  const workerUtilPerGPU = workerProcessPerGPU.map(
+    (proc) => proc?.gpu_memory_usage || 0,
+  );
+  return sum(workerUtilPerGPU);
+};
+
+const workerGRAMAccessor: Accessor<WorkerFeatureData> = ({ worker, node }) => {
+  if (node.gpus.length === 0) {
+    return -1;
+  }
+  return workerGRAMUtilization(worker, node);
+};
+
 const gramFeature: NodeInfoFeature = {
   id: "gram",
   ClusterFeatureRenderFn: ClusterGRAM,
   NodeFeatureRenderFn: NodeGRAM,
   WorkerFeatureRenderFn: WorkerGRAM,
+  nodeAccessor: nodeGRAMAccessor,
+  workerAccessor: workerGRAMAccessor,
 };
 
 export default gramFeature;

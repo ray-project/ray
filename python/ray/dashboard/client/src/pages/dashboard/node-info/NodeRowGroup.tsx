@@ -9,10 +9,7 @@ import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
 import classNames from "classnames";
 import React, { useState } from "react";
-import {
-  NodeInfoResponse,
-  NodeInfoResponseWorker,
-} from "../../../api";
+import { NodeInfoResponse } from "../../../api";
 import { StyledTableCell } from "../../../common/TableCell";
 import { NodeInfoFeature, WorkerFeatureData } from "./features/types";
 import { NodeWorkerRow } from "./NodeWorkerRow";
@@ -46,6 +43,7 @@ type Node = ArrayType<NodeInfoResponse["clients"]>;
 
 type NodeRowGroupProps = {
   features: NodeInfoFeature[];
+  node: Node;
   rayletInfo?: string;
   workerFeatureData: WorkerFeatureData[];
   initialExpanded: boolean;
@@ -53,9 +51,10 @@ type NodeRowGroupProps = {
 
 const NodeRowGroup: React.FC<NodeRowGroupProps> = ({
   features,
+  node,
   initialExpanded,
   rayletInfo,
-  workerFeatureData
+  workerFeatureData,
 }) => {
   const [expanded, setExpanded] = useState<boolean>(initialExpanded);
   const toggleExpand = () => setExpanded(!expanded);

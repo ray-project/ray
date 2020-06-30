@@ -1,4 +1,3 @@
-import { workers } from "cluster";
 import React from "react";
 import {
   ClusterFeatureRenderFn,

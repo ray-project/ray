@@ -1,4 +1,4 @@
-import { TableRow, Theme } from "@material-ui/core";
+import { TableRow } from "@material-ui/core";
 import React from "react";
 import { StyledTableCell } from "../../../common/TableCell";
 import { WorkerFeatureData, WorkerFeatureRenderFn } from "./features/types";

@@ -1,12 +1,15 @@
 import { Typography } from "@material-ui/core";
 import React from "react";
 import SpanButton from "../../../../common/SpanButton";
+import { Accessor } from "../../../../common/tableUtils";
 import { sum } from "../../../../common/util";
 import {
   ClusterFeatureRenderFn,
   Node,
+  NodeFeatureData,
   NodeFeatureRenderFn,
   NodeInfoFeature,
+  WorkerFeatureData,
   WorkerFeatureRenderFn,
 } from "./types";
 
@@ -42,6 +45,9 @@ const makeNodeErrors = (
   );
 };
 
+const nodeErrorsAccessor: Accessor<NodeFeatureData> = ({ node }) =>
+  nodeErrCount(node);
+
 const makeWorkerErrors = (
   setErrorDialog: (hostname: string, pid: number | null) => void,
 ): WorkerFeatureRenderFn => ({ node, worker }) => {
@@ -57,6 +63,9 @@ const makeWorkerErrors = (
   );
 };
 
+const workerErrorsAccessor: Accessor<WorkerFeatureData> = ({ node, worker }) =>
+  node.error_count?.[worker.pid] || 0;
+
 const makeErrorsFeature = (
   setErrorDialog: (hostname: string, pid: number | null) => void,
 ): NodeInfoFeature => ({
@@ -64,6 +73,8 @@ const makeErrorsFeature = (
   ClusterFeatureRenderFn: ClusterErrors,
   WorkerFeatureRenderFn: makeWorkerErrors(setErrorDialog),
   NodeFeatureRenderFn: makeNodeErrors(setErrorDialog),
+  nodeAccessor: nodeErrorsAccessor,
+  workerAccessor: workerErrorsAccessor,
 });
 
 export default makeErrorsFeature;

@@ -1,5 +1,7 @@
 import {
+  Checkbox,
   createStyles,
+  FormControlLabel,
   makeStyles,
   Table,
   TableBody,
@@ -8,6 +10,7 @@ import {
 } from "@material-ui/core";
 import React, { useState } from "react";
 import { useSelector } from "react-redux";
+import { RayletInfoResponse } from "../../../api";
 import SortableTableHead, {
   HeaderInfo,
 } from "../../../common/SortableTableHead";
@@ -26,12 +29,110 @@ import makeLogsFeature from "./features/Logs";
 import ramFeature from "./features/RAM";
 import receivedFeature from "./features/Received";
 import sentFeature from "./features/Sent";
-import { nodeInfoColumnId, WorkerFeatureData, NodeInfoFeature } from "./features/types";
+import {
+  Node,
+  nodeInfoColumnId,
+  NodeInfoFeature,
+  WorkerFeatureData,
+} from "./features/types";
 import uptimeFeature from "./features/Uptime";
 import workersFeature from "./features/Workers";
-
 import NodeRowGroup from "./NodeRowGroup";
+import { NodeWorkerRow } from "./NodeWorkerRow";
 import TotalRow from "./TotalRow";
+
+const sortWorkers = (
+  workerFeatureData: WorkerFeatureData[],
+  sortWorkerComparator: any,
+) => {
+  // Sorts idle workers to end, applies the worker comparator function to sort
+  // then returns a new list of worker feature data.
+  const idleSortedClusterWorkers = workerFeatureData.sort((wfd1, wfd2) => {
+    const w1 = wfd1.worker;
+    const w2 = wfd2.worker;
+    if (w2.cmdline[0] === "ray::IDLE") {
+      return -1;
+    }
+    if (w1.cmdline[0] === "ray::IDLE") {
+      return 1;
+    }
+    return w1.pid < w2.pid ? -1 : 1;
+  });
+  return sortWorkerComparator
+    ? stableSort(idleSortedClusterWorkers, sortWorkerComparator)
+    : idleSortedClusterWorkers;
+};
+
+const makeGroupedTableContents = (
+  nodes: Node[],
+  sortWorkerComparator: any,
+  sortGroupComparator: any,
+  rayletInfo: RayletInfoResponse | null,
+  nodeInfoFeatures: NodeInfoFeature[],
+) => {
+  const sortedGroups = stableSort(nodes, sortGroupComparator);
+  return sortedGroups.map((node) => {
+    const workerFeatureData: WorkerFeatureData[] = node.workers.map(
+      (worker) => {
+        const rayletWorker =
+          rayletInfo?.nodes?.[node.ip]?.workersStats?.find(
+            (workerStats) => workerStats.pid === worker.pid,
+          ) || null;
+        return {
+          node: node,
+          worker,
+          rayletWorker,
+        };
+      },
+    );
+
+    const sortedClusterWorkers = sortWorkers(
+      workerFeatureData,
+      sortWorkerComparator,
+    );
+    return (
+      <NodeRowGroup
+        key={node.ip}
+        node={node}
+        workerFeatureData={sortedClusterWorkers}
+        features={nodeInfoFeatures}
+        initialExpanded={nodes.length <= 1}
+      />
+    );
+  });
+};
+
+const makeUngroupedTableContents = (
+  nodes: Node[],
+  sortWorkerComparator: any,
+  rayletInfo: RayletInfoResponse | null,
+  nodeInfoFeatures: NodeInfoFeature[],
+) => {
+  const workerInfoFeatures = nodeInfoFeatures.map(
+    (feature) => feature.WorkerFeatureRenderFn,
+  );
+  const allWorkerFeatures: WorkerFeatureData[] = nodes.flatMap((node) => {
+    return node.workers.map((worker) => {
+      const rayletWorker =
+        rayletInfo?.nodes?.[node.ip]?.workersStats?.find(
+          (workerStats) => workerStats.pid === worker.pid,
+        ) || null;
+      return {
+        node: node,
+        worker,
+        rayletWorker,
+      };
+    });
+  });
+  const sortedWorkers = sortWorkers(allWorkerFeatures, sortWorkerComparator);
+  return sortedWorkers.map((workerFeatureDatum, i) => (
+    <NodeWorkerRow
+      features={workerInfoFeatures}
+      data={workerFeatureDatum}
+      key={`worker-${i}`}
+    />
+  ));
+};
 
 const useNodeInfoStyles = makeStyles((theme: Theme) =>
   createStyles({
@@ -69,8 +170,8 @@ const nodeInfoHeaders: HeaderInfo<nodeInfoColumnId>[] = [
   { id: "disk", label: "Disk", numeric: true, sortable: true },
   { id: "sent", label: "Sent", numeric: true, sortable: true },
   { id: "received", label: "Received", numeric: false, sortable: true },
-  { id: "logs", label: "Logs", numeric: false, sortable: false },
-  { id: "errors", label: "Errors", numeric: false, sortable: false },
+  { id: "logs", label: "Logs", numeric: false, sortable: true },
+  { id: "errors", label: "Errors", numeric: false, sortable: true },
 ];
 
 const NodeInfo: React.FC<{}> = () => {
@@ -113,8 +214,32 @@ const NodeInfo: React.FC<{}> = () => {
   )?.workerAccessor;
   const sortWorkerComparator =
     sortWorkerAccessor && getFnComparator(order, sortWorkerAccessor);
+  const tableContents = isGrouped
+    ? makeGroupedTableContents(
+        nodeInfo.clients,
+        sortWorkerComparator,
+        sortNodeComparator,
+        rayletInfo,
+        nodeInfoFeatures,
+      )
+    : makeUngroupedTableContents(
+        nodeInfo.clients,
+        sortWorkerComparator,
+        rayletInfo,
+        nodeInfoFeatures,
+      );
   return (
     <React.Fragment>
+      <FormControlLabel
+        control={
+          <Checkbox
+            checked={isGrouped}
+            onChange={() => setIsGrouped(!isGrouped)}
+            color="primary"
+          />
+        }
+        label="Group by host"
+      />
       <Table className={classes.table}>
         <SortableTableHead
           onRequestSort={(_, property) => {
@@ -131,38 +256,7 @@ const NodeInfo: React.FC<{}> = () => {
           firstColumnEmpty={true}
         />
         <TableBody>
-          {nodeInfo.clients.map((client) => {
-            const idleSortedClusterWorkers = [...client.workers].sort(
-              (w1, w2) => {
-                if (w2.cmdline[0] === "ray::IDLE") {
-                  return -1;
-                }
-                if (w1.cmdline[0] === "ray::IDLE") {
-                  return 1;
-                }
-                return w1.pid < w2.pid ? -1 : 1;
-              },
-            );
-            const workerFeatureData: WorkerFeatureData[] = idleSortedClusterWorkers.map(worker => {
-              const rayletWorker = rayletInfo?.nodes?.[client.ip]?.workersStats?.find(workerStats => workerStats.pid === worker.pid) || null;
-              return {
-                node: client,
-                worker,
-                rayletWorker,
-              }
-            });
-            const sortedClusterWorkers = sortWorkerComparator
-              ? stableSort(workerFeatureData, sortWorkerComparator)
-              : workerFeatureData;
-            return (
-              <NodeRowGroup
-                key={client.ip}
-                workerFeatureData={sortedClusterWorkers}
-                features={nodeInfoFeatures}
-                initialExpanded={nodeInfo.clients.length <= 1}
-              />
-            );
-          })}
+          {tableContents}
           <TotalRow
             clusterTotalWorkers={clusterTotalWorkers}
             nodes={nodeInfo.clients}
