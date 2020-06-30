@@ -47,17 +47,31 @@ class TestPPO(unittest.TestCase):
         ray.shutdown()
 
     def test_ppo_compilation(self):
-        """Test whether a PPOTrainer can be built with both frameworks."""
+        """Test whether a PPOTrainer can be built with all frameworks."""
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
         config["num_workers"] = 1
+        config["num_sgd_iter"] = 2
+        # Settings in case we use an LSTM.
+        config["model"]["lstm_cell_size"] = 10
+        config["model"]["max_seq_len"] = 20
+        config["train_batch_size"] = 128
         num_iterations = 2
 
         for _ in framework_iterator(config):
-            trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
-            for i in range(num_iterations):
-                trainer.train()
-            check_compute_single_action(
-                trainer, include_prev_action_reward=True)
+            for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
+                print("Env={}".format(env))
+                for lstm in [True, False]:
+                    print("LSTM={}".format(lstm))
+                    config["model"]["use_lstm"] = lstm
+                    config["model"]["lstm_use_prev_action_reward"] = lstm
+                    trainer = ppo.PPOTrainer(config=config, env=env)
+                    for i in range(num_iterations):
+                        trainer.train()
+                    check_compute_single_action(
+                        trainer,
+                        include_prev_action_reward=True,
+                        include_state=lstm)
+                    trainer.stop()
 
     def test_ppo_fake_multi_gpu_learning(self):
         """Test whether PPOTrainer can learn CartPole w/ faked multi-GPU."""
@@ -86,6 +100,7 @@ class TestPPO(unittest.TestCase):
                 break
             print(results)
         assert learnt, "PPO multi-GPU (with fake-GPUs) did not learn CartPole!"
+        trainer.stop()
 
     def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""
@@ -125,6 +140,7 @@ class TestPPO(unittest.TestCase):
                         prev_action=np.array(2),
                         prev_reward=np.array(1.0)))
             check(np.mean(actions), 1.5, atol=0.2)
+            trainer.stop()
 
     def test_ppo_free_log_std(self):
         """Tests the free log std option works."""
@@ -176,6 +192,7 @@ class TestPPO(unittest.TestCase):
             # Check the variable is updated.
             post_std = get_value()
             assert post_std != 0.0, post_std
+            trainer.stop()
 
     def test_ppo_loss_function(self):
         """Tests the PPO loss function math."""
@@ -272,6 +289,7 @@ class TestPPO(unittest.TestCase):
                 check(
                     policy.loss_obj.mean_vf_loss, np.mean(vf_loss), decimals=4)
                 check(policy.loss_obj.loss, overall_loss, decimals=4)
+            trainer.stop()
 
     def _ppo_loss_helper(self,
                          policy,

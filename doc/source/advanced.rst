@@ -243,9 +243,9 @@ Detached Actors
 When original actor handles goes out of scope or the driver that originally
 created the actor exits, ray will clean up the actor by default. If you want
 to make sure the actor is kept alive, you can use
-``_remote(name="some_name", detached=True)`` to keep the actor alive after
-the driver exits. The actor will have a globally unique name and can be 
-accessed across different drivers. 
+``_remote(name="some_name")`` to keep the actor alive after
+the driver exits. The actor will have a globally unique name and can be
+accessed across different drivers.
 
 For example, you can instantiate and register a persistent actor as follows:
 
