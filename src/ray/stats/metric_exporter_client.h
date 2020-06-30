@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #pragma once
-#include "ray/rpc/gcs_server/gcs_rpc_client.h"
 
 #include "ray/stats/metric.h"
 
