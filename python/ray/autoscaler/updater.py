@@ -177,7 +177,7 @@ class SSHOptions:
             })
         self.arg_dict.update(kwargs)
 
-    def get_ssh_options(self, *, timeout=60):
+    def to_ssh_options_list(self, *, timeout=60):
         self.arg_dict["ConnectTimeout"] = "{}s".format(timeout)
         return ["-i", self.ssh_key] + [
             x for y in (["-o", "{}={}".format(k, v)]
@@ -251,9 +251,9 @@ class SSHCommandRunner:
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
-            ssh_options=None,
+            ssh_options_override=None,
             **kwargs):
-        ssh_options = ssh_options or self.base_ssh_options
+        ssh_options = ssh_options_override or self.base_ssh_options
 
         assert isinstance(
             ssh_options, SSHOptions
@@ -272,7 +272,7 @@ class SSHCommandRunner:
                             "{} -> localhost:{}".format(local, remote))
                 ssh += ["-L", "{}:localhost:{}".format(remote, local)]
 
-        final_cmd = ssh + ssh_options.get_ssh_options(timeout=timeout) + [
+        final_cmd = ssh + ssh_options.to_ssh_options_list(timeout=timeout) + [
             "{}@{}".format(self.ssh_user, self.ssh_ip)
         ]
         if cmd:
@@ -304,7 +304,7 @@ class SSHCommandRunner:
         self.process_runner.check_call([
             "rsync", "--rsh",
             " ".join(["ssh"] +
-                     self.base_ssh_options.get_ssh_options(timeout=120)),
+                     self.base_ssh_options.to_ssh_options_list(timeout=120)),
             "-avz", source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip,
                                               target)
         ])
@@ -314,7 +314,7 @@ class SSHCommandRunner:
         self.process_runner.check_call([
             "rsync", "--rsh",
             " ".join(["ssh"] +
-                     self.base_ssh_options.get_ssh_options(timeout=120)),
+                     self.base_ssh_options.to_ssh_options_list(timeout=120)),
             "-avz", "{}@{}:{}".format(self.ssh_user, self.ssh_ip,
                                       source), target
         ])
@@ -340,7 +340,7 @@ class DockerCommandRunner(SSHCommandRunner):
             port_forward=None,
             with_output=False,
             run_env=True,
-            ssh_options=None,
+            ssh_options_override=None,
             **kwargs):
         if run_env == "auto":
             run_env = "host" if cmd.find("docker") == 0 else "docker"
@@ -359,7 +359,7 @@ class DockerCommandRunner(SSHCommandRunner):
             exit_on_fail=exit_on_fail,
             port_forward=None,
             with_output=False,
-            ssh_options=ssh_options)
+            ssh_options_override=ssh_options_override)
 
     def check_docker_installed(self):
         install_commands = [
@@ -372,8 +372,9 @@ class DockerCommandRunner(SSHCommandRunner):
             return
         except Exception:
             logger.error(
-                "Docker not installed. You can install Docker by adding the following commands to "
-                "initialization_commands:\n" + "\n".join(install_commands))
+                "Docker not installed. You can install Docker by adding the "
+                "following commands to initialization_commands:\n" +
+                "\n".join(install_commands))
 
     def shutdown_after_next_cmd(self):
         self.shutdown = True
@@ -557,7 +558,7 @@ class NodeUpdater:
                 for cmd in self.initialization_commands:
                     self.cmd_runner.run(
                         cmd,
-                        ssh_options=SSHOptions(
+                        ssh_options_override=SSHOptions(
                             self.auth_config.get("ssh_private_key")))
 
             with LogTimer(
