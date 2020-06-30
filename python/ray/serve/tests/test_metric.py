@@ -140,6 +140,26 @@ async def test_prometheus_exporter(serve_instance):
         assert fragment in metric_stored
 
 
+async def test_prometheus_conflicting_labels(serve_instance):
+    exporter = MetricExporterActor.remote(PrometheusExporter)
+
+    collector_a = MetricClient(
+        exporter, push_interval=2, default_labels={"default": "a"})
+    collector_b = MetricClient(
+        exporter, push_interval=2, default_labels={"default": "b"})
+
+    for collector in [collector_a, collector_b]:
+        counter = collector.new_counter("num")
+        counter.add()
+        await collector._push_to_exporter_once()
+
+    metric_stored = (await exporter.inspect_metrics.remote()).decode()
+
+    fragments = ['num_total{default="a"}', 'num_total{default="b"}']
+    for fragment in fragments:
+        assert fragment in metric_stored
+
+
 async def test_system_metric_endpoints(serve_instance):
     def test_error_counter(flask_request):
         1 / 0
