@@ -481,6 +481,8 @@ int ObjectDirectory::RemoveFromClientObjectIds(
 Status ObjectDirectory::AllocateMemory(
     const ObjectID& object_id, ObjectTableEntry* entry, size_t size, bool evict_if_full,
     Client* client, bool is_create, int device_num) {
+  RAY_LOG(DEBUG) << "Allocating memory for object " << object_id.Hex()
+                 << ", size = " << size << ", device = " << device_num;
   // Make sure the object pointer is not already allocated
   RAY_CHECK(!entry->pointer);
   if (device_num != 0) {
@@ -508,6 +510,7 @@ Status ObjectDirectory::AllocateMemory(
       eviction_policy_.ObjectCreated(object_id, size, client, is_create);
       // Record that this client is using this object.
       AddToClientObjectIds(object_id, entry, client);
+      return s;
     } else if (!evict_if_full) {
       return s;
     }
