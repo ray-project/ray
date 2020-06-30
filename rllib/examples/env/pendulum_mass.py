@@ -1,6 +1,15 @@
 import numpy as np
 import gym
 from gym.envs.classic_control.pendulum import PendulumEnv
+"""
+Custom Meta-learning Environment Specifications:
+1) Compatible with gym environment interface (check custom envs)
+2) Requires sample_tasks(n_tasks): Returns n sampled tasks
+3) Requires set_task(task): Sets environment task
+
+Optional:
+1) Modify step(action) function to incorporate task-specific reward
+"""
 
 
 class PendulumMassEnv(PendulumEnv, gym.utils.EzPickle):

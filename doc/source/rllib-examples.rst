@@ -58,8 +58,6 @@ Custom Envs and Models
    Example of how to handle variable-length or parametric action spaces.
 - `Eager execution <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__:
    Example of how to leverage TensorFlow eager to simplify debugging and design of custom models and policies.
-- `Local meta-learning environment example <https://github.com/michaelzhiluo/ray/blob/master/rllib/examples/env/halfcheetah_rand_direc.py>`__:
-   Example of how to create a meta-learning env in RLlib. Requires two methods: ``sample_tasks``, which returns sampled task parameters, and ``set_task``, which sets the environment task.
 
 Serving and Offline
 -------------------
