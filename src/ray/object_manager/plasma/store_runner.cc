@@ -99,7 +99,7 @@ void PlasmaStoreRunner::Start() {
   plasma_config.plasma_directory = plasma_directory_;
   plasma_config.hugepages_enabled = hugepages_enabled_;
   loop_.reset(new EventLoop);
-  store_.reset(new PlasmaStore(loop_.get(), socket_name_, external_store));
+  store_.reset(new PlasmaStore(loop_.get(), socket_name_));
   object_directory.reset(new ObjectDirectory(external_store, [&store_](const std::vector<ObjectInfoT> &infos) {
     if (store_) {
       store_->PushNotifications(infos);

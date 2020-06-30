@@ -106,10 +106,8 @@ GetRequest::GetRequest(Client* client, const std::vector<ObjectID>& object_ids)
 
 Client::Client(int fd) : fd(fd), notification_fd(-1) {}
 
-PlasmaStore::PlasmaStore(EventLoop* loop, const std::string& socket_name,
-                         std::shared_ptr<ExternalStore> external_store)
-    : loop_(loop),
-      external_store_(external_store) {
+PlasmaStore::PlasmaStore(EventLoop* loop, const std::string& socket_name)
+    : loop_(loop) {
 #ifdef PLASMA_CUDA
   auto maybe_manager = CudaDeviceManager::Instance();
   DCHECK_OK(maybe_manager.status());
