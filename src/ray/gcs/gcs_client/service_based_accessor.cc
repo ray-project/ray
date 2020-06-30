@@ -770,11 +770,8 @@ void ServiceBasedNodeInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restar
 Status ServiceBasedNodeInfoAccessor::AsyncSetInternalConfig(
     std::unordered_map<std::string, std::string> &config) {
   rpc::SetInternalConfigRequest request;
-  rpc::StoredConfig cfg;
-  for (auto &pair : config) {
-    (*cfg.mutable_config())[pair.first] = pair.second;
-  }
-  request.mutable_config()->CopyFrom(cfg);
+  request.mutable_config()->mutable_config()->insert(config.begin(), config.end());
+
   client_impl_->GetGcsRpcClient().SetInternalConfig(
       request, [](const Status &status, const rpc::SetInternalConfigReply &reply) {
         if (!status.ok()) {
@@ -785,22 +782,21 @@ Status ServiceBasedNodeInfoAccessor::AsyncSetInternalConfig(
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncGetInternalConfig(
-    const MapCallback<std::string, std::string> &callback) {
+    const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback) {
   rpc::GetInternalConfigRequest request;
-  std::unordered_map<std::string, std::string> result1;
   client_impl_->GetGcsRpcClient().GetInternalConfig(
       request,
       [callback](const Status &status, const rpc::GetInternalConfigReply &reply) {
         std::unordered_map<std::string, std::string> result;
         if (status.ok() && reply.has_config()) {
           for (auto &pair : reply.config().config()) {
-            result[pair.first] = pair.second;
+            result.insert(pair);
           }
         }
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
         }
-        callback(result);
+        callback(status, result);
       });
   return Status::OK();
 }

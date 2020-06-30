@@ -381,93 +381,95 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
   }
 
   Status AsyncGetInternalConfig(
-      const MapCallback<std::string, std::string> &callback) override {
-    return Status::NotImplemented("GetInternalConfig not implemented.");
-  }
+      const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback)
+      override {
+    override { return Status::NotImplemented("GetInternalConfig not implemented."); }
 
- private:
-  RedisGcsClient *client_impl_{nullptr};
+   private:
+    RedisGcsClient *client_impl_{nullptr};
 
-  typedef SubscriptionExecutor<ClientID, ResourceChangeNotification, DynamicResourceTable>
-      DynamicResourceSubscriptionExecutor;
-  DynamicResourceSubscriptionExecutor resource_sub_executor_;
+    typedef SubscriptionExecutor<ClientID, ResourceChangeNotification,
+                                 DynamicResourceTable>
+        DynamicResourceSubscriptionExecutor;
+    DynamicResourceSubscriptionExecutor resource_sub_executor_;
 
-  typedef SubscriptionExecutor<ClientID, HeartbeatTableData, HeartbeatTable>
-      HeartbeatSubscriptionExecutor;
-  HeartbeatSubscriptionExecutor heartbeat_sub_executor_;
+    typedef SubscriptionExecutor<ClientID, HeartbeatTableData, HeartbeatTable>
+        HeartbeatSubscriptionExecutor;
+    HeartbeatSubscriptionExecutor heartbeat_sub_executor_;
 
-  typedef SubscriptionExecutor<ClientID, HeartbeatBatchTableData, HeartbeatBatchTable>
-      HeartbeatBatchSubscriptionExecutor;
-  HeartbeatBatchSubscriptionExecutor heartbeat_batch_sub_executor_;
-};
+    typedef SubscriptionExecutor<ClientID, HeartbeatBatchTableData, HeartbeatBatchTable>
+        HeartbeatBatchSubscriptionExecutor;
+    HeartbeatBatchSubscriptionExecutor heartbeat_batch_sub_executor_;
+  };
 
-/// \class RedisErrorInfoAccessor
-/// RedisErrorInfoAccessor is an implementation of `ErrorInfoAccessor`
-/// that uses Redis as the backend storage.
-class RedisErrorInfoAccessor : public ErrorInfoAccessor {
- public:
-  explicit RedisErrorInfoAccessor(RedisGcsClient *client_impl);
+  /// \class RedisErrorInfoAccessor
+  /// RedisErrorInfoAccessor is an implementation of `ErrorInfoAccessor`
+  /// that uses Redis as the backend storage.
+  class RedisErrorInfoAccessor : public ErrorInfoAccessor {
+   public:
+    explicit RedisErrorInfoAccessor(RedisGcsClient *client_impl);
 
-  virtual ~RedisErrorInfoAccessor() = default;
+    virtual ~RedisErrorInfoAccessor() = default;
 
-  Status AsyncReportJobError(const std::shared_ptr<ErrorTableData> &data_ptr,
-                             const StatusCallback &callback) override;
+    Status AsyncReportJobError(const std::shared_ptr<ErrorTableData> &data_ptr,
+                               const StatusCallback &callback) override;
 
- private:
-  RedisGcsClient *client_impl_{nullptr};
-};
+   private:
+    RedisGcsClient *client_impl_{nullptr};
+  };
 
-/// \class RedisStatsInfoAccessor
-/// RedisStatsInfoAccessor is an implementation of `StatsInfoAccessor`
-/// that uses Redis as the backend storage.
-class RedisStatsInfoAccessor : public StatsInfoAccessor {
- public:
-  explicit RedisStatsInfoAccessor(RedisGcsClient *client_impl);
+  /// \class RedisStatsInfoAccessor
+  /// RedisStatsInfoAccessor is an implementation of `StatsInfoAccessor`
+  /// that uses Redis as the backend storage.
+  class RedisStatsInfoAccessor : public StatsInfoAccessor {
+   public:
+    explicit RedisStatsInfoAccessor(RedisGcsClient *client_impl);
 
-  virtual ~RedisStatsInfoAccessor() = default;
+    virtual ~RedisStatsInfoAccessor() = default;
 
-  Status AsyncAddProfileData(const std::shared_ptr<ProfileTableData> &data_ptr,
-                             const StatusCallback &callback) override;
+    Status AsyncAddProfileData(const std::shared_ptr<ProfileTableData> &data_ptr,
+                               const StatusCallback &callback) override;
 
-  Status AsyncGetAll(const MultiItemCallback<rpc::ProfileTableData> &callback) override {
-    return Status::NotImplemented("AsyncGetAll not implemented");
-  }
+    Status AsyncGetAll(
+        const MultiItemCallback<rpc::ProfileTableData> &callback) override {
+      return Status::NotImplemented("AsyncGetAll not implemented");
+    }
 
- private:
-  RedisGcsClient *client_impl_{nullptr};
-};
+   private:
+    RedisGcsClient *client_impl_{nullptr};
+  };
 
-/// \class RedisWorkerInfoAccessor
-/// RedisWorkerInfoAccessor is an implementation of `WorkerInfoAccessor`
-/// that uses Redis as the backend storage.
-class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
- public:
-  explicit RedisWorkerInfoAccessor(RedisGcsClient *client_impl);
+  /// \class RedisWorkerInfoAccessor
+  /// RedisWorkerInfoAccessor is an implementation of `WorkerInfoAccessor`
+  /// that uses Redis as the backend storage.
+  class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
+   public:
+    explicit RedisWorkerInfoAccessor(RedisGcsClient *client_impl);
 
-  virtual ~RedisWorkerInfoAccessor() = default;
+    virtual ~RedisWorkerInfoAccessor() = default;
 
-  Status AsyncSubscribeToWorkerFailures(
-      const SubscribeCallback<WorkerID, WorkerFailureData> &subscribe,
-      const StatusCallback &done) override;
+    Status AsyncSubscribeToWorkerFailures(
+        const SubscribeCallback<WorkerID, WorkerFailureData> &subscribe,
+        const StatusCallback &done) override;
 
-  Status AsyncReportWorkerFailure(const std::shared_ptr<WorkerFailureData> &data_ptr,
-                                  const StatusCallback &callback) override;
+    Status AsyncReportWorkerFailure(const std::shared_ptr<WorkerFailureData> &data_ptr,
+                                    const StatusCallback &callback) override;
 
-  Status AsyncRegisterWorker(
-      rpc::WorkerType worker_type, const WorkerID &worker_id,
-      const std::unordered_map<std::string, std::string> &worker_info,
-      const StatusCallback &callback) override;
+    Status AsyncRegisterWorker(
+        rpc::WorkerType worker_type, const WorkerID &worker_id,
+        const std::unordered_map<std::string, std::string> &worker_info,
+        const StatusCallback &callback) override;
 
-  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
+    void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
- private:
-  RedisGcsClient *client_impl_{nullptr};
+   private:
+    RedisGcsClient *client_impl_{nullptr};
 
-  typedef SubscriptionExecutor<WorkerID, WorkerFailureData, WorkerFailureTable>
-      WorkerFailureSubscriptionExecutor;
-  WorkerFailureSubscriptionExecutor worker_failure_sub_executor_;
-};
+    typedef SubscriptionExecutor<WorkerID, WorkerFailureData, WorkerFailureTable>
+        WorkerFailureSubscriptionExecutor;
+    WorkerFailureSubscriptionExecutor worker_failure_sub_executor_;
+  };
 
 }  // namespace gcs
 
-}  // namespace ray
+}  // namespace gcs

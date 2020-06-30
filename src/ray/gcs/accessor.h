@@ -587,7 +587,8 @@ class NodeInfoAccessor {
   /// \param callback Processes a map of config options
   /// \return Status
   virtual Status AsyncGetInternalConfig(
-      const MapCallback<std::string, std::string> &callback) = 0;
+      const OptionalItemCallback<std::unordered_map<std::string, std::string>>
+          &callback) = 0;
 
  protected:
   NodeInfoAccessor() = default;

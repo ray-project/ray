@@ -135,100 +135,106 @@ int main(int argc, char *argv[]) {
 
   std::unique_ptr<ray::raylet::Raylet> server(nullptr);
 
-  RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig([&](const std::unordered_map<
-                                                              std::string, std::string>
-                                                                  stored_raylet_config) {
-    // NOTE: We update the raylet_config map from above. This avoids a race condition
-    // between AsyncSetInternalConfig and AsyncGetInternalConfig on the head node. There
-    // is an unlikely race condition where a second node calls AsyncGetInternalConfig
-    // before the head finishes AsyncSetInternalConfig.
-    for (auto pair : stored_raylet_config) {
-      raylet_config[pair.first] = pair.second;
-    }
+  RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
+      [&](::ray::Status status,
+          const boost::optional<std::unordered_map<std::string, std::string>>
+              stored_raylet_config) {
+        // NOTE: We update the raylet_config map from above. This avoids a race
+        // condition between AsyncSetInternalConfig and AsyncGetInternalConfig on the
+        // head node. There is an unlikely race condition where a second node calls
+        // AsyncGetInternalConfig before the head finishes AsyncSetInternalConfig.
+        RAY_CHECK_OK(status);
+        if (stored_raylet_config.has_value()) {
+          for (auto pair : stored_raylet_config.get()) {
+            raylet_config[pair.first] = pair.second;
+          }
+        }
 
-    RayConfig::instance().initialize(raylet_config);
+        RayConfig::instance().initialize(raylet_config);
 
-    // Parse the resource list.
-    std::istringstream resource_string(static_resource_list);
-    std::string resource_name;
-    std::string resource_quantity;
+        // Parse the resource list.
+        std::istringstream resource_string(static_resource_list);
+        std::string resource_name;
+        std::string resource_quantity;
 
-    while (std::getline(resource_string, resource_name, ',')) {
-      RAY_CHECK(std::getline(resource_string, resource_quantity, ','));
-      // TODO(rkn): The line below could throw an exception. What should we do about this?
-      static_resource_conf[resource_name] = std::stod(resource_quantity);
-    }
+        while (std::getline(resource_string, resource_name, ',')) {
+          RAY_CHECK(std::getline(resource_string, resource_quantity, ','));
+          // TODO(rkn): The line below could throw an exception. What should we do
+          // about this?
+          static_resource_conf[resource_name] = std::stod(resource_quantity);
+        }
 
-    node_manager_config.raylet_config = raylet_config;
-    node_manager_config.resource_config =
-        ray::ResourceSet(std::move(static_resource_conf));
-    RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
-                   << node_manager_config.resource_config.ToString();
-    node_manager_config.node_manager_address = node_ip_address;
-    node_manager_config.node_manager_port = node_manager_port;
-    node_manager_config.num_initial_workers = num_initial_workers;
-    node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
-    node_manager_config.min_worker_port = min_worker_port;
-    node_manager_config.max_worker_port = max_worker_port;
+        node_manager_config.raylet_config = raylet_config;
+        node_manager_config.resource_config =
+            ray::ResourceSet(std::move(static_resource_conf));
+        RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
+                       << node_manager_config.resource_config.ToString();
+        node_manager_config.node_manager_address = node_ip_address;
+        node_manager_config.node_manager_port = node_manager_port;
+        node_manager_config.num_initial_workers = num_initial_workers;
+        node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
+        node_manager_config.min_worker_port = min_worker_port;
+        node_manager_config.max_worker_port = max_worker_port;
 
-    if (!python_worker_command.empty()) {
-      node_manager_config.worker_commands.emplace(
-          make_pair(ray::Language::PYTHON, ParseCommandLine(python_worker_command)));
-    }
-    if (!java_worker_command.empty()) {
-      node_manager_config.worker_commands.emplace(
-          make_pair(ray::Language::JAVA, ParseCommandLine(java_worker_command)));
-    }
-    if (python_worker_command.empty() && java_worker_command.empty()) {
-      RAY_CHECK(0)
-          << "Either Python worker command or Java worker command should be provided.";
-    }
+        if (!python_worker_command.empty()) {
+          node_manager_config.worker_commands.emplace(
+              make_pair(ray::Language::PYTHON, ParseCommandLine(python_worker_command)));
+        }
+        if (!java_worker_command.empty()) {
+          node_manager_config.worker_commands.emplace(
+              make_pair(ray::Language::JAVA, ParseCommandLine(java_worker_command)));
+        }
+        if (python_worker_command.empty() && java_worker_command.empty()) {
+          RAY_CHECK(0) << "Either Python worker command or Java worker command should be "
+                          "provided.";
+        }
 
-    node_manager_config.heartbeat_period_ms =
-        RayConfig::instance().raylet_heartbeat_timeout_milliseconds();
-    node_manager_config.debug_dump_period_ms =
-        RayConfig::instance().debug_dump_period_milliseconds();
-    node_manager_config.free_objects_period_ms =
-        RayConfig::instance().free_objects_period_milliseconds();
-    node_manager_config.fair_queueing_enabled =
-        RayConfig::instance().fair_queueing_enabled();
-    node_manager_config.object_pinning_enabled =
-        RayConfig::instance().object_pinning_enabled();
-    node_manager_config.max_lineage_size = RayConfig::instance().max_lineage_size();
-    node_manager_config.store_socket_name = store_socket_name;
-    node_manager_config.temp_dir = temp_dir;
-    node_manager_config.session_dir = session_dir;
+        node_manager_config.heartbeat_period_ms =
+            RayConfig::instance().raylet_heartbeat_timeout_milliseconds();
+        node_manager_config.debug_dump_period_ms =
+            RayConfig::instance().debug_dump_period_milliseconds();
+        node_manager_config.free_objects_period_ms =
+            RayConfig::instance().free_objects_period_milliseconds();
+        node_manager_config.fair_queueing_enabled =
+            RayConfig::instance().fair_queueing_enabled();
+        node_manager_config.object_pinning_enabled =
+            RayConfig::instance().object_pinning_enabled();
+        node_manager_config.max_lineage_size = RayConfig::instance().max_lineage_size();
+        node_manager_config.store_socket_name = store_socket_name;
+        node_manager_config.temp_dir = temp_dir;
+        node_manager_config.session_dir = session_dir;
 
-    // Configuration for the object manager.
-    ray::ObjectManagerConfig object_manager_config;
-    object_manager_config.object_manager_port = object_manager_port;
-    object_manager_config.store_socket_name = store_socket_name;
-    object_manager_config.pull_timeout_ms =
-        RayConfig::instance().object_manager_pull_timeout_ms();
-    object_manager_config.push_timeout_ms =
-        RayConfig::instance().object_manager_push_timeout_ms();
-    object_manager_config.object_store_memory = object_store_memory;
-    object_manager_config.plasma_directory = plasma_directory;
-    object_manager_config.huge_pages = huge_pages;
+        // Configuration for the object manager.
+        ray::ObjectManagerConfig object_manager_config;
+        object_manager_config.object_manager_port = object_manager_port;
+        object_manager_config.store_socket_name = store_socket_name;
+        object_manager_config.pull_timeout_ms =
+            RayConfig::instance().object_manager_pull_timeout_ms();
+        object_manager_config.push_timeout_ms =
+            RayConfig::instance().object_manager_push_timeout_ms();
+        object_manager_config.object_store_memory = object_store_memory;
+        object_manager_config.plasma_directory = plasma_directory;
+        object_manager_config.huge_pages = huge_pages;
 
-    int num_cpus = static_cast<int>(static_resource_conf["CPU"]);
-    object_manager_config.rpc_service_threads_number =
-        std::min(std::max(2, num_cpus / 4), 8);
-    object_manager_config.object_chunk_size =
-        RayConfig::instance().object_manager_default_chunk_size();
+        int num_cpus = static_cast<int>(static_resource_conf["CPU"]);
+        object_manager_config.rpc_service_threads_number =
+            std::min(std::max(2, num_cpus / 4), 8);
+        object_manager_config.object_chunk_size =
+            RayConfig::instance().object_manager_default_chunk_size();
 
-    RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
-                   << "rpc_service_threads_number = "
-                   << object_manager_config.rpc_service_threads_number
-                   << ", object_chunk_size = " << object_manager_config.object_chunk_size;
+        RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
+                       << "rpc_service_threads_number = "
+                       << object_manager_config.rpc_service_threads_number
+                       << ", object_chunk_size = "
+                       << object_manager_config.object_chunk_size;
 
-    // Initialize the node manager.
-    server.reset(new ray::raylet::Raylet(
-        main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
-        redis_password, node_manager_config, object_manager_config, gcs_client));
+        // Initialize the node manager.
+        server.reset(new ray::raylet::Raylet(
+            main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
+            redis_password, node_manager_config, object_manager_config, gcs_client));
 
-    server->Start();
-  }));
+        server->Start();
+      }));
 
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop

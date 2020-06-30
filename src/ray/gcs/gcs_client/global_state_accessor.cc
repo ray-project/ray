@@ -153,14 +153,17 @@ std::string GlobalStateAccessor::GetNodeResourceInfo(const ClientID &node_id) {
 std::string GlobalStateAccessor::GetInternalConfig() {
   rpc::StoredConfig config_proto;
   std::promise<void> promise;
-  auto on_done =
-      [&config_proto, &promise](
-          const std::unordered_map<std::string, std::string> stored_raylet_config) {
-        for (auto &data : stored_raylet_config) {
-          (*config_proto.mutable_config())[data.first] = data.second;
-        }
-        promise.set_value();
-      };
+  auto on_done = [&config_proto, &promise](
+                     Status status,
+                     const boost::optional<std::unordered_map<std::string, std::string>>
+                         stored_raylet_config) {
+    RAY_CHECK_OK(status);
+    if (stored_raylet_config.has_value()) {
+      config_proto.mutable_config()->insert(stored_raylet_config->begin(),
+                                            stored_raylet_config->end());
+    }
+    promise.set_value();
+  };
 
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetInternalConfig(on_done));
   promise.get_future().get();
