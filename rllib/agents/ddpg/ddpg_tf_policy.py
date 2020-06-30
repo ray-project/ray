@@ -310,7 +310,7 @@ def gradients_fn(policy, optimizer, loss):
             var_list=policy.model.q_variables(),
             clip_val=policy.config["grad_norm_clipping"])
     else:
-        if tf.executing_eagerly():
+        if policy.config["framework"] == "tfe":
             tape = optimizer.tape
             pol_weights = policy.model.policy_variables()
             actor_grads_and_vars = list(zip(tape.gradient(

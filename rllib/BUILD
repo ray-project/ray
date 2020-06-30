@@ -1149,7 +1149,7 @@ py_test(
 py_test(
     name = "tests/test_eager_support",
     tags = ["tests_dir", "tests_dir_E"],
-    size = "enormous",
+    size = "large",
     srcs = ["tests/test_eager_support.py"]
 )
 

@@ -104,7 +104,7 @@ class GaussianNoise(Exploration):
             self.random_exploration.get_tf_exploration_action_op(
                 action_dist, explore)
         stochastic_actions = tf.cond(
-            pred=ts <= self.random_timesteps,
+            pred=tf.convert_to_tensor(ts <= self.random_timesteps),
             true_fn=lambda: random_actions,
             false_fn=lambda: tf.clip_by_value(
                 deterministic_actions + gaussian_sample,
