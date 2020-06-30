@@ -23,7 +23,7 @@ def run_http_benchmark(url, num_queries):
     latency = []
     for _ in tqdm(range(num_queries + 200)):
         start = time.perf_counter()
-        resp = requests.get(url)
+        requests.get(url)
         end = time.perf_counter()
         latency.append(end - start)
 
