@@ -444,24 +444,25 @@ void PlasmaStore::ProcessGetRequest(Client* client,
       // where entry == NULL, this will be called from SealObject.
       AddToClientObjectIds(object_id, entry, client);
     } else if (entry && entry->state == ObjectState::PLASMA_EVICTED) {
-      // Make sure the object pointer is not already allocated
-      RAY_CHECK(!entry->pointer);
-
-      entry->pointer =
-          AllocateMemory(entry->data_size + entry->metadata_size, /*evict=*/true,
-                         &entry->fd, &entry->map_size, &entry->offset, client, false);
-      if (entry->pointer) {
-        entry->state = ObjectState::PLASMA_CREATED;
-        entry->create_time = std::time(nullptr);
-        eviction_policy_.ObjectCreated(object_id, client, false);
-        AddToClientObjectIds(object_id, store_info_.objects[object_id].get(), client);
-        evicted_ids.push_back(object_id);
-        evicted_entries.push_back(entry);
-      } else {
-        // We are out of memory and cannot allocate memory for this object.
-        // Change the state of the object back to PLASMA_EVICTED so some
-        // other request can try again.
-        entry->state = ObjectState::PLASMA_EVICTED;
+      if (external_store_) {
+        // Make sure the object pointer is not already allocated
+        RAY_CHECK(!entry->pointer);
+        entry->pointer =
+            AllocateMemory(entry->data_size + entry->metadata_size, /*evict=*/true,
+                          &entry->fd, &entry->map_size, &entry->offset, client, false);
+        if (entry->pointer) {
+          entry->state = ObjectState::PLASMA_CREATED;
+          entry->create_time = std::time(nullptr);
+          eviction_policy_.ObjectCreated(object_id, client, false);
+          AddToClientObjectIds(object_id, store_info_.objects[object_id].get(), client);
+          evicted_ids.push_back(object_id);
+          evicted_entries.push_back(entry);
+        } else {
+          // We are out of memory and cannot allocate memory for this object.
+          // Change the state of the object back to PLASMA_EVICTED so some
+          // other request can try again.
+          entry->state = ObjectState::PLASMA_EVICTED;
+        }
       }
     } else {
       // Add a placeholder plasma object to the get request to indicate that the
@@ -473,27 +474,29 @@ void PlasmaStore::ProcessGetRequest(Client* client,
     }
   }
 
-  if (!evicted_ids.empty()) {
-    std::vector<std::shared_ptr<Buffer>> buffers;
-    for (size_t i = 0; i < evicted_ids.size(); ++i) {
-      RAY_CHECK(evicted_entries[i]->pointer != nullptr);
-      buffers.emplace_back(new arrow::MutableBuffer(evicted_entries[i]->pointer,
-                                                    evicted_entries[i]->data_size));
-    }
-    if (external_store_->Get(evicted_ids, buffers).ok()) {
+  if (external_store_) {
+    if (!evicted_ids.empty()) {
+      std::vector<std::shared_ptr<Buffer>> buffers;
       for (size_t i = 0; i < evicted_ids.size(); ++i) {
-        evicted_entries[i]->state = ObjectState::PLASMA_SEALED;
-        evicted_entries[i]->construct_duration =
-            std::time(nullptr) - evicted_entries[i]->create_time;
-        PlasmaObject_init(&get_req->objects[evicted_ids[i]], evicted_entries[i]);
-        get_req->num_satisfied += 1;
+        RAY_CHECK(evicted_entries[i]->pointer != nullptr);
+        buffers.emplace_back(new arrow::MutableBuffer(evicted_entries[i]->pointer,
+                                                      evicted_entries[i]->data_size));
       }
-    } else {
-      // We tried to get the objects from the external store, but could not get them.
-      // Set the state of these objects back to PLASMA_EVICTED so some other request
-      // can try again.
-      for (size_t i = 0; i < evicted_ids.size(); ++i) {
-        evicted_entries[i]->state = ObjectState::PLASMA_EVICTED;
+      if (external_store_->Get(evicted_ids, buffers).ok()) {
+        for (size_t i = 0; i < evicted_ids.size(); ++i) {
+          evicted_entries[i]->state = ObjectState::PLASMA_SEALED;
+          evicted_entries[i]->construct_duration =
+              std::time(nullptr) - evicted_entries[i]->create_time;
+          PlasmaObject_init(&get_req->objects[evicted_ids[i]], evicted_entries[i]);
+          get_req->num_satisfied += 1;
+        }
+      } else {
+        // We tried to get the objects from the external store, but could not get them.
+        // Set the state of these objects back to PLASMA_EVICTED so some other request
+        // can try again.
+        for (size_t i = 0; i < evicted_ids.size(); ++i) {
+          evicted_entries[i]->state = ObjectState::PLASMA_EVICTED;
+        }
       }
     }
   }
