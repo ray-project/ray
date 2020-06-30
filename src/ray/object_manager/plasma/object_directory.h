@@ -187,15 +187,15 @@ class ObjectDirectory {
     eviction_policy_(this, PlasmaAllocator::GetFootprintLimit()),
     external_store_(external_store),
     notifications_callback_(notifications_callback) {}
-
   /// Get the size of the object.
   ///
   /// \param object_id Object ID of the object.
   /// \return Object size in bytes.
   int64_t GetObjectSize(const ObjectID& object_id) {
-   absl::MutexLock lock(&object_table_mutex_);
-   auto& entry = object_table_[object_id];
-   return entry->data_size + entry->metadata_size;
+   // TODO(suquark): This public function is not protected by a lock,
+   // because it will be called from the eviction policy, and it will
+   // be deadlocked. We should get rid of this function later.
+   return object_table_[object_id]->ObjectSize();
   }
 
   void GetSealedObjectsInfo(std::vector<ObjectInfoT>* infos) {
