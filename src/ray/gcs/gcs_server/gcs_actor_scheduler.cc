@@ -123,6 +123,12 @@ std::vector<ActorID> GcsActorScheduler::CancelOnNode(const ClientID &node_id) {
   return actor_ids;
 }
 
+void GcsActorScheduler::CancelLeasingRequest(const ClientID &node_id, const ActorID &actor_id) {
+  auto node_it = node_to_actors_when_leasing_.find(node_id);
+  RAY_CHECK(node_it != node_to_actors_when_leasing_.end());
+  node_it->second.erase(actor_id);
+}
+
 ActorID GcsActorScheduler::CancelOnWorker(const ClientID &node_id,
                                           const WorkerID &worker_id) {
   // Remove the worker from creating map and return ID of the actor associated with the
@@ -157,6 +163,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
   auto lease_client = GetOrConnectLeaseClient(remote_address);
+  RAY_LOG(ERROR) << "sang Lease request sent for a actor, " << actor->GetActorID();
   auto status = lease_client->RequestWorkerLease(
       actor->GetCreationTaskSpecification(),
       [this, node_id, actor, node](const Status &status,
@@ -167,6 +174,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
         // If the actor is not in the leasing map, it means that the actor has been
         // cancelled as the node is dead, just do nothing in this case because the
         // gcs_actor_manager will reconstruct it again.
+        RAY_LOG(ERROR) << "sang Lease replied from a actor, " << actor->GetActorID();
         auto iter = node_to_actors_when_leasing_.find(node_id);
         if (iter != node_to_actors_when_leasing_.end()) {
           // If the node is still available, the actor must be still in the leasing map as
@@ -243,6 +251,7 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
     }
     auto leased_worker = std::make_shared<GcsLeasedWorker>(
         worker_address, std::move(resources), actor->GetActorID());
+    RAY_LOG(ERROR) << "Sang succeed to lease a worker." << actor->GetActorID();
     auto node_id = leased_worker->GetNodeID();
     RAY_CHECK(node_to_workers_when_creating_[node_id]
                   .emplace(leased_worker->GetWorkerID(), leased_worker)

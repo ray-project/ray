@@ -50,6 +50,12 @@ class GcsActorSchedulerInterface {
   /// \return ID list of actors associated with the specified node id.
   virtual std::vector<ActorID> CancelOnNode(const ClientID &node_id) = 0;
 
+  /// Cancel a leasing request to create an actor.
+  ///
+  /// \param node_id ID of the node where the actor leasing request has been sent.
+  /// \param actor_id ID of an actor.
+  virtual void CancelLeasingRequest(const ClientID &node_id, const ActorID &actor_id) = 0;
+
   /// Cancel the actor that is being scheduled to the specified worker.
   ///
   /// \param node_id ID of the node where the worker is located.
@@ -98,6 +104,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param node_id ID of the node where the worker is located.
   /// \return ID list of actors associated with the specified node id.
   std::vector<ActorID> CancelOnNode(const ClientID &node_id) override;
+
+  void CancelLeasingRequest(const ClientID &node_id, const ActorID &actor_id) override;
 
   /// Cancel the actor that is being scheduled to the specified worker.
   ///

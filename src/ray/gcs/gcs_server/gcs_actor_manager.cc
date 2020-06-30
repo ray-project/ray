@@ -404,6 +404,7 @@ Status GcsActorManager::RegisterActor(
   // Mark the callback as pending and invoke it after the actor has been successfully
   // created.
   actor_to_register_callbacks_[actor_id].emplace_back(std::move(callback));
+  RAY_LOG(ERROR) << "sangbin actor id , " << actor->GetActorID() << " registered";
   RAY_CHECK(registered_actors_.emplace(actor->GetActorID(), actor).second);
 
   if (!actor->IsDetached() && worker_client_factory_) {
@@ -461,6 +462,7 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
 
 void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   RAY_LOG(DEBUG) << "Destroying actor " << actor_id;
+  RAY_LOG(ERROR) << "SABGBUN Destroying actor " << actor_id;
   actor_to_register_callbacks_.erase(actor_id);
   auto it = registered_actors_.find(actor_id);
   RAY_CHECK(it != registered_actors_.end())
@@ -520,13 +522,19 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
       // The actor was being scheduled and has now been canceled.
       RAY_CHECK(canceled_actor_id == actor_id);
     } else {
-      // The actor was pending scheduling. Remove it from the queue.
       auto pending_it = std::find_if(pending_actors_.begin(), pending_actors_.end(),
                                      [actor_id](const std::shared_ptr<GcsActor> &actor) {
                                        return actor->GetActorID() == actor_id;
-                                     });
-      RAY_CHECK(pending_it != pending_actors_.end());
-      pending_actors_.erase(pending_it);
+                                     });  
+      // The actor was pending scheduling. Remove it from the queue.                                     
+      if (pending_it != pending_actors_.end()) {
+        pending_actors_.erase(pending_it);
+      } else {
+        RAY_LOG(ERROR) << "sang the leasing request is cancelled.";
+        // If the actor is not pending, that means the raylet doesn't reply the
+        // lease request yet. Remove the outstanding lease request.
+        gcs_actor_scheduler_->CancelLeasingRequest(node_id, actor_id);
+      }
     }
   }
 
@@ -564,8 +572,8 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
     }
   }
 
+  // Find if actor is already created or in the creation process (lease request is granted)
   ActorID actor_id;
-  // Find from worker_to_created_actor_.
   auto iter = created_actors_.find(node_id);
   if (iter != created_actors_.end() && iter->second.count(worker_id)) {
     actor_id = iter->second[worker_id];
@@ -577,12 +585,20 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
     actor_id = gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id);
   }
 
-  if (!actor_id.IsNil()) {
-    RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
-                  << " failed, restarting actor " << actor_id;
-    // Reconstruct the actor.
-    ReconstructActor(actor_id, /*need_reschedule=*/!intentional_exit);
+  // If actor is not created & not in the creation process, don't do anything.
+  if (actor_id.IsNil()) {
+    return;
   }
+
+  // If actor is not registered, that means actor is already destroyed. Don't do anything.
+  if (registered_actors_.find(actor_id) == registered_actors_.end()) {
+    return;
+  }
+
+  // Otherwise, try to reconstruct the actor that was already created or in the creation process.
+  RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
+                << " failed, restarting actor " << actor_id << ", intentional exit: " << intentional_exit;
+  ReconstructActor(actor_id, /*need_reschedule=*/!intentional_exit);
 }
 
 void GcsActorManager::OnNodeDead(const ClientID &node_id) {
@@ -605,6 +621,7 @@ void GcsActorManager::OnNodeDead(const ClientID &node_id) {
   auto scheduling_actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
   for (auto &actor_id : scheduling_actor_ids) {
     // Reconstruct the canceled actor.
+    RAY_LOG(ERROR) << "sang cancelled ids, " << actor_id;
     ReconstructActor(actor_id);
   }
 
@@ -616,6 +633,7 @@ void GcsActorManager::OnNodeDead(const ClientID &node_id) {
     created_actors_.erase(iter);
     for (auto &entry : created_actors) {
       // Reconstruct the removed actor.
+      RAY_LOG(ERROR) << "sang created ids, " << entry.second;
       ReconstructActor(entry.second);
     }
   }
@@ -623,7 +641,7 @@ void GcsActorManager::OnNodeDead(const ClientID &node_id) {
 
 void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_reschedule) {
   auto &actor = registered_actors_[actor_id];
-  RAY_CHECK(actor != nullptr);
+  RAY_CHECK(actor != nullptr) << "actor of actor id, " << actor_id << " is not registered";
   auto node_id = actor->GetNodeID();
   auto worker_id = actor->GetWorkerID();
   actor->UpdateAddress(rpc::Address());
@@ -688,6 +706,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
 void GcsActorManager::OnActorCreationFailed(std::shared_ptr<GcsActor> actor) {
   // We will attempt to schedule this actor once an eligible node is
   // registered.
+  RAY_LOG(ERROR) << "Sang actor creation failed.";
   pending_actors_.emplace_back(std::move(actor));
 }
 
