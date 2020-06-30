@@ -1012,8 +1012,8 @@ def add_worker(serialized_string):
     """Add a worker to the cluster.
 
     Args:
-        serialized_string: Serialized WorkerTableData string, include all data of the
-            worker to be added to the cluster.
+        serialized_string: Serialized WorkerTableData string, include all data
+            of the worker to be added to the cluster.
 
     Returns:
         Is the operation success.
