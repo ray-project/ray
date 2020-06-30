@@ -2101,10 +2101,14 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
 void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
                                       const std::vector<ObjectID> objects_to_fail,
                                       const JobID &job_id) {
+  // if (RayConfig::instance().lineage_pinning_enabled()) {
+  //  return;
+  //}
   const std::string meta = std::to_string(static_cast<int>(error_type));
   for (const auto &object_id : objects_to_fail) {
     arrow::Status status = store_client_.CreateAndSeal(object_id, "", meta);
     if (!status.ok() && !plasma::IsPlasmaObjectExists(status)) {
+      RAY_LOG(INFO) << "Marking plasma object failed " << object_id;
       // If we failed to save the error code, log a warning and push an error message
       // to the driver.
       std::ostringstream stream;

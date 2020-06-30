@@ -368,7 +368,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   auto check_node_alive_fn = [this](const ClientID &node_id) {
     auto node = gcs_client_->Nodes().Get(node_id);
-    RAY_CHECK(node.has_value());
+    if (!node) {
+      return false;
+    }
     return node->state() == rpc::GcsNodeInfo::ALIVE;
   };
   auto reconstruct_object_callback = [this](const ObjectID &object_id) {
