@@ -141,9 +141,10 @@ class TensorFlowVariables:
             return np.concatenate(
                 [v.numpy().flatten() for v in self.variables.values()])
         # Graph mode.
-        return np.concatenate(
-            [v.eval(session=self.sess).flatten()
-             for v in self.variables.values()])
+        return np.concatenate([
+            v.eval(session=self.sess).flatten()
+            for v in self.variables.values()
+        ])
 
     def set_flat(self, new_weights):
         """Sets the weights to new_weights, converting from a flat array.
