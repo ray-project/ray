@@ -902,11 +902,6 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // Restart GCS server.
   RestartGcsServer();
 
-  // We need to send a RPC to detect GCS server restart. Then GCS client will
-  // reconnect to GCS server and resubscribe.
-  ASSERT_TRUE(GetActor(actor_id).state() ==
-              rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
-
   // When GCS client detects that GCS server has restarted, but the pub-sub server
   // didn't restart, it will fetch data again from the GCS server. So we'll receive
   // another notification of ALIVE state.

@@ -91,7 +91,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     RayFunction func{ray::Language::PYTHON,
                      ray::FunctionDescriptorBuilder::BuildPython("", "", "init", "")};
 
-    RAY_CHECK_OK(driver.SubmitActorTask(self_actor_id, func, args, options, &return_ids));
+    driver.SubmitActorTask(self_actor_id, func, args, options, &return_ids);
   }
 
   void SubmitTestToActor(ActorID &actor_id, const std::string test) {
@@ -107,7 +107,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "", test, "execute_test", "")};
 
-    RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
+    driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
   }
 
   bool CheckCurTest(ActorID &actor_id, const std::string test_name) {
@@ -123,7 +123,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "", "", "check_current_test_status", "")};
 
-    RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
+    driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
 
     std::vector<bool> wait_results;
     std::vector<std::shared_ptr<RayObject>> results;

@@ -20,10 +20,9 @@ def check_support_multiagent(alg, config):
                 config=config, env="multi_agent_mountaincar")
         else:
             a = get_agent_class(alg)(config=config, env="multi_agent_cartpole")
-        try:
-            print(a.train())
-        finally:
-            a.stop()
+
+        print(a.train())
+        a.stop()
 
 
 class TestSupportedMultiAgent(unittest.TestCase):

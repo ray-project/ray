@@ -28,7 +28,7 @@ import { MemoryTableRow } from "./MemoryTableRow";
 const makeGroupedEntries = (
   memoryTableGroups: MemoryTableGroups,
   order: Order,
-  orderBy: string | null,
+  orderBy: keyof MemoryTableEntry | null,
 ) => {
   const comparator = orderBy && getComparator(order, orderBy);
   return Object.entries(memoryTableGroups).map(([groupKey, group]) => {
@@ -50,7 +50,7 @@ const makeGroupedEntries = (
 const makeUngroupedEntries = (
   memoryTableGroups: MemoryTableGroups,
   order: Order,
-  orderBy: string | null,
+  orderBy: memoryColumnId | null,
 ) => {
   const allEntries = Object.values(memoryTableGroups).reduce(
     (allEntries: Array<MemoryTableEntry>, memoryTableGroup) => {
@@ -139,7 +139,7 @@ const MemoryInfo: React.FC<{}> = () => {
   const [isGrouped, setIsGrouped] = useState(true);
   const [order, setOrder] = React.useState<Order>("asc");
   const toggleOrder = () => setOrder(order === "asc" ? "desc" : "asc");
-  const [orderBy, setOrderBy] = React.useState<string | null>(null);
+  const [orderBy, setOrderBy] = React.useState<memoryColumnId | null>(null);
   return (
     <React.Fragment>
       {memoryTable !== null ? (
@@ -160,7 +160,7 @@ const MemoryInfo: React.FC<{}> = () => {
           />
           <Table className={classes.table}>
             <SortableTableHead
-              orderBy={orderBy || ""}
+              orderBy={orderBy}
               order={order}
               onRequestSort={(_, property) => {
                 if (property === orderBy) {

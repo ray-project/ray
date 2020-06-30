@@ -130,7 +130,7 @@ class ReferenceCounter {
   /// reference count for the ObjectID is set to zero, which assumes that an
   /// ObjectID for it will be created in the language frontend after this call.
   ///
-  /// TODO(swang): We could avoid copying the owner_id and owner_address since
+  /// TODO(swang): We could avoid copying the owner_address since
   /// we are the owner, but it is easier to store a copy for now, since the
   /// owner ID will change for workers executing normal tasks and it is
   /// possible to have leftover references after a task has finished.
@@ -138,7 +138,6 @@ class ReferenceCounter {
   /// \param[in] object_id The ID of the object that we own.
   /// \param[in] contained_ids ObjectIDs that are contained in the object's value.
   /// As long as the object_id is in scope, the inner objects should not be GC'ed.
-  /// \param[in] owner_id The ID of the object's owner.
   /// \param[in] owner_address The address of the object's owner.
   /// \param[in] call_site Description of the call site where the reference was created.
   /// \param[in] object_size Object size if known, otherwise -1;
@@ -146,8 +145,8 @@ class ReferenceCounter {
   /// through lineage re-execution.
   void AddOwnedObject(
       const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
-      const TaskID &owner_id, const rpc::Address &owner_address,
-      const std::string &call_site, const int64_t object_size, bool is_reconstructable,
+      const rpc::Address &owner_address, const std::string &call_site,
+      const int64_t object_size, bool is_reconstructable,
       const absl::optional<ClientID> &pinned_at_raylet_id = absl::optional<ClientID>())
       LOCKS_EXCLUDED(mutex_);
 
@@ -165,20 +164,17 @@ class ReferenceCounter {
   /// if one exists. An outer_id may not exist if object_id was inlined
   /// directly in a task spec, or if it was passed in the application
   /// out-of-band.
-  /// \param[in] owner_id The ID of the owner of the object. This is either the
   /// task ID (for non-actors) or the actor ID of the owner.
   /// \param[in] owner_address The owner's address.
   bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
-                         const TaskID &owner_id, const rpc::Address &owner_address)
-      LOCKS_EXCLUDED(mutex_);
+                         const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner ID and address of the given object.
   ///
   /// \param[in] object_id The ID of the object to look up.
-  /// \param[out] owner_id The TaskID of the object owner.
   /// \param[out] owner_address The address of the object owner.
-  bool GetOwner(const ObjectID &object_id, TaskID *owner_id = nullptr,
-                rpc::Address *owner_address = nullptr) const LOCKS_EXCLUDED(mutex_);
+  bool GetOwner(const ObjectID &object_id, rpc::Address *owner_address = nullptr) const
+      LOCKS_EXCLUDED(mutex_);
 
   /// Manually delete the objects from the reference counter.
   void DeleteReferences(const std::vector<ObjectID> &object_ids) LOCKS_EXCLUDED(mutex_);
@@ -200,13 +196,11 @@ class ReferenceCounter {
   /// This is used for cases when object_id was returned from a task that we
   /// submitted. Then, as long as we have contained_in_id in scope, we are
   /// borrowing object_id.
-  /// \param[in] owner_id The ID of the owner of object_id. This is either the
-  /// task ID (for non-actors) or the actor ID of the owner.
   /// \param[in] owner_address The owner of object_id's address.
   /// \param[in] ref_removed_callback The callback to call when we are no
   /// longer borrowing the object.
   void SetRefRemovedCallback(const ObjectID &object_id, const ObjectID &contained_in_id,
-                             const TaskID &owner_id, const rpc::Address &owner_address,
+                             const rpc::Address &owner_address,
                              const ReferenceRemovedCallback &ref_removed_callback)
       LOCKS_EXCLUDED(mutex_);
 
@@ -329,13 +323,13 @@ class ReferenceCounter {
     Reference(std::string call_site, const int64_t object_size)
         : call_site(call_site), object_size(object_size) {}
     /// Constructor for a reference that we created.
-    Reference(const TaskID &owner_id, const rpc::Address &owner_address,
-              std::string call_site, const int64_t object_size, bool is_reconstructable,
+    Reference(const rpc::Address &owner_address, std::string call_site,
+              const int64_t object_size, bool is_reconstructable,
               const absl::optional<ClientID> &pinned_at_raylet_id)
         : call_site(call_site),
           object_size(object_size),
           owned_by_us(true),
-          owner({owner_id, owner_address}),
+          owner_address(owner_address),
           is_reconstructable(is_reconstructable),
           pinned_at_raylet_id(pinned_at_raylet_id) {}
 
@@ -397,10 +391,11 @@ class ReferenceCounter {
     /// responsible for tracking the state of the task that creates the object
     /// (see task_manager.h).
     bool owned_by_us = false;
-    /// The object's owner, if we know it. This has no value if the object is
-    /// if we do not know the object's owner (because distributed ref counting
-    /// is not yet implemented).
-    absl::optional<std::pair<TaskID, rpc::Address>> owner;
+    /// The object's owner's address, if we know it. If this process is the
+    /// owner, then this is added during creation of the Reference. If this is
+    /// process is a borrower, the borrower must add the owner's address before
+    /// using the ObjectID.
+    absl::optional<rpc::Address> owner_address;
     // If this object is owned by us and stored in plasma, and reference
     // counting is enabled, then some raylet must be pinning the object value.
     // This is the address of that raylet.
@@ -571,7 +566,6 @@ class ReferenceCounter {
   /// deserializing IDs from a task's arguments, or when deserializing an ID
   /// during ray.get().
   bool AddBorrowedObjectInternal(const ObjectID &object_id, const ObjectID &outer_id,
-                                 const TaskID &owner_id,
                                  const rpc::Address &owner_address)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 

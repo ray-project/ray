@@ -29,11 +29,8 @@ void Transport::SendInternal(std::shared_ptr<LocalMemoryBuffer> buffer,
       std::move(buffer), meta, std::vector<ObjectID>(), true)));
 
   std::vector<std::shared_ptr<RayObject>> results;
-  ray::Status st = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
-      peer_actor_id_, function, args, options, &return_ids);
-  if (!st.ok()) {
-    STREAMING_LOG(ERROR) << "SubmitActorTask failed. " << st;
-  }
+  CoreWorkerProcess::GetCoreWorker().SubmitActorTask(peer_actor_id_, function, args,
+                                                     options, &return_ids);
 }
 
 void Transport::Send(std::shared_ptr<LocalMemoryBuffer> buffer) {

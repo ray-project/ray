@@ -446,3 +446,8 @@ message CreateActorRequest {
 message CreateActorReply {
   GcsStatus status = 1;
 }
+
+enum GcsServiceFailureType {
+  RPC_DISCONNECT = 0;
+  GCS_SERVER_RESTART = 1;
+}

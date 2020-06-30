@@ -2,7 +2,7 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 @PublicAPI
@@ -39,10 +39,10 @@ class TFModelV2(ModelV2):
             name,
             framework="tf")
         self.var_list = []
-        if tf.executing_eagerly():
+        if tf1.executing_eagerly():
             self.graph = None
         else:
-            self.graph = tf.get_default_graph()
+            self.graph = tf1.get_default_graph()
 
     def context(self):
         """Returns a contextmanager for the current TF graph."""

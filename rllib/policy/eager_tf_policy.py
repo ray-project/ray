@@ -16,7 +16,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
@@ -174,6 +174,7 @@ def build_eager_tf_policy(name,
                           grad_stats_fn=None,
                           extra_learn_fetches_fn=None,
                           extra_action_fetches_fn=None,
+                          validate_spaces=None,
                           before_init=None,
                           before_loss_init=None,
                           after_init=None,
@@ -208,6 +209,9 @@ def build_eager_tf_policy(name,
             if get_default_config:
                 config = dict(get_default_config(), **config)
 
+            if validate_spaces:
+                validate_spaces(self, observation_space, action_space, config)
+
             if before_init:
                 before_init(self, observation_space, action_space, config)
 
@@ -235,7 +239,7 @@ def build_eager_tf_policy(name,
                 )
             self.exploration = self._create_exploration()
             self._state_in = [
-                tf.convert_to_tensor(np.array([s]))
+                tf.convert_to_tensor([s])
                 for s in self.model.get_initial_state()
             ]
             input_dict = {
@@ -262,7 +266,7 @@ def build_eager_tf_policy(name,
             if optimizer_fn:
                 self._optimizer = optimizer_fn(self, config)
             else:
-                self._optimizer = tf.train.AdamOptimizer(config["lr"])
+                self._optimizer = tf1.train.AdamOptimizer(config["lr"])
 
             if after_init:
                 after_init(self, observation_space, action_space, config)
@@ -614,8 +618,7 @@ def build_eager_tf_policy(name,
                 SampleBatch.DONES: np.array([False], dtype=np.bool),
                 SampleBatch.REWARDS: np.array([0], dtype=np.float32),
             }
-            if isinstance(self.action_space, Tuple) or isinstance(
-                    self.action_space, Dict):
+            if isinstance(self.action_space, (Dict, Tuple)):
                 dummy_batch[SampleBatch.ACTIONS] = [
                     flatten_to_single_ndarray(self.action_space.sample())
                 ]
@@ -636,7 +639,7 @@ def build_eager_tf_policy(name,
                 dummy_batch["seq_lens"] = np.array([1], dtype=np.int32)
 
             # Convert everything to tensors.
-            dummy_batch = tf.nest.map_structure(tf.convert_to_tensor,
+            dummy_batch = tf.nest.map_structure(tf1.convert_to_tensor,
                                                 dummy_batch)
 
             # for IMPALA which expects a certain sample batch size.

@@ -59,7 +59,7 @@ int fake_munmap(void*, int64_t);
 #undef HAVE_MORECORE
 #undef DEFAULT_GRANULARITY
 
-// dlmalloc.c defined DEBUG which will conflict with ARROW_LOG(DEBUG).
+// dlmalloc.c defined DEBUG which will conflict with RAY_LOG(DEBUG).
 #ifdef DEBUG
 #undef DEBUG
 #endif
@@ -90,12 +90,12 @@ int create_buffer(int64_t size) {
   file_name.push_back('\0');
   fd = mkstemp(&file_name[0]);
   if (fd < 0) {
-    ARROW_LOG(FATAL) << "create_buffer failed to open file " << &file_name[0];
+    RAY_LOG(FATAL) << "create_buffer failed to open file " << &file_name[0];
     return -1;
   }
   // Immediately unlink the file so we do not leave traces in the system.
   if (unlink(&file_name[0]) != 0) {
-    ARROW_LOG(FATAL) << "failed to unlink file " << &file_name[0];
+    RAY_LOG(FATAL) << "failed to unlink file " << &file_name[0];
     return -1;
   }
   if (!plasma_config->hugepages_enabled) {
@@ -103,7 +103,7 @@ int create_buffer(int64_t size) {
     // needed for files that are backed by the huge page fs, see also
     // http://www.mail-archive.com/kvm-devel@lists.sourceforge.net/msg14737.html
     if (ftruncate(fd, (off_t)size) != 0) {
-      ARROW_LOG(FATAL) << "failed to ftruncate file " << &file_name[0];
+      RAY_LOG(FATAL) << "failed to ftruncate file " << &file_name[0];
       return -1;
     }
   }
@@ -118,7 +118,7 @@ void* fake_mmap(size_t size) {
   size += kMmapRegionsGap;
 
   int fd = create_buffer(size);
-  ARROW_CHECK(fd >= 0) << "Failed to create buffer during mmap";
+  RAY_CHECK(fd >= 0) << "Failed to create buffer during mmap";
   // MAP_POPULATE can be used to pre-populate the page tables for this memory region
   // which avoids work when accessing the pages later. However it causes long pauses
   // when mmapping the files. Only supported on Linux.
@@ -126,15 +126,15 @@ void* fake_mmap(size_t size) {
 #ifdef _WIN32
   pointer = MapViewOfFile(reinterpret_cast<HANDLE>(fh_get(fd)), FILE_MAP_ALL_ACCESS, 0, 0, size);
   if (pointer == NULL) {
-    ARROW_LOG(ERROR) << "MapViewOfFile failed with error: " << GetLastError();
+    RAY_LOG(ERROR) << "MapViewOfFile failed with error: " << GetLastError();
     return reinterpret_cast<void*>(-1);
   }
 #else
   pointer = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if (pointer == MAP_FAILED) {
-    ARROW_LOG(ERROR) << "mmap failed with error: " << std::strerror(errno);
+    RAY_LOG(ERROR) << "mmap failed with error: " << std::strerror(errno);
     if (errno == ENOMEM && plasma_config->hugepages_enabled) {
-      ARROW_LOG(ERROR)
+      RAY_LOG(ERROR)
           << "  (this probably means you have to increase /proc/sys/vm/nr_hugepages)";
     }
     return pointer;
@@ -150,12 +150,12 @@ void* fake_mmap(size_t size) {
 
   // We lie to dlmalloc about where mapped memory actually lives.
   pointer = pointer_advance(pointer, kMmapRegionsGap);
-  ARROW_LOG(DEBUG) << pointer << " = fake_mmap(" << size << ")";
+  RAY_LOG(DEBUG) << pointer << " = fake_mmap(" << size << ")";
   return pointer;
 }
 
 int fake_munmap(void* addr, int64_t size) {
-  ARROW_LOG(DEBUG) << "fake_munmap(" << addr << ", " << size << ")";
+  RAY_LOG(DEBUG) << "fake_munmap(" << addr << ", " << size << ")";
   addr = pointer_retreat(addr, kMmapRegionsGap);
   size += kMmapRegionsGap;
 
@@ -182,5 +182,7 @@ int fake_munmap(void* addr, int64_t size) {
 }
 
 void SetMallocGranularity(int value) { change_mparam(M_GRANULARITY, value); }
+
+const PlasmaStoreInfo* plasma_config;
 
 }  // namespace plasma
