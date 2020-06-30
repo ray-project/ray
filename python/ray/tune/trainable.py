@@ -665,9 +665,9 @@ class Trainable:
         if log_once("trainable.save_checkpoint"):
             logger.warning(
                 "Trainable._save is deprecated and will be removed in "
-                "a future version of Ray. Use Trainable.save_checkpoint instead.")
+                "a future version of Ray. Use Trainable.save_checkpoint instead."
+            )
         self._save()
-
 
     def _save(self, tmp_checkpoint_dir):
         """This method is deprecated. Override 'save_checkpoint' instead."""
@@ -717,9 +717,9 @@ class Trainable:
         if log_once("trainable.load_checkpoint"):
             logger.warning(
                 "Trainable._restore is deprecated and will be removed in "
-                "a future version of Ray. Use Trainable.load_checkpoint instead.")
+                "a future version of Ray. Use Trainable.load_checkpoint instead."
+            )
         self._restore(checkpoint)
-
 
     def _restore(self, checkpoint):
         """This method is deprecated. Override 'load_checkpoint' instead."""
@@ -756,7 +756,7 @@ class Trainable:
             logger.warning(
                 "Trainable._log_result is deprecated and will be removed in "
                 "a future version of Ray. Use Trainable.log_result instead.")
-        self._log_result(config)
+        self._log_result(result)
 
     def _log_result(self, result):
         """This method is deprecated. Override 'log_result' instead."""
