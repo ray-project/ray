@@ -226,6 +226,7 @@ class ObjectDirectory {
                   std::vector<ObjectID> *sealed_objects,
                   std::vector<ObjectID> *reconstructed_objects,
                   std::vector<ObjectID> *nonexistent_objects) {
+    absl::MutexLock lock(&object_table_mutex_);
     std::vector<ObjectID> evicted_ids;
     std::vector<ObjectTableEntry*> entries;
 
@@ -437,6 +438,7 @@ class ObjectDirectory {
   /// \param object_id The object ID of the object that is being released.
   /// \param client The client making this request.
   void ReleaseObject(const ObjectID& object_id, Client* client) {
+    absl::MutexLock lock(&object_table_mutex_);
     auto entry = GetObjectTableEntry(object_id);
     RAY_CHECK(entry != nullptr);
     // Remove the client from the object's array of clients.
@@ -451,6 +453,7 @@ class ObjectDirectory {
   ///   match the creator of the object, then the abort will fail.
   /// \return 1 if the abort succeeds, else 0.
   int AbortObject(const ObjectID& object_id, Client* client) {
+    absl::MutexLock lock(&object_table_mutex_);
     auto it = object_table_.find(object_id);
     // TODO(rkn): This should probably not fail, but should instead throw an
     // error. Maybe we should also support deleting objects that have been
