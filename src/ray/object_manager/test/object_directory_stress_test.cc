@@ -12,11 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <unistd.h>
-
 #include <chrono>
-#include <iostream>
-#include <random>
 #include <thread>
 
 #include "gtest/gtest.h"
@@ -212,11 +208,11 @@ class TestObjectDirectoryBase : public ::testing::Test {
 
 TEST_F(TestObjectDirectoryBase, ObjectDirectoryStressTest) {
   int64_t evicted_memory;
-  PerformanceTest(300);
+  PerformanceTest(200);
   object_directory->EvictObjects(STORE_MEMORY, &evicted_memory);
-  PerformanceTest(1500);
+  PerformanceTest(1200);
   object_directory->EvictObjects(STORE_MEMORY, &evicted_memory);
-  ConcurrencyTest(10000);
+  ConcurrencyTest(3000);
 }
 
 }  // namespace ray
