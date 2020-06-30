@@ -1115,7 +1115,8 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_object_id = object_id.native()
             CAddress c_owner_address = CAddress()
-        CCoreWorkerProcess.GetCoreWorker().PromoteToPlasmaAndGetOwnershipInfo(
+        CCoreWorkerProcess.GetCoreWorker().PromoteObjectToPlasma(c_object_id)
+        CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
                 c_object_id, &c_owner_address)
         return (object_id,
                 c_owner_address.SerializeAsString())

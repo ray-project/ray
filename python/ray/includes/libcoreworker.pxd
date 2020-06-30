@@ -126,8 +126,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                        CActorHandle **actor_handle)
         void AddLocalReference(const CObjectID &object_id)
         void RemoveLocalReference(const CObjectID &object_id)
+        void PutObjectIntoPlasma(const CRayObject &object,
+                                 const CObjectID &object_id)
         void PromoteObjectToPlasma(const CObjectID &object_id)
-        void PromoteToPlasmaAndGetOwnershipInfo(const CObjectID &object_id,
+        void GetOwnershipInfo(const CObjectID &object_id,
                                                 CAddress *owner_address)
         void RegisterOwnershipInfoAndResolveFuture(
                 const CObjectID &object_id,

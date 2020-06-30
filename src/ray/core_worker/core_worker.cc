@@ -364,24 +364,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       boost::bind(&CoreWorker::CurrentCallSite, this)));
   memory_store_.reset(new CoreWorkerMemoryStore(
       [this](const RayObject &object, const ObjectID &object_id) {
-        RAY_LOG(DEBUG) << "Promoting object to plasma " << object_id;
-        bool object_exists;
-        RAY_RETURN_NOT_OK(plasma_store_provider_->Put(object, object_id, &object_exists));
-        if (!object_exists) {
-          // Tell the raylet to pin the object **after** it is created.
-          RAY_LOG(DEBUG) << "Pinning put object " << object_id;
-          RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
-              rpc_address_, {object_id},
-              [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
-                // Only release the object once the raylet has responded to avoid the race
-                // condition that the object could be evicted before the raylet pins it.
-                if (!plasma_store_provider_->Release(object_id).ok()) {
-                  RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
-                                << "), might cause a leak in plasma.";
-                }
-              }));
-        }
-        RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+        PutObjectIntoPlasma(object, object_id);
         return Status::OK();
       },
       options_.ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
@@ -720,30 +703,35 @@ CoreWorker::GetAllReferenceCounts() const {
   return counts;
 }
 
-void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
-                                                    rpc::Address *owner_address) {
+void CoreWorker::PutObjectIntoPlasma(const RayObject &object, const ObjectID &object_id) {
+  bool object_exists;
+  RAY_CHECK_OK(plasma_store_provider_->Put(object, object_id, &object_exists));
+  if (!object_exists) {
+    // Tell the raylet to pin the object **after** it is created.
+    RAY_LOG(DEBUG) << "Pinning put object " << object_id;
+    RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
+        rpc_address_, {object_id},
+        [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+          // Only release the object once the raylet has responded to avoid the race
+          // condition that the object could be evicted before the raylet pins it.
+          if (!plasma_store_provider_->Release(object_id).ok()) {
+            RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
+                          << "), might cause a leak in plasma.";
+          }
+        }));
+  }
+  RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+}
+
+void CoreWorker::PromoteObjectToPlasma(const ObjectID &object_id) {
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value) {
-    RAY_LOG(DEBUG) << "Storing object promoted to plasma " << object_id;
-    bool object_exists;
-    RAY_CHECK_OK(plasma_store_provider_->Put(*value, object_id, &object_exists));
-    if (!object_exists) {
-      // Tell the raylet to pin the object **after** it is created.
-      RAY_LOG(DEBUG) << "Pinning put object " << object_id;
-      RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
-          rpc_address_, {object_id},
-          [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
-            // Only release the object once the raylet has responded to avoid the race
-            // condition that the object could be evicted before the raylet pins it.
-            if (!plasma_store_provider_->Release(object_id).ok()) {
-              RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
-                            << "), might cause a leak in plasma.";
-            }
-          }));
-    }
-    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+    PutObjectIntoPlasma(*value, object_id);
   }
+}
 
+void CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
+                                  rpc::Address *owner_address) {
   auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
   RAY_CHECK(has_owner)
       << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
