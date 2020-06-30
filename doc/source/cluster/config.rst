@@ -63,7 +63,7 @@ The ``example-full.yaml`` configuration is enough to get started with Ray, but f
         InstanceType: p2.8xlarge
 
 **Docker**: Specify docker image. This executes all commands on all nodes in the docker container,
-and opens all the necessary ports to support the Ray cluster. This currently does not have GPU support.
+and opens all the necessary ports to support the Ray cluster.
 
 .. code-block:: yaml
 
