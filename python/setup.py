@@ -222,10 +222,11 @@ def build(build_python, build_java):
             env=dict(os.environ, CC="gcc"))
 
     bazel = os.getenv("BAZEL_EXECUTABLE", "bazel")
+    bazel_targets = []
+    bazel_targets += ["//:ray_pkg"] if build_python else []
+    bazel_targets += ["//java:ray_java_pkg"] if build_java else []
     return subprocess.check_call(
-        [bazel, "build", "--verbose_failures", "--"] +
-        (["//:ray_pkg"] if build_python else []) +
-        (["//java:ray_java_pkg"] if build_java else []),
+        [bazel, "build", "--verbose_failures", "--"] + bazel_targets,
         env=dict(os.environ, PYTHON3_BIN_PATH=sys.executable))
 
 
@@ -361,6 +362,7 @@ if __name__ == "__main__":
         def has_ext_modules(self):
             return True
 
+
 setuptools.setup(
     name="ray",
     version=find_version("ray", "__init__.py"),
@@ -385,8 +387,7 @@ setuptools.setup(
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]",
-            "tune=ray.tune.scripts:cli"
+            "rllib=ray.rllib.scripts:cli [rllib]", "tune=ray.tune.scripts:cli"
         ]
     },
     include_package_data=True,
