@@ -3,6 +3,8 @@ import gym
 import numpy as np
 from typing import Dict, List, Optional
 
+from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
@@ -10,7 +12,8 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
-from ray.rllib.utils.types import AgentID
+from ray.rllib.utils.types import AgentID, PolicyConfigDict, TensorType, \
+    Tuple, Union
 
 torch, _ = try_import_torch()
 tree = try_import_tree()
@@ -42,7 +45,11 @@ class Policy(metaclass=ABCMeta):
     """
 
     @DeveloperAPI
-    def __init__(self, observation_space, action_space, config):
+    def __init__(
+            self,
+            observation_space: gym.spaces.Space,
+            action_space: gym.spaces.Space,
+            config: PolicyConfigDict):
         """Initialize the graph.
 
         This is the standard constructor for policies. The policy
@@ -50,9 +57,10 @@ class Policy(metaclass=ABCMeta):
         these arguments.
 
         Args:
-            observation_space (gym.Space): Observation space of the policy.
-            action_space (gym.Space): Action space of the policy.
-            config (dict): Policy-specific configuration data.
+            observation_space (gym.spaces.Space): Observation space of the
+                policy.
+            action_space (gym.spaces.Space): Action space of the policy.
+            config (PolicyConfigDict): Policy-specific configuration data.
         """
         self.observation_space = observation_space
         self.action_space = action_space
@@ -67,78 +75,91 @@ class Policy(metaclass=ABCMeta):
 
     @abstractmethod
     @DeveloperAPI
-    def compute_actions(self,
-                        obs_batch,
-                        state_batches=None,
-                        prev_action_batch=None,
-                        prev_reward_batch=None,
-                        info_batch=None,
-                        episodes=None,
-                        explore=None,
-                        timestep=None,
-                        **kwargs):
+    def compute_actions(
+            self,
+            obs_batch: Union[List[TensorType], TensorType],
+            state_batches: Optional[List[TensorType]] = None,
+            prev_action_batch: Union[List[TensorType], TensorType] = None,
+            prev_reward_batch: Union[List[TensorType], TensorType] = None,
+            info_batch: Optional[Dict[list]] = None,
+            episodes: Optional[List[MultiAgentEpisode]] = None,
+            explore: Optional[bool] = None,
+            timestep: Optional[int] = None,
+            **kwargs):
         """Computes actions for the current policy.
 
         Args:
-            obs_batch (Union[List, np.ndarray]): Batch of observations.
-            state_batches (Optional[list]): List of RNN state input batches,
-                if any.
-            prev_action_batch (Optional[List, np.ndarray]): Batch of previous
-                action values.
-            prev_reward_batch (Optional[List, np.ndarray]): Batch of previous
-                rewards.
-            info_batch (info): Batch of info objects.
-            episodes (list): MultiAgentEpisode for each obs in obs_batch.
-                This provides access to all of the internal episode state,
-                which may be useful for model-based or multiagent algorithms.
-            explore (bool): Whether to pick an exploitation or exploration
-                action (default: None -> use self.config["explore"]).
-            timestep (int): The current (sampling) time step.
+            obs_batch (Union[List[TensorType], TensorType]): Batch of
+                observations.
+            state_batches (Optional[List[TensorType]]): List of RNN state input
+                batches, if any.
+            prev_action_batch (Union[List[TensorType], TensorType]): Batch of
+                previous action values.
+            prev_reward_batch (Union[List[TensorType], TensorType]): Batch of
+                previous rewards.
+            info_batch (Optional[Dict[list]]): Batch of info objects.
+            episodes (Optional[List[MultiAgentEpisode]] ): List of
+                MultiAgentEpisode, one for each obs in obs_batch. This provides
+                access to all of the internal episode state, which may be
+                useful for model-based or multiagent algorithms.
+            explore (Optional[bool]): Whether to pick an exploitation or
+                exploration action. Set to None (default) for using the
+                value of `self.config["explore"]`.
+            timestep (Optional[int]): The current (sampling) time step.
+
+        Keyword Args:
             kwargs: forward compatibility placeholder
 
         Returns:
-            actions (np.ndarray): batch of output actions, with shape like
-                [BATCH_SIZE, ACTION_SHAPE].
-            state_outs (list): list of RNN state output batches, if any, with
-                shape like [STATE_SIZE, BATCH_SIZE].
-            info (dict): dictionary of extra feature batches, if any, with
-                shape like {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
+            Tuple:
+                actions (TensorType): Batch of output actions, with shape like
+                    [BATCH_SIZE, ACTION_SHAPE].
+                state_outs (List[TensorType]): List of RNN state output
+                    batches, if any, with shape like [STATE_SIZE, BATCH_SIZE].
+                info (List[dict]): Dictionary of extra feature batches, if any,
+                    with shape like
+                    {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
         """
         raise NotImplementedError
 
     @DeveloperAPI
-    def compute_single_action(self,
-                              obs,
-                              state=None,
-                              prev_action=None,
-                              prev_reward=None,
-                              info=None,
-                              episode=None,
-                              clip_actions=False,
-                              explore=None,
-                              timestep=None,
-                              **kwargs):
+    def compute_single_action(
+            self,
+            obs: TensorType,
+            state: Optional[List[TensorType]] = None,
+            prev_action: Optional[TensorType] = None,
+            prev_reward: Optional[TensorType] = None,
+            info: dict = None,
+            episode: Optional[MultiAgentEpisode] = None,
+            clip_actions: bool = False,
+            explore: Optional[bool] = None,
+            timestep: Optional[int] = None,
+            **kwargs):
         """Unbatched version of compute_actions.
 
         Arguments:
-            obs (obj): Single observation.
-            state (list): List of RNN state inputs, if any.
-            prev_action (obj): Previous action value, if any.
-            prev_reward (float): Previous reward, if any.
-            info (dict): info object, if any
-            episode (MultiAgentEpisode): this provides access to all of the
-                internal episode state, which may be useful for model-based or
-                multi-agent algorithms.
+            obs (TensorType): Single observation.
+            state (Optional[List[TensorType]]): List of RNN state inputs, if any.
+            prev_action (Optional[TensorType]): Previous action value, if any.
+            prev_reward (Optional[TensorType]): Previous reward, if any.
+            info (dict): Info object, if any.
+            episode (Optional[MultiAgentEpisode]): this provides access to all
+                of the internal episode state, which may be useful for
+                model-based or multi-agent algorithms.
             clip_actions (bool): Should actions be clipped?
-            explore (bool): Whether to pick an exploitation or exploration
+            explore (Optional[bool]): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
-            timestep (int): The current (sampling) time step.
+            timestep (Optional[int]): The current (sampling) time step.
+
+        Keyword Args:
             kwargs: forward compatibility placeholder
 
         Returns:
-            actions (obj): single action
-            state_outs (list): list of RNN state outputs, if any
-            info (dict): dictionary of extra features, if any
+            Tuple:
+                actions (TensorType): Single action.
+                state_outs (List[TensorType]): List of RNN state outputs,
+                    if any.
+                info (dict): Dictionary of extra features, if any.
         """
         prev_action_batch = None
         prev_reward_batch = None
@@ -216,47 +237,55 @@ class Policy(metaclass=ABCMeta):
             kwargs: forward compatibility placeholder
 
         Returns:
-            actions (np.ndarray): batch of output actions, with shape like
-                [BATCH_SIZE, ACTION_SHAPE].
-            state_outs (list): list of RNN state output batches, if any, with
-                shape like [STATE_SIZE, BATCH_SIZE].
-            info (dict): dictionary of extra feature batches, if any, with
-                shape like {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
+            Tuple:
+                actions (TensorType): Batch of output actions, with shape
+                    like [BATCH_SIZE, ACTION_SHAPE].
+                state_outs (List[TensorType]): List of RNN state output
+                    batches, if any, with shape like [STATE_SIZE, BATCH_SIZE].
+                info (dict): Dictionary of extra feature batches, if any, with
+                    shape like
+                    {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
         """
         raise NotImplementedError
 
     @DeveloperAPI
-    def compute_log_likelihoods(self,
-                                actions,
-                                obs_batch,
-                                state_batches=None,
-                                prev_action_batch=None,
-                                prev_reward_batch=None):
+    def compute_log_likelihoods(
+            self,
+            actions: Union[List[TensorType], TensorType],
+            obs_batch: Union[List[TensorType], TensorType],
+            state_batches: Optional[List[TensorType]] = None,
+            prev_action_batch: Optional[
+                Union[List[TensorType], TensorType]] = None,
+            prev_reward_batch: Optional[
+                Union[List[TensorType], TensorType]] = None):
         """Computes the log-prob/likelihood for a given action and observation.
 
         Args:
-            actions (Union[List,np.ndarray]): Batch of actions, for which to
-                retrieve the log-probs/likelihoods (given all other inputs:
-                obs, states, ..).
-            obs_batch (Union[List,np.ndarray]): Batch of observations.
-            state_batches (Optional[list]): List of RNN state input batches,
-                if any.
-            prev_action_batch (Optional[List,np.ndarray]): Batch of previous
-                action values.
-            prev_reward_batch (Optional[List,np.ndarray]): Batch of previous
-                rewards.
+            actions (Union[List[TensorType], TensorType]): Batch of actions,
+                for which to retrieve the log-probs/likelihoods (given all
+                other inputs: obs, states, ..).
+            obs_batch (Union[List[TensorType], TensorType]): Batch of
+                observations.
+            state_batches (Optional[List[TensorType]]): List of RNN state input
+                batches, if any.
+            prev_action_batch (Optional[Union[List[TensorType], TensorType]]):
+                Batch of previous action values.
+            prev_reward_batch (Optional[Union[List[TensorType], TensorType]]):
+                Batch of previous rewards.
 
         Returns:
-            log-likelihoods (np.ndarray): Batch of log probs/likelihoods, with
-                shape: [BATCH_SIZE].
+            TensorType: Batch of log probs/likelihoods, with shape:
+                [BATCH_SIZE].
         """
         raise NotImplementedError
 
     @DeveloperAPI
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
+    def postprocess_trajectory(
+            self,
+            sample_batch: SampleBatch,
+            other_agent_batches: Optional[
+                Dict[AgentID, Tuple["Policy", SampleBatch]]] = None,
+            episode=None):
         """Implements algorithm-specific trajectory postprocessing.
 
         This will be called on each trajectory fragment computed during policy
@@ -278,18 +307,21 @@ class Policy(metaclass=ABCMeta):
         return sample_batch
 
     @DeveloperAPI
-    def learn_on_batch(self, samples):
+    def learn_on_batch(self, samples: SampleBatch):
         """Fused compute gradients and apply gradients call.
 
         Either this or the combination of compute/apply grads must be
         implemented by subclasses.
 
+        Args:
+            samples (SampleBatch): The SampleBatch object to learn from.
+
         Returns:
             grad_info: dictionary of extra metadata from compute_gradients().
 
         Examples:
-            >>> batch = ev.sample()
-            >>> ev.learn_on_batch(samples)
+            >>> sample_batch = ev.sample()
+            >>> ev.learn_on_batch(sample_batch)
         """
 
         grads, grad_info = self.compute_gradients(samples)
@@ -297,10 +329,14 @@ class Policy(metaclass=ABCMeta):
         return grad_info
 
     @DeveloperAPI
-    def compute_gradients(self, postprocessed_batch):
+    def compute_gradients(self, postprocessed_batch: SampleBatch):
         """Computes gradients against a batch of experiences.
 
         Either this or learn_on_batch() must be implemented by subclasses.
+
+        Args:
+            postprocessed_batch (SampleBatch): The SampleBatch object to
+                compute gradients for.
 
         Returns:
             grads (list): List of gradient output values

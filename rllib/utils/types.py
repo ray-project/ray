@@ -8,6 +8,11 @@ TrainerConfigDict = dict
 # the default trainer config to be used.
 PartialTrainerConfigDict = dict
 
+# Represents a fully filled out config of a Policy class.
+# This is usually the same as TrainerConfigDict, but parts of it may be altered
+# in e.g. a multi-agent setup, where we have >1 Policies in the same Trainer.
+PolicyConfigDict = dict
+
 # Represents the env_config sub-dict of the trainer config that is passed to
 # the env constructor.
 EnvConfigDict = dict
@@ -73,6 +78,7 @@ ModelWeights = dict
 SampleBatchType = Union["SampleBatch", "MultiAgentBatch"]
 
 # Represents a generic tensor type.
+# This could be an np.ndarray, tf.Tensor, or a torch.Tensor.
 TensorType = Any
 
 # Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
