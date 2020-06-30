@@ -278,7 +278,7 @@ class Trainable:
     def train(self):
         """Runs one logical iteration of training.
 
-        Subclasses should override ``_train()`` instead to return results.
+        Subclasses should override ``step()`` instead to return results.
         This class automatically fills the following fields in the result:
 
             `done` (bool): training is terminated. Filled only if not provided.
@@ -296,7 +296,7 @@ class Trainable:
 
             `training_iteration` (int): The index of this
             training iteration, e.g. call to train(). This is incremented
-            after `_train()` is called.
+            after `step()` is called.
 
             `pid` (str): The pid of the training process.
 
@@ -316,7 +316,7 @@ class Trainable:
         """
         start = time.time()
         result = self.step()
-        assert isinstance(result, dict), "_train() needs to return a dict."
+        assert isinstance(result, dict), "step() needs to return a dict."
 
         # We do not modify internal state nor update this result if duplicate.
         if RESULT_DUPLICATE in result:
@@ -725,21 +725,21 @@ class Trainable:
         """This method is deprecated. Override 'load_checkpoint' instead."""
         raise NotImplementedError
 
-    def build(self, config):
+    def setup(self, config):
         """Subclasses should override this for custom initialization.
 
         Args:
             config (dict): Hyperparameters and other configs given.
                 Copy of `self.config`.
         """
-        if log_once("trainable.build"):
+        if log_once("trainable.setup"):
             logger.warning(
                 "Trainable._setup is deprecated and will be removed in "
-                "a future version of Ray. Use Trainable.build instead.")
+                "a future version of Ray. Use Trainable.setup instead.")
         self._setup(config)
 
     def _setup(self, config):
-        """This method is deprecated. Override 'build' instead."""
+        """This method is deprecated. Override 'setup' instead."""
         pass
 
     def log_result(self, result):
@@ -750,7 +750,7 @@ class Trainable:
         ``loggers`` parameter in ``tune.run`` when overriding this function.
 
         Args:
-            result (dict): Training result returned by _train().
+            result (dict): Training result returned by step().
         """
         if log_once("trainable.log_result"):
             logger.warning(

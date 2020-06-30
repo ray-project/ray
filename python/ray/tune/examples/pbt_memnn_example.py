@@ -214,7 +214,7 @@ class MemNNModel(Trainable):
         model = Model([input_sequence, question], answer)
         return model
 
-    def build(self, config):
+    def setup(self, config):
         with FileLock(os.path.expanduser("~/.tune.lock")):
             self.train_stories, self.test_stories = read_data()
         model = self.build_model()

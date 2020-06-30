@@ -165,7 +165,7 @@ class FunctionRunner(Trainable):
 
     _name = "func"
 
-    def build(self, config):
+    def setup(self, config):
         # Semaphore for notifying the reporter to continue with the computation
         # and to generate the next result.
         self._continue_semaphore = threading.Semaphore(0)

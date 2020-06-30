@@ -40,7 +40,7 @@ class MyModel(Model):
 
 
 class MNISTTrainable(tune.Trainable):
-    def build(self, config):
+    def setup(self, config):
         # IMPORTANT: See the above note.
         import tensorflow as tf
         (x_train, y_train), (x_test, y_test) = load_data()

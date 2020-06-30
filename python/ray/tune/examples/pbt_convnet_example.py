@@ -27,7 +27,7 @@ class PytorchTrainble(tune.Trainable):
        changing the original training code.
     """
 
-    def build(self, config):
+    def setup(self, config):
         self.train_loader, self.test_loader = get_data_loaders()
         self.model = ConvNet()
         self.optimizer = optim.SGD(

@@ -51,7 +51,7 @@ class OptimusFn(object):
 
 def get_optimus_trainable(parent_cls):
     class OptimusTrainable(parent_cls):
-        def build(self, config):
+        def setup(self, config):
             self.iter = 0
             if config.get("seed"):
                 np.random.seed(config["seed"])
