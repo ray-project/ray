@@ -18,7 +18,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip, \
     make_tf_callable
 
@@ -204,10 +204,10 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     if l2_reg is not None:
         for var in policy.model.policy_variables():
             if "bias" not in var.name:
-                actor_loss += (l2_reg * tf1.nn.l2_loss(var))
+                actor_loss += (l2_reg * tf.nn.l2_loss(var))
         for var in policy.model.q_variables():
             if "bias" not in var.name:
-                critic_loss += (l2_reg * tf1.nn.l2_loss(var))
+                critic_loss += (l2_reg * tf.nn.l2_loss(var))
 
     # Model self-supervised losses.
     if policy.config["use_state_preprocessor"]:
@@ -243,10 +243,16 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
 
 def make_ddpg_optimizers(policy, config):
     # Create separate optimizers for actor & critic losses.
-    policy._actor_optimizer = tf1.train.AdamOptimizer(
-        learning_rate=config["actor_lr"])
-    policy._critic_optimizer = tf1.train.AdamOptimizer(
-        learning_rate=config["critic_lr"])
+    if tfv == 2 and config["framework"] == "tfe":
+        policy._actor_optimizer = tf.keras.optimizers.Adam(
+            learning_rate=config["actor_lr"])
+        policy._critic_optimizer = tf.keras.optimizers.Adam(
+            learning_rate=config["critic_lr"])
+    else:
+        policy._actor_optimizer = tf1.train.AdamOptimizer(
+            learning_rate=config["actor_lr"])
+        policy._critic_optimizer = tf1.train.AdamOptimizer(
+            learning_rate=config["critic_lr"])
     return None
 
     # TFPolicy.__init__(
@@ -283,8 +289,12 @@ def build_apply_op(policy, optimizer, grads_and_vars):
     critic_op = policy._critic_optimizer.apply_gradients(
         policy._critic_grads_and_vars)
     # Increment global step & apply ops.
-    with tf1.control_dependencies([tf1.assign_add(policy.global_step, 1)]):
-        return tf.group(actor_op, critic_op)
+    if tfv == 2 and policy.config["framework"] == "tfe":
+        policy.global_step.assign_add(1)
+        return tf.no_op()
+    else:
+        with tf1.control_dependencies([tf1.assign_add(policy.global_step, 1)]):
+            return tf.group(actor_op, critic_op)
 
 
 def gradients_fn(policy, optimizer, loss):
@@ -334,7 +344,10 @@ def build_ddpg_stats(policy, batch):
 
 def before_init_fn(policy, obs_space, action_space, config):
     # Create global step for counting the number of update operations.
-    policy.global_step = tf1.train.get_or_create_global_step()
+    if tfv == 2 and config["framework"] == "tfe":
+        policy.global_step = get_variable(0, tf_name="global_step")
+    else:
+        policy.global_step = tf1.train.get_or_create_global_step()
 
 
 class ComputeTDErrorMixin:
