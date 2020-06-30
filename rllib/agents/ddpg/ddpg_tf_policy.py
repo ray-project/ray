@@ -16,11 +16,11 @@ from ray.rllib.models.torch.torch_action_dist import TorchDeterministic
 from ray.rllib.utils.annotations import override
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils.framework import try_import_tf, get_variable
+from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip, \
     make_tf_callable
 
-tf, tfv = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -422,6 +422,19 @@ def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy, config)
 
 
+def validate_spaces(pid, observation_space, action_space, config):
+    if not isinstance(action_space, Box):
+        raise UnsupportedSpaceException(
+            "Action space ({}) of {} is not supported for "
+            "DDPG.".format(action_space, pid))
+    elif len(action_space.shape) > 1:
+        raise UnsupportedSpaceException(
+            "Action space ({}) of {} has multiple dimensions "
+            "{}. ".format(action_space, pid, action_space.shape) +
+            "Consider reshaping this into a single dimension, "
+            "using a Tuple action space, or the multi-agent API.")
+
+
 DDPGTFPolicy = build_tf_policy(
     name="DDPGTFPolicy",
     get_default_config=lambda: ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG,
@@ -434,6 +447,7 @@ DDPGTFPolicy = build_tf_policy(
     gradients_fn=gradients_fn,
     apply_gradients_fn=build_apply_op,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
+    validate_spaces=validate_spaces,
     before_init=before_init_fn,
     before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,

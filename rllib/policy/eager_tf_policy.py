@@ -174,6 +174,7 @@ def build_eager_tf_policy(name,
                           grad_stats_fn=None,
                           extra_learn_fetches_fn=None,
                           extra_action_fetches_fn=None,
+                          validate_spaces=None,
                           before_init=None,
                           before_loss_init=None,
                           after_init=None,
@@ -207,6 +208,9 @@ def build_eager_tf_policy(name,
 
             if get_default_config:
                 config = dict(get_default_config(), **config)
+
+            if validate_spaces:
+                validate_spaces(self, observation_space, action_space, config)
 
             if before_init:
                 before_init(self, observation_space, action_space, config)

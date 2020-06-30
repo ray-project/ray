@@ -1,7 +1,8 @@
 from ray.serve.api import (
     init, create_backend, delete_backend, create_endpoint, delete_endpoint,
-    set_traffic, get_handle, stat, update_backend_config, get_backend_config,
-    accept_batch, list_backends, list_endpoints, shutdown)  # noqa: E402
+    set_traffic, shadow_traffic, get_handle, stat, update_backend_config,
+    get_backend_config, accept_batch, list_backends, list_endpoints,
+    shutdown)  # noqa: E402
 
 __all__ = [
     "init",
@@ -10,6 +11,7 @@ __all__ = [
     "create_endpoint",
     "delete_endpoint",
     "set_traffic",
+    "shadow_traffic",
     "get_handle",
     "stat",
     "update_backend_config",

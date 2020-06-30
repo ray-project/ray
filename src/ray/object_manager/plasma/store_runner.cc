@@ -84,14 +84,14 @@ void PlasmaStoreRunner::Start() {
   std::shared_ptr<plasma::ExternalStore> external_store{nullptr};
   if (!external_store_endpoint_.empty()) {
     std::string name;
-    RAY_ARROW_CHECK_OK(
+    RAY_CHECK_OK(
         plasma::ExternalStores::ExtractStoreName(external_store_endpoint_, &name));
     external_store = plasma::ExternalStores::GetStore(name);
     if (external_store == nullptr) {
       RAY_LOG(FATAL) << "No such external store \"" << name << "\"";
     }
     RAY_LOG(DEBUG) << "connecting to external store...";
-    RAY_ARROW_CHECK_OK(external_store->Connect(external_store_endpoint_));
+    RAY_CHECK_OK(external_store->Connect(external_store_endpoint_));
   }
   RAY_LOG(DEBUG) << "starting server listening on " << socket_name_;
 

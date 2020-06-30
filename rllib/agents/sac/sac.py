@@ -1,11 +1,9 @@
-from gym.spaces import Box, Discrete
 import logging
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
-from ray.rllib.utils.error import UnsupportedSpaceException
 
 logger = logging.getLogger(__name__)
 
@@ -163,24 +161,10 @@ def validate_config(config):
                 error=True)
 
 
-def validate_spaces(pid, observation_space, action_space):
-    if not isinstance(action_space, (Box, Discrete)):
-        raise UnsupportedSpaceException(
-            "Action space ({}) of {} is not supported for "
-            "SAC.".format(action_space, pid))
-    if isinstance(action_space, Box) and len(action_space.shape) > 1:
-        raise UnsupportedSpaceException(
-            "Action space ({}) of {} has multiple dimensions "
-            "{}. ".format(action_space, pid, action_space.shape) +
-            "Consider reshaping this into a single dimension, "
-            "using a Tuple action space, or the multi-agent API.")
-
-
 SACTrainer = GenericOffPolicyTrainer.with_updates(
     name="SAC",
     default_config=DEFAULT_CONFIG,
     default_policy=SACTFPolicy,
     get_policy_class=get_policy_class,
     validate_config=validate_config,
-    validate_spaces=validate_spaces,
 )

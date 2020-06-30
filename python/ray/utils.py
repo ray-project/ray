@@ -403,6 +403,7 @@ def create_and_init_new_worker_log(path, worker_pid):
 
     Args:
         path (str): The name/path of the file to be opened.
+        worker_pid (int): The pid of the worker process.
 
     Returns:
         A file-like object which can be written to.

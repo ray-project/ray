@@ -1,4 +1,3 @@
-from gym.spaces import Space
 import logging
 import time
 from typing import Callable, Optional, List, Iterable
@@ -40,7 +39,6 @@ def build_trainer(
         *,
         default_config: TrainerConfigDict = None,
         validate_config: Callable[[TrainerConfigDict], None] = None,
-        validate_spaces: Callable[[Policy, Space, Space], None] = None,
         get_initial_state=None,  # DEPRECATED
         get_policy_class: Callable[[TrainerConfigDict], Policy] = None,
         before_init: Callable[[Trainer], None] = None,
@@ -68,10 +66,8 @@ def build_trainer(
         default_config (dict): The default config dict of the algorithm,
             otherwise uses the Trainer default config.
         validate_config (Optional[callable]): Optional callable that takes the
-            config to check for correctness. It may mutate the config as needed.
-        validate_spaces (Optional[callable]): Optional callable that takes the
-            Policy, observation_space, and action_space to check for
-            correctness.
+            config to check for correctness. It may mutate the config as
+            needed.
         get_policy_class (Optional[callable]): Optional callable that takes a
             config and returns the policy class to override the default with.
         before_init (Optional[callable]): Optional callable to run at the start
@@ -124,9 +120,6 @@ def build_trainer(
                 self.workers = self._make_workers(env_creator, self._policy,
                                                   config,
                                                   self.config["num_workers"])
-            if validate_spaces:
-                for pid, p in self.workers.local_worker().policy_map.items():
-                    validate_spaces(pid, p.observation_space, p.action_space)
             self.train_exec_impl = None
             self.optimizer = None
             self.execution_plan = execution_plan

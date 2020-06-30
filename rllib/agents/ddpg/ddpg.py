@@ -199,8 +199,7 @@ def validate_config(config):
 
     if config.get("parameter_noise", DEPRECATED_VALUE) != DEPRECATED_VALUE:
         deprecation_warning("parameter_noise", "exploration_config={"
-                            "type=ParameterNoise"
-                            "}")
+                            "type=ParameterNoise}")
 
     if config["exploration_config"]["type"] == "ParameterNoise":
         if config["batch_mode"] != "complete_episodes":

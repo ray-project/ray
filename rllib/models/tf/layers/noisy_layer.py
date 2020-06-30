@@ -3,7 +3,7 @@ import numpy as np
 from ray.rllib.utils.framework import get_activation_fn, get_variable, \
     try_import_tf
 
-tf, tfv = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 class NoisyLayer(tf.keras.layers.Layer):
@@ -94,7 +94,7 @@ class NoisyLayer(tf.keras.layers.Layer):
         action_activation = tf.matmul(
             inputs,
             self.w + self.sigma_w * epsilon_w) + \
-                            self.b + self.sigma_b * epsilon_b
+            self.b + self.sigma_b * epsilon_b
 
         fn = get_activation_fn(self.activation, framework="tf")
         if fn is not None:

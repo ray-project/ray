@@ -1112,24 +1112,20 @@ cdef class CoreWorker:
     def serialize_and_promote_object_id(self, ObjectID object_id):
         cdef:
             CObjectID c_object_id = object_id.native()
-            CTaskID c_owner_id = CTaskID.Nil()
             CAddress c_owner_address = CAddress()
         CCoreWorkerProcess.GetCoreWorker().PromoteToPlasmaAndGetOwnershipInfo(
-                c_object_id, &c_owner_id, &c_owner_address)
+                c_object_id, &c_owner_address)
         return (object_id,
-                TaskID(c_owner_id.Binary()),
                 c_owner_address.SerializeAsString())
 
     def deserialize_and_register_object_id(
             self, const c_string &object_id_binary, ObjectID outer_object_id,
-            const c_string &owner_id_binary,
             const c_string &serialized_owner_address):
         cdef:
             CObjectID c_object_id = CObjectID.FromBinary(object_id_binary)
             CObjectID c_outer_object_id = (outer_object_id.native() if
                                            outer_object_id else
                                            CObjectID.Nil())
-            CTaskID c_owner_id = CTaskID.FromBinary(owner_id_binary)
             CAddress c_owner_address = CAddress()
 
         c_owner_address.ParseFromString(serialized_owner_address)
@@ -1137,7 +1133,6 @@ cdef class CoreWorker:
             .RegisterOwnershipInfoAndResolveFuture(
                 c_object_id,
                 c_outer_object_id,
-                c_owner_id,
                 c_owner_address))
 
     cdef store_task_outputs(
