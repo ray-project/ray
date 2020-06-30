@@ -42,13 +42,13 @@ The other is a :ref:`class-based API <tune-class-api>`. Here's an example of spe
     from ray import tune
 
     class Trainable(tune.Trainable):
-        def _setup(self, config):
+        def setup(self, config):
             # config (dict): A dict of hyperparameters
             self.x = 0
             self.a = config["a"]
             self.b = config["b"]
 
-        def _train(self):  # This is called iteratively.
+        def step(self):  # This is called iteratively.
             score = objective(self.x, self.a, self.b)
             self.x += 1
             return {"score": score}
