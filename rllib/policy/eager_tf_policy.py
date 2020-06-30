@@ -325,10 +325,13 @@ def build_eager_tf_policy(name,
             self._is_training = False
             self._state_in = state_batches
 
-            if tf.executing_eagerly():
-                n = len(obs_batch)
-            else:
-                n = obs_batch.shape[0]
+            if not tf.executing_eagerly():
+                tf1.enable_eager_execution()
+                #n = len(obs_batch)
+            #else:
+            #    n = obs_batch.shape[0]
+            n = len(obs_batch)
+
             seq_lens = tf.ones(n, dtype=tf.int32)
 
             input_dict = {

@@ -14,7 +14,9 @@ def check_support_multiagent(alg, config):
     register_env("multi_agent_cartpole",
                  lambda _: MultiAgentCartPole({"num_agents": 2}))
     config["log_level"] = "ERROR"
-    for _ in framework_iterator(config, frameworks=("torch", "tf")):
+    for fw in framework_iterator(config):
+        if fw == "tfe" and alg in ["A3C", "APEX", "APEX_DDPG", "IMPALA"]:
+            continue
         if alg in ["DDPG", "APEX_DDPG", "SAC"]:
             a = get_agent_class(alg)(
                 config=config, env="multi_agent_mountaincar")
