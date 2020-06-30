@@ -9,7 +9,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable, TensorType
 from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
@@ -96,7 +96,7 @@ class GaussianNoise(Exploration):
         deterministic_actions = action_dist.deterministic_sample()
 
         # Take a Gaussian sample with our stddev (mean=0.0) and scale it.
-        gaussian_sample = self.scale_schedule(ts) * tf.random_normal(
+        gaussian_sample = self.scale_schedule(ts) * tf.random.normal(
             tf.shape(deterministic_actions), stddev=self.stddev)
 
         # Stochastic actions could either be: random OR action + noise.
@@ -120,13 +120,13 @@ class GaussianNoise(Exploration):
             true_fn=lambda: stochastic_actions,
             false_fn=lambda: deterministic_actions)
         # Logp=always zero.
-        logp = tf.zeros(shape=(batch_size, ), dtype=tf.float32)
+        logp = tf.zeros(shape=(batch_size,), dtype=tf.float32)
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
-        assign_op = \
-            tf.assign_add(self.last_timestep, 1) if timestep is None else \
-            tf.assign(self.last_timestep, timestep)
-        with tf.control_dependencies([assign_op]):
+        assign_op = (
+            tf1.assign_add(self.last_timestep, 1) if timestep is None else
+            tf1.assign(self.last_timestep, timestep))
+        with tf1.control_dependencies([assign_op]):
             return action, logp
 
     def _get_torch_exploration_action(self, action_dist, explore, timestep):

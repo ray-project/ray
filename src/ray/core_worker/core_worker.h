@@ -351,11 +351,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Postcondition: Get(object_id) is valid.
   ///
   /// \param[in] object_id The object ID to serialize.
-  /// \param[out] owner_id The ID of the object's owner. This should be
   /// appended to the serialized object ID.
   /// \param[out] owner_address The address of the object's owner. This should
   /// be appended to the serialized object ID.
-  void PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id, TaskID *owner_id,
+  void PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
                                           rpc::Address *owner_address);
 
   /// Add a reference to an ObjectID that was deserialized by the language
@@ -370,11 +369,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// any. This may be nil if the object ID was inlined directly in a task spec
   /// or if it was passed out-of-band by the application (deserialized from a
   /// byte string).
-  /// \param[out] owner_id The ID of the object's owner.
   /// \param[out] owner_address The address of the object's owner.
   void RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id,
                                              const ObjectID &outer_object_id,
-                                             const TaskID &owner_id,
                                              const rpc::Address &owner_address);
 
   ///

@@ -344,6 +344,7 @@ py_test(
     args = ["--yaml-dir=tuned_examples/sac", "--torch"]
 )
 
+
 # TD3
 py_test(
     name = "run_regression_tests_pendulum_td3_tf",
@@ -492,8 +493,7 @@ py_test(
     name = "test_ppo",
     tags = ["agents_dir"],
     size = "large",
-    srcs = ["agents/ppo/tests/test_ppo.py",
-            "agents/ppo/tests/test.py"]  # TODO(sven): Move down once PR 6889 merged
+    srcs = ["agents/ppo/tests/test_ppo.py"]
 )
 
 # PPO: DDPPO
@@ -1012,6 +1012,13 @@ py_test(
     tags = ["models"],
     size = "medium",
     srcs = ["models/tests/test_distributions.py"]
+)
+
+py_test(
+    name = "test_attention_nets",
+    tags = ["models"],
+    size = "small",
+    srcs = ["models/tests/test_attention_nets.py"]
 )
 
 # --------------------------------------------------------------------

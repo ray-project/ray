@@ -35,7 +35,7 @@ from ray.tune.resources import Resources
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -595,12 +595,12 @@ class Trainer(Trainable):
             self.config.pop("eager")
 
         # Enable eager/tracing support.
-        if tf and self.config["framework"] == "tfe":
-            if not tf.executing_eagerly():
-                tf.enable_eager_execution()
+        if tf1 and self.config["framework"] == "tfe":
+            if not tf1.executing_eagerly():
+                tf1.enable_eager_execution()
             logger.info("Executing eagerly, with eager_tracing={}".format(
                 self.config["eager_tracing"]))
-        if tf and not tf.executing_eagerly() and \
+        if tf1 and not tf1.executing_eagerly() and \
                 self.config["framework"] != "torch":
             logger.info("Tip: set framework=tfe or the --eager flag to enable "
                         "TensorFlow eager execution")
@@ -634,8 +634,8 @@ class Trainer(Trainable):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
         def get_scope():
-            if tf and not tf.executing_eagerly():
-                return tf.Graph().as_default()
+            if tf1 and not tf1.executing_eagerly():
+                return tf1.Graph().as_default()
             else:
                 return open(os.devnull)  # fake a no-op scope
 

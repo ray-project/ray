@@ -24,6 +24,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ray/common/status.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/notification/object_store_notification_manager.h"
 #include "ray/object_manager/plasma/common.h"
@@ -33,11 +34,9 @@
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/object_manager/plasma/quota_aware_policy.h"
 
-namespace arrow {
-class Status;
-}  // namespace arrow
-
 namespace plasma {
+
+using ray::Status;
 
 namespace flatbuf {
 enum class PlasmaError;
@@ -170,7 +169,7 @@ class PlasmaStore {
 
   NotificationMap::iterator SendNotifications(NotificationMap::iterator it);
 
-  arrow::Status ProcessMessage(Client* client);
+  Status ProcessMessage(Client* client);
 
   void SetNotificationListener(
       const std::shared_ptr<ray::ObjectStoreNotificationManager> &notification_listener) {

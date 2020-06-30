@@ -70,6 +70,33 @@ For example, here are the Ray 0.9.0.dev0 wheels for Python 3.5, MacOS for commit
 
     pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/a0ba4499ac645c9d3e82e68f3a281e48ad57f873/ray-0.9.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
 
+
+Installing Dashboard
+--------------------
+
+The dashboard requires a few additional Python packages, which can be installed
+via pip.
+
+.. code-block:: bash
+
+  pip install ray[dashboard]
+
+The command ``ray.init()`` or ``ray start --head`` will print out the address of
+the dashboard. For example,
+
+.. code-block:: python
+
+  >>> import ray
+  >>> ray.init()
+  ======================================================================
+  View the dashboard at http://127.0.0.1:8265.
+  Note: If Ray is running on a remote node, you will need to set up an
+  SSH tunnel with local port forwarding in order to access the dashboard
+  in your browser, e.g. by running 'ssh -L 8265:127.0.0.1:8265
+  <username>@<host>'. Alternatively, you can set dashboard_host="0.0.0.0" in
+  the call to ray.init() to allow direct access from external machines.
+  ======================================================================
+
 .. _windows-support:
 
 Windows Support
@@ -104,100 +131,6 @@ the runtime library files (e.g. ``VCRUNTIME140_1.dll``):
 
 .. _`Visual C++ Runtime`: https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads
 .. _`install link`: https://aka.ms/vs/16/release/vc_redist.x64.exe
-
-Building Ray from Source
-------------------------
-
-Installing from ``pip`` should be sufficient for most Ray users.
-
-However, should you need to build from source, follow instructions below for
-both Linux and MacOS.
-
-Dependencies
-~~~~~~~~~~~~
-
-To build Ray, first install the following dependencies.
-
-For Ubuntu, run the following commands:
-
-.. code-block:: bash
-
-  sudo apt-get update
-  sudo apt-get install -y build-essential curl unzip psmisc
-
-  pip install cython==0.29.0 pytest
-
-For MacOS, run the following commands:
-
-.. code-block:: bash
-
-  brew update
-  brew install wget
-
-  pip install cython==0.29.0 pytest
-
-For Windows, see the :ref:`Windows Dependencies <windows-dependencies>` section.
-
-
-Install Ray
-~~~~~~~~~~~
-
-Ray can be built from the repository as follows.
-
-We recommend avoiding paths with spaces or other special characters to avoid potential problems.
-However, should you encounter any related issues, please let us know.
-
-.. code-block:: bash
-
-  git clone https://github.com/ray-project/ray.git
-
-  # Install Bazel.
-  ray/ci/travis/install-bazel.sh
-
-  # Optionally build the dashboard (requires Node.js, see below for more information).
-  pushd ray/python/ray/dashboard/client
-  npm ci
-  npm run build
-  popd
-
-  # Install Ray.
-  cd ray/python
-  pip install -e . --verbose  # Add --user if you see a permission denied error.
-
-
-[Optional] Dashboard support
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If you would like to use the dashboard, you will additionally need to install
-`Node.js`_ and build the dashboard before installing Ray. The relevant build
-steps are included in the installation instructions above.
-
-(Note that the dashboard may not yet work on Windows.)
-
-.. _`Node.js`: https://nodejs.org/
-
-The dashboard requires a few additional Python packages, which can be installed
-via pip.
-
-.. code-block:: bash
-
-  pip install ray[dashboard]
-
-The command ``ray.init()`` or ``ray start --head`` will print out the address of
-the dashboard. For example,
-
-.. code-block:: python
-
-  >>> import ray
-  >>> ray.init()
-  ======================================================================
-  View the dashboard at http://127.0.0.1:8265.
-  Note: If Ray is running on a remote node, you will need to set up an
-  SSH tunnel with local port forwarding in order to access the dashboard
-  in your browser, e.g. by running 'ssh -L 8265:127.0.0.1:8265
-  <username>@<host>'. Alternatively, you can set dashboard_host="0.0.0.0" in
-  the call to ray.init() to allow direct access from external machines.
-  ======================================================================
 
 
 Installing Ray on Arch Linux
@@ -242,6 +175,17 @@ If you use `Anaconda`_ and want to use Ray in a defined environment, e.g, ``ray`
 Use ``pip list`` to confirm that ``ray`` is installed.
 
 .. _`Anaconda`: https://www.anaconda.com/
+
+
+
+
+Building Ray from Source
+------------------------
+
+Installing from ``pip`` should be sufficient for most Ray users.
+
+However, should you need to build from source, follow :ref:`these instructions for building <building-ray>` Ray.
+
 
 
 Docker Source Images
@@ -312,24 +256,3 @@ that you've cloned the git repository.
 .. code-block:: bash
 
   python -m pytest -v python/ray/tests/test_mini.py
-
-
-Troubleshooting installing Arrow
---------------------------------
-
-Some candidate possibilities.
-
-You have a different version of Flatbuffers installed
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Arrow pulls and builds its own copy of Flatbuffers, but if you already have
-Flatbuffers installed, Arrow may find the wrong version. If a directory like
-``/usr/local/include/flatbuffers`` shows up in the output, this may be the
-problem. To solve it, get rid of the old version of flatbuffers.
-
-There is some problem with Boost
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If a message like ``Unable to find the requested Boost libraries`` appears when
-installing Arrow, there may be a problem with Boost. This can happen if you
-installed Boost using MacPorts. This is sometimes solved by using Brew instead.
