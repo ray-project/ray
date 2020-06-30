@@ -59,6 +59,7 @@ class RayTaskError(RayError):
         self.ip = ip or ray.services.get_node_ip_address()
         self.function_name = function_name
         self.traceback_str = traceback_str
+        # TODO(edoakes): should we handle non-serializable exception objects?
         self.cause = cause
         assert traceback_str is not None
 
