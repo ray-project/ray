@@ -53,45 +53,57 @@ class RayFunction {
 /// Argument of a task.
 class TaskArg {
  public:
+  virtual void ToProto(rpc::TaskArg *arg_proto) const = 0;
+  virtual ~TaskArg(){};
+};
+
+class TaskArgByReference : public TaskArg {
+ public:
   /// Create a pass-by-reference task argument.
   ///
   /// \param[in] object_id Id of the argument.
   /// \return The task argument.
-  static TaskArg PassByReference(const ObjectID &object_id) {
-    return TaskArg(std::make_shared<ObjectID>(object_id), nullptr);
+  TaskArgByReference(const ObjectID &object_id, const rpc::Address &owner_address)
+      : id_(object_id), owner_address_(owner_address) {}
+
+  void ToProto(rpc::TaskArg *arg_proto) const {
+    auto ref = arg_proto->mutable_object_ref();
+    ref->set_object_id(id_.Binary());
+    ref->mutable_owner_address()->CopyFrom(owner_address_);
   }
 
+ private:
+  /// Id of the argument if passed by reference, otherwise nullptr.
+  const ObjectID id_;
+  const rpc::Address &owner_address_;
+};
+
+class TaskArgByValue : public TaskArg {
+ public:
   /// Create a pass-by-value task argument.
   ///
   /// \param[in] value Value of the argument.
   /// \return The task argument.
-  static TaskArg PassByValue(const std::shared_ptr<RayObject> &value) {
+  TaskArgByValue(const std::shared_ptr<RayObject> &value) : value_(value) {
     RAY_CHECK(value) << "Value can't be null.";
-    return TaskArg(nullptr, value);
   }
 
-  /// Return true if this argument is passed by reference, false if passed by value.
-  bool IsPassedByReference() const { return id_ != nullptr; }
-
-  /// Get the reference object ID.
-  const ObjectID &GetReference() const {
-    RAY_CHECK(id_ != nullptr) << "This argument isn't passed by reference.";
-    return *id_;
-  }
-
-  /// Get the value.
-  const RayObject &GetValue() const {
-    RAY_CHECK(value_ != nullptr) << "This argument isn't passed by value.";
-    return *value_;
+  void ToProto(rpc::TaskArg *arg_proto) const {
+    if (value_->HasData()) {
+      const auto &data = value_->GetData();
+      arg_proto->set_data(data->Data(), data->Size());
+    }
+    if (value_->HasMetadata()) {
+      const auto &metadata = value_->GetMetadata();
+      arg_proto->set_metadata(metadata->Data(), metadata->Size());
+    }
+    for (const auto &nested_id : value_->GetNestedIds()) {
+      arg_proto->add_nested_inlined_ids(nested_id.Binary());
+    }
   }
 
  private:
-  TaskArg(const std::shared_ptr<ObjectID> id, const std::shared_ptr<RayObject> value)
-      : id_(id), value_(value) {}
-
-  /// Id of the argument if passed by reference, otherwise nullptr.
-  const std::shared_ptr<ObjectID> id_;
-  /// Value of the argument if passed by value, otherwise nullptr.
+  /// Value of the argument.
   const std::shared_ptr<RayObject> value_;
 };
 

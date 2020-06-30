@@ -3,6 +3,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/core_worker/common.h"
 #include "ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -66,32 +67,10 @@ class TaskSpecBuilder {
     return *this;
   }
 
-  /// Add a by-reference argument to the task.
-  ///
-  /// \param arg_id Id of the argument.
-  /// \return Reference to the builder object itself.
-  TaskSpecBuilder &AddByRefArg(const ObjectID &arg_id) {
-    message_->add_args()->add_object_ids(arg_id.Binary());
-    return *this;
-  }
-
-  /// Add a by-value argument to the task.
-  ///
-  /// \param value the RayObject instance that contains the data and the metadata.
-  /// \return Reference to the builder object itself.
-  TaskSpecBuilder &AddByValueArg(const RayObject &value) {
-    auto arg = message_->add_args();
-    if (value.HasData()) {
-      const auto &data = value.GetData();
-      arg->set_data(data->Data(), data->Size());
-    }
-    if (value.HasMetadata()) {
-      const auto &metadata = value.GetMetadata();
-      arg->set_metadata(metadata->Data(), metadata->Size());
-    }
-    for (const auto &nested_id : value.GetNestedIds()) {
-      arg->add_nested_inlined_ids(nested_id.Binary());
-    }
+  /// Add an argument to the task.
+  TaskSpecBuilder &AddArg(const TaskArg &arg) {
+    auto ref = message_->add_args();
+    arg.ToProto(ref);
     return *this;
   }
 

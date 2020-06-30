@@ -216,11 +216,14 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const CFunctionDescriptor GetFunctionDescriptor()
 
     cdef cppclass CTaskArg "ray::TaskArg":
-        @staticmethod
-        CTaskArg PassByReference(const CObjectID &object_id)
+        pass
 
-        @staticmethod
-        CTaskArg PassByValue(const shared_ptr[CRayObject] &data)
+    cdef cppclass CTaskArgByReference "ray::TaskArgByReference":
+        CTaskArgByReference(const CObjectID &object_id,
+                            const CAddress &owner_address)
+
+    cdef cppclass CTaskArgByValue "ray::TaskArgByValue":
+        CTaskArgByValue(const shared_ptr[CRayObject] &data)
 
     cdef cppclass CTaskOptions "ray::TaskOptions":
         CTaskOptions()
