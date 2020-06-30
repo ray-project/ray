@@ -554,7 +554,7 @@ class Trainer(Trainable):
         self.callbacks.on_train_result(trainer=self, result=result)
         # log after the callback is invoked, so that the user has a chance
         # to mutate the result
-        Trainable._log_result(self, result)
+        Trainable.log_result(self, result)
 
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):

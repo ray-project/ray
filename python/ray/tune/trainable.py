@@ -405,7 +405,7 @@ class Trainable:
         """
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
             checkpoint_dir or self.logdir, index=self.iteration)
-        checkpoint = self._save(checkpoint_dir)
+        checkpoint = self.save_checkpoint(checkpoint_dir)
         trainable_state = self.get_state()
         checkpoint_path = TrainableUtil.process_checkpoint(
             checkpoint,
@@ -613,6 +613,8 @@ class Trainable:
         trial. Note that manual checkpointing only works when subclassing
         Trainables.
 
+        .. versionadded:: 0.8.7
+
         Returns:
             A dict that describes training progress.
 
@@ -625,7 +627,10 @@ class Trainable:
         self._train()
 
     def _train(self):
-        """This method is deprecated. Override 'step' instead."""
+        """This method is deprecated. Override 'step' instead.
+
+        .. versionchanged:: 0.8.7
+        """
         raise NotImplementedError
 
     def save_checkpoint(self, tmp_checkpoint_dir):
@@ -641,6 +646,8 @@ class Trainable:
         >>> from ray.tune.utils import validate_save_restore
         >>> validate_save_restore(MyTrainableClass)
         >>> validate_save_restore(MyTrainableClass, use_object_store=True)
+
+        .. versionadded:: 0.8.7
 
         Args:
             tmp_checkpoint_dir (str): The directory where the checkpoint
@@ -670,7 +677,10 @@ class Trainable:
         self._save()
 
     def _save(self, tmp_checkpoint_dir):
-        """This method is deprecated. Override 'save_checkpoint' instead."""
+        """This method is deprecated. Override 'save_checkpoint' instead.
+
+        .. versionchanged:: 0.8.7
+        """
         raise NotImplementedError
 
     def load_checkpoint(self, checkpoint):
@@ -705,6 +715,7 @@ class Trainable:
             >>> trainer.restore_from_object(obj)  # Note the different prefix.
             <logdir>/tmpb87b5axfrestore_from_object/checkpoint_0/my/check/point
 
+        .. versionadded:: 0.8.7
 
         Args:
             checkpoint (str|dict): If dict, the return value is as
@@ -722,11 +733,16 @@ class Trainable:
         self._restore(checkpoint)
 
     def _restore(self, checkpoint):
-        """This method is deprecated. Override 'load_checkpoint' instead."""
+        """This method is deprecated. Override 'load_checkpoint' instead.
+
+        .. versionchanged:: 0.8.7
+        """
         raise NotImplementedError
 
     def setup(self, config):
         """Subclasses should override this for custom initialization.
+
+        .. versionadded:: 0.8.7
 
         Args:
             config (dict): Hyperparameters and other configs given.
@@ -739,7 +755,10 @@ class Trainable:
         self._setup(config)
 
     def _setup(self, config):
-        """This method is deprecated. Override 'setup' instead."""
+        """This method is deprecated. Override 'setup' instead.
+
+        .. versionchanged:: 0.8.7
+        """
         pass
 
     def log_result(self, result):
@@ -748,6 +767,8 @@ class Trainable:
         The logging here is done on the worker process rather than
         the driver. You may want to turn off driver logging via the
         ``loggers`` parameter in ``tune.run`` when overriding this function.
+
+        .. versionadded:: 0.8.7
 
         Args:
             result (dict): Training result returned by step().
@@ -759,7 +780,10 @@ class Trainable:
         self._log_result(result)
 
     def _log_result(self, result):
-        """This method is deprecated. Override 'log_result' instead."""
+        """This method is deprecated. Override 'log_result' instead.
+
+        .. versionchanged:: 0.8.7
+        """
         self._result_logger.on_result(result)
 
     def cleanup(self):
@@ -770,6 +794,8 @@ class Trainable:
 
         You can kill a Ray actor by calling `actor.__ray_terminate__.remote()`
         on the actor.
+
+        .. versionadded:: 0.8.7
         """
         if log_once("trainable.cleanup"):
             logger.warning(
@@ -778,7 +804,10 @@ class Trainable:
         self._stop()
 
     def _stop(self):
-        """This method is deprecated. Override 'cleanup' instead."""
+        """This method is deprecated. Override 'cleanup' instead.
+
+        .. versionchanged:: 0.8.7
+        """
         pass
 
     def _export_model(self, export_formats, export_dir):
