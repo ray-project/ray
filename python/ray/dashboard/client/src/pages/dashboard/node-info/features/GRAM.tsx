@@ -2,7 +2,7 @@ import { Box, Tooltip, Typography } from "@material-ui/core";
 import React from "react";
 import { GPUStats } from "../../../../api";
 import { RightPaddedTypography } from "../../../../common/CustomTypography";
-import { MiBRatio, MiBRatioNoPercent } from "../../../../common/formatUtils";
+import { MiBRatioNoPercent } from "../../../../common/formatUtils";
 import UsageBar from "../../../../common/UsageBar";
 import { getWeightedAverage, sum } from "../../../../common/util";
 import {
