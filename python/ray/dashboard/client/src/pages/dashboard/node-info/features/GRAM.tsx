@@ -2,7 +2,7 @@ import { Box, Tooltip, Typography } from "@material-ui/core";
 import React from "react";
 import { GPUStats } from "../../../../api";
 import { RightPaddedTypography } from "../../../../common/CustomTypography";
-import { MiBRatio } from "../../../../common/formatUtils";
+import { MiBRatio, MiBRatioNoPercent } from "../../../../common/formatUtils";
 import UsageBar from "../../../../common/UsageBar";
 import { getWeightedAverage, sum } from "../../../../common/util";
 import {
@@ -92,14 +92,14 @@ const GRAMEntry: React.FC<GRAMEntryProps> = ({
   utilization,
   total,
 }) => {
-  const utilizationPercent = (utilization / total) * 100;
-  const ratioStr = MiBRatio(utilization, total);
+  const ratioStr = MiBRatioNoPercent(utilization, total);
   return (
     <Box display="flex" style={{ minWidth: GRAM_COL_WIDTH }}>
       <Tooltip title={gpuName}>
-        <RightPaddedTypography variant="h6">[{slot}]:</RightPaddedTypography>
+        <RightPaddedTypography variant="subtitle2">
+          [{slot}]: {ratioStr}
+        </RightPaddedTypography>
       </Tooltip>
-      <UsageBar percent={utilizationPercent} text={ratioStr} />
     </Box>
   );
 };
