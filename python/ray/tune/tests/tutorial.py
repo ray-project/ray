@@ -7,10 +7,10 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torchvision import datasets
+from torch.utils.data import DataLoader
 
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
-from ray.tune.examples.mnist_pytorch import get_data_loaders, ConvNet, train, test
 # __tutorial_imports_end__
 # yapf: enable
 
@@ -32,14 +32,14 @@ class ConvNet(nn.Module):
 # yapf: enable
 
 # yapf: disable
-# __train_func_begin__
+# __train_def_begin__
 
 # Change these values if you want the training to run quicker or slower.
 EPOCH_SIZE = 512
 TEST_SIZE = 256
 
 def train(model, optimizer, train_loader, device=None):
-    device = device or torch.device("cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         # We set this just for the example to run quickly.
@@ -53,8 +53,8 @@ def train(model, optimizer, train_loader, device=None):
         optimizer.step()
 
 
-def test(model, data_loader, device=None):
-    device = device or torch.device("cpu")
+def test(model, data_loader):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.eval()
     correct = 0
     total = 0
@@ -70,9 +70,12 @@ def test(model, data_loader, device=None):
             correct += (predicted == target).sum().item()
 
     return correct / total
+# __train_def_end__
 
 
+# __train_func_begin__
 def train_mnist(config):
+    # Data Setup
     mnist_transforms = transforms.Compose(
         [transforms.ToTensor(),
          transforms.Normalize((0.1307, ), (0.3081, ))])
@@ -81,15 +84,11 @@ def train_mnist(config):
     # download data, and this may cause overwrites since
     # DataLoader is not threadsafe.
     with FileLock(os.path.expanduser("~/data.lock")):
-        train_loader = torch.utils.data.DataLoader(
-            datasets.MNIST(
-                "~/data",
-                train=True,
-                download=True,
-                transform=mnist_transforms),
+        train_loader = DataLoader(
+            datasets.MNIST("~/data", train=True, download=True, transform=mnist_transforms),
             batch_size=64,
             shuffle=True)
-    test_loader = torch.utils.data.DataLoader(
+    test_loader = DataLoader(
         datasets.MNIST("~/data", train=False, transform=mnist_transforms),
         batch_size=64,
         shuffle=True)
@@ -100,7 +99,10 @@ def train_mnist(config):
     for i in range(10):
         train(model, optimizer, train_loader)
         acc = test(model, test_loader)
+
+        # Send the current training result back to Tune
         tune.report(mean_accuracy=acc)
+
         if i % 5 == 0:
             # This saves the model to the trial directory
             torch.save(model, "./model.pth")
@@ -114,7 +116,7 @@ search_space = {
 }
 
 # Uncomment this to enable distributed execution
-# `ray.init(address=...)`
+# `ray.init(address="auto")`
 
 analysis = tune.run(train_mnist, config=search_space)
 # __eval_func_end__

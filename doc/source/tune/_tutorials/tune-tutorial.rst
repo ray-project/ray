@@ -5,20 +5,19 @@ A Basic Tune Tutorial
 
 .. image:: /images/tune-api.svg
 
-This tutorial will walk you through the following process to setup a Tune experiment using Pytorch. Specifically, we'll leverage ASHA and Bayesian Optimization (via HyperOpt) via the following steps:
+This tutorial will walk you through the following process to setup a Tune experiment using Pytorch. Specifically, we'll leverage early stopping and Bayesian Optimization (via HyperOpt) to optimize your PyTorch model.
 
-  1. Integrating Tune into your workflow
-  2. Specifying a TrialScheduler
-  3. Adding a SearchAlgorithm
-  4. Getting the best model and analyzing results
 
-.. note::
+.. tip:: If you have suggestions as to how to improve this tutorial, please `let us know <https://github.com/ray-project/ray/issues/new/choose>`_!
 
-    To run this example, you will need to install the following:
+Pytorch Model Setup
+~~~~~~~~~~~~~~~~~~~
 
-    .. code-block:: bash
+To run this example, you will need to install the following:
 
-        $ pip install ray torch torchvision
+.. code-block:: bash
+
+    $ pip install ray torch torchvision
 
 We first run some imports:
 
@@ -28,29 +27,28 @@ We first run some imports:
    :end-before: __tutorial_imports_end__
 
 
-Below, we have some boiler plate code for a PyTorch training function.
+Below, we have some boiler plate code for a PyTorch training function. :ref:`Skip ahead to the Tune usage <tutorial-tune-setup>`.
+
+.. literalinclude:: /../../python/ray/tune/tests/tutorial.py
+   :language: python
+   :start-after: __train_def_begin__
+   :end-before: __train_def_end__
+
+.. _tutorial-tune-setup:
+
+Setting up Tune
+~~~~~~~~~~~~~~~
+
+Below, we define a function that trains the Pytorch model for multiple epochs. This function will be executed on a separate :ref:`Ray process <actor-guide>` underneath the hood, so we need to communicate the performance of the model back to Tune (which is on the main Python process).
+
+To do this, we call ``tune.report`` in our training function, which sends the performance value back to Tune.
+
+.. tip:: Since the function is executed on the separate process, it is important to make sure that the function is :ref:`serializable by Ray <serialization-guide>`.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
    :start-after: __train_func_begin__
    :end-before: __train_func_end__
-
-Notice that there's a couple helper functions in the above training script. You can take a look at these functions in the imported module `examples/mnist_pytorch <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/mnist_pytorch.py>`__; there's no black magic happening. For example, ``train`` is simply a for loop over the data loader.
-
-.. code:: python
-
-    EPOCH_SIZE = 20
-
-    def train(model, optimizer, train_loader):
-        model.train()
-        for batch_idx, (data, target) in enumerate(train_loader):
-            if batch_idx * len(data) > EPOCH_SIZE:
-                return
-            optimizer.zero_grad()
-            output = model(data)
-            loss = F.nll_loss(output, target)
-            loss.backward()
-            optimizer.step()
 
 Let's run 1 trial, randomly sampling from a uniform distribution for learning rate and momentum.
 
