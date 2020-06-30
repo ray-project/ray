@@ -278,8 +278,9 @@ class Trainable:
     def train(self):
         """Runs one logical iteration of training.
 
-        Subclasses should override ``step()`` instead to return results.
-        This class automatically fills the following fields in the result:
+        Calls ``step()`` internally. Subclasses should override ``step()``
+        instead to return results.
+        This method automatically fills the following fields in the result:
 
             `done` (bool): training is terminated. Filled only if not provided.
 
@@ -524,7 +525,7 @@ class Trainable:
         be updated to reflect the latest parameter information in Ray logs.
 
         Args:
-            new_config (dir): Updated hyperparameter configuration
+            new_config (dict): Updated hyperparameter configuration
                 for the trainable.
 
         Returns:
@@ -533,7 +534,11 @@ class Trainable:
         return False
 
     def stop(self):
-        """Releases all resources used by this trainable."""
+        """Releases all resources used by this trainable.
+
+        Calls ``Trainable.cleanup`` internally. Subclasses should override
+        ``Trainable.cleanup`` for custom cleanup procedures.
+        """
         self._result_logger.flush()
         self._result_logger.close()
         self.cleanup()
@@ -627,7 +632,7 @@ class Trainable:
         self._train()
 
     def _train(self):
-        """This method is deprecated. Override 'step' instead.
+        """This method is deprecated. Override 'Trainable.step' instead.
 
         .. versionchanged:: 0.8.7
         """
@@ -637,11 +642,11 @@ class Trainable:
         """Subclasses should override this to implement ``save()``.
 
         Warning:
-            Do not rely on absolute paths in the implementation of ``save_checkpoint``
-            and ``load_checkpoint``.
+            Do not rely on absolute paths in the implementation of
+            ``Trainable.save_checkpoint`` and ``Trainable.load_checkpoint``.
 
-        Use ``validate_save_restore`` to catch ``save_checkpoint``/
-        ``load_checkpoint`` errors before execution.
+        Use ``validate_save_restore`` to catch ``Trainable.save_checkpoint``/
+        ``Trainable.load_checkpoint`` errors before execution.
 
         >>> from ray.tune.utils import validate_save_restore
         >>> validate_save_restore(MyTrainableClass)
@@ -657,7 +662,8 @@ class Trainable:
         Returns:
             A dict or string. If string, the return value is expected to be
             prefixed by `tmp_checkpoint_dir`. If dict, the return value will
-            be automatically serialized by Tune and passed to `load_checkpoint()`.
+            be automatically serialized by Tune and
+            passed to ``Trainable.load_checkpoint()``.
 
         Examples:
             >>> print(trainable1.save_checkpoint("/tmp/checkpoint_1"))
@@ -688,14 +694,16 @@ class Trainable:
 
         Warning:
             In this method, do not rely on absolute paths. The absolute
-            path of the checkpoint_dir used in ``save_checkpoint`` may be changed.
+            path of the checkpoint_dir used in ``Trainable.save_checkpoint``
+            may be changed.
 
-        If ``save_checkpoint`` returned a prefixed string, the prefix of the checkpoint
-        string returned by ``save_checkpoint`` may be changed. This is because trial
-        pausing depends on temporary directories.
+        If ``Trainable.save_checkpoint`` returned a prefixed string, the
+        prefix of the checkpoint string returned by
+        ``Trainable.save_checkpoint`` may be changed.
+        This is because trial pausing depends on temporary directories.
 
-        The directory structure under the checkpoint_dir provided to ``save_checkpoint``
-        is preserved.
+        The directory structure under the checkpoint_dir provided to
+        ``Trainable.save_checkpoint`` is preserved.
 
         See the example below.
 
@@ -719,10 +727,10 @@ class Trainable:
 
         Args:
             checkpoint (str|dict): If dict, the return value is as
-                returned by `save_checkpoint`. If a string, then it is a checkpoint path
-                that may have a different prefix than that returned by `save_checkpoint`.
-                The directory structure underneath the `checkpoint_dir`
-                `save_checkpoint` is preserved.
+                returned by `save_checkpoint`. If a string, then it is
+                a checkpoint path that may have a different prefix than that
+                returned by `save_checkpoint`. The directory structure
+                underneath the `checkpoint_dir` `save_checkpoint` is preserved.
         """
 
         if log_once("trainable.load_checkpoint"):
