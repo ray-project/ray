@@ -3,16 +3,16 @@
 It also checks that it is usable with a separate scheduler.
 """
 import ray
-from ray.tune import run
+from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.skopt import SkOptSearch
 
 
-def easy_objective(config, reporter):
+def easy_objective(config):
     import time
     time.sleep(0.2)
     for i in range(config["iterations"]):
-        reporter(
+        tune.report(
             timesteps_total=i,
             mean_loss=(config["height"] - 14)**2 - abs(config["width"] - 3))
         time.sleep(0.02)
@@ -47,7 +47,8 @@ if __name__ == "__main__":
         points_to_evaluate=previously_run_params,
         evaluated_rewards=known_rewards)
     scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
-    run(easy_objective,
+    tune.run(
+        easy_objective,
         name="skopt_exp_with_warmstart",
         search_alg=algo,
         scheduler=scheduler,

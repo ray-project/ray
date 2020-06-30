@@ -2,18 +2,18 @@
 
 It also checks that it is usable with a separate scheduler.
 """
+import time
+
 import ray
-from ray.tune import run
+from ray import tune
 from ray.tune.suggest.zoopt import ZOOptSearch
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from zoopt import ValueType
 
 
-def easy_objective(config, reporter):
-    import time
-    time.sleep(0.2)
+def easy_objective(config):
     for i in range(config["iterations"]):
-        reporter(
+        tune.report(
             timesteps_total=i,
             mean_loss=(config["height"] - 14)**2 - abs(config["width"] - 3))
         time.sleep(0.02)
@@ -56,7 +56,7 @@ if __name__ == "__main__":
 
     scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
 
-    run(easy_objective,
+    tune.run(easy_objective,
         search_alg=zoopt_search,
         name="zoopt_search",
         scheduler=scheduler,

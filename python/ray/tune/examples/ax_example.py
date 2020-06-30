@@ -33,12 +33,12 @@ def hartmann6(x):
     return y
 
 
-def easy_objective(config, reporter):
+def easy_objective(config):
     import time
     time.sleep(0.2)
     for i in range(config["iterations"]):
         x = np.array([config.get("x{}".format(i + 1)) for i in range(6)])
-        reporter(
+        tune.report(
             timesteps_total=i,
             hartmann6=hartmann6(x),
             l2norm=np.sqrt((x**2).sum()))

@@ -14,12 +14,87 @@ from ray.tune.examples.mnist_pytorch import get_data_loaders, ConvNet, train, te
 # __tutorial_imports_end__
 # yapf: enable
 
+# yapf: disable
+# __model_def_begin__
+class ConvNet(nn.Module):
+    def __init__(self):
+        super(ConvNet, self).__init__()
+        self.conv1 = nn.Conv2d(1, 3, kernel_size=3)
+        self.fc = nn.Linear(192, 10)
+
+    def forward(self, x):
+        x = F.relu(F.max_pool2d(self.conv1(x), 3))
+        x = x.view(-1, 192)
+        x = self.fc(x)
+        return F.log_softmax(x, dim=1)
+# __model_def_end__
+# yapf: enable
+
 
 # yapf: disable
 # __train_func_begin__
+
+# Change these values if you want the training to run quicker or slower.
+EPOCH_SIZE = 512
+TEST_SIZE = 256
+
+def train(model, optimizer, train_loader, device=None):
+    device = device or torch.device("cpu")
+    model.train()
+    for batch_idx, (data, target) in enumerate(train_loader):
+        # We set this just for the example to run quickly.
+        if batch_idx * len(data) > EPOCH_SIZE:
+            return
+        data, target = data.to(device), target.to(device)
+        optimizer.zero_grad()
+        output = model(data)
+        loss = F.nll_loss(output, target)
+        loss.backward()
+        optimizer.step()
+
+
+def test(model, data_loader, device=None):
+    device = device or torch.device("cpu")
+    model.eval()
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for batch_idx, (data, target) in enumerate(data_loader):
+            # We set this just for the example to run quickly.
+            if batch_idx * len(data) > TEST_SIZE:
+                break
+            data, target = data.to(device), target.to(device)
+            outputs = model(data)
+            _, predicted = torch.max(outputs.data, 1)
+            total += target.size(0)
+            correct += (predicted == target).sum().item()
+
+    return correct / total
+
+
 def train_mnist(config):
+    mnist_transforms = transforms.Compose(
+        [transforms.ToTensor(),
+         transforms.Normalize((0.1307, ), (0.3081, ))])
+
+    # We add FileLock here because multiple workers will want to
+    # download data, and this may cause overwrites since
+    # DataLoader is not threadsafe.
+    with FileLock(os.path.expanduser("~/data.lock")):
+        train_loader = torch.utils.data.DataLoader(
+            datasets.MNIST(
+                "~/data",
+                train=True,
+                download=True,
+                transform=mnist_transforms),
+            batch_size=64,
+            shuffle=True)
+    test_loader = torch.utils.data.DataLoader(
+        datasets.MNIST("~/data", train=False, transform=mnist_transforms),
+        batch_size=64,
+        shuffle=True)
+
     model = ConvNet()
-    train_loader, test_loader = get_data_loaders()
     optimizer = optim.SGD(
         model.parameters(), lr=config["lr"], momentum=config["momentum"])
     for i in range(10):

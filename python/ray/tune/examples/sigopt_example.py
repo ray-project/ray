@@ -2,17 +2,17 @@
 
 It also checks that it is usable with a separate scheduler.
 """
+import time
+
 import ray
-from ray.tune import run
+from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.sigopt import SigOptSearch
 
 
-def easy_objective(config, reporter):
-    import time
-    time.sleep(0.2)
+def easy_objective(config):
     for i in range(config["iterations"]):
-        reporter(
+        tune.report(
             timesteps_total=i,
             mean_loss=(config["height"] - 14)**2 - abs(config["width"] - 3))
         time.sleep(0.02)
@@ -66,7 +66,7 @@ if __name__ == "__main__":
         metric="mean_loss",
         mode="min")
     scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
-    run(easy_objective,
+    tune.run(easy_objective,
         name="my_exp",
         search_alg=algo,
         scheduler=scheduler,

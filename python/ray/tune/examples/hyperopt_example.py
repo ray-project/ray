@@ -2,21 +2,22 @@
 
 It also checks that it is usable with a separate scheduler.
 """
+import time
+
 import ray
 from ray.tune import run
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.hyperopt import HyperOptSearch
 
 
-def easy_objective(config, reporter):
-    import time
-    time.sleep(0.2)
+def easy_objective(config):
     assert type(config["activation"]) == str, \
         "Config is incorrect: {}".format(type(config["activation"]))
     for i in range(config["iterations"]):
-        reporter(
+        loss = (config["height"] - 14)**2 - abs(config["width"] - 3)
+        tune.report(
             timesteps_total=i,
-            mean_loss=(config["height"] - 14)**2 - abs(config["width"] - 3))
+            mean_loss=loss)
         time.sleep(0.02)
 
 
