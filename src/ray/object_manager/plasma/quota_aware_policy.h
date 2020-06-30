@@ -149,7 +149,8 @@ class QuotaAwarePolicy {
   /// \param object_id The object ID of the object that was created.
   /// \param client The pointer to the client.
   /// \param is_create Whether we are creating a new object (vs reading an object).
-  void ObjectCreated(const ObjectID& object_id, Client* client, bool is_create);
+  void ObjectCreated(const ObjectID& object_id, int64_t size, Client* client,
+                     bool is_create);
 
   /// Set quota for a client.
   ///
@@ -186,7 +187,8 @@ class QuotaAwarePolicy {
   /// the Plasma store by the caller.
   ///
   /// \param object_id The ID of the object that is now being used.
-  void BeginObjectAccess(const ObjectID& object_id);
+  /// \param size The size of the object.
+  void BeginObjectAccess(const ObjectID& object_id, int64_t size);
 
   /// This method will be called whenever an object in the Plasma store that was
   /// being used is no longer being used. When this method is called, the
@@ -194,7 +196,8 @@ class QuotaAwarePolicy {
   /// fact be evicted from the Plasma store by the caller.
   ///
   /// \param object_id The ID of the object that is no longer being used.
-  void EndObjectAccess(const ObjectID& object_id);
+  /// \param size The size of the object.
+  void EndObjectAccess(const ObjectID& object_id, int64_t size);
 
   /// This method will be called when an object is going to be removed
   ///

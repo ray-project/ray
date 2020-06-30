@@ -665,7 +665,7 @@ class ObjectDirectory {
     // that the object is being used.
     if (entry->ref_count == 0) {
       // Tell the eviction policy that this object is being used.
-      eviction_policy_.BeginObjectAccess(object_id);
+      eviction_policy_.BeginObjectAccess(object_id, entry->ObjectSize());
     }
     // Increase reference count.
     entry->ref_count++;
@@ -687,7 +687,7 @@ class ObjectDirectory {
       if (entry->ref_count == 0) {
         if (deletion_cache_.count(object_id) == 0) {
           // Tell the eviction policy that this object is no longer being used.
-          eviction_policy_.EndObjectAccess(object_id);
+          eviction_policy_.EndObjectAccess(object_id, entry->ObjectSize());
         } else {
           // Above code does not really delete an object. Instead, it just put an
           // object to LRU cache which will be cleaned when the memory is not enough.
@@ -740,7 +740,7 @@ class ObjectDirectory {
         // Notify the eviction policy that this object was created. This must be done
         // immediately before the call to AddToClientObjectIds so that the
         // eviction policy does not have an opportunity to evict the object.
-        eviction_policy_.ObjectCreated(object_id, client, is_create);
+        eviction_policy_.ObjectCreated(object_id, size, client, is_create);
         // Record that this client is using this object.
         AddToClientObjectIds(object_id, entry, client);
       } else if (!evict_if_full) {

@@ -132,9 +132,8 @@ bool QuotaAwarePolicy::HasQuota(Client* client, bool is_create) {
   return per_client_cache_.find(client) != per_client_cache_.end();
 }
 
-void QuotaAwarePolicy::ObjectCreated(const ObjectID& object_id, Client* client,
-                                     bool is_create) {
-  int64_t size = store_info_->GetObjectSize(object_id);
+void QuotaAwarePolicy::ObjectCreated(const ObjectID& object_id, int64_t size,
+                                     Client* client, bool is_create) {
   if (HasQuota(client, is_create)) {
     per_client_cache_[client]->Add(object_id, size);
     owned_by_client_[object_id] = client;
@@ -200,8 +199,8 @@ bool QuotaAwarePolicy::EnforcePerClientQuota(Client* client, int64_t size, bool 
   return true;
 }
 
-void QuotaAwarePolicy::BeginObjectAccess(const ObjectID& object_id) {
-  pinned_memory_bytes_ += store_info_->GetObjectSize(object_id);
+void QuotaAwarePolicy::BeginObjectAccess(const ObjectID& object_id, int64_t size) {
+  pinned_memory_bytes_ += size;
   if (owned_by_client_.find(object_id) != owned_by_client_.end()) {
     shared_for_read_.insert(object_id);
   } else {
@@ -210,8 +209,7 @@ void QuotaAwarePolicy::BeginObjectAccess(const ObjectID& object_id) {
   }
 }
 
-void QuotaAwarePolicy::EndObjectAccess(const ObjectID& object_id) {
-  auto size = store_info_->GetObjectSize(object_id);
+void QuotaAwarePolicy::EndObjectAccess(const ObjectID& object_id, int64_t size) {
   pinned_memory_bytes_ -= size;
   if (owned_by_client_.find(object_id) != owned_by_client_.end()) {
     shared_for_read_.erase(object_id);
