@@ -194,8 +194,8 @@ class Policy(metaclass=ABCMeta):
 
     def compute_actions_from_trajectories(
             self,
-            trajectories: List[Trajectory],
-            other_trajectories: Dict[AgentID, Trajectory],
+            trajectories: List["Trajectory"],
+            other_trajectories: Dict[AgentID, "Trajectory"],
             explore: bool = None,
             timestep: Optional[int] = None,
             **kwargs):

@@ -13,7 +13,7 @@ from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import unbatch
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 class ARSTFPolicy:
@@ -29,8 +29,8 @@ class ARSTFPolicy:
         self.single_threaded = config.get("single_threaded", False)
         self.sess = make_session(single_threaded=self.single_threaded)
 
-        self.inputs = tf.placeholder(tf.float32,
-                                     [None] + list(self.preprocessor.shape))
+        self.inputs = tf1.placeholder(tf.float32,
+                                      [None] + list(self.preprocessor.shape))
 
         # Policy network.
         dist_class, dist_dim = ModelCatalog.get_action_dist(
@@ -52,7 +52,7 @@ class ARSTFPolicy:
         self.num_params = sum(
             np.prod(variable.shape.as_list())
             for _, variable in self.variables.variables.items())
-        self.sess.run(tf.global_variables_initializer())
+        self.sess.run(tf1.global_variables_initializer())
 
     def compute_actions(self,
                         observation,
