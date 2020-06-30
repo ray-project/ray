@@ -152,7 +152,7 @@ struct PlasmaStoreInfo {
   bool hugepages_enabled;
   /// A (platform-dependent) directory where to create the memory-backed file.
   std::string shared_memory_directory;
-}
+};
 
 /// Globally accessible plasma store configuration.
 extern PlasmaStoreInfo plasma_config;

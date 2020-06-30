@@ -100,14 +100,10 @@ class PlasmaStore {
     notification_listener_ = notification_listener;
     if (notification_listener_) {
       // Push notifications to the new subscriber about existing sealed objects.
-      for (const auto& entry : store_info_.objects) {
-        if (entry.second->state == ObjectState::PLASMA_SEALED) {
-          ObjectInfoT info;
-          info.object_id = entry.first.Binary();
-          info.data_size = entry.second->data_size;
-          info.metadata_size = entry.second->metadata_size;
-          notification_listener_->ProcessStoreAdd(info);
-        }
+      std::vector<ObjectInfoT> infos;
+      object_directory->GetSealedObjectsInfo(&infos);
+      for (const auto& info : infos) {
+        notification_listener_->ProcessStoreAdd(info);
       }
     }
   }
@@ -126,10 +122,9 @@ class PlasmaStore {
   ///
   /// \param object_id The Object ID of the new objects to be created and sealed.
   /// \param client The current client that is associated with the object.
-  PlasmaError PlasmaStore::CreateAndSealObject(const ObjectID& object_id, bool evict_if_full,
-                                               const std::string &data, const std::string &metadata,
-                                               int device_num, Client* client,
-                                               PlasmaObject* result);
+  PlasmaError CreateAndSealObject(const ObjectID& object_id, bool evict_if_full,
+                                  const std::string &data, const std::string &metadata,
+                                  int device_num, Client* client,  PlasmaObject* result);
 
   void PushNotifications(const std::vector<ObjectInfoT>& object_notifications, int client_fd);
 

@@ -129,6 +129,7 @@ PlasmaError CreateObjectStatusToPlasmaError(const Status& status) {
   } else {
     RAY_LOG(FATAL) << "Unexpected error: " << status.ToString();
   }
+  return PlasmaError::OK;
 }
 
 void PlasmaStore::RemoveGetRequest(GetRequest* get_request) {

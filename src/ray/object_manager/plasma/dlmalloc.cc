@@ -74,7 +74,7 @@ static void* pointer_retreat(void* p, ptrdiff_t n) { return (unsigned char*)p - 
 // immediately unlinking it so we do not leave traces in the system.
 int create_buffer(int64_t size) {
   int fd;
-  std::string file_template = plasma_config.directory;
+  std::string file_template = plasma_config.shared_memory_directory;
 #ifdef _WIN32
   HANDLE h = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,
                                (DWORD)((uint64_t)size >> (CHAR_BIT * sizeof(DWORD))),

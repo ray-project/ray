@@ -96,11 +96,11 @@ void PlasmaStoreRunner::Start() {
   RAY_LOG(DEBUG) << "starting server listening on " << socket_name_;
 
   // Create the event loop.
-  plasma_config.plasma_directory = plasma_directory_;
+  plasma_config.shared_memory_directory = plasma_directory_;
   plasma_config.hugepages_enabled = hugepages_enabled_;
   loop_.reset(new EventLoop);
   store_.reset(new PlasmaStore(loop_.get(), socket_name_));
-  object_directory.reset(new ObjectDirectory(external_store, [&store_](const std::vector<ObjectInfoT> &infos) {
+  object_directory.reset(new ObjectDirectory(external_store, [this](const std::vector<ObjectInfoT> &infos) {
     if (store_) {
       store_->PushNotifications(infos);
     }
