@@ -455,6 +455,11 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
   return worker;
 }
 
+const std::vector<std::shared_ptr<Worker>> WorkerPool::GetIdleWorkers() const {
+  auto &state = GetStateForLanguage(task_spec.GetLanguage());
+  return state.idle;
+}
+
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));

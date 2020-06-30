@@ -20,9 +20,9 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/scheduling/fixed_point.h"
-#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/raylet/scheduling/fixed_point.h"
+#include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
 
 /// List of predefined resources.

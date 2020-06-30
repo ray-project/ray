@@ -131,6 +131,12 @@ class WorkerPool {
   /// such worker exists.
   std::shared_ptr<Worker> PopWorker(const TaskSpecification &task_spec);
 
+  /// Get all idle workers from the pool.
+  ///\param task_spec The returned worker must be able to execute this
+  /// task. \return An idle worker with the requested task spec. Returns
+  /// nullptr if no such worker exists.
+  const std::vector<std::shared_ptr<Worker>> GetIdleWorkers() const;
+
   /// Return the current size of the worker pool for the requested language. Counts only
   /// idle workers.
   ///
