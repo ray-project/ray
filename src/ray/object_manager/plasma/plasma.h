@@ -108,6 +108,8 @@ struct PlasmaObject {
   int64_t metadata_size;
   /// Device number object is on.
   int device_num;
+  /// Size of the underlying map.
+  int64_t map_size;
 
   bool operator==(const PlasmaObject& other) const {
     return (
@@ -116,7 +118,8 @@ struct PlasmaObject {
 #endif
         (store_fd == other.store_fd) && (data_offset == other.data_offset) &&
         (metadata_offset == other.metadata_offset) && (data_size == other.data_size) &&
-        (metadata_size == other.metadata_size) && (device_num == other.device_num));
+        (metadata_size == other.metadata_size) && (device_num == other.device_num) &&
+        (map_size == other.map_size));
   }
 };
 

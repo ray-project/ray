@@ -174,6 +174,7 @@ void PlasmaObject_init(PlasmaObject* object, ObjectTableEntry* entry) {
   object->data_size = entry->data_size;
   object->metadata_size = entry->metadata_size;
   object->device_num = entry->device_num;
+  object->map_size = entry->map_size;
 }
 
 class ObjectDirectory {

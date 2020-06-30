@@ -188,8 +188,7 @@ void PlasmaStore::ReturnFromGet(GetRequest* get_req) {
     if (object.data_size != -1 && fds_to_send.count(fd) == 0 && fd != -1) {
       fds_to_send.insert(fd);
       store_fds.push_back(fd);
-      // TODO(suquark): remove GetMmapSize
-      mmap_sizes.push_back(GetMmapSize(fd));
+      mmap_sizes.push_back(object.map_size);
     }
   }
 
@@ -505,7 +504,7 @@ Status PlasmaStore::ProcessMessage(Client* client) {
           object_id, evict_if_full, data_size, metadata_size, device_num, client, &object));
       int64_t mmap_size = 0;
       if (error_code == PlasmaError::OK && device_num == 0) {
-        mmap_size = GetMmapSize(object.store_fd);
+        mmap_size = object.map_size;
       }
       HANDLE_SIGPIPE(
           SendCreateReply(client->fd, object_id, &object, error_code, mmap_size),
