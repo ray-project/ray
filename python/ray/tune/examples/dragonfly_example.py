@@ -46,9 +46,6 @@ if __name__ == "__main__":
         "config": {
             "iterations": 100,
         },
-        "stop": {
-            "timesteps_total": 100
-        },
     }
 
     domain_vars = [{
@@ -75,7 +72,8 @@ if __name__ == "__main__":
     optimizer = EuclideanGPBandit(func_caller, ask_tell_mode=True)
     algo = DragonflySearch(optimizer, metric="objective", mode="max")
     scheduler = AsyncHyperBandScheduler(metric="objective", mode="max")
-    tune.run(objective,
+    tune.run(
+        objective,
         name="dragonfly_search",
         search_alg=algo,
         scheduler=scheduler,

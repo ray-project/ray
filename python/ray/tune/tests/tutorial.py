@@ -14,6 +14,7 @@ from ray.tune.examples.mnist_pytorch import get_data_loaders, ConvNet, train, te
 # __tutorial_imports_end__
 # yapf: enable
 
+
 # yapf: disable
 # __model_def_begin__
 class ConvNet(nn.Module):
@@ -29,7 +30,6 @@ class ConvNet(nn.Module):
         return F.log_softmax(x, dim=1)
 # __model_def_end__
 # yapf: enable
-
 
 # yapf: disable
 # __train_func_begin__

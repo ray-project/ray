@@ -3,9 +3,10 @@
 It also checks that it is usable with a separate scheduler.
 """
 import numpy as np
+import time
 
 import ray
-from ray.tune import run
+from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.ax import AxSearch
 
@@ -34,8 +35,6 @@ def hartmann6(x):
 
 
 def easy_objective(config):
-    import time
-    time.sleep(0.2)
     for i in range(config["iterations"]):
         x = np.array([config.get("x{}".format(i + 1)) for i in range(6)])
         tune.report(
@@ -109,7 +108,8 @@ if __name__ == "__main__":
     )
     algo = AxSearch(client, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler(metric="hartmann6", mode="min")
-    run(easy_objective,
+    tune.run(
+        easy_objective,
         name="ax",
         search_alg=algo,
         scheduler=scheduler,

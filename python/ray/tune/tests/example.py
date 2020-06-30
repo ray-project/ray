@@ -30,9 +30,11 @@ def training_function(config):
 
 
 analysis = tune.run(
-    training_function, config={
+    training_function,
+    config={
         "alpha": tune.grid_search([0.001, 0.01, 0.1]),
-        "beta": tune.choice([1, 2, 3])})
+        "beta": tune.choice([1, 2, 3])
+    })
 
 print("Best config: ", analysis.get_best_config(metric="score"))
 

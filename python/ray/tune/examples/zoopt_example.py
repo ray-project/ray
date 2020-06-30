@@ -11,12 +11,20 @@ from ray.tune.schedulers import AsyncHyperBandScheduler
 from zoopt import ValueType
 
 
+def evaluation_fn(step, width, height):
+    return (width * step / 100)**(-1) + height * 0.01
+
+
 def easy_objective(config):
-    for i in range(config["iterations"]):
-        tune.report(
-            timesteps_total=i,
-            mean_loss=(config["height"] - 14)**2 - abs(config["width"] - 3))
-        time.sleep(0.02)
+    # Hyperparameters
+    width, height = config["width"], config["height"]
+
+    for step in range(config["steps"]):
+        # Iterative training function - can be any arbitrary training procedure
+        intermediate_score = evaluation_fn(step, width, height)
+        # Feed the score back back to Tune.
+        tune.report(iterations=step, score=intermediate_score)
+        time.sleep(0.1)
 
 
 if __name__ == "__main__":
@@ -40,10 +48,7 @@ if __name__ == "__main__":
     config = {
         "num_samples": 10 if args.smoke_test else 1000,
         "config": {
-            "iterations": 10,  # evaluation times
-        },
-        "stop": {
-            "timesteps_total": 10  # cumstom stop rules
+            "steps": 10,  # evaluation times
         }
     }
 
@@ -51,12 +56,13 @@ if __name__ == "__main__":
         algo="Asracos",  # only support ASRacos currently
         budget=config["num_samples"],
         dim_dict=dim_dict,
-        metric="mean_loss",
+        metric="score",
         mode="min")
 
-    scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
+    scheduler = AsyncHyperBandScheduler(metric="score", mode="min")
 
-    tune.run(easy_objective,
+    tune.run(
+        easy_objective,
         search_alg=zoopt_search,
         name="zoopt_search",
         scheduler=scheduler,

@@ -177,7 +177,6 @@ def train_cifar10(config):
         test_loss /= len(test_data)
         return test_loss, test_acc
 
-
     for epoch in range(1, args.epochs + 1):
         train(epoch)
         test_loss, test_acc = test()
@@ -203,7 +202,7 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError
     tune.run(
-        "TRAIN_FN",
+        train_cifar10,
         name=args.expname,
         verbose=2,
         scheduler=sched,
