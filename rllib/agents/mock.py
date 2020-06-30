@@ -29,7 +29,7 @@ class _MockTrainer(Trainer):
         self.info = None
         self.restored = False
 
-    def _train(self):
+    def step(self):
         if self.config["mock_error"] and self.iteration == 1 \
                 and (self.config["persistent_error"] or not self.restored):
             raise Exception("mock error")
@@ -83,7 +83,7 @@ class _SigmoidFakeData(_MockTrainer):
         "object_store_memory": 0,
     })
 
-    def _train(self):
+    def step(self):
         i = max(0, self.iteration - self.config["offset"])
         v = np.tanh(float(i) / self.config["width"])
         v *= self.config["height"]
@@ -109,7 +109,7 @@ class _ParameterTuningTrainer(_MockTrainer):
         "object_store_memory": 0,
     })
 
-    def _train(self):
+    def step(self):
         return dict(
             episode_reward_mean=self.config["reward_amt"] * self.iteration,
             episode_len_mean=self.config["reward_amt"],
@@ -125,7 +125,7 @@ def _agent_import_failed(trace):
         _name = "AgentImportFailed"
         _default_config = with_common_config({})
 
-        def _setup(self, config):
+        def setup(self, config):
             raise ImportError(trace)
 
     return _AgentImportFailed

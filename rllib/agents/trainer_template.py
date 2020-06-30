@@ -134,7 +134,7 @@ def build_trainer(
                 after_init(self)
 
         @override(Trainer)
-        def _train(self):
+        def step(self):
             if self.train_exec_impl:
                 return self._train_exec_impl()
 
