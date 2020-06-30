@@ -419,7 +419,7 @@ def setup_mixins(policy, obs_space, action_space, config):
 
 
 MAMLTorchPolicy = build_torch_policy(
-    name="MAMLTFPolicy",
+    name="MAMLTorchPolicy",
     get_default_config=lambda: ray.rllib.agents.maml.maml.DEFAULT_CONFIG,
     loss_fn=maml_loss,
     stats_fn=maml_stats,
