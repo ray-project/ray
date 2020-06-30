@@ -75,7 +75,7 @@ class TaskArgByReference : public TaskArg {
  private:
   /// Id of the argument if passed by reference, otherwise nullptr.
   const ObjectID id_;
-  const rpc::Address &owner_address_;
+  const rpc::Address owner_address_;
 };
 
 class TaskArgByValue : public TaskArg {
