@@ -596,7 +596,7 @@ Status PlasmaStore::ProcessMessage(Client* client) {
     case fb::MessageType::PlasmaRefreshLRURequest: {
       std::vector<ObjectID> object_ids;
       RAY_RETURN_NOT_OK(ReadRefreshLRURequest(input, input_size, &object_ids));
-      eviction_policy_.RefreshObjects(object_ids);
+      object_directory->RefreshObjects(object_ids);
       HANDLE_SIGPIPE(SendRefreshLRUReply(client->fd), client->fd);
     } break;
     case fb::MessageType::PlasmaSubscribeRequest:
@@ -615,14 +615,13 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       int64_t output_memory_quota;
       RAY_RETURN_NOT_OK(
           ReadSetOptionsRequest(input, input_size, &client_name, &output_memory_quota));
-      client->name = client_name;
-      bool success = eviction_policy_.SetClientQuota(client, output_memory_quota);
+      bool success = object_directory->SetClientOption(client, client_name, output_memory_quota);
       HANDLE_SIGPIPE(SendSetOptionsReply(client->fd, success ? PlasmaError::OK
                                                              : PlasmaError::OutOfMemory),
                      client->fd);
     } break;
     case fb::MessageType::PlasmaGetDebugStringRequest: {
-      HANDLE_SIGPIPE(SendGetDebugStringReply(client->fd, eviction_policy_.DebugString()),
+      HANDLE_SIGPIPE(SendGetDebugStringReply(client->fd, object_directory->DebugString()),
                      client->fd);
     } break;
     default:

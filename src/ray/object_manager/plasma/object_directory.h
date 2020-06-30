@@ -363,8 +363,8 @@ class ObjectDirectory {
   ///    cannot create the object. In this case, the client should not call
   ///    plasma_release.
   Status CreateAndSealObject(const ObjectID& object_id, bool evict_if_full,
-                            const std::string &data, const std::string &metadata,
-                            int device_num, Client* client, PlasmaObject* result) {
+                             const std::string &data, const std::string &metadata,
+                             int device_num, Client* client, PlasmaObject* result) {
     absl::MutexLock lock(&object_table_mutex_);
     RAY_CHECK(device_num == 0) << "CreateAndSeal currently only supports device_num = 0, "
                                   "which corresponds to the host.";
@@ -520,6 +520,19 @@ class ObjectDirectory {
     PlasmaObject_init(object, entry.get());
     // Record that this client is using this object.
     AddToClientObjectIds(object_id, entry.get(), client);
+  }
+
+  bool SetClientOption(Client *client, const std::string &client_name, int64_t output_memory_quota) {
+    client->name = client_name;
+    return success = eviction_policy_.SetClientQuota(client, output_memory_quota);
+  }
+
+  void RefreshObjects(const std::vector<ObjectID>& object_ids) {
+    eviction_policy_.RefreshObjects(object_ids);
+  }
+
+  std::string DebugString() const {
+    return eviction_policy_.DebugString();
   }
 
  private:
