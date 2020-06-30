@@ -14,7 +14,7 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 tree = try_import_tree()
 
 
@@ -60,9 +60,9 @@ def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0.0):
 
 def make_session(single_threaded):
     if not single_threaded:
-        return tf.Session()
-    return tf.Session(
-        config=tf.ConfigProto(
+        return tf1.Session()
+    return tf1.Session(
+        config=tf1.ConfigProto(
             inter_op_parallelism_threads=1, intra_op_parallelism_threads=1))
 
 
@@ -77,8 +77,8 @@ class ESTFPolicy:
                                              self.preprocessor.shape)
         self.single_threaded = config.get("single_threaded", False)
         self.sess = make_session(single_threaded=self.single_threaded)
-        self.inputs = tf.placeholder(tf.float32,
-                                     [None] + list(self.preprocessor.shape))
+        self.inputs = tf1.placeholder(tf.float32,
+                                      [None] + list(self.preprocessor.shape))
 
         # Policy network.
         dist_class, dist_dim = ModelCatalog.get_action_dist(
@@ -98,7 +98,7 @@ class ESTFPolicy:
         self.num_params = sum(
             np.prod(variable.shape.as_list())
             for _, variable in self.variables.variables.items())
-        self.sess.run(tf.global_variables_initializer())
+        self.sess.run(tf1.global_variables_initializer())
 
     def compute_actions(self,
                         observation,

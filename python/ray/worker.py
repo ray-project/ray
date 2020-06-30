@@ -395,6 +395,10 @@ def get_gpu_ids():
         assigned_ids = [
             global_worker.original_gpu_ids[gpu_id] for gpu_id in assigned_ids
         ]
+        # Give all GPUs in local_mode.
+        if global_worker.mode == LOCAL_MODE:
+            max_gpus = global_worker.node.get_resource_spec().num_gpus
+            return global_worker.original_gpu_ids[:max_gpus]
 
     return assigned_ids
 
