@@ -62,6 +62,7 @@ matrix:
         - JDK='Oracle JDK 8'
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
+        - RAY_GCS_ACTOR_SERVICE_ENABLED=true
       install:
         - . ./ci/travis/ci.sh init RAY_CI_JAVA_AFFECTED
       before_script:
@@ -74,6 +75,7 @@ matrix:
         - TESTSUITE=streaming
         - JDK='Oracle JDK 8'
         - RAY_INSTALL_JAVA=1
+        - RAY_GCS_ACTOR_SERVICE_ENABLED=true
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_USE_RANDOM_PORTS=1
       install:
@@ -104,6 +106,7 @@ matrix:
         - LINUX_WHEELS=1
         - PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
+        - RAY_GCS_ACTOR_SERVICE_ENABLED=true
       install:
         - . ./ci/travis/ci.sh init RAY_CI_LINUX_WHEELS_AFFECTED
       before_script:
@@ -119,6 +122,7 @@ matrix:
         - MAC_WHEELS=1
         - PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
+        - RAY_GCS_ACTOR_SERVICE_ENABLED=true
       install:
         - . ./ci/travis/ci.sh init RAY_CI_MACOS_WHEELS_AFFECTED
       before_script:
