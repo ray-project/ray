@@ -34,6 +34,8 @@ class ARSTFPolicy:
             self.inputs = tf1.placeholder(
                 tf.float32, [None] + list(self.preprocessor.shape))
         else:
+            if not tf1.executing_eagerly():
+                tf1.enable_eager_execution()
             self.sess = self.inputs = None
 
         # Policy network.
