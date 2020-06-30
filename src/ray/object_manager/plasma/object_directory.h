@@ -241,9 +241,9 @@ class ObjectDirectory {
       } else {
         auto& entry = it->second;
         switch (entry->state) {
-          case ObjectState::PLASMA_SEALED:
+          case ObjectState::PLASMA_SEALED: {
             sealed_objects->push_back(object_id);
-            break;
+          } break;
           case ObjectState::PLASMA_EVICTED: {
             Status status = AllocateMemory(object_id, entry.get(), entry->ObjectSize(),
                                            /*evict_inf_full=*/true, client, /*is_create=*/false,
@@ -256,8 +256,7 @@ class ObjectDirectory {
               // other request can try again.
               entry->state = ObjectState::PLASMA_EVICTED;
             }
-            break;
-          }
+          } break;
           default:
             nonexistent_objects->push_back(object_id);
         }
