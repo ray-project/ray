@@ -138,6 +138,8 @@ class MultiAgentEpisode:
         else:
             policy = self._policies[self.policy_for(agent_id)]
             flat = flatten_to_single_ndarray(policy.action_space.sample())
+            if hasattr(policy.action_space, "dtype"):
+                return np.zeros_like(flat, dtype=policy.action_space.dtype)
             return np.zeros_like(flat)
 
     @DeveloperAPI

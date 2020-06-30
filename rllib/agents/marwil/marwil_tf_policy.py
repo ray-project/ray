@@ -28,7 +28,7 @@ class ValueNetworkMixin:
 class ValueLoss:
     def __init__(self, state_values, cumulative_rewards):
         self.loss = 0.5 * tf.reduce_mean(
-            tf.square(state_values - cumulative_rewards))
+            tf.math.square(state_values - cumulative_rewards))
 
 
 class ReweightedImitationLoss:
@@ -39,13 +39,13 @@ class ReweightedImitationLoss:
         # update averaged advantage norm
         update_adv_norm = tf.assign_add(
             ref=policy._ma_adv_norm,
-            value=1e-6 *
-            (tf.reduce_mean(tf.square(adv)) - policy._ma_adv_norm))
+            value=1e-6 * (
+                    tf.reduce_mean(tf.math.square(adv)) - policy._ma_adv_norm))
 
         # exponentially weighted advantages
         with tf.control_dependencies([update_adv_norm]):
-            exp_advs = tf.exp(
-                beta * tf.divide(adv, 1e-8 + tf.sqrt(policy._ma_adv_norm)))
+            exp_advs = tf.math.exp(beta * tf.math.divide(
+                adv, 1e-8 + tf.math.sqrt(policy._ma_adv_norm)))
 
         # log\pi_\theta(a|s)
         logprobs = action_dist.logp(actions)

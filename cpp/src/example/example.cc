@@ -36,9 +36,9 @@ int main() {
   auto getRsult = obj.Get();
 
   /// general function remote call（args passed by value）
-  auto r0 = Ray::Call(Return1);
-  auto r1 = Ray::Call(Plus1, 1);
-  auto r2 = Ray::Call(Plus, 1, 2);
+  auto r0 = Ray::Task(Return1).Remote();
+  auto r1 = Ray::Task(Plus1, 1).Remote();
+  auto r2 = Ray::Task(Plus, 1, 2).Remote();
 
   int result0 = *(r0.Get());
   int result1 = *(r1.Get());
@@ -48,9 +48,9 @@ int main() {
             << result2 << std::endl;
 
   /// general function remote call（args passed by reference）
-  auto r3 = Ray::Call(Return1);
-  auto r4 = Ray::Call(Plus1, r3);
-  auto r5 = Ray::Call(Plus, r4, 1);
+  auto r3 = Ray::Task(Return1).Remote();
+  auto r4 = Ray::Task(Plus1, r3).Remote();
+  auto r5 = Ray::Task(Plus, r4, 1).Remote();
 
   int result3 = *(r3.Get());
   int result4 = *(r4.Get());
@@ -60,11 +60,11 @@ int main() {
             << result5 << std::endl;
 
   /// create actor and actor function remote call
-  RayActor<Counter> actor = Ray::CreateActor(Counter::FactoryCreate);
-  auto r6 = actor.Call(&Counter::Add, 5);
-  auto r7 = actor.Call(&Counter::Add, 1);
-  auto r8 = actor.Call(&Counter::Add, 1);
-  auto r9 = actor.Call(&Counter::Add, r8);
+  ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate).Remote();
+  auto r6 = actor.Task(&Counter::Add, 5).Remote();
+  auto r7 = actor.Task(&Counter::Add, 1).Remote();
+  auto r8 = actor.Task(&Counter::Add, 1).Remote();
+  auto r9 = actor.Task(&Counter::Add, r8).Remote();
 
   int result6 = *(r6.Get());
   int result7 = *(r7.Get());

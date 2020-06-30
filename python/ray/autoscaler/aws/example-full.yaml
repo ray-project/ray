@@ -56,6 +56,9 @@ provider:
     # Nodes are currently spread between zones by a round-robin approach,
     # however this implementation detail should not be relied upon.
     availability_zone: us-west-2a,us-west-2b
+    # Whether to allow node reuse. If set to False, nodes will be terminated
+    # instead of stopped.
+    cache_stopped_nodes: True # If not present, the default is True.
 
 # How Ray will authenticate with newly launched nodes.
 auth:
