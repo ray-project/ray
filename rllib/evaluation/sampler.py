@@ -1,5 +1,6 @@
 from abc import abstractmethod, ABCMeta
 from collections import defaultdict, namedtuple
+from functools import partial
 import logging
 import numpy as np
 import queue
@@ -25,6 +26,7 @@ from ray.rllib.offline import InputReader
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray, \
     unbatch
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
@@ -855,8 +857,9 @@ def _process_observations(
             elif all_agents_done:
                 episode.batch_builder.postprocess_batch_so_far(episode)
 
+        # Episode is done.
         if all_agents_done:
-            # Handle episode termination.
+            # We can pass the BatchBuilder to recycling.
             batch_builder_pool.append(episode.batch_builder)
             # Call each policy's Exploration.on_episode_end method.
             for p in policies.values():
@@ -968,7 +971,6 @@ def _do_policy_eval(
 
     # type: PolicyID, PolicyEvalData
     for policy_id, eval_data in to_eval.items():
-        rnn_in: List[List[Any]] = [t.rnn_state for t in eval_data]
         policy: Policy = _get_or_raise(policies, policy_id)
         # If tf (non eager) AND TFPolicy's compute_action method has not been
         # overridden -> Use `policy._build_compute_actions()`.
@@ -976,7 +978,8 @@ def _do_policy_eval(
                         TFPolicy.compute_actions.__code__):
 
             obs_batch: List[EnvObsType] = [t.obs for t in eval_data]
-            state_batches: StateBatch = _to_column_format(rnn_in)
+            state_batches: StateBatch = _to_column_format(
+                [t.rnn_state for t in eval_data])
             # TODO(ekl): how can we make info batch available to TF code?
             prev_action_batch = [t.prev_action for t in eval_data]
             prev_reward_batch = [t.prev_reward for t in eval_data]
@@ -990,8 +993,9 @@ def _do_policy_eval(
                 timestep=policy.global_timestep)
         else:
             if _use_trajectory_view_api:
-                eval_results[policy_id] = policy.compute_actions(
-                    trajectories=eval_data, timestep=policy.global_timestep)
+                eval_results[policy_id] = \
+                    policy.compute_actions_from_trajectories(
+                        eval_data, timestep=policy.global_timestep)
             else:
                 rnn_in = [t.rnn_state for t in eval_data]
                 rnn_in_cols: StateBatch = [
@@ -1066,10 +1070,8 @@ def _process_policy_eval_results(
 
     # type: PolicyID, List[PolicyEvalData]
     for policy_id, eval_data in to_eval.items():
-        rnn_in_cols: StateBatch = _to_column_format(
-            [t.rnn_state for t in eval_data])
-
         actions: TensorStructType = eval_results[policy_id][0]
+        actions = convert_to_numpy(actions)
         rnn_out_cols: StateBatch = eval_results[policy_id][1]
         pi_info_cols: dict = eval_results[policy_id][2]
 
@@ -1078,40 +1080,52 @@ def _process_policy_eval_results(
         if isinstance(actions, list):
             actions = np.array(actions)
 
-        if len(rnn_in_cols) != len(rnn_out_cols):
-            raise ValueError("Length of RNN in did not match RNN out, got: "
-                             "{} vs {}".format(rnn_in_cols, rnn_out_cols))
-        # Add RNN state info
-        for f_i, column in enumerate(rnn_in_cols):
-            pi_info_cols["state_in_{}".format(f_i)] = column
-        for f_i, column in enumerate(rnn_out_cols):
-            pi_info_cols["state_out_{}".format(f_i)] = column
+        # Add RNN state info.
+        if not _use_trajectory_view_api:
+            rnn_in_cols: StateBatch = _to_column_format(
+                [t.rnn_state for t in eval_data])
+
+            if len(rnn_in_cols) != len(rnn_out_cols):
+                raise ValueError(
+                    "Length of RNN in did not match RNN out, got: "
+                    "{} vs {}".format(rnn_in_cols, rnn_out_cols))
+            for f_i, column in enumerate(rnn_in_cols):
+                pi_info_cols["state_in_{}".format(f_i)] = column
+            for f_i, column in enumerate(rnn_out_cols):
+                pi_info_cols["state_out_{}".format(f_i)] = column
 
         policy: Policy = _get_or_raise(policies, policy_id)
         # Split action-component batches into single action rows.
         actions: List[EnvActionType] = unbatch(actions)
         # type: int, EnvActionType
         for i, action in enumerate(actions):
-            env_id: int = eval_data[i].env_id
-            agent_id: AgentID = eval_data[i].agent_id
             # Clip if necessary.
             if clip_actions:
                 clipped_action = clip_action(action,
                                              policy.action_space_struct)
             else:
                 clipped_action = action
+
+            # Fast sampling: Do not store data directly in episode
+            #  (entire episode is stored in Trajectory and kept until
+            #  end of episode).
+            env_id: int = eval_data[i].env_id
+            agent_id: AgentID = eval_data[i].agent_id
+            if not _use_trajectory_view_api:
+                episode: MultiAgentEpisode = active_episodes[env_id]
+                episode._set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
+                episode._set_last_pi_info(
+                    agent_id, {k: v[i]
+                               for k, v in pi_info_cols.items()})
+                if env_id in off_policy_actions and \
+                        agent_id in off_policy_actions[env_id]:
+                    episode._set_last_action(
+                        agent_id, off_policy_actions[env_id][agent_id])
+                else:
+                    episode._set_last_action(agent_id, action)
+
+            assert agent_id not in actions_to_send[env_id]
             actions_to_send[env_id][agent_id] = clipped_action
-            episode: MultiAgentEpisode = active_episodes[env_id]
-            episode._set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
-            episode._set_last_pi_info(
-                agent_id, {k: v[i]
-                           for k, v in pi_info_cols.items()})
-            if env_id in off_policy_actions and \
-                    agent_id in off_policy_actions[env_id]:
-                episode._set_last_action(agent_id,
-                                         off_policy_actions[env_id][agent_id])
-            else:
-                episode._set_last_action(agent_id, action)
 
     return actions_to_send
 

@@ -265,9 +265,11 @@ class ModelV2:
         # Default implementation for simple RL model:
         # Single requirement: Pass current obs as input.
         return {
-            SampleBatch.CUR_OBS: ViewRequirement(timesteps=0),
+            SampleBatch.CUR_OBS: ViewRequirement(
+                timesteps=0, space=self.obs_space),
             SampleBatch.PREV_ACTIONS:
-                ViewRequirement(SampleBatch.ACTIONS, timesteps=-1),
+                ViewRequirement(
+                    SampleBatch.ACTIONS, timesteps=-1, space=self.action_space),
             SampleBatch.PREV_REWARDS:
                 ViewRequirement(SampleBatch.REWARDS, timesteps=-1),
         }

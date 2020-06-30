@@ -15,7 +15,7 @@ from ray.rllib.utils.test_utils import check, check_compute_single_action, \
     framework_iterator
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 

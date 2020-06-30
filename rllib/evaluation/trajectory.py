@@ -7,7 +7,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.types import AgentID, EnvID, PolicyID, TensorType
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
@@ -86,7 +86,7 @@ class Trajectory:
             init_obs (TensorType): Initial observation (after env.reset()).
         """
         # Our buffer should be empty when we add the first observation.
-        if SampleBatch.OBS not in self.buffers:
+        if SampleBatch.CUR_OBS not in self.buffers:
             assert self.has_initial_obs is False
             assert self.cursor == self.sample_batch_offset == \
                 self.trajectory_offset == 0
@@ -98,10 +98,10 @@ class Trajectory:
                 shape=(self.buffer_size + 1, ) + init_obs.shape,
                 dtype=init_obs.dtype)
             obs_buffer[0] = init_obs
-            self.buffers[SampleBatch.OBS] = obs_buffer
+            self.buffers[SampleBatch.CUR_OBS] = obs_buffer
         else:
             assert self.has_initial_obs
-            self.buffers[SampleBatch.OBS][self.cursor] = init_obs
+            self.buffers[SampleBatch.CUR_OBS][self.cursor] = init_obs
 
         self.env_id = env_id
         self.agent_id = agent_id
@@ -134,13 +134,13 @@ class Trajectory:
         # Only obs exists so far in buffers:
         # Initialize all other columns.
         if len(self.buffers) == 1:
-            assert SampleBatch.OBS in self.buffers
+            assert SampleBatch.CUR_OBS in self.buffers
             self._build_buffers(single_row=values)
 
         for k, v in values.items():
             if k == SampleBatch.NEXT_OBS:
                 t = self.cursor + 1
-                k = SampleBatch.OBS
+                k = SampleBatch.CUR_OBS
             else:
                 t = self.cursor
             self.buffers[k][t] = v
@@ -175,7 +175,7 @@ class Trajectory:
                 v[self.sample_batch_offset:self.cursor], reduce_floats=True)
         last_obs = {
             self.agent_id: convert_to_numpy(
-                self.buffers[SampleBatch.OBS][self.cursor], reduce_floats=True)
+                self.buffers[SampleBatch.CUR_OBS][self.cursor], reduce_floats=True)
         }
         batch = SampleBatch(data, _last_obs=last_obs)
 
@@ -209,13 +209,13 @@ class Trajectory:
         """
         for col, data in single_row.items():
             if col == SampleBatch.NEXT_OBS:
-                assert SampleBatch.OBS not in single_row
-                col = SampleBatch.OBS
+                assert SampleBatch.CUR_OBS not in single_row
+                col = SampleBatch.CUR_OBS
             # Skip already initialized ones, e.g. 'obs' if used with
             # add_initial_observation.
             if col in self.buffers:
                 continue
-            next_obs_add = 1 if col == SampleBatch.OBS else 0
+            next_obs_add = 1 if col == SampleBatch.CUR_OBS else 0
             # Primitive.
             if isinstance(data, (int, float, bool)):
                 shape = (self.buffer_size + next_obs_add, )

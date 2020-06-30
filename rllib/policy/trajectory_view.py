@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from gym.spaces import Box, Space
 import numpy as np
 from typing import Dict
 
@@ -27,6 +28,11 @@ class ViewRequirement:
     # The data column name from the SampleBatch (str key).
     # If None, use the dict key under which this ViewRequirement resides.
     data_col: str = None
+
+    # The gym Space used in case we need to pad data in "unaccessible" areas
+    # of the trajectory (t<0 or t>H).
+    # Default: Simple box space, e.g. rewards.
+    space: Space = Box(float("-inf"), float("inf"), shape=())
 
     # List of relative (or absolute timesteps) to be present in the
     # input_dict.
@@ -77,8 +83,9 @@ def get_trajectory_view(
         #   list). The only way to avoid this entirely would be to keep a
         #   single(!) np buffer per column across all currently ongoing
         #   agents + episodes (which seems very hard to realize).
+        data_col = view_req.data_col or view_col
         view[view_col] = np.array([
-            t.buffers[view_req.data_col][t.cursor + view_req.timesteps]
+            t.buffers[data_col][t.cursor + view_req.timesteps] if data_col in t.buffers else np.zeros(view_req.space.shape)
             for t in trajectories
         ])
     return view

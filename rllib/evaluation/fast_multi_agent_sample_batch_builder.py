@@ -2,7 +2,6 @@ import logging
 import numpy as np
 from typing import Dict, Optional, Union
 
-from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.policy_trajectories import PolicyTrajectories
@@ -37,7 +36,7 @@ class _FastMultiAgentSampleBatchBuilder:
 
     def __init__(self, policy_map: Dict[PolicyID, Policy],
                  clip_rewards: Union[bool, float],
-                 callbacks: DefaultCallbacks,
+                 callbacks: "DefaultCallbacks",
                  buffer_size: Optional[Union[float, int]]):
         """Initializes a _FastMultiAgentSampleBatchBuilder object.
 
