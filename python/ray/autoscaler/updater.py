@@ -372,7 +372,7 @@ class DockerCommandRunner(SSHCommandRunner):
             return
         except Exception:
             logger.error(
-                "Docker not installed, please add the following commands to "
+                "Docker not installed. You can install Docker by adding the following commands to "
                 "initialization_commands:\n" + "\n".join(install_commands))
 
     def shutdown_after_next_cmd(self):
