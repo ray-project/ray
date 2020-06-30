@@ -186,8 +186,8 @@ class TestObjectDirectoryBase : public ::testing::Test {
     int64_t sequential_time = current_time_ms() - start;
 
     object_directory->EvictObjects(STORE_MEMORY, &evicted_memory);
+    notifications_counter = 0;
     Workload1(1);  // warm up
-
     start = current_time_ms();
     std::thread w1(&TestObjectDirectoryBase::Workload1, this, repeat_times);
     std::thread w2(&TestObjectDirectoryBase::Workload2, this, repeat_times);
@@ -200,8 +200,10 @@ class TestObjectDirectoryBase : public ::testing::Test {
     w4.join();
     w5.join();
     int64_t parallel_time = current_time_ms() - start;
+    object_directory->EvictObjects(STORE_MEMORY, &evicted_memory);
     RAY_LOG(INFO) << "sequential_time/concurrency_time: "
                   << (double)sequential_time / parallel_time << "x";
+    RAY_CHECK(notifications_counter == 180 * repeat_times + 60) << "concurrency is broken";
   }
 
  protected:
