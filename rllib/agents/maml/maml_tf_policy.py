@@ -404,8 +404,8 @@ def maml_optimizer_fn(policy, config):
     Meta-Policy uses Adam optimizer for meta-update
     """
     if not config["worker_index"]:
-        return tf.train.AdamOptimizer(learning_rate=config["lr"])
-    return tf.train.GradientDescentOptimizer(learning_rate=config["inner_lr"])
+        return tf1.train.AdamOptimizer(learning_rate=config["lr"])
+    return tf1.train.GradientDescentOptimizer(learning_rate=config["inner_lr"])
 
 
 def setup_mixins(policy, obs_space, action_space, config):

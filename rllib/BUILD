@@ -1014,6 +1014,13 @@ py_test(
     srcs = ["models/tests/test_distributions.py"]
 )
 
+py_test(
+    name = "test_attention_nets",
+    tags = ["models"],
+    size = "small",
+    srcs = ["models/tests/test_attention_nets.py"]
+)
+
 # --------------------------------------------------------------------
 # Optimizers and Memories
 # rllib/execution/

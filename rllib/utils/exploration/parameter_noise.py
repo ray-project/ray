@@ -361,7 +361,7 @@ class ParameterNoise(Exploration):
         """
         add_noise_ops = list()
         for var, noise in zip(self.model_variables, self.noise):
-            add_noise_ops.append(tf.assign_add(var, noise))
+            add_noise_ops.append(tf1.assign_add(var, noise))
         ret = tf.group(*tuple(add_noise_ops))
         with tf1.control_dependencies([ret]):
             return tf.no_op()
@@ -400,7 +400,7 @@ class ParameterNoise(Exploration):
         """
         remove_noise_ops = list()
         for var, noise in zip(self.model_variables, self.noise):
-            remove_noise_ops.append(tf.assign_add(var, -noise))
+            remove_noise_ops.append(tf1.assign_add(var, -noise))
         ret = tf.group(*tuple(remove_noise_ops))
         with tf1.control_dependencies([ret]):
             return tf.no_op()

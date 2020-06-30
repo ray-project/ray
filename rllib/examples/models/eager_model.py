@@ -34,7 +34,7 @@ class EagerModel(TFModelV2):
 
         def lambda_(x):
             eager_out = tf.py_function(self.forward_eager, [x], tf.float32)
-            with tf.control_dependencies([eager_out]):
+            with tf1.control_dependencies([eager_out]):
                 eager_out.set_shape(x.shape)
                 return eager_out
 

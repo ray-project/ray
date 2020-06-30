@@ -15,7 +15,7 @@ class SharedWeightsModel1(TFModelV2):
     """Example of weight sharing between two different TFModelV2s.
 
     Here, we share the variables defined in the 'shared' variable scope
-    by entering it explicitly with tf.AUTO_REUSE. This creates the
+    by entering it explicitly with tf1.AUTO_REUSE. This creates the
     variables for the 'fc1' layer in a global scope called 'shared'
     (outside of the Policy's normal variable scope).
     """

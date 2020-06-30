@@ -73,7 +73,7 @@ class DeprecatedCustomLossModelV1(Model):
 
     def _build_layers_v2(self, input_dict, num_outputs, options):
         self.obs_in = input_dict["obs"]
-        with tf.variable_scope("shared", reuse=tf.AUTO_REUSE):
+        with tf1.variable_scope("shared", reuse=tf1.AUTO_REUSE):
             self.fcnet = FullyConnectedNetwork(input_dict, self.obs_space,
                                                self.action_space, num_outputs,
                                                options)
