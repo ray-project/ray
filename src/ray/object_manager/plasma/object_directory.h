@@ -240,9 +240,9 @@ class ObjectDirectory {
             sealed_objects->push_back(object_id);
             break;
           case ObjectState::PLASMA_EVICTED: {
-            Status s = AllocateMemory(object_id, entry.get(), entry->ObjectSize(),
-                                      /*evict_inf_full=*/true, client, /*is_create=*/false,
-                                      entry->device_num);
+            Status status = AllocateMemory(object_id, entry.get(), entry->ObjectSize(),
+                                           /*evict_inf_full=*/true, client, /*is_create=*/false,
+                                           entry->device_num);
             if (status.ok()) {
               evicted_ids.push_back(object_id);
             } else {
@@ -318,24 +318,10 @@ class ObjectDirectory {
                       int device_num, Client* client,
                       PlasmaObject* result) {
     absl::MutexLock lock(&object_table_mutex_);
-    if (object_table_.count(object_id) > 0) {
-      // There is already an object with the same ID in the Plasma Store, so
-      // ignore this request.
-      return Status::ObjectExists("The object already exists.");
-    }
-
-    int64_t total_size = data_size + metadata_size;
-    RAY_CHECK(total_size > 0) << "Memory allocation size must be a positive number.";
-    auto entry = std::unique_ptr<ObjectTableEntry>(new ObjectTableEntry());
-    Status s = AllocateMemory(object_id, entry.get(), total_size, evict_if_full, client, /*is_create=*/true,
-                              device_num);
-    if (!s.ok()) {
-      return Status::OutOfMemory("Cannot allocate the object.");
-    }
-    entry->data_size = data_size;
-    entry->metadata_size = metadata_size;
-    PlasmaObject_init(result, entry.get());
-    object_table_.emplace(object_id, std::move(entry));
+    ObjectTableEntry* entry;
+    RAY_RETURN_NOT_OK(CreateObjectInternal(
+      object_id, evict_if_full, data_size, metadata_size, device_num, client, &entry));
+    PlasmaObject_init(result, entry);
     return Status::OK();
   }
 
@@ -348,18 +334,49 @@ class ObjectDirectory {
     SealObjectsInternal(object_ids);
   }
 
-  /// Seal a vector of objects. The objects are now immutable and can be accessed with
-  /// get. Then detach the objects from the clients after sealed. This is currently
-  /// only used for 'CreateAndSeal'.
+  /// Create and seal a new object, and release it from the client.
   ///
-  /// \param object_ids The vector of Object IDs of the objects to be sealed.
-  /// \param client The client that is currently holding the object.
-  void SealObjectsAndRelease(const std::vector<ObjectID>& object_ids, Client* client) {
+  /// \param object_id Object ID of the object to be created.
+  /// \param evict_if_full If this is true, then when the object store is full,
+  ///        try to evict objects that are not currently referenced before
+  ///        creating the object. Else, do not evict any objects and
+  ///        immediately return an PlasmaError::OutOfMemory.
+  /// \param data_size Size in bytes of the object to be created.
+  /// \param metadata_size Size in bytes of the object metadata.
+  /// \param device_num The number of the device where the object is being
+  ///        created.
+  ///        device_num = 0 corresponds to the host,
+  ///        device_num = 1 corresponds to GPU0,
+  ///        device_num = 2 corresponds to GPU1, etc.
+  /// \param client The client that created the object.
+  /// \param result The object that has been created.
+  /// \return One of the following error codes:
+  ///  - Status::OK, if the object was created successfully.
+  ///  - Status::ObjectExists, if an object with this ID is already
+  ///    present in the store. In this case, the client should not call
+  ///    plasma_release.
+  ///  - PlasmaError::OutOfMemory, if the store is out of memory and
+  ///    cannot create the object. In this case, the client should not call
+  ///    plasma_release.
+  Status CreateAndSealObject(const ObjectID& object_id, bool evict_if_full,
+                            const std::string &data, const std::string &metadata,
+                            int device_num, Client* client, PlasmaObject* result) {
     absl::MutexLock lock(&object_table_mutex_);
-    SealObjectsInternal(object_ids);
-    for (auto object_id : object_ids) {
-      RemoveFromClientObjectIds(object_id, object_table_[object_id].get(), client)
-    }
+    RAY_CHECK(device_num == 0) << "CreateAndSeal currently only supports device_num = 0, "
+                                  "which corresponds to the host.";
+    ObjectTableEntry* entry;
+    RAY_RETURN_NOT_OK(CreateObjectInternal(
+      object_id, evict_if_full, data.size(), metadata.size(), device_num, client, &entry));
+    PlasmaObject_init(result, entry);
+    // Write the inlined data and metadata into the allocated object.
+    std::memcpy(entry->pointer, data.data(), data.size());
+    std::memcpy(entry->pointer + data.size(), metadata.data(), metadata.size());
+    SealObjectsInternal({object_id});
+    // Remove the client from the object's array of clients because the
+    // object is not being used by any client. The client was added to the
+    // object's array of clients in CreateObject. This is analogous to the
+    // Release call that happens in the client's Seal method.
+    RAY_CHECK(RemoveFromClientObjectIds(object_id, entry, client) == 1);
   }
 
   /// Evict objects returned by the eviction policy.
@@ -499,16 +516,6 @@ class ObjectDirectory {
     AddToClientObjectIds(object_id, entry.get(), client);
   }
 
-  void MemcpyToObject(const ObjectID& object_id, const std::string &data, const std::string &metadata) {
-    absl::MutexLock lock(&object_table_mutex_);
-    auto it = object_table_.find(object_id);
-    RAY_CHECK(it != object_table_.end());
-    auto &entry = it->second;
-    // Write the inlined data and metadata into the allocated object.
-    std::memcpy(entry->pointer, data.data(), data.size());
-    std::memcpy(entry->pointer + data.size(), metadata.data(), metadata.size());
-  }
-
  private:
   /// Get an entry from the object table and return NULL if the object_id
   /// is not present.
@@ -575,6 +582,32 @@ class ObjectDirectory {
     }
   }
 
+  Status CreateObjectInternal(const ObjectID& object_id, bool evict_if_full,
+                              int64_t data_size, int64_t metadata_size,
+                              int device_num, Client* client,
+                              ObjectTableEntry** new_entry) {
+    RAY_LOG(DEBUG) << "creating object " << object_id.Hex();
+    if (object_table_.count(object_id) > 0) {
+      // There is already an object with the same ID in the Plasma Store, so
+      // ignore this request.
+      return Status::ObjectExists("The object already exists.");
+    }
+
+    int64_t total_size = data_size + metadata_size;
+    RAY_CHECK(total_size > 0) << "Memory allocation size must be a positive number.";
+    auto entry = std::unique_ptr<ObjectTableEntry>(new ObjectTableEntry());
+    Status s = AllocateMemory(object_id, entry.get(), total_size, evict_if_full, client, /*is_create=*/true,
+                              device_num);
+    if (!s.ok()) {
+      return Status::OutOfMemory("Cannot allocate the object.");
+    }
+    entry->data_size = data_size;
+    entry->metadata_size = metadata_size;
+    *new_entry = entry.get();
+    object_table_.emplace(object_id, std::move(entry));
+    return Status::OK();
+  }
+
   /// Seal a vector of objects. The objects are now immutable and can be accessed with
   /// get.
   ///
@@ -583,7 +616,6 @@ class ObjectDirectory {
     std::vector<ObjectInfoT> infos;
     infos.reserve(object_ids.size());
     RAY_LOG(DEBUG) << "sealing " << object_ids.size() << " objects";
-    absl::MutexLock lock(&object_table_mutex_);
     for (size_t i = 0; i < object_ids.size(); ++i) {
       ObjectInfoT object_info;
       auto entry = GetObjectTableEntry(object_ids[i]);

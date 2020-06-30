@@ -120,14 +120,8 @@ PlasmaStore::PlasmaStore(EventLoop* loop, const std::string& socket_name,
 // TODO(pcm): Get rid of this destructor by using RAII to clean up data.
 PlasmaStore::~PlasmaStore() {}
 
-// A helper function to create a new object.
-PlasmaError CreateObject(const ObjectID& object_id, bool evict_if_full,
-                         int64_t data_size, int64_t metadata_size,
-                         int device_num, Client* client,
-                         PlasmaObject* result) {
-  RAY_LOG(DEBUG) << "creating object " << object_id.Hex();
-  Status status = object_directory->CreateObject(
-      object_id, evict_if_full, data_size, metadata_size, device_num, client, result);
+// A helper function for object creation.
+PlasmaError CreateObjectStatusToPlasmaError(const Status& status) {
   if (status.ok()) {
     return PlasmaError::OK;
   } else if (status.IsObjectExists()) {
@@ -304,11 +298,17 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID>& object_ids) {
   }
 }
 
-void PlasmaStore::SealObjectsAndRelease(const std::vector<ObjectID>& object_ids, Client* client) {
-  object_directory->SealObjectsAndRelease(object_ids, client);
-  for (size_t i = 0; i < object_ids.size(); ++i) {
-    UpdateObjectGetRequests(object_ids[i]);
+PlasmaError PlasmaStore::CreateAndSealObject(const ObjectID& object_id, bool evict_if_full,
+                                             const std::string &data, const std::string &metadata,
+                                             int device_num, Client* client,
+                                             PlasmaObject* result) {
+  Status status = object_directory->CreateAndSealObject(
+    object_id, evict_if_full, data, metadata, device_num, client, result);
+  if (!status.ok()) {
+    return CreateObjectStatusToPlasmaError(status);
   }
+  UpdateObjectGetRequests(object_id);
+  return PlasmaError::OK;
 }
 
 void PlasmaStore::ConnectClient(int listener_sock) {
@@ -500,8 +500,9 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       int device_num;
       RAY_RETURN_NOT_OK(ReadCreateRequest(input, input_size, &object_id, &evict_if_full,
                                       &data_size, &metadata_size, &device_num));
-      PlasmaError error_code = CreateObject(object_id, evict_if_full, data_size,
-                                            metadata_size, device_num, client, &object);
+      PlasmaError error_code = CreateObjectStatusToPlasmaError(
+        object_directory->CreateObject(
+          object_id, evict_if_full, data_size, metadata_size, device_num, client, &object));
       int64_t mmap_size = 0;
       if (error_code == PlasmaError::OK && device_num == 0) {
         mmap_size = GetMmapSize(object.store_fd);
@@ -525,21 +526,8 @@ Status PlasmaStore::ProcessMessage(Client* client) {
                                              &evict_if_full, &data, &metadata));
       // CreateAndSeal currently only supports device_num = 0, which corresponds
       // to the host.
-      int device_num = 0;
-      PlasmaError error_code = CreateObject(object_id, evict_if_full, data.size(),
-                                            metadata.size(), device_num, client, &object);
-
-      // If the object was successfully created, fill out the object data and seal it.
-      if (error_code == PlasmaError::OK) {
-        object_directory->MemcpyToObject(object_id, data, metadata);
-        SealObjects({object_id});
-        // Remove the client from the object's array of clients because the
-        // object is not being used by any client. The client was added to the
-        // object's array of clients in CreateObject. This is analogous to the
-        // Release call that happens in the client's Seal method.
-        RAY_CHECK(RemoveFromClientObjectIds(object_id, entry, client) == 1);
-      }
-
+      PlasmaError error_code = CreateAndSealObject(
+        object_id, evict_if_full, data, metadata, /*device_num=*/0, client, &object);
       // Reply to the client.
       HANDLE_SIGPIPE(SendCreateAndSealReply(client->fd, error_code), client->fd);
     } break;
@@ -552,41 +540,16 @@ Status PlasmaStore::ProcessMessage(Client* client) {
       RAY_RETURN_NOT_OK(ReadCreateAndSealBatchRequest(
           input, input_size, &object_ids, &evict_if_full, &data, &metadata));
 
-      // CreateAndSeal currently only supports device_num = 0, which corresponds
-      // to the host.
-      int device_num = 0;
-      size_t i = 0;
       PlasmaError error_code = PlasmaError::OK;
-      for (i = 0; i < object_ids.size(); i++) {
-        error_code = CreateObject(object_ids[i], evict_if_full, data[i].size(),
-                                  metadata[i].size(), device_num, client, &object);
+      for (size_t i = 0; i < object_ids.size(); i++) {
+        // CreateAndSeal currently only supports device_num = 0, which corresponds
+        // to the host.
+        error_code = CreateAndSealObject(
+          object_ids[i], evict_if_full, data[i], metadata[i], /*device_num=*/0, client, &object);
         if (error_code != PlasmaError::OK) {
           break;
         }
       }
-
-      // if OK, seal all the objects,
-      // if error, abort the previous i objects immediately
-      if (error_code == PlasmaError::OK) {
-        for (i = 0; i < object_ids.size(); i++) {
-          object_directory->MemcpyToObject(object_ids[i], data[i], metadata[i]);
-        }
-
-        SealObjects(object_ids);
-        // Remove the client from the object's array of clients because the
-        // object is not being used by any client. The client was added to the
-        // object's array of clients in CreateObject. This is analogous to the
-        // Release call that happens in the client's Seal method.
-        for (i = 0; i < object_ids.size(); i++) {
-          auto entry = GetObjectTableEntry(&store_info_, object_ids[i]);
-          RAY_CHECK(RemoveFromClientObjectIds(object_ids[i], entry, client) == 1);
-        }
-      } else {
-        for (size_t j = 0; j < i; j++) {
-          object_directory->AbortObject(object_ids[j], client);
-        }
-      }
-
       HANDLE_SIGPIPE(SendCreateAndSealBatchReply(client->fd, error_code), client->fd);
     } break;
     case fb::MessageType::PlasmaAbortRequest: {

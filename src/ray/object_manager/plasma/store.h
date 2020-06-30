@@ -123,13 +123,14 @@ class PlasmaStore {
   /// \param object_ids The vector of Object IDs of the objects to be sealed.
   void SealObjects(const std::vector<ObjectID>& object_ids);
 
-  /// Seal a vector of objects. The objects are now immutable and can be accessed with
-  /// get. Then detach the objects from the clients after sealed. This is currently
-  /// only used for 'CreateAndSeal'.
+  /// Create and seal an object.
   ///
-  /// \param object_ids The vector of Object IDs of the objects to be sealed.
-  /// \param client The client that is currently holding the object.
-  void SealObjectsAndRelease(const std::vector<ObjectID>& object_ids, Client* client);
+  /// \param object_id The Object ID of the new objects to be created and sealed.
+  /// \param client The current client that is associated with the object.
+  PlasmaError PlasmaStore::CreateAndSealObject(const ObjectID& object_id, bool evict_if_full,
+                                               const std::string &data, const std::string &metadata,
+                                               int device_num, Client* client,
+                                               PlasmaObject* result);
 
   void PushNotifications(const std::vector<ObjectInfoT>& object_notifications, int client_fd);
 
