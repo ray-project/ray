@@ -8,6 +8,9 @@ import click
 
 from ray import serve
 from ray.serve.constants import DEFAULT_HTTP_ADDRESS
+from ray.serve import master
+
+master._TRACING_ENABLED = True
 
 
 def block_until_ready(url):
@@ -16,9 +19,9 @@ def block_until_ready(url):
         print("Waiting for noop route to showup.")
 
 
-def run_http_benchmark(url):
+def run_http_benchmark(url, num_queries):
     latency = []
-    for _ in tqdm(range(5200)):
+    for _ in tqdm(range(num_queries + 200)):
         start = time.perf_counter()
         resp = requests.get(url)
         end = time.perf_counter()
@@ -34,10 +37,11 @@ def run_http_benchmark(url):
 
 @click.command()
 @click.option("--blocking", is_flag=True, required=False, help="Block forever")
+@click.option("--num-queries", type=int, required=False)
 @click.option("--num-replicas", type=int, default=1)
 @click.option("--max-concurrent-queries", type=int, required=False)
-def main(num_replicas: int, max_concurrent_queries: Optional[int],
-         blocking: bool):
+def main(num_replicas: int, num_queries: Optional[int],
+         max_concurrent_queries: Optional[int], blocking: bool):
     serve.init()
 
     def noop(_):
@@ -54,12 +58,12 @@ def main(num_replicas: int, max_concurrent_queries: Optional[int],
     url = "{}/noop".format(DEFAULT_HTTP_ADDRESS)
     block_until_ready(url)
 
+    if num_queries:
+        run_http_benchmark(url, num_queries)
     if blocking:
         print("Endpoint {} is ready.".format(url))
         while True:
             time.sleep(5)
-    else:
-        run_http_benchmark(url)
 
 
 if __name__ == "__main__":
