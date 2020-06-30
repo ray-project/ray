@@ -407,7 +407,6 @@ class StandardAutoscaler:
         if not instance_type:
             instance_type = self.provider.get_instance_type(
                 self.config["worker_nodes"])
-            assert instance_type is not None
         self.pending_launches.inc(instance_type, count)
         config = copy.deepcopy(self.config)
         self.launch_queue.put((config, count, instance_type))
