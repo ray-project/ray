@@ -17,9 +17,9 @@
 
 #include "ray/object_manager/plasma/quota_aware_policy.h"
 
-#include "ray/util/logging.h"
 #include "ray/object_manager/plasma/object_directory.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
+#include "ray/util/logging.h"
 
 #include <algorithm>
 #include <sstream>

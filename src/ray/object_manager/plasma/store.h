@@ -30,9 +30,9 @@
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/events.h"
 #include "ray/object_manager/plasma/external_store.h"
+#include "ray/object_manager/plasma/object_directory.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
-#include "ray/object_manager/plasma/object_directory.h"
 
 namespace plasma {
 

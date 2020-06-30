@@ -25,8 +25,8 @@
 #include "ray/common/id.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/plasma/external_store.h"
-#include "ray/object_manager/plasma/quota_aware_policy.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
+#include "ray/object_manager/plasma/quota_aware_policy.h"
 
 namespace plasma {
 
