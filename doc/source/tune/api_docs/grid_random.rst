@@ -40,7 +40,7 @@ To sample multiple times/run multiple trials, specify ``tune.run(num_samples=N``
 .. code-block:: python
 
     # 13 different configs.
-    tune.run(trainable config={
+    tune.run(trainable, num_samples=13, config={
         "x": tune.choice([0, 1, 2]),
         }
     )

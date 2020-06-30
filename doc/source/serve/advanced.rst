@@ -185,6 +185,38 @@ The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or `
   handle = serve.get_handle("api_endpoint")
   handler.options(shard_key=session_id).remote(args)
 
+Shadow Testing
+--------------
+
+Sometimes when deploying a new backend, you may want to test it out without affecting the results seen by users.
+You can do this with :mod:`shadow_traffic <ray.serve.shadow_traffic>`, which allows you to duplicate requests to multiple backends for testing while still having them served by the set of backends specified via :mod:`set_traffic <ray.serve.set_traffic>`.
+Metrics about these requests are recorded as usual so you can use them to validate model performance.
+This is demonstrated in the example below, where we create an endpoint serviced by a single backend but shadow traffic to two other backends for testing.
+
+.. code-block:: python
+
+  serve.create_backend("existing_backend", MyClass)
+  
+  # All traffic is served by the existing backend.
+  serve.create_endpoint("shadowed_endpoint", backend="existing_backend", route="/shadow")
+
+  # Create two new backends that we want to test.
+  serve.create_backend("new_backend_1", MyNewClass)
+  serve.create_backend("new_backend_2", MyNewClass)
+
+  # Shadow traffic to the two new backends. This does not influence the result
+  # of requests to the endpoint, but a proportion of requests are
+  # *additionally* sent to these backends.
+
+  # Send 50% of all queries to the endpoint new_backend_1.
+  serve.shadow_traffic("shadowed_endpoint", "new_backend_1", 0.5)
+  # Send 10% of all queries to the endpoint new_backend_2.
+  serve.shadow_traffic("shadowed_endpoint", "new_backend_2", 0.1)
+
+  # Stop shadowing traffic to the backends.
+  serve.shadow_traffic("shadowed_endpoint", "new_backend_1", 0)
+  serve.shadow_traffic("shadowed_endpoint", "new_backend_2", 0)
+
 Composing Multiple Models
 =========================
 Ray Serve supports composing individually scalable models into a single model 

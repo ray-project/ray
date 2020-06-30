@@ -63,7 +63,11 @@ def auto_http_archive(*, name=None, url=None, urls=True,
         print("No implicit mirrors used because urls were explicitly provided")
 
     if strip_prefix == True:
-        strip_prefix = (url_path_parts[1] + "-" + url_filename_parts[0]
+        prefix_without_v = url_filename_parts[0]
+        if prefix_without_v.startswith("v") and prefix_without_v[1:2].isdigit():
+            # GitHub automatically strips a leading 'v' in version numbers
+            prefix_without_v = prefix_without_v[1:]
+        strip_prefix = (url_path_parts[1] + "-" + prefix_without_v
                         if is_github and url_path_parts[2:3] == ["archive"]
                         else url_filename_parts[0])
 

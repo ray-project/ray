@@ -324,6 +324,9 @@ def get_node_ip_address(address="8.8.8.8:53"):
     Returns:
         The IP address of the current node.
     """
+    if ray.worker._global_node is not None:
+        return ray.worker._global_node.node_ip_address
+
     ip_address, port = address.split(":")
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:

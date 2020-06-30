@@ -234,8 +234,8 @@ class DistributionalQTFModel(TFModelV2):
         """
         in_size = int(action_in.shape[1])
 
-        epsilon_in = tf.random_normal(shape=[in_size])
-        epsilon_out = tf.random_normal(shape=[out_size])
+        epsilon_in = tf.random.normal(shape=[in_size])
+        epsilon_out = tf.random.normal(shape=[out_size])
         epsilon_in = self._f_epsilon(epsilon_in)
         epsilon_out = self._f_epsilon(epsilon_out)
         epsilon_w = tf.matmul(
@@ -279,4 +279,4 @@ class DistributionalQTFModel(TFModelV2):
         return tf.nn.relu(action_activation)
 
     def _f_epsilon(self, x):
-        return tf.sign(x) * tf.sqrt(tf.abs(x))
+        return tf.math.sign(x) * tf.math.sqrt(tf.math.abs(x))

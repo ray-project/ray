@@ -7,6 +7,7 @@ import ray
 from ray import serve
 import ray.serve.context as context
 from ray.serve.backend_worker import create_backend_worker, wrap_to_ray_error
+from ray.serve.master import TrafficPolicy
 from ray.serve.request_params import RequestMetadata
 from ray.serve.router import Router
 from ray.serve.config import BackendConfig
@@ -59,7 +60,7 @@ async def test_runner_actor(serve_instance):
     worker = setup_worker(CONSUMER_NAME, echo)
     await q.add_new_worker.remote(CONSUMER_NAME, "replica1", worker)
 
-    q.set_traffic.remote(PRODUCER_NAME, {CONSUMER_NAME: 1.0})
+    q.set_traffic.remote(PRODUCER_NAME, TrafficPolicy({CONSUMER_NAME: 1.0}))
 
     for query in [333, 444, 555]:
         query_param = RequestMetadata(PRODUCER_NAME,
@@ -84,7 +85,7 @@ async def test_ray_serve_mixin(serve_instance):
     worker = setup_worker(CONSUMER_NAME, MyAdder, init_args=(3, ))
     await q.add_new_worker.remote(CONSUMER_NAME, "replica1", worker)
 
-    q.set_traffic.remote(PRODUCER_NAME, {CONSUMER_NAME: 1.0})
+    q.set_traffic.remote(PRODUCER_NAME, TrafficPolicy({CONSUMER_NAME: 1.0}))
 
     for query in [333, 444, 555]:
         query_param = RequestMetadata(PRODUCER_NAME,
@@ -106,7 +107,7 @@ async def test_task_runner_check_context(serve_instance):
     worker = setup_worker(CONSUMER_NAME, echo)
     await q.add_new_worker.remote(CONSUMER_NAME, "replica1", worker)
 
-    q.set_traffic.remote(PRODUCER_NAME, {CONSUMER_NAME: 1.0})
+    q.set_traffic.remote(PRODUCER_NAME, TrafficPolicy({CONSUMER_NAME: 1.0}))
     query_param = RequestMetadata(PRODUCER_NAME, context.TaskContext.Python)
     result_oid = q.enqueue_request.remote(query_param, i=42)
 
@@ -130,7 +131,7 @@ async def test_task_runner_custom_method_single(serve_instance):
     worker = setup_worker(CONSUMER_NAME, NonBatcher)
     await q.add_new_worker.remote(CONSUMER_NAME, "replica1", worker)
 
-    q.set_traffic.remote(PRODUCER_NAME, {CONSUMER_NAME: 1.0})
+    q.set_traffic.remote(PRODUCER_NAME, TrafficPolicy({CONSUMER_NAME: 1.0}))
 
     query_param = RequestMetadata(
         PRODUCER_NAME, context.TaskContext.Python, call_method="a")
@@ -179,7 +180,10 @@ async def test_task_runner_custom_method_batch(serve_instance):
     worker = setup_worker(
         CONSUMER_NAME, Batcher, backend_config=backend_config)
 
-    await q.set_traffic.remote(PRODUCER_NAME, {CONSUMER_NAME: 1.0})
+    await q.set_traffic.remote(PRODUCER_NAME,
+                               TrafficPolicy({
+                                   CONSUMER_NAME: 1.0
+                               }))
     await q.set_backend_config.remote(CONSUMER_NAME, backend_config)
 
     def make_request_param(call_method):
@@ -228,7 +232,10 @@ async def test_task_runner_perform_batch(serve_instance):
     worker = setup_worker(CONSUMER_NAME, batcher, backend_config=config)
     await q.add_new_worker.remote(CONSUMER_NAME, "replica1", worker)
     await q.set_backend_config.remote(CONSUMER_NAME, config)
-    await q.set_traffic.remote(PRODUCER_NAME, {CONSUMER_NAME: 1.0})
+    await q.set_traffic.remote(PRODUCER_NAME,
+                               TrafficPolicy({
+                                   CONSUMER_NAME: 1.0
+                               }))
 
     query_param = RequestMetadata(PRODUCER_NAME, context.TaskContext.Python)
 
@@ -268,7 +275,7 @@ async def test_task_runner_perform_async(serve_instance):
     worker = setup_worker(CONSUMER_NAME, wait_and_go, backend_config=config)
     await q.add_new_worker.remote(CONSUMER_NAME, "replica1", worker)
     await q.set_backend_config.remote(CONSUMER_NAME, config)
-    q.set_traffic.remote(PRODUCER_NAME, {CONSUMER_NAME: 1.0})
+    q.set_traffic.remote(PRODUCER_NAME, TrafficPolicy({CONSUMER_NAME: 1.0}))
 
     query_param = RequestMetadata(PRODUCER_NAME, context.TaskContext.Python)
 
