@@ -734,7 +734,6 @@ class Trainable:
                 returned by `save_checkpoint`. The directory structure
                 underneath the `checkpoint_dir` `save_checkpoint` is preserved.
         """
-
         self._restore(checkpoint)
         if self._is_overriden("_restore") and log_once("_restore"):
             logger.warning(
