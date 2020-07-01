@@ -146,6 +146,7 @@ def test_actor_eviction(ray_start_regular):
 
 def test_actor_restart(ray_init_with_task_retry_delay):
     """Test actor restart when actor process is killed."""
+
     @ray.remote(max_restarts=1, max_task_retries=-1)
     class RestartableActor:
         """An actor that will be restarted at most once."""
@@ -222,6 +223,7 @@ def test_actor_restart(ray_init_with_task_retry_delay):
 
 def test_actor_restart_with_retry(ray_init_with_task_retry_delay):
     """Test actor restart when actor process is killed."""
+
     @ray.remote(max_restarts=1, max_task_retries=-1)
     class RestartableActor:
         """An actor that will be restarted at most once."""
