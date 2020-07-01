@@ -4,20 +4,24 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.streaming.api.collector.Collector;
 import io.ray.streaming.api.context.RuntimeContext;
+import io.ray.streaming.api.partition.Partition;
 import io.ray.streaming.runtime.config.worker.WorkerInternalConfig;
 import io.ray.streaming.runtime.core.collector.OutputCollector;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionEdge;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import io.ray.streaming.runtime.core.processor.Processor;
-import io.ray.streaming.runtime.transfer.ChannelID;
+import io.ray.streaming.runtime.transfer.ChannelId;
 import io.ray.streaming.runtime.transfer.DataReader;
 import io.ray.streaming.runtime.transfer.DataWriter;
 import io.ray.streaming.runtime.worker.JobWorker;
 import io.ray.streaming.runtime.worker.context.StreamingRuntimeContext;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -60,33 +64,54 @@ public abstract class StreamTask implements Runnable {
         WorkerInternalConfig.OP_NAME_INTERNAL, executionVertex.getExecutionJobVertexName());
 
     // producer
+
     List<ExecutionEdge> outputEdges = executionVertex.getOutputEdges();
-    Map<String, BaseActorHandle> outputActors = new HashMap<>();
+
+    // merge all output edges to create writer
+    List<String> channelIds = new ArrayList<>();
+    List<BaseActorHandle> targetActors = new ArrayList<>();
 
     for (ExecutionEdge edge : outputEdges) {
-      String queueName = ChannelID.genIdStr(
+      String queueName = ChannelId.genIdStr(
           taskId,
           edge.getTargetExecutionVertex().getExecutionVertexId(),
           executionVertex.getBuildTime());
-      outputActors.put(queueName, edge.getTargetExecutionVertex().getWorkerActor());
+      channelIds.add(queueName);
+      targetActors.add(edge.getTargetExecutionVertex().getWorkerActor());
     }
 
-    if (!outputActors.isEmpty()) {
-      List<String> channelIDs = new ArrayList<>();
-      outputActors.forEach((vertexId, actorId) -> {
-        channelIDs.add(vertexId);
-      });
+    if (!targetActors.isEmpty()) {
+      DataWriter writer = new DataWriter(channelIds, targetActors, jobWorker.getWorkerConfig());
 
-      DataWriter writer = new DataWriter(channelIDs, outputActors, jobWorker.getWorkerConfig());
-      collectors.add(new OutputCollector(writer, channelIDs, outputActors.values(),
-          executionVertex.getOutputEdges().get(0).getPartition()));
+      // create a collector for each output operator
+      Set<String> opNameSet = new HashSet<>();
+      Map<String, List<String>> opGroupedChannelId = new HashMap<>();
+      Map<String, List<BaseActorHandle>> opGroupedActor = new HashMap<>();
+      Map<String, Partition> opPartitionMap = new HashMap<>();
+      for (int i = 0; i < outputEdges.size(); ++i) {
+        ExecutionEdge edge = outputEdges.get(i);
+        String opName = edge.getTargetExecutionVertex().getExecutionJobVertexName();
+        if (!opNameSet.contains(opName)) {
+          opGroupedChannelId.put(opName, new ArrayList<>());
+          opGroupedActor.put(opName, new ArrayList<>());
+        }
+        opGroupedChannelId.get(opName).add(channelIds.get(i));
+        opGroupedActor.get(opName).add(targetActors.get(i));
+        opPartitionMap.put(opName, edge.getPartition());
+        opNameSet.add(opName);
+      }
+      opNameSet.forEach(opName -> {
+        collectors.add(new OutputCollector(
+          writer, opGroupedChannelId.get(opName), opGroupedActor.get(opName), opPartitionMap.get(opName))
+        );
+      });
     }
 
     // consumer
     List<ExecutionEdge> inputEdges = executionVertex.getInputEdges();
     Map<String, BaseActorHandle> inputActors = new HashMap<>();
     for (ExecutionEdge edge : inputEdges) {
-      String queueName = ChannelID.genIdStr(
+      String queueName = ChannelId.genIdStr(
           edge.getSourceExecutionVertex().getExecutionVertexId(),
           taskId,
           executionVertex.getBuildTime());

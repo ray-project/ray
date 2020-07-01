@@ -37,7 +37,7 @@ public class DataReader {
     ChannelCreationParametersBuilder initialParameters =
         new ChannelCreationParametersBuilder().buildInputQueueParameters(inputChannels, fromActors);
     byte[][] inputChannelsBytes = inputChannels.stream()
-        .map(ChannelID::idStrToBytes).toArray(byte[][]::new);
+        .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
     long[] seqIds = new long[inputChannels.size()];
     long[] msgIds = new long[inputChannels.size()];
     for (int i = 0; i < inputChannels.size(); i++) {
@@ -227,9 +227,9 @@ public class DataReader {
     }
 
     private String getQidString(ByteBuffer buffer) {
-      byte[] bytes = new byte[ChannelID.ID_LENGTH];
+      byte[] bytes = new byte[ChannelId.ID_LENGTH];
       buffer.get(bytes);
-      return ChannelID.idBytesToStr(bytes);
+      return ChannelId.idBytesToStr(bytes);
     }
 
     public int getMagicNum() {

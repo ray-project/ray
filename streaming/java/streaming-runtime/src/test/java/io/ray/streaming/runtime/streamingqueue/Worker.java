@@ -5,7 +5,7 @@ import io.ray.api.Ray;
 import io.ray.api.ActorHandle;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.streaming.runtime.config.StreamingWorkerConfig;
-import io.ray.streaming.runtime.transfer.ChannelID;
+import io.ray.streaming.runtime.transfer.ChannelId;
 import io.ray.streaming.runtime.transfer.ChannelCreationParametersBuilder;
 import io.ray.streaming.runtime.transfer.DataMessage;
 import io.ray.streaming.runtime.transfer.DataReader;
@@ -260,7 +260,7 @@ class WriterWorker extends Worker {
         }
 
         bb.clear();
-        ChannelID qid = ChannelID.from(outputQueueList.get(j));
+        ChannelId qid = ChannelId.from(outputQueueList.get(j));
         dataWriter.write(qid, bb);
       }
     }

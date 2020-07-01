@@ -6,7 +6,7 @@ import io.ray.streaming.runtime.BaseUnitTest;
 import io.ray.streaming.runtime.util.EnvUtil;
 import org.testng.annotations.Test;
 
-public class ChannelIDTest extends BaseUnitTest {
+public class ChannelIdTest extends BaseUnitTest {
 
   static {
     EnvUtil.loadNativeLibraries();
@@ -14,9 +14,9 @@ public class ChannelIDTest extends BaseUnitTest {
 
   @Test
   public void testIdStrToBytes() {
-    String idStr = ChannelID.genRandomIdStr();
-    assertEquals(idStr.length(), ChannelID.ID_LENGTH * 2);
-    assertEquals(ChannelID.idStrToBytes(idStr).length, ChannelID.ID_LENGTH);
+    String idStr = ChannelId.genRandomIdStr();
+    assertEquals(idStr.length(), ChannelId.ID_LENGTH * 2);
+    assertEquals(ChannelId.idStrToBytes(idStr).length, ChannelId.ID_LENGTH);
   }
 
 }

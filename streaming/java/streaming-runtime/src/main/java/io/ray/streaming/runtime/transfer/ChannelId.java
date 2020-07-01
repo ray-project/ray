@@ -15,7 +15,7 @@ import sun.nio.ch.DirectBuffer;
  * ChannelID is used to identify a transfer channel between a upstream worker
  * and downstream worker.
  */
-public class ChannelID {
+public class ChannelId {
   public static final int ID_LENGTH = 20;
   private static final FinalizableReferenceQueue REFERENCE_QUEUE = new FinalizableReferenceQueue();
   // This ensures that the FinalizablePhantomReference itself is not garbage-collected.
@@ -27,7 +27,7 @@ public class ChannelID {
   private final long address;
   private final long nativeIdPtr;
 
-  private ChannelID(String strId, byte[] idBytes) {
+  private ChannelId(String strId, byte[] idBytes) {
     this.strId = strId;
     this.bytes = idBytes;
     ByteBuffer directBuffer = ByteBuffer.allocateDirect(ID_LENGTH);
@@ -36,7 +36,7 @@ public class ChannelID {
     this.buffer = directBuffer;
     this.address = ((DirectBuffer) (buffer)).address();
     long nativeIdPtr = 0;
-    nativeIdPtr = createNativeID(address);
+    nativeIdPtr = createNativeId(address);
     this.nativeIdPtr = nativeIdPtr;
   }
 
@@ -72,7 +72,7 @@ public class ChannelID {
     if (o == null || getClass() != o.getClass()) {
       return false;
     }
-    ChannelID that = (ChannelID) o;
+    ChannelId that = (ChannelId) o;
     return strId.equals(that.strId);
   }
 
@@ -81,33 +81,33 @@ public class ChannelID {
     return strId.hashCode();
   }
 
-  private static native long createNativeID(long idAddress);
+  private static native long createNativeId(long idAddress);
 
-  private static native void destroyNativeID(long nativeIdPtr);
+  private static native void destroyNativeId(long nativeIdPtr);
 
   /**
    * @param id hex string representation of channel id
    */
-  public static ChannelID from(String id) {
-    return from(id, ChannelID.idStrToBytes(id));
+  public static ChannelId from(String id) {
+    return from(id, ChannelId.idStrToBytes(id));
   }
 
   /**
    * @param idBytes bytes representation of channel id
    */
-  public static ChannelID from(byte[] idBytes) {
+  public static ChannelId from(byte[] idBytes) {
     return from(idBytesToStr(idBytes), idBytes);
   }
 
-  private static ChannelID from(String strID, byte[] idBytes) {
-    ChannelID id = new ChannelID(strID, idBytes);
+  private static ChannelId from(String strID, byte[] idBytes) {
+    ChannelId id = new ChannelId(strID, idBytes);
     long nativeIdPtr = id.nativeIdPtr;
     if (nativeIdPtr != 0) {
-      Reference<ChannelID> reference =
-          new FinalizablePhantomReference<ChannelID>(id, REFERENCE_QUEUE) {
+      Reference<ChannelId> reference =
+          new FinalizablePhantomReference<ChannelId>(id, REFERENCE_QUEUE) {
             @Override
             public void finalizeReferent() {
-              destroyNativeID(nativeIdPtr);
+              destroyNativeId(nativeIdPtr);
               references.remove(this);
             }
           };
@@ -122,7 +122,7 @@ public class ChannelID {
   public static String genRandomIdStr() {
     StringBuilder sb = new StringBuilder();
     Random random = new Random();
-    for (int i = 0; i < ChannelID.ID_LENGTH * 2; ++i) {
+    for (int i = 0; i < ChannelId.ID_LENGTH * 2; ++i) {
       sb.append((char) (random.nextInt(6) + 'A'));
     }
     return sb.toString();
@@ -156,7 +156,7 @@ public class ChannelID {
     channelName[18] = (byte) ((toTaskId & 0xffff) >> 8);
     channelName[19] = (byte) (toTaskId & 0xff);
 
-    return ChannelID.idBytesToStr(channelName);
+    return ChannelId.idBytesToStr(channelName);
   }
 
   /**
@@ -165,7 +165,7 @@ public class ChannelID {
    */
   static byte[] idStrToBytes(String id) {
     byte[] idBytes = BaseEncoding.base16().decode(id.toUpperCase());
-    assert idBytes.length == ChannelID.ID_LENGTH;
+    assert idBytes.length == ChannelId.ID_LENGTH;
     return idBytes;
   }
 
@@ -174,7 +174,7 @@ public class ChannelID {
    * @return hex string representation of channel id
    */
   static String idBytesToStr(byte[] id) {
-    assert id.length == ChannelID.ID_LENGTH;
+    assert id.length == ChannelId.ID_LENGTH;
     return BaseEncoding.base16().encode(id).toLowerCase();
   }
 

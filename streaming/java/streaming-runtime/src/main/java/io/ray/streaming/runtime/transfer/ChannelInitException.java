@@ -18,7 +18,7 @@ public class ChannelInitException extends Exception {
 
   public List<String> getAbnormalChannelsString() {
     List<String> res = new ArrayList<>();
-    abnormalQueues.forEach(ele -> res.add(ChannelID.idBytesToStr(ele)));
+    abnormalQueues.forEach(ele -> res.add(ChannelId.idBytesToStr(ele)));
     return res;
   }
 }
