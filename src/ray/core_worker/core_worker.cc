@@ -449,7 +449,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory, rpc_address_));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
-    direct_task_receiver_->Init(client_factory, rpc_address_, local_raylet_client_);
+    task_argument_waiter_.reset(new DependencyWaiterImpl(*local_raylet_client_, reference_counter_));
+    direct_task_receiver_->Init(client_factory, rpc_address_, task_argument_waiter_);
   }
 
   auto object_lookup_fn = [this](const ObjectID &object_id,
@@ -1756,10 +1757,14 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
     return;
   }
 
+  // Post on the task execution event loop since this may trigger the
+  // execution of a task that is now ready to run.
   task_execution_service_.post([=] {
-    direct_task_receiver_->HandleDirectActorCallArgWaitComplete(request, reply,
-                                                                send_reply_callback);
+    RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
+    task_argument_waiter_->OnWaitComplete(request.tag());
   });
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,

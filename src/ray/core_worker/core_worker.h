@@ -1082,6 +1082,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Common rpc service for all worker modules.
   rpc::CoreWorkerGrpcService grpc_service_;
 
+  /// Used to notify the task receiver when the arguments of a queued
+  /// actor task are ready.
+  std::shared_ptr<DependencyWaiterImpl> task_argument_waiter_;
+
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
 

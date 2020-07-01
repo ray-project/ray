@@ -90,9 +90,11 @@ class DependencyWaiterInterface {
   /// the wait completes.
   ///
   /// \param object_ids The objects to wait for.
+  /// \param owner_addresses The addresses of the workers that own the objects.
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
   virtual ray::Status WaitForDirectActorCallArgs(const std::vector<ObjectID> &object_ids,
+      const std::vector<rpc::Address> &owner_addresses,
                                                  int64_t tag) = 0;
 
   virtual ~DependencyWaiterInterface(){};
@@ -224,6 +226,7 @@ class RayletClient : public PinObjectsInterface,
   /// found.
   ///
   /// \param object_ids The objects to wait for.
+  /// \param owner_addresses The addresses of the workers that own the objects.
   /// \param num_returns The number of objects to wait for.
   /// \param timeout_milliseconds Duration, in milliseconds, to wait before returning.
   /// \param wait_local Whether to wait for objects to appear on this node.
@@ -243,9 +246,11 @@ class RayletClient : public PinObjectsInterface,
   /// the wait completes.
   ///
   /// \param object_ids The objects to wait for.
+  /// \param owner_addresses The addresses of the workers that own the objects.
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
   ray::Status WaitForDirectActorCallArgs(const std::vector<ObjectID> &object_ids,
+      const std::vector<rpc::Address> &owner_addresses,
                                          int64_t tag) override;
 
   /// Push an error to the relevant driver.

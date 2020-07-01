@@ -106,9 +106,6 @@ class CoreWorkerPlasmaStoreProvider {
   std::string MemoryUsageString();
 
  private:
-  /// Helper method to get the addresses of the owners of these objects.
-  std::vector<rpc::Address> GetOwnerAddresses(const std::vector<ObjectID> &object_ids) const;
-
   /// Ask the raylet to fetch a set of objects and then attempt to get them
   /// from the local plasma store. Successfully fetched objects will be removed
   /// from the input set of remaining IDs and added to the results map.

@@ -169,7 +169,7 @@ class ReferenceCounter {
   bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
                          const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
 
-  /// Get the owner ID and address of the given object.
+  /// Get the owner address of the given object.
   ///
   /// \param[in] object_id The ID of the object to look up.
   /// \param[out] owner_address The address of the object owner.
@@ -178,6 +178,13 @@ class ReferenceCounter {
   /// out of band.
   bool GetOwner(const ObjectID &object_id, rpc::Address *owner_address = nullptr) const
       LOCKS_EXCLUDED(mutex_);
+
+  /// Get the owner addresses of the given objects. The owner address
+  /// must be registered for these objects.
+  ///
+  /// \param[in] object_ids The IDs of the object to look up.
+  /// \return The addresses of the objects' owners.
+  std::vector<rpc::Address> GetOwnerAddresses(const std::vector<ObjectID> object_ids) const;
 
   /// Manually delete the objects from the reference counter.
   void DeleteReferences(const std::vector<ObjectID> &object_ids) LOCKS_EXCLUDED(mutex_);
@@ -477,6 +484,9 @@ class ReferenceCounter {
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
+
+  bool GetOwnerInternal(const ObjectID &object_id, rpc::Address *owner_address = nullptr) const
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Shutdown if all references have gone out of scope and shutdown
   /// is scheduled.
