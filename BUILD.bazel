@@ -935,6 +935,16 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "metric_exporter_client_test",
+    srcs = ["src/ray/stats/metric_exporter_client_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":stats_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "gcs_test_util_lib",
     hdrs = [
