@@ -43,6 +43,15 @@ class StatsConfig final {
 
   bool IsStatsDisabled() const;
 
+  void SetReportInterval(const absl::Duration interval);
+
+  const absl::Duration &GetReportInterval() const;
+
+  void SetHarvestInterval(const absl::Duration interval);
+
+  const absl::Duration &GetHarvestInterval() const;
+  absl::Duration report_interval = absl::Seconds(1);
+
  private:
   StatsConfig() = default;
   ~StatsConfig() = default;
@@ -52,6 +61,8 @@ class StatsConfig final {
  private:
   TagsType global_tags_;
   bool is_stats_disabled_ = true;
+  absl::Duration report_interval_ = absl::Seconds(10);
+  absl::Duration harvest_interval_ = absl::Seconds(5);
 };
 
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.
