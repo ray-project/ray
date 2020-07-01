@@ -1143,9 +1143,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_id, GetCallerId(), rpc_address_, job_id, /*actor_cursor=*/return_ids[0],
       function.GetLanguage(), function.GetFunctionDescriptor(), extension_data,
       actor_creation_options.max_task_retries));
-  RAY_CHECK(actor_manager_->AddActorHandle(
-      std::move(actor_handle), !actor_creation_options.is_detached, GetCallerId(),
-      CurrentCallSite(), rpc_address_))
+  RAY_CHECK(actor_manager_->AddNewActorHandle(std::move(actor_handle), GetCallerId(),
+                                              CurrentCallSite(), rpc_address_,
+                                              actor_creation_options.is_detached))
       << "Actor " << actor_id << " already exists";
 
   *return_actor_id = actor_id;
@@ -1258,9 +1258,8 @@ Status CoreWorker::SerializeActorHandle(const ActorID &actor_id, std::string *ou
   return Status::OK();
 }
 
-void CoreWorker::GetActorHandle(const ActorID &actor_id,
-                                ActorHandle **actor_handle) const {
-  *actor_handle = actor_manager_->GetActorHandle(actor_id).get();
+ActorHandle* CoreWorker::GetActorHandle(const ActorID &actor_id) const {
+  return actor_manager_->GetActorHandle(actor_id).get();
 }
 
 Status CoreWorker::GetNamedActorHandle(const std::string &name,
@@ -1281,9 +1280,9 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
         if (status.ok() && result) {
           auto actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(*result));
           actor_id = actor_handle->GetActorID();
-          actor_manager_->AddActorHandle(std::move(actor_handle),
-                                         /*is_owner_handle=*/false, GetCallerId(),
-                                         CurrentCallSite(), rpc_address_);
+          RAY_UNUSED(actor_manager_->AddNewActorHandle(
+              std::move(actor_handle), GetCallerId(), CurrentCallSite(), rpc_address_,
+              /*is_detached*/ true));
         } else {
           RAY_LOG(INFO) << "Failed to look up actor with name: " << name;
           // Use a NIL actor ID to signal that the actor wasn't found.
@@ -1307,7 +1306,7 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
               "actor hasn't been created because named actor creation is asynchronous.";
     status = Status::NotFound(stream.str());
   } else {
-    GetActorHandle(actor_id, actor_handle);
+    *actor_handle = actor_manager_->GetActorHandle(actor_id).get();
     status = Status::OK();
   }
   return status;

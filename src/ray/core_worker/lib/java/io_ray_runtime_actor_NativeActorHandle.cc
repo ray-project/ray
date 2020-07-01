@@ -29,8 +29,9 @@ extern "C" {
 JNIEXPORT jint JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeGetLanguage(
     JNIEnv *env, jclass o, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
-  ray::ActorHandle *native_actor_handle = nullptr;
-  ray::CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id, &native_actor_handle);
+  ray::ActorHandle *native_actor_handle = ray::CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id);
+  // ray::ActorHandle *native_actor_handle = nullptr;
+  // ray::CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id, &native_actor_handle);
   return native_actor_handle->ActorLanguage();
 }
 
@@ -38,8 +39,9 @@ JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_actor_NativeActorHandle_nativeGetActorCreationTaskFunctionDescriptor(
     JNIEnv *env, jclass o, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
-  ray::ActorHandle *native_actor_handle = nullptr;
-  ray::CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id, &native_actor_handle);
+  ray::ActorHandle *native_actor_handle = ray::CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id);
+  // ray::ActorHandle *native_actor_handle = nullptr;
+  // ray::CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id, &native_actor_handle);
   auto function_descriptor = native_actor_handle->ActorCreationTaskFunctionDescriptor();
   return NativeRayFunctionDescriptorToJavaStringList(env, function_descriptor);
 }

@@ -658,13 +658,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Get a handle to an actor.
   ///
   /// NOTE: This function should be called ONLY WHEN we know actor handle exists.
+  /// NOTE: The actor_handle obtained by this function should not be stored anywhere.
   ///
   /// \param[in] actor_id The actor handle to get.
-  /// \param[out] actor_handle A handle to the requested actor.
   /// \return Status::Invalid if we don't have this actor handle.
-  void GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
+  ActorHandle* GetActorHandle(const ActorID &actor_id) const;
 
   /// Get a handle to a named actor.
+  ///
+  /// NOTE: The actor_handle obtained by this function should not be stored anywhere.
   ///
   /// \param[in] name The name of the actor whose handle to get.
   /// \param[out] actor_handle A handle to the requested actor.

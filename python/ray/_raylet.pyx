@@ -1071,15 +1071,14 @@ cdef class CoreWorker:
                                               ObjectID
                                               outer_object_id):
         cdef:
-            CActorHandle* c_actor_handle
+            # CActorHandle* c_actor_handle
             CObjectID c_outer_object_id = (outer_object_id.native() if
                                            outer_object_id else
                                            CObjectID.Nil())
-        c_actor_id = (CCoreWorkerProcess.GetCoreWorker()
-                      .DeserializeAndRegisterActorHandle(
-                          bytes, c_outer_object_id))
-        CCoreWorkerProcess.GetCoreWorker().GetActorHandle(
-            c_actor_id, &c_actor_handle)
+            c_actor_id = (CCoreWorkerProcess.GetCoreWorker()
+                        .DeserializeAndRegisterActorHandle(
+                            bytes, c_outer_object_id))
+            const CActorHandle* c_actor_handle = CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id)
         return self.make_actor_handle(c_actor_handle)
 
     def get_named_actor_handle(self, const c_string &name):

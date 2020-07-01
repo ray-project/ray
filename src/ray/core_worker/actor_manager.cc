@@ -26,10 +26,11 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
                                           const rpc::Address &caller_address) {
   const ActorID actor_id = actor_handle->GetActorID();
   const rpc::Address owner_address = actor_handle->GetOwnerAddress();
+  const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
 
   RAY_UNUSED(AddActorHandle(std::move(actor_handle),
                             /*is_owner_handle=*/false, caller_id, call_site,
-                            caller_address));
+                            caller_address, actor_id, actor_creation_return_id));
   ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
   reference_counter_->AddBorrowedObject(actor_handle_id, outer_object_id, owner_address);
   return actor_id;
@@ -49,19 +50,32 @@ bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
   return actor_handles_.find(actor_id) != actor_handles_.end();
 }
 
-bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                  bool is_owner_handle, const TaskID &caller_id,
-                                  const std::string &call_site,
-                                  const rpc::Address &caller_address) {
+bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+                                     const TaskID &caller_id,
+                                     const std::string &call_site,
+                                     const rpc::Address &caller_address,
+                                     bool is_detached) {
   const auto &actor_id = actor_handle->GetActorID();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
-  if (is_owner_handle) {
+  // Detached actor doesn't need ref counting.
+  if (!is_detached) {
     reference_counter_->AddOwnedObject(actor_creation_return_id,
                                        /*inner_ids=*/{}, caller_address, call_site,
                                        /*object_size*/ -1,
                                        /*is_reconstructable=*/true);
   }
 
+  return AddActorHandle(std::move(actor_handle),
+                        /*is_owner_handle=*/!is_detached, caller_id, call_site,
+                        caller_address, actor_id, actor_creation_return_id);
+}
+
+bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+                                  bool is_owner_handle, const TaskID &caller_id,
+                                  const std::string &call_site,
+                                  const rpc::Address &caller_address,
+                                  const ActorID &actor_id,
+                                  const ObjectID &actor_creation_return_id) {
   reference_counter_->AddLocalReference(actor_creation_return_id, call_site);
   direct_actor_submitter_->AddActorQueueIfNotExists(actor_id);
   bool inserted;
