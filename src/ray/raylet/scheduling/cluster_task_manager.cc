@@ -1,10 +1,18 @@
 #include "cluster_task_manager.h"
 
-ClusterTaskManager::ClusterTaskManager(ClusterResourceScheduler &cluster_resource_scheduler, std::Function<bool(const Task&) fulfills_dependencies_func) : cluster_resource_scheduler_(cluster_resource_scheduler) fulfills_dependencies_func_(fulfills_dependencies_func), worker_pool_(worker_pool) {
+using namespace ray::raylet;
+
+ClusterTaskManager::ClusterTaskManager(
+                                       std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
+                                       std::function<bool(const Task &)> fulfills_dependencies_func,
+                                       const WorkerPool &worker_pool) :
+    cluster_resource_scheduler_(cluster_resource_scheduler),
+    fulfills_dependencies_func_(fulfills_dependencies_func),
+    worker_pool_(worker_pool) {
+
 }
 
 void ClusterTaskManager::NewSchedulerSchedulePendingTasks() {
-  RAY_CHECK(new_scheduler_enabled_);
   size_t queue_size = tasks_to_schedule_.size();
 
   // Check every task in task_to_schedule queue to see
@@ -20,7 +28,7 @@ void ClusterTaskManager::NewSchedulerSchedulePendingTasks() {
         task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
     int64_t violations = 0;
     std::string node_id_string =
-        new_resource_scheduler_->GetBestSchedulableNode(request_resources, &violations);
+        cluster_resource_scheduler_->GetBestSchedulableNode(request_resources, &violations);
     if (node_id_string.empty()) {
       /// There is no node that has available resources to run the request.
       tasks_to_schedule_.push_back(work);
@@ -30,7 +38,7 @@ void ClusterTaskManager::NewSchedulerSchedulePendingTasks() {
         WaitForTaskArgsRequests(work);
       } else {
         // Should spill over to a different node.
-        new_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
+        cluster_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
                                                              request_resources);
 
         ClientID node_id = ClientID::FromBinary(node_id_string);
@@ -46,9 +54,9 @@ void ClusterTaskManager::NewSchedulerSchedulePendingTasks() {
   DispatchScheduledTasksToWorkers();
 }
 
-std::vector<std::Pair<Task, Worker>> DispatchScheduledTasksToWorkers() {
+std::unique_ptr<std::vector<std::pair<Task, Worker>>> DispatchScheduledTasksToWorkers() {
 
-  std::vector<std::Pair<Task, Worker>> dispatchable;
+  std::unique_ptr<std::vector<std::Pair<Task, Worker>>> dispatchable(new std::vector());
   auto idle_workers = worker_pool_.GetIdleWorkers();
   auto worker_it = idle_workers.begin();
 
@@ -72,8 +80,8 @@ std::vector<std::Pair<Task, Worker>> DispatchScheduledTasksToWorkers() {
     }
 
     std::shared_ptr<TaskResourceInstances> allocated_instances(
-        new TaskResourceInstances());
-    bool schedulable = new_resource_scheduler_->AllocateLocalTaskResources(
+        new TaskResourceInstances())
+    bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
         spec.GetRequiredResources().GetResourceMap(), allocated_instances);
     if (!schedulable) {
       // Not enough resources to schedule this task.
@@ -83,7 +91,7 @@ std::vector<std::Pair<Task, Worker>> DispatchScheduledTasksToWorkers() {
       continue;
     }
 
-    dispatchable.push_back((task, *worker_it));
+    dispatchable->push_back((task, *worker_it));
     worker_it++;
     // worker->SetOwnerAddress(spec.CallerAddress());
     // if (spec.IsActorCreationTask()) {
