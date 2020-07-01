@@ -28,6 +28,11 @@ logger = logging.getLogger(__name__)
 class TFPolicy(Policy):
     """An agent policy and loss implemented in TensorFlow.
 
+    Do not sub-class this class directly (neither should you sub-class
+    DynamicTFPolicy), but rather use
+    rllib.policy.tf_policy_template.build_tf_policy
+    to generate your custom tf (graph-mode or eager) Policy classes.
+
     Extending this class enables RLlib to perform TensorFlow specific
     optimizations on the policy, e.g., parallelization across gpus or
     fusing multiple graphs together in the multi-agent setting.
@@ -476,15 +481,16 @@ class TFPolicy(Policy):
                 return self.model.import_from_h5(import_file)
 
     @DeveloperAPI
-    def copy(self, existing_inputs) -> "TFPolicy":
+    def copy(self,
+             existing_inputs: List[Tuple[str, tf1.placeholder]]) -> "TFPolicy":
         """Creates a copy of self using existing input placeholders.
 
         Optional: Only required to work with the multi-GPU optimizer.
 
         Args:
-            existing_inputs (Dict[str, tf1.placeholder]): Dict mapping names
-                (str) to tf.placeholders to re-use (share) with the returned
-                copy of self.
+            existing_inputs (List[Tuple[str, tf1.placeholder]]): Dict mapping
+                names (str) to tf.placeholders to re-use (share) with the
+                returned copy of self.
 
         Returns:
             TFPolicy: A copy of self.

@@ -47,7 +47,7 @@ class TorchPolicy(Policy):
                  model: ModelV2,
                  loss: Callable[
                      [Policy, ModelV2, type, SampleBatch], TensorType],
-                 action_distribution_class: type,
+                 action_distribution_class: TorchDistributionWrapper,
                  action_sampler_fn: Callable[
                      [TensorType, List[TensorType]], Tuple[
                          TensorType, TensorType]] = None,
@@ -65,14 +65,15 @@ class TorchPolicy(Policy):
             observation_space (gym.spaces.Space): observation space of the
                 policy.
             action_space (gym.spaces.Space): action space of the policy.
-            config (dict): The Policy config dict.
-            model (nn.Module): PyTorch policy module. Given observations as
+            config (PolicyConfigDict): The Policy config dict.
+            model (ModelV2): PyTorch policy module. Given observations as
                 input, this module must return a list of outputs where the
                 first item is action logits, and the rest can be any value.
-            loss (func): Function that takes (policy, model, dist_class,
-                train_batch) and returns a single scalar loss.
-            action_distribution_class (ActionDistribution): Class for action
-                distribution.
+            loss (Callable[[Policy, ModelV2, type, SampleBatch], TensorType]):
+                Function that takes (policy, model, dist_class, train_batch)
+                and returns a single scalar loss.
+            action_distribution_class (TorchDistributionWrapper): Class for
+                a torch action distribution.
             action_sampler_fn (Callable[[TensorType, List[TensorType]],
                 Tuple[TensorType, TensorType]]): A callable returning a
                 sampled action and its log-likelihood given Policy, ModelV2,
@@ -91,8 +92,9 @@ class TorchPolicy(Policy):
                 The callable takes as inputs: Policy, ModelV2, input_dict,
                 explore, timestep, is_training.
             max_seq_len (int): Max sequence length for LSTM training.
-            get_batch_divisibility_req (Optional[callable]): Optional callable
-                that returns the divisibility requirement for sample batches.
+            get_batch_divisibility_req (Optional[Callable[[Policy], int]]]):
+                Optional callable that returns the divisibility requirement
+                for sample batches given the Policy.
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
@@ -163,12 +165,13 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     def compute_actions_from_trajectories(
-            self,
-            trajectories: List["Trajectory"],
-            other_trajectories: Dict[AgentID, "Trajectory"],
-            explore: bool = None,
-            timestep: Optional[int] = None,
-            **kwargs):
+        self,
+        trajectories: List["Trajectory"],
+        other_trajectories: Dict[AgentID, "Trajectory"],
+        explore: bool = None,
+        timestep: Optional[int] = None,
+        **kwargs) -> Tuple[
+        TensorType, List[TensorType], Dict[str, TensorType]]:
 
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
