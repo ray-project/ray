@@ -118,11 +118,7 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     target_model_out_tp1, _ = policy.target_model(input_dict_next, [], None)
 
     # Policy network evaluation.
-    # prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
     policy_t = model.get_policy_output(model_out_t)
-    # policy_batchnorm_update_ops = list(
-    #   set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
-
     policy_tp1 = \
         policy.target_model.get_policy_output(target_model_out_tp1)
 
@@ -153,8 +149,6 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     if twin_q:
         twin_q_t = model.get_twin_q_values(
             model_out_t, train_batch[SampleBatch.ACTIONS])
-    # q_batchnorm_update_ops = list(
-    #     set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
     # Target q-net(s) evaluation.
     q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
@@ -254,22 +248,6 @@ def make_ddpg_optimizers(policy, config):
         policy._critic_optimizer = tf1.train.AdamOptimizer(
             learning_rate=config["critic_lr"])
     return None
-
-    # TFPolicy.__init__(
-    #    self,
-    #    observation_space,
-    #    action_space,
-    #    self.config,
-    #    self.sess,
-    #    #obs_input=self.cur_observations,
-    #    sampled_action=self.output_actions,
-    #    loss=self.actor_loss + self.critic_loss,
-    #    loss_inputs=self.loss_inputs,
-    #    update_ops=q_batchnorm_update_ops + policy_batchnorm_update_ops,
-    #    explore=explore,
-    #    dist_inputs=self._distribution_inputs,
-    #    dist_class=Deterministic,
-    #    timestep=timestep)
 
 
 def build_apply_op(policy, optimizer, grads_and_vars):
