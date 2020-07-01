@@ -335,7 +335,7 @@ class TFPolicy(Policy):
             prev_action_batch: Optional[
                 Union[List[TensorType], TensorType]] = None,
             prev_reward_batch: Optional[
-                Union[List[TensorType], TensorType]] = None):
+                Union[List[TensorType], TensorType]] = None) -> TensorType:
 
         if self._log_likelihood is None:
             raise ValueError("Cannot compute log-prob/likelihood w/o a "
@@ -406,17 +406,17 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def get_weights(self):
+    def get_weights(self) -> Union[Dict[str, TensorType], List[TensorType]]:
         return self._variables.get_weights()
 
     @override(Policy)
     @DeveloperAPI
-    def set_weights(self, weights):
+    def set_weights(self, weights) -> None:
         return self._variables.set_weights(weights)
 
     @override(Policy)
     @DeveloperAPI
-    def get_state(self):
+    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
         # For tf Policies, return Policy weights and optimizer var values.
         state = super().get_state()
         if self._optimizer_variables and \
@@ -427,7 +427,7 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def set_state(self, state):
+    def set_state(self, state) -> None:
         state = state.copy()  # shallow copy
         # Set optimizer vars first.
         optimizer_vars = state.pop("_optimizer_variables", None)
@@ -438,7 +438,7 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def export_model(self, export_dir):
+    def export_model(self, export_dir: str) -> None:
         """Export tensorflow graph to export_dir for serving."""
         with self._sess.graph.as_default():
             builder = tf1.saved_model.builder.SavedModelBuilder(export_dir)
@@ -452,7 +452,8 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def export_checkpoint(self, export_dir, filename_prefix="model"):
+    def export_checkpoint(self, export_dir: str,
+                          filename_prefix: str = "model") -> None:
         """Export tensorflow checkpoint to export_dir."""
         try:
             os.makedirs(export_dir)
@@ -467,7 +468,7 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def import_model_from_h5(self, import_file):
+    def import_model_from_h5(self, import_file: str) -> None:
         """Imports weights into tf model."""
         # Make sure the session is the right one (see issue #7046).
         with self._sess.graph.as_default():
