@@ -1342,7 +1342,6 @@ cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
 cdef void async_retry_with_plasma_callback(shared_ptr[CRayObject] obj,
                                            CObjectID object_id,
                                            void *future) with gil:
-    # This will be gone
     py_future = <object>(future)
     loop = py_future._loop
     loop.call_soon_threadsafe(lambda: py_future.set_result(

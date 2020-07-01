@@ -2056,7 +2056,7 @@ void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &re
   plasma_done_callback_(ObjectID::FromBinary(request.object_id()), request.data_size(),
                         request.metadata_size());
   send_reply_callback(Status::OK(), nullptr, nullptr);
-}  // namespace ray
+}
 
 void CoreWorker::SetActorId(const ActorID &actor_id) {
   absl::MutexLock lock(&mutex_);

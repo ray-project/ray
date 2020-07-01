@@ -125,9 +125,4 @@ def get_async(object_id):
     # A hack to keep a reference to the object ID for ref counting.
     user_future.object_id = object_id
 
-    # ## END RESULT { ONLY THIS }
-    # core_worker.get_async(object_id, future)
-    # return future
-    # ##
-
     return user_future
