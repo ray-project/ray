@@ -1,5 +1,5 @@
 import asyncio
-from typing import Dict, Optional, Tuple, Set, List
+from typing import Dict, Optional, Tuple, List
 
 from ray.serve.metric.types import (MetricType, convert_event_type_to_class,
                                     MetricMetadata, MetricRecord)

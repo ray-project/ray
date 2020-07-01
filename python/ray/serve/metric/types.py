@@ -24,15 +24,14 @@ class MetricMetadata:
         if not isinstance(value, MetricMetadata):
             return False
 
-        return (self.name == value.name
-                and self.type == self.type
+        return (self.name == value.name and self.type == self.type
                 and self.description == value.description
                 and self.label_names == value.label_names
                 and self.default_labels == value.default_labels)
 
     def __hash__(self):
-        return hash((self.name, self.type, self.description,
-                     self.label_names, frozenset(self.default_labels.items())))
+        return hash((self.name, self.type, self.description, self.label_names,
+                     frozenset(self.default_labels.items())))
 
 
 MetricRecord = namedtuple("MetricRecord", ["key", "labels", "value"])
