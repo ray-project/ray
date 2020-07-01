@@ -1173,7 +1173,7 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
         pbt = self.basicSetup(perturbation_interval=2)
 
         class train_dict(tune.Trainable):
-            def build(self, config):
+            def setup(self, config):
                 self.state = {"hi": 1}
 
             def step(self):

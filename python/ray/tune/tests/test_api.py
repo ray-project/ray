@@ -63,7 +63,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 function_output.append(result)
 
         class _WrappedTrainable(Trainable):
-            def build(self, config):
+            def setup(self, config):
                 del config
                 self._result_iter = copy.deepcopy(class_results)
 
@@ -825,7 +825,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testDurableTrainable(self):
         class TestTrain(DurableTrainable):
-            def build(self, config):
+            def setup(self, config):
                 self.state = {"hi": 1, "iter": 0}
 
             def step(self):
@@ -853,7 +853,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testCheckpointDict(self):
         class TestTrain(Trainable):
-            def build(self, config):
+            def setup(self, config):
                 self.state = {"hi": 1}
 
             def step(self):
@@ -883,7 +883,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testMultipleCheckpoints(self):
         class TestTrain(Trainable):
-            def build(self, config):
+            def setup(self, config):
                 self.state = {"hi": 1, "iter": 0}
 
             def step(self):
@@ -937,6 +937,41 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 100)
         self.assertEqual(trial.last_result["itr"], 99)
+
+    def testBackwardsCompat(self):
+        class TestTrain(Trainable):
+            def _setup(self, config):
+                self.state = {"hi": 1, "iter": 0}
+
+            def _train(self):
+                self.state["iter"] += 1
+                return {"timesteps_this_iter": 1, "done": True}
+
+            def _save(self, path):
+                return self.state
+
+            def _restore(self, state):
+                self.state = state
+
+        test_trainable = TestTrain()
+        checkpoint_1 = test_trainable.save()
+        test_trainable.train()
+        checkpoint_2 = test_trainable.save()
+        self.assertNotEqual(checkpoint_1, checkpoint_2)
+        test_trainable.restore(checkpoint_2)
+        self.assertEqual(test_trainable.state["iter"], 1)
+        test_trainable.restore(checkpoint_1)
+        self.assertEqual(test_trainable.state["iter"], 0)
+
+        trials = run_experiments({
+            "foo": {
+                "run": TestTrain,
+                "checkpoint_at_end": True
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertTrue(trial.has_checkpoint())
 
 
 if __name__ == "__main__":

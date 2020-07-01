@@ -623,7 +623,7 @@ def test_cluster_interrupt(start_connected_cluster, tmpdir):
     class _Mock(tune.Trainable):
         """Finishes on the 4th iteration."""
 
-        def build(self, config):
+        def setup(self, config):
             self.state = {"hi": 0}
 
         def step(self):

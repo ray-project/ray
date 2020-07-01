@@ -19,7 +19,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
     class MockTrainable(Trainable):
         _name = "MockTrainable"
 
-        def build(self, config):
+        def setup(self, config):
             self.state = {"hi": 1}
 
         def step(self):
@@ -154,7 +154,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         """Tests that passing the checkpoint_dir right back works."""
 
         class MockTrainable(Trainable):
-            def build(self, config):
+            def setup(self, config):
                 pass
 
             def step(self):

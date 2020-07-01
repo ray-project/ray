@@ -624,12 +624,13 @@ class Trainable:
             A dict that describes training progress.
 
         """
+        result = self._train()
 
-        if log_once("trainable.step"):
+        if self._is_overriden("_train") and log_once("_train"):
             logger.warning(
                 "Trainable._train is deprecated and will be removed in "
-                "a future version of Ray. Use Trainable.step instead.")
-        self._train()
+                "a future version of Ray. Override Trainable.step instead.")
+        return result
 
     def _train(self):
         """This method is deprecated. Override 'Trainable.step' instead.
@@ -674,13 +675,14 @@ class Trainable:
             >>> trainable.save_checkpoint("/tmp/bad_example")
             "/tmp/NEW_CHECKPOINT_PATH/my_checkpoint_file" # This will error.
         """
+        checkpoint = self._save(tmp_checkpoint_dir)
 
-        if log_once("trainable.save_checkpoint"):
+        if self._is_overriden("_save") and log_once("_save"):
             logger.warning(
                 "Trainable._save is deprecated and will be removed in a "
-                "future version of Ray. Use Trainable.save_checkpoint instead."
-            )
-        self._save()
+                "future version of Ray. Override "
+                "Trainable.save_checkpoint instead.")
+        return checkpoint
 
     def _save(self, tmp_checkpoint_dir):
         """This method is deprecated. Override 'save_checkpoint' instead.
@@ -733,12 +735,12 @@ class Trainable:
                 underneath the `checkpoint_dir` `save_checkpoint` is preserved.
         """
 
-        if log_once("trainable.load_checkpoint"):
+        self._restore(checkpoint)
+        if self._is_overriden("_restore") and log_once("_restore"):
             logger.warning(
                 "Trainable._restore is deprecated and will be removed in a "
-                "future version of Ray. Use Trainable.load_checkpoint instead."
-            )
-        self._restore(checkpoint)
+                "future version of Ray. Override Trainable.load_checkpoint "
+                "instead.")
 
     def _restore(self, checkpoint):
         """This method is deprecated. Override 'load_checkpoint' instead.
@@ -756,11 +758,11 @@ class Trainable:
             config (dict): Hyperparameters and other configs given.
                 Copy of `self.config`.
         """
-        if log_once("trainable.setup"):
+        self._setup(config)
+        if self._is_overriden("_setup") and log_once("_setup"):
             logger.warning(
                 "Trainable._setup is deprecated and will be removed in "
-                "a future version of Ray. Use Trainable.setup instead.")
-        self._setup(config)
+                "a future version of Ray. Override Trainable.setup instead.")
 
     def _setup(self, config):
         """This method is deprecated. Override 'setup' instead.
@@ -781,11 +783,12 @@ class Trainable:
         Args:
             result (dict): Training result returned by step().
         """
-        if log_once("trainable.log_result"):
+        self._log_result(result)
+        if self._is_overriden("_log_result") and log_once("_log_result"):
             logger.warning(
                 "Trainable._log_result is deprecated and will be removed in "
-                "a future version of Ray. Use Trainable.log_result instead.")
-        self._log_result(result)
+                "a future version of Ray. Override "
+                "Trainable.log_result instead.")
 
     def _log_result(self, result):
         """This method is deprecated. Override 'log_result' instead.
@@ -805,11 +808,11 @@ class Trainable:
 
         .. versionadded:: 0.8.7
         """
-        if log_once("trainable.cleanup"):
+        self._stop()
+        if self._is_overriden("_stop") and log_once("trainable.cleanup"):
             logger.warning(
                 "Trainable._stop is deprecated and will be removed in "
-                "a future version of Ray. Use Trainable.cleanup instead.")
-        self._stop()
+                "a future version of Ray. Override Trainable.cleanup instead.")
 
     def _stop(self):
         """This method is deprecated. Override 'cleanup' instead.
@@ -829,3 +832,6 @@ class Trainable:
             A dict that maps ExportFormats to successfully exported models.
         """
         return {}
+
+    def _is_overriden(self, key):
+        return getattr(self, key).__code__ != getattr(Trainable, key).__code__
