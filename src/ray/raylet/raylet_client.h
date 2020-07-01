@@ -93,9 +93,9 @@ class DependencyWaiterInterface {
   /// \param owner_addresses The addresses of the workers that own the objects.
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
-  virtual ray::Status WaitForDirectActorCallArgs(const std::vector<ObjectID> &object_ids,
-      const std::vector<rpc::Address> &owner_addresses,
-                                                 int64_t tag) = 0;
+  virtual ray::Status WaitForDirectActorCallArgs(
+      const std::vector<ObjectID> &object_ids,
+      const std::vector<rpc::Address> &owner_addresses, int64_t tag) = 0;
 
   virtual ~DependencyWaiterInterface(){};
 };
@@ -200,9 +200,9 @@ class RayletClient : public PinObjectsInterface,
   /// \param current_task_id The task that needs the objects.
   /// \return int 0 means correct, other numbers mean error.
   ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
-      const std::vector<rpc::Address> &owner_addresses,
-      bool fetch_only,
-                                 bool mark_worker_blocked, const TaskID &current_task_id);
+                                 const std::vector<rpc::Address> &owner_addresses,
+                                 bool fetch_only, bool mark_worker_blocked,
+                                 const TaskID &current_task_id);
 
   /// Notify the raylet that this client (worker) is no longer blocked.
   ///
@@ -236,8 +236,7 @@ class RayletClient : public PinObjectsInterface,
   /// found, and the second element the objects that were not found.
   /// \return ray::Status.
   ray::Status Wait(const std::vector<ObjectID> &object_ids,
-      const std::vector<rpc::Address> &owner_addresses,
-      int num_returns,
+                   const std::vector<rpc::Address> &owner_addresses, int num_returns,
                    int64_t timeout_milliseconds, bool wait_local,
                    bool mark_worker_blocked, const TaskID &current_task_id,
                    WaitResultPair *result);
@@ -250,7 +249,7 @@ class RayletClient : public PinObjectsInterface,
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
   ray::Status WaitForDirectActorCallArgs(const std::vector<ObjectID> &object_ids,
-      const std::vector<rpc::Address> &owner_addresses,
+                                         const std::vector<rpc::Address> &owner_addresses,
                                          int64_t tag) override;
 
   /// Push an error to the relevant driver.

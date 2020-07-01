@@ -54,7 +54,6 @@ def test_reconstruction_cached_dependency(ray_start_cluster,
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
-        "initial_reconstruction_timeout_milliseconds": 100,
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
     })
@@ -117,7 +116,6 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
-        "initial_reconstruction_timeout_milliseconds": 100,
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
     })
@@ -170,7 +168,6 @@ def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
-        #"initial_reconstruction_timeout_milliseconds": 100,
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
     })
@@ -197,11 +194,9 @@ def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
 
     @ray.remote
     def dependent_task(x):
-        print("DEPENDENT TASK")
         return x
 
     obj = ray.put(np.zeros(10**7, dtype=np.uint8))
-    print("ray.put object:", obj)
     result = dependent_task.options(resources={"node1": 1}).remote(obj)
     ray.get(result)
     del obj
@@ -228,7 +223,6 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
-        "initial_reconstruction_timeout_milliseconds": 100,
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
     })
@@ -292,7 +286,6 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
-        "initial_reconstruction_timeout_milliseconds": 100,
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
     })
@@ -339,7 +332,6 @@ def test_reconstruction_stress(ray_start_cluster):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
-        "initial_reconstruction_timeout_milliseconds": 100,
         "lineage_pinning_enabled": 1,
         "free_objects_period_milliseconds": -1,
         "max_direct_call_object_size": 100,

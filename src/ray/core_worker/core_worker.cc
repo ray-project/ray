@@ -354,7 +354,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
-      options_.store_socket, local_raylet_client_, reference_counter_, options_.check_signals,
+      options_.store_socket, local_raylet_client_, reference_counter_,
+      options_.check_signals,
       /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
       boost::bind(&CoreWorker::TriggerGlobalGC, this),
       boost::bind(&CoreWorker::CurrentCallSite, this)));
@@ -449,7 +450,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory, rpc_address_));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
-    task_argument_waiter_.reset(new DependencyWaiterImpl(*local_raylet_client_, reference_counter_));
+    task_argument_waiter_.reset(
+        new DependencyWaiterImpl(*local_raylet_client_, reference_counter_));
     direct_task_receiver_->Init(client_factory, rpc_address_, task_argument_waiter_);
   }
 
@@ -709,7 +711,8 @@ rpc::Address CoreWorker::GetOwnerAddress(const ObjectID &object_id) const {
   auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
   RAY_CHECK(has_owner)
       << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
-         "(ObjectID.from_binary(...)) cannot be passed as a task argument because Ray does not know "
+         "(ObjectID.from_binary(...)) cannot be passed as a task argument because Ray "
+         "does not know "
          "which task will create them. "
          "If this was not how your object ID was generated, please file an issue "
          "at https://github.com/ray-project/ray/issues/";
@@ -1518,7 +1521,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   // execution and unpinned once the task completes. We will notify the caller
   // about any IDs that we are still borrowing by the time the task completes.
   std::vector<ObjectID> borrowed_ids;
-  RAY_CHECK_OK(GetAndPinArgsForExecutor(task_spec, &args, &arg_reference_ids, &borrowed_ids));
+  RAY_CHECK_OK(
+      GetAndPinArgsForExecutor(task_spec, &args, &arg_reference_ids, &borrowed_ids));
 
   std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
@@ -1632,9 +1636,9 @@ void CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec,
 }
 
 Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
-                                        std::vector<std::shared_ptr<RayObject>> *args,
-                                        std::vector<ObjectID> *arg_reference_ids,
-                                        std::vector<ObjectID> *borrowed_ids) {
+                                            std::vector<std::shared_ptr<RayObject>> *args,
+                                            std::vector<ObjectID> *arg_reference_ids,
+                                            std::vector<ObjectID> *borrowed_ids) {
   auto num_args = task.NumArgs();
   args->resize(num_args);
   arg_reference_ids->resize(num_args);
@@ -1666,7 +1670,8 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       reference_counter_->AddLocalReference(arg_id, task.CallSiteString());
       // Attach the argument's owner's address. This is needed to retrieve the
       // value from plasma.
-      reference_counter_->AddBorrowedObject(arg_id, ObjectID::Nil(), task.ArgRef(i).owner_address());
+      reference_counter_->AddBorrowedObject(arg_id, ObjectID::Nil(),
+                                            task.ArgRef(i).owner_address());
       borrowed_ids->push_back(arg_id);
     } else {
       // A pass-by-value argument.

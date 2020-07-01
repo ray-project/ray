@@ -329,7 +329,7 @@ bool ReferenceCounter::GetOwner(const ObjectID &object_id,
 }
 
 bool ReferenceCounter::GetOwnerInternal(const ObjectID &object_id,
-                                rpc::Address *owner_address) const {
+                                        rpc::Address *owner_address) const {
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
@@ -343,16 +343,20 @@ bool ReferenceCounter::GetOwnerInternal(const ObjectID &object_id,
   }
 }
 
-std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(const std::vector<ObjectID> object_ids) const {
+std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
+    const std::vector<ObjectID> object_ids) const {
   absl::MutexLock lock(&mutex_);
   std::vector<rpc::Address> owner_addresses;
   for (const auto &object_id : object_ids) {
     rpc::Address owner_addr;
     bool has_owner = GetOwnerInternal(object_id, &owner_addr);
-    RAY_CHECK(has_owner) << object_id << " Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
-         "(ObjectID.from_binary(...)) cannot be passed to ray.get(), ray.wait(), or as a task argument because Ray does not know which task will create them. "
-         "If this was not how your object ID was generated, please file an issue "
-         "at https://github.com/ray-project/ray/issues/";
+    RAY_CHECK(has_owner)
+        << object_id
+        << " Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+           "(ObjectID.from_binary(...)) cannot be passed to ray.get(), ray.wait(), or as "
+           "a task argument because Ray does not know which task will create them. "
+           "If this was not how your object ID was generated, please file an issue "
+           "at https://github.com/ray-project/ray/issues/";
     owner_addresses.push_back(owner_addr);
   }
   return owner_addresses;

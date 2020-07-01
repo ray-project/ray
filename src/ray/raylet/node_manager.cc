@@ -78,7 +78,10 @@ ActorStats GetActorStatisticalData(
   return item;
 }
 
-std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReference(const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &object_ids, const flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>> &owner_addresses) {
+std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReference(
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &object_ids,
+    const flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>>
+        &owner_addresses) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
   std::vector<ray::rpc::ObjectReference> refs;
   for (int64_t i = 0; i < object_ids.size(); i++) {
@@ -1413,7 +1416,8 @@ void NodeManager::ProcessDisconnectClientMessage(
 void NodeManager::ProcessFetchOrReconstructMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::FetchOrReconstruct>(message_data);
-  const auto refs = FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
+  const auto refs =
+      FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
   if (message->fetch_only()) {
     for (const auto &ref : refs) {
       ObjectID object_id = ObjectID::FromBinary(ref.object_id());
@@ -1459,7 +1463,8 @@ void NodeManager::ProcessWaitRequestMessage(
     // already local. Missing objects will be pulled from remote node managers.
     // If an object's owner dies, an error will be stored as the object's
     // value.
-    const auto refs = FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
+    const auto refs =
+        FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
     AsyncResolveObjects(client, refs, current_task_id, /*ray_get=*/false,
                         /*mark_worker_blocked*/ was_blocked);
   }
@@ -1499,9 +1504,10 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
   int64_t tag = message->tag();
   // Resolve any missing objects. This will pull the objects from remote node
   // managers or store an error if the objects have failed.
-  const auto refs = FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
+  const auto refs =
+      FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
   AsyncResolveObjects(client, refs, TaskID::Nil(), /*ray_get=*/false,
-                      /*mark_worker_blocked*/false);
+                      /*mark_worker_blocked*/ false);
   // Reply to the client once a location has been found for all arguments.
   // NOTE(swang): ObjectManager::Wait currently returns as soon as any location
   // has been found, so the object may still be on a remote node when the
@@ -2114,9 +2120,6 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
 void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
                                       const std::vector<ObjectID> objects_to_fail,
                                       const JobID &job_id) {
-  // if (RayConfig::instance().lineage_pinning_enabled()) {
-  //  return;
-  //}
   const std::string meta = std::to_string(static_cast<int>(error_type));
   for (const auto &object_id : objects_to_fail) {
     arrow::Status status = store_client_.CreateAndSeal(object_id, "", meta);
@@ -2371,10 +2374,10 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
   worker->MarkUnblocked();
 }
 
-void NodeManager::AsyncResolveObjects(const std::shared_ptr<ClientConnection> &client,
-                                      const std::vector<rpc::ObjectReference> &required_object_refs,
-                                      const TaskID &current_task_id, bool ray_get,
-                                      bool mark_worker_blocked) {
+void NodeManager::AsyncResolveObjects(
+    const std::shared_ptr<ClientConnection> &client,
+    const std::vector<rpc::ObjectReference> &required_object_refs,
+    const TaskID &current_task_id, bool ray_get, bool mark_worker_blocked) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   if (worker) {
     // The client is a worker. If the worker is not already blocked and the
@@ -2421,7 +2424,8 @@ void NodeManager::AsyncResolveObjects(const std::shared_ptr<ClientConnection> &c
       task_dependency_manager_.SubscribeGetDependencies(task_id, required_object_refs);
     }
   } else {
-    task_dependency_manager_.SubscribeWaitDependencies(worker->WorkerId(), required_object_refs);
+    task_dependency_manager_.SubscribeWaitDependencies(worker->WorkerId(),
+                                                       required_object_refs);
   }
 }
 

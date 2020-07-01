@@ -184,7 +184,8 @@ class ReferenceCounter {
   ///
   /// \param[in] object_ids The IDs of the object to look up.
   /// \return The addresses of the objects' owners.
-  std::vector<rpc::Address> GetOwnerAddresses(const std::vector<ObjectID> object_ids) const;
+  std::vector<rpc::Address> GetOwnerAddresses(
+      const std::vector<ObjectID> object_ids) const;
 
   /// Manually delete the objects from the reference counter.
   void DeleteReferences(const std::vector<ObjectID> &object_ids) LOCKS_EXCLUDED(mutex_);
@@ -485,7 +486,8 @@ class ReferenceCounter {
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
 
-  bool GetOwnerInternal(const ObjectID &object_id, rpc::Address *owner_address = nullptr) const
+  bool GetOwnerInternal(const ObjectID &object_id,
+                        rpc::Address *owner_address = nullptr) const
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Shutdown if all references have gone out of scope and shutdown

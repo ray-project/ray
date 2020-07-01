@@ -235,7 +235,8 @@ class DependencyWaiter {
 
 class DependencyWaiterImpl : public DependencyWaiter {
  public:
-  DependencyWaiterImpl(DependencyWaiterInterface &dependency_client, const std::shared_ptr<ReferenceCounter> &reference_counter)
+  DependencyWaiterImpl(DependencyWaiterInterface &dependency_client,
+                       const std::shared_ptr<ReferenceCounter> &reference_counter)
       : dependency_client_(dependency_client), reference_counter_(reference_counter) {}
 
   void Wait(const std::vector<ObjectID> &dependencies,

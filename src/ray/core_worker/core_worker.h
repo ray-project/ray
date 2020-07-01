@@ -896,9 +896,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///                  inlined arguments.
   /// \return Error if the values could not be retrieved.
   Status GetAndPinArgsForExecutor(const TaskSpecification &task,
-                              std::vector<std::shared_ptr<RayObject>> *args,
-                              std::vector<ObjectID> *arg_reference_ids,
-                              std::vector<ObjectID> *pinned_ids);
+                                  std::vector<std::shared_ptr<RayObject>> *args,
+                                  std::vector<ObjectID> *arg_reference_ids,
+                                  std::vector<ObjectID> *pinned_ids);
 
   /// Returns whether the message was sent to the wrong worker. The right error reply
   /// is sent automatically. Messages end up on the wrong worker when a worker dies
