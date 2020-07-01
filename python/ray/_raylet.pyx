@@ -83,7 +83,7 @@ from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
 import ray
 from ray.async_compat import (
-    sync_to_async, AsyncGetResponse, get_new_event_loop)
+    sync_to_async, get_new_event_loop)
 import ray.memory_monitor as memory_monitor
 import ray.ray_constants as ray_constants
 from ray import profiling
@@ -1285,7 +1285,6 @@ cdef void async_set_result(shared_ptr[CRayObject] obj,
     result = ray.worker.global_worker.deserialize_objects(
         data_metadata_pairs, ids_to_deserialize)[0]
 
-
     def set_future():
         if isinstance(result, RayTaskError):
             ray.worker.last_task_error_raise_time = time.time()
@@ -1295,4 +1294,3 @@ cdef void async_set_result(shared_ptr[CRayObject] obj,
         cpython.Py_DECREF(py_future)
 
     loop.call_soon_threadsafe(set_future)
-

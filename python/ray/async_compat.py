@@ -3,8 +3,6 @@ This file should only be imported from Python 3.
 It will raise SyntaxError when importing from Python 2.
 """
 import asyncio
-from collections import namedtuple
-import time
 import inspect
 
 try:
@@ -33,13 +31,6 @@ def sync_to_async(func):
         return func(*args, **kwargs)
 
     return wrapper
-
-
-# Class encapsulate the get result from direct actor.
-# Case 1: plasma_fallback_id=None, result=<Object>
-# Case 2: plasma_fallback_id=ObjectID, result=None
-AsyncGetResponse = namedtuple("AsyncGetResponse",
-                              ["plasma_fallback_id", "result"])
 
 
 def get_async(object_id):

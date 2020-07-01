@@ -1,6 +1,3 @@
-import ray
-
-
 def as_future(object_id):
     """Turn an object_id into a Future object.
 
