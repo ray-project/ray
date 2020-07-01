@@ -947,7 +947,6 @@ void NodeManager::DispatchTasks(
       if (!local_available_resources_.Contains(task_resources)) {
         // All the tasks in it.second have the same resource shape, so
         // once the first task is not feasible, we can break out of this loop
-        RAY_LOG(ERROR) << "Sang resource not available. " << task_id;
         break;
       }
 
@@ -3116,7 +3115,6 @@ void NodeManager::ForwardTask(
   // Override spillback for direct tasks.
   if (task.OnSpillback() != nullptr) {
     auto node_info = gcs_client_->Nodes().Get(node_id);
-    RAY_LOG(ERROR) << "sangbinsangbin";
     RAY_CHECK(node_info)
         << "Spilling back to a node manager, but no GCS info found for node " << node_id;
     task.OnSpillback()(node_id, node_info->node_manager_address(),
