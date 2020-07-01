@@ -77,7 +77,7 @@ const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ gpu, slot }) => {
   return (
     <Box display="flex" style={{ minWidth: GPU_COL_WIDTH }}>
       <Tooltip title={gpu.name}>
-        <RightPaddedTypography variant="h6">[{slot}]:</RightPaddedTypography>
+        <RightPaddedTypography variant="body1">[{slot}]:</RightPaddedTypography>
       </Tooltip>
       <UsageBar
         percent={gpu.utilization_gpu}
