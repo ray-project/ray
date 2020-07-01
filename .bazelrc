@@ -20,7 +20,7 @@ build:msvc --compiler=msvc-cl
 build:linux    --per_file_copt="-\\.(asm|S)$,-.*/arrow/util/logging\\.cc@-Werror"
 build:macos    --per_file_copt="-\\.(asm|S)$,-.*/arrow/util/logging\\.cc@-Werror"
 build:clang-cl --per_file_copt="-\\.(asm|S)$,-.*/arrow/util/logging\\.cc@-Werror"
-#build:msvc     --per_file_copt="-\\.(asm|S)$,-.*/arrow/util/logging\\.cc@-WX"
+build:msvc     --per_file_copt="-\\.(asm|S)$,-.*/arrow/util/logging\\.cc@-WX"
 # Ignore warnings for protobuf generated files and external projects.
 build --per_file_copt="\\.pb\\.cc$@-w"
 build --per_file_copt="-\\.(asm|S)$,external/.*@-w"
