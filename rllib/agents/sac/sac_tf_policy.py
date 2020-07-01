@@ -279,7 +279,7 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
 def gradients_fn(policy, optimizer, loss):
     if policy.config["grad_clip"]:
         actor_grads_and_vars = minimize_and_clip(
-            optimizer,  # isn't optimizer not well defined here (which one)?
+            policy._actor_optimizer,
             policy.actor_loss,
             var_list=policy.model.policy_variables(),
             clip_val=policy.config["grad_clip"])
@@ -288,23 +288,23 @@ def gradients_fn(policy, optimizer, loss):
             half_cutoff = len(q_variables) // 2
             critic_grads_and_vars = []
             critic_grads_and_vars += minimize_and_clip(
-                optimizer,
+                policy._critic_optimizer[0],
                 policy.critic_loss[0],
                 var_list=q_variables[:half_cutoff],
                 clip_val=policy.config["grad_clip"])
             critic_grads_and_vars += minimize_and_clip(
-                optimizer,
+                policy._critic_optimizer[1],
                 policy.critic_loss[1],
                 var_list=q_variables[half_cutoff:],
                 clip_val=policy.config["grad_clip"])
         else:
             critic_grads_and_vars = minimize_and_clip(
-                optimizer,
+                policy._critic_optimizer[0],
                 policy.critic_loss[0],
                 var_list=policy.model.q_variables(),
                 clip_val=policy.config["grad_clip"])
         alpha_grads_and_vars = minimize_and_clip(
-            optimizer,
+            policy._alpha_optimizer,
             policy.alpha_loss,
             var_list=[policy.model.log_alpha],
             clip_val=policy.config["grad_clip"])
