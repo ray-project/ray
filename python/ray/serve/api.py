@@ -204,6 +204,17 @@ def update_backend_config(backend_tag, config_options):
     Args:
         backend_tag(str): A registered backend.
         config_options(dict): Backend config options to update.
+            Supported options:
+                - "num_replicas": number of worker processes to start up that \
+                        will handle requests to this backend.
+                - "max_batch_size": the maximum number of requests that will \
+                        be processed in one batch by this backend.
+                - "batch_wait_timeout": time in seconds that backend replicas \
+                        will wait for a full batch of requests before \
+                        processing a partial batch.
+                - "max_concurrent_queries": the maximum number of queries \
+                        that will be sent to a replica of this backend \
+                        without receiving a response.
     """
     if not isinstance(config_options, dict):
         raise ValueError("config_options must be a dictionary.")
@@ -239,7 +250,18 @@ def create_backend(backend_tag,
             initialization method.
         ray_actor_options (optional): options to be passed into the
             @ray.remote decorator for the backend actor.
-        config: (optional) configuration options for this backend.
+        config (optional): configuration options for this backend.
+            Supported options:
+                - "num_replicas": number of worker processes to start up that \
+                        will handle requests to this backend.
+                - "max_batch_size": the maximum number of requests that will \
+                        be processed in one batch by this backend.
+                - "batch_wait_timeout": time in seconds that backend replicas \
+                        will wait for a full batch of requests before \
+                        processing a partial batch.
+                - "max_concurrent_queries": the maximum number of queries \
+                        that will be sent to a replica of this backend \
+                        without receiving a response.
     """
     if config is None:
         config = {}
