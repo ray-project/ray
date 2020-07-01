@@ -96,7 +96,7 @@ const GRAMEntry: React.FC<GRAMEntryProps> = ({
   return (
     <Box display="flex" style={{ minWidth: GRAM_COL_WIDTH }}>
       <Tooltip title={gpuName}>
-        <RightPaddedTypography variant="subtitle2">
+        <RightPaddedTypography variant="body1">
           [{slot}]: {ratioStr}
         </RightPaddedTypography>
       </Tooltip>
