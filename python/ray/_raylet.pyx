@@ -1263,6 +1263,7 @@ cdef class CoreWorker:
             <void*>future)
 
     def get_async(self, ObjectID object_id, future):
+        cpython.Py_INCREF(future)
         CCoreWorkerProcess.GetCoreWorker().GetAsyncNew(
                 object_id.native(),
                 async_set_result,
@@ -1316,7 +1317,12 @@ cdef void async_set_result(shared_ptr[CRayObject] obj,
     ids_to_deserialize = [ObjectID(object_id.Binary())]
     objects = ray.worker.global_worker.deserialize_objects(
         data_metadata_pairs, ids_to_deserialize)
-    loop.call_soon_threadsafe(lambda: py_future.set_result(objects[0]))
+
+    def set_future():
+        py_future.set_result(objects[0])
+        cpython.Py_DECREF(py_future)
+
+    loop.call_soon_threadsafe(set_future)
 
 cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
                                     CObjectID object_id,
