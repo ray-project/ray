@@ -125,6 +125,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
           results->push_back(obj);
         }
 
+        env->DeleteLocalRef(java_pre_execute_results);
         env->DeleteLocalRef(java_return_objects);
         env->DeleteLocalRef(args_array_list);
         env->DeleteLocalRef(ray_function_array_list);
