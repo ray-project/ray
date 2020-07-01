@@ -960,7 +960,6 @@ cc_test(
     ],
 )
 
-
 cc_library(
     name = "gcs_test_util_lib",
     hdrs = [
