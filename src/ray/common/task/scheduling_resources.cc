@@ -597,7 +597,6 @@ ResourceIdSet ResourceIdSet::Acquire(const ResourceSet &resource_set) {
   for (auto const &resource_pair : resource_set.GetResourceAmountMap()) {
     auto const &resource_name = resource_pair.first;
     const FractionalResourceQuantity &resource_quantity = resource_pair.second;
-
     auto it = available_resources_.find(resource_name);
     RAY_CHECK(it != available_resources_.end());
     acquired_resources[resource_name] = it->second.Acquire(resource_quantity);

@@ -38,6 +38,7 @@ from libcpp.string cimport string as c_string
 from libcpp.utility cimport pair
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
+from libcpp.pair cimport pair as c_pair
 
 from cython.operator import dereference, postincrement
 
@@ -940,7 +941,7 @@ cdef class CoreWorker:
                         max_restarts, max_task_retries, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, name, is_asyncio,
-                        c_placement_group_id, bundle_index),
+                        c_pair[CPlacementGroupID, int64_t](c_placement_group_id, bundle_index)),
                     extension_data,
                     &c_actor_id))
 

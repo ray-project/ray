@@ -5,6 +5,7 @@ from libcpp.string cimport string as c_string
 from libc.stdint cimport uint8_t, int32_t, uint64_t, int64_t
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
+from libcpp.pair cimport pair as c_pair
 
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -248,7 +249,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const unordered_map[c_string, double] &placement_resources,
             const c_vector[c_string] &dynamic_worker_options,
             c_bool is_detached, c_string &name, c_bool is_asyncio,
-            CPlacementGroupID placement_group_id, int64_t bundle_index)
+            c_pair[CPlacementGroupID, int64_t] placement_options)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::PlacementGroupCreationOptions":

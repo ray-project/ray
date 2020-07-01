@@ -218,7 +218,7 @@ void GcsServer::InitGcsJobManager() {
   });
 }
 
-void GcsServer::InitGcsPlacementGroupManager() {
+void GcsServer::InitGcsPlacementGroupManager() {  
   RAY_CHECK(gcs_table_storage_ != nullptr && gcs_node_manager_ != nullptr);
   auto scheduler = std::make_shared<GcsPlacementGroupScheduler>(
       main_service_, gcs_table_storage_, *gcs_node_manager_,
