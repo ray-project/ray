@@ -592,13 +592,6 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
     return;
   }
 
-  // If actor is not registered, that means the actor is already destroyed. Don't do
-  // anything. NOTE(sang): It happens if the actor is destroyed when it is trying to lease
-  // workers from raylets.
-  if (registered_actors_.find(actor_id) == registered_actors_.end()) {
-    return;
-  }
-
   // Otherwise, try to reconstruct the actor that was already created or in the creation
   // process.
   RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
@@ -645,8 +638,13 @@ void GcsActorManager::OnNodeDead(const ClientID &node_id) {
 
 void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_reschedule) {
   auto &actor = registered_actors_[actor_id];
-  RAY_CHECK(actor != nullptr) << "actor of actor id, " << actor_id
-                              << " is not registered";
+  if (actor == nullptr) {
+    // NOTE(sang): It happens under this condition:
+    // https://github.com/ray-project/ray/pull/9215
+    RAY_LOG(INFO) << "actor of actor id, " << actor_id
+                  << " is not registered. Don't reconstruct an actor.";
+    return;
+  }
   auto node_id = actor->GetNodeID();
   auto worker_id = actor->GetWorkerID();
   actor->UpdateAddress(rpc::Address());
