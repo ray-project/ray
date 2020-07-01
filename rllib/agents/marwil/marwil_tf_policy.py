@@ -6,7 +6,7 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 class ValueNetworkMixin:
@@ -37,13 +37,13 @@ class ReweightedImitationLoss:
         # advantage estimation
         adv = cumulative_rewards - state_values
         # update averaged advantage norm
-        update_adv_norm = tf.assign_add(
+        update_adv_norm = tf1.assign_add(
             ref=policy._ma_adv_norm,
             value=1e-6 * (
                     tf.reduce_mean(tf.math.square(adv)) - policy._ma_adv_norm))
 
         # exponentially weighted advantages
-        with tf.control_dependencies([update_adv_norm]):
+        with tf1.control_dependencies([update_adv_norm]):
             exp_advs = tf.math.exp(beta * tf.math.divide(
                 adv, 1e-8 + tf.math.sqrt(policy._ma_adv_norm)))
 
@@ -125,7 +125,7 @@ def setup_mixins(policy, obs_space, action_space, config):
     ValueNetworkMixin.__init__(policy)
     # Set up a tf-var for the moving avg (do this here to make it work with
     # eager mode).
-    policy._ma_adv_norm = tf.get_variable(
+    policy._ma_adv_norm = tf1.get_variable(
         name="moving_average_of_advantage_norm",
         dtype=tf.float32,
         initializer=100.0,
