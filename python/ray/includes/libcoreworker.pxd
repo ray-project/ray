@@ -184,10 +184,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                const double capacity,
                                const CClientID &client_Id)
 
-        void SetPlasmaAddedCallback(plasma_callback_function callback)
-
-        void SubscribeToPlasmaAdd(const CObjectID &object_id)
-
     cdef cppclass CCoreWorkerOptions "ray::CoreWorkerOptions":
         CWorkerType worker_type
         CLanguage language

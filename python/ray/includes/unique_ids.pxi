@@ -187,13 +187,13 @@ cdef class ObjectID(BaseID):
 
     def __await__(self):
         # Delayed import because this can only be imported in py3.
-        from ray.async_compat import new_get_async
-        return new_get_async(self).__await__()
+        from ray.async_compat import get_async
+        return get_async(self).__await__()
 
     def as_future(self):
         # Delayed import because this can only be imported in py3.
-        from ray.async_compat import new_get_async
-        return new_get_async(self)
+        from ray.async_compat import get_async
+        return get_async(self)
 
 cdef class TaskID(BaseID):
     cdef CTaskID data

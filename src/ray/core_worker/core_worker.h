@@ -768,15 +768,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void GetAsyncNew(const ObjectID &object_id, SetResultCallback success_callback,
                    void *python_future);
 
-  /// Connect to plasma store for async futures
-  using PlasmaSubscriptionCallback = std::function<void(ray::ObjectID, int64_t, int64_t)>;
-
-  /// Set callback when an item is added to the plasma store.
-  ///
-  /// \param[in] subscribe_callback The callback when an item is added to plasma.
-  /// \return void
-  void SetPlasmaAddedCallback(PlasmaSubscriptionCallback subscribe_callback);
-
   /// Subscribe to receive notification of an object entering the plasma store.
   ///
   /// \param[in] object_id The object to wait for.
@@ -1073,9 +1064,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Queue of tasks to resubmit when the specified time passes.
   std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
-
-  // Plasma Callback
-  PlasmaSubscriptionCallback plasma_done_callback_;
 
   // Guard for Plasma Callback Map
   mutable absl::Mutex plasma_mutex_;

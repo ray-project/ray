@@ -113,10 +113,6 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
     asyncio.set_event_loop(loop)
     loop.set_debug(True)
 
-    # This is needed for async plasma
-    from ray.experimental.async_api import init
-    init()
-
     # Test Async Plasma
     @ray.remote
     def task():
