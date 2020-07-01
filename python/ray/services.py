@@ -54,9 +54,6 @@ PLASMA_STORE_EXECUTABLE = os.path.join(
     "core/src/plasma/plasma_store_server")
 
 # Location of the raylet executables.
-RAYLET_MONITOR_EXECUTABLE = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)),
-    "core/src/ray/raylet/raylet_monitor")
 RAYLET_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "core/src/ray/raylet/raylet")
 GCS_SERVER_EXECUTABLE = os.path.join(
@@ -1733,47 +1730,6 @@ def start_monitor(redis_address,
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_MONITOR,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file,
-        fate_share=fate_share)
-    return process_info
-
-
-def start_raylet_monitor(redis_address,
-                         stdout_file=None,
-                         stderr_file=None,
-                         redis_password=None,
-                         config=None,
-                         fate_share=None):
-    """Run a process to monitor the other processes.
-
-    Args:
-        redis_address (str): The address that the Redis server is listening on.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
-        redis_password (str): The password of the redis server.
-        config (dict|None): Optional configuration that will
-            override defaults in RayConfig.
-
-    Returns:
-        ProcessInfo for the process that was started.
-    """
-    gcs_ip_address, gcs_port = redis_address.split(":")
-    redis_password = redis_password or ""
-    config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
-    command = [
-        RAYLET_MONITOR_EXECUTABLE,
-        "--redis_address={}".format(gcs_ip_address),
-        "--redis_port={}".format(gcs_port),
-        "--config_list={}".format(config_str),
-    ]
-    if redis_password:
-        command += ["--redis_password={}".format(redis_password)]
-    process_info = start_ray_process(
-        command,
-        ray_constants.PROCESS_TYPE_RAYLET_MONITOR,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         fate_share=fate_share)
