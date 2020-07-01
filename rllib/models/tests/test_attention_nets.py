@@ -13,7 +13,7 @@ from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.test_utils import framework_iterator
 
 torch, nn = try_import_torch()
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 class TestModules(unittest.TestCase):
@@ -144,7 +144,7 @@ class TestModules(unittest.TestCase):
                 model = TorchMultiHeadAttention(
                     in_dim=D_in, out_dim=D_out, num_heads=2, head_dim=32)
 
-                self.train_torch_layer(model, x, y)
+                self.train_torch_layer(model, x, y, num_epochs=500)
 
             else:  # framework is tensorflow or tensorflow-eager
 
@@ -165,7 +165,7 @@ class TestModules(unittest.TestCase):
             that it trains in a supervised setting."""
 
         # Checks that torch and tf embedding matrices are the same
-        with tf.Session().as_default() as sess:
+        with tf1.Session().as_default() as sess:
             assert np.allclose(
                 relative_position_embedding(20, 15).eval(session=sess),
                 relative_position_embedding_torch(20, 15).numpy())
