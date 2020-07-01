@@ -49,6 +49,8 @@ def new_get_async(object_id):
 
     future = loop.create_future()
     core_worker.get_async(object_id, future)
+    # A hack to keep a reference to the object ID for ref counting.
+    future.object_id = object_id
     return future
 
 
