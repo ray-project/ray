@@ -3,7 +3,6 @@ import gym
 import numpy as np
 from typing import Dict, List, Optional
 
-from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -81,11 +80,12 @@ class Policy(metaclass=ABCMeta):
             state_batches: Optional[List[TensorType]] = None,
             prev_action_batch: Union[List[TensorType], TensorType] = None,
             prev_reward_batch: Union[List[TensorType], TensorType] = None,
-            info_batch: Optional[Dict[list]] = None,
-            episodes: Optional[List[MultiAgentEpisode]] = None,
+            info_batch: Optional[Dict[str, list]] = None,
+            episodes: Optional[List["MultiAgentEpisode"]] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
-            **kwargs):
+            **kwargs) -> Tuple[
+        TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions for the current policy.
 
         Args:
@@ -97,7 +97,7 @@ class Policy(metaclass=ABCMeta):
                 previous action values.
             prev_reward_batch (Union[List[TensorType], TensorType]): Batch of
                 previous rewards.
-            info_batch (Optional[Dict[list]]): Batch of info objects.
+            info_batch (Optional[Dict[str, list]]): Batch of info objects.
             episodes (Optional[List[MultiAgentEpisode]] ): List of
                 MultiAgentEpisode, one for each obs in obs_batch. This provides
                 access to all of the internal episode state, which may be
@@ -130,14 +130,15 @@ class Policy(metaclass=ABCMeta):
             prev_action: Optional[TensorType] = None,
             prev_reward: Optional[TensorType] = None,
             info: dict = None,
-            episode: Optional[MultiAgentEpisode] = None,
+            episode: Optional["MultiAgentEpisode"] = None,
             clip_actions: bool = False,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
-            **kwargs):
+            **kwargs) -> Tuple[
+        TensorType, List[TensorType], Dict[str, TensorType]]:
         """Unbatched version of compute_actions.
 
-        Arguments:
+        Args:
             obs (TensorType): Single observation.
             state (Optional[List[TensorType]]): List of RNN state inputs, if any.
             prev_action (Optional[TensorType]): Previous action value, if any.
@@ -218,7 +219,8 @@ class Policy(metaclass=ABCMeta):
             other_trajectories: Dict[AgentID, "Trajectory"],
             explore: bool = None,
             timestep: Optional[int] = None,
-            **kwargs):
+            **kwargs) -> Tuple[
+        TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions for the current policy based on .
 
         Note: This is an experimental API method.
@@ -257,7 +259,7 @@ class Policy(metaclass=ABCMeta):
             prev_action_batch: Optional[
                 Union[List[TensorType], TensorType]] = None,
             prev_reward_batch: Optional[
-                Union[List[TensorType], TensorType]] = None):
+                Union[List[TensorType], TensorType]] = None) -> TensorType:
         """Computes the log-prob/likelihood for a given action and observation.
 
         Args:
@@ -285,13 +287,13 @@ class Policy(metaclass=ABCMeta):
             sample_batch: SampleBatch,
             other_agent_batches: Optional[
                 Dict[AgentID, Tuple["Policy", SampleBatch]]] = None,
-            episode: Optional[MultiAgentEpisode] = None):
+            episode: Optional["MultiAgentEpisode"] = None) -> SampleBatch:
         """Implements algorithm-specific trajectory postprocessing.
 
         This will be called on each trajectory fragment computed during policy
         evaluation. Each fragment is guaranteed to be only from one episode.
 
-        Arguments:
+        Args:
             sample_batch (SampleBatch): batch of experiences for the policy,
                 which will contain at most one episode trajectory.
             other_agent_batches (dict): In a multi-agent env, this contains a
@@ -308,7 +310,7 @@ class Policy(metaclass=ABCMeta):
         return sample_batch
 
     @DeveloperAPI
-    def learn_on_batch(self, samples: SampleBatch):
+    def learn_on_batch(self, samples: SampleBatch) -> Dict[str, TensorType]:
         """Fused compute gradients and apply gradients call.
 
         Either this or the combination of compute/apply grads must be
@@ -318,7 +320,8 @@ class Policy(metaclass=ABCMeta):
             samples (SampleBatch): The SampleBatch object to learn from.
 
         Returns:
-            grad_info: dictionary of extra metadata from compute_gradients().
+            Dict[str, TensorType]: Dictionary of extra metadata from
+                compute_gradients().
 
         Examples:
             >>> sample_batch = ev.sample()
@@ -330,7 +333,9 @@ class Policy(metaclass=ABCMeta):
         return grad_info
 
     @DeveloperAPI
-    def compute_gradients(self, postprocessed_batch: SampleBatch):
+    def compute_gradients(self,
+                          postprocessed_batch: SampleBatch) -> Tuple[
+        List[TensorType], Dict[str, TensorType]]:
         """Computes gradients against a batch of experiences.
 
         Either this or learn_on_batch() must be implemented by subclasses.
@@ -340,13 +345,14 @@ class Policy(metaclass=ABCMeta):
                 for calculating gradients.
 
         Returns:
-            grads (list): List of gradient output values
-            info (dict): Extra policy-specific values
+            Tuple[List[TensorType], Dict[str, TensorType]]:
+                - List of gradient output values.
+                - Extra policy-specific info values.
         """
         raise NotImplementedError
 
     @DeveloperAPI
-    def apply_gradients(self, gradients: object):
+    def apply_gradients(self, gradients: object) -> None:
         """Applies previously computed gradients.
 
         Args:
@@ -358,45 +364,47 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
-    def get_weights(self):
+    def get_weights(self) -> Union[Dict[str, TensorType], List[TensorType]]:
         """Returns model weights.
 
         Returns:
-            weights (obj): Serializable copy or view of model weights
+            Union[Dict[str, TensorType], List[TensorType]]: Serializable copy
+                or view of model weights.
         """
         raise NotImplementedError
 
     @DeveloperAPI
-    def set_weights(self, weights: object):
+    def set_weights(self, weights: object) -> None:
         """Sets model weights.
 
-        Arguments:
+        Args:
             weights (obj): Serializable copy or view of model weights.
         """
         raise NotImplementedError
 
     @DeveloperAPI
-    def get_exploration_info(self):
+    def get_exploration_info(self) -> Dict[str, TensorType]:
         """Returns the current exploration information of this policy.
 
         This information depends on the policy's Exploration object.
 
         Returns:
-            any: Serializable information on the `self.exploration` object.
+            Dict[str, TensorType]: Serializable information on the
+                `self.exploration` object.
         """
         return self.exploration.get_info()
 
     @DeveloperAPI
-    def is_recurrent(self):
+    def is_recurrent(self) -> bool:
         """Whether this Policy holds a recurrent Model.
 
         Returns:
             bool: True if this Policy has-a RNN-based Model.
         """
-        return 0
+        return False
 
     @DeveloperAPI
-    def num_state_tensors(self):
+    def num_state_tensors(self) -> int:
         """The number of internal states needed by the RNN-Model of the Policy.
 
         Returns:
@@ -405,33 +413,38 @@ class Policy(metaclass=ABCMeta):
         return 0
 
     @DeveloperAPI
-    def get_initial_state(self):
-        """Returns initial RNN state for the current policy."""
+    def get_initial_state(self) -> List[TensorType]:
+        """Returns initial RNN state for the current policy.
+
+        Returns:
+            List[TensorType]: Initial RNN state for the current policy.
+        """
         return []
 
     @DeveloperAPI
-    def get_state(self):
+    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
         """Saves all local state.
 
         Returns:
-            state (obj): Serialized local state.
+            Union[Dict[str, TensorType], List[TensorType]]: Serialized local
+                state.
         """
         return self.get_weights()
 
     @DeveloperAPI
-    def set_state(self, state: object):
+    def set_state(self, state: object) -> None:
         """Restores all local state.
 
-        Arguments:
+        Args:
             state (obj): Serialized local state.
         """
         self.set_weights(state)
 
     @DeveloperAPI
-    def on_global_var_update(self, global_vars: Dict[str, TensorType]):
+    def on_global_var_update(self, global_vars: Dict[str, TensorType]) -> None:
         """Called on an update to global vars.
 
-        Arguments:
+        Args:
             global_vars (Dict[str, TensorType]): Global variables by str key,
                 broadcast from the driver.
         """
@@ -440,39 +453,43 @@ class Policy(metaclass=ABCMeta):
         self.global_timestep = global_vars["timestep"]
 
     @DeveloperAPI
-    def export_model(self, export_dir: str):
+    def export_model(self, export_dir: str) -> None:
         """Export Policy to local directory for serving.
 
-        Arguments:
+        Args:
             export_dir (str): Local writable directory.
         """
         raise NotImplementedError
 
     @DeveloperAPI
-    def export_checkpoint(self, export_dir: str):
+    def export_checkpoint(self, export_dir: str) -> None:
         """Export Policy checkpoint to local directory.
 
-        Argument:
+        Args:
             export_dir (str): Local writable directory.
         """
         raise NotImplementedError
 
     @DeveloperAPI
-    def import_model_from_h5(self, import_file: str):
+    def import_model_from_h5(self, import_file: str) -> None:
         """Imports Policy from local file.
 
-        Arguments:
+        Args:
             import_file (str): Local readable file.
         """
         raise NotImplementedError
 
-    def _create_exploration(self):
+    def _create_exploration(self) -> Exploration:
         """Creates the Policy's Exploration object.
 
         This method only exists b/c some Trainers do not use TfPolicy nor
         TorchPolicy, but inherit directly from Policy. Others inherit from
         TfPolicy w/o using DynamicTfPolicy.
-        TODO(sven): unify these cases."""
+        TODO(sven): unify these cases.
+
+        Returns:
+            Exploration: The Exploration object to be used by this Policy.
+        """
         if getattr(self, "exploration", None) is not None:
             return self.exploration
 

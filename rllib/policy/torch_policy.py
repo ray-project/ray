@@ -20,6 +20,7 @@ from ray.rllib.utils.types import AgentID
 torch, _ = try_import_torch()
 
 
+@DeveloperAPI
 class TorchPolicy(Policy):
     """Template for a PyTorch policy and loss to use with RLlib.
 
@@ -33,6 +34,7 @@ class TorchPolicy(Policy):
         dist_class (type): Torch action distribution class.
     """
 
+    @DeveloperAPI
     def __init__(self,
                  observation_space,
                  action_space,
@@ -100,6 +102,7 @@ class TorchPolicy(Policy):
             else 1
 
     @override(Policy)
+    @DeveloperAPI
     def compute_actions(self,
                         obs_batch,
                         state_batches=None,
@@ -237,6 +240,7 @@ class TorchPolicy(Policy):
         return actions, state_out, extra_fetches, logp
 
     @override(Policy)
+    @DeveloperAPI
     def compute_log_likelihoods(self,
                                 actions,
                                 obs_batch,
@@ -282,6 +286,7 @@ class TorchPolicy(Policy):
             return log_likelihoods
 
     @override(Policy)
+    @DeveloperAPI
     def learn_on_batch(self, postprocessed_batch):
         # Get batch ready for RNNs, if applicable.
         pad_batch_to_sequences_of_same_size(
@@ -340,6 +345,7 @@ class TorchPolicy(Policy):
         return {LEARNER_STATS_KEY: grad_info}
 
     @override(Policy)
+    @DeveloperAPI
     def compute_gradients(self, postprocessed_batch):
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
         loss_out = force_list(
@@ -367,6 +373,7 @@ class TorchPolicy(Policy):
         return grads, {LEARNER_STATS_KEY: grad_info}
 
     @override(Policy)
+    @DeveloperAPI
     def apply_gradients(self, gradients):
         # TODO(sven): Not supported for multiple optimizers yet.
         assert len(self._optimizers) == 1
@@ -377,6 +384,7 @@ class TorchPolicy(Policy):
         self._optimizers[0].step()
 
     @override(Policy)
+    @DeveloperAPI
     def get_weights(self):
         return {
             k: v.cpu().detach().numpy()
@@ -384,11 +392,30 @@ class TorchPolicy(Policy):
         }
 
     @override(Policy)
+    @DeveloperAPI
     def set_weights(self, weights):
         weights = convert_to_torch_tensor(weights, device=self.device)
         self.model.load_state_dict(weights)
 
     @override(Policy)
+    @DeveloperAPI
+    def is_recurrent(self):
+        return len(self.model.get_initial_state()) > 0
+
+    @override(Policy)
+    @DeveloperAPI
+    def num_state_tensors(self):
+        return len(self.model.get_initial_state())
+
+    @override(Policy)
+    @DeveloperAPI
+    def get_initial_state(self):
+        return [
+            s.cpu().detach().numpy() for s in self.model.get_initial_state()
+        ]
+
+    @override(Policy)
+    @DeveloperAPI
     def get_state(self):
         state = super().get_state()
         state["_optimizer_variables"] = []
@@ -397,6 +424,7 @@ class TorchPolicy(Policy):
         return state
 
     @override(Policy)
+    @DeveloperAPI
     def set_state(self, state):
         state = state.copy()  # shallow copy
         # Set optimizer vars first.
@@ -408,20 +436,7 @@ class TorchPolicy(Policy):
         # Then the Policy's (NN) weights.
         super().set_state(state)
 
-    @override(Policy)
-    def is_recurrent(self):
-        return len(self.model.get_initial_state()) > 0
-
-    @override(Policy)
-    def num_state_tensors(self):
-        return len(self.model.get_initial_state())
-
-    @override(Policy)
-    def get_initial_state(self):
-        return [
-            s.cpu().detach().numpy() for s in self.model.get_initial_state()
-        ]
-
+    @DeveloperAPI
     def extra_grad_process(self, optimizer, loss):
         """Called after each optimizer.zero_grad() + loss.backward() call.
 
@@ -438,6 +453,7 @@ class TorchPolicy(Policy):
         """
         return {}
 
+    @DeveloperAPI
     def extra_action_out(self, input_dict, state_batches, model, action_dist):
         """Returns dict of extra info to include in experience batch.
 
@@ -450,10 +466,12 @@ class TorchPolicy(Policy):
         """
         return {}
 
+    @DeveloperAPI
     def extra_grad_info(self, train_batch):
         """Return dict of extra grad info."""
         return {}
 
+    @DeveloperAPI
     def optimizer(self):
         """Custom PyTorch optimizer to use."""
         if hasattr(self, "config"):
@@ -462,27 +480,30 @@ class TorchPolicy(Policy):
         else:
             return torch.optim.Adam(self.model.parameters())
 
-    def _lazy_tensor_dict(self, postprocessed_batch):
-        train_batch = UsageTrackingDict(postprocessed_batch)
-        train_batch.set_get_interceptor(convert_to_torch_tensor)
-        return train_batch
-
     @override(Policy)
+    @DeveloperAPI
     def export_model(self, export_dir):
         """TODO(sven): implement for torch.
         """
         raise NotImplementedError
 
     @override(Policy)
+    @DeveloperAPI
     def export_checkpoint(self, export_dir):
         """TODO(sven): implement for torch.
         """
         raise NotImplementedError
 
     @override(Policy)
+    @DeveloperAPI
     def import_model_from_h5(self, import_file):
         """Imports weights into torch model."""
         return self.model.import_from_h5(import_file)
+
+    def _lazy_tensor_dict(self, postprocessed_batch):
+        train_batch = UsageTrackingDict(postprocessed_batch)
+        train_batch.set_get_interceptor(convert_to_torch_tensor)
+        return train_batch
 
 
 @DeveloperAPI
