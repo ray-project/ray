@@ -9,7 +9,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Queue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,7 +29,7 @@ public class DataReader {
    * @param workerConfig  configuration
    */
   public DataReader(List<String> inputChannels,
-                    Map<String, BaseActorHandle> fromActors,
+                    List<BaseActorHandle> fromActors,
                     StreamingWorkerConfig workerConfig) {
     Preconditions.checkArgument(inputChannels.size() > 0);
     Preconditions.checkArgument(inputChannels.size() == fromActors.size());

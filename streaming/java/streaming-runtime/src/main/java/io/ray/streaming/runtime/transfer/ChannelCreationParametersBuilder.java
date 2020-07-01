@@ -12,7 +12,6 @@ import io.ray.runtime.functionmanager.PyFunctionDescriptor;
 import io.ray.streaming.runtime.worker.JobWorker;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Save channel initial parameters needed by DataWriter/DataReader.
