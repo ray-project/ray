@@ -34,21 +34,21 @@ def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict):
 
 @DeveloperAPI
 def build_trainer(
-    name: str,
-    default_policy: Optional[Policy],
-    *,
-    default_config: TrainerConfigDict = None,
-    validate_config: Callable[[TrainerConfigDict], None] = None,
-    get_initial_state=None,  # DEPRECATED
-    get_policy_class: Callable[[TrainerConfigDict], Policy] = None,
-    before_init: Callable[[Trainer], None] = None,
-    make_workers=None,  # DEPRECATED
-    make_policy_optimizer=None,  # DEPRECATED
-    after_init: Callable[[Trainer], None] = None,
-    before_train_step=None,  # DEPRECATED
-    after_optimizer_step=None,  # DEPRECATED
-    after_train_result=None,  # DEPRECATED
-    collect_metrics_fn=None,  # DEPRECATED
+        name: str,
+        default_policy: Optional[Policy],
+        *,
+        default_config: TrainerConfigDict = None,
+        validate_config: Callable[[TrainerConfigDict], None] = None,
+        get_initial_state=None,  # DEPRECATED
+        get_policy_class: Callable[[TrainerConfigDict], Policy] = None,
+        before_init: Callable[[Trainer], None] = None,
+        make_workers=None,  # DEPRECATED
+        make_policy_optimizer=None,  # DEPRECATED
+        after_init: Callable[[Trainer], None] = None,
+        before_train_step=None,  # DEPRECATED
+        after_optimizer_step=None,  # DEPRECATED
+        after_train_result=None,  # DEPRECATED
+        collect_metrics_fn=None,  # DEPRECATED
         before_evaluate_fn: Callable[[Trainer], None] = None,
         mixins: List[type] = None,
         execution_plan: Callable[[WorkerSet, TrainerConfigDict], Iterable[

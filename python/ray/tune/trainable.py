@@ -229,11 +229,11 @@ class Trainable:
         self._trial_info = trial_info
 
         start_time = time.time()
-        self.build(copy.deepcopy(self.config))
+        self.setup(copy.deepcopy(self.config))
         setup_time = time.time() - start_time
         if setup_time > SETUP_TIME_THRESHOLD:
-            logger.info("build took {:.3f} seconds. If your trainable is "
-                        "slow to initialize, consider setting "
+            logger.info("Trainable.setup took {:.3f} seconds. If your "
+                        "trainable is slow to initialize, consider setting "
                         "reuse_actors=True to reduce actor creation "
                         "overheads.".format(setup_time))
         self._local_ip = self.get_current_ip()
@@ -677,8 +677,8 @@ class Trainable:
 
         if log_once("trainable.save_checkpoint"):
             logger.warning(
-                "Trainable._save is deprecated and will be removed in "
-                "a future version of Ray. Use Trainable.save_checkpoint instead."
+                "Trainable._save is deprecated and will be removed in a "
+                "future version of Ray. Use Trainable.save_checkpoint instead."
             )
         self._save()
 
@@ -735,8 +735,8 @@ class Trainable:
 
         if log_once("trainable.load_checkpoint"):
             logger.warning(
-                "Trainable._restore is deprecated and will be removed in "
-                "a future version of Ray. Use Trainable.load_checkpoint instead."
+                "Trainable._restore is deprecated and will be removed in a "
+                "future version of Ray. Use Trainable.load_checkpoint instead."
             )
         self._restore(checkpoint)
 
