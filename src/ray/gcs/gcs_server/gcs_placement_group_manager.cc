@@ -171,7 +171,7 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
 }
 
 void GcsPlacementGroupManager::ScheduleTick() {
-  reschedule_timer_.expires_from_now(boost::posix_time::milliseconds(5));
+  reschedule_timer_.expires_from_now(boost::posix_time::milliseconds(500));
   reschedule_timer_.async_wait([this](const boost::system::error_code &error) {
     if (error == boost::system::errc::operation_canceled) {
       return;

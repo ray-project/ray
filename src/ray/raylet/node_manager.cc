@@ -2564,7 +2564,6 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
   auto acquired_resources =
       local_available_resources_.Acquire(spec.GetRequiredResources());
   cluster_resource_map_[self_node_id_].Acquire(spec.GetRequiredResources());
-
   if (spec.IsActorCreationTask()) {
     // Check that the actor's placement resource requirements are satisfied.
     RAY_CHECK(spec.GetRequiredPlacementResources().IsSubset(

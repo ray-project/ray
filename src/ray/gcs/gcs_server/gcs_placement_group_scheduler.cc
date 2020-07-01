@@ -183,7 +183,7 @@ void GcsPlacementGroupScheduler::ReserveResourceFromNode(
                              << " for bundle " << bundle->BundleId().first
                              << bundle->BundleId().second;
             }
-            // Remove the actor from the leasing map as the reply is returned from the
+            // Remove the bundle from the leasing map as the reply is returned from the
             // remote node.
             iter->second.erase(bundle_iter);
             if (iter->second.empty()) {
