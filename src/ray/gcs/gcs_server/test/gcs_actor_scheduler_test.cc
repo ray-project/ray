@@ -348,12 +348,21 @@ TEST_F(GcsActorSchedulerTest, TestSpillback) {
   gcs_node_manager_->AddNode(node2);
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
+  // Grant with an invalid spillback node, and schedule again.
+  auto invalid_node_id = ClientID::FromBinary(Mocker::GenNodeInfo()->node_id());
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
+      node2->node_manager_address(), node2->node_manager_port(), WorkerID::Nil(),
+      node_id_1, invalid_node_id));
+  ASSERT_EQ(2, raylet_client_->num_workers_requested);
+  ASSERT_EQ(1, raylet_client_->callbacks.size());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
+
   // Grant with a spillback node(node2), and the lease request should be send to the
   // node2.
   ASSERT_TRUE(raylet_client_->GrantWorkerLease(node2->node_manager_address(),
                                                node2->node_manager_port(),
                                                WorkerID::Nil(), node_id_1, node_id_2));
-  ASSERT_EQ(2, raylet_client_->num_workers_requested);
+  ASSERT_EQ(3, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
   ASSERT_EQ(0, worker_client_->callbacks.size());
 
