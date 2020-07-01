@@ -94,7 +94,7 @@ class MetricClient:
     def _new_metric(
             self,
             name,
-            type: MetricType,
+            metric_type: MetricType,
             description: str,
             label_names: Tuple[str] = (),
     ):
@@ -104,7 +104,7 @@ class MetricClient:
 
         metric_metadata = MetricMetadata(
             name=name,
-            type=type,
+            type=metric_type,
             description=description,
             label_names=label_names,
             default_labels=self.default_labels.copy(),

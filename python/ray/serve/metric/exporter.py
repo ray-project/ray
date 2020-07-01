@@ -88,7 +88,8 @@ class InMemoryExporter(ExporterInterface):
         metrics_to_collect = {**self.counters, **self.latest_measures}
         for info_tuple, value in metrics_to_collect.items():
             # Represent the metric type as a human readable name
-            info_tuple = info_tuple._replace(type=str(info_tuple.type), )
+            info_tuple = info_tuple._replace(type=str(info_tuple.type))
+            # _asdict returns OrderedDict, we just need to return regular dict
             items.append({"info": dict(info_tuple._asdict()), "value": value})
         return items
 
@@ -144,12 +145,13 @@ class PrometheusExporter(ExporterInterface):
                 continue
 
             name = metric_metadata[key].name
-            metric, type = self.metrics_cache[name]
+            metric, metric_type = self.metrics_cache[name]
             default_labels = self.default_labels[key]
             merged_labels = {**default_labels, **labels}
-            if type == MetricType.COUNTER:
+            if metric_type == MetricType.COUNTER:
                 metric.labels(**merged_labels).inc(value)
-            elif type == MetricType.MEASURE:
+            elif metric_type == MetricType.MEASURE:
                 metric.labels(**merged_labels).set(value)
             else:
-                raise RuntimeError("Unrecognized metric type {}".format(type))
+                raise RuntimeError(
+                    "Unrecognized metric type {}".format(metric_type))
