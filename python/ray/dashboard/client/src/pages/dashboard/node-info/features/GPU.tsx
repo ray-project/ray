@@ -93,9 +93,15 @@ type WorkerGPUEntryProps = {
 
 const WorkerGPUEntry: React.FC<WorkerGPUEntryProps> = ({ resourceSlot }) => {
   const { allocation, slot } = resourceSlot;
+  // This is a bit of  a dirty hack . For some reason, the slot GPU slot
+  // 0 as assigned always shows up as undefined in the API response.
+  // There are other times, such as a partial allocation, where we truly don't
+  // know the slot, however this will just plug the hole of 0s coming through
+  // as undefined. I have not been able to figure out the root cause.
+  const slotMsg = (allocation >= 1 && slot === undefined) ? "0" : "?";
   return (
     <Typography variant="body1">
-      [{slot ===  0 ? "!" : slot}]: {allocation}
+      [{slotMsg}]: {allocation}
     </Typography>
   );
 };
