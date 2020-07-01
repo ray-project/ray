@@ -59,7 +59,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
     if (rayConfig.getRedisAddress() != null) {
       GcsClient tempGcsClient =
-      new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+          new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
       for (Map.Entry<String, String> entry :
           tempGcsClient.getInternalConfig().entrySet()) {
         rayConfig.rayletConfigParameters.put(entry.getKey(), entry.getValue());
