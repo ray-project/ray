@@ -789,7 +789,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetInternalConfig(
       [callback](const Status &status, const rpc::GetInternalConfigReply &reply) {
         std::unordered_map<std::string, std::string> result;
         if (status.ok() && reply.has_config()) {
-          result.insert(reply.config().config().begin(), reply.config().config().end());
+          result = MapFromProtobuf(reply.config().config());
         }
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
