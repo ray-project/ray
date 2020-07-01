@@ -1517,12 +1517,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   // execution and unpinned once the task completes. We will notify the caller
   // about any IDs that we are still borrowing by the time the task completes.
   std::vector<ObjectID> borrowed_ids;
-  RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args, &arg_reference_ids, &borrowed_ids));
-  // Pin the borrowed IDs for the duration of the task.
-  for (const auto &borrowed_id : borrowed_ids) {
-    RAY_LOG(DEBUG) << "Incrementing ref for borrowed ID " << borrowed_id;
-    reference_counter_->AddLocalReference(borrowed_id, task_spec.CallSiteString());
-  }
+  RAY_CHECK_OK(GetAndPinArgsForExecutor(task_spec, &args, &arg_reference_ids, &borrowed_ids));
 
   std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
@@ -1570,8 +1565,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   // Get the reference counts for any IDs that we borrowed during this task and
   // return them to the caller. This will notify the caller of any IDs that we
-  // (or a nested task) are still borrowing. It will also any new IDs that were
-  // contained in a borrowed ID that we (or a nested task) are now borrowing.
+  // (or a nested task) are still borrowing. It will also notify the caller of
+  // any new IDs that were contained in a borrowed ID that we (or a nested
+  // task) are now borrowing.
   if (!borrowed_ids.empty()) {
     reference_counter_->GetAndClearLocalBorrowers(borrowed_ids, borrowed_refs);
   }
@@ -1634,7 +1630,7 @@ void CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec,
   SetActorId(old_id);
 }
 
-Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
+Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
                                         std::vector<std::shared_ptr<RayObject>> *args,
                                         std::vector<ObjectID> *arg_reference_ids,
                                         std::vector<ObjectID> *borrowed_ids) {
@@ -1662,10 +1658,14 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
         it->second.push_back(i);
       }
       arg_reference_ids->at(i) = arg_id;
-      // The task borrows all args passed by reference. Because the task does
-      // not have a reference to the argument ID in the frontend, it is not
-      // possible for the task to still be borrowing the argument by the time
-      // it finishes.
+      // Pin all args passed by reference for the duration of the task.  This
+      // ensures that when the task completes, we can retrieve metadata about
+      // any borrowed ObjectIDs that were serialized in the argument's value.
+      RAY_LOG(DEBUG) << "Incrementing ref for argument ID " << arg_id;
+      reference_counter_->AddLocalReference(arg_id, task.CallSiteString());
+      // Attach the argument's owner's address. This is needed to retrieve the
+      // value from plasma.
+      reference_counter_->AddBorrowedObject(arg_id, ObjectID::Nil(), task.ArgRef(i).owner_address());
       borrowed_ids->push_back(arg_id);
     } else {
       // A pass-by-value argument.
@@ -1687,6 +1687,11 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
       // possible for the task to continue borrowing these arguments by the
       // time it finishes.
       for (const auto &inlined_id : task.ArgInlinedIds(i)) {
+        RAY_LOG(DEBUG) << "Incrementing ref for borrowed ID " << inlined_id;
+        // We do not need to add the ownership information here because it will
+        // get added once the language frontend deserializes the value, before
+        // the ObjectID can be used.
+        reference_counter_->AddLocalReference(inlined_id, task.CallSiteString());
         borrowed_ids->push_back(inlined_id);
       }
     }

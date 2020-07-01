@@ -191,7 +191,7 @@ bool TaskDependencyManager::SubscribeGetDependencies(
       }
 
       auto it = required_tasks_[creating_task_id].find(object_id);
-      if (it != required_tasks_[creating_task_id].end()) {
+      if (it == required_tasks_[creating_task_id].end()) {
         it = required_tasks_[creating_task_id]
                  .emplace(object_id, ObjectDependencies(object))
                  .first;

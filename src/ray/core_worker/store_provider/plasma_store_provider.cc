@@ -158,7 +158,7 @@ std::vector<rpc::Address> CoreWorkerPlasmaStoreProvider::GetOwnerAddresses(const
   for (const auto &object_id : object_ids) {
     rpc::Address owner_addr;
     auto has_owner = reference_counter_->GetOwner(object_id, &owner_addr);
-    RAY_CHECK(has_owner) << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+    RAY_CHECK(has_owner) << object_id << " Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
          "(ObjectID.from_binary(...)) cannot be passed to ray.get() or ray.wait() because Ray does not know which task will create them. "
          "If this was not how your object ID was generated, please file an issue "
          "at https://github.com/ray-project/ray/issues/";

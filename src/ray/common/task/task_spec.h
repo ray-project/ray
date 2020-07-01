@@ -78,6 +78,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ObjectID ArgId(size_t arg_index) const;
 
+  rpc::ObjectReference ArgRef(size_t arg_index) const;
+
   ObjectID ReturnId(size_t return_index) const;
 
   const uint8_t *ArgData(size_t arg_index) const;
