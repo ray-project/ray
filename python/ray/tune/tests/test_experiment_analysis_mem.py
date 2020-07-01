@@ -21,19 +21,19 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
                 4: [7, 5, 5, 5, 5, 5, 5, 5, 3]
             }
 
-            def _setup(self, config):
+            def setup(self, config):
                 self.id = config["id"]
                 self.idx = 0
 
-            def _train(self):
+            def step(self):
                 val = self.scores_dict[self.id][self.idx]
                 self.idx += 1
                 return {"score": val}
 
-            def _save(self, checkpoint_dir):
+            def save_checkpoint(self, checkpoint_dir):
                 pass
 
-            def _restore(self, checkpoint_path):
+            def load_checkpoint(self, checkpoint_path):
                 pass
 
         self.MockTrainable = MockTrainable
