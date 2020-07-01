@@ -528,12 +528,12 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
       if (pending_it != pending_actors_.end()) {
         pending_actors_.erase(pending_it);
       } else {
-        // If the actor is not pending, that means the raylet doesn't reply the
-        // lease request yet. Remove the outstanding lease request.
-        // NOTE(sang): It is possible raylet replies to the outstanding request
+        // It only happens when there's no node in a cluster that can schedule
+        // an actor. In this case, the actor creation request is staying inside raylet.
+        // NOTE(sang): It is possible the raylet replies to the outstanding request
         // after this function is called. It will be fine
         // because at the end of this function, we will publish the dead actor state,
-        // and it will make raylet return the worker that was leased.
+        // and it will make the raylet return the worker that was leased.
         gcs_actor_scheduler_->CancelLeasingRequest(node_id, actor_id);
       }
     }
@@ -592,7 +592,9 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
     return;
   }
 
-  // If actor is not registered, that means actor is already destroyed. Don't do anything.
+  // If actor is not registered, that means the actor is already destroyed. Don't do
+  // anything. NOTE(sang): It happens if the actor is destroyed when it is trying to lease
+  // workers from raylets.
   if (registered_actors_.find(actor_id) == registered_actors_.end()) {
     return;
   }

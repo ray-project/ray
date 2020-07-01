@@ -338,7 +338,7 @@ print("success")
 
     # Make sure we can run this driver repeatedly, which means that resources
     # are getting released in between.
-    for _ in range(5):
+    for _ in range(10):
         out = run_string_as_driver(driver_script1)
         # Make sure the first driver ran to completion.
         assert "success" in out
