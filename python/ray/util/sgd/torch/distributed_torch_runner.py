@@ -333,6 +333,8 @@ class LocalDistributedRunner(DistributedTorchRunner):
         else:
             # Once cuda is initialized, torch.device ignores the os.env
             # so we have to set the right actual device.
+            if not torch.cuda.is_initialized():
+                reserved_cuda_device = "0"
             self._set_cuda_device(reserved_cuda_device)
 
     def _set_cuda_device(self, device_str):
