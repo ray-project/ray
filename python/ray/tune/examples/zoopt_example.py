@@ -12,7 +12,7 @@ from zoopt import ValueType
 
 
 def evaluation_fn(step, width, height):
-    return (width * step / 100)**(-1) + height * 0.01
+    return (1 + width * step / 100)**(-1) + height * 0.1
 
 
 def easy_objective(config):
@@ -23,7 +23,7 @@ def easy_objective(config):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height)
         # Feed the score back back to Tune.
-        tune.report(iterations=step, score=intermediate_score)
+        tune.report(iterations=step, mean_loss=intermediate_score)
         time.sleep(0.1)
 
 
@@ -56,10 +56,10 @@ if __name__ == "__main__":
         algo="Asracos",  # only support ASRacos currently
         budget=config["num_samples"],
         dim_dict=dim_dict,
-        metric="score",
+        metric="mean_loss",
         mode="min")
 
-    scheduler = AsyncHyperBandScheduler(metric="score", mode="min")
+    scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
 
     tune.run(
         easy_objective,
