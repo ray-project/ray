@@ -285,7 +285,7 @@ class Policy(metaclass=ABCMeta):
             sample_batch: SampleBatch,
             other_agent_batches: Optional[
                 Dict[AgentID, Tuple["Policy", SampleBatch]]] = None,
-            episode=None):
+            episode: Optional[MultiAgentEpisode] = None):
         """Implements algorithm-specific trajectory postprocessing.
 
         This will be called on each trajectory fragment computed during policy
@@ -297,7 +297,8 @@ class Policy(metaclass=ABCMeta):
             other_agent_batches (dict): In a multi-agent env, this contains a
                 mapping of agent ids to (policy, agent_batch) tuples
                 containing the policy and experiences of the other agents.
-            episode (MultiAgentEpisode): this provides access to all of the
+            episode (Optional[MultiAgentEpisode]): An optional multi-agent
+                episode object to provide access to all of the
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.
 
@@ -335,8 +336,8 @@ class Policy(metaclass=ABCMeta):
         Either this or learn_on_batch() must be implemented by subclasses.
 
         Args:
-            postprocessed_batch (SampleBatch): The SampleBatch object to
-                compute gradients for.
+            postprocessed_batch (SampleBatch): The SampleBatch object to use
+                for calculating gradients.
 
         Returns:
             grads (list): List of gradient output values
@@ -345,8 +346,12 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
-    def apply_gradients(self, gradients):
+    def apply_gradients(self, gradients: object):
         """Applies previously computed gradients.
+
+        Args:
+            gradients (object): The already calculated gradients to apply to
+                this Policy.
 
         Either this or learn_on_batch() must be implemented by subclasses.
         """
@@ -362,11 +367,11 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
-    def set_weights(self, weights):
+    def set_weights(self, weights: object):
         """Sets model weights.
 
         Arguments:
-            weights (obj): Serializable copy or view of model weights
+            weights (obj): Serializable copy or view of model weights.
         """
         raise NotImplementedError
 
@@ -414,7 +419,7 @@ class Policy(metaclass=ABCMeta):
         return self.get_weights()
 
     @DeveloperAPI
-    def set_state(self, state):
+    def set_state(self, state: object):
         """Restores all local state.
 
         Arguments:
@@ -423,18 +428,19 @@ class Policy(metaclass=ABCMeta):
         self.set_weights(state)
 
     @DeveloperAPI
-    def on_global_var_update(self, global_vars):
+    def on_global_var_update(self, global_vars: Dict[str, TensorType]):
         """Called on an update to global vars.
 
         Arguments:
-            global_vars (dict): Global variables broadcast from the driver.
+            global_vars (Dict[str, TensorType]): Global variables by str key,
+                broadcast from the driver.
         """
         # Store the current global time step (sum over all policies' sample
         # steps).
         self.global_timestep = global_vars["timestep"]
 
     @DeveloperAPI
-    def export_model(self, export_dir):
+    def export_model(self, export_dir: str):
         """Export Policy to local directory for serving.
 
         Arguments:
@@ -443,7 +449,7 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
-    def export_checkpoint(self, export_dir):
+    def export_checkpoint(self, export_dir: str):
         """Export Policy checkpoint to local directory.
 
         Argument:
@@ -452,7 +458,7 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
-    def import_model_from_h5(self, import_file):
+    def import_model_from_h5(self, import_file: str):
         """Imports Policy from local file.
 
         Arguments:
