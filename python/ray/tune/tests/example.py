@@ -14,7 +14,7 @@
 from ray import tune
 
 
-def objective(x, alpha, beta):
+def objective(step, alpha, beta):
     return (alpha * step / 100)**(-1) + beta * 0.01
 
 
