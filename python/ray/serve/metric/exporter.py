@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Any
 from collections import Counter, namedtuple
 
 import ray
@@ -10,7 +10,7 @@ logger = _get_logger()
 
 def make_metric_namedtuple(metric_metadata: MetricMetadata,
                            record: MetricBatch):
-    fields = ["name", "type"]
+    fields = ["name", "metric_type"]
     fields += list(metric_metadata.default_labels.keys())
     fields += list(record.labels.keys())
 
@@ -19,7 +19,9 @@ def make_metric_namedtuple(metric_metadata: MetricMetadata,
 
     tuple_type = namedtuple(metric_metadata.name, fields)
     return tuple_type(
-        name=metric_metadata.name, type=metric_metadata.type, **merged_labels)
+        name=metric_metadata.name,
+        metric_type=metric_metadata.metric_type,
+        **merged_labels)
 
 
 class ExporterInterface:
@@ -46,15 +48,15 @@ class MetricExporterActor:
         # TODO(simon): Add support for initializer args and kwargs.
         self.exporter = exporter_class()
 
-        # Stores the mapping metric_name -> MetricMetadata
+        # Stores the all recorded MetricMetadata (keyed by hash key)
         # This field is tolerant to failures since each client will always push
         # an updated copy of the metadata for each ingest call.
-        self.metric_metadata = dict()
+        self.metric_metadata: Dict[int, MetricMetadata] = dict()
 
         logger.debug("Initialized with metric exporter of type {}".format(
             type(self.exporter)))
 
-    def ingest(self, metric_metadata: Dict[str, MetricMetadata],
+    def ingest(self, metric_metadata: Dict[int, MetricMetadata],
                batch: MetricBatch):
         self.metric_metadata.update(metric_metadata)
         self.exporter.export(self.metric_metadata, batch)
@@ -70,25 +72,27 @@ class InMemoryExporter(ExporterInterface):
         # Keep track of latest observation of measures
         self.latest_measures: Dict[namedtuple, float] = dict()
 
-    def export(self, metric_metadata, metric_batch):
+    def export(self, metric_metadata: Dict[int, MetricMetadata],
+               metric_batch: MetricBatch):
         for record in metric_batch:
-            metadata = metric_metadata[record.name]
+            metadata = metric_metadata[record.key]
             metric_key = make_metric_namedtuple(metadata, record)
-            if metadata.type == MetricType.COUNTER:
+            if metadata.metric_type == MetricType.COUNTER:
                 self.counters[metric_key] += record.value
-            elif metadata.type == MetricType.MEASURE:
+            elif metadata.metric_type == MetricType.MEASURE:
                 self.latest_measures[metric_key] = record.value
             else:
                 raise RuntimeError("Unrecognized metric type {}".format(
-                    metadata.type))
+                    metadata.metric_type))
 
     def inspect_metrics(self):
         items = []
         metrics_to_collect = {**self.counters, **self.latest_measures}
         for info_tuple, value in metrics_to_collect.items():
             # Represent the metric type as a human readable name
-            info_tuple = info_tuple._replace(type=str(info_tuple.type))
-            items.append({"info": info_tuple._asdict(), "value": value})
+            info_tuple = info_tuple._replace(
+                metric_type=str(info_tuple.metric_type), )
+            items.append({"info": dict(info_tuple._asdict()), "value": value})
         return items
 
 
@@ -103,7 +107,7 @@ class PrometheusExporter(ExporterInterface):
         }
         self.prom_generate_latest = generate_latest
 
-        self.metrics_cache = dict()
+        self.metrics_cache: Dict[str, Any] = dict()
         self.default_labels = dict()
         self.registry = CollectorRegistry()
 
@@ -112,34 +116,39 @@ class PrometheusExporter(ExporterInterface):
 
     def export(self, metric_metadata, metric_batch):
         self._process_metric_metadata(metric_metadata)
-        self._process_batch(metric_batch)
+        self._process_batch(metric_metadata, metric_batch)
 
     def _process_metric_metadata(self, metric_metadata):
-        for name, metric_metadata in metric_metadata.items():
+        for key, metric_metadata in metric_metadata.items():
+            name = metric_metadata.name
+
             if name not in self.metrics_cache:
                 constructor = self.metric_type_to_prom_type[
-                    metric_metadata.type]
+                    metric_metadata.metric_type]
 
                 default_labels = metric_metadata.default_labels
                 label_names = tuple(
                     default_labels.keys()) + metric_metadata.label_names
                 metric_object = constructor(
-                    metric_metadata.name,
+                    name,
                     metric_metadata.description,
                     labelnames=label_names,
                     registry=self.registry,
                 )
 
                 self.metrics_cache[name] = (metric_object,
-                                            metric_metadata.type)
-                self.default_labels[name] = default_labels
+                                            metric_metadata.metric_type)
 
-    def _process_batch(self, batch):
-        for name, labels, value in batch:
-            assert name in self.metrics_cache, (
-                "Metrics {} was not registered.".format(name))
+            self.default_labels[key] = metric_metadata.default_labels
+
+    def _process_batch(self, metric_metadata, batch):
+        for key, labels, value in batch:
+            if key not in metric_metadata:
+                continue
+
+            name = metric_metadata[key].name
             metric, metric_type = self.metrics_cache[name]
-            default_labels = self.default_labels[name]
+            default_labels = self.default_labels[key]
             merged_labels = {**default_labels, **labels}
             if metric_type == MetricType.COUNTER:
                 metric.labels(**merged_labels).inc(value)
