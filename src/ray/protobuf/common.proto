@@ -132,7 +132,7 @@ message ObjectReference {
   // ObjectID that the worker has a reference to.
   bytes object_id = 1;
   // The address of the object's owner.
-  Address owner_address = 3;
+  Address owner_address = 2;
 }
 
 // Argument in the task.
