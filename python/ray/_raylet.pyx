@@ -82,7 +82,8 @@ from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
 import ray
-from ray.async_compat import (sync_to_async, AsyncGetResponse)
+from ray.async_compat import (
+    sync_to_async, AsyncGetResponse, get_new_event_loop)
 import ray.memory_monitor as memory_monitor
 import ray.ray_constants as ray_constants
 from ray import profiling
@@ -485,10 +486,10 @@ cdef execute_task(
             if isinstance(error, RayTaskError):
                 # Avoid recursive nesting of RayTaskError.
                 failure_object = RayTaskError(function_name, backtrace,
-                                              error.cause_cls, proctitle=title)
+                                              error.cause, proctitle=title)
             else:
                 failure_object = RayTaskError(function_name, backtrace,
-                                              error.__class__, proctitle=title)
+                                              error, proctitle=title)
             errors = []
             for _ in range(c_return_ids.size()):
                 errors.append(failure_object)
@@ -1186,7 +1187,7 @@ cdef class CoreWorker:
 
     def create_or_get_event_loop(self):
         if self.async_event_loop is None:
-            self.async_event_loop = asyncio.new_event_loop()
+            self.async_event_loop = get_new_event_loop()
             asyncio.set_event_loop(self.async_event_loop)
             # Initialize the async plasma connection.
             # Delayed import due to async_api depends on _raylet.

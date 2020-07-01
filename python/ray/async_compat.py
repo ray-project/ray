@@ -7,7 +7,20 @@ from collections import namedtuple
 import time
 import inspect
 
+try:
+    import uvloop
+except ImportError:
+    uvloop = None
+
 import ray
+
+
+def get_new_event_loop():
+    """Construct a new event loop. Ray will use uvloop if it exists"""
+    if uvloop:
+        return uvloop.new_event_loop()
+    else:
+        return asyncio.new_event_loop()
 
 
 def sync_to_async(func):

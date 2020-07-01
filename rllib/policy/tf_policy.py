@@ -16,7 +16,7 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
@@ -131,9 +131,9 @@ class TFPolicy(Policy):
         self._sampled_action = sampled_action
         self._is_training = self._get_is_training_placeholder()
         self._is_exploring = explore if explore is not None else \
-            tf.placeholder_with_default(True, (), name="is_exploring")
+            tf1.placeholder_with_default(True, (), name="is_exploring")
         self._sampled_action_logp = sampled_action_logp
-        self._sampled_action_prob = (tf.exp(self._sampled_action_logp)
+        self._sampled_action_prob = (tf.math.exp(self._sampled_action_logp)
                                      if self._sampled_action_logp is not None
                                      else None)
         self._action_input = action_input  # For logp calculations.
@@ -162,7 +162,7 @@ class TFPolicy(Policy):
         self._apply_op = None
         self._stats_fetches = {}
         self._timestep = timestep if timestep is not None else \
-            tf.placeholder(tf.int32, (), name="timestep")
+            tf1.placeholder(tf.int32, (), name="timestep")
 
         self._optimizer = None
         self._grads_and_vars = None
@@ -248,12 +248,12 @@ class TFPolicy(Policy):
 
         # gather update ops for any batch norm layers
         if not self._update_ops:
-            self._update_ops = tf.get_collection(
-                tf.GraphKeys.UPDATE_OPS, scope=tf.get_variable_scope().name)
+            self._update_ops = tf1.get_collection(
+                tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
         if self._update_ops:
             logger.info("Update ops to run on apply gradient: {}".format(
                 self._update_ops))
-        with tf.control_dependencies(self._update_ops):
+        with tf1.control_dependencies(self._update_ops):
             self._apply_op = self.build_apply_op(self._optimizer,
                                                  self._grads_and_vars)
 
@@ -262,7 +262,7 @@ class TFPolicy(Policy):
                 "These tensors were used in the loss_fn:\n\n{}\n".format(
                     summarize(self._loss_input_dict)))
 
-        self._sess.run(tf.global_variables_initializer())
+        self._sess.run(tf1.global_variables_initializer())
         self._optimizer_variables = None
         if self._optimizer:
             self._optimizer_variables = \
@@ -397,12 +397,12 @@ class TFPolicy(Policy):
     def export_model(self, export_dir):
         """Export tensorflow graph to export_dir for serving."""
         with self._sess.graph.as_default():
-            builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
+            builder = tf1.saved_model.builder.SavedModelBuilder(export_dir)
             signature_def_map = self._build_signature_def()
             builder.add_meta_graph_and_variables(
-                self._sess, [tf.saved_model.tag_constants.SERVING],
+                self._sess, [tf1.saved_model.tag_constants.SERVING],
                 signature_def_map=signature_def_map,
-                saver=tf.summary.FileWriter(export_dir).add_graph(
+                saver=tf1.summary.FileWriter(export_dir).add_graph(
                     graph=self._sess.graph))
             builder.save()
 
@@ -417,7 +417,7 @@ class TFPolicy(Policy):
                 raise
         save_path = os.path.join(export_dir, filename_prefix)
         with self._sess.graph.as_default():
-            saver = tf.train.Saver()
+            saver = tf1.train.Saver()
             saver.save(self._sess, save_path)
 
     @override(Policy)
@@ -479,9 +479,9 @@ class TFPolicy(Policy):
     def optimizer(self):
         """TF optimizer to use for policy optimization."""
         if hasattr(self, "config"):
-            return tf.train.AdamOptimizer(learning_rate=self.config["lr"])
+            return tf1.train.AdamOptimizer(learning_rate=self.config["lr"])
         else:
-            return tf.train.AdamOptimizer()
+            return tf1.train.AdamOptimizer()
 
     @DeveloperAPI
     def gradients(self, optimizer, loss):
@@ -495,7 +495,7 @@ class TFPolicy(Policy):
         # specify global_step for TD3 which needs to count the num updates
         return optimizer.apply_gradients(
             self._grads_and_vars,
-            global_step=tf.train.get_or_create_global_step())
+            global_step=tf1.train.get_or_create_global_step())
 
     @DeveloperAPI
     def _get_is_training_placeholder(self):
@@ -504,7 +504,7 @@ class TFPolicy(Policy):
         This can be called safely before __init__ has run.
         """
         if not hasattr(self, "_is_training"):
-            self._is_training = tf.placeholder_with_default(
+            self._is_training = tf1.placeholder_with_default(
                 False, (), name="is_training")
         return self._is_training
 
@@ -519,7 +519,7 @@ class TFPolicy(Policy):
         """
         feed_dict = self.extra_compute_action_feed_dict()
         return {
-            k.name: tf.saved_model.utils.build_tensor_info(k)
+            k.name: tf1.saved_model.utils.build_tensor_info(k)
             for k in feed_dict.keys()
         }
 
@@ -529,7 +529,7 @@ class TFPolicy(Policy):
         """
         fetches = self.extra_compute_action_fetches()
         return {
-            k: tf.saved_model.utils.build_tensor_info(fetches[k])
+            k: tf1.saved_model.utils.build_tensor_info(fetches[k])
             for k in fetches.keys()
         }
 
@@ -539,38 +539,40 @@ class TFPolicy(Policy):
         # build input signatures
         input_signature = self._extra_input_signature_def()
         input_signature["observations"] = \
-            tf.saved_model.utils.build_tensor_info(self._obs_input)
+            tf1.saved_model.utils.build_tensor_info(self._obs_input)
 
         if self._seq_lens is not None:
             input_signature["seq_lens"] = \
-                tf.saved_model.utils.build_tensor_info(self._seq_lens)
+                tf1.saved_model.utils.build_tensor_info(self._seq_lens)
         if self._prev_action_input is not None:
             input_signature["prev_action"] = \
-                tf.saved_model.utils.build_tensor_info(self._prev_action_input)
+                tf1.saved_model.utils.build_tensor_info(
+                    self._prev_action_input)
         if self._prev_reward_input is not None:
             input_signature["prev_reward"] = \
-                tf.saved_model.utils.build_tensor_info(self._prev_reward_input)
+                tf1.saved_model.utils.build_tensor_info(
+                    self._prev_reward_input)
         input_signature["is_training"] = \
-            tf.saved_model.utils.build_tensor_info(self._is_training)
+            tf1.saved_model.utils.build_tensor_info(self._is_training)
 
         for state_input in self._state_inputs:
             input_signature[state_input.name] = \
-                tf.saved_model.utils.build_tensor_info(state_input)
+                tf1.saved_model.utils.build_tensor_info(state_input)
 
         # build output signatures
         output_signature = self._extra_output_signature_def()
         for i, a in enumerate(tf.nest.flatten(self._sampled_action)):
             output_signature["actions_{}".format(i)] = \
-                tf.saved_model.utils.build_tensor_info(a)
+                tf1.saved_model.utils.build_tensor_info(a)
 
         for state_output in self._state_outputs:
             output_signature[state_output.name] = \
-                tf.saved_model.utils.build_tensor_info(state_output)
+                tf1.saved_model.utils.build_tensor_info(state_output)
         signature_def = (
-            tf.saved_model.signature_def_utils.build_signature_def(
+            tf1.saved_model.signature_def_utils.build_signature_def(
                 input_signature, output_signature,
-                tf.saved_model.signature_constants.PREDICT_METHOD_NAME))
-        signature_def_key = (tf.saved_model.signature_constants.
+                tf1.saved_model.signature_constants.PREDICT_METHOD_NAME))
+        signature_def_key = (tf1.saved_model.signature_constants.
                              DEFAULT_SERVING_SIGNATURE_DEF_KEY)
         signature_def_map = {signature_def_key: signature_def}
         return signature_def_map
@@ -708,7 +710,7 @@ class LearningRateSchedule:
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
-        self.cur_lr = tf.get_variable("lr", initializer=lr, trainable=False)
+        self.cur_lr = tf1.get_variable("lr", initializer=lr, trainable=False)
         if lr_schedule is None:
             self.lr_schedule = ConstantSchedule(lr, framework=None)
         else:
@@ -724,7 +726,7 @@ class LearningRateSchedule:
 
     @override(TFPolicy)
     def optimizer(self):
-        return tf.train.AdamOptimizer(learning_rate=self.cur_lr)
+        return tf1.train.AdamOptimizer(learning_rate=self.cur_lr)
 
 
 @DeveloperAPI
@@ -733,7 +735,7 @@ class EntropyCoeffSchedule:
 
     @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
-        self.entropy_coeff = tf.get_variable(
+        self.entropy_coeff = tf1.get_variable(
             "entropy_coeff", initializer=entropy_coeff, trainable=False)
 
         if entropy_coeff_schedule is None:

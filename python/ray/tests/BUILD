@@ -201,7 +201,8 @@ py_test(
 py_test(
     name = "test_autoscaler_yaml",
     size = "small",
-    srcs = SRCS + ["test_autoscaler_yaml.py", "additional_property.yaml"],
+    srcs = SRCS + ["test_autoscaler_yaml.py"],
+    data = ["additional_property.yaml"],
     deps = ["//:ray_lib"],
 )
 
@@ -461,5 +462,13 @@ py_test(
     srcs = SRCS + ["test_gcs_fault_tolerance.py"],
     # TODO(swang): Enable again once pubsub client supports GCS server restart.
     tags = ["exclusive", "manual"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_output",
+    size = "medium",
+    srcs = SRCS + ["test_output.py"],
+    tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )

@@ -293,7 +293,6 @@ class TrialRunner:
         with open(newest_ckpt_path, "r") as f:
             runner_state = json.load(f, cls=_TuneFunctionDecoder)
             self.checkpoint_file = newest_ckpt_path
-
         logger.warning("".join([
             "Attempting to resume experiment from {}. ".format(
                 self._local_checkpoint_dir), "This feature is experimental, "

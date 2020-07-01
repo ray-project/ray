@@ -1,6 +1,6 @@
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 def explained_variance(y, pred):
@@ -86,7 +86,7 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
                             else:
                                 shape = v.shape
                             placeholders.append(
-                                tf.placeholder(
+                                tf1.placeholder(
                                     dtype=v.dtype,
                                     shape=shape,
                                     name="arg_{}".format(i)))
@@ -120,7 +120,7 @@ def scope_vars(scope, trainable_only=False):
     vars: [tf.Variable]
       list of variables in `scope`.
     """
-    return tf.get_collection(
-        tf.GraphKeys.TRAINABLE_VARIABLES
-        if trainable_only else tf.GraphKeys.VARIABLES,
+    return tf1.get_collection(
+        tf1.GraphKeys.TRAINABLE_VARIABLES
+        if trainable_only else tf1.GraphKeys.VARIABLES,
         scope=scope if isinstance(scope, str) else scope.name)
