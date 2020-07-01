@@ -225,11 +225,18 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
     // The worker did not succeed in the lease, but the specified node returned a new
     // node, and then try again on the new node.
     RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
-    actor->UpdateAddress(retry_at_raylet_address);
-    RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
-                  .emplace(actor->GetActorID())
-                  .second);
-    LeaseWorkerFromNode(actor, gcs_node_manager_.GetNode(actor->GetNodeID()));
+    auto spill_back_node_id = ClientID::FromBinary(retry_at_raylet_address.raylet_id());
+    if (auto spill_back_node = gcs_node_manager_.GetNode(spill_back_node_id)) {
+      actor->UpdateAddress(retry_at_raylet_address);
+      RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
+                    .emplace(actor->GetActorID())
+                    .second);
+      LeaseWorkerFromNode(actor, spill_back_node);
+    } else {
+      // If the spill back node is dead, we need to schedule again.
+      actor->UpdateAddress(rpc::Address());
+      Schedule(actor);
+    }
   } else {
     // The worker is leased successfully from the specified node.
     std::vector<rpc::ResourceMapEntry> resources;

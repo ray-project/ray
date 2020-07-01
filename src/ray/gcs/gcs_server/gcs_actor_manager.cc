@@ -586,7 +586,7 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
 }
 
 void GcsActorManager::OnNodeDead(const ClientID &node_id) {
-  RAY_LOG(WARNING) << "Node " << node_id << " failed, reconstructing actors";
+  RAY_LOG(WARNING) << "Node " << node_id << " failed, reconstructing actors.";
   const auto it = owners_.find(node_id);
   if (it != owners_.end()) {
     std::vector<ActorID> children_ids;
