@@ -9,7 +9,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
@@ -19,6 +19,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class DynamicTFPolicy(TFPolicy):
     """A TFPolicy that auto-defines placeholders dynamically at runtime.
 
@@ -39,20 +40,22 @@ class DynamicTFPolicy(TFPolicy):
         dist_class (type): TF action distribution class
     """
 
+    @DeveloperAPI
     def __init__(self,
-                 obs_space,
-                 action_space,
-                 config,
-                 loss_fn,
-                 stats_fn=None,
-                 grad_stats_fn=None,
-                 before_loss_init=None,
-                 make_model=None,
-                 action_sampler_fn=None,
-                 action_distribution_fn=None,
-                 existing_inputs=None,
-                 existing_model=None,
-                 get_batch_divisibility_req=None,
+                 obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space,
+                 config: PolicyConfigDict,
+                 *,
+                 loss_fn: Callable[],
+                 stats_fn: Callable[] = None,
+                 grad_stats_fn: Callable[] = None,
+                 before_loss_init: Callable[] = None,
+                 make_model: Callable[] = None,
+                 action_sampler_fn: Callable[] = None,
+                 action_distribution_fn: Callable[] = None,
+                 existing_inputs: =None,
+                 existing_model: Optional[ModelV2] = None,
+                 get_batch_divisibility_req: Optional[int] = None,
                  obs_include_prev_action_reward=True):
         """Initialize a dynamic TF policy.
 
@@ -258,9 +261,10 @@ class DynamicTFPolicy(TFPolicy):
             before_loss_init(self, obs_space, action_space, config)
 
         if not existing_inputs:
-            self._initialize_loss()
+            self._initialize_loss_dynamically()
 
     @override(TFPolicy)
+    @DeveloperAPI
     def copy(self, existing_inputs):
         """Creates a copy of self using existing input placeholders."""
 
@@ -306,13 +310,14 @@ class DynamicTFPolicy(TFPolicy):
         return instance
 
     @override(Policy)
+    @DeveloperAPI
     def get_initial_state(self):
         if self.model:
             return self.model.get_initial_state()
         else:
             return []
 
-    def _initialize_loss(self):
+    def _initialize_loss_dynamically(self):
         def fake_array(tensor):
             shape = tensor.shape.as_list()
             shape = [s if s is not None else 1 for s in shape]
