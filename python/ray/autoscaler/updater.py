@@ -362,15 +362,15 @@ class DockerCommandRunner(SSHCommandRunner):
             ssh_options_override=ssh_options_override)
 
     def check_docker_installed(self):
-        install_commands = [
-            "curl -fsSL https://get.docker.com -o get-docker.sh",
-            "sudo sh get-docker.sh", "sudo usermod -aG docker $USER",
-            "sudo systemctl restart docker -f"
-        ]
         try:
             self.ssh_command_runner.run("command -v docker")
             return
         except Exception:
+            install_commands = [
+                "curl -fsSL https://get.docker.com -o get-docker.sh",
+                "sudo sh get-docker.sh", "sudo usermod -aG docker $USER",
+                "sudo systemctl restart docker -f"
+            ]
             logger.error(
                 "Docker not installed. You can install Docker by adding the "
                 "following commands to 'initialization_commands':\n" +
