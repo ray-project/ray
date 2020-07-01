@@ -94,7 +94,7 @@ class MetricClient:
     def _new_metric(
             self,
             name,
-            metric_type: MetricType,
+            type: MetricType,
             description: str,
             label_names: Tuple[str] = (),
     ):
@@ -104,7 +104,7 @@ class MetricClient:
 
         metric_metadata = MetricMetadata(
             name=name,
-            metric_type=metric_type,
+            type=type,
             description=description,
             label_names=label_names,
             default_labels=self.default_labels.copy(),
@@ -116,7 +116,7 @@ class MetricClient:
                              "is already registered.".format(name))
         self.registered_metrics[key] = metric_metadata
 
-        metric_class = convert_event_type_to_class(metric_type)
+        metric_class = convert_event_type_to_class(type)
         metric_object = metric_class(
             client=self, key=key, label_names=label_names)
 

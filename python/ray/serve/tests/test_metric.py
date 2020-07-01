@@ -48,14 +48,14 @@ async def test_client():
 
     assert MetricMetadata(
         name="counter",
-        metric_type=MetricType.COUNTER,
+        type=MetricType.COUNTER,
         description="",
         label_names=("a", "b"),
         default_labels={"default": "label"},
     ) in exporter.metadata.values()
     assert MetricMetadata(
         name="measure",
-        metric_type=MetricType.MEASURE,
+        type=MetricType.MEASURE,
         description="",
         label_names=(),
         default_labels={"default": "label"},

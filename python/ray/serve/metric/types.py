@@ -12,10 +12,10 @@ class MetricType(enum.IntEnum):
 # and MetricRecord. Metadata is declared at creation time and include names
 # and the label names. The label values will be supplied at observation time.
 class MetricMetadata:
-    def __init__(self, name: str, metric_type: MetricType, description: str,
+    def __init__(self, name: str, type: MetricType, description: str,
                  label_names: Tuple[str], default_labels: Dict[str, str]):
         self.name = name
-        self.metric_type = metric_type
+        self.type = type
         self.description = description
         self.label_names = label_names
         self.default_labels = default_labels
@@ -25,13 +25,13 @@ class MetricMetadata:
             return False
 
         return (self.name == value.name
-                and self.metric_type == self.metric_type
+                and self.type == self.type
                 and self.description == value.description
                 and self.label_names == value.label_names
                 and self.default_labels == value.default_labels)
 
     def __hash__(self):
-        return hash((self.name, self.metric_type, self.description,
+        return hash((self.name, self.type, self.description,
                      self.label_names, frozenset(self.default_labels.items())))
 
 

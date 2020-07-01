@@ -10,7 +10,7 @@ logger = _get_logger()
 
 def make_metric_namedtuple(metric_metadata: MetricMetadata,
                            record: MetricBatch):
-    fields = ["name", "metric_type"]
+    fields = ["name", "type"]
     fields += list(metric_metadata.default_labels.keys())
     fields += list(record.labels.keys())
 
@@ -19,9 +19,7 @@ def make_metric_namedtuple(metric_metadata: MetricMetadata,
 
     tuple_type = namedtuple(metric_metadata.name, fields)
     return tuple_type(
-        name=metric_metadata.name,
-        metric_type=metric_metadata.metric_type,
-        **merged_labels)
+        name=metric_metadata.name, type=metric_metadata.type, **merged_labels)
 
 
 class ExporterInterface:
@@ -77,21 +75,20 @@ class InMemoryExporter(ExporterInterface):
         for record in metric_batch:
             metadata = metric_metadata[record.key]
             metric_key = make_metric_namedtuple(metadata, record)
-            if metadata.metric_type == MetricType.COUNTER:
+            if metadata.type == MetricType.COUNTER:
                 self.counters[metric_key] += record.value
-            elif metadata.metric_type == MetricType.MEASURE:
+            elif metadata.type == MetricType.MEASURE:
                 self.latest_measures[metric_key] = record.value
             else:
                 raise RuntimeError("Unrecognized metric type {}".format(
-                    metadata.metric_type))
+                    metadata.type))
 
     def inspect_metrics(self):
         items = []
         metrics_to_collect = {**self.counters, **self.latest_measures}
         for info_tuple, value in metrics_to_collect.items():
             # Represent the metric type as a human readable name
-            info_tuple = info_tuple._replace(
-                metric_type=str(info_tuple.metric_type), )
+            info_tuple = info_tuple._replace(type=str(info_tuple.type), )
             items.append({"info": dict(info_tuple._asdict()), "value": value})
         return items
 
@@ -124,7 +121,7 @@ class PrometheusExporter(ExporterInterface):
 
             if name not in self.metrics_cache:
                 constructor = self.metric_type_to_prom_type[
-                    metric_metadata.metric_type]
+                    metric_metadata.type]
 
                 default_labels = metric_metadata.default_labels
                 label_names = tuple(
@@ -137,7 +134,7 @@ class PrometheusExporter(ExporterInterface):
                 )
 
                 self.metrics_cache[name] = (metric_object,
-                                            metric_metadata.metric_type)
+                                            metric_metadata.type)
 
             self.default_labels[key] = metric_metadata.default_labels
 
@@ -147,13 +144,12 @@ class PrometheusExporter(ExporterInterface):
                 continue
 
             name = metric_metadata[key].name
-            metric, metric_type = self.metrics_cache[name]
+            metric, type = self.metrics_cache[name]
             default_labels = self.default_labels[key]
             merged_labels = {**default_labels, **labels}
-            if metric_type == MetricType.COUNTER:
+            if type == MetricType.COUNTER:
                 metric.labels(**merged_labels).inc(value)
-            elif metric_type == MetricType.MEASURE:
+            elif type == MetricType.MEASURE:
                 metric.labels(**merged_labels).set(value)
             else:
-                raise RuntimeError(
-                    "Unrecognized metric type {}".format(metric_type))
+                raise RuntimeError("Unrecognized metric type {}".format(type))
