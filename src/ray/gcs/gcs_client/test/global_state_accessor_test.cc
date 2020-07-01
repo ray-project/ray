@@ -227,19 +227,15 @@ TEST_F(GlobalStateAccessorTest, TestActorTable) {
 }
 
 TEST_F(GlobalStateAccessorTest, TestWorkerTable) {
-  auto worker_count = 1;
   ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 0);
-  for (int index = 0; index < worker_count; ++index) {
-    // Add worker info
-    auto worker_table_data = Mocker::GenWorkerTableData();
-    ASSERT_TRUE(global_state_->AddWorkerInfo(worker_table_data->SerializeAsString()));
+  // Add worker info
+  auto worker_table_data = Mocker::GenWorkerTableData();
+  ASSERT_TRUE(global_state_->AddWorkerInfo(worker_table_data->SerializeAsString()));
 
-    // Get worker info
-    auto worker_id =
-        WorkerID::FromBinary(worker_table_data->worker_address().worker_id());
-    ASSERT_TRUE(global_state_->GetWorkerInfo(worker_id));
-  }
-  ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), worker_count);
+  // Get worker info
+  auto worker_id = WorkerID::FromBinary(worker_table_data->worker_address().worker_id());
+  ASSERT_TRUE(global_state_->GetWorkerInfo(worker_id));
+  ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 1);
 }
 
 }  // namespace ray

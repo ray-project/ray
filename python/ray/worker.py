@@ -875,17 +875,11 @@ def custom_excepthook(type, value, tb):
     # If this is a driver, push the exception to redis.
     if global_worker.mode == SCRIPT_MODE:
         error_message = "".join(traceback.format_tb(tb))
-        try:
-            worker_data = ray.gcs_utils.WorkerTableData()
-            worker_data.is_worker_failure = False
-            worker_data.worker_address.worker_id = global_worker.worker_id
-            worker_data.worker_type = ray.gcs_utils.DRIVER
-            worker_data.worker_info["exception"] = bytes(
-                error_message, encoding="utf-8")
-            worker_data.timestamp = int(time.time())
-            ray.state.add_worker(worker_data.SerializeToString())
-        except (ConnectionRefusedError, redis.exceptions.ConnectionError):
-            logger.warning("Could not push exception to redis.")
+        worker_id = global_worker.worker_id
+        worker_type = ray.gcs_utils.DRIVER
+        worker_info = {"exception": bytes(error_message, encoding="utf-8")}
+
+        ray.state.add_worker(worker_id, worker_type, worker_info)
     # Call the normal excepthook.
     normal_excepthook(type, value, tb)
 

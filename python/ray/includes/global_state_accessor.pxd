@@ -1,7 +1,7 @@
 from libcpp.string cimport string as c_string
 from libcpp cimport bool as c_bool
 from libcpp.vector cimport vector as c_vector
-from libcpp.memory cimport unique_ptr, shared_ptr
+from libcpp.memory cimport unique_ptr
 from ray.includes.unique_ids cimport (
     CActorID,
     CClientID,

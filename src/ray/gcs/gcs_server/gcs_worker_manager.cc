@@ -24,7 +24,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   RAY_LOG(DEBUG) << "Reporting worker failure, " << worker_address.DebugString();
   auto worker_failure_data = std::make_shared<WorkerTableData>();
   worker_failure_data->CopyFrom(request.worker_failure());
-  worker_failure_data->set_is_worker_failure(true);
+  worker_failure_data->set_is_alive(false);
   const auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
   auto on_done = [this, worker_address, worker_id, worker_failure_data, reply,
                   send_reply_callback](const Status &status) {
@@ -54,7 +54,7 @@ void GcsWorkerManager::HandleRegisterWorker(const rpc::RegisterWorkerRequest &re
   auto worker_info = MapFromProtobuf(request.worker_info());
 
   auto register_worker_data = std::make_shared<WorkerTableData>();
-  register_worker_data->set_is_worker_failure(false);
+  register_worker_data->set_is_alive(true);
   register_worker_data->set_worker_type(worker_type);
   register_worker_data->mutable_worker_address()->set_worker_id(worker_id.Binary());
   register_worker_data->mutable_worker_info()->insert(worker_info.begin(),

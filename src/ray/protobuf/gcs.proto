@@ -299,18 +299,17 @@ message ActorCheckpointIdData {
 }
 
 message WorkerTableData {
-  // Is worker failure data
-  // true: worker failure data; false: register worker data
-  bool is_worker_failure = 1;
+  // Is this worker alive.
+  bool is_alive = 1;
   // Address of the worker that failed.
   Address worker_address = 2;
-  // The UNIX timestamp at which the worker failed.
+  // The UNIX timestamp at which this worker's state was updated.
   int64 timestamp = 3;
-  // Is intentional disconnect
+  // Whether it's an intentional disconnect, only applies then `is_alive` is false.
   bool intentional_disconnect = 4;
-  // mark worker type, used in register worker data
+  // Type of this worker.
   WorkerType worker_type = 5;
-  // This is for RegisterWorker
+  // This is for RegisterWorker.
   map<string, bytes> worker_info = 6;
 }
 
