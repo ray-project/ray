@@ -1,7 +1,6 @@
 from collections import defaultdict
 import numpy as np
 import random
-import tree
 from typing import List, Dict, Callable, Any, TYPE_CHECKING
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
