@@ -1,4 +1,4 @@
-from typing import Any, Dict, Union, Tuple
+from typing import Any, Dict, List, Tuple, Union
 import gym
 
 # Represents a fully filled out config of a Trainer class.
@@ -77,3 +77,6 @@ TensorType = Any
 
 # Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
 TensorStructType = Union[TensorType, dict, tuple]
+
+# A shape of a tensor.
+TensorShape = Union[Tuple[int], List[int]]

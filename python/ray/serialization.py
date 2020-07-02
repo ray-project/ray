@@ -125,14 +125,13 @@ class SerializationContext:
             self.add_contained_object_id(obj)
             worker = ray.worker.global_worker
             worker.check_connected()
-            obj, owner_id, owner_address = (
+            obj, owner_address = (
                 worker.core_worker.serialize_and_promote_object_id(obj))
             obj = id_serializer(obj)
-            owner_id = id_serializer(owner_id) if owner_id else owner_id
-            return obj, owner_id, owner_address
+            return obj, owner_address
 
         def object_id_deserializer(serialized_obj):
-            obj_id, owner_id, owner_address = serialized_obj
+            obj_id, owner_address = serialized_obj
             # NOTE(swang): Must deserialize the object first before asking
             # the core worker to resolve the value. This is to make sure
             # that the ref count for the ObjectID is greater than 0 by the
@@ -142,7 +141,7 @@ class SerializationContext:
             # to 'self' here instead, but this function is itself pickled
             # somewhere, which causes an error.
             context = ray.worker.global_worker.get_serialization_context()
-            if owner_id:
+            if owner_address:
                 worker = ray.worker.global_worker
                 worker.check_connected()
                 # UniqueIDs are serialized as
@@ -153,7 +152,7 @@ class SerializationContext:
                 if outer_id is None:
                     outer_id = ray.ObjectID.nil()
                 worker.core_worker.deserialize_and_register_object_id(
-                    obj_id[1][0], outer_id, owner_id[1][0], owner_address)
+                    obj_id[1][0], outer_id, owner_address)
             return deserialized_object_id
 
         for id_type in ray._raylet._ID_TYPES:

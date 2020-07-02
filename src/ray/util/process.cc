@@ -17,6 +17,7 @@
 #ifdef _WIN32
 #include <process.h>
 #else
+#include <poll.h>
 #include <signal.h>
 #include <stddef.h>
 #include <sys/types.h>
@@ -133,15 +134,8 @@ class ProcessFD {
       int r = read(pipefds[0], &pid, sizeof(pid));
       (void)r;  // can't do much if this fails, so ignore return value
     }
-    if (decouple) {
-      fd = pipefds[0];  // grandchild, but we can use this to track its lifetime
-    } else {
-      fd = -1;  // direct child, so we can use the PID to track its lifetime
-      if (pipefds[0] != -1) {
-        close(pipefds[0]);
-        pipefds[0] = -1;
-      }
-    }
+    // Use pipe to track process lifetime. (The pipe closes when process terminates.)
+    fd = pipefds[0];
     if (pid == -1) {
       ec = std::error_code(errno, std::system_category());
     }
@@ -405,11 +399,29 @@ void Process::Kill() {
       HANDLE handle = fd != -1 ? reinterpret_cast<HANDLE>(fd) : NULL;
       if (!::TerminateProcess(handle, ERROR_PROCESS_ABORTED)) {
         error = std::error_code(GetLastError(), std::system_category());
+        if (error.value() == ERROR_ACCESS_DENIED) {
+          // This can occur in some situations if the process is already terminating.
+          DWORD exit_code;
+          if (GetExitCodeProcess(handle, &exit_code) && exit_code != STILL_ACTIVE) {
+            // The process is already terminating, so consider the killing successful.
+            error = std::error_code();
+          }
+        }
       }
 #else
-      (void)fd;
-      if (kill(pid, SIGKILL) != 0) {
+      pollfd pfd = {static_cast<int>(fd), POLLHUP};
+      if (fd != -1 && poll(&pfd, 1, 0) == 1 && (pfd.revents & POLLHUP)) {
+        // The process has already died; don't attempt to kill its PID again.
+      } else if (kill(pid, SIGKILL) != 0) {
         error = std::error_code(errno, std::system_category());
+      }
+      if (error.value() == ESRCH) {
+        // The process died before our kill().
+        // This is probably due to using FromPid().Kill() on a non-owned process.
+        // We got lucky here, because we could've killed a recycled PID.
+        // To avoid this, do not kill a process that is not owned by us.
+        // Instead, let its parent receive its SIGCHLD normally and call waitpid() on it.
+        // (Exception: Tests might occasionally trigger this, but that should be benign.)
       }
 #endif
       if (error) {

@@ -7,7 +7,7 @@ import os
 import pickle
 import time
 import tempfile
-from typing import Callable, List, Dict, Union, Any
+from typing import Callable, List, Dict, Union
 
 import ray
 from ray.exceptions import RayError
@@ -35,7 +35,7 @@ from ray.tune.resources import Resources
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -439,7 +439,7 @@ class Trainer(Trainable):
 
         # User provided config (this is w/o the default Trainer's
         # `COMMON_CONFIG` (see above)). Will get merged with COMMON_CONFIG
-        # in self._setup().
+        # in self.setup().
         config = config or {}
 
         # Vars to synchronize to workers on each train call
@@ -550,14 +550,14 @@ class Trainer(Trainable):
                 workers.local_worker().filters))
 
     @override(Trainable)
-    def _log_result(self, result: ResultDict):
+    def log_result(self, result: ResultDict):
         self.callbacks.on_train_result(trainer=self, result=result)
         # log after the callback is invoked, so that the user has a chance
         # to mutate the result
-        Trainable._log_result(self, result)
+        Trainable.log_result(self, result)
 
     @override(Trainable)
-    def _setup(self, config: PartialTrainerConfigDict):
+    def setup(self, config: PartialTrainerConfigDict):
         env = self._env_id
         if env:
             config["env"] = env
@@ -595,12 +595,12 @@ class Trainer(Trainable):
             self.config.pop("eager")
 
         # Enable eager/tracing support.
-        if tf and self.config["framework"] == "tfe":
-            if not tf.executing_eagerly():
-                tf.enable_eager_execution()
+        if tf1 and self.config["framework"] == "tfe":
+            if not tf1.executing_eagerly():
+                tf1.enable_eager_execution()
             logger.info("Executing eagerly, with eager_tracing={}".format(
                 self.config["eager_tracing"]))
-        if tf and not tf.executing_eagerly() and \
+        if tf1 and not tf1.executing_eagerly() and \
                 self.config["framework"] != "torch":
             logger.info("Tip: set framework=tfe or the --eager flag to enable "
                         "TensorFlow eager execution")
@@ -634,8 +634,8 @@ class Trainer(Trainable):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
         def get_scope():
-            if tf and not tf.executing_eagerly():
-                return tf.Graph().as_default()
+            if tf1 and not tf1.executing_eagerly():
+                return tf1.Graph().as_default()
             else:
                 return open(os.devnull)  # fake a no-op scope
 
@@ -665,14 +665,14 @@ class Trainer(Trainable):
                 self.evaluation_metrics = {}
 
     @override(Trainable)
-    def _stop(self):
+    def cleanup(self):
         if hasattr(self, "workers"):
             self.workers.stop()
         if hasattr(self, "optimizer") and self.optimizer:
             self.optimizer.stop()
 
     @override(Trainable)
-    def _save(self, checkpoint_dir: str) -> str:
+    def save_checkpoint(self, checkpoint_dir: str) -> str:
         checkpoint_path = os.path.join(checkpoint_dir,
                                        "checkpoint-{}".format(self.iteration))
         pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
@@ -680,7 +680,7 @@ class Trainer(Trainable):
         return checkpoint_path
 
     @override(Trainable)
-    def _restore(self, checkpoint_path: str):
+    def load_checkpoint(self, checkpoint_path: str):
         extra_data = pickle.load(open(checkpoint_path, "rb"))
         self.__setstate__(extra_data)
 
@@ -701,9 +701,6 @@ class Trainer(Trainable):
             config (dict): The Trainer's config.
             num_workers (int): Number of remote rollout workers to create.
                 0 for local only.
-            remote_config_updates (Optional[List[dict]]): A list of config
-                dicts to update `config` with for each Worker (len must be
-                same as `num_workers`).
 
         Returns:
             WorkerSet: The created WorkerSet.
@@ -778,9 +775,9 @@ class Trainer(Trainable):
     @PublicAPI
     def compute_action(self,
                        observation: TensorStructType,
-                       state: List[Any] = None,
+                       state: List[TensorStructType] = None,
                        prev_action: TensorStructType = None,
-                       prev_reward: int = None,
+                       prev_reward: float = None,
                        info: EnvInfoDict = None,
                        policy_id: PolicyID = DEFAULT_POLICY_ID,
                        full_fetch: bool = False,
@@ -791,16 +788,17 @@ class Trainer(Trainable):
         self.get_policy(policy_id) and call compute_actions() on it directly.
 
         Arguments:
-            observation (obj): observation from the environment.
-            state (list): RNN hidden state, if any. If state is not None,
-                then all of compute_single_action(...) is returned
+            observation (TensorStructType): observation from the environment.
+            state (List[TensorStructType]): RNN hidden state, if any. If state
+                is not None, then all of compute_single_action(...) is returned
                 (computed action, rnn state(s), logits dictionary).
                 Otherwise compute_single_action(...)[0] is returned
                 (computed action).
-            prev_action (obj): previous action value, if any
-            prev_reward (int): previous reward, if any
-            info (dict): info object, if any
-            policy_id (str): Policy to query (only applies to multi-agent).
+            prev_action (TensorStructType): Previous action value, if any.
+            prev_reward (float): Previous reward, if any.
+            info (EnvInfoDict): info object, if any
+            policy_id (PolicyID): Policy to query (only applies to
+                multi-agent).
             full_fetch (bool): Whether to return extra action fetch results.
                 This is always set to True if RNN state is specified.
             explore (bool): Whether to pick an exploitation or exploration

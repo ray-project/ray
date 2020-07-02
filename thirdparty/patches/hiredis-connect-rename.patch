@@ -1,6 +1,6 @@
-diff --git deps/hiredis/test.c deps/hiredis/test.c
---- deps/hiredis/test.c
-+++ deps/hiredis/test.c
+diff --git test.c test.c
+--- test.c
++++ test.c
 @@ -94,1 +94,1 @@
 -static redisContext *connect(struct config config) {
 +static redisContext *connect_(struct config config) {

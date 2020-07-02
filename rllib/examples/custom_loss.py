@@ -21,7 +21,7 @@ from ray.rllib.examples.models.custom_loss_model import CustomLossModel, \
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--torch", action="store_true")

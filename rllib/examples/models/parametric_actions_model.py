@@ -9,7 +9,7 @@ from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import LARGE_INTEGER
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 
@@ -56,7 +56,7 @@ class ParametricActionsModel(DistributionalQTFModel):
         action_logits = tf.reduce_sum(avail_actions * intent_vector, axis=2)
 
         # Mask out invalid actions (use tf.float32.min for stability)
-        inf_mask = tf.maximum(tf.log(action_mask), tf.float32.min)
+        inf_mask = tf.maximum(tf.math.log(action_mask), tf.float32.min)
         return action_logits + inf_mask, state
 
     def value_function(self):

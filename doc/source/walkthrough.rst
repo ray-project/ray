@@ -32,7 +32,7 @@ You can start Ray on a single machine by adding this to your python script.
 
 Ray will then be able to utilize all cores of your machine. Find out how to configure the number of cores Ray will use at :ref:`configuring-ray`.
 
-To start a multi-node Ray cluster, see the `cluster setup page <using-ray-on-a-cluster.html>`__.
+To start a multi-node Ray cluster, see the :ref:`cluster setup page <cluster-index>`.
 
 .. _ray-remote-functions:
 

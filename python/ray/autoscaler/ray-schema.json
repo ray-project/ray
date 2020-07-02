@@ -139,6 +139,10 @@
                 "project_id": {
                     "type": ["string", "null"],
                     "description": "GCP globally unique project id"
+                },
+                "gcp_credentials": {
+                    "type": "string",
+                    "description": "JSON string constituting GCP credentials"
                 }
             }
         },
@@ -237,6 +241,24 @@
         },
         "no_restart": {
             "description": "Whether to avoid restarting the cluster during updates. This field is controlled by the ray --no-restart flag and cannot be set by the user."
+        },
+        "available_instance_types": {
+            "type": "object",
+            "description": "A list of instance types available for launching with 'auto' worker type.",
+            "patternProperties": {
+                ".*": {
+                    "type": "object",
+                    "properties": {
+                       "max_workers": {"type": "integer"},
+                       "resources": {
+                           "type": "object",
+                           ".*": {"type": "number"}
+                       }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
         }
     }
 }
