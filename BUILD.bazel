@@ -960,6 +960,7 @@ cc_library(
     ],
     copts = COPTS,
     deps = [
+        ":core_worker_lib",
         ":gcs",
         ":gcs_service_rpc",
     ],
@@ -1006,7 +1007,6 @@ cc_test(
     ],
     copts = COPTS,
     deps = [
-        ":core_worker_lib",
         ":gcs_server_lib",
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
