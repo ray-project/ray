@@ -16,9 +16,8 @@
 
 namespace ray {
 
-OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(boost::asio::io_service &io_service,
-                                                             std::shared_ptr<gcs::GcsClient> &gcs_client)
-    : io_service_(io_service), gcs_client_(gcs_client) {}
+OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(boost::asio::io_service &io_service)
+    : io_service_(io_service) {}
 
 ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
     const ObjectID &object_id, const ClientID &client_id,

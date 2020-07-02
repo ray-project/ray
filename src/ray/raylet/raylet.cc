@@ -63,7 +63,7 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
     : self_node_id_(ClientID::FromRandom()),
       gcs_client_(gcs_client),
       object_directory_(RayConfig::instance().ownership_based_object_directory_enabled()
-        ? std::dynamic_pointer_cast<ObjectDirectoryInterface>(std::make_shared<OwnershipBasedObjectDirectory>(main_service, gcs_client_))
+        ? std::dynamic_pointer_cast<ObjectDirectoryInterface>(std::make_shared<OwnershipBasedObjectDirectory>(main_service))
         : std::dynamic_pointer_cast<ObjectDirectoryInterface>(std::make_shared<ObjectDirectory>(main_service, gcs_client_))),
       object_manager_(main_service, self_node_id_, object_manager_config,
                       object_directory_),
