@@ -787,14 +787,15 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetInternalConfig(
   client_impl_->GetGcsRpcClient().GetInternalConfig(
       request,
       [callback](const Status &status, const rpc::GetInternalConfigReply &reply) {
-        std::unordered_map<std::string, std::string> result;
         if (status.ok() && reply.has_config()) {
-          result = MapFromProtobuf(reply.config().config());
-        }
-        if (!status.ok()) {
+          RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config().DebugString();
+          callback(status,
+                   std::unordered_map<std::string, std::string>(
+                       reply.config().config().begin(), reply.config().config().end()));
+        } else {
           RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
+          callback(status, boost::none);
         }
-        callback(status, result);
       });
   return Status::OK();
 }
