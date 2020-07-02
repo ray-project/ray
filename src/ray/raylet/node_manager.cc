@@ -1842,6 +1842,36 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   SubmitTask(task, Lineage());
 }
 
+void NodeManager::HandleRequestResourceReserve(
+      const rpc::RequestResourceReserveRequest &request,
+    rpc::RequestResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  // rpc::Bundle bundle_spec;
+  auto bundle_spec = BundleSpecification(request.bundle_spec());
+  RAY_LOG(DEBUG) << "bundle lease request " << bundle_spec.BundleId();
+  auto resource_ids = ScheduleBundle(cluster_resource_map_, bundle_spec);
+  if (resource_ids.AvailableResources().size() == 0) {
+    send_reply_callback(Status::OutOfMemory("reserve resource failed"), nullptr, nullptr);
+  } else {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+  return;
+  }
+
+void NodeManager::HandleCancelResourceReturn(
+    const rpc::CancelResourceReturnRequest &request,
+    rpc::CancelResourceReturnReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  auto bundle_spec = BundleSpecification(request.bundle_spec());
+  RAY_LOG(DEBUG) << "bundle return resource request " << bundle_spec.BundleId();
+  auto bundle_id = bundle_spec.BundleId();
+  auto resource_set = bundle_spec.GetRequiredResources();
+  for (auto resource : ResourceIdSet(resource_set).AvailableResources()) {
+    std::string resource_name = bundle_id.Binary() + "_" + resource.first;
+    local_available_resources_.ReturnBundleReousce(resource_name);
+  }
+  cluster_resource_map_[self_node_id_].ReturnBundleResource(bundle_id.Binary());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                                      rpc::ReturnWorkerReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
@@ -1963,6 +1993,32 @@ void NodeManager::ProcessSetResourceRequest(
     data_map.emplace(resource_name, resource_table_data);
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncUpdateResources(node_id, data_map, nullptr));
   }
+}
+
+ResourceIdSet NodeManager::ScheduleBundle(
+    std::unordered_map<ClientID, SchedulingResources> &resource_map,
+    const BundleSpecification &bundle_spec) {
+  // If the resource map contains the local raylet, update load before calling policy.
+  if (resource_map.count(self_node_id_) > 0) {
+    resource_map[self_node_id_].SetLoadResources(local_queues_.GetResourceLoad());
+  }
+  // Invoke the scheduling policy.
+  auto reserve_resource_success =
+      scheduling_policy_.ScheduleBundle(resource_map, self_node_id_, bundle_spec);
+  auto bundle_id = bundle_spec.BundleId();
+  ResourceIdSet acquired_resources;
+  if (reserve_resource_success) {
+    acquired_resources =
+        local_available_resources_.Acquire(bundle_spec.GetRequiredResources());
+    for (auto resource : acquired_resources.AvailableResources()) {
+      std::string resource_name = bundle_id.Binary() + "_" + resource.first;
+      local_available_resources_.AddBundleResource(resource_name, resource.second);
+    }
+    cluster_resource_map_[self_node_id_].Acquire(bundle_spec.GetRequiredResources());
+    cluster_resource_map_[self_node_id_].UpdateBundleResource(
+        bundle_id.Binary(), bundle_spec.GetRequiredResources());
+  }
+  return acquired_resources;
 }
 
 void NodeManager::ScheduleTasks(

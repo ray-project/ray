@@ -126,6 +126,7 @@ template class GcsTableWithJobId<TaskID, TaskTableData>;
 template class GcsTableWithJobId<TaskID, TaskLeaseData>;
 template class GcsTableWithJobId<TaskID, TaskReconstructionData>;
 template class GcsTableWithJobId<ObjectID, ObjectTableDataList>;
+template class GcsTable<PlacementGroupID, ScheduleData>;
 
 }  // namespace gcs
 }  // namespace ray

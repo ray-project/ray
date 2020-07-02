@@ -446,3 +446,11 @@ message CreateActorRequest {
 message CreateActorReply {
   GcsStatus status = 1;
 }
+
+message CreatePlacementGroupRequest {
+  PlacementGroupSpec placement_group_spec = 1;
+}
+
+message CreatePlacementGroupReply {
+  GcsStatus status = 1;
+}
