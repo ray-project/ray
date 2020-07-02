@@ -774,7 +774,8 @@ Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        const ObjectID &object_id, bool pin_object) {
   bool object_exists;
-  if (options_.is_local_mode || static_cast<int64_t>(object.GetSize()) < RayConfig::instance().max_direct_call_object_size()) {
+  if (options_.is_local_mode || (RayConfig::instance().put_small_object_in_memory_store() &&
+      static_cast<int64_t>(object.GetSize()) < RayConfig::instance().max_direct_call_object_size())) {
     RAY_LOG(DEBUG) << "Put " << object_id << " in memory store";
     RAY_CHECK(memory_store_->Put(object, object_id));
     return Status::OK();
