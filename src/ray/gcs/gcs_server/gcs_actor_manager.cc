@@ -534,7 +534,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   // happen if the owner of the actor dies while there are still callers.
   // TODO(swang): We can skip this step and delete the actor table entry
   // entirely if the callers check directly whether the owner is still alive.
-  actor->UpdateAddress(rpc::Address());
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
   auto actor_table_data =
@@ -542,10 +541,11 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   // The backend storage is reliable in the future, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor->GetActorID(), *actor_table_data,
-      [this, actor_id, actor_table_data](Status status) {
+      [this, actor, actor_id, actor_table_data](Status status) {
         RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
                                            actor_table_data->SerializeAsString(),
                                            nullptr));
+        actor->UpdateAddress(rpc::Address());
       }));
 }
 
@@ -626,7 +626,6 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   RAY_CHECK(actor != nullptr);
   auto node_id = actor->GetNodeID();
   auto worker_id = actor->GetWorkerID();
-  actor->UpdateAddress(rpc::Address());
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   // If the need_reschedule is set to false, then set the `remaining_restarts` to 0
   // so that the actor will never be rescheduled.
@@ -655,6 +654,8 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
               ACTOR_CHANNEL, actor_id.Hex(),
               mutable_actor_table_data->SerializeAsString(), nullptr));
         }));
+    // Empty address so that we can avoid scheduler schedules at the same address.
+    actor->UpdateAddress(rpc::Address());
     gcs_actor_scheduler_->Schedule(actor);
   } else {
     // For detached actors, make sure to remove its name.
@@ -677,6 +678,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
           RAY_CHECK_OK(gcs_pub_sub_->Publish(
               ACTOR_CHANNEL, actor_id.Hex(),
               mutable_actor_table_data->SerializeAsString(), nullptr));
+          actor->UpdateAddress(rpc::Address());
         }));
     // The actor is dead, but we should not remove the entry from the
     // registered actors yet. If the actor is owned, we will destroy the actor
