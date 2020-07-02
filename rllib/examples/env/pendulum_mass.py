@@ -2,7 +2,6 @@ import numpy as np
 import gym
 from gym.envs.classic_control.pendulum import PendulumEnv
 from ray.rllib.env.meta_env import MetaEnv
-from ray.rllib.utils.annotations import override
 
 
 class PendulumMassEnv(PendulumEnv, gym.utils.EzPickle, MetaEnv):
@@ -11,12 +10,10 @@ class PendulumMassEnv(PendulumEnv, gym.utils.EzPickle, MetaEnv):
     Tasks are defined to be weight uniformly sampled between [0.5,2]
     """
 
-    @override(MetaEnv)
     def sample_tasks(self, n_tasks):
         # Mass is a random float between 0.5 and 2
         return np.random.uniform(low=0.5, high=2.0, size=(n_tasks, ))
 
-    @override(MetaEnv)
     def set_task(self, task):
         """
         Args:
@@ -24,7 +21,6 @@ class PendulumMassEnv(PendulumEnv, gym.utils.EzPickle, MetaEnv):
         """
         self.m = task
 
-    @override(MetaEnv)
     def get_task(self):
         """
         Returns:

@@ -2,7 +2,6 @@ import numpy as np
 import gym
 from gym.envs.mujoco.mujoco_env import MujocoEnv
 from ray.rllib.env.meta_env import MetaEnv
-from ray.rllib.utils.annotations import override
 
 
 class AntRandGoalEnv(gym.utils.EzPickle, MujocoEnv, MetaEnv):
@@ -16,14 +15,12 @@ class AntRandGoalEnv(gym.utils.EzPickle, MujocoEnv, MetaEnv):
         MujocoEnv.__init__(self, "ant.xml", 5)
         gym.utils.EzPickle.__init__(self)
 
-    @override(MetaEnv)
     def sample_tasks(self, n_tasks):
         # Samples a goal position (2x1 position ector)
         a = np.random.random(n_tasks) * 2 * np.pi
         r = 3 * np.random.random(n_tasks)**0.5
         return np.stack((r * np.cos(a), r * np.sin(a)), axis=-1)
 
-    @override(MetaEnv)
     def set_task(self, task):
         """
         Args:
@@ -31,7 +28,6 @@ class AntRandGoalEnv(gym.utils.EzPickle, MujocoEnv, MetaEnv):
         """
         self.goal_pos = task
 
-    @override(MetaEnv)
     def get_task(self):
         """
         Returns:

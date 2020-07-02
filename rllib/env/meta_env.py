@@ -1,14 +1,16 @@
 import gym
-from typing import List
+from typing import List, Any
+
+TaskType = Any  # Can be different types depending on env, e.g., int or dict
 
 
 class MetaEnv(gym.Env):
     """
-    Extension of gym.Env to define a distribution of tasks to meta-learn over. 
+    Extension of gym.Env to define a distribution of tasks to meta-learn over.
     Your env must implement this interface in order to be used with MAML.
     """
 
-    def sample_tasks(self, n_tasks):
+    def sample_tasks(self, n_tasks: int) -> List[TaskType]:
         """Samples task of the meta-environment
 
         Args:
@@ -19,7 +21,7 @@ class MetaEnv(gym.Env):
         """
         raise NotImplementedError
 
-    def set_task(self, task):
+    def set_task(self, task: TaskType) -> None:
         """Sets the specified task to the current environment
 
         Args:
@@ -27,7 +29,7 @@ class MetaEnv(gym.Env):
         """
         raise NotImplementedError
 
-    def get_task(self):
+    def get_task(self) -> TaskType:
         """Gets the task that the agent is performing in the current environment
 
         Returns:
