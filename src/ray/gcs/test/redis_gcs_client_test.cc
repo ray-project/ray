@@ -306,7 +306,7 @@ class TaskTableTestHelper {
                                        std::shared_ptr<gcs::RedisGcsClient> client) {
     // Add a table entry.
     const auto task_id = RandomTaskId();
-    const uint64_t num_modifications = 3;
+    uint64_t num_modifications = 3;
     const auto data = CreateTaskTableData(task_id, 0);
     RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id, data, nullptr));
 
@@ -1332,7 +1332,7 @@ class HashTableTestHelper {
  public:
   static void TestHashTable(const JobID &job_id,
                             std::shared_ptr<gcs::RedisGcsClient> client) {
-    const uint64_t expected_count = 14;
+    uint64_t expected_count = 14;
     ClientID client_id = ClientID::FromRandom();
     // Prepare the first resource map: data_map1.
     DynamicResourceTable::DataMap data_map1;
