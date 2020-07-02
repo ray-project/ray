@@ -743,12 +743,16 @@ const ResourceSet &SchedulingResources::GetTotalResources() const {
   return resources_total_;
 }
 
-void SchedulingResources::SetLoadResources(ResourceSet &&newset) {
-  resources_load_ = newset;
+void SchedulingResources::SetTotalResources(ResourceSet &&newset) {
+  resources_total_ = newset;
 }
 
 const ResourceSet &SchedulingResources::GetLoadResources() const {
   return resources_load_;
+}
+
+void SchedulingResources::SetLoadResources(ResourceSet &&newset) {
+  resources_load_ = newset;
 }
 
 // Return specified resources back to SchedulingResources.
