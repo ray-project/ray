@@ -16,7 +16,7 @@
 
 #include <string.h>
 
-#include "arrow/util/logging.h"
+#include "ray/util/logging.h"
 
 #ifdef _WIN32
 #include <ws2tcpip.h>  // socklen_t
@@ -71,7 +71,7 @@ int send_fd(int conn, int fd) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
         continue;
       } else if (errno == EMSGSIZE) {
-        ARROW_LOG(WARNING) << "Failed to send file descriptor"
+        RAY_LOG(WARNING) << "Failed to send file descriptor"
                            << " (errno = EMSGSIZE), retrying.";
         // If we failed to send the file descriptor, loop until we have sent it
         // successfully. TODO(rkn): This is problematic for two reasons. First
@@ -81,14 +81,14 @@ int send_fd(int conn, int fd) {
         // plasma store event loop which should never happen.
         continue;
       } else {
-        ARROW_LOG(INFO) << "Error in send_fd (errno = " << errno << ")";
+        RAY_LOG(INFO) << "Error in send_fd (errno = " << errno << ")";
         return static_cast<int>(r);
       }
     } else if (r == 0) {
-      ARROW_LOG(INFO) << "Encountered unexpected EOF";
+      RAY_LOG(INFO) << "Encountered unexpected EOF";
       return 0;
     } else {
-      ARROW_CHECK(r > 0);
+      RAY_CHECK(r > 0);
       return static_cast<int>(r);
     }
   }
@@ -111,7 +111,7 @@ int recv_fd(int conn) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
         continue;
       } else {
-        ARROW_LOG(INFO) << "Error in recv_fd (errno = " << errno << ")";
+        RAY_LOG(INFO) << "Error in recv_fd (errno = " << errno << ")";
         return -1;
       }
     } else {

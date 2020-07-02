@@ -141,6 +141,7 @@ test_python() {
       -python/ray/tests:test_object_manager
       -python/ray/tests:test_projects
       -python/ray/tests:test_queue  # timeout
+      -python/ray/tests:test_ray_init  # flaky
       -python/ray/tests:test_reconstruction  # UnreconstructableError
       -python/ray/tests:test_stress
       -python/ray/tests:test_stress_sharded

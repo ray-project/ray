@@ -225,8 +225,8 @@ int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
   RayFunction func{Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                          "GetWorkerPid", "", "", "")};
 
-  RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id, func, args,
-                                                                  options, &return_ids));
+  CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id, func, args, options,
+                                                     &return_ids);
 
   std::vector<std::shared_ptr<ray::RayObject>> results;
   RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().Get(return_ids, -1, &results));
@@ -306,7 +306,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
       RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                   "MergeInputArgsAsOutput", "", "", ""));
 
-      RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
+      driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
       ASSERT_EQ(return_ids.size(), 1);
       ASSERT_TRUE(return_ids[0].IsReturnObject());
 
@@ -348,8 +348,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
     std::vector<ObjectID> return_ids;
     RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "MergeInputArgsAsOutput", "", "", ""));
-    auto status = driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
-    ASSERT_TRUE(status.ok());
+    driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
 
     ASSERT_EQ(return_ids.size(), 1);
 
@@ -412,7 +411,7 @@ void CoreWorkerTest::TestActorRestart(
       RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                   "MergeInputArgsAsOutput", "", "", ""));
 
-      RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
+      driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
       ASSERT_EQ(return_ids.size(), 1);
       // Verify if it's expected data.
       std::vector<std::shared_ptr<RayObject>> results;
@@ -455,7 +454,7 @@ void CoreWorkerTest::TestActorFailure(
       RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                   "MergeInputArgsAsOutput", "", "", ""));
 
-      RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
+      driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
 
       ASSERT_EQ(return_ids.size(), 1);
       all_results.emplace_back(std::make_pair(return_ids[0], buffer1));
@@ -606,7 +605,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
     RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "MergeInputArgsAsOutput", "", "", ""));
 
-    RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
+    driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
     ASSERT_EQ(return_ids.size(), 1);
     object_ids.emplace_back(return_ids[0]);
   }
@@ -896,7 +895,7 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodesFailure) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 9);
+  RAY_CHECK(argc == 8);
   ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);
   ray::TEST_RAYLET_EXEC_PATH = std::string(argv[2]);
 
@@ -905,12 +904,11 @@ int main(int argc, char **argv) {
   std::uniform_int_distribution<int> random_gen{2000, 2009};
   // Use random port to avoid port conflicts between UTs.
   node_manager_port = random_gen(gen);
-  ray::TEST_RAYLET_MONITOR_EXEC_PATH = std::string(argv[3]);
-  ray::TEST_MOCK_WORKER_EXEC_PATH = std::string(argv[4]);
-  ray::TEST_GCS_SERVER_EXEC_PATH = std::string(argv[5]);
+  ray::TEST_MOCK_WORKER_EXEC_PATH = std::string(argv[3]);
+  ray::TEST_GCS_SERVER_EXEC_PATH = std::string(argv[4]);
 
-  ray::TEST_REDIS_CLIENT_EXEC_PATH = std::string(argv[6]);
-  ray::TEST_REDIS_SERVER_EXEC_PATH = std::string(argv[7]);
-  ray::TEST_REDIS_MODULE_LIBRARY_PATH = std::string(argv[8]);
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = std::string(argv[5]);
+  ray::TEST_REDIS_SERVER_EXEC_PATH = std::string(argv[6]);
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = std::string(argv[7]);
   return RUN_ALL_TESTS();
 }

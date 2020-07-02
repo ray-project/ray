@@ -185,7 +185,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
             local_resources.GetTotalResources().GetResourceMap()));
   }
 
-  RAY_ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
+  RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
   node_manager_server_.Run();
@@ -1619,7 +1619,6 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
     worker->SetOwnerAddress(spec.CallerAddress());
     if (spec.IsActorCreationTask()) {
       // The actor belongs to this worker now.
-      worker->AssignActorId(spec.ActorCreationId());
       worker->SetLifetimeAllocatedInstances(allocated_instances);
     } else {
       worker->SetAllocatedInstances(allocated_instances);
@@ -2160,8 +2159,8 @@ void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
                                       const JobID &job_id) {
   const std::string meta = std::to_string(static_cast<int>(error_type));
   for (const auto &object_id : objects_to_fail) {
-    arrow::Status status = store_client_.CreateAndSeal(object_id, "", meta);
-    if (!status.ok() && !plasma::IsPlasmaObjectExists(status)) {
+    Status status = store_client_.CreateAndSeal(object_id, "", meta);
+    if (!status.ok() && !status.IsObjectExists()) {
       // If we failed to save the error code, log a warning and push an error message
       // to the driver.
       std::ostringstream stream;
@@ -3460,6 +3459,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
     // an `AsyncGet` instead.
     if (!store_client_.Get(object_ids, /*timeout_ms=*/0, &plasma_results).ok()) {
       RAY_LOG(WARNING) << "Failed to get objects to be pinned from object store.";
+      // TODO(suquark): Maybe "Status::ObjectNotFound" is more accurate here.
       send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
       return;
     }

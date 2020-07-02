@@ -7,7 +7,7 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
     framework_iterator
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 class TestDQN(unittest.TestCase):

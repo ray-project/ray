@@ -5,7 +5,7 @@
 """
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 class MultiHeadAttention(tf.keras.layers.Layer):
@@ -47,5 +47,6 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         wmat = tf.nn.softmax(masked_score, axis=2)
 
         out = tf.einsum("bijh,bjhd->bihd", wmat, values)
-        out = tf.reshape(out, tf.concat((tf.shape(out)[:2], [H * D]), axis=0))
+        shape = tf.concat([tf.shape(out)[:2], [H * D]], axis=0)
+        out = tf.reshape(out, shape)
         return self._linear_layer(out)

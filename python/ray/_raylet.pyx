@@ -82,7 +82,8 @@ from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
 import ray
-from ray.async_compat import (sync_to_async, AsyncGetResponse)
+from ray.async_compat import (
+    sync_to_async, AsyncGetResponse, get_new_event_loop)
 import ray.memory_monitor as memory_monitor
 import ray.ray_constants as ray_constants
 from ray import profiling
@@ -109,7 +110,8 @@ include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
 
-# Expose GCC & Clang macro to report whether C++ optimizations were enabled during compilation.
+# Expose GCC & Clang macro to report whether C++ optimizations were enabled
+# during compilation.
 OPTIMIZED = __OPTIMIZE__
 
 logger = logging.getLogger(__name__)
@@ -307,6 +309,19 @@ cdef prepare_args(
                         core_worker.put_serialized_object(serialized_arg)))))
 
 
+def switch_worker_log_if_needed(worker, next_job_id):
+    if worker.mode != ray.WORKER_MODE:
+        return
+    if (worker.current_logging_job_id is None) or \
+            (worker.current_logging_job_id != next_job_id):
+        job_stdout_path, job_stderr_path = (
+            worker.node.get_job_redirected_log_file(
+                worker.worker_id, next_job_id.binary())
+        )
+        ray.worker.set_log_file(job_stdout_path, job_stderr_path)
+        worker.current_logging_job_id = next_job_id
+
+
 cdef execute_task(
         CTaskType task_type,
         const CRayFunction &ray_function,
@@ -443,6 +458,7 @@ cdef execute_task(
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
                 try:
+                    switch_worker_log_if_needed(worker, job_id)
                     with ray.worker._changeproctitle(title, next_title):
                         outputs = function_executor(*args, **kwargs)
                     task_exception = False
@@ -470,10 +486,10 @@ cdef execute_task(
             if isinstance(error, RayTaskError):
                 # Avoid recursive nesting of RayTaskError.
                 failure_object = RayTaskError(function_name, backtrace,
-                                              error.cause_cls, proctitle=title)
+                                              error.cause, proctitle=title)
             else:
                 failure_object = RayTaskError(function_name, backtrace,
-                                              error.__class__, proctitle=title)
+                                              error, proctitle=title)
             errors = []
             for _ in range(c_return_ids.size()):
                 errors.append(failure_object)
@@ -953,11 +969,10 @@ cdef class CoreWorker:
             prepare_args(self, language, args, &args_vector)
 
             with nogil:
-                check_status(
-                    CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
-                        c_actor_id,
-                        ray_function,
-                        args_vector, task_options, &return_ids))
+                CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
+                    c_actor_id,
+                    ray_function,
+                    args_vector, task_options, &return_ids)
 
             return VectorToObjectIDs(return_ids)
 
@@ -1098,24 +1113,20 @@ cdef class CoreWorker:
     def serialize_and_promote_object_id(self, ObjectID object_id):
         cdef:
             CObjectID c_object_id = object_id.native()
-            CTaskID c_owner_id = CTaskID.Nil()
             CAddress c_owner_address = CAddress()
         CCoreWorkerProcess.GetCoreWorker().PromoteToPlasmaAndGetOwnershipInfo(
-                c_object_id, &c_owner_id, &c_owner_address)
+                c_object_id, &c_owner_address)
         return (object_id,
-                TaskID(c_owner_id.Binary()),
                 c_owner_address.SerializeAsString())
 
     def deserialize_and_register_object_id(
             self, const c_string &object_id_binary, ObjectID outer_object_id,
-            const c_string &owner_id_binary,
             const c_string &serialized_owner_address):
         cdef:
             CObjectID c_object_id = CObjectID.FromBinary(object_id_binary)
             CObjectID c_outer_object_id = (outer_object_id.native() if
                                            outer_object_id else
                                            CObjectID.Nil())
-            CTaskID c_owner_id = CTaskID.FromBinary(owner_id_binary)
             CAddress c_owner_address = CAddress()
 
         c_owner_address.ParseFromString(serialized_owner_address)
@@ -1123,7 +1134,6 @@ cdef class CoreWorker:
             .RegisterOwnershipInfoAndResolveFuture(
                 c_object_id,
                 c_outer_object_id,
-                c_owner_id,
                 c_owner_address))
 
     cdef store_task_outputs(
@@ -1178,7 +1188,7 @@ cdef class CoreWorker:
 
     def create_or_get_event_loop(self):
         if self.async_event_loop is None:
-            self.async_event_loop = asyncio.new_event_loop()
+            self.async_event_loop = get_new_event_loop()
             asyncio.set_event_loop(self.async_event_loop)
             # Initialize the async plasma connection.
             # Delayed import due to async_api depends on _raylet.

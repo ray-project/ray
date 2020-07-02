@@ -119,6 +119,18 @@ def init(name=None,
 
 
 @_ensure_connected
+def shutdown():
+    """Completely shut down the connected Serve instance.
+
+    Shuts down all processes and deletes all state associated with the Serve
+    instance that's currently connected to (via serve.init).
+    """
+    global master_actor
+    ray.get(master_actor.shutdown.remote())
+    ray.kill(master_actor, no_restart=True)
+    master_actor = None
+
+
 def create_endpoint(endpoint_name,
                     *,
                     backend=None,
@@ -192,6 +204,17 @@ def update_backend_config(backend_tag, config_options):
     Args:
         backend_tag(str): A registered backend.
         config_options(dict): Backend config options to update.
+            Supported options:
+                - "num_replicas": number of worker processes to start up that \
+                        will handle requests to this backend.
+                - "max_batch_size": the maximum number of requests that will \
+                        be processed in one batch by this backend.
+                - "batch_wait_timeout": time in seconds that backend replicas \
+                        will wait for a full batch of requests before \
+                        processing a partial batch.
+                - "max_concurrent_queries": the maximum number of queries \
+                        that will be sent to a replica of this backend \
+                        without receiving a response.
     """
     if not isinstance(config_options, dict):
         raise ValueError("config_options must be a dictionary.")
@@ -227,7 +250,18 @@ def create_backend(backend_tag,
             initialization method.
         ray_actor_options (optional): options to be passed into the
             @ray.remote decorator for the backend actor.
-        config: (optional) configuration options for this backend.
+        config (optional): configuration options for this backend.
+            Supported options:
+                - "num_replicas": number of worker processes to start up that \
+                        will handle requests to this backend.
+                - "max_batch_size": the maximum number of requests that will \
+                        be processed in one batch by this backend.
+                - "batch_wait_timeout": time in seconds that backend replicas \
+                        will wait for a full batch of requests before \
+                        processing a partial batch.
+                - "max_concurrent_queries": the maximum number of queries \
+                        that will be sent to a replica of this backend \
+                        without receiving a response.
     """
     if config is None:
         config = {}
@@ -281,6 +315,31 @@ def set_traffic(endpoint_name, traffic_policy_dictionary):
     ray.get(
         master_actor.set_traffic.remote(endpoint_name,
                                         traffic_policy_dictionary))
+
+
+@_ensure_connected
+def shadow_traffic(endpoint_name, backend_tag, proportion):
+    """Shadow traffic from an endpoint to a backend.
+
+    The specified proportion of requests will be duplicated and sent to the
+    backend. Responses of the duplicated traffic will be ignored.
+    The backend must not already be in use.
+
+    To stop shadowing traffic to a backend, call `shadow_traffic` with
+    proportion equal to 0.
+
+    Args:
+        endpoint_name (str): A registered service endpoint.
+        backend_tag (str): A registered backend.
+        proportion (float): The proportion of traffic from 0 to 1.
+    """
+
+    if not isinstance(proportion, (float, int)) or not 0 <= proportion <= 1:
+        raise TypeError("proportion must be a float from 0 to 1.")
+
+    ray.get(
+        master_actor.shadow_traffic.remote(endpoint_name, backend_tag,
+                                           proportion))
 
 
 @_ensure_connected

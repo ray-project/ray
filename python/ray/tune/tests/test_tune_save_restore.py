@@ -19,20 +19,20 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
     class MockTrainable(Trainable):
         _name = "MockTrainable"
 
-        def _setup(self, config):
+        def setup(self, config):
             self.state = {"hi": 1}
 
-        def _train(self):
+        def step(self):
             return {"timesteps_this_iter": 1, "done": True}
 
-        def _save(self, checkpoint_dir):
+        def save_checkpoint(self, checkpoint_dir):
             checkpoint_path = os.path.join(
                 checkpoint_dir, "checkpoint-{}".format(self._iteration))
             with open(checkpoint_path, "wb") as f:
                 pickle.dump(self.state, f)
             return checkpoint_path
 
-        def _restore(self, checkpoint_path):
+        def load_checkpoint(self, checkpoint_path):
             with open(checkpoint_path, "rb") as f:
                 extra_data = pickle.load(f)
             self.state.update(extra_data)
@@ -154,18 +154,18 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         """Tests that passing the checkpoint_dir right back works."""
 
         class MockTrainable(Trainable):
-            def _setup(self, config):
+            def setup(self, config):
                 pass
 
-            def _train(self):
+            def step(self):
                 return {"score": 1}
 
-            def _save(self, checkpoint_dir):
+            def save_checkpoint(self, checkpoint_dir):
                 with open(os.path.join(checkpoint_dir, "test.txt"), "wb") as f:
                     pickle.dump("test", f)
                 return checkpoint_dir
 
-            def _restore(self, checkpoint_dir):
+            def load_checkpoint(self, checkpoint_dir):
                 with open(os.path.join(checkpoint_dir, "test.txt"), "rb") as f:
                     x = pickle.load(f)
 

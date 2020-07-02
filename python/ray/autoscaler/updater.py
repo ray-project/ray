@@ -17,7 +17,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
 from ray.autoscaler.log_timer import LogTimer
-from ray.autoscaler.docker import check_docker_running_cmd
+from ray.autoscaler.docker import check_docker_running_cmd, with_docker_exec
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,8 @@ class KubernetesCommandRunner:
             timeout=120,
             exit_on_fail=False,
             port_forward=None,
-            with_output=False):
+            with_output=False,
+            **kwargs):
         if cmd and port_forward:
             raise Exception(
                 "exec with Kubernetes can't forward ports and execute"
@@ -76,13 +77,13 @@ class KubernetesCommandRunner:
                 port_forward_cmd) + " failed with error: " + perr
             raise Exception(exception_str)
         else:
-            logger.info(self.log_prefix + "Running {}...".format(cmd))
             final_cmd = self.kubectl + ["exec", "-it"]
             final_cmd += [
                 self.node_id,
                 "--",
             ]
             final_cmd += with_interactive(cmd)
+            logger.info(self.log_prefix + "Running {}".format(final_cmd))
             try:
                 if with_output:
                     return self.process_runner.check_output(
@@ -169,7 +170,14 @@ class SSHCommandRunner:
     def get_default_ssh_options(self, connect_timeout):
         OPTS = [
             ("ConnectTimeout", "{}s".format(connect_timeout)),
+            # Supresses initial fingerprint verification.
             ("StrictHostKeyChecking", "no"),
+            # SSH IP and fingerprint pairs no longer added to known_hosts.
+            # This is to remove a "REMOTE HOST IDENTIFICATION HAS CHANGED"
+            # warning if a new node has the same IP as a previously
+            # deleted node, because the fingerprints will not match in
+            # that case.
+            ("UserKnownHostsFile", os.devnull),
             ("ControlMaster", "auto"),
             ("ControlPath", "{}/%C".format(self.ssh_control_path)),
             ("ControlPersist", "10s"),
@@ -232,7 +240,8 @@ class SSHCommandRunner:
             timeout=120,
             exit_on_fail=False,
             port_forward=None,
-            with_output=False):
+            with_output=False,
+            **kwargs):
 
         self.set_ssh_ip_if_required()
 
@@ -250,10 +259,9 @@ class SSHCommandRunner:
             "{}@{}".format(self.ssh_user, self.ssh_ip)
         ]
         if cmd:
-            logger.info(self.log_prefix +
-                        "Running {} on {}...".format(cmd, self.ssh_ip))
-            logger.info("Begin remote output from {}".format(self.ssh_ip))
             final_cmd += with_interactive(cmd)
+            logger.info(self.log_prefix +
+                        "Running {}".format(" ".join(final_cmd)))
         else:
             # We do this because `-o ControlMaster` causes the `-N` flag to
             # still create an interactive shell in some ssh versions.
@@ -301,20 +309,36 @@ class DockerCommandRunner(SSHCommandRunner):
         self.docker_name = docker_config["container_name"]
         self.docker_config = docker_config
         self.home_dir = None
+        self.shutdown = False
 
     def run(self,
             cmd,
             timeout=120,
             exit_on_fail=False,
             port_forward=None,
-            with_output=False):
+            with_output=False,
+            run_env=True,
+            **kwargs):
+        if run_env == "auto":
+            run_env = "host" if cmd.find("docker") == 0 else "docker"
 
+        if run_env == "docker":
+            cmd = self.docker_expand_user(cmd, any_char=True)
+            cmd = with_docker_exec(
+                [cmd], container_name=self.docker_name,
+                with_interactive=True)[0]
+
+        if self.shutdown:
+            cmd += "; sudo shutdown -h now"
         return self.ssh_command_runner.run(
             cmd,
             timeout=timeout,
             exit_on_fail=exit_on_fail,
             port_forward=None,
             with_output=False)
+
+    def shutdown_after_next_cmd(self):
+        self.shutdown = True
 
     def check_container_status(self):
         no_exist = "not_present"
@@ -324,7 +348,7 @@ class DockerCommandRunner(SSHCommandRunner):
             cmd, with_output=True).decode("utf-8").strip()
         if no_exist in output:
             return False
-        return output
+        return "true" in output.lower()
 
     def run_rsync_up(self, source, target):
         self.ssh_command_runner.run_rsync_up(source, target)
@@ -343,16 +367,22 @@ class DockerCommandRunner(SSHCommandRunner):
         return inner_str + " docker exec -it {} /bin/bash\n".format(
             self.docker_name)
 
-    def docker_expand_user(self, string):
-        if string.find("~") == 0:
+    def docker_expand_user(self, string, any_char=False):
+        user_pos = string.find("~")
+        if user_pos > -1:
             if self.home_dir is None:
                 self.home_dir = self.ssh_command_runner.run(
                     "docker exec {} env | grep HOME | cut -d'=' -f2".format(
                         self.docker_name),
                     with_output=True).decode("utf-8").strip()
-            return string.replace("~", self.home_dir)
-        else:
-            return string
+
+            if any_char:
+                return string.replace("~/", self.home_dir + "/")
+
+            elif not any_char and user_pos == 0:
+                return string.replace("~", self.home_dir, 1)
+
+        return string
 
 
 class NodeUpdater:
