@@ -68,18 +68,19 @@ GradInfoDict = dict
 # policy id.
 LearnerStatsDict = dict
 
-# Type of dict returned by compute_gradients() representing model gradients.
-ModelGradients = dict
+# Represents a generic tensor type.
+# This could be an np.ndarray, tf.Tensor, or a torch.Tensor.
+TensorType = Any
+
+# List of grads+var tuples (tf) or list of gradient tensors (torch)
+# representing model gradients and returned by compute_gradients().
+ModelGradients = Union[List[Tuple[TensorType, TensorType]], List[TensorType]]
 
 # Type of dict returned by get_weights() representing model weights.
 ModelWeights = dict
 
 # Some kind of sample batch.
 SampleBatchType = Union["SampleBatch", "MultiAgentBatch"]
-
-# Represents a generic tensor type.
-# This could be an np.ndarray, tf.Tensor, or a torch.Tensor.
-TensorType = Any
 
 # Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
 TensorStructType = Union[TensorType, dict, tuple]

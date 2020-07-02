@@ -11,8 +11,8 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
-from ray.rllib.utils.types import AgentID, PolicyConfigDict, TensorType, \
-    Tuple, Union
+from ray.rllib.utils.types import AgentID, ModelGradients, ModelWeights, \
+    PolicyConfigDict, TensorType, Tuple, Union
 
 torch, _ = try_import_torch()
 tree = try_import_tree()
@@ -333,9 +333,10 @@ class Policy(metaclass=ABCMeta):
         return grad_info
 
     @DeveloperAPI
-    def compute_gradients(self,
-                          postprocessed_batch: SampleBatch) -> Tuple[
-        List[TensorType], Dict[str, TensorType]]:
+    def compute_gradients(
+        self,
+        postprocessed_batch: SampleBatch) -> Tuple[
+        ModelGradients, Dict[str, TensorType]]:
         """Computes gradients against a batch of experiences.
 
         Either this or learn_on_batch() must be implemented by subclasses.
@@ -345,40 +346,39 @@ class Policy(metaclass=ABCMeta):
                 for calculating gradients.
 
         Returns:
-            Tuple[List[TensorType], Dict[str, TensorType]]:
+            Tuple[ModelGradients, Dict[str, TensorType]]:
                 - List of gradient output values.
                 - Extra policy-specific info values.
         """
         raise NotImplementedError
 
     @DeveloperAPI
-    def apply_gradients(self, gradients: object) -> None:
+    def apply_gradients(self, gradients: ModelGradients) -> None:
         """Applies previously computed gradients.
 
-        Args:
-            gradients (object): The already calculated gradients to apply to
-                this Policy.
-
         Either this or learn_on_batch() must be implemented by subclasses.
+
+        Args:
+            gradients (ModelGradients): The already calculated gradients to
+                apply to this Policy.
         """
         raise NotImplementedError
 
     @DeveloperAPI
-    def get_weights(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    def get_weights(self) -> ModelWeights:
         """Returns model weights.
 
         Returns:
-            Union[Dict[str, TensorType], List[TensorType]]: Serializable copy
-                or view of model weights.
+            ModelWeights: Serializable copy or view of model weights.
         """
         raise NotImplementedError
 
     @DeveloperAPI
-    def set_weights(self, weights: object) -> None:
+    def set_weights(self, weights: ModelWeights) -> None:
         """Sets model weights.
 
         Args:
-            weights (obj): Serializable copy or view of model weights.
+            weights (ModelWeights): Serializable copy or view of model weights.
         """
         raise NotImplementedError
 

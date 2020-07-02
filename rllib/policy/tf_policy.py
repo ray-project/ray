@@ -18,7 +18,7 @@ from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils.types import PolicyConfigDict, TensorType
+from ray.rllib.utils.types import ModelGradients, PolicyConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -390,7 +390,7 @@ class TFPolicy(Policy):
     @DeveloperAPI
     def compute_gradients(self,
                           postprocessed_batch: SampleBatch) -> Tuple[
-        List[TensorType], Dict[str, TensorType]]:
+        ModelGradients, Dict[str, TensorType]]:
         assert self.loss_initialized()
         builder = TFRunBuilder(self._sess, "compute_gradients")
         fetches = self._build_compute_gradients(builder, postprocessed_batch)
@@ -398,7 +398,7 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def apply_gradients(self, gradients: object) -> None:
+    def apply_gradients(self, gradients: ModelGradients) -> None:
         assert self.loss_initialized()
         builder = TFRunBuilder(self._sess, "apply_gradients")
         fetches = self._build_apply_gradients(builder, gradients)

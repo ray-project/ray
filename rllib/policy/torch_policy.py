@@ -19,7 +19,8 @@ from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
-from ray.rllib.utils.types import AgentID, PolicyConfigDict, TensorType
+from ray.rllib.utils.types import AgentID, ModelGradients, ModelWeights, \
+    PolicyConfigDict, TensorType
 
 torch, _ = try_import_torch()
 
@@ -369,8 +370,8 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def compute_gradients(self, postprocessed_batch: SampleBatch) -> Tuple[
-            List[TensorType], Dict[str, TensorType]]:
+    def compute_gradients(self,
+                          postprocessed_batch: SampleBatch) -> ModelGradients:
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
         loss_out = force_list(
             self._loss(self, self.model, self.dist_class, train_batch))
@@ -398,7 +399,7 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def apply_gradients(self, gradients: object) -> None:
+    def apply_gradients(self, gradients: ModelGradients) -> None:
         # TODO(sven): Not supported for multiple optimizers yet.
         assert len(self._optimizers) == 1
         for g, p in zip(gradients, self.model.parameters()):
@@ -409,7 +410,7 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def get_weights(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    def get_weights(self) -> ModelWeights:
         return {
             k: v.cpu().detach().numpy()
             for k, v in self.model.state_dict().items()
@@ -417,7 +418,7 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def set_weights(self, weights: object) -> None:
+    def set_weights(self, weights: ModelWeights) -> None:
         weights = convert_to_torch_tensor(weights, device=self.device)
         self.model.load_state_dict(weights)
 
