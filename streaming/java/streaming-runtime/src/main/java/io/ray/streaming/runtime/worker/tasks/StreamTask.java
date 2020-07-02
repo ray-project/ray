@@ -70,11 +70,11 @@ public abstract class StreamTask implements Runnable {
     List<BaseActorHandle> targetActors = new ArrayList<>();
 
     for (ExecutionEdge edge : outputEdges) {
-      String queueName = ChannelId.genIdStr(
+      String channelId = ChannelId.genIdStr(
           taskId,
           edge.getTargetExecutionVertex().getExecutionVertexId(),
           executionVertex.getBuildTime());
-      outputChannelIds.add(queueName);
+      outputChannelIds.add(channelId);
       targetActors.add(edge.getTargetExecutionVertex().getWorkerActor());
     }
 
@@ -119,7 +119,7 @@ public abstract class StreamTask implements Runnable {
       inputActors.add(edge.getSourceExecutionVertex().getWorkerActor());
     }
     if (!inputActors.isEmpty()) {
-      LOG.info("Register queue consumer, queues {}.", inputChannelIds);
+      LOG.info("Register queue consumer, channels {}.", inputChannelIds);
       reader = new DataReader(inputChannelIds, inputActors, jobWorker.getWorkerConfig());
     }
 
