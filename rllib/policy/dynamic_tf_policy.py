@@ -2,7 +2,7 @@ from collections import OrderedDict
 import gym
 import logging
 import numpy as np
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 from ray.util.debug import log_once
 from ray.rllib.models.modelv2 import ModelV2
@@ -55,7 +55,7 @@ class DynamicTFPolicy(TFPolicy):
                  loss_fn: Callable[
                      [Policy, ModelV2, type, SampleBatch], TensorType],
                  stats_fn: Optional[Callable[[Policy, SampleBatch],
-                    Dict[str, TensorType]]] = None,
+                                             Dict[str, TensorType]]] = None,
                  grad_stats_fn: Optional[Callable[
                      [Policy, SampleBatch, ModelGradients],
                      Dict[str, TensorType]]] = None,
@@ -67,7 +67,7 @@ class DynamicTFPolicy(TFPolicy):
                       TrainerConfigDict], ModelV2]] = None,
                  action_sampler_fn: Optional[Callable[
                      [TensorType, List[TensorType]], Tuple[
-                         TensorType, TensorType]]] = None,
+                      TensorType, TensorType]]] = None,
                  action_distribution_fn: Optional[Callable[
                      [Policy, ModelV2, TensorType, TensorType, TensorType],
                      Tuple[TensorType, type, List[TensorType]]]] = None,
@@ -78,7 +78,8 @@ class DynamicTFPolicy(TFPolicy):
         """Initialize a dynamic TF policy.
 
         Arguments:
-            observation_space (gym.spaces.Space): Observation space of the policy.
+            observation_space (gym.spaces.Space): Observation space of the
+                policy.
             action_space (gym.spaces.Space): Action space of the policy.
             config (TrainerConfigDict): Policy-specific configuration data.
             loss_fn (Callable[[Policy, ModelV2, type, SampleBatch],

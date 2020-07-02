@@ -120,7 +120,8 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def compute_actions(self,
+    def compute_actions(
+            self,
             obs_batch: Union[List[TensorType], TensorType],
             state_batches: Optional[List[TensorType]] = None,
             prev_action_batch: Union[List[TensorType], TensorType] = None,
@@ -129,8 +130,8 @@ class TorchPolicy(Policy):
             episodes: Optional[List["MultiAgentEpisode"]] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
-            **kwargs) -> Tuple[
-        TensorType, List[TensorType], Dict[str, TensorType]]:
+            **kwargs) -> \
+            Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
 
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
@@ -165,13 +166,13 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     def compute_actions_from_trajectories(
-        self,
-        trajectories: List["Trajectory"],
-        other_trajectories: Dict[AgentID, "Trajectory"],
-        explore: bool = None,
-        timestep: Optional[int] = None,
-        **kwargs) -> Tuple[
-        TensorType, List[TensorType], Dict[str, TensorType]]:
+            self,
+            trajectories: List["Trajectory"],
+            other_trajectories: Dict[AgentID, "Trajectory"],
+            explore: bool = None,
+            timestep: Optional[int] = None,
+            **kwargs) -> \
+            Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
 
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep

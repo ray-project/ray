@@ -387,9 +387,10 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def compute_gradients(self,
-                          postprocessed_batch: SampleBatch) -> Tuple[
-        ModelGradients, Dict[str, TensorType]]:
+    def compute_gradients(
+            self,
+            postprocessed_batch: SampleBatch) -> \
+            Tuple[ModelGradients, Dict[str, TensorType]]:
         assert self.loss_initialized()
         builder = TFRunBuilder(self._sess, "compute_gradients")
         fetches = self._build_compute_gradients(builder, postprocessed_batch)
@@ -573,7 +574,7 @@ class TFPolicy(Policy):
     @DeveloperAPI
     def gradients(self,
                   optimizer: tf.keras.optimizers.Optimizer,
-                  loss: TensorType) ->  List[Tuple[TensorType, TensorType]]:
+                  loss: TensorType) -> List[Tuple[TensorType, TensorType]]:
         """Override this for a custom gradient computation behavior.
 
         Returns:

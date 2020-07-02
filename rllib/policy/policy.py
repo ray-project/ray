@@ -84,8 +84,8 @@ class Policy(metaclass=ABCMeta):
             episodes: Optional[List["MultiAgentEpisode"]] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
-            **kwargs) -> Tuple[
-        TensorType, List[TensorType], Dict[str, TensorType]]:
+            **kwargs) -> \
+            Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions for the current policy.
 
         Args:
@@ -134,13 +134,14 @@ class Policy(metaclass=ABCMeta):
             clip_actions: bool = False,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
-            **kwargs) -> Tuple[
-        TensorType, List[TensorType], Dict[str, TensorType]]:
+            **kwargs) -> \
+            Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Unbatched version of compute_actions.
 
         Args:
             obs (TensorType): Single observation.
-            state (Optional[List[TensorType]]): List of RNN state inputs, if any.
+            state (Optional[List[TensorType]]): List of RNN state inputs, if
+                any.
             prev_action (Optional[TensorType]): Previous action value, if any.
             prev_reward (Optional[TensorType]): Previous reward, if any.
             info (dict): Info object, if any.
@@ -148,8 +149,9 @@ class Policy(metaclass=ABCMeta):
                 of the internal episode state, which may be useful for
                 model-based or multi-agent algorithms.
             clip_actions (bool): Should actions be clipped?
-            explore (Optional[bool]): Whether to pick an exploitation or exploration
-                action (default: None -> use self.config["explore"]).
+            explore (Optional[bool]): Whether to pick an exploitation or
+                exploration action
+                (default: None -> use self.config["explore"]).
             timestep (Optional[int]): The current (sampling) time step.
 
         Keyword Args:
@@ -219,8 +221,8 @@ class Policy(metaclass=ABCMeta):
             other_trajectories: Dict[AgentID, "Trajectory"],
             explore: bool = None,
             timestep: Optional[int] = None,
-            **kwargs) -> Tuple[
-        TensorType, List[TensorType], Dict[str, TensorType]]:
+            **kwargs) -> \
+            Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions for the current policy based on .
 
         Note: This is an experimental API method.
@@ -333,10 +335,8 @@ class Policy(metaclass=ABCMeta):
         return grad_info
 
     @DeveloperAPI
-    def compute_gradients(
-        self,
-        postprocessed_batch: SampleBatch) -> Tuple[
-        ModelGradients, Dict[str, TensorType]]:
+    def compute_gradients(self, postprocessed_batch: SampleBatch) -> \
+            Tuple[ModelGradients, Dict[str, TensorType]]:
         """Computes gradients against a batch of experiences.
 
         Either this or learn_on_batch() must be implemented by subclasses.
