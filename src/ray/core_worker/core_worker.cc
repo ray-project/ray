@@ -1172,7 +1172,8 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
                                  const std::vector<TaskArg> &args,
                                  const TaskOptions &task_options,
                                  std::vector<ObjectID> *return_ids) {
-  std::unique_ptr<ActorHandle> &actor_handle = actor_manager_->GetActorHandle(actor_id);
+  const std::unique_ptr<ActorHandle> &actor_handle =
+      actor_manager_->GetActorHandle(actor_id);
 
   // Add one for actor cursor object id for tasks.
   const int num_returns = task_options.num_returns + 1;
@@ -1252,18 +1253,18 @@ ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &seriali
 
 Status CoreWorker::SerializeActorHandle(const ActorID &actor_id, std::string *output,
                                         ObjectID *actor_handle_id) const {
-  std::unique_ptr<ActorHandle> &actor_handle = actor_manager_->GetActorHandle(actor_id);
+  const std::unique_ptr<ActorHandle> &actor_handle =
+      actor_manager_->GetActorHandle(actor_id);
   actor_handle->Serialize(output);
   *actor_handle_id = ObjectID::ForActorHandle(actor_id);
   return Status::OK();
 }
 
-ActorHandle* CoreWorker::GetActorHandle(const ActorID &actor_id) const {
+const ActorHandle *CoreWorker::GetActorHandle(const ActorID &actor_id) const {
   return actor_manager_->GetActorHandle(actor_id).get();
 }
 
-Status CoreWorker::GetNamedActorHandle(const std::string &name,
-                                       ActorHandle **actor_handle) {
+const ActorHandle *CoreWorker::GetNamedActorHandle(const std::string &name) {
   RAY_CHECK(RayConfig::instance().gcs_actor_service_enabled());
   RAY_CHECK(!name.empty());
 
@@ -1280,9 +1281,9 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
         if (status.ok() && result) {
           auto actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(*result));
           actor_id = actor_handle->GetActorID();
-          RAY_UNUSED(actor_manager_->AddNewActorHandle(
-              std::move(actor_handle), GetCallerId(), CurrentCallSite(), rpc_address_,
-              /*is_detached*/ true));
+          actor_manager_->AddNewActorHandle(std::move(actor_handle), GetCallerId(),
+                                            CurrentCallSite(), rpc_address_,
+                                            /*is_detached*/ true);
         } else {
           RAY_LOG(INFO) << "Failed to look up actor with name: " << name;
           // Use a NIL actor ID to signal that the actor wasn't found.
@@ -1290,26 +1291,24 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
         }
         ready_promise.set_value();
       }));
-
   // Block until the RPC completes. Set a timeout to avoid hangs if the
   // GCS service crashes.
   if (ready_promise.get_future().wait_for(std::chrono::seconds(5)) !=
       std::future_status::ready) {
-    return Status::TimedOut("Timed out trying to get named actor.");
+    RAY_LOG(ERROR) << "There was timeout in getting the actor handle. It is probably "
+                      "because GCS server is dead or there's a high load there.";
+    return nullptr;
   }
 
-  Status status;
   if (actor_id.IsNil()) {
-    std::stringstream stream;
-    stream << "Failed to look up actor with name '" << name
-           << "'. It is either you look up the named actor you didn't create or the named"
-              "actor hasn't been created because named actor creation is asynchronous.";
-    status = Status::NotFound(stream.str());
-  } else {
-    *actor_handle = actor_manager_->GetActorHandle(actor_id).get();
-    status = Status::OK();
+    RAY_LOG(WARNING)
+        << "Failed to look up actor with name '" << name
+        << "'. It is either you look up the named actor you didn't create or the named"
+           "actor hasn't been created because named actor creation is asynchronous.";
+    return nullptr;
   }
-  return status;
+
+  return GetActorHandle(actor_id);
 }
 
 const ResourceMappingType CoreWorker::GetResourceIDs() const {

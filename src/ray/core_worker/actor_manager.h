@@ -62,7 +62,7 @@ class ActorManager {
   /// \param[in] actor_id The actor handle to get.
   /// \return reference to the actor_handle's pointer.
   /// NOTE: Returned actorHandle should not be stored anywhere.
-  std::unique_ptr<ActorHandle> &GetActorHandle(const ActorID &actor_id);
+  const std::unique_ptr<ActorHandle> &GetActorHandle(const ActorID &actor_id);
 
   /// Check if an actor handle that corresponds to an actor_id exists.
   /// \param[in] actor_id The actor id of a handle.
