@@ -45,7 +45,6 @@ class GCPNodeProvider(NodeProvider):
         _, _, self.compute = construct_clients_from_provider_config(
             provider_config)
 
-
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
         self.cached_nodes = {}

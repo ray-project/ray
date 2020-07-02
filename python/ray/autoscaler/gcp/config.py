@@ -117,9 +117,9 @@ def _create_iam_service_account(gcp_credentials):
 def _create_compute_service_account(gcp_credentials):
     return discovery.build("compute", "v1", credentials=gcp_credentials)
 
+
 def _create_crm_oauth_token_request(token_request):
-    return discovery.build(
-        "cloudresourcemanager", "v1", http=token_request)
+    return discovery.build("cloudresourcemanager", "v1", http=token_request)
 
 
 def _create_iam_oauth_token_request(token_request):
@@ -145,12 +145,14 @@ def construct_clients_from_provider_config(provider_config):
         return None
 
     assert ("type" in gcp_credentials and "credentials" in gcp_credentials), \
-        "gcp_credentials cluster yaml field missing 'type' or 'credentials' fields."
+        "gcp_credentials cluster yaml field missing 'type'" \
+        " or 'credentials' fields."
     cred_type = gcp_credentials["type"]
     credentials_field = gcp_credentials["credentials"]
 
     assert (cred_type in ("service_account", "credentials_token")), \
-        "'GCP credentials type must either be 'service_account' or 'credentials_token'."
+        "'GCP credentials type must either be 'service_account'" \
+        " or 'credentials_token'."
 
     if cred_type == "service_account":
         # If parsing the gcp_credentials failed, then the user likely made a
@@ -158,20 +160,21 @@ def construct_clients_from_provider_config(provider_config):
         try:
             service_account_info = json.loads(credentials_field)
         except json.decoder.JSONDecodeError:
-            raise RuntimeError("gcp_credentials found in cluster yaml file but "
-                               "formatted improperly.")
+            raise RuntimeError(
+                "gcp_credentials found in cluster yaml file but "
+                "formatted improperly.")
         credentials = service_account.Credentials.from_service_account_info(
             service_account_info)
         return _create_crm_service_account(credentials), \
-               _create_iam_service_account(credentials), \
-               _create_compute_service_account(credentials)
+            _create_iam_service_account(credentials), \
+            _create_compute_service_account(credentials)
 
     # Otherwise the credentials type must be credentials_token.
     creds_from_token = AccessTokenCredentials(credentials_field, "MyAgent/1.0")
     token_request = creds_from_token.authorize(httplib2.Http())
     return _create_crm_oauth_token_request(token_request), \
-           _create_iam_oauth_token_request(token_request), \
-           _create_compute_oauth_token_request(token_request)
+        _create_iam_oauth_token_request(token_request), \
+        _create_compute_oauth_token_request(token_request)
 
 
 def bootstrap_gcp(config):
