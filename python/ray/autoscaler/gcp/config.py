@@ -142,7 +142,9 @@ def construct_clients_from_provider_config(provider_config):
                     "environment variable.")
         # If gcp_credentials is None, then discovery.build will search for
         # credentials in the local environment.
-        return None
+        return _create_crm_service_account(None), \
+            _create_iam_service_account(None), \
+            _create_compute_service_account(None)
 
     assert ("type" in gcp_credentials and "credentials" in gcp_credentials), \
         "gcp_credentials cluster yaml field missing 'type'" \
