@@ -78,7 +78,7 @@ class MockProcessRunner:
 
 
 class MockProvider(NodeProvider):
-    def __init__(self, cache_stopped=False):
+    def __init__(self, cache_stopped=False, default_instance_type=None):
         self.mock_nodes = {}
         self.next_id = 0
         self.throw = False
@@ -86,6 +86,7 @@ class MockProvider(NodeProvider):
         self.ready_to_create = threading.Event()
         self.ready_to_create.set()
         self.cache_stopped = cache_stopped
+        self.default_instance_type = default_instance_type
 
     def non_terminated_nodes(self, tag_filters):
         if self.throw:
@@ -140,7 +141,7 @@ class MockProvider(NodeProvider):
             node_config, tags, count, instance_type=instance_type)
 
     def get_instance_type(self, node_config):
-        return "m4.large"
+        return self.default_instance_type
 
     def set_node_tags(self, node_id, tags):
         self.mock_nodes[node_id].tags.update(tags)

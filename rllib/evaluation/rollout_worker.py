@@ -50,7 +50,7 @@ if TYPE_CHECKING:
 # Generic type var for foreach_* methods.
 T = TypeVar("T")
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
@@ -283,12 +283,12 @@ class RolloutWorker(ParallelIteratorWorker):
         ParallelIteratorWorker.__init__(self, gen_rollouts, False)
 
         policy_config: TrainerConfigDict = policy_config or {}
-        if (tf and policy_config.get("framework") == "tfe"
+        if (tf1 and policy_config.get("framework") == "tfe"
                 and not policy_config.get("no_eager_on_workers")
                 # This eager check is necessary for certain all-framework tests
                 # that use tf's eager_mode() context generator.
-                and not tf.executing_eagerly()):
-            tf.enable_eager_execution()
+                and not tf1.executing_eagerly()):
+            tf1.enable_eager_execution()
 
         if log_level:
             logging.getLogger("ray.rllib").setLevel(log_level)
@@ -382,21 +382,21 @@ class RolloutWorker(ParallelIteratorWorker):
                 torch.manual_seed(seed)
             except AssertionError:
                 logger.info("Could not seed torch")
-        if _has_tensorflow_graph(policy_dict) and not (tf and
-                                                       tf.executing_eagerly()):
-            if not tf:
+        if _has_tensorflow_graph(policy_dict) and not (
+                tf1 and tf1.executing_eagerly()):
+            if not tf1:
                 raise ImportError("Could not import tensorflow")
-            with tf.Graph().as_default():
+            with tf1.Graph().as_default():
                 if tf_session_creator:
                     self.tf_sess = tf_session_creator()
                 else:
-                    self.tf_sess = tf.Session(
-                        config=tf.ConfigProto(
-                            gpu_options=tf.GPUOptions(allow_growth=True)))
+                    self.tf_sess = tf1.Session(
+                        config=tf1.ConfigProto(
+                            gpu_options=tf1.GPUOptions(allow_growth=True)))
                 with self.tf_sess.as_default():
                     # set graph-level seed
                     if seed is not None:
-                        tf.set_random_seed(seed)
+                        tf1.set_random_seed(seed)
                     self.policy_map, self.preprocessors = \
                         self._build_policy_map(policy_dict, policy_config)
             if (ray.is_initialized()
@@ -406,7 +406,7 @@ class RolloutWorker(ParallelIteratorWorker):
                         "Creating policy evaluation worker {}".format(
                             worker_index) +
                         " on CPU (please ignore any CUDA init errors)")
-                elif not tf.test.is_gpu_available():
+                elif not tf1.test.is_gpu_available():
                     raise RuntimeError(
                         "GPUs were assigned to this worker by Ray, but "
                         "TensorFlow reports GPU acceleration is disabled. "
@@ -956,7 +956,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     "Found raw Tuple|Dict space as input to policy. "
                     "Please preprocess these observations with a "
                     "Tuple|DictFlatteningPreprocessor.")
-            if tf and tf.executing_eagerly():
+            if tf1 and tf1.executing_eagerly():
                 if hasattr(cls, "as_eager"):
                     cls = cls.as_eager()
                     if policy_config["eager_tracing"]:
@@ -966,8 +966,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 else:
                     raise ValueError("This policy does not support eager "
                                      "execution: {}".format(cls))
-            if tf:
-                with tf.variable_scope(name):
+            if tf1:
+                with tf1.variable_scope(name):
                     policy_map[name] = cls(obs_space, act_space, merged_conf)
             else:
                 policy_map[name] = cls(obs_space, act_space, merged_conf)

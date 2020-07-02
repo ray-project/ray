@@ -14,7 +14,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.tests.mock_worker import _MockWorker
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 class LRScheduleTest(unittest.TestCase):
@@ -250,7 +250,7 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
 
     def _make_envs(self):
         def make_sess():
-            return tf.Session(config=tf.ConfigProto(device_count={"CPU": 2}))
+            return tf1.Session(config=tf1.ConfigProto(device_count={"CPU": 2}))
 
         local = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
