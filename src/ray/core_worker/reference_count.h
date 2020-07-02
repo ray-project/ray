@@ -187,8 +187,10 @@ class ReferenceCounter {
   std::vector<rpc::Address> GetOwnerAddresses(
       const std::vector<ObjectID> object_ids) const;
 
-  /// Manually delete the objects from the reference counter.
-  void DeleteReferences(const std::vector<ObjectID> &object_ids) LOCKS_EXCLUDED(mutex_);
+  /// Release the underlying value from plasma (if any) for these objects.
+  ///
+  /// \param[in] object_ids The IDs whose values to free.
+  void FreePlasmaObjects(const std::vector<ObjectID> &object_ids) LOCKS_EXCLUDED(mutex_);
 
   /// Sets the callback that will be run when the object goes out of scope.
   /// Returns true if the object was in scope and the callback was added, else false.
@@ -490,6 +492,10 @@ class ReferenceCounter {
                         rpc::Address *owner_address = nullptr) const
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  /// Release the pinned plasma object, if any. Also unsets the raylet address
+  /// that the object was pinned at, if the address was set.
+  void ReleasePlasmaObject(ReferenceTable::iterator it);
+
   /// Shutdown if all references have gone out of scope and shutdown
   /// is scheduled.
   void ShutdownIfNeeded() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -625,6 +631,12 @@ class ReferenceCounter {
 
   /// Holds all reference counts and dependency information for tracked ObjectIDs.
   ReferenceTable object_id_refs_ GUARDED_BY(mutex_);
+
+  /// Objects whose values have been freed by the language frontend.
+  /// The values in plasma will not be pinned. An object ID is
+  /// removed from this set once its Reference has been deleted
+  /// locally.
+  absl::flat_hash_set<ObjectID> freed_objects_ GUARDED_BY(mutex_);
 
   /// The callback to call once an object ID that we own is no longer in scope
   /// and it has no tasks that depend on it that may be retried in the future.

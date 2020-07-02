@@ -113,6 +113,10 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
     python /ray/python/ray/tune/examples/mnist_pytorch.py --smoke-test
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
+    python /ray/python/ray/tune/examples/mnist_pytorch_lightning.py \
+    --smoke-test
+
+$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     python /ray/python/ray/tune/examples/mnist_pytorch_trainable.py \
     --smoke-test
 

@@ -344,6 +344,7 @@ py_test(
     args = ["--yaml-dir=tuned_examples/sac", "--torch"]
 )
 
+
 # TD3
 py_test(
     name = "run_regression_tests_pendulum_td3_tf",
@@ -364,6 +365,7 @@ py_test(
     data = ["tuned_examples/ddpg/pendulum-td3.yaml"],
     args = ["--yaml-dir=tuned_examples/ddpg", "--torch"]
 )
+
 
 # --------------------------------------------------------------------
 # Agents (Compilation, Losses, simple agent functionality tests)
@@ -492,8 +494,7 @@ py_test(
     name = "test_ppo",
     tags = ["agents_dir"],
     size = "large",
-    srcs = ["agents/ppo/tests/test_ppo.py",
-            "agents/ppo/tests/test.py"]  # TODO(sven): Move down once PR 6889 merged
+    srcs = ["agents/ppo/tests/test_ppo.py"]
 )
 
 # PPO: DDPPO
@@ -1014,6 +1015,13 @@ py_test(
     srcs = ["models/tests/test_distributions.py"]
 )
 
+py_test(
+    name = "test_attention_nets",
+    tags = ["models"],
+    size = "small",
+    srcs = ["models/tests/test_attention_nets.py"]
+)
+
 # --------------------------------------------------------------------
 # Optimizers and Memories
 # rllib/execution/
@@ -1285,10 +1293,21 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_supported_multi_agent",
+    name = "tests/test_supported_multi_agent_pg",
+    main = "tests/test_supported_multi_agent.py",
     tags = ["tests_dir", "tests_dir_S"],
-    size = "large",
-    srcs = ["tests/test_supported_multi_agent.py"]
+    size = "medium",
+    srcs = ["tests/test_supported_multi_agent.py"],
+    args = ["TestSupportedMultiAgentPG"]
+)
+
+py_test(
+    name = "tests/test_supported_multi_agent_off_policy",
+    main = "tests/test_supported_multi_agent.py",
+    tags = ["tests_dir", "tests_dir_S"],
+    size = "medium",
+    srcs = ["tests/test_supported_multi_agent.py"],
+    args = ["TestSupportedMultiAgentOffPolicy"]
 )
 
 py_test(

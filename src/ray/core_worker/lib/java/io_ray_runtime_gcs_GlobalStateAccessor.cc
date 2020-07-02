@@ -46,13 +46,6 @@ JNIEXPORT jboolean JNICALL Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeCon
   return gcs_accessor->Connect();
 }
 
-JNIEXPORT void JNICALL Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeDisconnect(
-    JNIEnv *env, jobject o, jlong gcs_accessor_ptr) {
-  auto *gcs_accessor =
-      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
-  gcs_accessor->Disconnect();
-}
-
 JNIEXPORT jobject JNICALL Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllJobInfo(
     JNIEnv *env, jobject o, jlong gcs_accessor_ptr) {
   auto *gcs_accessor =

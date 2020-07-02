@@ -441,7 +441,7 @@ Distributed Multi-node Training
 
 You can scale your training to multiple nodes without making any modifications to your training code.
 
-To train across a cluster, first make sure that the Ray cluster is started. You can start a Ray cluster `via the Ray cluster launcher <autoscaling.html>`_ or `manually <using-ray-on-a-cluster.html>`_.
+To train across a cluster, first make sure that the Ray cluster is started (see :ref:`cluster-index` for more details).
 
 Then, in your program, you'll need to connect to this cluster via ``ray.init``:
 
