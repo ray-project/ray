@@ -1,12 +1,10 @@
-from dataclasses import dataclass
 from gym.spaces import Box, Space
 import numpy as np
-from typing import Dict
+from typing import Dict, Optional
 
 from ray.rllib.utils.types import TensorType
 
 
-@dataclass
 class ViewRequirement:
     """Single view requirement (for one column in a ModelV2 input_dict).
 
@@ -25,34 +23,44 @@ class ViewRequirement:
         >>> print(req)
         {"obs": ViewRequirement(timesteps=0)}
     """
-    # The data column name from the SampleBatch (str key).
-    # If None, use the dict key under which this ViewRequirement resides.
-    data_col: str = None
 
-    # The gym Space used in case we need to pad data in "unaccessible" areas
-    # of the trajectory (t<0 or t>H).
-    # Default: Simple box space, e.g. rewards.
-    space: Space = Box(float("-inf"), float("inf"), shape=())
+    def __init__(self,
+                 data_col: Optional[str] = None,
+                 space: Space = None,
+                 timesteps: int = 0,
+                 fill_mode: str = "zeros",
+                 repeat_mode: str = "all"):
+        """Initializes a ViewRequirement object.
 
-    # List of relative (or absolute timesteps) to be present in the
-    # input_dict.
-    timesteps: int = 0
+        Args:
+            data_col (): The data column name from the SampleBatch (str key).
+                If None, use the dict key under which this ViewRequirement
+                resides.
+            space (Space): The gym Space used in case we need to pad data in
+                unaccessible areas of the trajectory (t<0 or t>H).
+                Default: Simple box space, e.g. rewards.
+            timesteps (Union[List[int], int]): List of relative (or absolute
+                timesteps) to be present in the input_dict.
+            fill_mode (str): The fill mode in case t<0 or t>H.
+                One of "zeros", "tile".
+            repeat_mode (str): The repeat-mode (one of "all" or "only_first").
+                E.g. for training, we only want the first internal state
+                timestep (the NN will calculate all others again anyways).
+        """
+        self.data_col = data_col
+        self.space = space or Box(float("-inf"), float("inf"), shape=())
+        self.timesteps = timesteps
 
-    # Switch on absolute timestep mode. Default: False.
-    # TODO: (sven)
-    # "absolute_timesteps",
+        # Switch on absolute timestep mode. Default: False.
+        # TODO: (sven)
+        # "absolute_timesteps",
 
-    # The fill mode in case t<0 or t>H: One of "zeros", "tile".
-    fill_mode: str = "zeros"
+        self.fill_mode = fill_mode
+        self.repeat_mode = repeat_mode
 
-    # The repeat-mode (one of "all" or "only_first"). E.g. for training,
-    # we only want the first internal state timestep (the NN will
-    # calculate all others again anyways).
-    repeat_mode: str = "all"
-
-    # Provide all data as time major (default: False).
-    # TODO: (sven)
-    # "time_major",
+        # Provide all data as time major (default: False).
+        # TODO: (sven)
+        # "time_major",
 
 
 def get_trajectory_view(
