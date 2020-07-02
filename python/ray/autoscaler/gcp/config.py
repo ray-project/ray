@@ -153,7 +153,7 @@ def construct_clients_from_provider_config(provider_config):
     credentials_field = gcp_credentials["credentials"]
 
     assert (cred_type in ("service_account", "credentials_token")), \
-        "'GCP credentials type must either be 'service_account'" \
+        "gcp_credentials type must either be 'service_account'" \
         " or 'credentials_token'."
 
     if cred_type == "service_account":
