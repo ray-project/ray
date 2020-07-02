@@ -43,14 +43,16 @@ message RequestResourceReserveRequest {
 }
 
 message RequestResourceReserveReply {
+  // The status if resource reserve success. 
+  bool success = 1;
 }
 
-message CancelResourceReturnRequest {
+message CancelResourceReserveRequest {
   // Bundle containing the requested resources.
   Bundle bundle_spec = 1;
 }
 
-message CancelResourceReturnReply {
+message CancelResourceReserveReply {
 }
 
 // Release a worker back to its raylet.
@@ -150,7 +152,7 @@ service NodeManagerService {
   // Request resource from the raylet for a bundle.
   rpc RequestResourceReserve(RequestResourceReserveRequest) returns (RequestResourceReserveReply);
   // Return resource for the raylet.
-  rpc CancelResourceReturn(CancelResourceReturnRequest) returns (CancelResourceReturnReply);
+  rpc CancelResourceReserve(CancelResourceReserveRequest) returns (CancelResourceReserveReply);
   // Cancel a pending lease request. This only returns success if the
   // lease request was not yet granted.
   rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);

@@ -12,12 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_BUNDLE_SPEC_H
-#define RAY_COMMON_BUNDLE_SPEC_H
+#pragma once
 
 #include <cstddef>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
@@ -50,17 +48,22 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
       : MessageWrapper(message) {
     ComputeResources();
   }
+  // Return the bundle_id
+  std::pair<PlacementGroupID, int64_t> BundleId() const;
 
-  BundleID BundleId() const;
+  // Return the bundle_id of string. eg: placement_group_id + index.
+  std::string BundleIdAsString() const;
+
+  // Return the Placement Group id which the Bundle belong to.
+  PlacementGroupID PlacementGroupId() const;
+
+  // Return the index of the bundle.
+  int64_t Index() const;
 
   /// Return the resources that are to be acquired by this bundle.
   ///
   /// \return The resources that will be acquired by this bundle.
   const ResourceSet &GetRequiredResources() const;
-
-  // Get the bundle count.
-  // TODO(AlisaWu): use the unit count.
-  uint64_t UnitCount() const;
 
   /// Override dispatch behaviour.
   void OnScheduleInstead(const ScheduleBundleCallback &callback) {
@@ -92,5 +95,3 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
 };
 
 }  // namespace ray
-
-#endif

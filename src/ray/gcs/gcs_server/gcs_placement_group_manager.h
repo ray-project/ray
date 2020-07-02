@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_PLACEMENT_GROUP_MANAGER_H
-#define RAY_GCS_PLACEMENT_GROUP_MANAGER_H
-
+#pragma once
 #include <ray/common/id.h>
 #include <ray/common/task/task_execution_spec.h>
 #include <ray/common/task/task_spec.h>
@@ -59,11 +57,6 @@ class GcsPlacementGroup {
   /// Get the immutable PlacementGroupTableData of this placement group.
   const rpc::PlacementGroupTableData &GetPlacementGroupTableData();
 
-  /// Update the `Address` of this placement_group (see gcs.proto).
-  // void UpdateAddress(const rpc::Address &address);
-  /// Get the `Address` of this placement_group.
-  // const rpc::Address &GetAddress() const;
-
   /// Update the state of this placement_group.
   void UpdateState(rpc::PlacementGroupTableData::PlacementGroupState state);
   /// Get the state of this gcs placement_group.
@@ -75,20 +68,15 @@ class GcsPlacementGroup {
   std::string GetName() const;
 
   /// Get the bundles of this placement_group
-  std::vector<BundleSpecification> GetBundles() const;
+  std::vector<std::shared_ptr<BundleSpecification>> GetBundles() const;
 
   /// Get the Strategy
   rpc::PlacementStrategy GetStrategy() const;
 
-  // const rpc::PlacementGroupTableData &GcsPlacementGroup::GetPlacementGroupTableData()
-  // const;
  private:
   /// The placement_group meta data which contains the task specification as well as the
   /// state of the gcs placement_group and so on (see gcs.proto).
   rpc::PlacementGroupTableData placement_group_table_data_;
 };
-
-}
-} // namespace
-
-#endif
+}  // namespace gcs
+}  // namespace ray

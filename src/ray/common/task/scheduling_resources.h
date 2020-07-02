@@ -148,7 +148,7 @@ class ResourceSet {
   void AddResources(const ResourceSet &other);
 
   /// \brief Aggregate resources from the other set into this set, adding any missing
-  /// resource labels to this set. The resource id will change to bundle_id + "_" + 
+  /// resource labels to this set. The resource id will change to bundle_id + "_" +
   /// reource_id
   ///
   /// \param other: The other resource set to add.
@@ -156,7 +156,7 @@ class ResourceSet {
   /// \return Void.
   void AddBundleResources(const std::string &bundle_id, const ResourceSet &other);
 
-  /// \brief Return back all the bundle resource. Changeing the resource name and adding
+  /// \brief Return back all the bundle resource. Changing the resource name and adding
   /// any missing resource labels to this set. The resource id will remove bundle_id + "_"
   /// part.
   ///
@@ -429,8 +429,7 @@ class ResourceIdSet {
   /// \brief  remove a Bundle resource in the ResourceIdSet.
   ///
   /// \param resource_name the name of the resource to remove.
-  void ReturnBundleReousce(const std::string &resource_name);
-
+  void CancelResourceReserve(const std::string &resource_name);
   /// \brief Deletes a resource in the ResourceIdSet. This does not raise an exception,
   /// just deletes the resource. Tasks with acquired resources keep running.
   ///

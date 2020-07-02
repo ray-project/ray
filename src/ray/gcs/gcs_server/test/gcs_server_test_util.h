@@ -149,9 +149,9 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
-    ray::Status CancelResourceReturn(
+    ray::Status CancelResourceReserve(
         BundleSpecification &bundle_spec,
-        const ray::rpc::ClientCallback<ray::rpc::CancelResourceReturnReply> &callback)
+        const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
         override {
       num_return_requested += 1;
       return_callbacks.push_back(callback);
@@ -159,8 +159,10 @@ struct GcsServerMocker {
     }
 
     // Trigger reply to RequestWorkerLease.
-    bool GrantResourceReserve(Status status = Status::OK()) {
+    bool GrantResourceReserve(bool success = true) {
+      Status status = Status::OK();
       rpc::RequestResourceReserveReply reply;
+      reply.set_success(success);
       if (lease_callbacks.size() == 0) {
         return false;
       } else {
@@ -177,7 +179,7 @@ struct GcsServerMocker {
     int num_return_requested = 0;
     ClientID node_id = ClientID::FromRandom();
     std::list<rpc::ClientCallback<rpc::RequestResourceReserveReply>> lease_callbacks = {};
-    std::list<rpc::ClientCallback<rpc::CancelResourceReturnReply>> return_callbacks = {};
+    std::list<rpc::ClientCallback<rpc::CancelResourceReserveReply>> return_callbacks = {};
   };
 
   class MockedGcsActorScheduler : public gcs::GcsActorScheduler {

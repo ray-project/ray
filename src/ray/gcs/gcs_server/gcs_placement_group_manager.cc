@@ -37,11 +37,11 @@ std::string GcsPlacementGroup::GetName() const {
   return placement_group_table_data_.name();
 }
 
-std::vector<BundleSpecification> GcsPlacementGroup::GetBundles() const {
+std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetBundles() const {
   auto bundles = placement_group_table_data_.bundles();
-  std::vector<BundleSpecification> ret_bundles;
+  std::vector<std::shared_ptr<BundleSpecification>> ret_bundles;
   for (auto iter = bundles.begin(); iter != bundles.end(); iter++) {
-    ret_bundles.push_back(BundleSpecification(std::move(*iter)));
+    ret_bundles.push_back(std::make_shared<BundleSpecification>(*iter));
   }
   return ret_bundles;
 }
@@ -55,4 +55,4 @@ const rpc::PlacementGroupTableData &GcsPlacementGroup::GetPlacementGroupTableDat
 }
 
 }  // namespace gcs
-}  // namespace ray 
+}  // namespace ray

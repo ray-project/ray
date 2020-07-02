@@ -596,9 +596,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                     rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ResourcesReturn` request.
-  void HandleCancelResourceReturn(const rpc::CancelResourceReturnRequest &request,
-                                  rpc::CancelResourceReturnReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) override;
+  void HandleCancelResourceReserve(const rpc::CancelResourceReserveRequest &request,
+                                   rpc::CancelResourceReserveReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `WorkerLease` request.
   void HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
                                 rpc::RequestWorkerLeaseReply *reply,
@@ -661,8 +662,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Whether a task is an actor creation task.
   bool IsActorCreationTask(const TaskID &task_id);
 
-  /// Return ResourceIdSet for an actor in placement group from BundleID.
-  ResourceIdSet GetResource(BundleID bundle_id);
   /// ID of this node.
   ClientID self_node_id_;
   boost::asio::io_service &io_service_;

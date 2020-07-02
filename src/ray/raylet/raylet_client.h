@@ -95,9 +95,9 @@ class ResourceReserveInterface {
       const ray::rpc::ClientCallback<ray::rpc::RequestResourceReserveReply>
           &callback) = 0;
 
-  virtual ray::Status CancelResourceReturn(
+  virtual ray::Status CancelResourceReserve(
       BundleSpecification &bundle_spec,
-      const ray::rpc::ClientCallback<ray::rpc::CancelResourceReturnReply> &callback) = 0;
+      const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
 
   virtual ~ResourceReserveInterface(){};
 };
@@ -159,7 +159,7 @@ class RayletConnection {
 
 class RayletClient : public PinObjectsInterface,
                      public WorkerLeaseInterface,
-	                   public DependencyWaiterInterface,
+                     public DependencyWaiterInterface,
                      public ResourceReserveInterface {
  public:
   /// Connect to the raylet.
@@ -326,7 +326,6 @@ class RayletClient : public PinObjectsInterface,
       const TaskID &task_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override;
 
-
   /// Implements ResourceReserveInterface.
   ray::Status RequestResourceReserve(
       const BundleSpecification &bundle_spec,
@@ -334,11 +333,11 @@ class RayletClient : public PinObjectsInterface,
       override;
 
   /// Implements ResourceReserveInterface.
-  ray::Status CancelResourceReturn(
+  ray::Status CancelResourceReserve(
       BundleSpecification &bundle_spec,
-      const ray::rpc::ClientCallback<ray::rpc::CancelResourceReturnReply> &callback)
+      const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
       override;
-  
+
   ray::Status PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;

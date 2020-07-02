@@ -69,9 +69,6 @@ struct Mocker {
     PlacementGroupSpecBuilder builder;
 
     auto placement_group_id = PlacementGroupID::FromRandom();
-    for (size_t i = 0; i < bundles.size(); i++) {
-      bundles[i].set_bundle_id(BundleID::FromRandom().Binary());
-    }
     builder.SetPlacementGroupSpec(placement_group_id, name, bundles, strategy);
     return builder.Build();
   }
@@ -90,7 +87,7 @@ struct Mocker {
         placement_group_creation_spec.GetMessage());
     return request;
   }
-  
+
   static std::shared_ptr<rpc::GcsNodeInfo> GenNodeInfo(
       uint16_t port = 0, const std::string address = "127.0.0.1") {
     auto node = std::make_shared<rpc::GcsNodeInfo>();

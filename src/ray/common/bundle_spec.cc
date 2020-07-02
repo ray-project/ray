@@ -30,13 +30,30 @@ const ResourceSet &BundleSpecification::GetRequiredResources() const {
   return *unit_resource_;
 }
 
-BundleID BundleSpecification::BundleId() const {
-  if (message_->bundle_id().empty() /* e.g., empty proto default */) {
-    return BundleID::Nil();
+std::pair<PlacementGroupID, int64_t> BundleSpecification::BundleId() const {
+  if (message_->bundle_id()
+          .placement_group_id()
+          .empty() /* e.g., empty proto default */) {
+    int64_t index = message_->bundle_id().bundle_index();
+    return std::make_pair(PlacementGroupID::Nil(), index);
   }
-  return BundleID::FromBinary(message_->bundle_id());
+  int64_t index = message_->bundle_id().bundle_index();
+  return std::make_pair(
+      PlacementGroupID::FromBinary(message_->bundle_id().placement_group_id()), index);
 }
-// uint64_t BundleSpecification::UnitCount() const {
-//     // TODO(AlisaWu): fill this function.
-// }
-}  // namespace ray 
+
+std::string BundleSpecification::BundleIdAsString() const {
+  int64_t index = message_->bundle_id().bundle_index();
+  return PlacementGroupID::FromBinary(message_->bundle_id().placement_group_id()).Hex() +
+         std::to_string(index);
+}
+
+PlacementGroupID BundleSpecification::PlacementGroupId() const {
+  return PlacementGroupID::FromBinary(message_->bundle_id().placement_group_id());
+}
+
+int64_t BundleSpecification::Index() const {
+  return message_->bundle_id().bundle_index();
+}
+
+}  // namespace ray

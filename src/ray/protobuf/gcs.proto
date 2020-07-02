@@ -176,7 +176,7 @@ message PlacementGroupTableData {
 }
 
 message ScheduleData {
-    map<string, string> schedule_plan = 1;
+    map<string, bytes> schedule_plan = 1;
 }
 
 message ProfileTableData {

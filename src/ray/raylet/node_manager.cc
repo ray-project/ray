@@ -1843,32 +1843,34 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 }
 
 void NodeManager::HandleRequestResourceReserve(
-      const rpc::RequestResourceReserveRequest &request,
+    const rpc::RequestResourceReserveRequest &request,
     rpc::RequestResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  // rpc::Bundle bundle_spec;
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "bundle lease request " << bundle_spec.BundleId();
+  RAY_LOG(DEBUG) << "bundle lease request " << bundle_spec.BundleId().first
+                 << bundle_spec.BundleId().second;
   auto resource_ids = ScheduleBundle(cluster_resource_map_, bundle_spec);
   if (resource_ids.AvailableResources().size() == 0) {
-    send_reply_callback(Status::OutOfMemory("reserve resource failed"), nullptr, nullptr);
+    reply->set_success(false);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
+    reply->set_success(true);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
-  return;
-  }
+}
 
-void NodeManager::HandleCancelResourceReturn(
-    const rpc::CancelResourceReturnRequest &request,
-    rpc::CancelResourceReturnReply *reply, rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleCancelResourceReserve(
+    const rpc::CancelResourceReserveRequest &request,
+    rpc::CancelResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "bundle return resource request " << bundle_spec.BundleId();
-  auto bundle_id = bundle_spec.BundleId();
+  RAY_LOG(DEBUG) << "bundle return resource request " << bundle_spec.BundleId().first
+                 << bundle_spec.BundleId().second;
+  auto bundle_id_str = bundle_spec.BundleIdAsString();
   auto resource_set = bundle_spec.GetRequiredResources();
-  for (auto resource : ResourceIdSet(resource_set).AvailableResources()) {
-    std::string resource_name = bundle_id.Binary() + "_" + resource.first;
-    local_available_resources_.ReturnBundleReousce(resource_name);
+  for (auto resource : resource_set.GetResourceMap()) {
+    std::string resource_name = bundle_id_str + "_" + resource.first;
+    local_available_resources_.CancelResourceReserve(resource_name);
   }
-  cluster_resource_map_[self_node_id_].ReturnBundleResource(bundle_id.Binary());
+  cluster_resource_map_[self_node_id_].ReturnBundleResource(bundle_id_str);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2005,18 +2007,17 @@ ResourceIdSet NodeManager::ScheduleBundle(
   // Invoke the scheduling policy.
   auto reserve_resource_success =
       scheduling_policy_.ScheduleBundle(resource_map, self_node_id_, bundle_spec);
-  auto bundle_id = bundle_spec.BundleId();
+  auto bundle_id_str = bundle_spec.BundleIdAsString();
   ResourceIdSet acquired_resources;
   if (reserve_resource_success) {
     acquired_resources =
         local_available_resources_.Acquire(bundle_spec.GetRequiredResources());
     for (auto resource : acquired_resources.AvailableResources()) {
-      std::string resource_name = bundle_id.Binary() + "_" + resource.first;
+      std::string resource_name = bundle_id_str + "_" + resource.first;
       local_available_resources_.AddBundleResource(resource_name, resource.second);
     }
-    cluster_resource_map_[self_node_id_].Acquire(bundle_spec.GetRequiredResources());
     cluster_resource_map_[self_node_id_].UpdateBundleResource(
-        bundle_id.Binary(), bundle_spec.GetRequiredResources());
+        bundle_id_str, bundle_spec.GetRequiredResources());
   }
   return acquired_resources;
 }
@@ -2552,7 +2553,6 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
                              std::vector<std::function<void()>> *post_assign_callbacks) {
   const TaskSpecification &spec = task.GetTaskSpecification();
   RAY_CHECK(post_assign_callbacks);
-
   // If this is an actor task, check that the new task has the correct counter.
   if (spec.IsActorTask()) {
     // An actor task should only be ready to be assigned if it matches the
