@@ -14,7 +14,7 @@ from ray.rllib.models.tf.visionnet import VisionNetwork
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 class CustomPreprocessor(Preprocessor):
@@ -54,7 +54,7 @@ class CustomActionDistribution(TFActionDistribution):
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
-        return tf.random_uniform(self.output_shape)
+        return tf.random.uniform(self.output_shape)
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -102,15 +102,15 @@ class ModelCatalogTest(unittest.TestCase):
     def test_default_models(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
 
-        with tf.variable_scope("test1"):
+        with tf1.variable_scope("test1"):
             p1 = ModelCatalog.get_model_v2(
-                obs_space=Box(0, 1, shape=(3, ), dtype=np.float32),
+                obs_space=Box(0, 1, shape=(3,), dtype=np.float32),
                 action_space=Discrete(5),
                 num_outputs=5,
                 model_config={})
             self.assertEqual(type(p1), FullyConnectedNetwork)
 
-        with tf.variable_scope("test2"):
+        with tf1.variable_scope("test2"):
             p2 = ModelCatalog.get_model_v2(
                 obs_space=Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
                 action_space=Discrete(5),
@@ -149,7 +149,7 @@ class ModelCatalogTest(unittest.TestCase):
         self.assertEqual(param_shape, action_space.shape)
 
         # test the class works as a distribution
-        dist_input = tf.placeholder(tf.float32, (None, ) + param_shape)
+        dist_input = tf1.placeholder(tf.float32, (None,) + param_shape)
         model = Model()
         model.model_config = model_config
         dist = dist_cls(dist_input, model=model)
@@ -163,7 +163,7 @@ class ModelCatalogTest(unittest.TestCase):
         dist_cls, param_shape = ModelCatalog.get_action_dist(
             action_space, model_config)
         self.assertEqual(param_shape, (3, ))
-        dist_input = tf.placeholder(tf.float32, (None, ) + param_shape)
+        dist_input = tf1.placeholder(tf.float32, (None,) + param_shape)
         model.model_config = model_config
         dist = dist_cls(dist_input, model=model)
         self.assertEqual(dist.sample().shape[1:], dist_input.shape[1:])

@@ -14,7 +14,7 @@ from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +116,7 @@ class DynamicTFPolicy(TFPolicy):
             explore = existing_inputs["is_exploring"]
             timestep = existing_inputs["timestep"]
         else:
-            obs = tf.placeholder(
+            obs = tf1.placeholder(
                 tf.float32,
                 shape=[None] + list(obs_space.shape),
                 name="observation")
@@ -124,11 +124,11 @@ class DynamicTFPolicy(TFPolicy):
             if self._obs_include_prev_action_reward:
                 prev_actions = ModelCatalog.get_action_placeholder(
                     action_space, "prev_action")
-                prev_rewards = tf.placeholder(
+                prev_rewards = tf1.placeholder(
                     tf.float32, [None], name="prev_reward")
-            explore = tf.placeholder_with_default(
+            explore = tf1.placeholder_with_default(
                 True, (), name="is_exploring")
-            timestep = tf.placeholder(tf.int32, (), name="timestep")
+            timestep = tf1.placeholder(tf.int32, (), name="timestep")
 
         self._input_dict = {
             SampleBatch.CUR_OBS: obs,
@@ -137,7 +137,7 @@ class DynamicTFPolicy(TFPolicy):
             "is_training": self._get_is_training_placeholder(),
         }
         # Placeholder for RNN time-chunk valid lengths.
-        self._seq_lens = tf.placeholder(
+        self._seq_lens = tf1.placeholder(
             dtype=tf.int32, shape=[None], name="seq_lens")
 
         dist_class = dist_inputs = None
@@ -176,7 +176,7 @@ class DynamicTFPolicy(TFPolicy):
                 self._seq_lens = existing_inputs["seq_lens"]
         else:
             self._state_in = [
-                tf.placeholder(shape=(None, ) + s.shape, dtype=s.dtype)
+                tf1.placeholder(shape=(None, ) + s.shape, dtype=s.dtype)
                 for s in self.model.get_initial_state()
             ]
 
@@ -223,7 +223,7 @@ class DynamicTFPolicy(TFPolicy):
                     explore=explore)
 
         # Phase 1 init.
-        sess = tf.get_default_session() or tf.Session()
+        sess = tf1.get_default_session() or tf1.Session()
         if get_batch_divisibility_req:
             batch_divisibility_req = get_batch_divisibility_req(self)
         else:
@@ -343,7 +343,7 @@ class DynamicTFPolicy(TFPolicy):
             dummy_batch[k] = fake_array(v)
 
         # postprocessing might depend on variable init, so run it first here
-        self._sess.run(tf.global_variables_initializer())
+        self._sess.run(tf1.global_variables_initializer())
 
         postprocessed_batch = self.postprocess_trajectory(
             SampleBatch(dummy_batch))
@@ -380,7 +380,7 @@ class DynamicTFPolicy(TFPolicy):
                 continue
             shape = (None, ) + v.shape[1:]
             dtype = np.float32 if v.dtype == np.float64 else v.dtype
-            placeholder = tf.placeholder(dtype, shape=shape, name=k)
+            placeholder = tf1.placeholder(dtype, shape=shape, name=k)
             train_batch[k] = placeholder
 
         for i, si in enumerate(self._state_in):
@@ -402,7 +402,7 @@ class DynamicTFPolicy(TFPolicy):
         if self._grad_stats_fn:
             self._stats_fetches.update(
                 self._grad_stats_fn(self, train_batch, self._grads))
-        self._sess.run(tf.global_variables_initializer())
+        self._sess.run(tf1.global_variables_initializer())
 
     def _do_loss_init(self, train_batch):
         loss = self._loss_fn(self, self.model, self.dist_class, train_batch)

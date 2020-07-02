@@ -109,7 +109,7 @@ class MockExporterClient2 : public MetricExporterDecorator {
   static int client2_value;
 };
 
-/// Default report flush interval is 10s, so we may wait a while for data
+/// Default report flush interval is 500ms, so we may wait a while for data
 /// exporting.
 uint32_t kReportFlushInterval = 500;
 
