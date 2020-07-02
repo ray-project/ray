@@ -391,6 +391,7 @@ TEST_F(GcsActorSchedulerTest, TestReschedule) {
   gcs_node_manager_->AddNode(node1);
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
+  // 1.Actor is already tied to a leased worker.
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
   auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
@@ -401,7 +402,7 @@ TEST_F(GcsActorSchedulerTest, TestReschedule) {
   actor->UpdateAddress(address);
 
   // Reschedule the actor with 1 available node, and the actor creation request should be
-  // send to the worker..
+  // send to the worker.
   gcs_actor_scheduler_->Reschedule(actor);
   ASSERT_EQ(0, raylet_client_->num_workers_requested);
   ASSERT_EQ(0, raylet_client_->callbacks.size());
@@ -411,9 +412,26 @@ TEST_F(GcsActorSchedulerTest, TestReschedule) {
   ASSERT_TRUE(worker_client_->ReplyPushTask());
   ASSERT_EQ(0, worker_client_->callbacks.size());
 
+  // 2.Actor is not tied to a leased worker.
+  actor->UpdateAddress(rpc::Address());
+  actor->GetMutableActorTableData()->clear_resource_mapping();
+
+  // Reschedule the actor with 1 available node.
+  gcs_actor_scheduler_->Reschedule(actor);
+
+  // Grant a worker, then the actor creation request should be send to the worker.
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node1->node_manager_address(),
+                                               node1->node_manager_port(), worker_id,
+                                               node_id_1, ClientID::Nil()));
+  ASSERT_EQ(0, raylet_client_->callbacks.size());
+  ASSERT_EQ(1, worker_client_->callbacks.size());
+
+  // Reply the actor creation request, then the actor should be scheduled successfully.
+  ASSERT_TRUE(worker_client_->ReplyPushTask());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
+
   ASSERT_EQ(0, failure_actors_.size());
-  ASSERT_EQ(1, success_actors_.size());
-  ASSERT_EQ(actor, success_actors_.front());
+  ASSERT_EQ(2, success_actors_.size());
 }
 
 }  // namespace ray

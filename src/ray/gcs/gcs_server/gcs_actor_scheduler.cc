@@ -235,6 +235,7 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
     } else {
       // If the spill back node is dead, we need to schedule again.
       actor->UpdateAddress(rpc::Address());
+      actor->GetMutableActorTableData()->clear_resource_mapping();
       Schedule(actor);
     }
   } else {
