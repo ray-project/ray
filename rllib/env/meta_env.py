@@ -30,6 +30,7 @@ class MetaEnv(gym.Env):
     def get_task(self):
         """
         Gets the task that the agent is performing in the current environment
+
         Returns:
             task: task of the meta-learning environment
         """
