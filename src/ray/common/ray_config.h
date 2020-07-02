@@ -52,7 +52,12 @@ class RayConfig {
 #define RAY_CONFIG(type, name, default_value) \
   if (pair.first == #name) {                  \
     if (typeid(type) == typeid(bool)) {       \
-       name##_ = pair.second == "true";       \
+       std::string value = pair.second;       \
+       std::transform(value.begin(),          \
+                      value.end(),            \
+                      value.begin(),          \
+                      ::tolower);             \
+       name##_ = value == "true";             \
     } else {                                  \
       std::istringstream stream(pair.second); \
       stream >> name##_;                      \
