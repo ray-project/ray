@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <sstream>
 #include <typeinfo>
 #include <unordered_map>
