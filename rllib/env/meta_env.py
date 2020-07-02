@@ -4,7 +4,7 @@ from typing import List
 
 class MetaEnv(gym.Env):
     """
-    Wrapper around OpenAI gym environments and meta-learning environments.
+    Extension of gym.Env to define a distribution of tasks to meta-learn over.
     
     Your env must implement this interface in order to be used with MAML.
     """
