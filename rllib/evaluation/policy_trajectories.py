@@ -4,12 +4,19 @@ from typing import Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.numpy import convert_to_numpy
+#from ray.rllib.utils.numpy import convert_to_numpy
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
+
+
+def to_float_array(v):
+    arr = np.array(v)
+    if arr.dtype == np.float64:
+        return arr.astype(np.float32)  # save some memory
+    return arr
 
 
 class PolicyTrajectories:
@@ -95,8 +102,8 @@ class PolicyTrajectories:
         # all other columns due to the additional obs returned by Env.reset()).
         data = {}
         for k, v in self.buffers.items():
-            data[k] = convert_to_numpy(
-                v[self.sample_batch_offset:self.cursor], reduce_floats=True)
+            data[k] = to_float_array(
+                v[self.sample_batch_offset:self.cursor])  #, reduce_floats=True)
         batch = SampleBatch(data)
 
         assert SampleBatch.UNROLL_ID in batch.data

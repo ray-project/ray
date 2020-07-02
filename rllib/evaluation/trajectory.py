@@ -4,13 +4,20 @@ from typing import Dict, Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.numpy import convert_to_numpy
+#from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.types import AgentID, EnvID, PolicyID, TensorType
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
+
+
+def to_float_array(v):
+    arr = np.array(v)
+    if arr.dtype == np.float64:
+        return arr.astype(np.float32)  # save some memory
+    return arr
 
 
 class Trajectory:
@@ -172,11 +179,11 @@ class Trajectory:
         data = {}
         for k, v in self.buffers.items():
             end = self.cursor + (1 if k == SampleBatch.OBS else 0)
-            data[k] = convert_to_numpy(
-                v[self.sample_batch_offset:end], reduce_floats=True)
+            data[k] = to_float_array(
+                v[self.sample_batch_offset:end]) #, reduce_floats=True)
         last_obs = {
-            str(self.env_id) + ":" + str(self.agent_id): convert_to_numpy(
-                self.buffers[SampleBatch.CUR_OBS][self.cursor], reduce_floats=True)
+            str(self.env_id) + ":" + str(self.agent_id): to_float_array(
+                self.buffers[SampleBatch.CUR_OBS][self.cursor])  #, reduce_floats=True)
         }
         batch = SampleBatch(data, _last_obs=last_obs)
 
