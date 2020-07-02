@@ -1293,7 +1293,7 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_supported_multi_agent",
+    name = "tests/test_supported_multi_agent_pg",
     tags = ["tests_dir", "tests_dir_S"],
     size = "medium",
     srcs = ["tests/test_supported_multi_agent.py"],
@@ -1301,7 +1301,7 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_supported_multi_agent",
+    name = "tests/test_supported_multi_agent_off_policy",
     tags = ["tests_dir", "tests_dir_S"],
     size = "medium",
     srcs = ["tests/test_supported_multi_agent.py"],
