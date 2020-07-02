@@ -105,16 +105,16 @@ def generate_rsa_key_pair():
     return public_key, pem
 
 
-def _create_crm_service_account(gcp_credentials):
+def _create_crm_service_account(gcp_credentials=None):
     return discovery.build(
         "cloudresourcemanager", "v1", credentials=gcp_credentials)
 
 
-def _create_iam_service_account(gcp_credentials):
+def _create_iam_service_account(gcp_credentials=None):
     return discovery.build("iam", "v1", credentials=gcp_credentials)
 
 
-def _create_compute_service_account(gcp_credentials):
+def _create_compute_service_account(gcp_credentials=None):
     return discovery.build("compute", "v1", credentials=gcp_credentials)
 
 
@@ -142,9 +142,9 @@ def construct_clients_from_provider_config(provider_config):
                     "environment variable.")
         # If gcp_credentials is None, then discovery.build will search for
         # credentials in the local environment.
-        return _create_crm_service_account(None), \
-            _create_iam_service_account(None), \
-            _create_compute_service_account(None)
+        return _create_crm_service_account(), \
+            _create_iam_service_account(), \
+            _create_compute_service_account()
 
     assert ("type" in gcp_credentials and "credentials" in gcp_credentials), \
         "gcp_credentials cluster yaml field missing 'type'" \
