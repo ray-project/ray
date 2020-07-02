@@ -439,7 +439,7 @@ class Trainer(Trainable):
 
         # User provided config (this is w/o the default Trainer's
         # `COMMON_CONFIG` (see above)). Will get merged with COMMON_CONFIG
-        # in self._setup().
+        # in self.setup().
         config = config or {}
 
         # Vars to synchronize to workers on each train call
@@ -550,14 +550,14 @@ class Trainer(Trainable):
                 workers.local_worker().filters))
 
     @override(Trainable)
-    def _log_result(self, result: ResultDict):
+    def log_result(self, result: ResultDict):
         self.callbacks.on_train_result(trainer=self, result=result)
         # log after the callback is invoked, so that the user has a chance
         # to mutate the result
-        Trainable._log_result(self, result)
+        Trainable.log_result(self, result)
 
     @override(Trainable)
-    def _setup(self, config: PartialTrainerConfigDict):
+    def setup(self, config: PartialTrainerConfigDict):
         env = self._env_id
         if env:
             config["env"] = env
@@ -665,14 +665,14 @@ class Trainer(Trainable):
                 self.evaluation_metrics = {}
 
     @override(Trainable)
-    def _stop(self):
+    def cleanup(self):
         if hasattr(self, "workers"):
             self.workers.stop()
         if hasattr(self, "optimizer") and self.optimizer:
             self.optimizer.stop()
 
     @override(Trainable)
-    def _save(self, checkpoint_dir: str) -> str:
+    def save_checkpoint(self, checkpoint_dir: str) -> str:
         checkpoint_path = os.path.join(checkpoint_dir,
                                        "checkpoint-{}".format(self.iteration))
         pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
@@ -680,7 +680,7 @@ class Trainer(Trainable):
         return checkpoint_path
 
     @override(Trainable)
-    def _restore(self, checkpoint_path: str):
+    def load_checkpoint(self, checkpoint_path: str):
         extra_data = pickle.load(open(checkpoint_path, "rb"))
         self.__setstate__(extra_data)
 
