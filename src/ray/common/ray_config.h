@@ -14,7 +14,9 @@
 
 #pragma once
 
+#include <algorithm>
 #include <sstream>
+#include <typeinfo>
 #include <unordered_map>
 
 #include "ray/util/logging.h"
@@ -50,8 +52,17 @@ class RayConfig {
 /// A helper macro that helps to set a value to a config item.
 #define RAY_CONFIG(type, name, default_value) \
   if (pair.first == #name) {                  \
-    std::istringstream stream(pair.second);   \
-    stream >> name##_;                        \
+    if (typeid(type) == typeid(bool)) {       \
+       std::string value = pair.second;       \
+       std::transform(value.begin(),          \
+                      value.end(),            \
+                      value.begin(),          \
+                      ::tolower);             \
+       name##_ = value == "true";             \
+    } else {                                  \
+      std::istringstream stream(pair.second); \
+      stream >> name##_;                      \
+    }                                         \
     continue;                                 \
   }
 
