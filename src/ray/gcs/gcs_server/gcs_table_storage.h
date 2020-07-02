@@ -408,6 +408,8 @@ class RedisGcsTableStorage : public GcsTableStorage {
     placement_group_schedule_table_.reset(
         new GcsPlacementGroupScheduleTable(store_client_));
     heartbeat_table_.reset(new GcsHeartbeatTable(store_client_));
+    placement_group_schedule_table_.reset(
+        new GcsPlacementGroupScheduleTable(store_client_));
     heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(store_client_));
     error_info_table_.reset(new GcsErrorInfoTable(store_client_));
     profile_table_.reset(new GcsProfileTable(store_client_));

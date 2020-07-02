@@ -97,8 +97,6 @@ void GcsPlacementGroupScheduler::Schedule(
       new std::unordered_map<BundleID, ClientID, pair_hash>());
   // To count how many scheduler have been return, which include success and failure.
   auto finish_count = std::make_shared<size_t>();
-
-  decision->resize(bundles.size());
   /// TODO(AlisaWu): Change the strategy when reserve resource failed.
   for (size_t pos = 0; pos < bundles.size(); pos++) {
     RAY_CHECK(node_to_bundles_when_leasing_[schedule_map.at(bundles[pos]->BundleId())]
