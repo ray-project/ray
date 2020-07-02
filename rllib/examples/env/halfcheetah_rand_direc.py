@@ -2,6 +2,7 @@ import numpy as np
 import gym
 from gym.envs.mujoco.mujoco_env import MujocoEnv
 from ray.rllib.env.meta_env import MetaEnv
+from ray.rllib.utils.annotations import override
 
 
 class HalfCheetahRandDirecEnv(MujocoEnv, gym.utils.EzPickle, MetaEnv):

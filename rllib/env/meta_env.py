@@ -1,5 +1,6 @@
 from gym.core import Env
 
+
 class MetaEnv(Env):
     """
     Wrapper around OpenAI gym environments and meta-learning environments
