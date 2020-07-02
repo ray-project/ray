@@ -131,12 +131,12 @@ class Trajectory:
                 row) to be added to buffer.
                 Must contain keys: SampleBatch.ACTIONS, REWARDS, DONES, and OBS.
         """
-        assert self.has_initial_obs is True
-        assert (SampleBatch.ACTIONS in values and SampleBatch.REWARDS in values
-                and SampleBatch.NEXT_OBS in values)
-        assert env_id == self.env_id
-        assert agent_id == self.agent_id
-        assert policy_id == self.policy_id
+        #assert self.has_initial_obs is True
+        #assert (SampleBatch.ACTIONS in values and SampleBatch.REWARDS in values
+        #        and SampleBatch.NEXT_OBS in values)
+        #assert env_id == self.env_id
+        #assert agent_id == self.agent_id
+        #assert policy_id == self.policy_id
 
         # Only obs exists so far in buffers:
         # Initialize all other columns.

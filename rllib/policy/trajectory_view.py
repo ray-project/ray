@@ -93,7 +93,7 @@ def get_trajectory_view(
         #   agents + episodes (which seems very hard to realize).
         data_col = view_req.data_col or view_col
         view[view_col] = np.array([
-            t.buffers[data_col][t.cursor + view_req.timesteps] if data_col in t.buffers else np.zeros(view_req.space.shape)
+            t.buffers[data_col][t.cursor + view_req.timesteps]  # if data_col in t.buffers else np.zeros(view_req.space.shape)
             for t in trajectories
         ])
     return view

@@ -242,8 +242,6 @@ class SampleBatch:
 
     @PublicAPI
     def __getitem__(self, key):
-        if key == self.NEXT_OBS and self.NEXT_OBS not in self.data:
-            return self.data[self.OBS][1:]
         return self.data[key]
 
     @PublicAPI
