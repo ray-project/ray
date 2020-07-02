@@ -71,7 +71,7 @@ flatbuffers::Offset<flatbuffers::Vector<int64_t>> ToFlatbuffer(
 
 Status PlasmaReceive(int sock, MessageType message_type, std::vector<uint8_t>* buffer) {
   MessageType type;
-  RETURN_NOT_OK(ReadMessage(sock, &type, buffer));
+  RAY_RETURN_NOT_OK(ReadMessage(sock, &type, buffer));
   RAY_CHECK(type == message_type)
       << "type = " << static_cast<int64_t>(type)
       << ", message_type = " << static_cast<int64_t>(message_type);
@@ -112,14 +112,11 @@ Status PlasmaErrorStatus(fb::PlasmaError plasma_error) {
     case fb::PlasmaError::OK:
       return Status::OK();
     case fb::PlasmaError::ObjectExists:
-      return MakePlasmaError(PlasmaErrorCode::PlasmaObjectExists,
-                             "object already exists in the plasma store");
+      return Status::ObjectExists("object already exists in the plasma store");
     case fb::PlasmaError::ObjectNonexistent:
-      return MakePlasmaError(PlasmaErrorCode::PlasmaObjectNonexistent,
-                             "object does not exist in the plasma store");
+      return Status::ObjectNotFound("object does not exist in the plasma store");
     case fb::PlasmaError::OutOfMemory:
-      return MakePlasmaError(PlasmaErrorCode::PlasmaStoreFull,
-                             "object does not fit in the plasma store");
+      return Status::ObjectStoreFull("object does not fit in the plasma store");
     default:
       RAY_LOG(FATAL) << "unknown plasma error code " << static_cast<int>(plasma_error);
   }

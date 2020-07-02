@@ -41,7 +41,7 @@ def _register_all():
             _name = "SeeContrib"
             _default_config = with_common_config({})
 
-            def _setup(self, config):
+            def setup(self, config):
                 raise NameError(
                     "Please run `contrib/{}` instead.".format(name))
 

@@ -3,10 +3,66 @@
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/core_worker/common.h"
 #include "ray/protobuf/common.pb.h"
 
 namespace ray {
+
+/// Argument of a task.
+class TaskArg {
+ public:
+  virtual void ToProto(rpc::TaskArg *arg_proto) const = 0;
+  virtual ~TaskArg(){};
+};
+
+class TaskArgByReference : public TaskArg {
+ public:
+  /// Create a pass-by-reference task argument.
+  ///
+  /// \param[in] object_id Id of the argument.
+  /// \return The task argument.
+  TaskArgByReference(const ObjectID &object_id, const rpc::Address &owner_address)
+      : id_(object_id), owner_address_(owner_address) {}
+
+  void ToProto(rpc::TaskArg *arg_proto) const {
+    auto ref = arg_proto->mutable_object_ref();
+    ref->set_object_id(id_.Binary());
+    ref->mutable_owner_address()->CopyFrom(owner_address_);
+  }
+
+ private:
+  /// Id of the argument if passed by reference, otherwise nullptr.
+  const ObjectID id_;
+  const rpc::Address owner_address_;
+};
+
+class TaskArgByValue : public TaskArg {
+ public:
+  /// Create a pass-by-value task argument.
+  ///
+  /// \param[in] value Value of the argument.
+  /// \return The task argument.
+  TaskArgByValue(const std::shared_ptr<RayObject> &value) : value_(value) {
+    RAY_CHECK(value) << "Value can't be null.";
+  }
+
+  void ToProto(rpc::TaskArg *arg_proto) const {
+    if (value_->HasData()) {
+      const auto &data = value_->GetData();
+      arg_proto->set_data(data->Data(), data->Size());
+    }
+    if (value_->HasMetadata()) {
+      const auto &metadata = value_->GetMetadata();
+      arg_proto->set_metadata(metadata->Data(), metadata->Size());
+    }
+    for (const auto &nested_id : value_->GetNestedIds()) {
+      arg_proto->add_nested_inlined_ids(nested_id.Binary());
+    }
+  }
+
+ private:
+  /// Value of the argument.
+  const std::shared_ptr<RayObject> value_;
+};
 
 /// Helper class for building a `TaskSpecification` object.
 class TaskSpecBuilder {

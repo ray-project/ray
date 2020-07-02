@@ -20,7 +20,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
@@ -203,7 +203,7 @@ def chop_into_sequences(episode_ids,
     seq_len = 0
     unique_ids = np.add(
         np.add(episode_ids, agent_indices),
-        np.array(unroll_ids) << 32)
+        np.array(unroll_ids, dtype=np.int64) << 32)
     for uid in unique_ids:
         if (prev_id is not None and uid != prev_id) or \
                 seq_len >= max_seq_len:
