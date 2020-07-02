@@ -1,48 +1,6 @@
-const base =
-  process.env.NODE_ENV === "development"
-    ? "http://localhost:8265"
-    : window.location.origin;
+import { get, post } from "./common/requestUtils";
 
 // TODO(mitchellstern): Add JSON schema validation for the responses.
-const get = async <T>(path: string, params: { [key: string]: any }) => {
-  const url = new URL(path, base);
-  for (const [key, value] of Object.entries(params)) {
-    url.searchParams.set(key, value);
-  }
-
-  const response = await fetch(url.toString());
-  const json = await response.json();
-
-  const { result, error } = json;
-
-  if (error !== null) {
-    throw Error(error);
-  }
-
-  return result as T;
-};
-
-const post = async <T>(path: string, params: { [key: string]: any }) => {
-  const requestOptions = {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
-  };
-
-  const url = new URL(path, base);
-
-  const response = await fetch(url.toString(), requestOptions);
-  const json = await response.json();
-
-  const { result, error } = json;
-
-  if (error !== null) {
-    throw Error(error);
-  }
-
-  return result as T;
-};
-
 export type RayConfigResponse = {
   min_workers: number;
   max_workers: number;
