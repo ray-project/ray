@@ -447,9 +447,10 @@ init() {
 }
 
 build() {
+  # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
+  bazel build -k "//:*"  # Full build first, since pip install will build only a subset of targets
+
   if ! need_wheels; then
-    # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
-    bazel build -k "//:*"  # Full build first, since pip install will build only a subset of targets
     install_ray
     if [ "${LINT-}" = 1 ]; then
       # Try generating Sphinx documentation. To do this, we need to install Ray first.

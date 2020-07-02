@@ -27,7 +27,7 @@ class PytorchTrainble(tune.Trainable):
        changing the original training code.
     """
 
-    def _setup(self, config):
+    def setup(self, config):
         self.train_loader, self.test_loader = get_data_loaders()
         self.model = ConvNet()
         self.optimizer = optim.SGD(
@@ -35,17 +35,17 @@ class PytorchTrainble(tune.Trainable):
             lr=config.get("lr", 0.01),
             momentum=config.get("momentum", 0.9))
 
-    def _train(self):
+    def step(self):
         train(self.model, self.optimizer, self.train_loader)
         acc = test(self.model, self.test_loader)
         return {"mean_accuracy": acc}
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         checkpoint_path = os.path.join(checkpoint_dir, "model.pth")
         torch.save(self.model.state_dict(), checkpoint_path)
         return checkpoint_path
 
-    def _restore(self, checkpoint_path):
+    def load_checkpoint(self, checkpoint_path):
         self.model.load_state_dict(torch.load(checkpoint_path))
 
     def _export_model(self, export_formats, export_dir):

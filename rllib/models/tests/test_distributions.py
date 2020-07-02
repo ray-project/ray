@@ -2,6 +2,7 @@ from functools import partial
 import numpy as np
 from gym.spaces import Box, Dict, Tuple
 from scipy.stats import beta, norm
+import tree
 import unittest
 
 from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
@@ -10,7 +11,6 @@ from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
 from ray.rllib.models.torch.torch_action_dist import TorchBeta, \
     TorchCategorical, TorchDiagGaussian, TorchMultiActionDistribution, \
     TorchMultiCategorical, TorchSquashedGaussian
-from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, \
     softmax, SMALL_NUMBER, LARGE_INTEGER
@@ -18,7 +18,6 @@ from ray.rllib.utils.test_utils import check, framework_iterator
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
-tree = try_import_tree()
 
 
 class TestDistributions(unittest.TestCase):
