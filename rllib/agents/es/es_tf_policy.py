@@ -3,19 +3,18 @@
 
 import gym
 import numpy as np
+import tree
 
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
 
 tf1, tf, tfv = try_import_tf()
-tree = try_import_tree()
 
 
 def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0.0):
