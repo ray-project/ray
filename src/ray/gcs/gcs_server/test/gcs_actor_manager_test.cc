@@ -410,6 +410,23 @@ TEST_F(GcsActorManagerTest, TestDetachedActorRestartWhenCreatorDead) {
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
 }
 
+TEST_F(GcsActorManagerTest, TestDetachedActorWithEmptyName) {
+  auto job_id = JobID::FromInt(1);
+
+  auto request1 =
+      Mocker::GenCreateActorRequest(job_id, 0, /*is_detached=*/true, /*name=*/"");
+  Status status = gcs_actor_manager_->RegisterActor(
+      request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+  ASSERT_TRUE(status.ok());
+  ASSERT_TRUE(gcs_actor_manager_->GetActorIDByName("").IsNil());
+
+  auto request2 =
+      Mocker::GenCreateActorRequest(job_id, 0, /*is_detached=*/true, /*name=*/"");
+  status = gcs_actor_manager_->RegisterActor(request2,
+                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
+  ASSERT_TRUE(status.ok());
+}
+
 TEST_F(GcsActorManagerTest, TestNamedActors) {
   auto job_id_1 = JobID::FromInt(1);
   auto job_id_2 = JobID::FromInt(2);

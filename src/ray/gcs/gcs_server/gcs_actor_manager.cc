@@ -659,7 +659,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     gcs_actor_scheduler_->Schedule(actor);
   } else {
     // For detached actors, make sure to remove its name.
-    if (actor->IsDetached() && !actor->GetName().empty()) {
+    if (actor->IsDetached()) {
       auto it = named_actors_.find(actor->GetName());
       if (it != named_actors_.end()) {
         RAY_CHECK(it->second == actor->GetActorID());
