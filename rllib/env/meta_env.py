@@ -3,7 +3,9 @@ from gym.core import Env
 
 class MetaEnv(Env):
     """
-    Wrapper around OpenAI gym environments and meta-learning environments
+    Wrapper around OpenAI gym environments and meta-learning environments.
+    
+    Your env must implement this interface in order to be used with MAML.
     """
 
     def sample_tasks(self, n_tasks):
