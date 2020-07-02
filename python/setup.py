@@ -22,7 +22,7 @@ pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
-    "ray/core/src/ray/thirdparty/redis/src/redis-server",
+    "ray/core/src/ray/thirdparty/redis/src/redis-server" + exe_suffix,
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
     "ray/core/src/plasma/plasma_store_server" + exe_suffix,
     "ray/_raylet" + pyd_suffix,
@@ -76,7 +76,7 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
     ray_files += [
         "ray/core/src/credis/build/src/libmember.so",
         "ray/core/src/credis/build/src/libmaster.so",
-        "ray/core/src/credis/redis/src/redis-server"
+        "ray/core/src/credis/redis/src/redis-server" + exe_suffix,
     ]
 
 extras = {
