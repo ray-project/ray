@@ -240,6 +240,45 @@ class DashboardController(BaseDashboardController):
             self.tune_stats.start()
 
 
+class Dashboardv2APIHandler:
+    def __init__(self, raylet_stats, node_stats):
+        self.raylet_stats = raylet_stats
+        self.node_stats = node_stats
+
+    def register_routes(self, router):
+        pass
+    
+    @staticmethod
+    def api_response(data):
+        return {
+            "result": True,
+            "msg": "Success",
+            "data": data,
+        }
+    
+    @staticmethod
+    def api_error(msg):
+        return {
+            "result": False,
+            "msg": msg
+        }
+
+    def hostnames(self):
+        node_stats = self.node_stats.get_node_stats()
+        return [client["hostname"] for client in node_stats["clients"]]
+
+    def host_summaries(self):
+        node_stats = self.node_stats.get_node_stats()
+        return [client for client in node_stats["clients"]]
+    
+    def host_details(self, hostname):
+        node_stats = self.node_stats.get_node_stats()
+        for node in node_stats["clients"]:
+            if node["hostname"] == hostname:
+                return node
+        raise ValueError("Host not found {}".format(hostname))
+
+
 class DashboardRouteHandler(BaseDashboardRouteHandler):
     def __init__(self, dashboard_controller: DashboardController,
                  is_dev=False):
@@ -529,7 +568,7 @@ class Dashboard:
             logs="/api/logs",
             errors="/api/errors",
             memory_table="/api/memory_table",
-            stop_memory_table="/api/stop_memory_table")
+            stop_memory_table="/api/stop_memory_table")            )
         self.app.router.add_get("/{_}", route_handler.get_forbidden)
         self.app.router.add_post("/api/set_tune_experiment",
                                  route_handler.set_tune_experiment)
