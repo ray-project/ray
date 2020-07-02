@@ -17,10 +17,8 @@ import io.ray.streaming.runtime.worker.JobWorker;
 import io.ray.streaming.runtime.worker.context.StreamingRuntimeContext;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -86,23 +84,21 @@ public abstract class StreamTask implements Runnable {
       );
 
       // create a collector for each output operator
-      Set<String> opNameSet = new HashSet<>();
       Map<String, List<String>> opGroupedChannelId = new HashMap<>();
       Map<String, List<BaseActorHandle>> opGroupedActor = new HashMap<>();
       Map<String, Partition> opPartitionMap = new HashMap<>();
       for (int i = 0; i < outputEdges.size(); ++i) {
         ExecutionEdge edge = outputEdges.get(i);
-        String opName = edge.getTargetExecutionVertex().getExecutionJobVertexName();
-        if (!opNameSet.contains(opName)) {
+        String opName = edge.getTargetExecutionJobVertexName();
+        if (!opPartitionMap.containsKey(opName)) {
           opGroupedChannelId.put(opName, new ArrayList<>());
           opGroupedActor.put(opName, new ArrayList<>());
         }
         opGroupedChannelId.get(opName).add(outputChannelIds.get(i));
         opGroupedActor.get(opName).add(targetActors.get(i));
         opPartitionMap.put(opName, edge.getPartition());
-        opNameSet.add(opName);
       }
-      opNameSet.forEach(opName -> {
+      opPartitionMap.keySet().forEach(opName -> {
         collectors.add(new OutputCollector(
             writer, opGroupedChannelId.get(opName),
             opGroupedActor.get(opName), opPartitionMap.get(opName)
