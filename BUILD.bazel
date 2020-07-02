@@ -628,6 +628,7 @@ cc_library(
     ),
     hdrs = glob([
         "src/ray/raylet/*.h",
+        "src/ray/core_worker/common.h",
     ]),
     copts = COPTS,
     linkopts = select({
@@ -820,7 +821,6 @@ cc_test(
     srcs = ["src/ray/raylet/lineage_cache_test.cc"],
     copts = COPTS,
     deps = [
-        ":core_worker_lib",
         ":node_manager_fbs",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
@@ -960,7 +960,6 @@ cc_library(
     ],
     copts = COPTS,
     deps = [
-        ":core_worker_lib",
         ":gcs",
         ":gcs_service_rpc",
     ],
