@@ -17,31 +17,40 @@ namespace ray {
     class ClusterTaskManager {
 
     public:
+      /// fullfills_dependencies_func Should return if all dependencies are
+      /// fulfilled and unsubscribe from dependencies only if they're
+      /// fulfilled.
       ClusterTaskManager(
-                        ClusterResourceScheduler &cluster_resource_scheduler,
+                        const ClientID &self_node_id,
+                        std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
                         std::function<bool(const Task &)> fulfills_dependencies_func,
-                        const WorkerPool &worker_pool
+                        const WorkerPool &worker_pool,
+                        std::shared_ptr<gcs::GcsClient> gcs_client
                         );
 
       /// For the pending task at the head of tasks_to_schedule_, return a node
       /// in the system (local or remote) that has enough resources available to
       /// run the task, if any such node exist.
       /// Repeat the process as long as we can schedule a task.
-      void NewSchedulerSchedulePendingTasks();
+      bool NewSchedulerSchedulePendingTasks();
+
+      void DispatchScheduledTasksToWorkers();
 
       /// Dispatch tasks to available workers.
-      std::unique_ptr<std::vector<std::pair<Task, Worker>>> DispatchScheduledTasksToWorkers();
+      std::unique_ptr<std::vector<std::pair<Task, std::shared_ptr<Worker>>>> GetDispatchableTasks();
 
       /// Queue tasks for scheduling.
-      void QueueTask(const Task &task);
+      void QueueTask(ScheduleFn fn, const Task &task);
 
       /// Move tasks from waiting to ready for dispatch
       void TasksUnblocked(const std::vector<TaskID> readyIds);
 
     private:
+      const ClientID &self_node_id_;
       std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
       std::function<bool(const Task&)> fulfills_dependencies_func_;
       const WorkerPool &worker_pool_;
+      std::shared_ptr<gcs::GcsClient> gcs_client_;
 
       /// Queue of lease requests that are waiting for resources to become available.
       /// TODO this should be a queue for each SchedulingClass
@@ -50,6 +59,10 @@ namespace ray {
       std::deque<std::pair<ScheduleFn, Task>> tasks_to_dispatch_;
       /// Queue tasks waiting for arguments to be transferred locally.
       absl::flat_hash_map<TaskID, std::pair<ScheduleFn, Task>> waiting_tasks_;
+
+      /// Correctly determine whether a task should be immediately dispatched,
+      /// or placed on a wait queue.
+      void WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work);
     };
   }
 }

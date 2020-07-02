@@ -741,6 +741,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// The new resource scheduler for direct task calls.
   std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
+  std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
 
   /// Queue of lease requests that are waiting for resources to become available.
   /// TODO this should be a queue for each SchedulingClass
