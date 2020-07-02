@@ -30,6 +30,12 @@ Take a look at any of the below tutorials to get started with Tune.
    :figure: /images/xgboost_logo.png
    :description: :doc:`A guide to tuning XGBoost parameters with Tune <tune-xgboost>`
 
+
+.. customgalleryitem::
+   :tooltip: Using Tune with Weights and Biases (wandb).
+   :figure: /images/tune.png
+   :description: :doc:`A guide to using Ray Tune with wandb <tune-wandb-integration>`
+
 .. raw:: html
 
     </div>
@@ -41,6 +47,7 @@ Take a look at any of the below tutorials to get started with Tune.
    tune-tutorial.rst
    tune-pytorch-lightning.rst
    tune-xgboost.rst
+   wandb-integration.rst
 
 
 User Guides
