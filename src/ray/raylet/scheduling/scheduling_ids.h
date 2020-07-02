@@ -14,10 +14,10 @@
 
 #pragma once
 
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
 #include "ray/util/logging.h"
-
-#include <string>
 
 /// Limit the ID range to test for collisions.
 #define MAX_ID_TEST 8
