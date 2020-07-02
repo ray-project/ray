@@ -4,7 +4,7 @@ set -euox pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-version="3.2.0"
+version="3.3.0"
 achitecture="${HOSTTYPE}"
 platform="unknown"
 case "${OSTYPE}" in
@@ -43,7 +43,7 @@ esac
 }
 
 # In azure pipelines or github acions, we don't need to install bazel
-if [ -x "$(command -v bazel)" ]; then
+if [ -x "$(command -V bazel)" ]; then
   echo 'Bazel is already installed'
   bazel info
   bazel --version

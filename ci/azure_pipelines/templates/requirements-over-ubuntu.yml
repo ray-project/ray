@@ -21,6 +21,7 @@ steps:
         apt-utils \
         curl \
         jq \
+        unzip \
         gnupg \
         g++ \
         git \

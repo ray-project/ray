@@ -7,7 +7,7 @@ steps:
 - bash: |
     set -xe
 
-    if [ -x "$(command -v bazel)" ]; then
+    if [ -x "$(command -v bazel)" -a -x "$(command -v bazelisk)" ]; then
       echo 'Bazel is already installed'
       bazel info
       bazel --version

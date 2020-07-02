@@ -9,4 +9,7 @@ brew tap bazelbuild/tap
 echo "Install and update Bazel"
 brew install bazelbuild/tap/bazel
 
+echo "Install Bazelisk"
+brew install bazelisk
+
 bazel --version

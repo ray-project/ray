@@ -20,6 +20,8 @@ steps:
     find $BAZEL_OUTPUTROOT -name '*.log'
 
     sudo find $BAZEL_OUTPUTROOT -name '*.log' -exec cp --parents {} $BUILD_ARTIFACTSTAGINGDIRECTORY/bazel \;
+
+    sudo chmod 777 $BUILD_ARTIFACTSTAGINGDIRECTORY
   displayName: 'Copy bazel output dir to staging'
   timeoutInMinutes: 5
   condition: always()

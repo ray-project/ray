@@ -20,7 +20,7 @@ steps:
     echo "VERSION_SUFIX: $VERSION_SUFIX"
     VERSION_FILE="$BUILD_SOURCESDIRECTORY/python/ray/__init__.py"
     if [[ "$BUILD_SOURCEBRANCH" == *"master"* ]] || [[ "$BUILD_SOURCEBRANCH" == *"releases/"* ]]; then
-      VERSION_SUFIX=".{VERSION_SUFIX}"
+      VERSION_SUFIX=".${VERSION_SUFIX}"
       echo "Release generation detected. The VERSION_SUFIX will be directly appended."
     else
       VERSION_SUFIX=".dev${VERSION_SUFIX}"
