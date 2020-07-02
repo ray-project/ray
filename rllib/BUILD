@@ -344,6 +344,7 @@ py_test(
     args = ["--yaml-dir=tuned_examples/sac", "--torch"]
 )
 
+
 # TD3
 py_test(
     name = "run_regression_tests_pendulum_td3_tf",
@@ -1011,6 +1012,13 @@ py_test(
     tags = ["models"],
     size = "medium",
     srcs = ["models/tests/test_distributions.py"]
+)
+
+py_test(
+    name = "test_attention_nets",
+    tags = ["models"],
+    size = "small",
+    srcs = ["models/tests/test_attention_nets.py"]
 )
 
 # --------------------------------------------------------------------

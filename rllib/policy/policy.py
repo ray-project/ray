@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 import gym
 import numpy as np
+from typing import Dict, List, Optional
 
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -9,6 +10,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
+from ray.rllib.utils.types import AgentID
 
 torch, _ = try_import_torch()
 tree = try_import_tree()
@@ -78,12 +80,12 @@ class Policy(metaclass=ABCMeta):
         """Computes actions for the current policy.
 
         Args:
-            obs_batch (Union[List,np.ndarray]): Batch of observations.
+            obs_batch (Union[List, np.ndarray]): Batch of observations.
             state_batches (Optional[list]): List of RNN state input batches,
                 if any.
-            prev_action_batch (Optional[List,np.ndarray]): Batch of previous
+            prev_action_batch (Optional[List, np.ndarray]): Batch of previous
                 action values.
-            prev_reward_batch (Optional[List,np.ndarray]): Batch of previous
+            prev_reward_batch (Optional[List, np.ndarray]): Batch of previous
                 rewards.
             info_batch (info): Batch of info objects.
             episodes (list): MultiAgentEpisode for each obs in obs_batch.
@@ -188,6 +190,40 @@ class Policy(metaclass=ABCMeta):
         # Return action, internal state(s), infos.
         return single_action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
+
+    def compute_actions_from_trajectories(
+            self,
+            trajectories: List["Trajectory"],
+            other_trajectories: Dict[AgentID, "Trajectory"],
+            explore: bool = None,
+            timestep: Optional[int] = None,
+            **kwargs):
+        """Computes actions for the current policy based on .
+
+        Note: This is an experimental API method.
+
+        Only used so far by the Sampler iff `_fast_sampling=True` (also only
+        supported for torch).
+
+        Args:
+            trajectories (List[Trajectory]): A List of Trajectory data used
+                to create a view for the Model forward call.
+            other_trajectories (Dict[AgentID, Trajectory]): Optional dict
+                mapping AgentIDs to Trajectory objects.
+            explore (bool): Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
+            timestep (Optional[int]): The current (sampling) time step.
+            kwargs: forward compatibility placeholder
+
+        Returns:
+            actions (np.ndarray): batch of output actions, with shape like
+                [BATCH_SIZE, ACTION_SHAPE].
+            state_outs (list): list of RNN state output batches, if any, with
+                shape like [STATE_SIZE, BATCH_SIZE].
+            info (dict): dictionary of extra feature batches, if any, with
+                shape like {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
+        """
+        raise NotImplementedError
 
     @DeveloperAPI
     def compute_log_likelihoods(self,
