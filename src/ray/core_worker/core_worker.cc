@@ -1030,9 +1030,10 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
 
 Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only,
                           bool delete_creating_tasks) {
-  // TODO(edoakes): what are the desired semantics for deleting from a non-owner?
-  // Should we just delete locally or ping the owner and delete globally?
-  reference_counter_->DeleteReferences(object_ids);
+  // Release the object from plasma. This does not affect the object's ref
+  // count. If this was called from a non-owning worker, then a warning will be
+  // logged and the object will not get released.
+  reference_counter_->FreePlasmaObjects(object_ids);
 
   // We only delete from plasma, which avoids hangs (issue #7105). In-memory
   // objects are always handled by ref counting only.

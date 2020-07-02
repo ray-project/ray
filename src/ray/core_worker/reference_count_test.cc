@@ -2019,6 +2019,37 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
   deleted->clear();
 }
 
+TEST_F(ReferenceCountTest, TestFree) {
+  auto deleted = std::make_shared<std::unordered_set<ObjectID>>();
+  auto callback = [&](const ObjectID &object_id) { deleted->insert(object_id); };
+
+  ObjectID id = ObjectID::FromRandom();
+  ClientID node_id = ClientID::FromRandom();
+
+  // Test free before receiving information about where the object is pinned.
+  rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true);
+  rc->AddLocalReference(id, "");
+  rc->FreePlasmaObjects({id});
+  ASSERT_FALSE(rc->SetDeleteCallback(id, callback));
+  ASSERT_EQ(deleted->count(id), 0);
+  rc->UpdateObjectPinnedAtRaylet(id, node_id);
+  bool pinned = true;
+  ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned));
+  ASSERT_FALSE(pinned);
+  rc->RemoveLocalReference(id, nullptr);
+
+  // Test free after receiving information about where the object is pinned.
+  rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true);
+  rc->AddLocalReference(id, "");
+  ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
+  rc->UpdateObjectPinnedAtRaylet(id, node_id);
+  rc->FreePlasmaObjects({id});
+  ASSERT_TRUE(deleted->count(id) > 0);
+  ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned));
+  ASSERT_FALSE(pinned);
+  rc->RemoveLocalReference(id, nullptr);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
