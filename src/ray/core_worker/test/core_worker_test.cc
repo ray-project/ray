@@ -797,7 +797,6 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   const size_t array2_size = 200 * 1024;
   uint8_t *array2 = new uint8_t[array2_size];
 
-
   std::vector<RayObject> buffers;
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)),
                        std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2),

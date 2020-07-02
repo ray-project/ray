@@ -415,7 +415,7 @@ void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
   }
 }
 
-Status CoreWorkerPlasmaStoreProvider:: WarmupStore() {
+Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
   ObjectID object_id = ObjectID::FromRandom();
   std::shared_ptr<Buffer> data;
   RAY_RETURN_NOT_OK(Create(nullptr, 8, object_id, &data));

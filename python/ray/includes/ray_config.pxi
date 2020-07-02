@@ -56,7 +56,8 @@ cdef class Config:
 
     @staticmethod
     def raylet_client_connect_timeout_milliseconds():
-        return RayConfig.instance().raylet_client_connect_timeout_milliseconds()
+        return (RayConfig.instance()
+                .raylet_client_connect_timeout_milliseconds())
 
     @staticmethod
     def raylet_fetch_timeout_milliseconds():
