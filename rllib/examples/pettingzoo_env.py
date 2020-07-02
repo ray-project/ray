@@ -5,7 +5,7 @@ try:
 except ImportError:
     from ray.rllib.agents.registry import get_agent_class
 from ray.tune.registry import register_env
-from ray.rllib.env.pettingzoo_wrapper import PettingZooEnv
+from ray.rllib.env import PettingZooEnv
 from pettingzoo.gamma import prison_v0
 from pettingzoo.mpe import simple_spread_v0
 from supersuit.aec_wrappers import normalize_obs, dtype, color_reduction
@@ -13,16 +13,15 @@ from supersuit.aec_wrappers import normalize_obs, dtype, color_reduction
 from numpy import float32
 
 
-'''For this script, you need:
-1. Algorithm name and according module, e.g.: 'PPo' + agents.ppo as agent
-2. Name of the aec game you want to train on, e.g.: 'prison'.
-3. num_cpus
-4. num_rollouts
-
-Does require SuperSuit
-'''
-
 if __name__ == "__main__":
+    '''For this script, you need:
+    1. Algorithm name and according module, e.g.: 'PPo' + agents.ppo as agent
+    2. Name of the aec game you want to train on, e.g.: 'prison'.
+    3. num_cpus
+    4. num_rollouts
+
+    Does require SuperSuit
+    '''
     alg_name = 'PPO'
     # function that outputs the environment you wish to register.
     env_creator = lambda config: normalize_obs(color_reduction(dtype(prison_v0.env(num_floors=config.get("num_floors", 4)), dtype=float32), mode="R"))
