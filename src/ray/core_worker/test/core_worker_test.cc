@@ -895,7 +895,7 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodesFailure) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 9);
+  RAY_CHECK(argc == 8);
   ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);
   ray::TEST_RAYLET_EXEC_PATH = std::string(argv[2]);
 
@@ -904,12 +904,11 @@ int main(int argc, char **argv) {
   std::uniform_int_distribution<int> random_gen{2000, 2009};
   // Use random port to avoid port conflicts between UTs.
   node_manager_port = random_gen(gen);
-  ray::TEST_RAYLET_MONITOR_EXEC_PATH = std::string(argv[3]);
-  ray::TEST_MOCK_WORKER_EXEC_PATH = std::string(argv[4]);
-  ray::TEST_GCS_SERVER_EXEC_PATH = std::string(argv[5]);
+  ray::TEST_MOCK_WORKER_EXEC_PATH = std::string(argv[3]);
+  ray::TEST_GCS_SERVER_EXEC_PATH = std::string(argv[4]);
 
-  ray::TEST_REDIS_CLIENT_EXEC_PATH = std::string(argv[6]);
-  ray::TEST_REDIS_SERVER_EXEC_PATH = std::string(argv[7]);
-  ray::TEST_REDIS_MODULE_LIBRARY_PATH = std::string(argv[8]);
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = std::string(argv[5]);
+  ray::TEST_REDIS_SERVER_EXEC_PATH = std::string(argv[6]);
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = std::string(argv[7]);
   return RUN_ALL_TESTS();
 }

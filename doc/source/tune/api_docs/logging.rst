@@ -99,7 +99,7 @@ You can do this in the trainable, as shown below:
 .. code-block:: python
 
     class CustomLogging(tune.Trainable)
-        def _setup(self, config):
+        def setup(self, config):
             trial_id = self.trial_id
             library.init(
                 name=trial_id,
@@ -109,10 +109,10 @@ You can do this in the trainable, as shown below:
                 allow_val_change=True)
             library.set_log_path(self.logdir)
 
-        def _train(self):
+        def step(self):
             library.log_model(...)
 
-        def _log_result(self, result):
+        def log_result(self, result):
             res_dict = {
                 str(k): v
                 for k, v in result.items()

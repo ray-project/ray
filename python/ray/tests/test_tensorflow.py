@@ -4,7 +4,7 @@ import ray
 import ray.experimental.tf_utils
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf, _, _ = try_import_tf()
 
 
 def make_linear_network(w_name=None, b_name=None):
