@@ -1,4 +1,5 @@
-from gym.core import Env
+import gym
+from typing import List
 
 
 class MetaEnv(gym.Env):
