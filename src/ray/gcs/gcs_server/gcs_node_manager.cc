@@ -399,7 +399,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
 
 void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
   RAY_LOG(INFO) << "Loading initial data.";
-
+  RAY_CHECK(done);
   auto get_node_callback = [this, done](
                                const std::unordered_map<ClientID, GcsNodeInfo> &result) {
     for (auto &item : result) {

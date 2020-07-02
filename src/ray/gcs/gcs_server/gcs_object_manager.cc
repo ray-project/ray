@@ -288,12 +288,13 @@ std::shared_ptr<ObjectTableDataList> GcsObjectManager::GenObjectTableDataList(
 
 void GcsObjectManager::LoadInitialData(const EmptyCallback &done) {
   RAY_LOG(INFO) << "Loading initial data.";
+  RAY_CHECK(done);
   auto callback =
       [this, done](const std::unordered_map<ObjectID, ObjectTableDataList> &result) {
         absl::flat_hash_map<ClientID, ObjectSet> node_to_objects;
         absl::MutexLock lock(&mutex_);
         for (auto &item : result) {
-          auto object_list = item.second;
+          const auto &object_list = item.second;
           for (int index = 0; index < object_list.items_size(); ++index) {
             const auto &object_table_date = object_list.items(index);
             auto node_id = ClientID::FromBinary(object_table_date.manager());
@@ -302,7 +303,7 @@ void GcsObjectManager::LoadInitialData(const EmptyCallback &done) {
             objects_on_node->insert(item.first);
             auto *object_locations =
                 GetObjectLocationSet(item.first, /* create_if_not_exist */ true);
-            object_locations->emplace(node_id, object_table_date.timestamp());
+            RAY_CHECK(object_locations->emplace(node_id, object_table_date.timestamp()).second);
           }
         }
         RAY_LOG(INFO) << "Finished loading initial data.";

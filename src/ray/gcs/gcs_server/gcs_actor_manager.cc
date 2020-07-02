@@ -764,6 +764,7 @@ void GcsActorManager::SchedulePendingActors() {
 
 void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
   RAY_LOG(INFO) << "Loading initial data.";
+  RAY_CHECK(done);
   auto callback = [this,
                    done](const std::unordered_map<ActorID, ActorTableData> &result) {
     for (auto &item : result) {
