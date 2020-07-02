@@ -5,6 +5,7 @@ from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.trajectory_view import ViewRequirement
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 
@@ -169,3 +170,13 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
     def value_function(self):
         assert self._features is not None, "must call forward() first"
         return torch.reshape(self._value_branch(self._features), [-1])
+
+    @override(ModelV2)
+    def get_view_requirements(self, is_training=False):
+        return {
+            SampleBatch.OBS: ViewRequirement(timesteps=0),
+            "state_h": ViewRequirement("state_h", space=, timesteps=-1),
+            "state_c": ViewRequirement("state_c", timesteps=-1),
+            SampleBatch.PREV_ACTIONS: ViewRequirement(SampleBatch.ACTIONS, -1),
+            SampleBatch.PREV_REWARDS: ViewRequirement(SampleBatch.REWARDS, -1),
+        }

@@ -28,7 +28,7 @@ class ViewRequirement:
                  data_col: Optional[str] = None,
                  space: Space = None,
                  timesteps: int = 0,
-                 fill_mode: str = "zeros",
+                 fill: str = "zeros",
                  repeat_mode: str = "all"):
         """Initializes a ViewRequirement object.
 
@@ -41,8 +41,8 @@ class ViewRequirement:
                 Default: Simple box space, e.g. rewards.
             timesteps (Union[List[int], int]): List of relative (or absolute
                 timesteps) to be present in the input_dict.
-            fill_mode (str): The fill mode in case t<0 or t>H.
-                One of "zeros", "tile".
+            fill (str): The fill mode in case t<0 or t>H.
+                One of "zeros", "tile", .
             repeat_mode (str): The repeat-mode (one of "all" or "only_first").
                 E.g. for training, we only want the first internal state
                 timestep (the NN will calculate all others again anyways).
@@ -55,7 +55,7 @@ class ViewRequirement:
         # TODO: (sven)
         # "absolute_timesteps",
 
-        self.fill_mode = fill_mode
+        self.fill = fill
         self.repeat_mode = repeat_mode
 
         # Provide all data as time major (default: False).
@@ -83,6 +83,7 @@ def get_trajectory_view(
     """
     # Get ModelV2's view requirements.
     view_reqs = model.get_view_requirements(is_training=is_training)
+
     # Construct the view dict.
     view = {}
     for view_col, view_req in view_reqs.items():
@@ -92,8 +93,14 @@ def get_trajectory_view(
         #   single(!) np buffer per column across all currently ongoing
         #   agents + episodes (which seems very hard to realize).
         data_col = view_req.data_col or view_col
-        view[view_col] = np.array([
-            t.buffers[data_col][t.cursor + view_req.timesteps]  # if data_col in t.buffers else np.zeros(view_req.space.shape)
-            for t in trajectories
-        ])
+        batch = []
+        for t in trajectories:
+            if data_col in t.buffers:
+                batch.append(t.buffers[data_col][t.cursor + view_req.timesteps])
+            elif self.fill == "zeros":
+                batch.append(np.zeros(view_req.space.shape))
+            elif self.fill == "tile":
+                batch.append(np.zeros(view_req.space.shape))
+        view[view_col] = np.array(batch)
+
     return view
