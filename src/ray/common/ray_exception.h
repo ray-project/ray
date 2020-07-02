@@ -65,7 +65,7 @@ class RayException : public MessageWrapper<rpc::RayException> {
 
   std::string ErrorMessage() const { return message_->error_message(); }
 
-  Language Language() const { return message_->language(); }
+  rpc::Language Language() const { return message_->language(); }
 
   JobID JobId() const { return JobID::FromBinary(message_->job_id()); }
 
