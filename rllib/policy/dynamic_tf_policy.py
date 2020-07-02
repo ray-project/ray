@@ -120,9 +120,9 @@ class DynamicTFPolicy(TFPolicy):
                 inputs.
                 The callable takes as inputs: Policy, ModelV2, input_dict,
                 explore, timestep, is_training.
-            existing_inputs (Optional[Dict[str, tf1.placeholder]]): When copying
-                a policy, this specifies an existing dict of placeholders to
-                use instead of defining new ones.
+            existing_inputs (Optional[Dict[str, tf1.placeholder]]): When
+                copying a policy, this specifies an existing dict of
+                placeholders to use instead of defining new ones.
             existing_model (Optional[ModelV2]): When copying a policy, this
                 specifies an existing model to clone and share weights with.
             get_batch_divisibility_req (Optional[Callable[[Policy], int]]]):
