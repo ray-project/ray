@@ -1,18 +1,10 @@
 import numpy as np
 import gym
 from gym.envs.mujoco.mujoco_env import MujocoEnv
-"""
-Custom Meta-learning Environment Specifications:
-1) Compatible with gym environment interface (check custom envs)
-2) Requires sample_tasks(n_tasks): Returns n sampled tasks
-3) Requires set_task(task): Sets environment task
-
-Optional:
-1) Modify step(action) function to incorporate task-specific reward
-"""
+from ray.rllib.env.meta_env import MetaEnv
 
 
-class HalfCheetahRandDirecEnv(MujocoEnv, gym.utils.EzPickle):
+class HalfCheetahRandDirecEnv(MujocoEnv, gym.utils.EzPickle, MetaEnv):
     """HalfCheetah Environment with two diff tasks, moving forwards or backwards
 
     Direction is defined as a scalar: +1.0 (forwards) or -1.0 (backwards)
@@ -23,10 +15,12 @@ class HalfCheetahRandDirecEnv(MujocoEnv, gym.utils.EzPickle):
         MujocoEnv.__init__(self, "half_cheetah.xml", 5)
         gym.utils.EzPickle.__init__(self, goal_direction)
 
+    @override(MetaEnv)
     def sample_tasks(self, n_tasks):
         # For fwd/bwd env, goal direc is backwards if - 1.0, forwards if + 1.0
         return np.random.choice((-1.0, 1.0), (n_tasks, ))
 
+    @override(MetaEnv)
     def set_task(self, task):
         """
         Args:
@@ -34,6 +28,7 @@ class HalfCheetahRandDirecEnv(MujocoEnv, gym.utils.EzPickle):
         """
         self.goal_direction = task
 
+    @override(MetaEnv)
     def get_task(self):
         """
         Returns:

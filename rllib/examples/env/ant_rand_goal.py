@@ -1,18 +1,10 @@
 import numpy as np
 import gym
 from gym.envs.mujoco.mujoco_env import MujocoEnv
-"""
-Custom Meta-learning Environment Specifications:
-1) Compatible with gym environment interface (check custom envs)
-2) Requires sample_tasks(n_tasks): Returns n sampled tasks
-3) Requires set_task(task): Sets environment task
-
-Optional:
-1) Modify step(action) function to incorporate task-specific reward
-"""
+from ray.rllib.env.meta_env import MetaEnv
 
 
-class AntRandGoalEnv(gym.utils.EzPickle, MujocoEnv):
+class AntRandGoalEnv(gym.utils.EzPickle, MujocoEnv, MetaEnv):
     """Ant Environment that randomizes goals as tasks
 
     Goals are randomly sampled 2D positions
@@ -23,12 +15,14 @@ class AntRandGoalEnv(gym.utils.EzPickle, MujocoEnv):
         MujocoEnv.__init__(self, "ant.xml", 5)
         gym.utils.EzPickle.__init__(self)
 
+    @override(MetaEnv)
     def sample_tasks(self, n_tasks):
         # Samples a goal position (2x1 position ector)
         a = np.random.random(n_tasks) * 2 * np.pi
         r = 3 * np.random.random(n_tasks)**0.5
         return np.stack((r * np.cos(a), r * np.sin(a)), axis=-1)
 
+    @override(MetaEnv)
     def set_task(self, task):
         """
         Args:
@@ -36,6 +30,7 @@ class AntRandGoalEnv(gym.utils.EzPickle, MujocoEnv):
         """
         self.goal_pos = task
 
+    @override(MetaEnv)
     def get_task(self):
         """
         Returns:
