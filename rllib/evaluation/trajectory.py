@@ -171,13 +171,14 @@ class Trajectory:
         # all other columns due to the additional obs returned by Env.reset()).
         data = {}
         for k, v in self.buffers.items():
+            end = self.cursor + (1 if k == SampleBatch.OBS else 0)
             data[k] = convert_to_numpy(
-                v[self.sample_batch_offset:self.cursor], reduce_floats=True)
-        last_obs = {
-            self.agent_id: convert_to_numpy(
-                self.buffers[SampleBatch.CUR_OBS][self.cursor], reduce_floats=True)
-        }
-        batch = SampleBatch(data, _last_obs=last_obs)
+                v[self.sample_batch_offset:end], reduce_floats=True)
+        #last_obs = {
+        #    self.agent_id: convert_to_numpy(
+        #        self.buffers[SampleBatch.CUR_OBS][self.cursor], reduce_floats=True)
+        #}
+        batch = SampleBatch(data)  #, _last_obs=last_obs)
 
         # Add unroll ID column to batch if non-existent.
         if SampleBatch.UNROLL_ID not in batch.data:
@@ -217,11 +218,12 @@ class Trajectory:
                 continue
             next_obs_add = 1 if col == SampleBatch.CUR_OBS else 0
             # Primitive.
-            if isinstance(data, (int, float, bool)):
+            if isinstance(data, (int, float, bool, str)):
                 shape = (self.buffer_size + next_obs_add, )
                 t_ = type(data)
                 dtype = np.float32 if t_ == float else \
-                    np.int32 if type(data) == int else np.bool_
+                    np.int32 if t_ == int else np.bool_ if t_ == bool else \
+                        np.str
                 self.buffers[col] = np.zeros(shape=shape, dtype=dtype)
             # np.ndarray, torch.Tensor, or tf.Tensor.
             else:

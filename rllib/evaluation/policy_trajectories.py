@@ -18,9 +18,10 @@ class PolicyTrajectories:
     Note: This is an experimental class only used when
     `config._use_trajectory_view_api` = True.
 
-    Each incoming SampleBatch must be from a Trajectory object (collecting
-    data for one single agent).
-    Also, all incoming data must be for the same Policy.
+    Each incoming SampleBatch (self.add_sample_batch) must be from a Trajectory
+    object (collecting data for one single agent).
+    Also, all incoming data must be for the same Policy (shared
+    by >= 1 agents).
 
     Pre-allocation happens over a given `buffer_size` range of timesteps.
     When the buffers are full, we will attempt to move the currently
@@ -45,6 +46,8 @@ class PolicyTrajectories:
         self.cursor = 0
         self.sample_batch_offset = 0
 
+        self.last_obs = {}
+
     def add_sample_batch(self, sample_batch):
         """Add the given batch of values to this batch.
 
@@ -64,7 +67,15 @@ class PolicyTrajectories:
             self._extend_buffers(sample_batch)
 
         for k, column in sample_batch.items():
-            self.buffers[k][self.cursor:self.cursor + ts] = column
+            # Store last obs for this agent in self.last_obs.
+            if k == SampleBatch.OBS:
+                env_agent = \
+                    str(sample_batch.data["env_id"][-1]) + ":" + \
+                    str(sample_batch.data["agent_id"][-1])
+                self.last_obs[env_agent] = column[-1]
+                self.buffers[k][self.cursor:self.cursor + ts] = column[:-1]
+            else:
+                self.buffers[k][self.cursor:self.cursor + ts] = column
 
         self.cursor += ts
 

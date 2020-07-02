@@ -98,7 +98,7 @@ class _FastMultiAgentSampleBatchBuilder:
                      obs: TensorType) -> None:
         """Add the given dictionary (row) of values to this batch.
 
-        Arguments:
+        Args:
             env_id (EnvID): Unique id for the episode we are adding values for.
             agent_id (AgentID): Unique id for the agent we are adding
                 values for.
@@ -144,6 +144,7 @@ class _FastMultiAgentSampleBatchBuilder:
         # Include the current agent id for multi-agent algorithms.
         if agent_id != _DUMMY_AGENT_ID:
             values["agent_id"] = agent_id
+        values["env_id"] = env_id
 
         # Add action/reward/next-obs (and other data) to Trajectory.
         self.single_agent_trajectories[agent_id].add_action_reward_next_obs(

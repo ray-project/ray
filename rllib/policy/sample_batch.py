@@ -24,22 +24,27 @@ class SampleBatch:
     samples, each with an "obs" and "reward" attribute.
     """
 
-    # Outputs from interacting with the environment
-    CUR_OBS = "obs"
-    NEXT_OBS = "new_obs"
+    # Outputs from interacting with the environment.
+    OBS = "obs"
     ACTIONS = "actions"
     REWARDS = "rewards"
-    PREV_ACTIONS = "prev_actions"
-    PREV_REWARDS = "prev_rewards"
     DONES = "dones"
     INFOS = "infos"
+
+    # Deprecated: Use OBS instead.
+    CUR_OBS = "obs"
+    # Deprecated: Use ViewRequirement for your Model instead with OBS (t+1).
+    NEXT_OBS = "new_obs"
+    # deprecated: Use ViewRequirement for your Model instead with ACTIONS (t-1)
+    PREV_ACTIONS = "prev_actions"
+    PREV_REWARDS = "prev_rewards"
 
     # Extra action fetches keys.
     ACTION_DIST_INPUTS = "action_dist_inputs"
     ACTION_PROB = "action_prob"
     ACTION_LOGP = "action_logp"
 
-    # Uniquely identifies an episode
+    # Uniquely identifies an episode.
     EPS_ID = "eps_id"
 
     # Uniquely identifies a sample batch. This is important to distinguish RNN
@@ -47,17 +52,24 @@ class SampleBatch:
     # concatenated (fusing sequences across batches can be unsafe).
     UNROLL_ID = "unroll_id"
 
-    # Uniquely identifies an agent within an episode
+    # Uniquely identifies an agent within an episode.
     AGENT_INDEX = "agent_index"
 
-    # Value function predictions emitted by the behaviour policy
+    # Value function predictions emitted by the behaviour policy.
     VF_PREDS = "vf_preds"
 
     @PublicAPI
     def __init__(self, *args, **kwargs):
         """Constructs a sample batch (same params as dict constructor)."""
 
+        # Placeholder for a last_obs value (in an n x sars'-trajectory).
+        # Only used if _fast_sampling=True in the Policy's config to be able to
+        # deprecate the SampleBatch.NEXT_OBS field entirely soon.
+        self.last_obs = kwargs.pop("_last_obs", None)
+
+        # The actual data, accessible by column name (str).
         self.data = dict(*args, **kwargs)
+
         lengths = []
         for k, v in self.data.copy().items():
             assert isinstance(k, str), self
@@ -65,9 +77,10 @@ class SampleBatch:
             self.data[k] = np.array(v, copy=False)
         if not lengths:
             raise ValueError("Empty sample batch")
-        assert len(set(lengths)) == 1, ("data columns must be same length",
-                                        self.data, lengths)
-        self.count = lengths[0]
+        assert len(set(lengths)) in [1, 2], \
+            "Data columns must be same length (except obs!): " \
+            "lengths are {}".format(lengths)
+        self.count = len(self.data[self.ACTIONS])
 
     @staticmethod
     @PublicAPI
@@ -229,6 +242,8 @@ class SampleBatch:
 
     @PublicAPI
     def __getitem__(self, key):
+        if key == self.NEXT_OBS and self.NEXT_OBS not in self.data:
+            return self.data[self.OBS][1:]
         return self.data[key]
 
     @PublicAPI
@@ -272,7 +287,13 @@ class SampleBatch:
 
 @PublicAPI
 class MultiAgentBatch:
-    """A batch of experiences from multiple agents in the environment."""
+    """A batch of experiences from multiple agents in the environment.
+
+    Attributes:
+        policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
+            ids to SampleBatches of experiences.
+        count (int): the number of env steps in this batch.
+    """
 
     @PublicAPI
     def __init__(self, policy_batches: Dict[PolicyID, SampleBatch],
@@ -285,11 +306,6 @@ class MultiAgentBatch:
             env_steps (int): The number of timesteps in the environment this
                 batch contains. This will be less than the number of
                 transitions this batch contains across all policies in total.
-
-        Attributes:
-            policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
-                ids to SampleBatches of experiences.
-            count (int): the number of env steps in this batch.
         """
         for v in policy_batches.values():
             assert isinstance(v, SampleBatch)
