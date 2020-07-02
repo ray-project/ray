@@ -219,7 +219,7 @@ Besides some boilerplate for defining the PPO configuration and some warnings, t
 
 .. warning::
 
-    Policy optimizers are deprecated. This documentation will be updated in the future.
+    Policy optimizers have been replaced by the execution plan API. This documentation will be updated in the future.
 
 The ``choose_policy_optimizer`` function chooses which `Policy Optimizer <#policy-optimization>`__ to use for distributed training. You can think of these policy optimizers as coordinating the distributed workflow needed to improve the policy. Depending on the trainer config, PPO can switch between a simple synchronous optimizer, or a multi-GPU optimizer that implements minibatch SGD (the default):
 
@@ -587,7 +587,7 @@ Policy Optimization
 
 .. warning::
 
-    Policy optimizers are deprecated. This documentation will be updated in the future.
+    Policy optimizers have been replaced by the execution plan API. This documentation will be updated in the future.
 
 Similar to how a `gradient-descent optimizer <https://www.tensorflow.org/api_docs/python/tf/train/GradientDescentOptimizer>`__ can be used to improve a model, RLlib's `policy optimizers <https://github.com/ray-project/ray/tree/master/rllib/optimizers>`__ implement different strategies for improving a policy.
 
