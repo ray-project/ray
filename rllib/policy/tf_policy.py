@@ -584,10 +584,11 @@ class TFPolicy(Policy):
         return optimizer.compute_gradients(loss)
 
     @DeveloperAPI
-    def build_apply_op(self,
-                       optimizer: tf.keras.optimizers.Optimizer,
-                       grads_and_vars: List[
-                           Tuple[TensorType, TensorType]]) -> tf.op:
+    def build_apply_op(
+            self,
+            optimizer: tf.keras.optimizers.Optimizer,
+            grads_and_vars: List[Tuple[TensorType, TensorType]]) -> \
+            tf.Operation:
         """Override this for a custom gradient apply computation behavior.
 
         Args:
