@@ -20,13 +20,12 @@ def check_support_multiagent(alg, config):
                 config=config, env="multi_agent_mountaincar")
         else:
             a = get_agent_class(alg)(config=config, env="multi_agent_cartpole")
-        try:
-            print(a.train())
-        finally:
-            a.stop()
+
+        print(a.train())
+        a.stop()
 
 
-class TestSupportedMultiAgent(unittest.TestCase):
+class TestSupportedMultiAgentPG(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init(num_cpus=4)
@@ -42,6 +41,32 @@ class TestSupportedMultiAgent(unittest.TestCase):
                 "grads_per_step": 1
             }
         })
+
+    def test_impala_multiagent(self):
+        check_support_multiagent("IMPALA", {"num_gpus": 0})
+
+    def test_pg_multiagent(self):
+        check_support_multiagent("PG", {"num_workers": 1, "optimizer": {}})
+
+    def test_ppo_multiagent(self):
+        check_support_multiagent(
+            "PPO", {
+                "num_workers": 1,
+                "num_sgd_iter": 1,
+                "train_batch_size": 10,
+                "rollout_fragment_length": 10,
+                "sgd_minibatch_size": 1,
+            })
+
+
+class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init(num_cpus=4)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
 
     def test_apex_multiagent(self):
         check_support_multiagent(
@@ -83,22 +108,6 @@ class TestSupportedMultiAgent(unittest.TestCase):
             "buffer_size": 1000,
         })
 
-    def test_impala_multiagent(self):
-        check_support_multiagent("IMPALA", {"num_gpus": 0})
-
-    def test_pg_multiagent(self):
-        check_support_multiagent("PG", {"num_workers": 1, "optimizer": {}})
-
-    def test_ppo_multiagent(self):
-        check_support_multiagent(
-            "PPO", {
-                "num_workers": 1,
-                "num_sgd_iter": 1,
-                "train_batch_size": 10,
-                "rollout_fragment_length": 10,
-                "sgd_minibatch_size": 1,
-            })
-
     def test_sac_multiagent(self):
         check_support_multiagent("SAC", {
             "num_workers": 0,
@@ -110,4 +119,8 @@ class TestSupportedMultiAgent(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+    # One can specify the specific TestCase class to run.
+    # None for all unittest.TestCase classes in this file.
+    class_ = sys.argv[1] if len(sys.argv) > 0 else None
+    sys.exit(pytest.main(
+        ["-v", __file__ + ("" if class_ is None else "::" + class_)]))

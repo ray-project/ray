@@ -26,7 +26,14 @@
 
 #ifdef RAY_USE_GLOG
 #include <sys/stat.h>
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4722)  // Ignore non-returning destructor warning in GLOG
+#endif
 #include "glog/logging.h"
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 #endif
 
 #include "ray/util/filesystem.h"

@@ -23,6 +23,9 @@ logger.setLevel(logging.INFO)
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
+    # === Framework to run the algorithm ===
+    "framework": "tf",
+
     # === Settings for each individual policy ===
     # ID of the agent controlled by this policy
     "agent_id": None,

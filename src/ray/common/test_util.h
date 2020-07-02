@@ -75,8 +75,6 @@ extern std::string TEST_GCS_SERVER_EXEC_PATH;
 extern std::string TEST_RAYLET_EXEC_PATH;
 /// Path to mock worker executable binary. Required by raylet.
 extern std::string TEST_MOCK_WORKER_EXEC_PATH;
-/// Path to raylet monitor executable binary.
-extern std::string TEST_RAYLET_MONITOR_EXEC_PATH;
 
 //--------------------------------------------------------------------------------
 // COMPONENT MANAGEMENT CLASSES FOR TEST CASES

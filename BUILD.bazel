@@ -9,6 +9,16 @@ load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS")
 
+config_setting(
+    name = "windows_msvc-cl",
+    values = {"compiler": "msvc-cl"},
+)
+
+config_setting(
+    name = "windows_clang-cl",
+    values = {"compiler": "clang-cl"},
+)
+
 # === Begin of protobuf definitions ===
 
 proto_library(
@@ -481,20 +491,6 @@ cc_binary(
     ],
 )
 
-cc_binary(
-    name = "raylet_monitor",
-    srcs = [
-        "src/ray/raylet/monitor.cc",
-        "src/ray/raylet/monitor.h",
-        "src/ray/raylet/monitor_main.cc",
-    ],
-    copts = COPTS,
-    deps = [
-        ":gcs",
-        ":ray_util",
-    ],
-)
-
 cc_library(
     name = "gcs_pub_sub_lib",
     srcs = glob(
@@ -723,7 +719,7 @@ cc_binary(
 cc_test(
     name = "core_worker_test",
     srcs = ["src/ray/core_worker/test/core_worker_test.cc"],
-    args = ["$(location //:plasma_store_server) $(location raylet) $(location raylet_monitor) $(location mock_worker) $(location gcs_server) $(location redis-cli) $(location redis-server) $(location libray_redis_module.so)"],
+    args = ["$(location //:plasma_store_server) $(location raylet) $(location mock_worker) $(location gcs_server) $(location redis-cli) $(location redis-server) $(location libray_redis_module.so)"],
     copts = COPTS,
     data = [
         "//:gcs_server",
@@ -731,7 +727,6 @@ cc_test(
         "//:mock_worker",
         "//:plasma_store_server",
         "//:raylet",
-        "//:raylet_monitor",
         "//:redis-cli",
         "//:redis-server",
     ],
@@ -828,7 +823,14 @@ cc_test(
 cc_test(
     name = "reconstruction_policy_test",
     srcs = ["src/ray/raylet/reconstruction_policy_test.cc"],
-    copts = COPTS,
+    copts = COPTS + select({
+        "//:windows_msvc-cl": [
+        ],
+        "//conditions:default": [
+            # Ignore this warning since it's impractical to fix in the relevant headers
+            "-Wno-inconsistent-missing-override",
+        ],
+    }),
     deps = [
         ":node_manager_fbs",
         ":object_manager",
@@ -943,6 +945,16 @@ cc_test(
 cc_test(
     name = "stats_test",
     srcs = ["src/ray/stats/stats_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":stats_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "metric_exporter_client_test",
+    srcs = ["src/ray/stats/metric_exporter_client_test.cc"],
     copts = COPTS,
     deps = [
         ":stats_lib",
@@ -1333,7 +1345,7 @@ cc_library(
 
 alias(
     name = "hiredis",
-    actual = "@com_github_antirez_redis//:hiredis",
+    actual = "@com_github_redis_hiredis//:hiredis",
 )
 
 cc_library(
@@ -1831,7 +1843,6 @@ genrule(
         "//:redis-cli",
         "//:libray_redis_module.so",
         "//:raylet",
-        "//:raylet_monitor",
         "//:gcs_server",
         "//:plasma_store_server",
         "//streaming:copy_streaming_py_proto",
@@ -1857,7 +1868,6 @@ genrule(
         cp -f $(location //:redis-cli) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/" &&
         cp -f $(locations //:libray_redis_module.so) "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/" &&
-        cp -f $(location //:raylet_monitor) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
         cp -f $(location //:plasma_store_server) "$$WORK_DIR/python/ray/core/src/plasma/" &&
         cp -f $(location //:raylet) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
         cp -f $(location //:gcs_server) "$$WORK_DIR/python/ray/core/src/ray/gcs/" &&

@@ -122,7 +122,7 @@ You can log arbitrary values and metrics in both training APIs:
     class Trainable(tune.Trainable):
         ...
 
-        def _train(self):  # this is called iteratively
+        def step(self):  # this is called iteratively
             accuracy = self.model.train()
             metric_1 = f(self.model)
             metric_2 = self.model.get_loss()
@@ -223,7 +223,7 @@ Stopping Trials
 
 You can control when trials are stopped early by passing the ``stop`` argument to ``tune.run``. This argument takes either a dictionary or a function.
 
-If a dictionary is passed in, the keys may be any field in the return result of ``tune.report`` in the Function API or ``_train()`` (including the results from ``_train`` and auto-filled metrics).
+If a dictionary is passed in, the keys may be any field in the return result of ``tune.report`` in the Function API or ``step()`` (including the results from ``step`` and auto-filled metrics).
 
 In the example below, each trial will be stopped either when it completes 10 iterations OR when it reaches a mean accuracy of 0.98. These metrics are assumed to be **increasing**.
 

@@ -13,7 +13,7 @@ from ray.rllib.utils.framework import get_variable
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.numpy import softmax, SMALL_NUMBER
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
@@ -91,9 +91,9 @@ class ParameterNoise(Exploration):
             self.tf_remove_noise_op = \
                 self._tf_remove_noise_op()
             # Create convenience sample+add op for tf.
-            with tf.control_dependencies([self.tf_sample_new_noise_op]):
+            with tf1.control_dependencies([self.tf_sample_new_noise_op]):
                 add_op = self._tf_add_stored_noise_op()
-            with tf.control_dependencies([add_op]):
+            with tf1.control_dependencies([add_op]):
                 self.tf_sample_new_noise_and_add_op = tf.no_op()
 
         # Whether the Model's weights currently have noise added or not.
@@ -303,7 +303,7 @@ class ParameterNoise(Exploration):
         added_noises = []
         for noise in self.noise:
             added_noises.append(
-                tf.assign(
+                tf1.assign(
                     noise,
                     tf.random.normal(
                         shape=noise.shape,
@@ -361,9 +361,9 @@ class ParameterNoise(Exploration):
         """
         add_noise_ops = list()
         for var, noise in zip(self.model_variables, self.noise):
-            add_noise_ops.append(tf.assign_add(var, noise))
+            add_noise_ops.append(tf1.assign_add(var, noise))
         ret = tf.group(*tuple(add_noise_ops))
-        with tf.control_dependencies([ret]):
+        with tf1.control_dependencies([ret]):
             return tf.no_op()
 
     def _remove_noise(self, *, tf_sess=None):
@@ -400,9 +400,9 @@ class ParameterNoise(Exploration):
         """
         remove_noise_ops = list()
         for var, noise in zip(self.model_variables, self.noise):
-            remove_noise_ops.append(tf.assign_add(var, -noise))
+            remove_noise_ops.append(tf1.assign_add(var, -noise))
         ret = tf.group(*tuple(remove_noise_ops))
-        with tf.control_dependencies([ret]):
+        with tf1.control_dependencies([ret]):
             return tf.no_op()
 
     @override(Exploration)

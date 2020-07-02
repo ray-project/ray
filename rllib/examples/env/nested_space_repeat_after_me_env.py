@@ -1,11 +1,9 @@
 import gym
 from gym.spaces import Box, Dict, Discrete, Tuple
 import numpy as np
+import tree
 
-from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.spaces.space_utils import flatten_space
-
-tree = try_import_tree()
 
 
 class NestedSpaceRepeatAfterMeEnv(gym.Env):
