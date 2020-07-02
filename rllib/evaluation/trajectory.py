@@ -174,11 +174,11 @@ class Trajectory:
             end = self.cursor + (1 if k == SampleBatch.OBS else 0)
             data[k] = convert_to_numpy(
                 v[self.sample_batch_offset:end], reduce_floats=True)
-        #last_obs = {
-        #    self.agent_id: convert_to_numpy(
-        #        self.buffers[SampleBatch.CUR_OBS][self.cursor], reduce_floats=True)
-        #}
-        batch = SampleBatch(data)  #, _last_obs=last_obs)
+        last_obs = {
+            str(self.env_id) + ":" + str(self.agent_id): convert_to_numpy(
+                self.buffers[SampleBatch.CUR_OBS][self.cursor], reduce_floats=True)
+        }
+        batch = SampleBatch(data, _last_obs=last_obs)
 
         # Add unroll ID column to batch if non-existent.
         if SampleBatch.UNROLL_ID not in batch.data:
