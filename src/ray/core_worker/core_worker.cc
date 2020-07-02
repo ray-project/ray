@@ -808,7 +808,8 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
                           ObjectID *object_id, std::shared_ptr<Buffer> *data) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex());
-  if (options_.is_local_mode || static_cast<int64_t>(data_size) < RayConfig::instance().max_direct_call_object_size()) {
+  if (options_.is_local_mode || (RayConfig::instance().put_small_object_in_memory_store() &&
+      static_cast<int64_t>(data_size) < RayConfig::instance().max_direct_call_object_size())) {
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
   } else {
     RAY_RETURN_NOT_OK(

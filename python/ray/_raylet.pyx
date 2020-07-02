@@ -788,10 +788,12 @@ cdef class CoreWorker:
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
             int64_t put_threshold
+            c_bool put_small_object_in_memory_store
             c_vector[CObjectID] c_object_id_vector
 
         metadata = string_to_buffer(serialized_object.metadata)
         put_threshold = RayConfig.instance().max_direct_call_object_size()
+        put_small_object_in_memory_store = RayConfig.instance().put_small_object_in_memory_store()
         total_bytes = serialized_object.total_bytes
         object_already_exists = self._create_put_buffer(
             metadata, total_bytes, object_id,
@@ -802,7 +804,7 @@ cdef class CoreWorker:
             if total_bytes > 0:
                 (<SerializedObject>serialized_object).write_to(
                     Buffer.make(data))
-            if self.is_local_mode or <int64_t>total_bytes < put_threshold:
+            if self.is_local_mode or (put_small_object_in_memory_store and <int64_t>total_bytes < put_threshold):
                 c_object_id_vector.push_back(c_object_id)
                 check_status(CCoreWorkerProcess.GetCoreWorker().Put(
                         CRayObject(data, metadata, c_object_id_vector),
