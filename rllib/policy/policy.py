@@ -12,7 +12,7 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
 from ray.rllib.utils.types import AgentID, ModelGradients, ModelWeights, \
-    PolicyConfigDict, TensorType, Tuple, Union
+    TensorType, TrainerConfigDict, Tuple, Union
 
 torch, _ = try_import_torch()
 tree = try_import_tree()
@@ -48,7 +48,7 @@ class Policy(metaclass=ABCMeta):
             self,
             observation_space: gym.spaces.Space,
             action_space: gym.spaces.Space,
-            config: PolicyConfigDict):
+            config: TrainerConfigDict):
         """Initialize the graph.
 
         This is the standard constructor for policies. The policy
@@ -59,7 +59,7 @@ class Policy(metaclass=ABCMeta):
             observation_space (gym.spaces.Space): Observation space of the
                 policy.
             action_space (gym.spaces.Space): Action space of the policy.
-            config (PolicyConfigDict): Policy-specific configuration data.
+            config (TrainerConfigDict): Policy-specific configuration data.
         """
         self.observation_space = observation_space
         self.action_space = action_space

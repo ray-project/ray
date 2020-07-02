@@ -14,7 +14,7 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
-from ray.rllib.utils.types import PolicyConfigDict, TensorType
+from ray.rllib.utils.types import ModelGradients, TensorType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
 
@@ -50,24 +50,24 @@ class DynamicTFPolicy(TFPolicy):
     def __init__(self,
                  obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space,
-                 config: PolicyConfigDict,
+                 config: TrainerConfigDict,
                  *,
                  loss_fn: Callable[
                      [Policy, ModelV2, type, SampleBatch], TensorType],
                  stats_fn: Optional[Callable[[Policy, SampleBatch],
                     Dict[str, TensorType]]] = None,
                  grad_stats_fn: Optional[Callable[
-                     [Policy, SampleBatch, List[Tuple[TensorType, TensorType]]
-                      ], Dict[str, TensorType]]] = None,
+                     [Policy, SampleBatch, ModelGradients],
+                     Dict[str, TensorType]]] = None,
                  before_loss_init: Optional[Callable[
                      [Policy, gym.spaces.Space, gym.spaces.Space,
-                      PolicyConfigDict], None]] = None,
+                      TrainerConfigDict], None]] = None,
                  make_model: Optional[Callable[
                      [Policy, gym.spaces.Space, gym.spaces.Space,
-                      PolicyConfigDict], ModelV2]] = None,
-                 action_sampler_fn: Callable[
+                      TrainerConfigDict], ModelV2]] = None,
+                 action_sampler_fn: Optional[Callable[
                      [TensorType, List[TensorType]], Tuple[
-                         TensorType, TensorType]] = None,
+                         TensorType, TensorType]]] = None,
                  action_distribution_fn: Optional[Callable[
                      [Policy, ModelV2, TensorType, TensorType, TensorType],
                      Tuple[TensorType, type, List[TensorType]]]] = None,
@@ -80,30 +80,32 @@ class DynamicTFPolicy(TFPolicy):
         Arguments:
             observation_space (gym.spaces.Space): Observation space of the policy.
             action_space (gym.spaces.Space): Action space of the policy.
-            config (PolicyConfigDict): Policy-specific configuration data.
+            config (TrainerConfigDict): Policy-specific configuration data.
             loss_fn (Callable[[Policy, ModelV2, type, SampleBatch],
-                TensorType]): Function that returns a loss tensor the policy
-                graph, and dict of experience tensor placeholders.
+                TensorType]): Function that returns a loss tensor for the
+                policy graph.
             stats_fn (Optional[Callable[[Policy, SampleBatch],
                 Dict[str, TensorType]]]): Optional function that returns a dict
                 of TF fetches given the policy and batch input tensors.
             grad_stats_fn (Optional[Callable[[Policy, SampleBatch,
-                List[Tuple[TensorType, TensorType]]], Dict[str, TensorType]]]):
+                ModelGradients], Dict[str, TensorType]]]):
                 Optional function that returns a dict of TF fetches given the
-                policy and loss gradient tensors.
+                policy, sample batch, and loss gradient tensors.
             before_loss_init (Optional[Callable[
-                [Policy, gym.spaces.Space, gym.spaces.Space, PolicyConfigDict],
-                None]]): Optional function to run prior to loss init that takes
-                the same arguments as __init__.
-            make_model (Callable[[Policy, gym.spaces.Space, gym.spaces.Space,
-                PolicyConfigDict], ModelV2]): Optional function that returns a
-                ModelV2 object given (policy, obs_space, action_space, config).
+                [Policy, gym.spaces.Space, gym.spaces.Space,
+                TrainerConfigDict], None]]): Optional function to run prior to
+                loss init that takes the same arguments as __init__.
+            make_model (Optional[Callable[[Policy, gym.spaces.Space,
+                gym.spaces.Space, TrainerConfigDict], ModelV2]]): Optional
+                function that returns a ModelV2 object given
+                policy, obs_space, action_space, and policy config.
                 All policy variables should be created in this function. If not
                 specified, a default model will be created.
-            action_sampler_fn (Callable[[TensorType, List[TensorType]],
-                Tuple[TensorType, TensorType]]): A callable returning a
-                sampled action and its log-likelihood given Policy, ModelV2,
-                input_dict, explore, timestep, and is_training.
+            action_sampler_fn (Optional[Callable[[Policy, ModelV2, Dict[
+                str, TensorType], TensorType, TensorType], Tuple[TensorType,
+                TensorType]]]): A callable returning a sampled action and its
+                log-likelihood given Policy, ModelV2, input_dict, explore,
+                timestep, and is_training.
             action_distribution_fn (Optional[Callable[[Policy, ModelV2,
                 Dict[str, TensorType], TensorType, TensorType],
                 Tuple[TensorType, type, List[TensorType]]]]): A callable

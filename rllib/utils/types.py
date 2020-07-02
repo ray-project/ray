@@ -2,16 +2,14 @@ from typing import Any, Dict, List, Tuple, Union
 import gym
 
 # Represents a fully filled out config of a Trainer class.
+# Note: Policy config dicts are usually the same as TrainerConfigDict, but
+# parts of it may sometimes be altered in e.g. a multi-agent setup,
+# where we have >1 Policies in the same Trainer.
 TrainerConfigDict = dict
 
 # A trainer config dict that only has overrides. It needs to be combined with
 # the default trainer config to be used.
 PartialTrainerConfigDict = dict
-
-# Represents a fully filled out config of a Policy class.
-# This is usually the same as TrainerConfigDict, but parts of it may be altered
-# in e.g. a multi-agent setup, where we have >1 Policies in the same Trainer.
-PolicyConfigDict = dict
 
 # Represents the env_config sub-dict of the trainer config that is passed to
 # the env constructor.

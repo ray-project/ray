@@ -8,7 +8,6 @@ from typing import Dict, List, Optional, Tuple, Union
 import ray
 import ray.experimental.tf_utils
 from ray.util.debug import log_once
-from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -18,7 +17,7 @@ from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils.types import ModelGradients, PolicyConfigDict, TensorType
+from ray.rllib.utils.types import ModelGradients, TensorType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -59,7 +58,7 @@ class TFPolicy(Policy):
     def __init__(self,
                  observation_space: gym.spaces.Space,
                  action_space: gym.spaces.Space,
-                 config: PolicyConfigDict,
+                 config: TrainerConfigDict,
                  sess: tf1.Session,
                  obs_input: TensorType,
                  sampled_action: TensorType,
@@ -86,7 +85,7 @@ class TFPolicy(Policy):
         Args:
             observation_space (gym.spaces.Space): Observation space of the env.
             action_space (gym.spaces.Space): Action space of the env.
-            config (PolicyConfigDict): The Policy config dict.
+            config (TrainerConfigDict): The Policy config dict.
             sess (tf1.Session): The TensorFlow session to use.
             obs_input (TensorType): Input placeholder for observations, of
                 shape [BATCH_SIZE, obs...].
@@ -308,7 +307,7 @@ class TFPolicy(Policy):
             prev_action_batch: Union[List[TensorType], TensorType] = None,
             prev_reward_batch: Union[List[TensorType], TensorType] = None,
             info_batch: Optional[Dict[str, list]] = None,
-            episodes: Optional[List[MultiAgentEpisode]] = None,
+            episodes: Optional[List["MultiAgentEpisode"]] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
             **kwargs):

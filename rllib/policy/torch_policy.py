@@ -4,7 +4,6 @@ import numpy as np
 import time
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
-from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -20,7 +19,7 @@ from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.types import AgentID, ModelGradients, ModelWeights, \
-    PolicyConfigDict, TensorType
+    TensorType, TrainerConfigDict
 
 torch, _ = try_import_torch()
 
@@ -43,7 +42,7 @@ class TorchPolicy(Policy):
     def __init__(self,
                  observation_space: gym.spaces.Space,
                  action_space: gym.spaces.Space,
-                 config: PolicyConfigDict,
+                 config: TrainerConfigDict,
                  *,
                  model: ModelV2,
                  loss: Callable[
@@ -66,7 +65,7 @@ class TorchPolicy(Policy):
             observation_space (gym.spaces.Space): observation space of the
                 policy.
             action_space (gym.spaces.Space): action space of the policy.
-            config (PolicyConfigDict): The Policy config dict.
+            config (TrainerConfigDict): The Policy config dict.
             model (ModelV2): PyTorch policy module. Given observations as
                 input, this module must return a list of outputs where the
                 first item is action logits, and the rest can be any value.
@@ -127,7 +126,7 @@ class TorchPolicy(Policy):
             prev_action_batch: Union[List[TensorType], TensorType] = None,
             prev_reward_batch: Union[List[TensorType], TensorType] = None,
             info_batch: Optional[Dict[str, list]] = None,
-            episodes: Optional[List[MultiAgentEpisode]] = None,
+            episodes: Optional[List["MultiAgentEpisode"]] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
             **kwargs) -> Tuple[
