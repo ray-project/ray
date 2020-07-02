@@ -753,20 +753,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id The id to call get on.
   /// \param[in] success_callback The callback to use the result object.
-  /// \param[in] fallback_callback The callback to use when failed to get result.
   /// \param[in] python_future the void* object to be passed to SetResultCallback
   /// \return void
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
-                SetResultCallback fallback_callback, void *python_future);
-
-  /// Perform async get from in-memory store.
-  ///
-  /// \param[in] object_id The id to call get on.
-  /// \param[in] success_callback The callback to use the result object.
-  /// \param[in] python_future the void* object to be passed to SetResultCallback
-  /// \return void
-  void GetAsyncNew(const ObjectID &object_id, SetResultCallback success_callback,
-                   void *python_future);
+                void *python_future);
 
   /// Subscribe to receive notification of an object entering the plasma store.
   ///
@@ -1065,10 +1055,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Queue of tasks to resubmit when the specified time passes.
   std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
 
-  // Guard for Plasma Callback Map
+  // Guard for `async_plasma_callbacks_` map.
   mutable absl::Mutex plasma_mutex_;
 
-  // Plasma Callbacks
+  // Callbacks for when when a plasma object becomes ready.
   absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
       async_plasma_callbacks_ GUARDED_BY(plasma_mutex_);
 

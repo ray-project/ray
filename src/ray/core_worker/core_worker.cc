@@ -1987,18 +1987,6 @@ void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
   event.Wait();
 }
 
-void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
-                          SetResultCallback fallback_callback, void *python_future) {
-  memory_store_->GetAsync(object_id, [python_future, success_callback, fallback_callback,
-                                      object_id](std::shared_ptr<RayObject> ray_object) {
-    if (ray_object->IsInPlasmaError()) {
-      fallback_callback(ray_object, object_id, python_future);
-    } else {
-      success_callback(ray_object, object_id, python_future);
-    }
-  });
-}
-
 void CoreWorker::PlasmaCallback(SetResultCallback success,
                                 std::shared_ptr<RayObject> ray_object, ObjectID object_id,
                                 void *py_future) {
@@ -2010,7 +1998,7 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
     absl::MutexLock lock(&plasma_mutex_);
     auto it = async_plasma_callbacks_.find(object_id);
     auto plasma_arrived_callback = [this, success, object_id, py_future]() {
-      GetAsyncNew(object_id, success, py_future);
+      GetAsync(object_id, success, py_future);
     };
 
     if (it == async_plasma_callbacks_.end()) {
@@ -2040,12 +2028,28 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
   }
 }
 
-void CoreWorker::GetAsyncNew(const ObjectID &object_id,
-                             SetResultCallback success_callback, void *python_future) {
-  GetAsync(object_id, success_callback,
-           std::bind(&CoreWorker::PlasmaCallback, this, success_callback,
-                     std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
-           python_future);
+/**
+ *
+ * void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback
+success_callback, SetResultCallback fallback_callback, void *python_future) {
+
+}
+**/
+
+void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
+                          void *python_future) {
+  auto fallback_callback =
+      std::bind(&CoreWorker::PlasmaCallback, this, success_callback,
+                std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+
+  memory_store_->GetAsync(object_id, [python_future, success_callback, fallback_callback,
+                                      object_id](std::shared_ptr<RayObject> ray_object) {
+    if (ray_object->IsInPlasmaError()) {
+      fallback_callback(ray_object, object_id, python_future);
+    } else {
+      success_callback(ray_object, object_id, python_future);
+    }
+  });
 }
 
 void CoreWorker::SubscribeToPlasmaAdd(const ObjectID &object_id) {

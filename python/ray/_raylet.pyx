@@ -1231,7 +1231,7 @@ cdef class CoreWorker:
 
     def get_async(self, ObjectID object_id, future):
         cpython.Py_INCREF(future)
-        CCoreWorkerProcess.GetCoreWorker().GetAsyncNew(
+        CCoreWorkerProcess.GetCoreWorker().GetAsync(
                 object_id.native(),
                 async_set_result,
                 <void*>future)

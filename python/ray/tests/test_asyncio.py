@@ -1,8 +1,9 @@
 # coding: utf-8
 import asyncio
-import threading
-import pytest
 import sys
+import threading
+
+import pytest
 
 import ray
 from ray.test_utils import SignalActor
