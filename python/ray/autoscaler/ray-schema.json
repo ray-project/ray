@@ -141,8 +141,20 @@
                     "description": "GCP globally unique project id"
                 },
                 "gcp_credentials": {
-                    "type": "string",
-                    "description": "JSON string constituting GCP credentials"
+                    "type": "object",
+                    "description": "Credentials for authenticating with the GCP client",
+                    "required": [ "type" ],
+                    "additionalProperties": false,
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "description": "credentials_token or service_account"
+                        },
+                        "credentials": {
+                            "type": "string",
+                            "description": "Oauth token or JSON string constituting service account credentials"
+                        }
+                    }
                 }
             }
         },
