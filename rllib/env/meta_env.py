@@ -1,9 +1,10 @@
-from gym.core import Env
+import gym
+from typing import List
 
 
-class MetaEnv(Env):
-    """Wrapper around OpenAI gym environments and meta-learning environments.
-    
+class MetaEnv(gym.Env):
+    """
+    Extension of gym.Env to define a distribution of tasks to meta-learn over. 
     Your env must implement this interface in order to be used with MAML.
     """
 
