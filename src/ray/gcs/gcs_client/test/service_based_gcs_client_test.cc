@@ -471,12 +471,10 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool RegisterWorker(rpc::WorkerType worker_type, const WorkerID &worker_id,
-                      const std::unordered_map<std::string, std::string> &worker_info) {
+  bool AddWorker(const std::shared_ptr<rpc::WorkerTableData> &worker_data) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Workers().AsyncRegisterWorker(
-        worker_type, worker_id, worker_info,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
+    RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(
+        worker_data, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -836,15 +834,18 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerInfo) {
   };
   ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
 
-  // Report a worker failure to GCS.
+  // Report a worker failure to GCS when this worker doesn't exist.
   auto worker_failure_data = Mocker::GenWorkerTableData();
   ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
-  WaitPendingDone(worker_failure_count, 1);
+  WaitPendingDone(worker_failure_count, 0);
 
-  // Register a worker to GCS.
-  auto worker_id = WorkerID::FromRandom();
-  auto worker_type = rpc::WorkerType::WORKER;
-  ASSERT_TRUE(RegisterWorker(worker_type, worker_id, {{"stderr", "test"}}));
+  // Add a worker to GCS.
+  auto worker_data = Mocker::GenWorkerTableData();
+  ASSERT_TRUE(AddWorker(worker_data));
+
+  // Report a worker failure to GCS when this worker is actually exist.
+  ASSERT_TRUE(ReportWorkerFailure(worker_data));
+  WaitPendingDone(worker_failure_count, 1);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestErrorInfo) {

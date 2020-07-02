@@ -235,7 +235,11 @@ TEST_F(GlobalStateAccessorTest, TestWorkerTable) {
   // Get worker info
   auto worker_id = WorkerID::FromBinary(worker_table_data->worker_address().worker_id());
   ASSERT_TRUE(global_state_->GetWorkerInfo(worker_id));
-  ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 1);
+
+  // Add another worker info
+  auto another_worker_data = Mocker::GenWorkerTableData();
+  ASSERT_TRUE(global_state_->AddWorkerInfo(another_worker_data->SerializeAsString()));
+  ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 2);
 }
 
 }  // namespace ray

@@ -33,10 +33,6 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
                                  rpc::ReportWorkerFailureReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleRegisterWorker(const rpc::RegisterWorkerRequest &request,
-                            rpc::RegisterWorkerReply *reply,
-                            rpc::SendReplyCallback send_reply_callback) override;
-
   void HandleGetWorkerInfo(const rpc::GetWorkerInfoRequest &request,
                            rpc::GetWorkerInfoReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;

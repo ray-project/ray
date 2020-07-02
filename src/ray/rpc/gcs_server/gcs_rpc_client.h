@@ -227,10 +227,6 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, ReportWorkerFailure,
                              worker_info_grpc_client_, )
 
-  /// Register a worker to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, RegisterWorker,
-                             worker_info_grpc_client_, )
-
   /// Get worker information from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, GetWorkerInfo,
                              worker_info_grpc_client_, )

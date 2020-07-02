@@ -391,17 +391,7 @@ class GcsServerTest : public ::testing::Test {
         request,
         [&promise](const Status &status, const rpc::ReportWorkerFailureReply &reply) {
           RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  bool RegisterWorker(const rpc::RegisterWorkerRequest &request) {
-    std::promise<bool> promise;
-    client_->RegisterWorker(
-        request, [&promise](const Status &status, const rpc::RegisterWorkerReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
+          promise.set_value(status.ok());
         });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
@@ -790,22 +780,7 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   report_worker_failure_request.mutable_worker_failure()->CopyFrom(*worker_failure_data);
   ASSERT_TRUE(ReportWorkerFailure(report_worker_failure_request));
   std::vector<rpc::WorkerTableData> worker_table_data = GetAllWorkerInfo();
-  ASSERT_TRUE(worker_table_data.size() == 1);
-  ASSERT_TRUE(worker_table_data[0].worker_address().port() == 5566);
-
-  // Register a worker of type WORKER
-  rpc::RegisterWorkerRequest register_worker_request;
-  register_worker_request.set_worker_id(WorkerID::FromRandom().Binary());
-  register_worker_request.set_worker_type(rpc::WorkerType::WORKER);
-  register_worker_request.mutable_worker_info()->insert({{"stderr", "test"}});
-  ASSERT_TRUE(RegisterWorker(register_worker_request));
-
-  // Register a worker of type DRIVER
-  rpc::RegisterWorkerRequest register_driver_request;
-  register_driver_request.set_worker_id(WorkerID::FromRandom().Binary());
-  register_driver_request.set_worker_type(rpc::WorkerType::DRIVER);
-  register_driver_request.mutable_worker_info()->insert({{"stderr", "test"}});
-  ASSERT_TRUE(RegisterWorker(register_driver_request));
+  ASSERT_TRUE(worker_table_data.size() == 0);
 
   // Add worker info
   auto worker_data = Mocker::GenWorkerTableData();
@@ -816,9 +791,9 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
 
   // Get worker info
   boost::optional<rpc::WorkerTableData> result =
-      GetWorkerInfo(register_worker_request.worker_id());
+      GetWorkerInfo(worker_data->worker_address().worker_id());
   ASSERT_TRUE(result->worker_address().worker_id() ==
-              register_worker_request.worker_id());
+              worker_data->worker_address().worker_id());
 }
 
 }  // namespace ray

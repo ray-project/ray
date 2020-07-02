@@ -628,12 +628,23 @@ class GlobalState:
         return workers_data
 
     def add_worker(self, worker_id, worker_type, worker_info):
+        """ Add a worker to the cluster.
+
+        Args:
+            worker_id: ID of this worker. Type is bytes.
+            worker_type: Type of this worker. Value is ray.gcs_utils.DRIVER or
+                ray.gcs_utils.WORKER.
+            worker_info: Info of this worker. Type is dict{str: str}.
+
+        Returns:
+             Is operation success
+        """
         worker_data = ray.gcs_utils.WorkerTableData()
         worker_data.is_alive = True
         worker_data.worker_address.worker_id = worker_id
         worker_data.worker_type = worker_type
         for k, v in worker_info.items():
-            worker_data.worker_info[k] = v
+            worker_data.worker_info[k] = bytes(v, encoding="utf-8")
         return self.global_state_accessor.add_worker_info(
             worker_data.SerializeToString())
 

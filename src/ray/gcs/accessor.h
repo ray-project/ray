@@ -659,17 +659,6 @@ class WorkerInfoAccessor {
       const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
       const StatusCallback &callback) = 0;
 
-  /// Register a worker to GCS asynchronously.
-  ///
-  /// \param worker_type The type of the worker.
-  /// \param worker_id The ID of the worker.
-  /// \param worker_info The information of the worker.
-  /// \return Status.
-  virtual Status AsyncRegisterWorker(
-      rpc::WorkerType worker_type, const WorkerID &worker_id,
-      const std::unordered_map<std::string, std::string> &worker_info,
-      const StatusCallback &callback) = 0;
-
   /// Get worker specification from GCS asynchronously.
   ///
   /// \param worker_id The ID of worker to look up in the GCS.

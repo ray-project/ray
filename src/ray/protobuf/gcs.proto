@@ -309,7 +309,7 @@ message WorkerTableData {
   bool intentional_disconnect = 4;
   // Type of this worker.
   WorkerType worker_type = 5;
-  // This is for RegisterWorker.
+  // This is for AddWorker.
   map<string, bytes> worker_info = 6;
 }
 

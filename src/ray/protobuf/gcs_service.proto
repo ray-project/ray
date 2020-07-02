@@ -418,19 +418,6 @@ message ReportWorkerFailureReply {
   GcsStatus status = 1;
 }
 
-message RegisterWorkerRequest {
-  /// The type of the worker.
-  WorkerType worker_type = 1;
-  /// The ID of the worker.
-  bytes worker_id = 2;
-  /// The information of the worker in a dictionary.
-  map<string, bytes> worker_info = 3;
-}
-
-message RegisterWorkerReply {
-  GcsStatus status = 1;
-}
-
 message GetWorkerInfoRequest {
   // ID of this worker.
   bytes worker_id = 1;
@@ -463,8 +450,6 @@ message AddWorkerInfoReply {
 service WorkerInfoGcsService {
   // Report a worker failure to GCS Service.
   rpc ReportWorkerFailure(ReportWorkerFailureRequest) returns (ReportWorkerFailureReply);
-  // Register a worker to GCS Service.
-  rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerReply);
   // Get worker information from GCS Service by worker id.
   rpc GetWorkerInfo(GetWorkerInfoRequest) returns (GetWorkerInfoReply);
   // Get information of all workers from GCS Service.

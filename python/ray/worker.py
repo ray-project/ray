@@ -877,9 +877,9 @@ def custom_excepthook(type, value, tb):
         error_message = "".join(traceback.format_tb(tb))
         worker_id = global_worker.worker_id
         worker_type = ray.gcs_utils.DRIVER
-        worker_info = {"exception": bytes(error_message, encoding="utf-8")}
+        worker_info = {"exception": error_message}
 
-        ray.state.add_worker(worker_id, worker_type, worker_info)
+        ray.state.state.add_worker(worker_id, worker_type, worker_info)
     # Call the normal excepthook.
     normal_excepthook(type, value, tb)
 

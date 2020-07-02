@@ -26,53 +26,42 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   worker_failure_data->CopyFrom(request.worker_failure());
   worker_failure_data->set_is_alive(false);
   const auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
-  auto on_done = [this, worker_address, worker_id, worker_failure_data, reply,
-                  send_reply_callback](const Status &status) {
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to report worker failure, "
-                     << worker_address.DebugString();
-    } else {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(WORKER_CHANNEL, worker_id.Binary(),
-                                         worker_failure_data->SerializeAsString(),
-                                         nullptr));
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
 
-  Status status =
-      gcs_table_storage_->WorkerTable().Put(worker_id, *worker_failure_data, on_done);
-  if (!status.ok()) {
-    on_done(status);
-  }
-}
+  // Before handle ReportWorkerFailureRequest, you should check if the worker is exists.
+  auto on_get_done =
+      [this, worker_address, worker_id, worker_failure_data, reply, send_reply_callback](
+          const Status &status, const boost::optional<WorkerTableData> &result) {
 
-void GcsWorkerManager::HandleRegisterWorker(const rpc::RegisterWorkerRequest &request,
-                                            rpc::RegisterWorkerReply *reply,
-                                            rpc::SendReplyCallback send_reply_callback) {
-  auto worker_type = request.worker_type();
-  auto worker_id = WorkerID::FromBinary(request.worker_id());
-  auto worker_info = MapFromProtobuf(request.worker_info());
+        auto on_put_done = [this, worker_address, worker_id, worker_failure_data, reply,
+            send_reply_callback](const Status &status) {
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to report worker failure, "
+                           << worker_address.DebugString();
+          } else {
+            RAY_CHECK_OK(gcs_pub_sub_->Publish(WORKER_CHANNEL, worker_id.Binary(),
+                                               worker_failure_data->SerializeAsString(),
+                                               nullptr));
+          }
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+        };
 
-  auto register_worker_data = std::make_shared<WorkerTableData>();
-  register_worker_data->set_is_alive(true);
-  register_worker_data->set_worker_type(worker_type);
-  register_worker_data->mutable_worker_address()->set_worker_id(worker_id.Binary());
-  register_worker_data->mutable_worker_info()->insert(worker_info.begin(),
-                                                      worker_info.end());
-
-  auto on_done = [worker_id, reply, send_reply_callback](const Status &status) {
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to register worker " << worker_id;
-    } else {
-      RAY_LOG(DEBUG) << "Finished registering worker " << worker_id;
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  };
-
-  Status status =
-      gcs_table_storage_->WorkerTable().Put(worker_id, *register_worker_data, on_done);
-  if (!status.ok()) {
-    on_done(status);
+        if (result) {
+          // The worker is exists in worker table, you can update the info of this worker.
+          Status report_status = gcs_table_storage_->WorkerTable().Put(
+              worker_id, *worker_failure_data, on_put_done);
+          if (!report_status.ok()) {
+            on_put_done(report_status);
+          }
+        } else {
+          // The worker isn't exists in worker table.
+          RAY_LOG(WARNING) << "Failed to report worker failure, the worker doesn't "
+                              "exist, " << worker_address.DebugString();
+          on_put_done(status);
+        }
+      };
+  Status status = gcs_table_storage_->WorkerTable().Get(worker_id, on_get_done);
+  if(!status.ok()){
+    on_get_done(status, boost::none);
   }
 }
 
@@ -121,12 +110,16 @@ void GcsWorkerManager::HandleAddWorkerInfo(const rpc::AddWorkerInfoRequest &requ
                                            rpc::SendReplyCallback send_reply_callback) {
   auto worker_data = std::make_shared<WorkerTableData>();
   worker_data->CopyFrom(request.worker_data());
-  const auto worker_id = WorkerID::FromBinary(worker_data->worker_address().worker_id());
-  auto on_done = [worker_data, reply, send_reply_callback](const Status &status) {
+  auto worker_id = WorkerID::FromBinary(worker_data->worker_address().worker_id());
+  RAY_LOG(DEBUG) << "Adding worker " << worker_id;
+
+  auto on_done = [worker_id, worker_data, reply,
+                  send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add worker information, "
                      << worker_data->DebugString();
     }
+    RAY_LOG(DEBUG) << "Finished adding worker " << worker_id;
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
