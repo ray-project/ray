@@ -1294,6 +1294,7 @@ py_test(
 
 py_test(
     name = "tests/test_supported_multi_agent_pg",
+    main = "tests/test_supported_multi_agent.py",
     tags = ["tests_dir", "tests_dir_S"],
     size = "medium",
     srcs = ["tests/test_supported_multi_agent.py"],
@@ -1302,6 +1303,7 @@ py_test(
 
 py_test(
     name = "tests/test_supported_multi_agent_off_policy",
+    main = "tests/test_supported_multi_agent.py",
     tags = ["tests_dir", "tests_dir_S"],
     size = "medium",
     srcs = ["tests/test_supported_multi_agent.py"],
