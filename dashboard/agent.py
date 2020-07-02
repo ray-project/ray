@@ -33,7 +33,7 @@ class DashboardAgent(object):
                  raylet_name=None):
         """Initialize the DashboardAgent object."""
         self._agent_cls_list = dashboard_utils.get_all_modules(
-            dashboard_consts.TYPE_AGENT)
+            dashboard_utils.DashboardAgentModule)
         ip, port = redis_address.split(":")
         # Public attributes are accessible for all agent modules.
         self.redis_address = (ip, int(port))
@@ -60,7 +60,8 @@ class DashboardAgent(object):
         """Load dashboard agent modules."""
         modules = []
         for cls in self._agent_cls_list:
-            logger.info("Load %s module: %s", dashboard_consts.TYPE_AGENT, cls)
+            logger.info("Load %s: %s",
+                        dashboard_utils.DashboardAgentModule.__name__, cls)
             c = cls(self)
             modules.append(c)
         logger.info("Load {} modules.".format(len(modules)))

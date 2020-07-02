@@ -1,3 +1,4 @@
+import abc
 import os
 import sys
 import asyncio
@@ -23,58 +24,39 @@ from ray.utils import binary_to_hex
 logger = logging.getLogger(__name__)
 
 
-def agent(enable_or_cls):
-    """A decorator to mark a class as an agent module.
+class DashboardAgentModule(abc.ABC):
+    def __init__(self, dashboard_agent):
+        """
+        Initialize current module when DashboardAgent loading modules.
 
-    @agent(x is not None)
-    class AgentModule:
-        def __init__(self, dashboard_agent):
-            pass
+        :param dashboard_agent: The DashboardAgent instance.
+        """
+        self._dashboard_agent = dashboard_agent
 
-        async def run(self, server):
-            pass
-    """
+    @abc.abstractmethod
+    async def run(self, server):
+        """
+        Run the module in an asyncio loop. An agent module can provide
+        servicers to the server.
 
-    def _wrapper(cls):
-        if enable_or_cls:
-            assert inspect.iscoroutinefunction(cls.run)
-            sig = inspect.signature(cls.run)
-            assert len(sig.parameters) == 2, \
-                "Expect signature: async def run(self, server), " \
-                "but got `async def run{}` instead.".format(sig)
-            cls.__ray_module_type__ = dashboard_consts.TYPE_AGENT
-        return cls
-
-    if inspect.isclass(enable_or_cls):
-        return _wrapper(enable_or_cls)
-    return _wrapper
+        :param server: Asyncio GRPC server.
+        """
 
 
-def master(enable_or_cls):
-    """A decorator to mark a class as a master module.
+class DashboardMasterModule(abc.ABC):
+    def __init__(self, dashboard_master):
+        """
+        Initialize current module when DashboardMaster loading modules.
 
-    @master(x is not None)
-    class MasterModule:
-        def __init__(self, dashboard_master):
-            pass
+        :param dashboard_master: The DashboardMaster instance.
+        """
+        self._dashboard_master = dashboard_master
 
-        async def run(self):
-            pass
-    """
-
-    def _wrapper(cls):
-        if enable_or_cls:
-            assert inspect.iscoroutinefunction(cls.run)
-            sig = inspect.signature(cls.run)
-            assert len(sig.parameters) == 1, \
-                "Expect signature: async def run(self), " \
-                "but got `async def run{}` instead.".format(sig)
-            cls.__ray_module_type__ = dashboard_consts.TYPE_MASTER
-        return cls
-
-    if inspect.isclass(enable_or_cls):
-        return _wrapper(enable_or_cls)
-    return _wrapper
+    @abc.abstractmethod
+    async def run(self):
+        """
+        Run the module in an asyncio loop.
+        """
 
 
 class ClassMethodRouteTable:
@@ -166,24 +148,14 @@ class ClassMethodRouteTable:
 
 
 def get_all_modules(module_type):
-    """Collect all modules by type."""
-    logger.info("Get all modules by type: {}".format(module_type))
-    assert module_type in [
-        dashboard_consts.TYPE_AGENT, dashboard_consts.TYPE_MASTER
-    ]
+    logger.info("Get all modules by type: {}".format(module_type.__name__))
     import ray.new_dashboard.modules
 
-    result = []
     for module_loader, name, ispkg in pkgutil.walk_packages(
             ray.new_dashboard.modules.__path__,
             ray.new_dashboard.modules.__name__ + "."):
-        m = importlib.import_module(name)
-        for k, v in m.__dict__.items():
-            if not k.startswith("_") and inspect.isclass(v):
-                mtype = getattr(v, "__ray_module_type__", None)
-                if mtype == module_type:
-                    result.append(v)
-    return result
+        importlib.import_module(name)
+    return module_type.__subclasses__()
 
 
 def to_posix_time(dt):

@@ -68,8 +68,7 @@ def jsonify_asdict(o):
     return json.dumps(dashboard_utils.to_google_style(recursive_asdict(o)))
 
 
-@dashboard_utils.agent
-class Reporter:
+class Reporter(dashboard_utils.DashboardAgentModule):
     """A monitor process for monitoring Ray nodes.
 
     Attributes:
@@ -78,7 +77,7 @@ class Reporter:
 
     def __init__(self, dashboard_agent):
         """Initialize the reporter object."""
-        self._dashboard_agent = dashboard_agent
+        super().__init__(dashboard_agent)
         self._cpu_counts = (psutil.cpu_count(),
                             psutil.cpu_count(logical=False))
         self._ip = ray.services.get_node_ip_address()

@@ -20,10 +20,9 @@ logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
 
-@dashboard_utils.master
-class ReportMaster:
+class ReportMaster(dashboard_utils.DashboardMasterModule):
     def __init__(self, dashboard_master):
-        self._dashboard_master = dashboard_master
+        super().__init__(dashboard_master)
         self._stubs = {}
         self._profiling_stats = {}
         DataSource.agents.signal.append(self._update_stubs)

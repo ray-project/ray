@@ -20,7 +20,7 @@ class DashboardMaster:
     def __init__(self, redis_address, redis_password):
         # Scan and import master modules for collecting http routes.
         self._master_cls_list = dashboard_utils.get_all_modules(
-            dashboard_consts.TYPE_MASTER)
+            dashboard_utils.DashboardMasterModule)
         ip, port = redis_address.split(":")
         # Public attributes are accessible for all master modules.
         self.redis_address = (ip, int(port))
@@ -100,8 +100,8 @@ class DashboardMaster:
         """Load dashboard master modules."""
         modules = []
         for cls in self._master_cls_list:
-            logger.info("Load %s module: %s", dashboard_consts.TYPE_MASTER,
-                        cls)
+            logger.info("Load %s: %s",
+                        dashboard_utils.DashboardMasterModule.__name__, cls)
             c = cls(self)
             dashboard_utils.ClassMethodRouteTable.bind(c)
             modules.append(c)
