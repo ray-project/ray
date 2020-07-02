@@ -71,7 +71,7 @@ class DynamicTFPolicy(TFPolicy):
                  action_distribution_fn: Optional[Callable[
                      [Policy, ModelV2, TensorType, TensorType, TensorType],
                      Tuple[TensorType, type, List[TensorType]]]] = None,
-                 existing_inputs: Optional[Dict[str, tf.placeholder]] = None,
+                 existing_inputs: Optional[Dict[str, tf1.placeholder]] = None,
                  existing_model: Optional[ModelV2] = None,
                  get_batch_divisibility_req: Optional[int] = None,
                  obs_include_prev_action_reward: bool = True):
@@ -120,7 +120,7 @@ class DynamicTFPolicy(TFPolicy):
                 inputs.
                 The callable takes as inputs: Policy, ModelV2, input_dict,
                 explore, timestep, is_training.
-            existing_inputs (Optional[Dict[str, tf.placeholder]]): When copying
+            existing_inputs (Optional[Dict[str, tf1.placeholder]]): When copying
                 a policy, this specifies an existing dict of placeholders to
                 use instead of defining new ones.
             existing_model (Optional[ModelV2]): When copying a policy, this
