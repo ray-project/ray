@@ -176,9 +176,12 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
         // gcs_actor_manager will reconstruct it again.
         auto iter = node_to_actors_when_leasing_.find(node_id);
         if (iter != node_to_actors_when_leasing_.end()) {
-          // If the node is still available, the actor must be still in the leasing map.
           auto actor_iter = iter->second.find(actor->GetActorID());
-          RAY_CHECK(actor_iter != iter->second.end());
+          if (actor_iter == iter->second.end()) {
+            // if actor is not in leasing state, it means it is cancelled.
+            return;
+          }
+
           if (status.ok()) {
             // Remove the actor from the leasing map as the reply is returned from the
             // remote node.

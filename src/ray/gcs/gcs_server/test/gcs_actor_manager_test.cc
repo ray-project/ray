@@ -609,36 +609,6 @@ TEST_F(GcsActorManagerTest, TestRaceConditionCancelLease) {
   gcs_actor_manager_->OnWorkerDead(owner_node_id, owner_worker_id, false);
 }
 
-TEST_F(GcsActorManagerTest, TestRaceConditionReconstructActorAfterDeregistered) {
-  // Covers a scenario 2 in this PR https://github.com/ray-project/ray/pull/9215.
-  auto job_id = JobID::FromInt(1);
-  auto create_actor_request =
-      Mocker::GenCreateActorRequest(job_id, /*max_restarts=*/1, /*detached=*/false);
-  std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  RAY_CHECK_OK(gcs_actor_manager_->RegisterActor(
-      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
-        finished_actors.emplace_back(actor);
-      }));
-
-  ASSERT_EQ(finished_actors.size(), 0);
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
-  const auto owner_node_id = actor->GetOwnerNodeID();
-  const auto owner_worker_id = actor->GetOwnerID();
-
-  // Check that the actor is in state `ALIVE`.
-  rpc::Address address;
-  auto node_id = ClientID::FromRandom();
-  auto worker_id = WorkerID::FromRandom();
-  address.set_raylet_id(node_id.Binary());
-  address.set_worker_id(worker_id.Binary());
-  actor->UpdateAddress(address);
-  const auto actor_id = actor->GetActorID();
-  // Owner is dead.
-  gcs_actor_manager_->OnWorkerDead(owner_node_id, owner_worker_id, false);
-}
-
 }  // namespace ray
 
 int main(int argc, char **argv) {
