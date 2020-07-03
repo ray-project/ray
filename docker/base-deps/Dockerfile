@@ -12,6 +12,9 @@ RUN apt-get update \
         libgtk2.0-dev \
         zlib1g-dev \
         libgl1-mesa-dev \
+        tmux \
+        screen \
+        rsync \
     && apt-get clean \
     && echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh \
     && wget \
