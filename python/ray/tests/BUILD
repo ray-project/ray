@@ -472,3 +472,11 @@ py_test(
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
+
+pytest(
+    name = "test_async",
+    size = "medium",
+    srcs = SRCS + ["test_async.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
