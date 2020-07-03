@@ -221,20 +221,16 @@ message GcsNodeInfo {
 message HeartbeatTableData {
   // Node manager client id
   bytes client_id = 1;
-  // TODO(hchen): Define the following resources in map format.
   // Resource capacity currently available on this node manager.
-  repeated string resources_available_label = 2;
-  repeated double resources_available_capacity = 3;
+  map<string, double> resources_available = 2;
   // Total resource capacity configured for this node manager.
-  repeated string resources_total_label = 4;
-  repeated double resources_total_capacity = 5;
+  map<string, double> resources_total = 3;
   // Aggregate outstanding resource load on this node manager.
-  repeated string resource_load_label = 6;
-  repeated double resource_load_capacity = 7;
+  map<string, double> resource_load = 4;
   // Object IDs that are in use by workers on this node manager's node.
-  repeated bytes active_object_id = 8;
+  repeated bytes active_object_id = 5;
   // Whether this node manager is requesting global GC.
-  bool should_global_gc = 9;
+  bool should_global_gc = 6;
 }
 
 message HeartbeatBatchTableData {
