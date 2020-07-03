@@ -9,7 +9,7 @@ import io.ray.streaming.message.Record;
 import io.ray.streaming.runtime.serialization.CrossLangSerializer;
 import io.ray.streaming.runtime.serialization.JavaSerializer;
 import io.ray.streaming.runtime.serialization.Serializer;
-import io.ray.streaming.runtime.transfer.ChannelID;
+import io.ray.streaming.runtime.transfer.ChannelId;
 import io.ray.streaming.runtime.transfer.DataWriter;
 import java.nio.ByteBuffer;
 import java.util.Collection;
@@ -20,7 +20,7 @@ public class OutputCollector implements Collector<Record> {
   private static final Logger LOGGER = LoggerFactory.getLogger(OutputCollector.class);
 
   private final DataWriter writer;
-  private final ChannelID[] outputQueues;
+  private final ChannelId[] outputQueues;
   private final Collection<BaseActorHandle> targetActors;
   private final Language[] targetLanguages;
   private final Partition partition;
@@ -28,18 +28,18 @@ public class OutputCollector implements Collector<Record> {
   private final Serializer crossLangSerializer = new CrossLangSerializer();
 
   public OutputCollector(DataWriter writer,
-                         Collection<String> outputQueueIds,
+                         Collection<String> outputChannelIds,
                          Collection<BaseActorHandle> targetActors,
                          Partition partition) {
     this.writer = writer;
-    this.outputQueues = outputQueueIds.stream().map(ChannelID::from).toArray(ChannelID[]::new);
+    this.outputQueues = outputChannelIds.stream().map(ChannelId::from).toArray(ChannelId[]::new);
     this.targetActors = targetActors;
     this.targetLanguages = targetActors.stream()
         .map(actor -> actor instanceof PyActorHandle ? Language.PYTHON : Language.JAVA)
         .toArray(Language[]::new);
     this.partition = partition;
-    LOGGER.debug("OutputCollector constructed, outputQueueIds:{}, partition:{}.",
-        outputQueueIds, this.partition);
+    LOGGER.debug("OutputCollector constructed, outputChannelIds:{}, partition:{}.",
+        outputChannelIds, this.partition);
   }
 
   @Override

@@ -18,7 +18,6 @@ from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.rllib.utils.spaces import space_utils
@@ -439,7 +438,7 @@ class Trainer(Trainable):
 
         # User provided config (this is w/o the default Trainer's
         # `COMMON_CONFIG` (see above)). Will get merged with COMMON_CONFIG
-        # in self._setup().
+        # in self.setup().
         config = config or {}
 
         # Vars to synchronize to workers on each train call
@@ -492,14 +491,6 @@ class Trainer(Trainable):
     def train(self) -> ResultDict:
         """Overrides super.train to synchronize global vars."""
 
-        if self._has_policy_optimizer():
-            self.global_vars["timestep"] = self.optimizer.num_steps_sampled
-            self.optimizer.workers.local_worker().set_global_vars(
-                self.global_vars)
-            for w in self.optimizer.workers.remote_workers():
-                w.set_global_vars.remote(self.global_vars)
-            logger.debug("updated global vars: {}".format(self.global_vars))
-
         result = None
         for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
             try:
@@ -526,10 +517,6 @@ class Trainer(Trainable):
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             self._sync_filters_if_needed(self.workers)
 
-        if self._has_policy_optimizer():
-            result["num_healthy_workers"] = len(
-                self.optimizer.workers.remote_workers())
-
         if self.config["evaluation_interval"] == 1 or (
                 self._iteration > 0 and self.config["evaluation_interval"]
                 and self._iteration % self.config["evaluation_interval"] == 0):
@@ -550,14 +537,14 @@ class Trainer(Trainable):
                 workers.local_worker().filters))
 
     @override(Trainable)
-    def _log_result(self, result: ResultDict):
+    def log_result(self, result: ResultDict):
         self.callbacks.on_train_result(trainer=self, result=result)
         # log after the callback is invoked, so that the user has a chance
         # to mutate the result
-        Trainable._log_result(self, result)
+        Trainable.log_result(self, result)
 
     @override(Trainable)
-    def _setup(self, config: PartialTrainerConfigDict):
+    def setup(self, config: PartialTrainerConfigDict):
         env = self._env_id
         if env:
             config["env"] = env
@@ -665,14 +652,14 @@ class Trainer(Trainable):
                 self.evaluation_metrics = {}
 
     @override(Trainable)
-    def _stop(self):
+    def cleanup(self):
         if hasattr(self, "workers"):
             self.workers.stop()
         if hasattr(self, "optimizer") and self.optimizer:
             self.optimizer.stop()
 
     @override(Trainable)
-    def _save(self, checkpoint_dir: str) -> str:
+    def save_checkpoint(self, checkpoint_dir: str) -> str:
         checkpoint_path = os.path.join(checkpoint_dir,
                                        "checkpoint-{}".format(self.iteration))
         pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
@@ -680,7 +667,7 @@ class Trainer(Trainable):
         return checkpoint_path
 
     @override(Trainable)
-    def _restore(self, checkpoint_path: str):
+    def load_checkpoint(self, checkpoint_path: str):
         extra_data = pickle.load(open(checkpoint_path, "rb"))
         self.__setstate__(extra_data)
 
@@ -1095,15 +1082,8 @@ class Trainer(Trainable):
         an error is raised.
         """
 
-        if (not self._has_policy_optimizer()
-                and not hasattr(self, "execution_plan")):
-            raise NotImplementedError(
-                "Recovery is not supported for this algorithm")
-        if self._has_policy_optimizer():
-            workers = self.optimizer.workers
-        else:
-            assert hasattr(self, "execution_plan")
-            workers = self.workers
+        assert hasattr(self, "execution_plan")
+        workers = self.workers
 
         logger.info("Health checking all workers...")
         checks = []
@@ -1129,23 +1109,9 @@ class Trainer(Trainable):
             raise RuntimeError(
                 "Not enough healthy workers remain to continue.")
 
-        if self._has_policy_optimizer():
-            self.optimizer.reset(healthy_workers)
-        else:
-            assert hasattr(self, "execution_plan")
-            logger.warning("Recreating execution plan after failure")
-            workers.reset(healthy_workers)
-            self.train_exec_impl = self.execution_plan(workers, self.config)
-
-    def _has_policy_optimizer(self):
-        """Whether this Trainer has a PolicyOptimizer as `optimizer` property.
-
-        Returns:
-            bool: True if this Trainer holds a PolicyOptimizer object in
-                property `self.optimizer`.
-        """
-        return hasattr(self, "optimizer") and isinstance(
-            self.optimizer, PolicyOptimizer)
+        logger.warning("Recreating execution plan after failure")
+        workers.reset(healthy_workers)
+        self.train_exec_impl = self.execution_plan(workers, self.config)
 
     @override(Trainable)
     def _export_model(self, export_formats: List[str],

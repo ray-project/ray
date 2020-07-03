@@ -141,6 +141,13 @@ class Sum : public Metric {
 
 };  // class Sum
 
+/// Raw metric view point for exporter.
+struct MetricPoint {
+  std::string metric_name;
+  int64_t timestamp;
+  double value;
+  std::unordered_map<std::string, std::string> tags;
+};
 }  // namespace stats
 
 }  // namespace ray
