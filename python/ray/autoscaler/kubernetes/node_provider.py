@@ -75,7 +75,7 @@ class KubernetesNodeProvider(NodeProvider):
         ingress_spec = conf.get("ingress")
         node_uuid = str(uuid4())
         tags[TAG_RAY_CLUSTER_NAME] = self.cluster_name
-        tags["ray-node-uuid"] =node_uuid
+        tags["ray-node-uuid"] = node_uuid
         pod_spec["metadata"]["namespace"] = self.namespace
         if "labels" in pod_spec["metadata"]:
             pod_spec["metadata"]["labels"].update(tags)
