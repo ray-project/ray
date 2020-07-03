@@ -1,6 +1,7 @@
 import os
 import pytest
 import subprocess
+import sys
 import time
 
 import ray
@@ -688,18 +689,22 @@ ray.get(main_wait.release.remote())
     ray.get(main_wait.acquire.remote())
     ray.get(main_wait.acquire.remote())
 
-    driver1_out = p1.stdout.read().decode("ascii").split("\n")
-    driver2_out = p2.stdout.read().decode("ascii").split("\n")
+    driver1_out = p1.stdout.read().decode("ascii")
+    driver2_out = p2.stdout.read().decode("ascii")
+    if sys.platform == "win32":
+        driver1_out = driver1_out.replace("\r", "")
+        driver2_out = driver2_out.replace("\r", "")
+    driver1_out_split = driver1_out.split("\n")
+    driver2_out_split = driver2_out.split("\n")
 
-    assert driver1_out[0][-1] == "1"
-    assert driver1_out[1][-1] == "2"
-    assert driver2_out[0][-1] == "3"
-    assert driver2_out[1][-1] == "4"
+    assert driver1_out_split[0][-1] == "1"
+    assert driver1_out_split[1][-1] == "2"
+    assert driver2_out_split[0][-1] == "3"
+    assert driver2_out_split[1][-1] == "4"
 
 
 if __name__ == "__main__":
     import pytest
-    import sys
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"

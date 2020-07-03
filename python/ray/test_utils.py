@@ -63,21 +63,21 @@ def check_call_module(main, argv, capture_stdout=False, capture_stderr=False):
     old_argv = sys.argv[:]
     try:
         sys.argv = argv[:]
-        with redirect_stderr(stream if capture_stderr else sys.stderr):
-            with redirect_stdout(stream if capture_stdout else sys.stdout):
-                main()
+        try:
+            with redirect_stderr(stream if capture_stderr else sys.stderr):
+                with redirect_stdout(stream if capture_stdout else sys.stdout):
+                    main()
+        finally:
+            stream.flush()
     except SystemExit as ex:
         if ex.code:
-            stream.flush()
             output = stream.buffer.getvalue()
             raise subprocess.CalledProcessError(ex.code, argv, output)
     except Exception as ex:
-        stream.flush()
         output = stream.buffer.getvalue()
         raise subprocess.CalledProcessError(1, argv, output, ex.args[0])
     finally:
         sys.argv = old_argv
-        stream.flush()
         if capture_stdout:
             sys.stdout.buffer.write(stream.buffer.getvalue())
         elif capture_stderr:
