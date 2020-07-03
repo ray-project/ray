@@ -75,14 +75,14 @@ class PolicyTrajectories:
 
         for k, column in sample_batch.items():
             # Store last obs for this agent in self.last_obs.
-            if k == SampleBatch.OBS:
-                env_agent = \
-                    str(sample_batch.data["env_id"][-1]) + ":" + \
-                    str(sample_batch.data["agent_id"][-1])
-                self.last_obs[env_agent] = column[-1]
-                self.buffers[k][self.cursor:self.cursor + ts] = column[:-1]
-            else:
-                self.buffers[k][self.cursor:self.cursor + ts] = column
+            #if k == SampleBatch.OBS:
+                #env_agent = \
+                #    str(sample_batch.data["env_id"][-1]) + ":" + \
+                #    str(sample_batch.data["agent_id"][-1])
+                #self.last_obs[env_agent] = column[-1]
+            #    self.buffers[k][self.cursor:self.cursor + ts] = column[:-1]
+            #else:
+            self.buffers[k][self.cursor:self.cursor + ts] = column
 
         self.cursor += ts
 

@@ -14,7 +14,10 @@ logger = logging.getLogger(__name__)
 
 
 def to_float_array(v):
-    arr = np.array(v)
+    if torch and isinstance(v[0], torch.Tensor):
+        arr = torch.stack(v).numpy()  # np.array([s.numpy() for s in v])
+    else:
+        arr = np.array(v)
     if arr.dtype == np.float64:
         return arr.astype(np.float32)  # save some memory
     return arr
@@ -101,14 +104,19 @@ class Trajectory:
             # Build the buffer only for "obs" (needs +1 time step slot for the
             # last observation). Only increase `self.timestep` once we get the
             # other-than-obs data (which will include the next obs).
-            obs_buffer = np.zeros(
-                shape=(self.buffer_size + 1, ) + init_obs.shape,
-                dtype=init_obs.dtype)
+            #obs_buffer = np.zeros(
+            #    shape=(self.buffer_size + 1, ) + init_obs.shape,
+            #    dtype=init_obs.dtype)
+            obs_buffer = [None] * (self.buffer_size + 1)
             obs_buffer[0] = init_obs
             self.buffers[SampleBatch.CUR_OBS] = obs_buffer
+        #    self.buffers[SampleBatch.CUR_OBS] = [init_obs]
         else:
             assert self.has_initial_obs
-            self.buffers[SampleBatch.CUR_OBS][self.cursor] = init_obs
+            if len(self.buffers[SampleBatch.CUR_OBS]) <= self.cursor:
+                self.buffers[SampleBatch.CUR_OBS].append(init_obs)
+            else:
+                self.buffers[SampleBatch.CUR_OBS][self.cursor] = init_obs
 
         self.env_id = env_id
         self.agent_id = agent_id
@@ -131,12 +139,12 @@ class Trajectory:
                 row) to be added to buffer.
                 Must contain keys: SampleBatch.ACTIONS, REWARDS, DONES, and OBS.
         """
-        #assert self.has_initial_obs is True
-        #assert (SampleBatch.ACTIONS in values and SampleBatch.REWARDS in values
-        #        and SampleBatch.NEXT_OBS in values)
-        #assert env_id == self.env_id
-        #assert agent_id == self.agent_id
-        #assert policy_id == self.policy_id
+        assert self.has_initial_obs is True
+        assert (SampleBatch.ACTIONS in values and SampleBatch.REWARDS in values
+                and SampleBatch.NEXT_OBS in values)
+        assert env_id == self.env_id
+        assert agent_id == self.agent_id
+        assert policy_id == self.policy_id
 
         # Only obs exists so far in buffers:
         # Initialize all other columns.
@@ -146,6 +154,7 @@ class Trajectory:
 
         for k, v in values.items():
             if k == SampleBatch.NEXT_OBS:
+                self.buffers[k][self.cursor] = v
                 t = self.cursor + 1
                 k = SampleBatch.CUR_OBS
             else:
@@ -178,14 +187,14 @@ class Trajectory:
         # all other columns due to the additional obs returned by Env.reset()).
         data = {}
         for k, v in self.buffers.items():
-            end = self.cursor + (1 if k == SampleBatch.OBS else 0)
+            #end = self.cursor + (1 if k == SampleBatch.OBS else 0)
             data[k] = to_float_array(
-                v[self.sample_batch_offset:end]) #, reduce_floats=True)
-        last_obs = {
-            str(self.env_id) + ":" + str(self.agent_id): to_float_array(
-                self.buffers[SampleBatch.CUR_OBS][self.cursor])  #, reduce_floats=True)
-        }
-        batch = SampleBatch(data, _last_obs=last_obs)
+                v[self.sample_batch_offset:self.cursor]) #, reduce_floats=True)
+        #last_obs = {
+        #    str(self.env_id) + ":" + str(self.agent_id): to_float_array(
+        #        self.buffers[SampleBatch.CUR_OBS][self.cursor])  #, reduce_floats=True)
+        #}
+        batch = SampleBatch(data)  #, _last_obs=last_obs)
 
         # Add unroll ID column to batch if non-existent.
         if SampleBatch.UNROLL_ID not in batch.data:
@@ -216,45 +225,49 @@ class Trajectory:
                 `data_batch` must be provided.
         """
         for col, data in single_row.items():
-            if col == SampleBatch.NEXT_OBS:
-                assert SampleBatch.CUR_OBS not in single_row
-                col = SampleBatch.CUR_OBS
+            #if col == SampleBatch.NEXT_OBS:
+            #    assert SampleBatch.CUR_OBS not in single_row
+            #    col = SampleBatch.CUR_OBS
             # Skip already initialized ones, e.g. 'obs' if used with
             # add_initial_observation.
             if col in self.buffers:
                 continue
-            next_obs_add = 1 if col == SampleBatch.CUR_OBS else 0
+            self.buffers[col] = [None] * self.buffer_size
+            #next_obs_add = 1 if col == SampleBatch.CUR_OBS else 0
             # Primitive.
-            if isinstance(data, (int, float, bool, str)):
-                shape = (self.buffer_size + next_obs_add, )
-                t_ = type(data)
-                dtype = np.float32 if t_ == float else \
-                    np.int32 if t_ == int else np.bool_ if t_ == bool else \
-                        np.str
-                self.buffers[col] = np.zeros(shape=shape, dtype=dtype)
+            #if isinstance(data, (int, float, bool, str)):
+            #    shape = (self.buffer_size + next_obs_add, )
+            #    t_ = type(data)
+            #    dtype = np.float32 if t_ == float else \
+            #        np.int32 if t_ == int else np.bool_ if t_ == bool else \
+            #            np.str
+            #    self.buffers[col] = np.zeros(shape=shape, dtype=dtype)
             # np.ndarray, torch.Tensor, or tf.Tensor.
-            else:
-                shape = (self.buffer_size + next_obs_add,) + \
-                        data.shape
-                dtype = data.dtype
-                if torch and isinstance(data, torch.Tensor):
-                    self.buffers[col] = torch.zeros(
-                        *shape, dtype=dtype, device=data.device)
-                elif tf and isinstance(data, tf.Tensor):
-                    self.buffers[col] = tf.zeros(shape=shape, dtype=dtype)
-                else:
-                    self.buffers[col] = np.zeros(shape=shape, dtype=dtype)
+            #else:
+            #    shape = (self.buffer_size + next_obs_add,) + \
+            #            data.shape
+            #    dtype = data.dtype
+            #    if torch and isinstance(data, torch.Tensor):
+            #        self.buffers[col] = torch.zeros(
+            #            *shape, dtype=dtype, device=data.device)
+            #    elif tf and isinstance(data, tf.Tensor):
+            #        self.buffers[col] = tf.zeros(shape=shape, dtype=dtype)
+            #    else:
+            #        self.buffers[col] = np.zeros(shape=shape, dtype=dtype)
 
     def _extend_buffers(self, single_row):
         traj_length = self.cursor - self.trajectory_offset
+
         # Trajectory starts at 0 (meaning episodes are longer than current
         # `self.buffer_size` -> Simply do a resize (enlarge) on each column
         # in the buffer.
         if self.trajectory_offset == 0:
             # Double actual horizon.
-            self.buffer_size *= 2
             for col, data in self.buffers.items():
-                data.resize((self.buffer_size, ) + data.shape[1:])
+                #data.resize((self.buffer_size, ) + data.shape[1:])
+                self.buffers[col].extend([None] * self.buffer_size)
+            self.buffer_size *= 2
+
         # Trajectory starts in first half of the buffer -> Reallocate a new
         # buffer and copy the currently ongoing trajectory into the new buffer.
         elif self.trajectory_offset < self.buffer_size / 2:
@@ -268,8 +281,9 @@ class Trajectory:
             for col, data in old_buffers.items():
                 self.buffers[col][:traj_length] = data[self.trajectory_offset:
                                                        self.cursor]
+
         # Do an efficient memory swap: Move current trajectory simply to
-        # the beginning of the buffer (no reallocation/zero-padding necessary).
+        # the beginning of the buffer (no reallocation/None-padding necessary).
         else:
             for col, data in self.buffers.items():
                 self.buffers[col][:traj_length] = self.buffers[col][

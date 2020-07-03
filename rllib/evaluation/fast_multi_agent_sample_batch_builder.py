@@ -144,7 +144,7 @@ class _FastMultiAgentSampleBatchBuilder:
         # Include the current agent id for multi-agent algorithms.
         if agent_id != _DUMMY_AGENT_ID:
             values["agent_id"] = agent_id
-        values["env_id"] = env_id
+        #values["env_id"] = env_id
 
         # Add action/reward/next-obs (and other data) to Trajectory.
         self.single_agent_trajectories[agent_id].add_action_reward_next_obs(
