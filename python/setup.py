@@ -39,11 +39,10 @@ pickle5_url = ("https://github.com/pitrou/pickle5-backport/archive/"
 
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
-    "ray/core/src/ray/thirdparty/redis/src/redis-server",
+    "ray/core/src/ray/thirdparty/redis/src/redis-server" + exe_suffix,
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
     "ray/core/src/plasma/plasma_store_server" + exe_suffix,
     "ray/_raylet" + pyd_suffix,
-    "ray/core/src/ray/raylet/raylet_monitor" + exe_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
     "ray/streaming/_streaming.so",
@@ -93,7 +92,7 @@ if os.getenv("RAY_USE_NEW_GCS") == "on":
     ray_files += [
         "ray/core/src/credis/build/src/libmember.so",
         "ray/core/src/credis/build/src/libmaster.so",
-        "ray/core/src/credis/redis/src/redis-server"
+        "ray/core/src/credis/redis/src/redis-server" + exe_suffix,
     ]
 
 extras = {

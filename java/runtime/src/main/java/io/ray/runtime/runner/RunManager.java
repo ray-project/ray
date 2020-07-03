@@ -253,7 +253,7 @@ public class RunManager {
 
   private String startRedisInstance(String ip, int port, String password, Integer shard) {
     final File redisServerFile = BinaryFileUtil.getFile(
-        rayConfig.sessionDir, BinaryFileUtil.REDIS_SERVER_BINARY_NAME);
+        rayConfig.sessionDir, BinaryFileUtil.REDIS_SERVER_BINARY_PATH);
     Preconditions.checkState(redisServerFile.setExecutable(true));
     List<String> command = Lists.newArrayList(
         // The redis-server executable file.

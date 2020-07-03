@@ -699,6 +699,8 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeHeartbeat) {
   ClientID node_id = ClientID::FromBinary(node_info->node_id());
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat->set_client_id(node_id.Binary());
+  // Set this flag because GCS won't publish unchanged heartbeat.
+  heartbeat->set_should_global_gc(true);
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
   WaitPendingDone(heartbeat_batch_count, 1);
 }
@@ -1001,6 +1003,8 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
   ASSERT_TRUE(UpdateResources(node_id, key));
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat->set_client_id(node_info->node_id());
+  // Set this flag because GCS won't publish unchanged heartbeat.
+  heartbeat->set_should_global_gc(true);
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
   WaitPendingDone(batch_heartbeat_count, 1);
 
