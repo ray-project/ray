@@ -258,7 +258,6 @@ worker_nodes:
                     resourceFieldRef:
                         resource: requests.cpu
 
-
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
 file_mounts: {
