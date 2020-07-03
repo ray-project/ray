@@ -912,8 +912,7 @@ def test_actor_creation_task_crash(ray_start_regular):
     "ray_start_regular", [{
         "num_cpus": 2,
         "num_gpus": 1
-    }],
-    indirect=True)
+    }], indirect=True)
 def test_pending_actor_removed_by_owner(ray_start_regular):
     # Verify when an owner of pending actors is killed, the actor resources
     # are correctly returned.
@@ -922,6 +921,7 @@ def test_pending_actor_removed_by_owner(ray_start_regular):
     class A:
         def __init__(self):
             self.actors = []
+
         def create_actors(self):
             self.actors = [B.remote() for _ in range(2)]
 
@@ -937,11 +937,10 @@ def test_pending_actor_removed_by_owner(ray_start_regular):
     a = A.remote()
     # Create pending actors
     ray.get(a.create_actors.remote())
-    
+
     # Owner is dead. pending actors should be killed
     # and raylet should return workers correctly.
     del a
-
     a = B.remote()
     assert ray.get(a.ping.remote())
     ray.kill(a)
