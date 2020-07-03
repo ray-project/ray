@@ -35,6 +35,7 @@ def auth_api():
 
     return _auth_api
 
+
 def extensions_beta_api():
     global _extensions_beta_api
     if _extensions_beta_api is None:
@@ -42,5 +43,6 @@ def extensions_beta_api():
         _extensions_beta_api = kubernetes.client.ExtensionsV1beta1Api()
 
     return _extensions_beta_api
+
 
 log_prefix = "KubernetesNodeProvider: "

@@ -95,7 +95,8 @@ class KubernetesNodeProvider(NodeProvider):
                 metadata = service_spec.get("metadata", {})
                 metadata["name"] = new_node.metadata.name
                 service_spec["metadata"] = metadata
-                svc = core_api().create_namespaced_service(self.namespace, service_spec)
+                svc = core_api().create_namespaced_service(
+                    self.namespace, service_spec)
                 new_svcs.append(svc)
 
         if ingress_spec is not None:
@@ -106,13 +107,9 @@ class KubernetesNodeProvider(NodeProvider):
                 metadata["name"] = new_svc.metadata.name
                 ingress_spec["metadata"] = metadata
                 ingress_spec = _add_service_name_to_service_port(
-                    ingress_spec,
-                    new_svc.metadata.name
-                )
+                    ingress_spec, new_svc.metadata.name)
                 extensions_beta_api().create_namespaced_ingress(
-                    self.namespace,
-                    ingress_spec
-                )
+                    self.namespace, ingress_spec)
 
     def terminate_node(self, node_id):
         core_api().delete_namespaced_pod(node_id, self.namespace)
@@ -137,6 +134,7 @@ class KubernetesNodeProvider(NodeProvider):
         return KubernetesCommandRunner(log_prefix, self.namespace, node_id,
                                        auth_config, process_runner)
 
+
 def _add_service_name_to_service_port(spec, svc_name):
     """Goes recursively through the ingress spec and adds the
     right service name in the right places in the spec.
@@ -144,18 +142,14 @@ def _add_service_name_to_service_port(spec, svc_name):
     if isinstance(spec, dict):
         dict_keys = list(spec.keys())
         for k in dict_keys:
-            spec[k] = _add_service_name_to_service_port(
-                spec[k],
-                svc_name
-            )
+            spec[k] = _add_service_name_to_service_port(spec[k], svc_name)
 
             if k == "servicePort":
                 spec["serviceName"] = svc_name
 
     elif isinstance(spec, list):
         spec = [
-            _add_service_name_to_service_port(item, svc_name)
-            for item in spec
+            _add_service_name_to_service_port(item, svc_name) for item in spec
         ]
 
     return spec
