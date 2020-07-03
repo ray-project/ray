@@ -59,7 +59,7 @@ class TFPolicy(Policy):
                  observation_space: gym.spaces.Space,
                  action_space: gym.spaces.Space,
                  config: TrainerConfigDict,
-                 sess: tf1.Session,
+                 sess: "tf1.Session",
                  obs_input: TensorType,
                  sampled_action: TensorType,
                  loss: TensorType,
@@ -206,7 +206,7 @@ class TFPolicy(Policy):
         """Return the list of all savable variables for this policy."""
         return self.model.variables()
 
-    def get_placeholder(self, name) -> tf1.placeholder:
+    def get_placeholder(self, name) -> "tf1.placeholder":
         """Returns the given action or loss input placeholder by name.
 
         If the loss has not been initialized and a loss input placeholder is
@@ -231,7 +231,7 @@ class TFPolicy(Policy):
             "Should have set this before get_placeholder can be called"
         return self._loss_input_dict[name]
 
-    def get_session(self) -> tf1.Session:
+    def get_session(self) -> "tf1.Session":
         """Returns a reference to the TF session for this policy."""
         return self._sess
 
@@ -482,7 +482,8 @@ class TFPolicy(Policy):
 
     @DeveloperAPI
     def copy(self,
-             existing_inputs: List[Tuple[str, tf1.placeholder]]) -> "TFPolicy":
+             existing_inputs: List[Tuple[str, "tf1.placeholder"]]) -> \
+            "TFPolicy":
         """Creates a copy of self using existing input placeholders.
 
         Optional: Only required to work with the multi-GPU optimizer.
