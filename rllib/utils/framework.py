@@ -64,7 +64,10 @@ def try_import_tf(error=False):
     except AttributeError:
         tf1_module = tf_module
 
-    version = 2 if "2." in tf_module.__version__[:2] else 1
+    if not hasattr(tf_module, "__version__"):
+        version = 1  # sphinx doc gen
+    else:
+        version = 2 if "2." in tf_module.__version__[:2] else 1
 
     return tf1_module, tf_module, version
 
