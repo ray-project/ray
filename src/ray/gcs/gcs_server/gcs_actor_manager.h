@@ -101,6 +101,8 @@ class GcsActor {
 
   /// Get the immutable ActorTableData of this actor.
   const rpc::ActorTableData &GetActorTableData() const;
+  // Get the immutable copy of ActorTableData of this actor.
+  const rpc::ActorTableData GetActorTableDataCopy() const;
   /// Get the mutable ActorTableData of this actor.
   rpc::ActorTableData *GetMutableActorTableData();
 
