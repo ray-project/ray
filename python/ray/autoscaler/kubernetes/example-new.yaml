@@ -267,6 +267,8 @@ worker_nodes:
     service:
         apiVersion: v1
         kind: Service
+        # The service name gets automatically set by the
+        # autoscaler and gets the same name as the pod.
         spec:
             # The right selector is automatically applied by autoscaler
             ports:
@@ -287,11 +289,13 @@ worker_nodes:
                 paths:
                 - path: /pipelines/7000(/|$)(.*)
                   backend:
-                    # serviceName: ray-head
+                    # serviceName: gets automatically set
+                    # by the autoscaler
                     servicePort: 7000
                 - path: /pipelines/7001(/|$)(.*)
                   backend:
-                    # serviceName: ray-head
+                    # serviceName: gets automatically set
+                    # by the autoscaler
                     servicePort: 7001
 
 # Files or directories to copy to the head and worker nodes. The format is a
