@@ -137,7 +137,7 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name,
 
     if not workers_only:
         try:
-            exec_cluster(config_file, "ray stop", False, False, False, False,
+            exec_cluster(config_file, "ray stop", "auto", False, False, False,
                          False, override_cluster_name, None, False)
         except Exception:
             logger.exception("Ignoring error attempting a clean shutdown.")
