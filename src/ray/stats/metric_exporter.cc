@@ -52,18 +52,18 @@ void MetricExporter::ExportToPoints(
     }
   }
   hist_mean /= view_data.size();
-  MetricPoint mean_point{.metric_name = metric_name + ".mean",
-                         .timestamp = current_sys_time_ms(),
-                         .value = hist_mean,
-                         .tags = tags};
-  MetricPoint max_point{.metric_name = metric_name + ".max",
-                        .timestamp = current_sys_time_ms(),
-                        .value = hist_max,
-                        .tags = tags};
-  MetricPoint min_point{.metric_name = metric_name + ".min",
-                        .timestamp = current_sys_time_ms(),
-                        .value = hist_min,
-                        .tags = tags};
+  MetricPoint mean_point = {metric_name + ".mean",
+                            current_sys_time_ms(),
+                            hist_mean,
+                            tags};
+  MetricPoint max_point = {metric_name + ".max",
+                           current_sys_time_ms(),
+                           hist_max,
+                           tags};
+  MetricPoint min_point = {metric_name + ".min",
+                           current_sys_time_ms(),
+                           hist_min,
+                           tags};
   points.push_back(std::move(mean_point));
   points.push_back(std::move(max_point));
   points.push_back(std::move(min_point));

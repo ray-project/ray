@@ -93,16 +93,19 @@ def ray_deps_setup():
         sha256 = "9a91274dfd131111227b39ffa3cf7b446fbbd7ee2e5a94c8e7d8ad334b4ff255",
         patches = [
             "//thirdparty/patches:hiredis-connect-rename.patch",
+            "//thirdparty/patches:hiredis-windows-msvc.patch",
             "//thirdparty/patches:hiredis-windows-sigpipe.patch",
             "//thirdparty/patches:hiredis-windows-sockets.patch",
             "//thirdparty/patches:hiredis-windows-strerror.patch",
         ],
     )
 
-    http_file(
+    auto_http_archive(
         name = "com_github_tporadowski_redis_bin",
+        build_file = "//bazel:BUILD.redis",
+        strip_prefix = None,
+        url = "https://github.com/tporadowski/redis/releases/download/v4.0.14.2/Redis-x64-4.0.14.2.zip",
         sha256 = "6fac443543244c803311de5883b714a7ae3c4fa0594cad51d75b24c4ef45b353",
-        urls = ["https://github.com/tporadowski/redis/releases/download/v4.0.14.2/Redis-x64-4.0.14.2.zip"],
     )
 
     auto_http_archive(

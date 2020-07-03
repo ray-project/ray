@@ -5,7 +5,6 @@ from typing import List, Dict, Callable, Any, TYPE_CHECKING
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.policy.policy import Policy
-from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.utils.types import SampleBatchType, AgentID, PolicyID, \
@@ -14,8 +13,6 @@ from ray.rllib.utils.types import SampleBatchType, AgentID, PolicyID, \
 if TYPE_CHECKING:
     from ray.rllib.evaluation.sample_batch_builder import \
         MultiAgentSampleBatchBuilder
-
-tree = try_import_tree()
 
 
 @DeveloperAPI
