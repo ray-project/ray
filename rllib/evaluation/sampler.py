@@ -789,31 +789,28 @@ def _process_observations(
                                                        policy_id, filtered_obs)
                 else:
                     eval_idx = prev_eval_idx_map[policy_id][env_id][agent_id]
-                    episode.batch_builder.add_action_reward_next_obs(
-                        env_id,
-                        agent_id,
-                        policy_id,
-                        t=episode.length - 1,
-                        eps_id=episode.episode_id,
-                        agent_index=episode._agent_index(agent_id),
+                    values_dict = {
+                        "t": episode.length - 1,
+                        "eps_id": episode.episode_id,
+                        "agent_index": episode._agent_index(agent_id),
                         # Action taken at timestep t.
-                        actions=prev_policy_outputs[policy_id][0][eval_idx],
+                        "actions": prev_policy_outputs[policy_id][0][eval_idx],
                         # Reward received after taking a at timestep t.
-                        rewards=rewards[env_id][agent_id],
+                        "rewards": rewards[env_id][agent_id],
                         # After taking a, did we reach terminal?
-                        dones=(False if (no_done_at_end
-                                         or (hit_horizon and soft_horizon))
-                               else agent_done),
+                        "dones": (False if (no_done_at_end
+                                     or (hit_horizon and soft_horizon))
+                           else agent_done),
                         # Next observation.
-                        new_obs=filtered_obs,
-                        # TODO: (sven) add env infos to buffers as well.
-                        **{
-                            k: v[eval_idx]
-                            for k, v in prev_policy_outputs[policy_id][2]
-                            .items()
-                        }, **{
-                            "state_out_{}".format(i): v[eval_idx] for i, v in enumerate(prev_policy_outputs[policy_id][1])
-                        })
+                        "new_obs": filtered_obs,
+                    }
+                    # TODO: (sven) add env infos to buffers as well.
+                    for k, v in prev_policy_outputs[policy_id][2].items():
+                        values_dict[k] = v[eval_idx]
+                    for i, v in enumerate(prev_policy_outputs[policy_id][1]):
+                        values_dict["state_out_{}".format(i)] = v[eval_idx]
+                    episode.batch_builder.add_action_reward_next_obs(
+                        env_id, agent_id, policy_id, values_dict)
                 if not agent_done:
                     eval_idx_map[policy_id][env_id][agent_id] = len(
                         to_eval[policy_id])

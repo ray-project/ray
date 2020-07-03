@@ -2,6 +2,7 @@ from gym.spaces import Box, Space
 import numpy as np
 from typing import Dict, Optional
 
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.types import TensorType
 
@@ -97,13 +98,20 @@ def get_trajectory_view(
         #   agents + episodes (which seems very hard to realize).
         data_col = view_req.data_col or view_col
         batch = []
-        for t in trajectories:
-            if data_col in t.buffers:
-                batch.append(t.buffers[data_col][t.cursor + view_req.timesteps])
-            elif view_req.fill == "zeros":
-                batch.append(np.zeros(view_req.space.shape))
-            elif view_req.fill == "tile":
-                batch.append(np.zeros(view_req.space.shape))
+        for traj in trajectories:
+            if traj.cursor + view_req.timesteps < 0:
+                if data_col == SampleBatch.NEXT_OBS:
+                    batch.append(traj.initial_obs)
+                else:
+                    if view_req.fill == "zeros":
+                        batch.append(np.zeros(view_req.space.shape))
+                    else:
+                        raise NotImplementedError
+            elif data_col in traj.buffers:
+                batch.append(traj.buffers[data_col][traj.cursor + view_req.timesteps])
+            # TODO
+            #elif view_req.fill == "tile":
+            #    batch.append(np.zeros(view_req.space.shape))
             else:
                 raise NotImplementedError
         if torch and isinstance(batch[0], torch.Tensor):

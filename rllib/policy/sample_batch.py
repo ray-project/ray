@@ -74,7 +74,7 @@ class SampleBatch:
         for k, v in self.data.copy().items():
             assert isinstance(k, str), self
             lengths.append(len(v))
-            self.data[k] = np.array(v, copy=False)
+            #self.data[k] = np.array(v, copy=False)
         if not lengths:
             raise ValueError("Empty sample batch")
         assert len(set(lengths)) in [1, 2], \

@@ -64,7 +64,8 @@ class Trajectory:
         # tensors).
         self.buffers = {}
 
-        self.has_initial_obs: bool = False
+        #self.has_initial_obs: bool = False
+        self.initial_obs = None
 
         # Cursor into the preallocated buffers. This is where all new data
         # gets inserted.
@@ -96,27 +97,27 @@ class Trajectory:
             init_obs (TensorType): Initial observation (after env.reset()).
         """
         # Our buffer should be empty when we add the first observation.
-        if SampleBatch.CUR_OBS not in self.buffers:
-            assert self.has_initial_obs is False
-            assert self.cursor == self.sample_batch_offset == \
-                self.trajectory_offset == 0
-            self.has_initial_obs = True
+        #if SampleBatch.CUR_OBS not in self.buffers:
+        #assert self.initial_obs is None
+        #assert self.cursor == self.sample_batch_offset == \
+        #    self.trajectory_offset == 0
+        self.initial_obs = init_obs
             # Build the buffer only for "obs" (needs +1 time step slot for the
             # last observation). Only increase `self.timestep` once we get the
             # other-than-obs data (which will include the next obs).
             #obs_buffer = np.zeros(
             #    shape=(self.buffer_size + 1, ) + init_obs.shape,
             #    dtype=init_obs.dtype)
-            obs_buffer = [None] * (self.buffer_size + 1)
-            obs_buffer[0] = init_obs
-            self.buffers[SampleBatch.CUR_OBS] = obs_buffer
+            #obs_buffer = [None] * (self.buffer_size + 1)
+            #obs_buffer[0] = init_obs
+            #self.buffers[SampleBatch.CUR_OBS] = obs_buffer
         #    self.buffers[SampleBatch.CUR_OBS] = [init_obs]
-        else:
-            assert self.has_initial_obs
-            if len(self.buffers[SampleBatch.CUR_OBS]) <= self.cursor:
-                self.buffers[SampleBatch.CUR_OBS].append(init_obs)
-            else:
-                self.buffers[SampleBatch.CUR_OBS][self.cursor] = init_obs
+        #else:
+        #    assert self.has_initial_obs
+        #    if len(self.buffers[SampleBatch.CUR_OBS]) <= self.cursor:
+        #        self.buffers[SampleBatch.CUR_OBS].append(init_obs)
+        #    else:
+        #        self.buffers[SampleBatch.CUR_OBS][self.cursor] = init_obs
 
         self.env_id = env_id
         self.agent_id = agent_id
@@ -139,7 +140,7 @@ class Trajectory:
                 row) to be added to buffer.
                 Must contain keys: SampleBatch.ACTIONS, REWARDS, DONES, and OBS.
         """
-        assert self.has_initial_obs is True
+        assert self.initial_obs is not None
         assert (SampleBatch.ACTIONS in values and SampleBatch.REWARDS in values
                 and SampleBatch.NEXT_OBS in values)
         assert env_id == self.env_id
@@ -148,18 +149,19 @@ class Trajectory:
 
         # Only obs exists so far in buffers:
         # Initialize all other columns.
-        if len(self.buffers) == 1:
-            assert SampleBatch.CUR_OBS in self.buffers
+        if len(self.buffers) == 0:
+            #assert SampleBatch.CUR_OBS in self.buffers
             self._build_buffers(single_row=values)
 
         for k, v in values.items():
-            if k == SampleBatch.NEXT_OBS:
-                self.buffers[k][self.cursor] = v
-                t = self.cursor + 1
-                k = SampleBatch.CUR_OBS
-            else:
-                t = self.cursor
-            self.buffers[k][t] = v
+            #if k == SampleBatch.NEXT_OBS:
+            #    self.buffers[k][self.cursor] = v
+            #    t = self.cursor + 1
+            #    k = SampleBatch.CUR_OBS
+            #else:
+            #t = self.cursor
+            #self.buffers[k][t] = v
+            self.buffers[k][self.cursor] = v
         self.cursor += 1
 
         # Extend (re-alloc) buffers if full.
@@ -190,11 +192,17 @@ class Trajectory:
             #end = self.cursor + (1 if k == SampleBatch.OBS else 0)
             data[k] = to_float_array(
                 v[self.sample_batch_offset:self.cursor]) #, reduce_floats=True)
+        if "t" in self.buffers:
+            if self.buffers["t"] > 0:
+                for k in self.buffers.keys():
+                    inputs[k] = self.buffers[k][self.sample_batch_offset - 1]
+            else:
+                inputs = {SampleBatch.NEXT_OBS: self.initial_obs}
         #last_obs = {
         #    str(self.env_id) + ":" + str(self.agent_id): to_float_array(
         #        self.buffers[SampleBatch.CUR_OBS][self.cursor])  #, reduce_floats=True)
         #}
-        batch = SampleBatch(data)  #, _last_obs=last_obs)
+        batch = SampleBatch(data, _initial_inputs=inputs)
 
         # Add unroll ID column to batch if non-existent.
         if SampleBatch.UNROLL_ID not in batch.data:

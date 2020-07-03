@@ -61,8 +61,8 @@ class ModelV2:
         self.framework: str = framework
         self._last_output = None
         self._trajectory_view = {
-            SampleBatch.CUR_OBS: ViewRequirement(
-                timesteps=0, space=self.obs_space),
+            SampleBatch.NEXT_OBS: ViewRequirement(
+                timesteps=-1, space=self.obs_space),
             #SampleBatch.PREV_ACTIONS:
             #    ViewRequirement(
             #        SampleBatch.ACTIONS, timesteps=-1, space=self.action_space),

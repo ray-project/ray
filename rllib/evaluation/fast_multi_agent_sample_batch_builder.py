@@ -123,7 +123,7 @@ class _FastMultiAgentSampleBatchBuilder:
                                    env_id: EnvID,
                                    agent_id: AgentID,
                                    policy_id: PolicyID,
-                                   **values: Dict[str, TensorType]) -> None:
+                                   values: Dict[str, TensorType]) -> None:
         """Add the given dictionary (row) of values to this batch.
 
         Args:

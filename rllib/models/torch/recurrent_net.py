@@ -128,7 +128,7 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
 
         initial_state = self.get_initial_state()
         self._trajectory_view = {
-            SampleBatch.OBS: ViewRequirement(timesteps=0),
+            SampleBatch.OBS: ViewRequirement(SampleBatch.NEXT_OBS, timesteps=-1),
             "state_in_0": ViewRequirement("state_out_0", fill="zeros", space=Box(-1.0, 1.0, shape=(self.cell_size, )), timesteps=-1),
             "state_in_1": ViewRequirement("state_out_1", fill="zeros", space=Box(-1.0, 1.0, shape=(self.cell_size, )), timesteps=-1),
             #"seq_lens": ViewRequirement(fill="zeros",

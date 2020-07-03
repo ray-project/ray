@@ -61,7 +61,7 @@ def pad_batch_to_sequences_of_same_size(batch,
         meets_divisibility_reqs = True
 
     # RNN-case.
-    if "state_in_0" in batch:
+    if "state_in_0" in batch or "state_out_0" in batch:
         dynamic_max = True
     # Multi-agent case.
     elif not meets_divisibility_reqs:
