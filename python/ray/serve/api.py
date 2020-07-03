@@ -2,8 +2,8 @@ from functools import wraps
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 SERVE_MASTER_NAME, HTTP_PROXY_TIMEOUT)
-from ray.serve.master import ServeMaster
+                                 SERVE_CENTRAL_NAME, HTTP_PROXY_TIMEOUT)
+from ray.serve.central import ServeCentral
 from ray.serve.handle import RayServeHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name)
 from ray.serve.exceptions import RayServeException
@@ -12,24 +12,24 @@ from ray.serve.router import Query
 from ray.serve.request_params import RequestMetadata
 from ray.serve.metric import InMemoryExporter
 
-master_actor = None
+central_actor = None
 
 
-def _get_master_actor():
+def _get_central_actor():
     """Used for internal purpose because using just import serve.global_state
     will always reference the original None object.
     """
-    global master_actor
-    if master_actor is None:
+    global central_actor
+    if central_actor is None:
         raise RayServeException("Please run serve.init to initialize or "
                                 "connect to existing ray serve cluster.")
-    return master_actor
+    return central_actor
 
 
 def _ensure_connected(f):
     @wraps(f)
     def check(*args, **kwargs):
-        _get_master_actor()
+        _get_central_actor()
         return f(*args, **kwargs)
 
     return check
@@ -87,11 +87,11 @@ def init(name=None,
     if not ray.is_initialized():
         ray.init()
 
-    # Try to get serve master actor if it exists
-    global master_actor
-    master_actor_name = format_actor_name(SERVE_MASTER_NAME, name)
+    # Try to get serve.central actor if it exists
+    global central_actor
+    central_actor_name = format_actor_name(SERVE_CENTRAL_NAME, name)
     try:
-        master_actor = ray.get_actor(master_actor_name)
+        central_actor = ray.get_actor(central_actor_name)
         return
     except ValueError:
         pass
@@ -107,8 +107,8 @@ def init(name=None,
     # serve.init() was run on. We should consider making this configurable
     # in the future.
     http_node_id = ray.state.current_node_id()
-    master_actor = ServeMaster.options(
-        name=master_actor_name,
+    central_actor = ServeCentral.options(
+        name=central_actor_name,
         max_restarts=-1,
         max_task_retries=-1,
     ).remote(name, http_node_id, http_host, http_port, metric_exporter)
@@ -125,10 +125,10 @@ def shutdown():
     Shuts down all processes and deletes all state associated with the Serve
     instance that's currently connected to (via serve.init).
     """
-    global master_actor
-    ray.get(master_actor.shutdown.remote())
-    ray.kill(master_actor, no_restart=True)
-    master_actor = None
+    global central_actor
+    ray.get(central_actor.shutdown.remote())
+    ray.kill(central_actor, no_restart=True)
+    central_actor = None
 
 
 def create_endpoint(endpoint_name,
@@ -172,8 +172,8 @@ def create_endpoint(endpoint_name,
         upper_methods.append(method.upper())
 
     ray.get(
-        master_actor.create_endpoint.remote(endpoint_name, {backend: 1.0},
-                                            route, upper_methods))
+        central_actor.create_endpoint.remote(endpoint_name, {backend: 1.0},
+                                             route, upper_methods))
 
 
 @_ensure_connected
@@ -182,7 +182,7 @@ def delete_endpoint(endpoint):
 
     Does not delete any associated backends.
     """
-    ray.get(master_actor.delete_endpoint.remote(endpoint))
+    ray.get(central_actor.delete_endpoint.remote(endpoint))
 
 
 @_ensure_connected
@@ -192,7 +192,7 @@ def list_endpoints():
     The dictionary keys are endpoint names and values are dictionaries
     of the form: {"methods": List[str], "traffic": Dict[str, float]}.
     """
-    return ray.get(master_actor.get_all_endpoints.remote())
+    return ray.get(central_actor.get_all_endpoints.remote())
 
 
 @_ensure_connected
@@ -219,7 +219,8 @@ def update_backend_config(backend_tag, config_options):
     if not isinstance(config_options, dict):
         raise ValueError("config_options must be a dictionary.")
     ray.get(
-        master_actor.update_backend_config.remote(backend_tag, config_options))
+        central_actor.update_backend_config.remote(backend_tag,
+                                                   config_options))
 
 
 @_ensure_connected
@@ -229,7 +230,7 @@ def get_backend_config(backend_tag):
     Args:
         backend_tag(str): A registered backend.
     """
-    return ray.get(master_actor.get_backend_config.remote(backend_tag))
+    return ray.get(central_actor.get_backend_config.remote(backend_tag))
 
 
 @_ensure_connected
@@ -274,8 +275,8 @@ def create_backend(backend_tag,
                                    replica_config.is_blocking)
 
     ray.get(
-        master_actor.create_backend.remote(backend_tag, backend_config,
-                                           replica_config))
+        central_actor.create_backend.remote(backend_tag, backend_config,
+                                            replica_config))
 
 
 @_ensure_connected
@@ -284,7 +285,7 @@ def list_backends():
 
     Dictionary maps backend tags to backend configs.
     """
-    return ray.get(master_actor.get_all_backends.remote())
+    return ray.get(central_actor.get_all_backends.remote())
 
 
 @_ensure_connected
@@ -293,7 +294,7 @@ def delete_backend(backend_tag):
 
     The backend must not currently be used by any endpoints.
     """
-    ray.get(master_actor.delete_backend.remote(backend_tag))
+    ray.get(central_actor.delete_backend.remote(backend_tag))
 
 
 @_ensure_connected
@@ -313,8 +314,8 @@ def set_traffic(endpoint_name, traffic_policy_dictionary):
             to their traffic weights. The weights must sum to 1.
     """
     ray.get(
-        master_actor.set_traffic.remote(endpoint_name,
-                                        traffic_policy_dictionary))
+        central_actor.set_traffic.remote(endpoint_name,
+                                         traffic_policy_dictionary))
 
 
 @_ensure_connected
@@ -338,8 +339,8 @@ def shadow_traffic(endpoint_name, backend_tag, proportion):
         raise TypeError("proportion must be a float from 0 to 1.")
 
     ray.get(
-        master_actor.shadow_traffic.remote(endpoint_name, backend_tag,
-                                           proportion))
+        central_actor.shadow_traffic.remote(endpoint_name, backend_tag,
+                                            proportion))
 
 
 @_ensure_connected
@@ -363,10 +364,10 @@ def get_handle(endpoint_name,
     """
     if not missing_ok:
         assert endpoint_name in ray.get(
-            master_actor.get_all_endpoints.remote())
+            central_actor.get_all_endpoints.remote())
 
     return RayServeHandle(
-        ray.get(master_actor.get_router.remote())[0],
+        ray.get(central_actor.get_router.remote())[0],
         endpoint_name,
         relative_slo_ms,
         absolute_slo_ms,
@@ -396,5 +397,5 @@ def stat():
             For PrometheusExporter, it returns the metrics in prometheus format
             in plain text.
     """
-    [metric_exporter] = ray.get(master_actor.get_metric_exporter.remote())
+    [metric_exporter] = ray.get(central_actor.get_metric_exporter.remote())
     return ray.get(metric_exporter.inspect_metrics.remote())

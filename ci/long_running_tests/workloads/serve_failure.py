@@ -37,11 +37,11 @@ class RandomKiller:
         serve.init()
 
     def _get_all_serve_actors(self):
-        master = serve.api._get_master_actor()
-        [router] = ray.get(master.get_router.remote())
-        [http_proxy] = ray.get(master.get_http_proxy.remote())
-        all_handles = [master, router, http_proxy]
-        worker_handle_dict = ray.get(master.get_all_worker_handles.remote())
+        central = serve.api._get_central_actor()
+        [router] = ray.get(central.get_router.remote())
+        [http_proxy] = ray.get(central.get_http_proxy.remote())
+        all_handles = [central, router, http_proxy]
+        worker_handle_dict = ray.get(central.get_all_worker_handles.remote())
         for _, replica_dict in worker_handle_dict.items():
             all_handles.extend(list(replica_dict.values()))
 
@@ -115,6 +115,6 @@ class RandomTest:
 
 random_killer = RandomKiller.remote()
 random_killer.run.remote()
-# Subtract 4 from the CPUs available for master, router, HTTP proxy,
+# Subtract 4 from the CPUs available for central, router, HTTP proxy,
 # and metric monitor actors.
 RandomTest(max_endpoints=(num_nodes * cpus_per_node) - 4).run()

@@ -1,5 +1,5 @@
-#: Actor name used to register master actor
-SERVE_MASTER_NAME = "SERVE_MASTER_ACTOR"
+#: Actor name used to register central actor
+SERVE_CENTRAL_NAME = "SERVE_CENTRAL_ACTOR"
 
 #: Actor name used to register router actor
 SERVE_ROUTER_NAME = "SERVE_ROUTER_ACTOR"

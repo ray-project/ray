@@ -111,9 +111,9 @@ class RayServeHandle:
         )
 
     def get_traffic_policy(self):
-        master_actor = serve.api._get_master_actor()
+        central_actor = serve.api._get_central_actor()
         return ray.get(
-            master_actor.get_traffic_policy.remote(self.endpoint_name))
+            central_actor.get_traffic_policy.remote(self.endpoint_name))
 
     def __repr__(self):
         return """

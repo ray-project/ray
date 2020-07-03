@@ -19,62 +19,64 @@ def request_with_retries(endpoint, timeout=30):
             time.sleep(0.1)
 
 
-def test_master_failure(serve_instance):
+def test_central_failure(serve_instance):
     serve.init()
 
     def function():
         return "hello1"
 
-    serve.create_backend("master_failure:v1", function)
+    serve.create_backend("central_failure:v1", function)
     serve.create_endpoint(
-        "master_failure", backend="master_failure:v1", route="/master_failure")
+        "central_failure",
+        backend="central_failure:v1",
+        route="/central_failure")
 
-    assert request_with_retries("/master_failure", timeout=1).text == "hello1"
+    assert request_with_retries("/central_failure", timeout=1).text == "hello1"
 
     for _ in range(10):
-        response = request_with_retries("/master_failure", timeout=30)
+        response = request_with_retries("/central_failure", timeout=30)
         assert response.text == "hello1"
 
-    ray.kill(serve.api._get_master_actor(), no_restart=False)
+    ray.kill(serve.api._get_central_actor(), no_restart=False)
 
     for _ in range(10):
-        response = request_with_retries("/master_failure", timeout=30)
+        response = request_with_retries("/central_failure", timeout=30)
         assert response.text == "hello1"
 
     def function():
         return "hello2"
 
-    ray.kill(serve.api._get_master_actor(), no_restart=False)
+    ray.kill(serve.api._get_central_actor(), no_restart=False)
 
-    serve.create_backend("master_failure:v2", function)
-    serve.set_traffic("master_failure", {"master_failure:v2": 1.0})
+    serve.create_backend("central_failure:v2", function)
+    serve.set_traffic("central_failure", {"central_failure:v2": 1.0})
 
     for _ in range(10):
-        response = request_with_retries("/master_failure", timeout=30)
+        response = request_with_retries("/central_failure", timeout=30)
         assert response.text == "hello2"
 
     def function():
         return "hello3"
 
-    ray.kill(serve.api._get_master_actor(), no_restart=False)
-    serve.create_backend("master_failure_2", function)
-    ray.kill(serve.api._get_master_actor(), no_restart=False)
+    ray.kill(serve.api._get_central_actor(), no_restart=False)
+    serve.create_backend("central_failure_2", function)
+    ray.kill(serve.api._get_central_actor(), no_restart=False)
     serve.create_endpoint(
-        "master_failure_2",
-        backend="master_failure_2",
-        route="/master_failure_2")
-    ray.kill(serve.api._get_master_actor(), no_restart=False)
+        "central_failure_2",
+        backend="central_failure_2",
+        route="/central_failure_2")
+    ray.kill(serve.api._get_central_actor(), no_restart=False)
 
     for _ in range(10):
-        response = request_with_retries("/master_failure", timeout=30)
+        response = request_with_retries("/central_failure", timeout=30)
         assert response.text == "hello2"
-        response = request_with_retries("/master_failure_2", timeout=30)
+        response = request_with_retries("/central_failure_2", timeout=30)
         assert response.text == "hello3"
 
 
 def _kill_http_proxy():
     [http_proxy] = ray.get(
-        serve.api._get_master_actor().get_http_proxy.remote())
+        serve.api._get_central_actor().get_http_proxy.remote())
     ray.kill(http_proxy, no_restart=False)
 
 
@@ -108,7 +110,7 @@ def test_http_proxy_failure(serve_instance):
 
 
 def _kill_router():
-    [router] = ray.get(serve.api._get_master_actor().get_router.remote())
+    [router] = ray.get(serve.api._get_central_actor().get_router.remote())
     ray.kill(router, no_restart=False)
 
 
@@ -146,8 +148,8 @@ def test_router_failure(serve_instance):
 
 
 def _get_worker_handles(backend):
-    master_actor = serve.api._get_master_actor()
-    backend_dict = ray.get(master_actor.get_all_worker_handles.remote())
+    central_actor = serve.api._get_central_actor()
+    backend_dict = ray.get(central_actor.get_all_worker_handles.remote())
 
     return list(backend_dict[backend].values())
 

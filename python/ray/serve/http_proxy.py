@@ -26,15 +26,15 @@ class HTTPProxy:
     # blocks forever
     """
 
-    async def fetch_config_from_master(self):
+    async def fetch_config_from_central(self):
         assert ray.is_initialized()
-        master = serve.api._get_master_actor()
+        central = serve.api._get_central_actor()
 
         self.route_table, [self.router_handle
-                           ] = await master.get_http_proxy_config.remote()
+                           ] = await central.get_http_proxy_config.remote()
 
         # The exporter is required to return results for /-/metrics endpoint.
-        [self.metric_exporter] = await master.get_metric_exporter.remote()
+        [self.metric_exporter] = await central.get_metric_exporter.remote()
 
         self.metric_client = MetricClient(self.metric_exporter)
         self.request_counter = self.metric_client.new_counter(
@@ -180,7 +180,7 @@ class HTTPProxyActor:
     async def __init__(self, host, port, instance_name=None):
         serve.init(name=instance_name)
         self.app = HTTPProxy()
-        await self.app.fetch_config_from_master()
+        await self.app.fetch_config_from_central()
         self.host = host
         self.port = port
 

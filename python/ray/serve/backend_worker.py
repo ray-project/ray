@@ -109,8 +109,8 @@ def create_backend_worker(func_or_class):
             else:
                 _callable = func_or_class(*init_args)
 
-            master = serve.api._get_master_actor()
-            [metric_exporter] = ray.get(master.get_metric_exporter.remote())
+            central = serve.api._get_central_actor()
+            [metric_exporter] = ray.get(central.get_metric_exporter.remote())
             metric_client = MetricClient(
                 metric_exporter, default_labels={"backend": backend_tag})
             self.backend = RayServeWorker(backend_tag, replica_tag, _callable,
