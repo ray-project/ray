@@ -1,9 +1,9 @@
 from abc import ABCMeta, abstractmethod
 import gym
 import numpy as np
+import tree
 from typing import Dict, List, Optional
 
-from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_torch
@@ -13,7 +13,6 @@ from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
 from ray.rllib.utils.types import AgentID
 
 torch, _ = try_import_torch()
-tree = try_import_tree()
 
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.

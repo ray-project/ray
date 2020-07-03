@@ -9,6 +9,7 @@ import time
 import socket
 
 import ray
+import ray.services
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -87,7 +88,7 @@ def wait_for_children_of_pid_to_exit(pid, timeout=20):
 
 def kill_process_by_name(name, SIGKILL=False):
     for p in psutil.process_iter(attrs=["name"]):
-        if p.info["name"] == name:
+        if p.info["name"] == name + ray.services.EXE_SUFFIX:
             if SIGKILL:
                 p.kill()
             else:

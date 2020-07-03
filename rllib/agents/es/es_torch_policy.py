@@ -3,12 +3,12 @@
 
 import gym
 import numpy as np
+import tree
 
 import ray
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
@@ -16,7 +16,6 @@ from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
 torch, _ = try_import_torch()
-tree = try_import_tree()
 
 
 def before_init(policy, observation_space, action_space, config):
