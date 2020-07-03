@@ -635,6 +635,11 @@ def stop(force, verbose):
     help=("Whether to skip running setup commands and only restart Ray. "
           "This cannot be used with 'no-restart'."))
 @click.option(
+    "--no-config-cache",
+    is_flag=True,
+    default=False,
+    help="Disable the local cluster config cache.")
+@click.option(
     "--min-workers",
     required=False,
     type=int,
@@ -657,7 +662,7 @@ def stop(force, verbose):
     default=False,
     help="Don't ask for confirmation.")
 def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
-       yes, cluster_name):
+       yes, cluster_name, no_config_cache):
     """Create or update a Ray cluster."""
     if restart_only or no_restart:
         assert restart_only != no_restart, "Cannot set both 'restart_only' " \
@@ -673,7 +678,8 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
         except urllib.error.HTTPError as e:
             logger.info("Error downloading file: ", e)
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
-                             no_restart, restart_only, yes, cluster_name)
+                             no_restart, restart_only, yes, cluster_name,
+                             no_config_cache)
 
 
 @cli.command()
@@ -889,7 +895,7 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
 
     if start:
         create_or_update_cluster(cluster_config_file, None, None, False, False,
-                                 True, cluster_name)
+                                 True, cluster_name, False)
     target = os.path.basename(script)
     target = os.path.join("~", target)
     rsync(cluster_config_file, script, target, cluster_name, down=False)
