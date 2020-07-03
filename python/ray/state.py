@@ -1021,19 +1021,3 @@ def errors(all_jobs=False):
     else:
         error_messages = state.error_messages(job_id=None)
     return error_messages
-
-
-def add_worker(worker_id, worker_type, worker_info):
-    """ Add a worker to the cluster.
-
-    Args:
-        worker_id: ID of this worker. Type is bytes.
-        worker_type: Type of this worker. Value is ray.gcs_utils.DRIVER or
-            ray.gcs_utils.WORKER.
-        worker_info: Info of this worker. Type is dict(key is str, value is
-            bytes).
-
-    Returns:
-         Is operation success
-    """
-    return state.add_worker(worker_id, worker_type, worker_info)

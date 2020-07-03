@@ -31,20 +31,20 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   auto on_get_done =
       [this, worker_address, worker_id, worker_failure_data, reply, send_reply_callback](
           const Status &status, const boost::optional<WorkerTableData> &result) {
-        auto on_put_done = [this, worker_address, worker_id, worker_failure_data, reply,
-                            send_reply_callback](const Status &status) {
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Failed to report worker failure, "
-                           << worker_address.DebugString();
-          } else {
-            RAY_CHECK_OK(gcs_pub_sub_->Publish(WORKER_CHANNEL, worker_id.Binary(),
-                                               worker_failure_data->SerializeAsString(),
-                                               nullptr));
-          }
-          GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-        };
-
         if (result) {
+          auto on_put_done = [this, worker_address, worker_id, worker_failure_data, reply,
+                              send_reply_callback](const Status &status) {
+            if (!status.ok()) {
+              RAY_LOG(ERROR) << "Failed to report worker failure, "
+                             << worker_address.DebugString();
+            } else {
+              RAY_CHECK_OK(gcs_pub_sub_->Publish(WORKER_CHANNEL, worker_id.Binary(),
+                                                 worker_failure_data->SerializeAsString(),
+                                                 nullptr));
+            }
+            GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+          };
+
           // The worker exists in worker table, you can update the info of this worker.
           Status report_status = gcs_table_storage_->WorkerTable().Put(
               worker_id, *worker_failure_data, on_put_done);
