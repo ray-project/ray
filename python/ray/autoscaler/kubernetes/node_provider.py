@@ -1,4 +1,5 @@
 import logging
+from uuid import uuid4
 
 from ray.autoscaler.kubernetes import core_api, log_prefix, extensions_beta_api
 from ray.autoscaler.node_provider import NodeProvider
@@ -72,7 +73,9 @@ class KubernetesNodeProvider(NodeProvider):
         pod_spec = conf.get("pod", conf)
         service_spec = conf.get("service")
         ingress_spec = conf.get("ingress")
+        node_uuid = str(uuid4())
         tags[TAG_RAY_CLUSTER_NAME] = self.cluster_name
+        tags["ray-node-uuid"] =node_uuid
         pod_spec["metadata"]["namespace"] = self.namespace
         if "labels" in pod_spec["metadata"]:
             pod_spec["metadata"]["labels"].update(tags)
@@ -95,6 +98,7 @@ class KubernetesNodeProvider(NodeProvider):
                 metadata = service_spec.get("metadata", {})
                 metadata["name"] = new_node.metadata.name
                 service_spec["metadata"] = metadata
+                service_spec["spec"]["selector"] = {"ray-node-uuid": node_uuid}
                 svc = core_api().create_namespaced_service(
                     self.namespace, service_spec)
                 new_svcs.append(svc)
