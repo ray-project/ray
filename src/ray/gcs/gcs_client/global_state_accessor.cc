@@ -46,11 +46,7 @@ GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
   promise.get_future().get();
 }
 
-GlobalStateAccessor::~GlobalStateAccessor() {
-  Disconnect();
-  io_service_->stop();
-  thread_io_service_->join();
-}
+GlobalStateAccessor::~GlobalStateAccessor() { Disconnect(); }
 
 bool GlobalStateAccessor::Connect() {
   if (!is_connected_) {
@@ -64,6 +60,8 @@ bool GlobalStateAccessor::Connect() {
 
 void GlobalStateAccessor::Disconnect() {
   if (is_connected_) {
+    io_service_->stop();
+    thread_io_service_->join();
     gcs_client_->Disconnect();
     is_connected_ = false;
   }

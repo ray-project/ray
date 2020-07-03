@@ -464,3 +464,11 @@ py_test(
     tags = ["exclusive", "manual"],
     deps = ["//:ray_lib"],
 )
+
+py_test(
+    name = "test_output",
+    size = "medium",
+    srcs = SRCS + ["test_output.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)

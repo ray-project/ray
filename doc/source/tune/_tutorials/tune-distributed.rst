@@ -215,7 +215,7 @@ In GCP, you can use the following configuration modification:
 
 Spot instances may be removed suddenly while trials are still running. Often times this may be difficult to deal with when using other distributed hyperparameter optimization frameworks. Tune allows users to mitigate the effects of this by preserving the progress of your model training through checkpointing.
 
-The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``_save``, and ``_restore`` abstract methods, as seen in the example below:
+The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``save_checkpoint``, and ``load_checkpoint`` abstract methods, as seen in the example below:
 
 .. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_trainable.py
    :language: python

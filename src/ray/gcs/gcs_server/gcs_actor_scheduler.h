@@ -44,6 +44,11 @@ class GcsActorSchedulerInterface {
   /// \param actor to be scheduled.
   virtual void Schedule(std::shared_ptr<GcsActor> actor) = 0;
 
+  /// Reschedule the specified actor after gcs server restarts.
+  ///
+  /// \param actor to be scheduled.
+  virtual void Reschedule(std::shared_ptr<GcsActor> actor) = 0;
+
   /// Cancel all actors that are being scheduled to the specified node.
   ///
   /// \param node_id ID of the node where the worker is located.
@@ -92,6 +97,11 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   ///
   /// \param actor to be scheduled.
   void Schedule(std::shared_ptr<GcsActor> actor) override;
+
+  /// Reschedule the specified actor after gcs server restarts.
+  ///
+  /// \param actor to be scheduled.
+  void Reschedule(std::shared_ptr<GcsActor> actor) override;
 
   /// Cancel all actors that are being scheduled to the specified node.
   ///

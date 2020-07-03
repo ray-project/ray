@@ -98,20 +98,24 @@ void GcsServer::Start() {
   rpc_server_.RegisterService(*worker_info_service_);
 
   auto load_completed_count = std::make_shared<int>(0);
-  int load_count = 3;
+  int load_count = 2;
   auto on_done = [this, load_count, load_completed_count]() {
     ++(*load_completed_count);
 
+    // We will reschedule the unfinished actors, so we have to load the actor data at the
+    // end to make sure the other table data is loaded.
     if (*load_completed_count == load_count) {
-      // Start RPC server when all tables have finished loading initial data.
-      rpc_server_.Run();
+      auto actor_manager_load_initial_data_callback = [this]() {
+        // Start RPC server when all tables have finished loading initial data.
+        rpc_server_.Run();
 
-      // Store gcs rpc server address in redis.
-      StoreGcsServerAddressInRedis();
-      is_started_ = true;
+        // Store gcs rpc server address in redis.
+        StoreGcsServerAddressInRedis();
+        is_started_ = true;
+      };
+      gcs_actor_manager_->LoadInitialData(actor_manager_load_initial_data_callback);
     }
   };
-  gcs_actor_manager_->LoadInitialData(on_done);
   gcs_object_manager_->LoadInitialData(on_done);
   gcs_node_manager_->LoadInitialData(on_done);
 }
