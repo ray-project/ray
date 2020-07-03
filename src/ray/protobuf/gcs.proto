@@ -138,6 +138,9 @@ message ActorTableData {
   double timestamp = 13;
   // The task specification of this actor's creation task.
   TaskSpec task_spec = 14;
+  // Resource mapping ids acquired by the leased worker. This field is only set when this
+  // actor already has a leased worker.
+  repeated ResourceMapEntry resource_mapping = 15;
 }
 
 message ErrorTableData {
