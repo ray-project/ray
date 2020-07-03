@@ -1062,6 +1062,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
       async_plasma_callbacks_ GUARDED_BY(plasma_mutex_);
 
+  // Fallback for when GetAsync cannot directly get the requested object.
   void PlasmaCallback(SetResultCallback success, std::shared_ptr<RayObject> ray_object,
                       ObjectID object_id, void *py_future);
 

@@ -1991,6 +1991,7 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
                                 std::shared_ptr<RayObject> ray_object, ObjectID object_id,
                                 void *py_future) {
   std::vector<std::shared_ptr<RayObject>> vec;
+  // Check if object is available before subscribing to plasma.
   if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok() && vec.size() > 0) {
     return success(vec.front(), object_id, py_future);
   }
@@ -2027,14 +2028,6 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
     }
   }
 }
-
-/**
- *
- * void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback
-success_callback, SetResultCallback fallback_callback, void *python_future) {
-
-}
-**/
 
 void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                           void *python_future) {
