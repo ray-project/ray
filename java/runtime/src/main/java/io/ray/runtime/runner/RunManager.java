@@ -363,7 +363,7 @@ public class RunManager {
     cmd.addAll(rayConfig.jvmParameters);
 
     // jvm options
-    cmd.add("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0");
+    cmd.add("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER");
 
     // Main class
     cmd.add(WORKER_CLASS);
