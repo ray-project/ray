@@ -835,12 +835,12 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerInfo) {
   ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
 
   // Report a worker failure to GCS when this worker doesn't exist.
-  auto worker_failure_data = Mocker::GenWorkerTableData();
-  ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
+  auto worker_data = Mocker::GenWorkerTableData();
+  worker_data->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
+  ASSERT_TRUE(ReportWorkerFailure(worker_data));
   WaitPendingDone(worker_failure_count, 0);
 
   // Add a worker to GCS.
-  auto worker_data = Mocker::GenWorkerTableData();
   ASSERT_TRUE(AddWorker(worker_data));
 
   // Report a worker failure to GCS when this worker is actually exist.
@@ -1084,9 +1084,13 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerTableResubscribe) {
   // Restart GCS
   RestartGcsServer();
 
+  // Add a worker before report worker failure to GCS.
+  auto worker_data = Mocker::GenWorkerTableData();
+  worker_data->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
+  ASSERT_TRUE(AddWorker(worker_data));
+
   // Report a worker failure to GCS and check if resubscribe works.
-  auto worker_failure_data = Mocker::GenWorkerTableData();
-  ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
+  ASSERT_TRUE(ReportWorkerFailure(worker_data));
   WaitPendingDone(worker_failure_count, 1);
 }
 

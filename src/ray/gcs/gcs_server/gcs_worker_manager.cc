@@ -45,18 +45,18 @@ void GcsWorkerManager::HandleReportWorkerFailure(
         };
 
         if (result) {
-          // The worker is exists in worker table, you can update the info of this worker.
+          // The worker exists in worker table, you can update the info of this worker.
           Status report_status = gcs_table_storage_->WorkerTable().Put(
               worker_id, *worker_failure_data, on_put_done);
           if (!report_status.ok()) {
             on_put_done(report_status);
           }
         } else {
-          // The worker isn't exists in worker table.
+          // The worker doesn't exists in worker table.
           RAY_LOG(WARNING) << "Failed to report worker failure, the worker doesn't "
                               "exist, "
                            << worker_address.DebugString();
-          on_put_done(status);
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
         }
       };
   Status status = gcs_table_storage_->WorkerTable().Get(worker_id, on_get_done);
