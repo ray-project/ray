@@ -2,6 +2,7 @@ from collections import namedtuple
 import unittest
 import tempfile
 import shutil
+import numpy as np
 
 from ray.tune.logger import JsonLogger, CSVLogger, TBXLogger
 
@@ -46,7 +47,17 @@ class LoggerSuite(unittest.TestCase):
         logger.close()
 
     def testTBX(self):
-        config = {"a": 2, "b": [1, 2], "c": {"c": {"D": 123}}}
+        config = {
+            "a": 2,
+            "b": [1, 2],
+            "c": {
+                "c": {
+                    "D": 123
+                }
+            },
+            "d": np.int64(1),
+            "e": np.bool8(True)
+        }
         t = Trial(evaluated_params=config, trial_id="tbx")
         logger = TBXLogger(config=config, logdir=self.test_dir, trial=t)
         logger.on_result(result(0, 4))
