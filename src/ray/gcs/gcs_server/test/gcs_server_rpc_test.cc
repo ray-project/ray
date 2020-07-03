@@ -788,6 +788,7 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   rpc::AddWorkerInfoRequest add_worker_request;
   add_worker_request.mutable_worker_data()->CopyFrom(*worker_data);
   ASSERT_TRUE(AddWorkerInfo(add_worker_request));
+  ASSERT_TRUE(GetAllWorkerInfo().size() == 1);
 
   // Get worker info
   boost::optional<rpc::WorkerTableData> result =

@@ -230,6 +230,8 @@ TEST_F(GlobalStateAccessorTest, TestWorkerTable) {
   ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 0);
   // Add worker info
   auto worker_table_data = Mocker::GenWorkerTableData();
+  worker_table_data->mutable_worker_address()->set_worker_id(
+      WorkerID::FromRandom().Binary());
   ASSERT_TRUE(global_state_->AddWorkerInfo(worker_table_data->SerializeAsString()));
 
   // Get worker info
@@ -238,6 +240,8 @@ TEST_F(GlobalStateAccessorTest, TestWorkerTable) {
 
   // Add another worker info
   auto another_worker_data = Mocker::GenWorkerTableData();
+  another_worker_data->mutable_worker_address()->set_worker_id(
+      WorkerID::FromRandom().Binary());
   ASSERT_TRUE(global_state_->AddWorkerInfo(another_worker_data->SerializeAsString()));
   ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 2);
 }
