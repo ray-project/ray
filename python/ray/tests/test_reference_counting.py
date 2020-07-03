@@ -11,7 +11,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.test_utils import SignalActor, put_object
+from ray.test_utils import SignalActor, put_object, wait_for_condition
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +38,12 @@ def _fill_object_store_and_get(oid, succeed=True, object_MiB=40,
         oid = ray.ObjectID(oid)
 
     if succeed:
-        ray.get(oid)
+        wait_for_condition(
+            lambda: ray.worker.global_worker.core_worker.object_exists(oid))
     else:
-        with pytest.raises(ray.exceptions.RayTimeoutError):
-            ray.get(oid, timeout=0.1)
+        wait_for_condition(
+            lambda: not ray.worker.global_worker.core_worker.object_exists(oid)
+        )
 
 
 def _check_refcounts(expected):
