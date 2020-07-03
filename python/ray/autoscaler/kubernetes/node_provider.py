@@ -1,6 +1,6 @@
 import logging
 
-from ray.autoscaler.kubernetes import core_api, log_prefix
+from ray.autoscaler.kubernetes import core_api, log_prefix, extensions_beta_api
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
 from ray.autoscaler.updater import KubernetesCommandRunner
@@ -68,7 +68,10 @@ class KubernetesNodeProvider(NodeProvider):
         core_api().patch_namespaced_pod(node_id, self.namespace, pod)
 
     def create_node(self, node_config, tags, count):
-        pod_spec = node_config.copy()
+        conf = node_config.copy()
+        pod_spec = conf.get("pod", conf)
+        service_spec = conf.get("service")
+        ingress_spec = conf.get("ingress")
         tags[TAG_RAY_CLUSTER_NAME] = self.cluster_name
         pod_spec["metadata"]["namespace"] = self.namespace
         if "labels" in pod_spec["metadata"]:
@@ -77,11 +80,47 @@ class KubernetesNodeProvider(NodeProvider):
             pod_spec["metadata"]["labels"] = tags
         logger.info(log_prefix + "calling create_namespaced_pod "
                     "(count={}).".format(count))
+        new_nodes = []
         for _ in range(count):
-            core_api().create_namespaced_pod(self.namespace, pod_spec)
+            pod = core_api().create_namespaced_pod(self.namespace, pod_spec)
+            new_nodes.append(pod)
+
+        new_svcs = []
+        if service_spec is not None:
+            logger.info(log_prefix + "calling create_namespaced_service "
+                        "(count={}).".format(count))
+
+            for new_node in new_nodes:
+
+                metadata = service_spec.get("metadata", {})
+                metadata["name"] = new_node.metadata.name
+                service_spec["metadata"] = metadata
+                svc = core_api().create_namespaced_service(self.namespace, service_spec)
+                new_svcs.append(svc)
+
+        if ingress_spec is not None:
+            logger.info(log_prefix + "calling create_namespaced_ingress "
+                        "(count={}).".format(count))
+            for new_svc in new_svcs:
+                metadata = ingress_spec.get("metadata", {})
+                metadata["name"] = new_svc.metadata.name
+                ingress_spec["metadata"] = metadata
+                ingress_spec = _add_service_name_to_service_port(
+                    ingress_spec,
+                    new_svc.metadata.name
+                )
+                extensions_beta_api().create_namespaced_ingress(
+                    self.namespace,
+                    ingress_spec
+                )
 
     def terminate_node(self, node_id):
         core_api().delete_namespaced_pod(node_id, self.namespace)
+        core_api().delete_namespaced_service(node_id, self.namespace)
+        extensions_beta_api().delete_namespaced_ingress(
+            node_id,
+            self.namespace,
+        )
 
     def terminate_nodes(self, node_ids):
         for node_id in node_ids:
@@ -97,3 +136,26 @@ class KubernetesNodeProvider(NodeProvider):
                            docker_config=None):
         return KubernetesCommandRunner(log_prefix, self.namespace, node_id,
                                        auth_config, process_runner)
+
+def _add_service_name_to_service_port(spec, svc_name):
+    """Goes recursively through the ingress spec and adds the
+    right service name in the right places in the spec.
+    """
+    if isinstance(spec, dict):
+        dict_keys = list(spec.keys())
+        for k in dict_keys:
+            spec[k] = _add_service_name_to_service_port(
+                spec[k],
+                svc_name
+            )
+
+            if k == "servicePort":
+                spec["serviceName"] = svc_name
+
+    elif isinstance(spec, list):
+        spec = [
+            _add_service_name_to_service_port(item, svc_name)
+            for item in spec
+        ]
+
+    return spec

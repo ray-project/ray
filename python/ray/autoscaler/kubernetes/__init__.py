@@ -4,6 +4,7 @@ from kubernetes.config.config_exception import ConfigException
 _configured = False
 _core_api = None
 _auth_api = None
+_extensions_beta_api = None
 
 
 def _load_config():
@@ -34,5 +35,12 @@ def auth_api():
 
     return _auth_api
 
+def extensions_beta_api():
+    global _extensions_beta_api
+    if _extensions_beta_api is None:
+        _load_config()
+        _extensions_beta_api = kubernetes.client.ExtensionsV1beta1Api()
+
+    return _extensions_beta_api
 
 log_prefix = "KubernetesNodeProvider: "
