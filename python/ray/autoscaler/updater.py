@@ -102,6 +102,9 @@ class KubernetesCommandRunner:
                 else:
                     raise
 
+    def upload_one_file(self, source, target):
+        self.run_rsync_up(source, target)
+
     def run_rsync_up(self, source, target):
         if target.startswith("~"):
             target = "/root" + target[1:]
@@ -121,6 +124,9 @@ class KubernetesCommandRunner:
                 "cp", source, "{}/{}:{}".format(self.namespace, self.node_id,
                                                 target)
             ])
+
+    def download_one_file(self, source, target):
+        self.run_rsync_down(source, target)
 
     def run_rsync_down(self, source, target):
         if target.startswith("~"):
@@ -282,6 +288,9 @@ class SSHCommandRunner:
                     "SSH command Failed. See above for the output from the"
                     " failure.") from None
 
+    def upload_one_file(self, source, target):
+        self.run_rsync_up(source, target)
+
     def run_rsync_up(self, source, target):
         self.set_ssh_ip_if_required()
         self.process_runner.check_call([
@@ -297,6 +306,9 @@ class SSHCommandRunner:
             " ".join(["ssh"] + self.get_default_ssh_options(120)), "-avz",
             "{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target
         ])
+
+    def download_one_file(self, source, target):
+        self.run_rsync_down(source, target)
 
     def remote_shell_command_str(self):
         return "ssh -o IdentitiesOnly=yes -i {} {}@{}\n".format(
