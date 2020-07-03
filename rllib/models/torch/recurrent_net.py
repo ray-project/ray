@@ -1,3 +1,4 @@
+from gym.spaces import Box
 import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2
@@ -125,9 +126,19 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
             activation_fn=None,
             initializer=torch.nn.init.xavier_uniform_)
 
+        initial_state = self.get_initial_state()
+        self._trajectory_view = {
+            SampleBatch.OBS: ViewRequirement(timesteps=0),
+            "state_in_0": ViewRequirement("state_out_0", fill="zeros", space=Box(-1.0, 1.0, shape=(self.cell_size, )), timesteps=-1),
+            "state_in_1": ViewRequirement("state_out_1", fill="zeros", space=Box(-1.0, 1.0, shape=(self.cell_size, )), timesteps=-1),
+            #"seq_lens": ViewRequirement(fill="zeros",
+            #    space=Box(-1.0, 1.0, shape=(self.cell_size,)), timesteps=-1),
+            SampleBatch.PREV_ACTIONS: ViewRequirement(SampleBatch.ACTIONS, timesteps=-1),
+            SampleBatch.PREV_REWARDS: ViewRequirement(SampleBatch.REWARDS, timesteps=-1),
+        }
+
     @override(RecurrentNetwork)
-    def forward(self, input_dict, state, seq_lens):
-        assert seq_lens is not None
+    def forward(self, input_dict, state=None, seq_lens=None):
         # Push obs through "unwrapped" net's `forward()` first.
         wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
 
@@ -170,13 +181,3 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
     def value_function(self):
         assert self._features is not None, "must call forward() first"
         return torch.reshape(self._value_branch(self._features), [-1])
-
-    #@override(ModelV2)
-    #def get_view_requirements(self, is_training=False):
-    #    return {
-    #        SampleBatch.OBS: ViewRequirement(timesteps=0),
-    #        "state_h": ViewRequirement("state_h", space=, timesteps=-1),
-    #        "state_c": ViewRequirement("state_c", timesteps=-1),
-    #        SampleBatch.PREV_ACTIONS: ViewRequirement(SampleBatch.ACTIONS, -1),
-    #        SampleBatch.PREV_REWARDS: ViewRequirement(SampleBatch.REWARDS, -1),
-    #    }

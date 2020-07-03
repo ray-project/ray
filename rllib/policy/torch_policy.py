@@ -159,8 +159,8 @@ class TorchPolicy(Policy):
             input_dict = self._lazy_tensor_dict(get_trajectory_view(
                 self.model, trajectories, is_training=False))
             # TODO: (sven) support RNNs w/ fast sampling.
-            state_batches = []
-            seq_lens = None
+            state_batches = [input_dict[k] for k in input_dict.keys() if "state_" in k[:6]]
+            seq_lens = np.array([1] * len(trajectories))
 
             actions, state_out, extra_fetches, logp = \
                 self._compute_action_helper(

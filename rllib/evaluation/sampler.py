@@ -811,6 +811,8 @@ def _process_observations(
                             k: v[eval_idx]
                             for k, v in prev_policy_outputs[policy_id][2]
                             .items()
+                        }, **{
+                            "state_out_{}".format(i): v[eval_idx] for i, v in enumerate(prev_policy_outputs[policy_id][1])
                         })
                 if not agent_done:
                     eval_idx_map[policy_id][env_id][agent_id] = len(

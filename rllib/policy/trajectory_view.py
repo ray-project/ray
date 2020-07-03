@@ -2,7 +2,10 @@ from gym.spaces import Box, Space
 import numpy as np
 from typing import Dict, Optional
 
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.types import TensorType
+
+torch, _ = try_import_torch()
 
 
 class ViewRequirement:
@@ -42,7 +45,7 @@ class ViewRequirement:
             timesteps (Union[List[int], int]): List of relative (or absolute
                 timesteps) to be present in the input_dict.
             fill (str): The fill mode in case t<0 or t>H.
-                One of "zeros", "tile", .
+                One of "zeros", "tile", or a TensorType to be used for filling.
             repeat_mode (str): The repeat-mode (one of "all" or "only_first").
                 E.g. for training, we only want the first internal state
                 timestep (the NN will calculate all others again anyways).
@@ -97,10 +100,15 @@ def get_trajectory_view(
         for t in trajectories:
             if data_col in t.buffers:
                 batch.append(t.buffers[data_col][t.cursor + view_req.timesteps])
-            elif self.fill == "zeros":
+            elif view_req.fill == "zeros":
                 batch.append(np.zeros(view_req.space.shape))
-            elif self.fill == "tile":
+            elif view_req.fill == "tile":
                 batch.append(np.zeros(view_req.space.shape))
-        view[view_col] = np.array(batch)
+            else:
+                raise NotImplementedError
+        if torch and isinstance(batch[0], torch.Tensor):
+            view[view_col] = torch.stack(batch)
+        else:
+            view[view_col] = np.array(batch)
 
     return view

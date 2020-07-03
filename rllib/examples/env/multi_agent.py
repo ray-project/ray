@@ -163,7 +163,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
 
 
 MultiAgentCartPole = make_multiagent("CartPole-v0")
-MultiAgentStatelessCartPole = make_multiagent(
-    lambda config: StatelessCartPole(config))
 MultiAgentMountainCar = make_multiagent("MountainCarContinuous-v0")
 MultiAgentPendulum = make_multiagent("Pendulum-v0")
+MultiAgentStatelessCartPole = make_multiagent(
+    lambda config: StatelessCartPole(config))
