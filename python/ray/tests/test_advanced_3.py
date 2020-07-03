@@ -277,6 +277,22 @@ def test_specific_job_id():
     ray.shutdown()
 
 
+def test_worker_env():
+    ray.init(
+        job_config=ray.job_config.JobConfig(worker_env={
+            "foo1": "bar1",
+            "foo2": "bar2"
+        }))
+
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    assert ray.get(get_env.remote("foo1")) == "bar1"
+    assert ray.get(get_env.remote("foo2")) == "bar2"
+    ray.shutdown()
+
+
 def test_object_ref_properties():
     id_bytes = b"00112233445566778899"
     object_ref = ray.ObjectRef(id_bytes)
