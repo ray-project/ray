@@ -44,7 +44,7 @@ enum TaskType {
 }
 
 // Type of placement group strategy.
-enum PlacementStrategy{
+enum PlacementStrategy {
   // Packs Bundles close together inside processes or nodes as tight as possible
   PACK = 0;
   // Places Bundles across distinct nodes or processes as even as possible.
@@ -138,8 +138,8 @@ message TaskSpec {
 
 message Bundle {
   message BundleIdentifier {
-      bytes placement_group_id = 1;
-      int32 bundle_index = 2; 
+    bytes placement_group_id = 1;
+    int32 bundle_index = 2;
   }
   BundleIdentifier bundle_id = 1;
   map<string, double> unit_resources = 2;
@@ -151,8 +151,8 @@ message PlacementGroupSpec {
   // The name of the placement group.
   string name = 2;
   // The array of the bundle in Placement Group.
-  repeated Bundle bundles =  3;
-  // The schedule strategy of this Placement Group. 
+  repeated Bundle bundles = 3;
+  // The schedule strategy of this Placement Group.
   PlacementStrategy strategy = 4;
 }
 

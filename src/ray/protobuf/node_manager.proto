@@ -43,7 +43,7 @@ message RequestResourceReserveRequest {
 }
 
 message RequestResourceReserveReply {
-  // The status if resource reserve success. 
+  // The status if resource reserve success.
   bool success = 1;
 }
 
@@ -52,8 +52,7 @@ message CancelResourceReserveRequest {
   Bundle bundle_spec = 1;
 }
 
-message CancelResourceReserveReply {
-}
+message CancelResourceReserveReply {}
 
 // Release a worker back to its raylet.
 message ReturnWorkerRequest {
@@ -66,8 +65,7 @@ message ReturnWorkerRequest {
   bool disconnect_worker = 3;
 }
 
-message ReturnWorkerReply {
-}
+message ReturnWorkerReply {}
 
 message CancelWorkerLeaseRequest {
   // The task to cancel.
@@ -90,8 +88,7 @@ message ForwardTaskRequest {
   repeated Task uncommitted_tasks = 2;
 }
 
-message ForwardTaskReply {
-}
+message ForwardTaskReply {}
 
 message PinObjectIDsRequest {
   // Address of the owner to ask when to unpin the objects.
@@ -100,8 +97,7 @@ message PinObjectIDsRequest {
   repeated bytes object_ids = 2;
 }
 
-message PinObjectIDsReply {
-}
+message PinObjectIDsReply {}
 
 message GetNodeStatsRequest {
   // Whether to include memory stats. This could be large since it includes
@@ -128,34 +124,35 @@ message GetNodeStatsReply {
   repeated TaskSpec ready_tasks = 5;
 }
 
-message GlobalGCRequest {
-}
+message GlobalGCRequest {}
 
-message GlobalGCReply {
-}
+message GlobalGCReply {}
 
-message FormatGlobalMemoryInfoRequest {
-}
+message FormatGlobalMemoryInfoRequest {}
 
 message FormatGlobalMemoryInfoReply {
-  // A tabular summary of the memory stats. To get this data in structured form, you
-  // can instead use GetNodeStats() directly.
+  // A tabular summary of the memory stats. To get this data in structured form,
+  // you can instead use GetNodeStats() directly.
   string memory_summary = 1;
 }
 
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Request a worker from the raylet.
-  rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
+  rpc RequestWorkerLease(RequestWorkerLeaseRequest)
+      returns (RequestWorkerLeaseReply);
   // Release a worker back to its raylet.
   rpc ReturnWorker(ReturnWorkerRequest) returns (ReturnWorkerReply);
   // Request resource from the raylet for a bundle.
-  rpc RequestResourceReserve(RequestResourceReserveRequest) returns (RequestResourceReserveReply);
+  rpc RequestResourceReserve(RequestResourceReserveRequest)
+      returns (RequestResourceReserveReply);
   // Return resource for the raylet.
-  rpc CancelResourceReserve(CancelResourceReserveRequest) returns (CancelResourceReserveReply);
+  rpc CancelResourceReserve(CancelResourceReserveRequest)
+      returns (CancelResourceReserveReply);
   // Cancel a pending lease request. This only returns success if the
   // lease request was not yet granted.
-  rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
+  rpc CancelWorkerLease(CancelWorkerLeaseRequest)
+      returns (CancelWorkerLeaseReply);
   // Forward a task and its uncommitted lineage to the remote node manager.
   rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
   // Pin the provided object IDs.
