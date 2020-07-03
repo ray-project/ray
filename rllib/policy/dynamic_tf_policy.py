@@ -51,9 +51,9 @@ class DynamicTFPolicy(TFPolicy):
                  obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space,
                  config: TrainerConfigDict,
-                 *,
                  loss_fn: Callable[
                      [Policy, ModelV2, type, SampleBatch], TensorType],
+                 *,
                  stats_fn: Optional[Callable[[Policy, SampleBatch],
                                              Dict[str, TensorType]]] = None,
                  grad_stats_fn: Optional[Callable[
