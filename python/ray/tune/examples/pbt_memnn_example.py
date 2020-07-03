@@ -214,7 +214,7 @@ class MemNNModel(Trainable):
         model = Model([input_sequence, question], answer)
         return model
 
-    def _setup(self, config):
+    def setup(self, config):
         with FileLock(os.path.expanduser("~/.tune.lock")):
             self.train_stories, self.test_stories = read_data()
         model = self.build_model()
@@ -226,7 +226,7 @@ class MemNNModel(Trainable):
             metrics=["accuracy"])
         self.model = model
 
-    def _train(self):
+    def step(self):
         # train
         self.model.fit(
             [self.inputs_train, self.queries_train],
@@ -242,12 +242,12 @@ class MemNNModel(Trainable):
             verbose=0)
         return {"mean_accuracy": accuracy}
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         file_path = checkpoint_dir + "/model"
         self.model.save(file_path)
         return file_path
 
-    def _restore(self, path):
+    def load_checkpoint(self, path):
         # See https://stackoverflow.com/a/42763323
         del self.model
         self.model = load_model(path)
