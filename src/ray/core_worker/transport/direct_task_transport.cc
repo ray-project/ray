@@ -93,25 +93,47 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
 void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     const rpc::WorkerAddress &addr, const SchedulingKey &scheduling_key, bool was_error,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
+  
   auto lease_entry = worker_to_lease_client_[addr];
+  if (!lease_entry.first) {
+    return;
+  }
   RAY_CHECK(lease_entry.first);
+  
   auto queue_entry = task_queues_.find(scheduling_key);
   // Return the worker if there was an error executing the previous task,
   // the previous task is an actor creation task,
   // there are no more applicable queued tasks, or the lease is expired.
   if (was_error || queue_entry == task_queues_.end() ||
       current_time_ms() > lease_entry.second) {
-    auto status = lease_entry.first->ReturnWorker(addr.port, addr.worker_id, was_error);
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
+    
+    auto tasks_in_flight_entry = tasks_in_flight_.find(addr);
+    if (tasks_in_flight_entry == tasks_in_flight_.end()) {
+      auto status = lease_entry.first->ReturnWorker(addr.port, addr.worker_id, was_error);
+      if (!status.ok()) {
+        RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
+      }
+      worker_to_lease_client_.erase(addr);
     }
-    worker_to_lease_client_.erase(addr);
+    
   } else {
     auto &client = *client_cache_[addr];
-    auto task_spec = queue_entry->second.front();
-    PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);
-    executing_tasks_.emplace(task_spec.TaskId(), addr);
-    queue_entry->second.pop_front();
+
+    auto tasks_in_flight_entry = tasks_in_flight_.find(addr);
+    if (tasks_in_flight_entry == tasks_in_flight_.end()) {
+      tasks_in_flight_.emplace(addr, 0);
+      tasks_in_flight_entry = tasks_in_flight_.find(addr);
+    }
+    RAY_CHECK(tasks_in_flight_entry != tasks_in_flight_.end());
+
+    while (!queue_entry->second.empty() && tasks_in_flight_entry->second < pipeline_fullness_) {
+      auto task_spec = queue_entry->second.front();
+      PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);
+      executing_tasks_.emplace(task_spec.TaskId(), addr);
+      tasks_in_flight_entry->second++;
+      queue_entry->second.pop_front();
+    }
+    
     // Delete the queue if it's now empty. Note that the queue cannot already be empty
     // because this is the only place tasks are removed from it.
     if (queue_entry->second.empty()) {
@@ -119,6 +141,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       RAY_LOG(DEBUG) << "Task queue empty, canceling lease request";
       CancelWorkerLeaseIfNeeded(scheduling_key);
     }
+
   }
   RequestNewWorkerIfNeeded(scheduling_key);
 }
@@ -269,6 +292,15 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
         {
           absl::MutexLock lock(&mu_);
           executing_tasks_.erase(task_id);
+
+          auto tasks_in_flight_entry = tasks_in_flight_.find(addr);
+          RAY_CHECK(tasks_in_flight_entry != tasks_in_flight_.end());
+          RAY_CHECK(tasks_in_flight_entry->second > 0);
+          tasks_in_flight_entry->second--;
+          if (tasks_in_flight_entry->second == 0) {
+            tasks_in_flight_.erase(tasks_in_flight_entry);
+          }
+
         }
         if (reply.worker_exiting()) {
           // The worker is draining and will shutdown after it is done. Don't return
