@@ -182,7 +182,7 @@ class ReferenceCounter {
   /// Sets the callback that will be run when the object goes out of scope.
   /// Returns true if the object was in scope and the callback was added, else false.
   bool SetDeleteCallback(const ObjectID &object_id,
-                         const std::function<void(const ObjectID &)> callback)
+                         const std::function<bool(const ObjectID &)> callback)
       LOCKS_EXCLUDED(mutex_);
 
   void ResetDeleteCallbacks(const std::vector<ObjectID> &object_ids)
@@ -466,11 +466,12 @@ class ReferenceCounter {
 
     /// Callback that will be called when this ObjectID no longer has
     /// references.
-    std::function<void(const ObjectID &)> on_delete;
+    std::function<bool(const ObjectID &)> on_delete;
     /// Callback that is called when this process is no longer a borrower
     /// (RefCount() == 0).
     std::function<void(const ObjectID &)> on_ref_removed;
-    /// When this ObjectID no longer has references and on_delete is nil, we will set is_deleted true;
+    /// When this ObjectID no longer has references and on_delete is nil, we will set
+    /// is_deleted true;
     bool is_deleted;
   };
 

@@ -410,8 +410,12 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
   if (should_delete_value) {
     if (it->second.on_delete) {
       RAY_LOG(DEBUG) << "Calling on_delete for object " << id;
-      it->second.on_delete(id);
-      it->second.on_delete = nullptr;
+      if (it->second.on_delete(id)) {
+        it->second.on_delete = nullptr;
+      } else {
+        RAY_LOG(INFO) << "second.is_deleted 998" << id;
+        it->second.is_deleted = true;
+      }
       it->second.pinned_at_raylet_id.reset();
     } else {
       RAY_LOG(INFO) << "second.is_deleted " << id;
@@ -439,16 +443,16 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 }
 
 bool ReferenceCounter::SetDeleteCallback(
-    const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
+    const ObjectID &object_id, const std::function<bool(const ObjectID &)> callback) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
   } else if (it->second.OutOfScope(lineage_pinning_enabled_) &&
-        !it->second.ShouldDelete(lineage_pinning_enabled_)) {
-      // The object has already gone out of scope but cannot be deleted yet. Do
-      // not set the deletion callback because it may never get called.
-      return false;
+             !it->second.ShouldDelete(lineage_pinning_enabled_)) {
+    // The object has already gone out of scope but cannot be deleted yet. Do
+    // not set the deletion callback because it may never get called.
+    return false;
   }
 
   RAY_CHECK(!it->second.on_delete) << object_id;
@@ -467,8 +471,9 @@ std::vector<ObjectID> ReferenceCounter::ResetObjectsOnRemovedNode(
       lost_objects.push_back(object_id);
       ref.pinned_at_raylet_id.reset();
       if (ref.on_delete) {
-        ref.on_delete(object_id);
-        ref.on_delete = nullptr;
+        if (ref.on_delete(object_id)) {
+          ref.on_delete = nullptr;
+        }
       }
     }
   }

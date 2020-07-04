@@ -1343,7 +1343,9 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
           if (callback) {
             RAY_LOG(INFO) << "callback.mapped()(actor_id).....actor id = " << actor_id;
             callback.mapped()(actor_id);
+            return true;
           }
+          return false;
         }));
   }
 
@@ -1802,18 +1804,17 @@ void CoreWorker::HandleWaitForActorOutOfScope(
     RAY_LOG(INFO) << "respond.....actor id = " << actor_id;
     respond(actor_id);
   } else {
-    RAY_LOG(INFO) << "HandleWaitForActorOutOfScope 11111";
     auto object_id_refs = reference_counter_->GetObjectIdRefs();
-    RAY_LOG(INFO) << "HandleWaitForActorOutOfScope 33333";
     const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
-    RAY_LOG(INFO) << "HandleWaitForActorOutOfScope 44444, actor_creation_return_id = " << actor_creation_return_id;
     auto iter = object_id_refs.find(actor_creation_return_id);
     if (iter != object_id_refs.end() && iter->second.is_deleted) {
-      RAY_LOG(INFO) << "HandleWaitForActorOutOfScope try to delete, " << actor_creation_return_id;
+      RAY_LOG(INFO) << "HandleWaitForActorOutOfScope try to delete, "
+                    << actor_creation_return_id;
       respond(actor_id);
       object_id_refs.erase(iter);
     } else {
-      RAY_CHECK(actor_out_of_scope_callbacks_.emplace(actor_id, std::move(respond)).second);
+      RAY_CHECK(
+          actor_out_of_scope_callbacks_.emplace(actor_id, std::move(respond)).second);
     }
   }
 }
@@ -1832,6 +1833,7 @@ void CoreWorker::HandleWaitForObjectEviction(
   auto respond = [send_reply_callback](const ObjectID &object_id) {
     RAY_LOG(DEBUG) << "Replying to HandleWaitForObjectEviction for " << object_id;
     send_reply_callback(Status::OK(), nullptr, nullptr);
+    return true;
   };
 
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
