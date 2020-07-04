@@ -1,5 +1,5 @@
-Training (tune.run, tune.Experiment)
-====================================
+Execution (tune.run, tune.Experiment)
+=====================================
 
 .. _tune-run-ref:
 
@@ -25,3 +25,11 @@ Stopper (tune.Stopper)
 
 .. autoclass:: ray.tune.Stopper
     :members: __call__, stop_all
+
+
+Scikit-Learn integration (tune.sklearn)
+---------------------------------------
+
+.. autoclass:: ray.tune.integration.sklearn.TuneGridSearchCV
+
+.. autoclass:: ray.tune.integration.sklearn.TuneSearchCV
