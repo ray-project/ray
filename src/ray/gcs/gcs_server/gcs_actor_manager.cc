@@ -454,6 +454,7 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
         if (node_it != owners_.end() && node_it->second.count(owner_id)) {
           // Only destroy the actor if its owner is still alive. The actor may
           // have already been destroyed if the owner died.
+          RAY_LOG(INFO) << "DestroyActor..................222222";
           DestroyActor(actor_id);
         }
       }));
@@ -525,8 +526,9 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
                                      [actor_id](const std::shared_ptr<GcsActor> &actor) {
                                        return actor->GetActorID() == actor_id;
                                      });
-      RAY_CHECK(pending_it != pending_actors_.end());
-      pending_actors_.erase(pending_it);
+      if (pending_it != pending_actors_.end()) {
+        pending_actors_.erase(pending_it);
+      }
     }
   }
 
@@ -560,6 +562,7 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
     // list.
     const auto children_ids = owner->second.children_actor_ids;
     for (const auto &child_id : children_ids) {
+      RAY_LOG(INFO) << "DestroyActor..................1111111";
       DestroyActor(child_id);
     }
   }
@@ -597,6 +600,7 @@ void GcsActorManager::OnNodeDead(const ClientID &node_id) {
       }
     }
     for (const auto &child_id : children_ids) {
+      RAY_LOG(INFO) << "DestroyActor..................33333333";
       DestroyActor(child_id);
     }
   }
@@ -674,7 +678,10 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
           // if actor was an detached actor, make sure to destroy it.
           // We need to do this because detached actors are not destroyed
           // when its owners are dead because it doesn't have owners.
-          if (actor->IsDetached()) DestroyActor(actor_id);
+          if (actor->IsDetached()) {
+            RAY_LOG(INFO) << "DestroyActor..................444444";
+            DestroyActor(actor_id);
+          }
           RAY_CHECK_OK(gcs_pub_sub_->Publish(
               ACTOR_CHANNEL, actor_id.Hex(),
               mutable_actor_table_data->SerializeAsString(), nullptr));
@@ -695,7 +702,9 @@ void GcsActorManager::OnActorCreationFailed(std::shared_ptr<GcsActor> actor) {
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor) {
   auto actor_id = actor->GetActorID();
   RAY_LOG(DEBUG) << "Actor created successfully, actor id = " << actor_id;
-  RAY_CHECK(registered_actors_.count(actor_id) > 0);
+  if (registered_actors_.count(actor_id) == 0) {
+    return;
+  }
   actor->UpdateState(rpc::ActorTableData::ALIVE);
   auto actor_table_data = actor->GetActorTableData();
   // The backend storage is reliable in the future, so the status must be ok.

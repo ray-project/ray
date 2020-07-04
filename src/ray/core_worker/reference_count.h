@@ -316,7 +316,6 @@ class ReferenceCounter {
       const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
       rpc::CoreWorkerStats *stats) const LOCKS_EXCLUDED(mutex_);
 
- private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
     Reference() {}
@@ -471,10 +470,15 @@ class ReferenceCounter {
     /// Callback that is called when this process is no longer a borrower
     /// (RefCount() == 0).
     std::function<void(const ObjectID &)> on_ref_removed;
+    /// When this ObjectID no longer has references and on_delete is nil, we will set is_deleted true;
+    bool is_deleted;
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
 
+  ReferenceTable &GetObjectIdRefs();
+
+ private:
   /// Shutdown if all references have gone out of scope and shutdown
   /// is scheduled.
   void ShutdownIfNeeded() EXCLUSIVE_LOCKS_REQUIRED(mutex_);

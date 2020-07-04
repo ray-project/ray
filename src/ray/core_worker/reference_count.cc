@@ -413,6 +413,9 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       it->second.on_delete(id);
       it->second.on_delete = nullptr;
       it->second.pinned_at_raylet_id.reset();
+    } else {
+      RAY_LOG(INFO) << "second.is_deleted " << id;
+      it->second.is_deleted = true;
     }
     if (deleted) {
       deleted->push_back(id);
@@ -428,7 +431,9 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       ReleaseLineageReferencesInternal(ids_to_release);
     }
 
-    object_id_refs_.erase(it);
+    if (!it->second.is_deleted) {
+      object_id_refs_.erase(it);
+    }
     ShutdownIfNeeded();
   }
 }
@@ -440,10 +445,10 @@ bool ReferenceCounter::SetDeleteCallback(
   if (it == object_id_refs_.end()) {
     return false;
   } else if (it->second.OutOfScope(lineage_pinning_enabled_) &&
-             !it->second.ShouldDelete(lineage_pinning_enabled_)) {
-    // The object has already gone out of scope but cannot be deleted yet. Do
-    // not set the deletion callback because it may never get called.
-    return false;
+        !it->second.ShouldDelete(lineage_pinning_enabled_)) {
+      // The object has already gone out of scope but cannot be deleted yet. Do
+      // not set the deletion callback because it may never get called.
+      return false;
   }
 
   RAY_CHECK(!it->second.on_delete) << object_id;
@@ -839,6 +844,9 @@ void ReferenceCounter::SetReleaseLineageCallback(
     const LineageReleasedCallback &callback) {
   RAY_CHECK(on_lineage_released_ == nullptr);
   on_lineage_released_ = callback;
+}
+ReferenceCounter::ReferenceTable &ReferenceCounter::GetObjectIdRefs() {
+  return object_id_refs_;
 }
 
 ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(

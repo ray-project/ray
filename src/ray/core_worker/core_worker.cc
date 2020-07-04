@@ -1298,6 +1298,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
         // submit tasks to dead actors. This also means we defer unsubscription,
         // otherwise we crash when bulk unsubscribing all actor handles.
       } else {
+        RAY_LOG(INFO) << "AddActorHandle, state = " << actor_data.state();
         direct_actor_submitter_->ConnectActor(actor_id, actor_data.address());
       }
 
@@ -1340,6 +1341,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
           // https://github.com/ray-project/ray/pull/6885
           auto callback = actor_out_of_scope_callbacks_.extract(actor_id);
           if (callback) {
+            RAY_LOG(INFO) << "callback.mapped()(actor_id).....actor id = " << actor_id;
             callback.mapped()(actor_id);
           }
         }));
@@ -1797,9 +1799,22 @@ void CoreWorker::HandleWaitForActorOutOfScope(
   absl::MutexLock lock(&actor_handles_mutex_);
   auto it = actor_handles_.find(actor_id);
   if (it == actor_handles_.end()) {
+    RAY_LOG(INFO) << "respond.....actor id = " << actor_id;
     respond(actor_id);
   } else {
-    RAY_CHECK(actor_out_of_scope_callbacks_.emplace(actor_id, std::move(respond)).second);
+    RAY_LOG(INFO) << "HandleWaitForActorOutOfScope 11111";
+    auto object_id_refs = reference_counter_->GetObjectIdRefs();
+    RAY_LOG(INFO) << "HandleWaitForActorOutOfScope 33333";
+    const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
+    RAY_LOG(INFO) << "HandleWaitForActorOutOfScope 44444, actor_creation_return_id = " << actor_creation_return_id;
+    auto iter = object_id_refs.find(actor_creation_return_id);
+    if (iter != object_id_refs.end() && iter->second.is_deleted) {
+      RAY_LOG(INFO) << "HandleWaitForActorOutOfScope try to delete, " << actor_creation_return_id;
+      respond(actor_id);
+      object_id_refs.erase(iter);
+    } else {
+      RAY_CHECK(actor_out_of_scope_callbacks_.emplace(actor_id, std::move(respond)).second);
+    }
   }
 }
 
@@ -1890,6 +1905,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
                                  rpc::KillActorReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
   ActorID intended_actor_id = ActorID::FromBinary(request.intended_actor_id());
+  RAY_LOG(INFO) << "HandleKillActor...actor id = " << intended_actor_id;
   if (intended_actor_id != worker_context_.GetCurrentActorID()) {
     std::ostringstream stream;
     stream << "Mismatched ActorID: ignoring KillActor for previous actor "
