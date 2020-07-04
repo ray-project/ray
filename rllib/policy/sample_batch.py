@@ -65,7 +65,7 @@ class SampleBatch:
         # Placeholder for a last_obs value (in an n x sars'-trajectory).
         # Only used if _fast_sampling=True in the Policy's config to be able to
         # deprecate the SampleBatch.NEXT_OBS field entirely soon.
-        self.last_obs = kwargs.pop("_last_obs", None)
+        self._inputs = kwargs.pop("_initial_inputs", None)
 
         # The actual data, accessible by column name (str).
         self.data = dict(*args, **kwargs)
@@ -77,9 +77,8 @@ class SampleBatch:
             #self.data[k] = np.array(v, copy=False)
         if not lengths:
             raise ValueError("Empty sample batch")
-        assert len(set(lengths)) in [1, 2], \
-            "Data columns must be same length (except obs!): " \
-            "lengths are {}".format(lengths)
+        assert len(set(lengths)) == 1, \
+            "Data columns must be same length, but lens are {}".format(lengths)
         self.count = len(self.data[self.ACTIONS])
 
     @staticmethod
@@ -96,11 +95,17 @@ class SampleBatch:
         """
         if isinstance(samples[0], MultiAgentBatch):
             return MultiAgentBatch.concat_samples(samples)
+        inputs = {}
+        concat_samples = []
+        for s in samples:
+            if s.count > 0:
+                concat_samples.append(s)
+                inputs.update(s._inputs)
+
         out = {}
-        samples = [s for s in samples if s.count > 0]
-        for k in samples[0].keys():
-            out[k] = concat_aligned([s[k] for s in samples])
-        return SampleBatch(out)
+        for k in concat_samples[0].keys():
+            out[k] = concat_aligned([s[k] for s in concat_samples])
+        return SampleBatch(out, _initial_inputs=inputs)
 
     @PublicAPI
     def concat(self, other):
@@ -212,8 +217,11 @@ class SampleBatch:
         Returns:
             SampleBatch which has a slice of this batch's data.
         """
-
-        return SampleBatch({k: v[start:end] for k, v in self.data.items()})
+        inputs = {s: self._inputs[s] for s in
+                  set(self.data["unroll_id"][start:end])}
+        return SampleBatch(
+            {k: v[start:end] for k, v in self.data.items()},
+            _initial_inputs=inputs)
 
     @PublicAPI
     def timeslices(self, k: int) -> List["SampleBatch"]:

@@ -200,7 +200,7 @@ class _FastMultiAgentSampleBatchBuilder:
             policy = self.policy_map[self.agent_to_policy[agent_id]]
             post_batches[agent_id] = policy.postprocess_trajectory(
                 pre_batch, other_batches, episode)
-            post_batches[agent_id].last_obs = pre_batch.last_obs
+            #post_batches[agent_id].last_obs = pre_batch.last_obs
             # Call the Policy's Exploration's postprocess method.
             if getattr(policy, "exploration", None) is not None:
                 policy.exploration.postprocess_trajectory(

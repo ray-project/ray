@@ -183,6 +183,7 @@ class Trajectory:
                 this agent. This should be used by postprocessing functions
                 instead of the SampleBatch.NEXT_OBS field, which is deprecated.
         """
+        assert SampleBatch.UNROLL_ID not in self.buffers
 
         # Convert all our data to numpy arrays, compress float64 to float32,
         # and add the last observation data as well (always one more obs than
@@ -192,23 +193,27 @@ class Trajectory:
             #end = self.cursor + (1 if k == SampleBatch.OBS else 0)
             data[k] = to_float_array(
                 v[self.sample_batch_offset:self.cursor]) #, reduce_floats=True)
+
+        # Add unroll ID column to batch if non-existent.
+        uid = Trajectory._next_unroll_id
+        data[SampleBatch.UNROLL_ID] = np.repeat(
+            uid, self.cursor - self.sample_batch_offset)
+
+        inputs = {uid: {}}
         if "t" in self.buffers:
-            if self.buffers["t"] > 0:
+            if self.buffers["t"][self.sample_batch_offset] > 0:
                 for k in self.buffers.keys():
-                    inputs[k] = self.buffers[k][self.sample_batch_offset - 1]
+                    inputs[uid][k] = self.buffers[k][self.sample_batch_offset - 1]
             else:
-                inputs = {SampleBatch.NEXT_OBS: self.initial_obs}
+                inputs[uid][SampleBatch.NEXT_OBS] = self.initial_obs
+
+        Trajectory._next_unroll_id += 1
+
         #last_obs = {
         #    str(self.env_id) + ":" + str(self.agent_id): to_float_array(
         #        self.buffers[SampleBatch.CUR_OBS][self.cursor])  #, reduce_floats=True)
         #}
         batch = SampleBatch(data, _initial_inputs=inputs)
-
-        # Add unroll ID column to batch if non-existent.
-        if SampleBatch.UNROLL_ID not in batch.data:
-            batch.data[SampleBatch.UNROLL_ID] = np.repeat(
-                Trajectory._next_unroll_id, batch.count)
-            Trajectory._next_unroll_id += 1
 
         # If done at end -> We can reset our buffers entirely.
         if self.buffers[SampleBatch.DONES][self.cursor - 1]:

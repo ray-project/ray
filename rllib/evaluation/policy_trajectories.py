@@ -53,7 +53,7 @@ class PolicyTrajectories:
         self.cursor = 0
         self.sample_batch_offset = 0
 
-        self.last_obs = {}
+        self._inputs = {}
 
     def add_sample_batch(self, sample_batch):
         """Add the given batch of values to this batch.
@@ -84,6 +84,9 @@ class PolicyTrajectories:
             #else:
             self.buffers[k][self.cursor:self.cursor + ts] = column
 
+        # Merge initial_inputs
+        self._inputs.update(sample_batch._inputs)
+
         self.cursor += ts
 
     def get_sample_batch_and_reset(self) -> SampleBatch:
@@ -104,7 +107,7 @@ class PolicyTrajectories:
         for k, v in self.buffers.items():
             data[k] = to_float_array(
                 v[self.sample_batch_offset:self.cursor])  #, reduce_floats=True)
-        batch = SampleBatch(data)
+        batch = SampleBatch(data, _initial_inputs=self._inputs)
 
         assert SampleBatch.UNROLL_ID in batch.data
 
