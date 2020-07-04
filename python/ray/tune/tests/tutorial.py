@@ -6,8 +6,10 @@
 import numpy as np
 import torch
 import torch.optim as optim
-from torchvision import datasets
+import torch.nn as nn
+from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
+import torch.nn.functional as F
 
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
@@ -83,11 +85,10 @@ def train_mnist(config):
     # We add FileLock here because multiple workers will want to
     # download data, and this may cause overwrites since
     # DataLoader is not threadsafe.
-    with FileLock(os.path.expanduser("~/data.lock")):
-        train_loader = DataLoader(
-            datasets.MNIST("~/data", train=True, download=True, transform=mnist_transforms),
-            batch_size=64,
-            shuffle=True)
+    train_loader = DataLoader(
+        datasets.MNIST("~/data", train=True, download=True, transform=mnist_transforms),
+        batch_size=64,
+        shuffle=True)
     test_loader = DataLoader(
         datasets.MNIST("~/data", train=False, transform=mnist_transforms),
         batch_size=64,
@@ -105,7 +106,7 @@ def train_mnist(config):
 
         if i % 5 == 0:
             # This saves the model to the trial directory
-            torch.save(model, "./model.pth")
+            torch.save(model.state_dict(), "./model.pth")
 # __train_func_end__
 # yapf: enable
 
@@ -118,6 +119,9 @@ search_space = {
 # Uncomment this to enable distributed execution
 # `ray.init(address="auto")`
 
+# Download the dataset first
+datasets.MNIST("~/data", train=True, download=True)
+
 analysis = tune.run(train_mnist, config=search_space)
 # __eval_func_end__
 
@@ -129,7 +133,7 @@ dfs = analysis.trial_dataframes
 # __run_scheduler_begin__
 analysis = tune.run(
     train_mnist,
-    num_samples=30,
+    num_samples=20,
     scheduler=ASHAScheduler(metric="mean_accuracy", mode="max"),
     config=search_space)
 
