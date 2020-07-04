@@ -1804,9 +1804,9 @@ void CoreWorker::HandleWaitForActorOutOfScope(
     auto object_id_refs = reference_counter_->GetObjectIdRefs();
     const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
     auto iter = object_id_refs.find(actor_creation_return_id);
-    if (iter != object_id_refs.end() && iter->second.is_deleted) {
-      RAY_LOG(INFO) << "HandleWaitForActorOutOfScope try to delete, "
-                    << actor_creation_return_id;
+    if (iter != object_id_refs.end() && iter->second.wait_for_delete) {
+      RAY_LOG(INFO)
+          << "Reply to HandleWaitForActorOutOfScope after actor object is released.";
       respond(actor_id);
       object_id_refs.erase(iter);
     } else {

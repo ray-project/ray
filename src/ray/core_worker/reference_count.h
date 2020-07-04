@@ -466,13 +466,19 @@ class ReferenceCounter {
 
     /// Callback that will be called when this ObjectID no longer has
     /// references.
+    /// NOTE: GCS server may send a WaitForActorOutOfScope request to CoreWorker
+    /// after reference counter releases the actor object and GCS server will not be able
+    /// to receive a response to the WaitForActorOutOfScope request. In this case, we
+    /// return false to try to call again.
     std::function<bool(const ObjectID &)> on_delete;
     /// Callback that is called when this process is no longer a borrower
     /// (RefCount() == 0).
     std::function<void(const ObjectID &)> on_ref_removed;
-    /// When this ObjectID no longer has references and on_delete is nil, we will set
-    /// is_deleted true;
-    bool is_deleted;
+    /// When this ObjectID no longer has references, we will try to call on_delete
+    /// function. If on_delete function has not been set, we will set wait_for_delete to
+    /// true and when on_delete function is set, we try to call the on_delete function
+    /// again.
+    bool wait_for_delete;
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;

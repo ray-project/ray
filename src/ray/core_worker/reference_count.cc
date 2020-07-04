@@ -413,13 +413,11 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       if (it->second.on_delete(id)) {
         it->second.on_delete = nullptr;
       } else {
-        RAY_LOG(INFO) << "second.is_deleted 998" << id;
-        it->second.is_deleted = true;
+        it->second.wait_for_delete = true;
       }
       it->second.pinned_at_raylet_id.reset();
     } else {
-      RAY_LOG(INFO) << "second.is_deleted " << id;
-      it->second.is_deleted = true;
+      it->second.wait_for_delete = true;
     }
     if (deleted) {
       deleted->push_back(id);
@@ -435,7 +433,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       ReleaseLineageReferencesInternal(ids_to_release);
     }
 
-    if (!it->second.is_deleted) {
+    if (!it->second.wait_for_delete) {
       object_id_refs_.erase(it);
     }
     ShutdownIfNeeded();
@@ -850,6 +848,7 @@ void ReferenceCounter::SetReleaseLineageCallback(
   RAY_CHECK(on_lineage_released_ == nullptr);
   on_lineage_released_ = callback;
 }
+
 ReferenceCounter::ReferenceTable &ReferenceCounter::GetObjectIdRefs() {
   return object_id_refs_;
 }
