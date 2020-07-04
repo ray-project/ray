@@ -32,7 +32,6 @@ void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
 
 void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
                                                    bool force_kill, bool no_restart) {
-  RAY_LOG(INFO) << "CoreWorkerDirectActorTaskSubmitter Sending KillActor request to actor " << actor_id;
   absl::MutexLock lock(&mu_);
   rpc::KillActorRequest request;
   request.set_intended_actor_id(actor_id.Binary());
@@ -115,7 +114,6 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
 
 void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
                                                       const rpc::Address &address) {
-  RAY_LOG(INFO) << "CoreWorkerDirectActorTaskSubmitter::ConnectActor";
   absl::MutexLock lock(&mu_);
 
   auto queue = client_queues_.find(actor_id);
@@ -189,7 +187,6 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
   if (!it->second.rpc_client) {
-    RAY_LOG(INFO) << "SendPendingTasks return directly......";
     return;
   }
 
