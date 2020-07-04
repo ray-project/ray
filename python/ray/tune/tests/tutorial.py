@@ -22,6 +22,8 @@ from ray.tune.schedulers import ASHAScheduler
 class ConvNet(nn.Module):
     def __init__(self):
         super(ConvNet, self).__init__()
+        # In this example, we don't change the model architecture
+        # due to simplicity.
         self.conv1 = nn.Conv2d(1, 3, kernel_size=3)
         self.fc = nn.Linear(192, 10)
 

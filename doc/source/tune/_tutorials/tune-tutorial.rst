@@ -3,7 +3,7 @@
 A Basic Tune Tutorial
 =====================
 
-This tutorial will walk you through the following process to setup a Tune experiment using Pytorch. Specifically, we'll leverage early stopping and Bayesian Optimization (via HyperOpt) to optimize your PyTorch model.
+This tutorial will walk you through the process of setting up Tune. Specifically, we'll leverage early stopping and Bayesian Optimization (via HyperOpt) to optimize your PyTorch model.
 
 
 .. tip:: If you have suggestions as to how to improve this tutorial, please `let us know <https://github.com/ray-project/ray/issues/new/choose>`_!
@@ -17,14 +17,14 @@ To run this example, you will need to install the following:
 Pytorch Model Setup
 ~~~~~~~~~~~~~~~~~~~
 
-We first run some imports:
+To start off, let's first import some dependencies:
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
    :start-after: __tutorial_imports_begin__
    :end-before: __tutorial_imports_end__
 
-Then, let's quickly define the model that we'll be training.
+Then, let's define the PyTorch model that we'll be training.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
