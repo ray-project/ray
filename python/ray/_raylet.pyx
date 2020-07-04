@@ -82,7 +82,8 @@ from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
 import ray
-from ray.async_compat import (sync_to_async, AsyncGetResponse)
+from ray.async_compat import (
+    sync_to_async, AsyncGetResponse, get_new_event_loop)
 import ray.memory_monitor as memory_monitor
 import ray.ray_constants as ray_constants
 from ray import profiling
@@ -1187,7 +1188,7 @@ cdef class CoreWorker:
 
     def create_or_get_event_loop(self):
         if self.async_event_loop is None:
-            self.async_event_loop = asyncio.new_event_loop()
+            self.async_event_loop = get_new_event_loop()
             asyncio.set_event_loop(self.async_event_loop)
             # Initialize the async plasma connection.
             # Delayed import due to async_api depends on _raylet.

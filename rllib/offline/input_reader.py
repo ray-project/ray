@@ -6,7 +6,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ class InputReader:
             k: (-1, ) + s[1:]
             for (k, s) in [(k, batch[k].shape) for k in keys]
         }
-        queue = tf.FIFOQueue(capacity=queue_size, dtypes=dtypes, names=keys)
+        queue = tf1.FIFOQueue(capacity=queue_size, dtypes=dtypes, names=keys)
         tensors = queue.dequeue()
 
         logger.info("Creating TF queue runner for {}".format(self))
@@ -92,12 +92,12 @@ class _QueueRunner(threading.Thread):
 
     def __init__(self, input_reader, queue, keys, dtypes):
         threading.Thread.__init__(self)
-        self.sess = tf.get_default_session()
+        self.sess = tf1.get_default_session()
         self.daemon = True
         self.input_reader = input_reader
         self.keys = keys
         self.queue = queue
-        self.placeholders = [tf.placeholder(dtype) for dtype in dtypes]
+        self.placeholders = [tf1.placeholder(dtype) for dtype in dtypes]
         self.enqueue_op = queue.enqueue(dict(zip(keys, self.placeholders)))
 
     def enqueue(self, batch):

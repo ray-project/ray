@@ -82,18 +82,30 @@ def ray_deps_setup():
         url = "https://github.com/antirez/redis/archive/5.0.9.tar.gz",
         sha256 = "db9bf149e237126f9bb5f40fb72f33701819555d06f16e9a38b4949794214201",
         patches = [
-            "//thirdparty/patches:hiredis-connect-rename.patch",
-            "//thirdparty/patches:hiredis-windows-sigpipe.patch",
-            "//thirdparty/patches:hiredis-windows-sockets.patch",
-            "//thirdparty/patches:hiredis-windows-strerror.patch",
             "//thirdparty/patches:redis-quiet.patch",
         ],
     )
 
-    http_file(
+    auto_http_archive(
+        name = "com_github_redis_hiredis",
+        build_file = "//bazel:BUILD.hiredis",
+        url = "https://github.com/redis/hiredis/archive/33152ad163a21f568fb40eeeb88b79365886b4ea.tar.gz",
+        sha256 = "9a91274dfd131111227b39ffa3cf7b446fbbd7ee2e5a94c8e7d8ad334b4ff255",
+        patches = [
+            "//thirdparty/patches:hiredis-connect-rename.patch",
+            "//thirdparty/patches:hiredis-windows-msvc.patch",
+            "//thirdparty/patches:hiredis-windows-sigpipe.patch",
+            "//thirdparty/patches:hiredis-windows-sockets.patch",
+            "//thirdparty/patches:hiredis-windows-strerror.patch",
+        ],
+    )
+
+    auto_http_archive(
         name = "com_github_tporadowski_redis_bin",
+        build_file = "//bazel:BUILD.redis",
+        strip_prefix = None,
+        url = "https://github.com/tporadowski/redis/releases/download/v4.0.14.2/Redis-x64-4.0.14.2.zip",
         sha256 = "6fac443543244c803311de5883b714a7ae3c4fa0594cad51d75b24c4ef45b353",
-        urls = ["https://github.com/tporadowski/redis/releases/download/v4.0.14.2/Redis-x64-4.0.14.2.zip"],
     )
 
     auto_http_archive(

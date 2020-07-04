@@ -20,7 +20,7 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.sgd import do_minibatch_sgd, averaged
 from ray.rllib.utils.types import PolicyID, SampleBatchType
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +137,7 @@ class TrainTFMultiGPU:
             with self.workers.local_worker().tf_sess.as_default():
                 for policy_id in self.policies:
                     policy = self.workers.local_worker().get_policy(policy_id)
-                    with tf.variable_scope(policy_id, reuse=tf.AUTO_REUSE):
+                    with tf1.variable_scope(policy_id, reuse=tf1.AUTO_REUSE):
                         if policy._state_inputs:
                             rnn_inputs = policy._state_inputs + [
                                 policy._seq_lens
@@ -152,7 +152,7 @@ class TrainTFMultiGPU:
                                 self.per_device_batch_size, policy.copy))
 
                 self.sess = self.workers.local_worker().tf_sess
-                self.sess.run(tf.global_variables_initializer())
+                self.sess.run(tf1.global_variables_initializer())
 
     def __call__(self,
                  samples: SampleBatchType) -> (SampleBatchType, List[dict]):
