@@ -225,6 +225,9 @@ install_go() {
 
 install_ray() {
   (
+    # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
+    bazel build -k "//:*"  # Full build first, since pip install will build only a subset of targets
+
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
     pip install -v -e .
@@ -447,9 +450,6 @@ init() {
 }
 
 build() {
-  # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
-  bazel build -k "//:*"  # Full build first, since pip install will build only a subset of targets
-
   if ! need_wheels; then
     install_ray
     if [ "${LINT-}" = 1 ]; then
