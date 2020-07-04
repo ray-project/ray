@@ -413,10 +413,16 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       if (it->second.on_delete(id)) {
         it->second.on_delete = nullptr;
       } else {
+        RAY_LOG(DEBUG)
+            << "The delete function call failed, waiting to be called again, object id = "
+            << id;
         it->second.wait_for_delete = true;
       }
       it->second.pinned_at_raylet_id.reset();
     } else {
+      RAY_LOG(DEBUG)
+          << "Wait for the delete function to be set, and then call again, object id = "
+          << id;
       it->second.wait_for_delete = true;
     }
     if (deleted) {
