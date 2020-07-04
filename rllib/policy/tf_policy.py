@@ -560,7 +560,7 @@ class TFPolicy(Policy):
         return {LEARNER_STATS_KEY: {}}  # e.g, stats, td error, etc.
 
     @DeveloperAPI
-    def optimizer(self) -> tf.keras.optimizers.Optimizer:
+    def optimizer(self) -> "tf.keras.optimizers.Optimizer":
         """TF optimizer to use for policy optimization.
 
         Returns:
@@ -574,7 +574,7 @@ class TFPolicy(Policy):
 
     @DeveloperAPI
     def gradients(self,
-                  optimizer: tf.keras.optimizers.Optimizer,
+                  optimizer: "tf.keras.optimizers.Optimizer",
                   loss: TensorType) -> List[Tuple[TensorType, TensorType]]:
         """Override this for a custom gradient computation behavior.
 
@@ -587,7 +587,7 @@ class TFPolicy(Policy):
     @DeveloperAPI
     def build_apply_op(
             self,
-            optimizer: tf.keras.optimizers.Optimizer,
+            optimizer: "tf.keras.optimizers.Optimizer",
             grads_and_vars: List[Tuple[TensorType, TensorType]]) -> \
             tf.Operation:
         """Override this for a custom gradient apply computation behavior.
