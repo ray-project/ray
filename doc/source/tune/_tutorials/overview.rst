@@ -72,6 +72,11 @@ These pages will demonstrate the various features and configurations of Tune.
    :figure: /images/pytorch_lightning_small.png
    :description: :doc:`Tuning PyTorch Lightning modules <tune-pytorch-lightning>`
 
+.. customgalleryitem::
+   :tooltip: Tune's Scikit-Learn Adapters
+   :figure: /images/tune-sklearn.png
+   :description: :doc:`Tune's Scikit-Learn Adapters <tune-sklearn>`
+
 
 .. raw:: html
 
@@ -83,6 +88,7 @@ These pages will demonstrate the various features and configurations of Tune.
    tune-usage.rst
    tune-advanced-tutorial.rst
    tune-distributed.rst
+   tune-sklearn.rst
 
 Colab Exercises
 ---------------
