@@ -23,15 +23,16 @@
 #include <vector>
 
 #include "arrow/buffer.h"
-#include "arrow/status.h"
 
+#include "ray/common/status.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/util/visibility.h"
 
 using arrow::Buffer;
-using arrow::Status;
 
 namespace plasma {
+
+using ray::Status;
 
 /// Object buffer data structure.
 struct ObjectBuffer {
