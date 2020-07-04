@@ -26,7 +26,7 @@ When using schedulers, you may face compatibility issues, as shown in the below 
    :header-rows: 1
 
    * - Scheduler
-     - Checkpointing Required?
+     - Need Checkpointing?
      - SearchAlg Compatible?
      - Example
    * - :ref:`ASHA <tune-scheduler-hyperband>`
