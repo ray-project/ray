@@ -61,7 +61,7 @@ Many Tune features rely on checkpointing, including the usage of certain Trial S
             for iter in range(start, 100):
                 time.sleep(1)
 
-                # 
+                #
                 checkpoint_dir = tune.make_checkpoint_dir(step=step)
                 path = os.path.join(checkpoint_dir, "checkpoint")
                 with open(path, "w") as f:
@@ -256,7 +256,7 @@ The ``Trainable`` also provides the ``default_resource_requests`` interface to a
 
 
 
-.. _track-docstring:
+.. _tune-function-docstring:
 
 tune.report / tune.checkpoint (Function API)
 --------------------------------------------

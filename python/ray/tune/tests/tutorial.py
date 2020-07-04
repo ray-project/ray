@@ -40,7 +40,7 @@ class ConvNet(nn.Module):
 EPOCH_SIZE = 512
 TEST_SIZE = 256
 
-def train(model, optimizer, train_loader, device=None):
+def train(model, optimizer, train_loader):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -82,9 +82,6 @@ def train_mnist(config):
         [transforms.ToTensor(),
          transforms.Normalize((0.1307, ), (0.3081, ))])
 
-    # We add FileLock here because multiple workers will want to
-    # download data, and this may cause overwrites since
-    # DataLoader is not threadsafe.
     train_loader = DataLoader(
         datasets.MNIST("~/data", train=True, download=True, transform=mnist_transforms),
         batch_size=64,
@@ -169,7 +166,10 @@ import os
 
 df = analysis.dataframe()
 logdir = analysis.get_best_logdir("mean_accuracy", mode="max")
-model = torch.load(os.path.join(logdir, "model.pth"))
+state_dict = torch.load(os.path.join(logdir, "model.pth"))
+
+model = ConvNet()
+model.load_state_dict(state_dict)
 # __run_analysis_end__
 
 from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
