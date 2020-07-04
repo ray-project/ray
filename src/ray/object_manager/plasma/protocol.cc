@@ -22,7 +22,7 @@
 #include "flatbuffers/flatbuffers.h"
 
 #include "ray/object_manager/plasma/common.h"
-#include "ray/object_manager/plasma/io.h"
+#include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
 
 #ifdef PLASMA_CUDA
@@ -73,12 +73,7 @@ Status PlasmaReceive(const std::shared_ptr<StoreConn> &store_conn, MessageType m
   if (!store_conn) {
     return Status::IOError("Connection is closed.");
   }
-  MessageType type;
-  RAY_RETURN_NOT_OK(ReadMessage(store_conn->fd, &type, buffer));
-  RAY_CHECK(type == message_type)
-      << "type = " << static_cast<int64_t>(type)
-      << ", message_type = " << static_cast<int64_t>(message_type);
-  return Status::OK();
+  return store_conn->ReadMessage(static_cast<int64_t>(message_type), buffer);
 }
 
 // Helper function to create a vector of elements from Data (Request/Reply struct).
@@ -110,7 +105,7 @@ Status PlasmaSend(const std::shared_ptr<StoreConn> &store_conn, MessageType mess
     return Status::IOError("Connection is closed.");
   }
   fbb->Finish(message);
-  return WriteMessage(store_conn->fd, message_type, fbb->GetSize(), fbb->GetBufferPointer());
+  return store_conn->WriteMessage(static_cast<int64_t>(message_type), fbb->GetSize(), fbb->GetBufferPointer());
 }
 
 template <typename Message>
@@ -120,7 +115,7 @@ Status PlasmaSend(const std::shared_ptr<Client> &client, MessageType message_typ
     return Status::IOError("Connection is closed.");
   }
   fbb->Finish(message);
-  return WriteMessage(client->fd, message_type, fbb->GetSize(), fbb->GetBufferPointer());
+  return client->WriteMessage(static_cast<int64_t>(message_type), fbb->GetSize(), fbb->GetBufferPointer());
 }
 
 Status PlasmaErrorStatus(fb::PlasmaError plasma_error) {
@@ -222,7 +217,7 @@ Status ReadCreateRequest(uint8_t* data, size_t size, ObjectID* object_id,
 Status SendCreateReply(const std::shared_ptr<Client> &client, ObjectID object_id, PlasmaObject* object,
                        PlasmaError error_code, int64_t mmap_size) {
   flatbuffers::FlatBufferBuilder fbb;
-  PlasmaObjectSpec plasma_object(object->store_fd, object->data_offset, object->data_size,
+  PlasmaObjectSpec plasma_object(FD2INT(object->store_fd), object->data_offset, object->data_size,
                                  object->metadata_offset, object->metadata_size,
                                  object->device_num);
   auto object_string = fbb.CreateString(object_id.Binary());
@@ -239,7 +234,7 @@ Status SendCreateReply(const std::shared_ptr<Client> &client, ObjectID object_id
   crb.add_error(static_cast<PlasmaError>(error_code));
   crb.add_plasma_object(&plasma_object);
   crb.add_object_id(object_string);
-  crb.add_store_fd(object->store_fd);
+  crb.add_store_fd(FD2INT(object->store_fd));
   crb.add_mmap_size(mmap_size);
   if (object->device_num != 0) {
 #ifdef PLASMA_CUDA
@@ -253,18 +248,18 @@ Status SendCreateReply(const std::shared_ptr<Client> &client, ObjectID object_id
 }
 
 Status ReadCreateReply(uint8_t* data, size_t size, ObjectID* object_id,
-                       PlasmaObject* object, int* store_fd, int64_t* mmap_size) {
+                       PlasmaObject* object, MEMFD_TYPE* store_fd, int64_t* mmap_size) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaCreateReply>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *object_id = ObjectID::FromBinary(message->object_id()->str());
-  object->store_fd = message->plasma_object()->segment_index();
+  object->store_fd = INT2FD(message->plasma_object()->segment_index());
   object->data_offset = message->plasma_object()->data_offset();
   object->data_size = message->plasma_object()->data_size();
   object->metadata_offset = message->plasma_object()->metadata_offset();
   object->metadata_size = message->plasma_object()->metadata_size();
 
-  *store_fd = message->store_fd();
+  *store_fd = INT2FD(message->store_fd());
   *mmap_size = message->mmap_size();
 
   object->device_num = message->plasma_object()->device_num();
@@ -536,7 +531,7 @@ Status ReadGetRequest(uint8_t* data, size_t size, std::vector<ObjectID>& object_
 
 Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[],
                     std::unordered_map<ObjectID, PlasmaObject>& plasma_objects,
-                    int64_t num_objects, const std::vector<int>& store_fds,
+                    int64_t num_objects, const std::vector<MEMFD_TYPE>& store_fds,
                     const std::vector<int64_t>& mmap_sizes) {
   flatbuffers::FlatBufferBuilder fbb;
   std::vector<PlasmaObjectSpec> objects;
@@ -544,7 +539,7 @@ Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[]
   std::vector<flatbuffers::Offset<fb::CudaHandle>> handles;
   for (int64_t i = 0; i < num_objects; ++i) {
     const PlasmaObject& object = plasma_objects[object_ids[i]];
-    objects.push_back(PlasmaObjectSpec(object.store_fd, object.data_offset,
+    objects.push_back(PlasmaObjectSpec(FD2INT(object.store_fd), object.data_offset,
                                        object.data_size, object.metadata_offset,
                                        object.metadata_size, object.device_num));
 #ifdef PLASMA_CUDA
@@ -556,10 +551,14 @@ Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[]
     }
 #endif
   }
+  std::vector<int> store_fds_as_int;
+  for (MEMFD_TYPE store_fd : store_fds) {
+    store_fds_as_int.push_back(FD2INT(store_fd));
+  }
   auto message = fb::CreatePlasmaGetReply(
       fbb, ToFlatbuffer(&fbb, object_ids, num_objects),
       fbb.CreateVectorOfStructs(arrow::util::MakeNonNull(objects.data()), num_objects),
-      fbb.CreateVector(arrow::util::MakeNonNull(store_fds.data()), store_fds.size()),
+      fbb.CreateVector(arrow::util::MakeNonNull(store_fds_as_int.data()), store_fds_as_int.size()),
       fbb.CreateVector(arrow::util::MakeNonNull(mmap_sizes.data()), mmap_sizes.size()),
       fbb.CreateVector(arrow::util::MakeNonNull(handles.data()), handles.size()));
   return PlasmaSend(client, MessageType::PlasmaGetReply, &fbb, message);
@@ -567,7 +566,7 @@ Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[]
 
 Status ReadGetReply(uint8_t* data, size_t size, ObjectID object_ids[],
                     PlasmaObject plasma_objects[], int64_t num_objects,
-                    std::vector<int>& store_fds, std::vector<int64_t>& mmap_sizes) {
+                    std::vector<MEMFD_TYPE>& store_fds, std::vector<int64_t>& mmap_sizes) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaGetReply>(data);
 #ifdef PLASMA_CUDA
@@ -579,7 +578,7 @@ Status ReadGetReply(uint8_t* data, size_t size, ObjectID object_ids[],
   }
   for (uoffset_t i = 0; i < num_objects; ++i) {
     const PlasmaObjectSpec* object = message->plasma_objects()->Get(i);
-    plasma_objects[i].store_fd = object->segment_index();
+    plasma_objects[i].store_fd = INT2FD(object->segment_index());
     plasma_objects[i].data_offset = object->data_offset();
     plasma_objects[i].data_size = object->data_size();
     plasma_objects[i].metadata_offset = object->metadata_offset();
@@ -596,7 +595,7 @@ Status ReadGetReply(uint8_t* data, size_t size, ObjectID object_ids[],
   }
   RAY_CHECK(message->store_fds()->size() == message->mmap_sizes()->size());
   for (uoffset_t i = 0; i < message->store_fds()->size(); i++) {
-    store_fds.push_back(message->store_fds()->Get(i));
+    store_fds.push_back(INT2FD(message->store_fds()->Get(i)));
     mmap_sizes.push_back(message->mmap_sizes()->Get(i));
   }
   return Status::OK();

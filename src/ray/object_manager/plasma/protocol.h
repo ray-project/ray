@@ -28,6 +28,9 @@
 
 namespace plasma {
 
+class Client;
+class StoreConn;
+
 using ray::Status;
 
 using flatbuf::MessageType;
@@ -87,7 +90,7 @@ Status SendCreateReply(const std::shared_ptr<Client> &client, ObjectID object_id
                        PlasmaError error, int64_t mmap_size);
 
 Status ReadCreateReply(uint8_t* data, size_t size, ObjectID* object_id,
-                       PlasmaObject* object, int* store_fd, int64_t* mmap_size);
+                       PlasmaObject* object, MEMFD_TYPE* store_fd, int64_t* mmap_size);
 
 Status SendAbortRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id);
 
@@ -117,12 +120,12 @@ Status ReadGetRequest(uint8_t* data, size_t size, std::vector<ObjectID>& object_
 
 Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[],
                     std::unordered_map<ObjectID, PlasmaObject>& plasma_objects,
-                    int64_t num_objects, const std::vector<int>& store_fds,
+                    int64_t num_objects, const std::vector<MEMFD_TYPE>& store_fds,
                     const std::vector<int64_t>& mmap_sizes);
 
 Status ReadGetReply(uint8_t* data, size_t size, ObjectID object_ids[],
                     PlasmaObject plasma_objects[], int64_t num_objects,
-                    std::vector<int>& store_fds, std::vector<int64_t>& mmap_sizes);
+                    std::vector<MEMFD_TYPE>& store_fds, std::vector<int64_t>& mmap_sizes);
 
 /* Plasma Release message functions. */
 
