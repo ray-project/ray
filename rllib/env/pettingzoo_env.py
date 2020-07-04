@@ -1,4 +1,5 @@
-from ray.rllib.env import MultiAgentEnv
+from .multi_agent_env import MultiAgentEnv
+
 
 class PettingZooEnv(MultiAgentEnv):
     """An interface to the PettingZoo MARL environment library.
