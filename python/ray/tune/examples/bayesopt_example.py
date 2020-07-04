@@ -11,7 +11,7 @@ from ray.tune.suggest.bayesopt import BayesOptSearch
 
 
 def evaluation_fn(step, width, height):
-    return (1 + width * step / 100)**(-1) + height * 0.1
+    return (0.1 + width * step / 100)**(-1) + height * 0.1
 
 
 def easy_objective(config):

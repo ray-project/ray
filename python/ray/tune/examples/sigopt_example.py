@@ -11,7 +11,7 @@ from ray.tune.suggest.sigopt import SigOptSearch
 
 
 def evaluate(step, width, height):
-    return (1 + width * step / 100)**(-1) + height * 0.01
+    return (0.1 + width * step / 100)**(-1) + height * 0.01
 
 
 def easy_objective(config):
