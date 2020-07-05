@@ -51,7 +51,7 @@ int TestSetupUtil::StartUpRedisServer(const int &port) {
     cmdargs.insert(cmdargs.end(), {"--loadmodule", TEST_REDIS_MODULE_LIBRARY_PATH});
   }
   cmdargs.insert(cmdargs.end(), {"--port", std::to_string(actual_port)});
-  RAY_LOG(INFO) << "Start redis command is: " << CreateCommandLine(cmdargs);
+  RAY_LOG(DEBUG) << "Start redis command is: " << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
   usleep(200 * 1000);
   return actual_port;
@@ -67,7 +67,7 @@ void TestSetupUtil::ShutDownRedisServers() {
 void TestSetupUtil::ShutDownRedisServer(const int &port) {
   std::vector<std::string> cmdargs(
       {TEST_REDIS_CLIENT_EXEC_PATH, "-p", std::to_string(port), "shutdown"});
-  RAY_LOG(INFO) << "Stop redis command is: " << CreateCommandLine(cmdargs);
+  RAY_LOG(DEBUG) << "Stop redis command is: " << CreateCommandLine(cmdargs);
   if (Process::Call(cmdargs) != std::error_code()) {
     RAY_LOG(WARNING) << "Failed to stop redis. The redis process may no longer exist.";
   }
