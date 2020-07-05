@@ -50,4 +50,15 @@ install_clang() {
   "${cc}" --version
 }
 
-install_clang "$@"
+install_toolchains() {
+  local compiler_name some_lightweight_target="//:sha256"
+  compiler_name="$(bazel aquery --noshow_progress --color=no --include_commandline=false --output=textproto --noimplicit_deps "${some_lightweight_target}" |
+                   sed -n "s/^  exec_path: .*\/external_Slocal_Uconfig_Ucc_C\([^_\"]*\)_Ucompiler_Ufiles.*/\1/p" |
+                   head -n 1 ||
+                   true)"
+  if [ "${compiler_name}" != msvc ]; then
+    install_clang "$@"
+  fi
+}
+
+install_toolchains "$@"
