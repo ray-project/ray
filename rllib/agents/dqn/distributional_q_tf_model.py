@@ -74,7 +74,9 @@ class DistributionalQTFModel(TFModelV2):
                 for i in range(len(q_hiddens)):
                     if use_noisy:
                         action_out = NoisyLayer(
-                            "{}hidden_{}".format(prefix, i), q_hiddens[i], sigma0)(action_out)
+                            "{}hidden_{}".format(prefix, i),
+                            q_hiddens[i],
+                            sigma0)(action_out)
                     elif add_layer_norm:
                         action_out = tf.keras.layers.Dense(
                             units=q_hiddens[i],
@@ -152,42 +154,6 @@ class DistributionalQTFModel(TFModelV2):
                 state_score = tf.keras.layers.Dense(
                     units=num_atoms, activation=None)(state_out)
             return state_score
-
-        #if tf1.executing_eagerly():
-        #    from tensorflow.python.ops import variable_scope
-        #    # Have to use a variable store to reuse variables in eager mode
-        #    store = variable_scope.EagerVariableStore()
-
-        #    # Save the scope objects, since in eager we will execute this
-        #    # path repeatedly and there is no guarantee it will always be run
-        #    # in the same original scope.
-        #    with tf1.variable_scope(name + "/action_value") as action_scope:
-        #        pass
-        #    with tf1.variable_scope(name + "/state_value") as state_scope:
-        #        pass
-
-        #    def build_action_value_in_scope(model_out):
-        #        with store.as_default():
-        #            with tf1.variable_scope(
-        #                    action_scope, reuse=tf1.AUTO_REUSE):
-        #                return build_action_value(model_out)
-
-        #    def build_state_score_in_scope(model_out):
-        #        with store.as_default():
-        #            with tf1.variable_scope(
-        #                    state_scope, reuse=tf1.AUTO_REUSE):
-        #                return build_state_score(model_out)
-        #else:
-
-        #    def build_action_value_in_scope(model_out):
-        #        with tf1.variable_scope(
-        #                name + "/action_value", reuse=tf1.AUTO_REUSE):
-        #            return build_action_value(model_out)
-
-        #    def build_state_score_in_scope(model_out):
-        #        with tf1.variable_scope(
-        #                name + "/state_value", reuse=tf1.AUTO_REUSE):
-        #            return build_state_score(model_out)
 
         q_out = build_action_value(name + "/action_value/", self.model_out)
         self.q_value_head = tf.keras.Model(self.model_out, q_out)

@@ -182,10 +182,10 @@ def get_variable(value,
             tf.Variable.
         torch_tensor (bool): For framework="torch": Whether to actually create
             a torch.tensor, or just a python value (default).
-        device (Optional[torch.Device]): An optional torch device to use for the
-            created torch tensor.
-        shape (Optional[TensorShape]): An optional shape to use iff `value` does
-            not have any (e.g. if it's an initializer w/o explicit value).
+        device (Optional[torch.Device]): An optional torch device to use for
+            the created torch tensor.
+        shape (Optional[TensorShape]): An optional shape to use iff `value`
+            does not have any (e.g. if it's an initializer w/o explicit value).
         dtype (Optional[TensorType]): An optional dtype to use iff `value` does
             not have any (e.g. if it's an initializer w/o explicit value).
 
