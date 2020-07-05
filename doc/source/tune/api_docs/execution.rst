@@ -26,10 +26,17 @@ Stopper (tune.Stopper)
 .. autoclass:: ray.tune.Stopper
     :members: __call__, stop_all
 
+.. _tune-sklearn-docs:
 
 Scikit-Learn integration (tune.sklearn)
 ---------------------------------------
 
+.. _tunegridsearchcv-docs:
+
 .. autoclass:: ray.tune.integration.sklearn.TuneGridSearchCV
+	:inherited-members:
+
+.. _tunesearchcv-docs:
 
 .. autoclass:: ray.tune.integration.sklearn.TuneSearchCV
+	:inherited-members:

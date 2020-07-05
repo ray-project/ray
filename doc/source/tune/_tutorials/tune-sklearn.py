@@ -10,25 +10,25 @@ Scikit-Learn is one of the most widely used tools in the ML community for workin
     :align: center
     :width: 50%
 
-Scikit-Learn `has an existing module for model selection <https://scikit-learn.org/stable/modules/grid_search.html>`_, but the algorithms offered (grid search and random search) are often considered ineffifient. In this tutorial, we'll cover ``tune-sklearn``, a drop-in replacement for Scikit-Learn’s model selection module with state-of-the-art optimization features such as early stopping and Bayesian Optimization.
+Scikit-Learn `has an existing module for model selection <https://scikit-learn.org/stable/modules/grid_search.html>`_, but the algorithms offered Grid Search (GridSearchCV) and Random Search (RandomizedSearchCV). are often considered ineffifient. In this tutorial, we'll cover ``tune-sklearn``, a drop-in replacement for Scikit-Learn’s model selection module with state-of-the-art optimization features such as early stopping and Bayesian Optimization.
 
-Check out the repo here: https://github.com/ray-project/tune-sklearn.
+.. tip:: Check out the `tune-sklearn code`_ and :ref:`documentation <tune-sklearn-docs>`.
+
+.. _`tune-sklearn code`: https://github.com/ray-project/tune-sklearn
 
 Overview
 --------
 
-``tune-sklearn`` is a module that integrates Ray Tune's hyperparameter tuning and scikit-learn's Classifier API. It is a drop-in replacement for GridSearchCV and RandomizedSearchCV, so you only need to change less than 5 lines in a standard Scikit-Learn script to use the API.
+``tune-sklearn`` is a module that integrates Ray Tune's hyperparameter tuning and scikit-learn's Classifier API. ``tune-sklearn`` has two APIs: :ref:`TuneSearchCV <tunesearchcv-docs>`, and :ref:`TuneGridSearchCV <tunegridsearchcv-docs>`. They are drop-in replacements for Scikit-learn's RandomizedSearchCV and GridSearchCV. so you only need to change less than 5 lines in a standard Scikit-Learn script to use the API.
 
-``tune-sklearn`` allows you to easily leverage Bayesian Optimization, HyperBand, and other cutting edge tuning techniques by simply toggling a few parameters. It also supports and provides examples for many other frameworks with Scikit-Learn wrappers such as Skorch (Pytorch), KerasClassifiers (Keras), and XGBoostClassifiers (XGBoost).
+Ray Tune's Scikit-learn APIs allows you to easily leverage Bayesian Optimization, HyperBand, and other cutting edge tuning techniques by simply toggling a few parameters. It also supports and provides examples for many other frameworks with Scikit-Learn wrappers such as Skorch (Pytorch), KerasClassifiers (Keras), and XGBoostClassifiers (XGBoost).
 
 Run ``pip install ray[tune] tune-sklearn`` to get started.
 
 Walkthrough
 -----------
 
-``tune-sklearn`` has two APIs: TuneSearchCV, and TuneGridSearchCV. They are drop-in replacements for Scikit-learn's RandomizedSearchCV and GridSearchCV.
-
-For this example, let’s start by using ``TuneGridSearchCV`` with sklearn’s `digits dataset`_ and a `SGDClassifier`_ to classify digits.
+Let's compare Tune's Scikit-Learn APIs to the standard scikit-learn GridSearchCV. For this example, let’s start by using ``TuneGridSearchCV`` with sklearn’s `digits dataset`_ and a `SGDClassifier`_ to classify digits.
 
 .. _`digits dataset`: https://scikit-learn.org/stable/modules/generated/sklearn.datasets.load_digits.html
 .. _`SGDClassifier`: https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.SGDClassifier.html
@@ -37,7 +37,7 @@ To start out, change the import statement to get tune-scikit-learn’s grid sear
 
 """
 # from sklearn.model_selection import GridSearchCV
-from tune_sklearn import TuneGridSearchCV
+from ray.tune.integration.sklearn import TuneGridSearchCV
 
 #######################################################################
 # And from there, we would proceed just like how we would in Scikit-Learn’s interface!
@@ -47,16 +47,12 @@ from tune_sklearn import TuneGridSearchCV
 # Other imports
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import SGDClassifier
-from sklearn import datasets
+from sklearn.datasets import make_classification
 import numpy as np
 
-# Load in data
-digits = datasets.load_digits()
-
-# Set training and test sets
-x = digits.data
-y = digits.target
-x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=.2)
+# Create dataset
+X, y = make_classification(n_samples=11000, n_features=1000, n_informative=50, n_redundant=0, n_classes=10, class_sep=2.5)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=1000)
 
 # Example parameters to tune from SGDClassifier
 parameter_grid = {"alpha": [1e-4, 1e-1, 1], "epsilon": [0.01, 0.1]}
@@ -67,8 +63,7 @@ parameter_grid = {"alpha": [1e-4, 1e-1, 1], "epsilon": [0.01, 0.1]}
 tune_search = TuneGridSearchCV(
     SGDClassifier(),
     parameter_grid,
-    scheduler="MedianStoppingRule",
-    early_stopping=True,
+    early_stopping="MedianStoppingRule",
     max_iters=10)
 
 import time  # Just to compare fit times
@@ -104,6 +99,7 @@ print("Sklearn Fit Time:", end - start)
 #
 # In addition, you can easily enable Bayesian optimization over the distributions in only 2 lines of code:
 
+# First run `pip install bayesian-optimization`
 from tune_sklearn.tune_search import TuneSearchCV
 from sklearn.linear_model import SGDClassifier
 from sklearn import datasets
