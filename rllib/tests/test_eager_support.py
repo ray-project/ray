@@ -33,7 +33,34 @@ def check_support(alg, config, test_eager=False, test_trace=True):
                 a, config=config, stop={"training_iteration": 1}, verbose=1)
 
 
-class TestEagerSupport(unittest.TestCase):
+class TestEagerSupportPG(unittest.TestCase):
+    def setUp(self):
+        ray.init(num_cpus=4)
+
+    def tearDown(self):
+        ray.shutdown()
+
+    def test_a2c(self):
+        check_support("A2C", {"num_workers": 0})
+
+    def test_a3c(self):
+        check_support("A3C", {"num_workers": 1})
+
+    def test_pg(self):
+        check_support("PG", {"num_workers": 0})
+
+    def test_ppo(self):
+        check_support("PPO", {"num_workers": 0})
+
+    def test_appo(self):
+        check_support("APPO", {"num_workers": 1, "num_gpus": 0})
+
+    def test_impala(self):
+        check_support(
+            "IMPALA", {"num_workers": 1, "num_gpus": 0}, test_eager=True)
+
+
+class TestEagerSupportOffPolicy(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=4)
 
@@ -55,25 +82,6 @@ class TestEagerSupport(unittest.TestCase):
     def test_td3(self):
         check_support("TD3", {"num_workers": 0})
 
-    def test_a2c(self):
-        check_support("A2C", {"num_workers": 0})
-
-    def test_a3c(self):
-        check_support("A3C", {"num_workers": 1})
-
-    def test_pg(self):
-        check_support("PG", {"num_workers": 0})
-
-    def test_ppo(self):
-        check_support("PPO", {"num_workers": 0})
-
-    def test_appo(self):
-        check_support("APPO", {"num_workers": 1, "num_gpus": 0})
-
-    def test_impala(self):
-        check_support(
-            "IMPALA", {"num_workers": 1, "num_gpus": 0}, test_eager=True)
-
     def test_apex_dqn(self):
         check_support(
             "APEX", {
@@ -94,4 +102,8 @@ class TestEagerSupport(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+    # One can specify the specific TestCase class to run.
+    # None for all unittest.TestCase classes in this file.
+    class_ = sys.argv[1] if len(sys.argv) > 0 else None
+    sys.exit(pytest.main(
+        ["-v", __file__ + ("" if class_ is None else "::" + class_)]))

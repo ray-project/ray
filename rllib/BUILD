@@ -1148,10 +1148,21 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_eager_support",
+    name = "tests/test_eager_support_pg",
+    main = "tests/test_eager_support.py",
     tags = ["tests_dir", "tests_dir_E"],
     size = "large",
-    srcs = ["tests/test_eager_support.py"]
+    srcs = ["tests/test_eager_support.py"],
+    args = ["TestEagerSupportPG"]
+)
+
+py_test(
+    name = "tests/test_eager_support_off_policy",
+    main = "tests/test_eager_support.py",
+    tags = ["tests_dir", "tests_dir_E"],
+    size = "large",
+    srcs = ["tests/test_eager_support.py"],
+    args = ["TestEagerSupportOffPolicy"]
 )
 
 py_test(

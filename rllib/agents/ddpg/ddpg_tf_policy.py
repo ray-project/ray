@@ -19,8 +19,7 @@ from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import get_variable, try_import_tf
-from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip, \
-    make_tf_callable
+from ray.rllib.utils.tf_ops import huber_loss, make_tf_callable
 
 tf1, tf, tfv = try_import_tf()
 
@@ -276,38 +275,35 @@ def build_apply_op(policy, optimizer, grads_and_vars):
 
 
 def gradients_fn(policy, optimizer, loss):
-    if policy.config["grad_norm_clipping"] is not None:
-        actor_grads_and_vars = minimize_and_clip(
-            policy._actor_optimizer,
-            policy.actor_loss,
-            var_list=policy.model.policy_variables(),
-            clip_val=policy.config["grad_norm_clipping"])
-        critic_grads_and_vars = minimize_and_clip(
-            policy._critic_optimizer,
-            policy.critic_loss,
-            var_list=policy.model.q_variables(),
-            clip_val=policy.config["grad_norm_clipping"])
+    if policy.config["framework"] == "tfe":
+        tape = optimizer.tape
+        pol_weights = policy.model.policy_variables()
+        actor_grads_and_vars = list(zip(tape.gradient(
+            policy.actor_loss, pol_weights), pol_weights))
+        q_weights = policy.model.q_variables()
+        critic_grads_and_vars = list(zip(tape.gradient(
+            policy.critic_loss, q_weights), q_weights))
     else:
-        if policy.config["framework"] == "tfe":
-            tape = optimizer.tape
-            pol_weights = policy.model.policy_variables()
-            actor_grads_and_vars = list(zip(tape.gradient(
-                policy.actor_loss, pol_weights), pol_weights))
-            q_weights = policy.model.q_variables()
-            critic_grads_and_vars = list(zip(tape.gradient(
-                policy.critic_loss, q_weights), q_weights))
-        else:
-            actor_grads_and_vars = policy._actor_optimizer.compute_gradients(
-                policy.actor_loss, var_list=policy.model.policy_variables())
-            critic_grads_and_vars = policy._critic_optimizer.compute_gradients(
-                policy.critic_loss, var_list=policy.model.q_variables())
-    # Save these for later use in build_apply_op.
-    policy._actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
-                                    if g is not None]
-    policy._critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
-                                     if g is not None]
+        actor_grads_and_vars = policy._actor_optimizer.compute_gradients(
+            policy.actor_loss, var_list=policy.model.policy_variables())
+        critic_grads_and_vars = policy._critic_optimizer.compute_gradients(
+            policy.critic_loss, var_list=policy.model.q_variables())
+
+    # Clip if necessary.
+    if policy.config["grad_clip"]:
+        clip_func = tf.clip_by_norm
+    else:
+        clip_func = tf.identity
+
+    # Save grads and vars for later use in `build_apply_op`.
+    policy._actor_grads_and_vars = [
+        (clip_func(g), v) for (g, v) in actor_grads_and_vars if g is not None]
+    policy._critic_grads_and_vars = [
+        (clip_func(g), v) for (g, v) in critic_grads_and_vars if g is not None]
+
     grads_and_vars = policy._actor_grads_and_vars + \
         policy._critic_grads_and_vars
+
     return grads_and_vars
 
 
