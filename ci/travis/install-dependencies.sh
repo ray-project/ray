@@ -202,6 +202,8 @@ install_toolchains() {
 install_dependencies() {
 
   install_bazel
+  "${WORKSPACE_DIR}"/ci/suppress_output bazel fetch --noshow_progress --color=no "//:*" &  # Begin fetching packages in the background (network-bound)
+
   install_base
   install_toolchains
   install_nvm
