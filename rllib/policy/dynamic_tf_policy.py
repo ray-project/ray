@@ -71,7 +71,8 @@ class DynamicTFPolicy(TFPolicy):
                  action_distribution_fn: Optional[Callable[
                      [Policy, ModelV2, TensorType, TensorType, TensorType],
                      Tuple[TensorType, type, List[TensorType]]]] = None,
-                 existing_inputs: Optional[Dict[str, tf1.placeholder]] = None,
+                 existing_inputs: Optional[Dict[
+                     str, "tf1.placeholder"]] = None,
                  existing_model: Optional[ModelV2] = None,
                  get_batch_divisibility_req: Optional[int] = None,
                  obs_include_prev_action_reward: bool = True):
@@ -299,7 +300,7 @@ class DynamicTFPolicy(TFPolicy):
     @override(TFPolicy)
     @DeveloperAPI
     def copy(self,
-             existing_inputs: List[Tuple[str, tf1.placeholder]]) -> TFPolicy:
+             existing_inputs: List[Tuple[str, "tf1.placeholder"]]) -> TFPolicy:
         """Creates a copy of self using existing input placeholders."""
 
         # Note that there might be RNN state inputs at the end of the list

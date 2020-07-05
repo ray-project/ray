@@ -589,7 +589,7 @@ class TFPolicy(Policy):
             self,
             optimizer: "tf.keras.optimizers.Optimizer",
             grads_and_vars: List[Tuple[TensorType, TensorType]]) -> \
-            tf.Operation:
+            "tf.Operation":
         """Override this for a custom gradient apply computation behavior.
 
         Args:
