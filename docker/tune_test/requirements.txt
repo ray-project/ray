@@ -32,4 +32,4 @@ xgboost
 zoopt>=0.4.0
 timm
 dataclasses
--e git+https://github.com/ray-project/tune-sklearn.git
+git+https://github.com/ray-project/tune-sklearn.git#egg=tune-sklearn
