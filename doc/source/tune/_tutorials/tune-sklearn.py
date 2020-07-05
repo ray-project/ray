@@ -28,7 +28,7 @@ Run ``pip install ray[tune] tune-sklearn`` to get started.
 Walkthrough
 -----------
 
-Let's compare Tune's Scikit-Learn APIs to the standard scikit-learn GridSearchCV. For this example, let’s start by using ``TuneGridSearchCV`` with sklearn’s `digits dataset`_ and a `SGDClassifier`_ to classify digits.
+Let's compare Tune's Scikit-Learn APIs to the standard scikit-learn GridSearchCV. For this example, we'll be using ``TuneGridSearchCV`` with a `SGDClassifier`_.
 
 .. _`digits dataset`: https://scikit-learn.org/stable/modules/generated/sklearn.datasets.load_digits.html
 .. _`SGDClassifier`: https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.SGDClassifier.html
@@ -42,7 +42,8 @@ from ray.tune.sklearn import TuneGridSearchCV
 #######################################################################
 # And from there, we would proceed just like how we would in Scikit-Learn’s interface!
 #
-# The `SGDClassifier`_ has a ``partial_fit`` API, which enables it to stop fitting to the data for a certain hyperparameter configuration. If the estimator does not support early stopping, we would fall back to a parallel grid search.
+# The `SGDClassifier`_ has a ``partial_fit`` API, which enables it to stop fitting to the data for a certain hyperparameter configuration.
+# If the estimator does not support early stopping, we would fall back to a parallel grid search.
 
 # Other imports
 from sklearn.model_selection import train_test_split
@@ -134,16 +135,23 @@ tune_search = TuneSearchCV(
 tune_search.fit(x_train, y_train)
 
 ################################################################
-# As you can see, it’s very simple to integrate tune-sklearn into existing code.
+# As you can see, it’s very simple to integrate tune-sklearn into existing code. Distributed execution is also easy - you can simply run ``ray.init(address="auto")`` before
+# TuneSearchCV to connect to the Ray cluster and parallelize tuning across multiple nodes, as you would in any other Ray Tune script.
+#
 #
 # Code Examples
 # -------------
 #
-# Check out more detailed examples and get started with tune-sklearn here and let us know what you think!
+# Check out more detailed examples and get started with tune-sklearn!
 #
-#  * Skorch with Tune-sklearn: https://github.com/ray-project/tune-sklearn/blob/master/examples/torch_nn.py
+#  * `Skorch with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/torch_nn.py>`_
+#  * `Scikit-Learn Pipelines with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/sklearn_pipeline.py>`_
+#  * `XGBoost with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/xgbclassifier.py>`_
+#  * `KerasClassifier with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/keras_example.py>`_
+#  * `LightGBM with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/lgbm.py>`_
+#
 #
 # Further Reading
 # ---------------
 #
-# Also take a look at Ray’s :ref:`replacement for joblib <ray-joblib>`, which allows users to parallelize scikit learn jobs over multiple nodes.
+# If you're using scikit-learn for other tasks, take a look at Ray’s :ref:`replacement for joblib <ray-joblib>`, which allows users to parallelize scikit learn jobs over multiple nodes.
