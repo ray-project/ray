@@ -348,12 +348,21 @@ TEST_F(GcsActorSchedulerTest, TestSpillback) {
   gcs_node_manager_->AddNode(node2);
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
+  // Grant with an invalid spillback node, and schedule again.
+  auto invalid_node_id = ClientID::FromBinary(Mocker::GenNodeInfo()->node_id());
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
+      node2->node_manager_address(), node2->node_manager_port(), WorkerID::Nil(),
+      node_id_1, invalid_node_id));
+  ASSERT_EQ(2, raylet_client_->num_workers_requested);
+  ASSERT_EQ(1, raylet_client_->callbacks.size());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
+
   // Grant with a spillback node(node2), and the lease request should be send to the
   // node2.
   ASSERT_TRUE(raylet_client_->GrantWorkerLease(node2->node_manager_address(),
                                                node2->node_manager_port(),
                                                WorkerID::Nil(), node_id_1, node_id_2));
-  ASSERT_EQ(2, raylet_client_->num_workers_requested);
+  ASSERT_EQ(3, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
   ASSERT_EQ(0, worker_client_->callbacks.size());
 
@@ -374,6 +383,55 @@ TEST_F(GcsActorSchedulerTest, TestSpillback) {
   ASSERT_EQ(actor, success_actors_.front());
   ASSERT_EQ(actor->GetNodeID(), node_id_2);
   ASSERT_EQ(actor->GetWorkerID(), worker_id);
+}
+
+TEST_F(GcsActorSchedulerTest, TestReschedule) {
+  auto node1 = Mocker::GenNodeInfo();
+  auto node_id_1 = ClientID::FromBinary(node1->node_id());
+  gcs_node_manager_->AddNode(node1);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
+
+  // 1.Actor is already tied to a leased worker.
+  auto job_id = JobID::FromInt(1);
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
+  rpc::Address address;
+  WorkerID worker_id = WorkerID::FromRandom();
+  address.set_raylet_id(node_id_1.Binary());
+  address.set_worker_id(worker_id.Binary());
+  actor->UpdateAddress(address);
+
+  // Reschedule the actor with 1 available node, and the actor creation request should be
+  // send to the worker.
+  gcs_actor_scheduler_->Reschedule(actor);
+  ASSERT_EQ(0, raylet_client_->num_workers_requested);
+  ASSERT_EQ(0, raylet_client_->callbacks.size());
+  ASSERT_EQ(1, worker_client_->callbacks.size());
+
+  // Reply the actor creation request, then the actor should be scheduled successfully.
+  ASSERT_TRUE(worker_client_->ReplyPushTask());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
+
+  // 2.Actor is not tied to a leased worker.
+  actor->UpdateAddress(rpc::Address());
+  actor->GetMutableActorTableData()->clear_resource_mapping();
+
+  // Reschedule the actor with 1 available node.
+  gcs_actor_scheduler_->Reschedule(actor);
+
+  // Grant a worker, then the actor creation request should be send to the worker.
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node1->node_manager_address(),
+                                               node1->node_manager_port(), worker_id,
+                                               node_id_1, ClientID::Nil()));
+  ASSERT_EQ(0, raylet_client_->callbacks.size());
+  ASSERT_EQ(1, worker_client_->callbacks.size());
+
+  // Reply the actor creation request, then the actor should be scheduled successfully.
+  ASSERT_TRUE(worker_client_->ReplyPushTask());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
+
+  ASSERT_EQ(0, failure_actors_.size());
+  ASSERT_EQ(2, success_actors_.size());
 }
 
 }  // namespace ray

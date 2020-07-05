@@ -366,6 +366,7 @@ py_test(
     args = ["--yaml-dir=tuned_examples/ddpg", "--torch"]
 )
 
+
 # --------------------------------------------------------------------
 # Agents (Compilation, Losses, simple agent functionality tests)
 # rllib/agents/
@@ -1292,10 +1293,21 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_supported_multi_agent",
+    name = "tests/test_supported_multi_agent_pg",
+    main = "tests/test_supported_multi_agent.py",
     tags = ["tests_dir", "tests_dir_S"],
-    size = "large",
-    srcs = ["tests/test_supported_multi_agent.py"]
+    size = "medium",
+    srcs = ["tests/test_supported_multi_agent.py"],
+    args = ["TestSupportedMultiAgentPG"]
+)
+
+py_test(
+    name = "tests/test_supported_multi_agent_off_policy",
+    main = "tests/test_supported_multi_agent.py",
+    tags = ["tests_dir", "tests_dir_S"],
+    size = "medium",
+    srcs = ["tests/test_supported_multi_agent.py"],
+    args = ["TestSupportedMultiAgentOffPolicy"]
 )
 
 py_test(

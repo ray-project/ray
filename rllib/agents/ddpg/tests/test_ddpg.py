@@ -9,13 +9,12 @@ from ray.rllib.agents.ddpg.ddpg_torch_policy import ddpg_actor_critic_loss as \
 from ray.rllib.agents.sac.tests.test_sac import SimpleEnv
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, l2_loss, relu, sigmoid
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
     framework_iterator
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
-tf = try_import_tf()
 torch, _ = try_import_torch()
 
 

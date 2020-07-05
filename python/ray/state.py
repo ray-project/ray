@@ -703,12 +703,9 @@ class GlobalState:
             heartbeat_data = pub_message.data
             message = gcs_utils.HeartbeatTableData.FromString(heartbeat_data)
             # Calculate available resources for this client
-            num_resources = len(message.resources_available_label)
             dynamic_resources = {}
-            for i in range(num_resources):
-                resource_id = message.resources_available_label[i]
-                dynamic_resources[resource_id] = (
-                    message.resources_available_capacity[i])
+            for resource_id, capacity in message.resources_available.items():
+                dynamic_resources[resource_id] = capacity
 
             # Update available resources for this client
             client_id = ray.utils.binary_to_hex(message.client_id)

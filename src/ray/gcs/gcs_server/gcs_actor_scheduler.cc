@@ -40,23 +40,7 @@ GcsActorScheduler::GcsActorScheduler(
 }
 
 void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
-  auto node_id = actor->GetNodeID();
-  if (!node_id.IsNil()) {
-    if (auto node = gcs_node_manager_.GetNode(node_id)) {
-      // If the actor is already tied to a node and the node is available, then record
-      // the relationship of the node and actor and then lease worker directly from the
-      // node.
-      RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
-                    .emplace(actor->GetActorID())
-                    .second);
-      LeaseWorkerFromNode(actor, node);
-      return;
-    }
-
-    // The actor is already tied to a node which is unavailable now, so we should reset
-    // the address.
-    actor->UpdateAddress(rpc::Address());
-  }
+  RAY_CHECK(actor->GetNodeID().IsNil() && actor->GetWorkerID().IsNil());
 
   // Select a node to lease worker for the actor.
   auto node = SelectNodeRandomly();
@@ -67,25 +51,41 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
     return;
   }
 
-  // Update the address of the actor as it is tied to a new node.
+  // Update the address of the actor as it is tied to a node.
   rpc::Address address;
   address.set_raylet_id(node->node_id());
   actor->UpdateAddress(address);
-  // The backend storage is reliable in the future, so the status must be ok.
-  RAY_CHECK_OK(gcs_actor_table_.Put(
-      actor->GetActorID(), actor->GetActorTableData(), [this, actor](Status status) {
-        RAY_CHECK_OK(status);
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor->GetActorID().Hex(),
-                                           actor->GetActorTableData().SerializeAsString(),
-                                           nullptr));
-        // There is no promise that the node the
-        // actor tied to is still alive as the
-        // flush is asynchronously, so just
-        // invoke `Schedule` which will lease
-        // worker directly if the node is still
-        // available or select a new one if not.
-        Schedule(actor);
-      }));
+
+  RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
+                .emplace(actor->GetActorID())
+                .second);
+
+  // Lease worker directly from the node.
+  LeaseWorkerFromNode(actor, node);
+}
+
+void GcsActorScheduler::Reschedule(std::shared_ptr<GcsActor> actor) {
+  if (!actor->GetWorkerID().IsNil()) {
+    RAY_LOG(INFO)
+        << "Actor " << actor->GetActorID()
+        << " is already tied to a leased worker. Create actor directly on worker.";
+    auto leased_worker = std::make_shared<GcsLeasedWorker>(
+        actor->GetAddress(),
+        VectorFromProtobuf(actor->GetMutableActorTableData()->resource_mapping()),
+        actor->GetActorID());
+    auto iter_node = node_to_workers_when_creating_.find(actor->GetNodeID());
+    if (iter_node != node_to_workers_when_creating_.end()) {
+      if (0 == iter_node->second.count(leased_worker->GetWorkerID())) {
+        iter_node->second.emplace(leased_worker->GetWorkerID(), leased_worker);
+      }
+    } else {
+      node_to_workers_when_creating_[actor->GetNodeID()].emplace(
+          leased_worker->GetWorkerID(), leased_worker);
+    }
+    CreateActorOnWorker(actor, leased_worker);
+  } else {
+    Schedule(actor);
+  }
 }
 
 std::vector<ActorID> GcsActorScheduler::CancelOnNode(const ClientID &node_id) {
@@ -225,21 +225,25 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
     // The worker did not succeed in the lease, but the specified node returned a new
     // node, and then try again on the new node.
     RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
-    actor->UpdateAddress(retry_at_raylet_address);
-    // The backend storage is reliable in the future, so the status must be ok.
-    RAY_CHECK_OK(gcs_actor_table_.Put(
-        actor->GetActorID(), actor->GetActorTableData(), [this, actor](Status status) {
-          RAY_CHECK_OK(status);
-          RAY_CHECK_OK(gcs_pub_sub_->Publish(
-              ACTOR_CHANNEL, actor->GetActorID().Hex(),
-              actor->GetActorTableData().SerializeAsString(), nullptr));
-          Schedule(actor);
-        }));
+    auto spill_back_node_id = ClientID::FromBinary(retry_at_raylet_address.raylet_id());
+    if (auto spill_back_node = gcs_node_manager_.GetNode(spill_back_node_id)) {
+      actor->UpdateAddress(retry_at_raylet_address);
+      RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
+                    .emplace(actor->GetActorID())
+                    .second);
+      LeaseWorkerFromNode(actor, spill_back_node);
+    } else {
+      // If the spill back node is dead, we need to schedule again.
+      actor->UpdateAddress(rpc::Address());
+      actor->GetMutableActorTableData()->clear_resource_mapping();
+      Schedule(actor);
+    }
   } else {
     // The worker is leased successfully from the specified node.
     std::vector<rpc::ResourceMapEntry> resources;
     for (auto &resource : reply.resource_mapping()) {
       resources.emplace_back(resource);
+      actor->GetMutableActorTableData()->add_resource_mapping()->CopyFrom(resource);
     }
     auto leased_worker = std::make_shared<GcsLeasedWorker>(
         worker_address, std::move(resources), actor->GetActorID());
@@ -248,7 +252,11 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
                   .emplace(leased_worker->GetWorkerID(), leased_worker)
                   .second);
     actor->UpdateAddress(leased_worker->GetAddress());
-    CreateActorOnWorker(actor, leased_worker);
+    RAY_CHECK_OK(gcs_actor_table_.Put(actor->GetActorID(), actor->GetActorTableData(),
+                                      [this, actor, leased_worker](Status status) {
+                                        RAY_CHECK_OK(status);
+                                        CreateActorOnWorker(actor, leased_worker);
+                                      }));
   }
 }
 
