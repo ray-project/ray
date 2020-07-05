@@ -160,7 +160,8 @@ class DistributionalQTFModel(TFModelV2):
         self.register_variables(self.q_value_head.variables)
 
         if dueling:
-            state_out = build_state_score(name + "/state_value/", self.model_out)
+            state_out = build_state_score(
+                name + "/state_value/", self.model_out)
             self.state_value_head = tf.keras.Model(self.model_out, state_out)
             self.register_variables(self.state_value_head.variables)
 
