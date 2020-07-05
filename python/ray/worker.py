@@ -872,7 +872,7 @@ normal_excepthook = sys.excepthook
 
 
 def custom_excepthook(type, value, tb):
-    # If this is a driver, push the exception to redis.
+    # If this is a driver, push the exception to GCS worker table.
     if global_worker.mode == SCRIPT_MODE:
         error_message = "".join(traceback.format_tb(tb))
         worker_id = global_worker.worker_id
