@@ -1,7 +1,7 @@
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
 ###############################################################################
-# On       Windows, provide: CC=clang, BAZEL_LLVM, BAZEL_SH
+# On       Windows, provide: BAZEL_SH, and BAZEL_LLVM (if using clang-cl)
 # On all platforms, provide: PYTHON3_BIN_PATH=python
 ###############################################################################
 build --action_env=PATH
