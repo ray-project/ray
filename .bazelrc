@@ -17,14 +17,13 @@ build:msvc --compiler=msvc-cl
 #                 for compiling assembly files is fixed on Windows:
 #                 https://github.com/bazelbuild/bazel/issues/8924
 # Warnings should be errors
-build:linux    --per_file_copt="-\\.(asm|S)$,-.*/arrow/util/logging\\.cc@-Werror"
-build:macos    --per_file_copt="-\\.(asm|S)$,-.*/arrow/util/logging\\.cc@-Werror"
-build:clang-cl --per_file_copt="-\\.(asm|S)$,-.*/arrow/util/logging\\.cc@-Werror"
-build:msvc     --per_file_copt="-\\.(asm|S)$,-.*/arrow/util/logging\\.cc@-WX"
+build:linux    --per_file_copt="-\\.(asm|S)$@-Werror"
+build:macos    --per_file_copt="-\\.(asm|S)$@-Werror"
+build:clang-cl --per_file_copt="-\\.(asm|S)$@-Werror"
+build:msvc     --per_file_copt="-\\.(asm|S)$@-WX"
 # Ignore warnings for protobuf generated files and external projects.
 build --per_file_copt="\\.pb\\.cc$@-w"
 build --per_file_copt="-\\.(asm|S)$,external/.*@-w"
-# Enable some C warnings that really should be errors (e.g. implicit void* <-> int conversion)
 # Ignore minor warnings for host tools, which we generally can't control
 build:clang-cl --host_copt="-Wno-inconsistent-missing-override"
 build:clang-cl --host_copt="-Wno-microsoft-unqualified-friend"
