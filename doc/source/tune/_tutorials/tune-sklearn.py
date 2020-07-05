@@ -51,8 +51,14 @@ from sklearn.datasets import make_classification
 import numpy as np
 
 # Create dataset
-X, y = make_classification(n_samples=11000, n_features=1000, n_informative=50, n_redundant=0, n_classes=10, class_sep=2.5)
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=1000)
+X, y = make_classification(
+    n_samples=11000,
+    n_features=1000,
+    n_informative=50,
+    n_redundant=0,
+    n_classes=10,
+    class_sep=2.5)
+x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=1000)
 
 # Example parameters to tune from SGDClassifier
 parameter_grid = {"alpha": [1e-4, 1e-1, 1], "epsilon": [0.01, 0.1]}
@@ -115,14 +121,12 @@ x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=.2)
 clf = SGDClassifier()
 parameter_grid = {"alpha": (1e-4, 1), "epsilon": (0.01, 0.1)}
 
-scheduler = MedianStoppingRule(grace_period=10.0)
-
 tune_search = TuneSearchCV(
     clf,
     parameter_grid,
     search_optimization="bayesian",
     n_iter=3,
-    scheduler=scheduler,
+    early_stopping="MedianStoppingRule",
     max_iters=10,
 )
 tune_search.fit(x_train, y_train)
