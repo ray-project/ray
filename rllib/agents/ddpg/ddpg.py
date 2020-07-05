@@ -5,8 +5,6 @@ from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.ddpg.ddpg_tf_policy import DDPGTFPolicy
 from ray.rllib.utils.deprecation import deprecation_warning, \
     DEPRECATED_VALUE
-from ray.rllib.utils.exploration.per_worker_ornstein_uhlenbeck_noise import \
-    PerWorkerOrnsteinUhlenbeckNoise
 
 logger = logging.getLogger(__name__)
 
