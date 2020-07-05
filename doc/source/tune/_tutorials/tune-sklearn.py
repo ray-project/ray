@@ -37,7 +37,7 @@ To start out, change the import statement to get tune-scikit-learn’s grid sear
 
 """
 # from sklearn.model_selection import GridSearchCV
-from ray.tune.integration.sklearn import TuneGridSearchCV
+from ray.tune.sklearn import TuneGridSearchCV
 
 #######################################################################
 # And from there, we would proceed just like how we would in Scikit-Learn’s interface!
@@ -109,11 +109,10 @@ print("Sklearn Fit Time:", end - start)
 # In addition, you can easily enable Bayesian optimization over the distributions in only 2 lines of code:
 
 # First run `pip install bayesian-optimization`
-from tune_sklearn.tune_search import TuneSearchCV
+from ray.tune.sklearn import TuneSearchCV
 from sklearn.linear_model import SGDClassifier
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
-from ray.tune.schedulers import MedianStoppingRule
 import numpy as np
 
 digits = datasets.load_digits()
