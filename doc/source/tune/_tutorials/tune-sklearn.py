@@ -133,6 +133,7 @@ tune_search = TuneSearchCV(
     max_iters=10,
 )
 tune_search.fit(x_train, y_train)
+print(tune_search.cv_results_)
 
 ################################################################
 # As you can see, it’s very simple to integrate tune-sklearn into existing code. Distributed execution is also easy - you can simply run ``ray.init(address="auto")`` before
