@@ -1,5 +1,4 @@
-import numpy as np
-
+from ray.rllib.models.tf.layers import NoisyLayer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.framework import try_import_tf
 
@@ -69,13 +68,13 @@ class DistributionalQTFModel(TFModelV2):
         self.model_out = tf.keras.layers.Input(
             shape=(num_outputs, ), name="model_out")
 
-        def build_action_value(model_out):
+        def build_action_value(prefix, model_out):
             if q_hiddens:
                 action_out = model_out
                 for i in range(len(q_hiddens)):
                     if use_noisy:
-                        action_out = self._noisy_layer(
-                            "hidden_%d" % i, action_out, q_hiddens[i], sigma0)
+                        action_out = NoisyLayer(
+                            "{}hidden_{}".format(prefix, i), q_hiddens[i], sigma0)(action_out)
                     elif add_layer_norm:
                         action_out = tf.keras.layers.Dense(
                             units=q_hiddens[i],
@@ -94,12 +93,11 @@ class DistributionalQTFModel(TFModelV2):
                 action_out = model_out
 
             if use_noisy:
-                action_scores = self._noisy_layer(
-                    "output",
-                    action_out,
+                action_scores = NoisyLayer(
+                    "{}output".format(prefix),
                     self.action_space.n * num_atoms,
                     sigma0,
-                    non_linear=False)
+                    activation=None)(action_out)
             elif q_hiddens:
                 action_scores = tf.keras.layers.Dense(
                     units=self.action_space.n * num_atoms,
@@ -130,13 +128,14 @@ class DistributionalQTFModel(TFModelV2):
                 dist = tf.expand_dims(tf.ones_like(action_scores), -1)
                 return [action_scores, logits, dist]
 
-        def build_state_score(model_out):
+        def build_state_score(prefix, model_out):
             state_out = model_out
             for i in range(len(q_hiddens)):
                 if use_noisy:
-                    state_out = self._noisy_layer("dueling_hidden_%d" % i,
-                                                  state_out, q_hiddens[i],
-                                                  sigma0)
+                    state_out = NoisyLayer(
+                        "{}dueling_hidden_{}".format(prefix, i),
+                        q_hiddens[i],
+                        sigma0)(state_out)
                 else:
                     state_out = tf.keras.layers.Dense(
                         units=q_hiddens[i], activation=tf.nn.relu)(state_out)
@@ -144,59 +143,58 @@ class DistributionalQTFModel(TFModelV2):
                         state_out = tf.keras.layers.LayerNormalization()(
                             state_out)
             if use_noisy:
-                state_score = self._noisy_layer(
-                    "dueling_output",
-                    state_out,
+                state_score = NoisyLayer(
+                    "{}dueling_output".format(prefix),
                     num_atoms,
                     sigma0,
-                    non_linear=False)
+                    activation=None)(state_out)
             else:
                 state_score = tf.keras.layers.Dense(
                     units=num_atoms, activation=None)(state_out)
             return state_score
 
-        if tf1.executing_eagerly():
-            from tensorflow.python.ops import variable_scope
-            # Have to use a variable store to reuse variables in eager mode
-            store = variable_scope.EagerVariableStore()
+        #if tf1.executing_eagerly():
+        #    from tensorflow.python.ops import variable_scope
+        #    # Have to use a variable store to reuse variables in eager mode
+        #    store = variable_scope.EagerVariableStore()
 
-            # Save the scope objects, since in eager we will execute this
-            # path repeatedly and there is no guarantee it will always be run
-            # in the same original scope.
-            with tf1.variable_scope(name + "/action_value") as action_scope:
-                pass
-            with tf1.variable_scope(name + "/state_value") as state_scope:
-                pass
+        #    # Save the scope objects, since in eager we will execute this
+        #    # path repeatedly and there is no guarantee it will always be run
+        #    # in the same original scope.
+        #    with tf1.variable_scope(name + "/action_value") as action_scope:
+        #        pass
+        #    with tf1.variable_scope(name + "/state_value") as state_scope:
+        #        pass
 
-            def build_action_value_in_scope(model_out):
-                with store.as_default():
-                    with tf1.variable_scope(
-                            action_scope, reuse=tf1.AUTO_REUSE):
-                        return build_action_value(model_out)
+        #    def build_action_value_in_scope(model_out):
+        #        with store.as_default():
+        #            with tf1.variable_scope(
+        #                    action_scope, reuse=tf1.AUTO_REUSE):
+        #                return build_action_value(model_out)
 
-            def build_state_score_in_scope(model_out):
-                with store.as_default():
-                    with tf1.variable_scope(
-                            state_scope, reuse=tf1.AUTO_REUSE):
-                        return build_state_score(model_out)
-        else:
+        #    def build_state_score_in_scope(model_out):
+        #        with store.as_default():
+        #            with tf1.variable_scope(
+        #                    state_scope, reuse=tf1.AUTO_REUSE):
+        #                return build_state_score(model_out)
+        #else:
 
-            def build_action_value_in_scope(model_out):
-                with tf1.variable_scope(
-                        name + "/action_value", reuse=tf1.AUTO_REUSE):
-                    return build_action_value(model_out)
+        #    def build_action_value_in_scope(model_out):
+        #        with tf1.variable_scope(
+        #                name + "/action_value", reuse=tf1.AUTO_REUSE):
+        #            return build_action_value(model_out)
 
-            def build_state_score_in_scope(model_out):
-                with tf1.variable_scope(
-                        name + "/state_value", reuse=tf1.AUTO_REUSE):
-                    return build_state_score(model_out)
+        #    def build_state_score_in_scope(model_out):
+        #        with tf1.variable_scope(
+        #                name + "/state_value", reuse=tf1.AUTO_REUSE):
+        #            return build_state_score(model_out)
 
-        q_out = build_action_value_in_scope(self.model_out)
+        q_out = build_action_value(name + "/action_value/", self.model_out)
         self.q_value_head = tf.keras.Model(self.model_out, q_out)
         self.register_variables(self.q_value_head.variables)
 
         if dueling:
-            state_out = build_state_score_in_scope(self.model_out)
+            state_out = build_state_score(name + "/state_value/", self.model_out)
             self.state_value_head = tf.keras.Model(self.model_out, state_out)
             self.register_variables(self.state_value_head.variables)
 
@@ -220,20 +218,20 @@ class DistributionalQTFModel(TFModelV2):
 
         return self.state_value_head(model_out)
 
-    def _noisy_layer(self,
+    """def _noisy_layer(self,
                      prefix,
                      action_in,
                      out_size,
                      sigma0,
                      non_linear=True):
-        """
+        ""
         a common dense layer: y = w^{T}x + b
         a noisy layer: y = (w + \\epsilon_w*\\sigma_w)^{T}x +
             (b+\\epsilon_b*\\sigma_b)
         where \epsilon are random variables sampled from factorized normal
         distributions and \\sigma are trainable variables which are expected to
         vanish along the training procedure
-        """
+        ""
         in_size = int(action_in.shape[1])
 
         epsilon_in = tf.random.normal(shape=[in_size])
@@ -282,3 +280,4 @@ class DistributionalQTFModel(TFModelV2):
 
     def _f_epsilon(self, x):
         return tf.math.sign(x) * tf.math.sqrt(tf.math.abs(x))
+    """
