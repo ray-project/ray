@@ -112,8 +112,8 @@ class Unity3DEnv(MultiAgentEnv):
                     Only those observations for which to get new actions are
                     returned.
                 - rewards: Rewards dict matching `obs`.
-                - dones: Done dict with only an __all__ multi-agent entry in it.
-                    __all__=True, if episode is done for all agents.
+                - dones: Done dict with only an __all__ multi-agent entry in
+                    it. __all__=True, if episode is done for all agents.
                 - infos: An (empty) info dict.
         """
 
