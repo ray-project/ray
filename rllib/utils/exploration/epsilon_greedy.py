@@ -57,7 +57,7 @@ class EpsilonGreedy(Exploration):
             0, framework=framework, tf_name="timestep")
 
         # Build the tf-info-op.
-        if self.framework == "tf":
+        if self.framework in ["tf", "tfe"]:
             self._tf_info_op = self.get_info()
 
     @override(Exploration)
@@ -68,7 +68,7 @@ class EpsilonGreedy(Exploration):
                                explore: bool = True):
 
         q_values = action_distribution.inputs
-        if self.framework == "tf":
+        if self.framework in ["tf", "tfe"]:
             return self._get_tf_exploration_action_op(q_values, explore,
                                                       timestep)
         else:
