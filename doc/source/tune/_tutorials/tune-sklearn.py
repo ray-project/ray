@@ -69,7 +69,7 @@ parameter_grid = {"alpha": [1e-4, 1e-1, 1], "epsilon": [0.01, 0.1]}
 tune_search = TuneGridSearchCV(
     SGDClassifier(),
     parameter_grid,
-    early_stopping="MedianStoppingRule",
+    early_stopping=True,
     max_iters=10)
 
 import time  # Just to compare fit times
@@ -81,10 +81,13 @@ print("Tune Fit Time:", end - start)
 #######################################################################
 # Note the slight differences we introduced above:
 #
-#  * a `scheduler`, and
+#  * a `early_stopping`, and
 #  * a specification of `max_iters` parameter
 #
-# The ``scheduler`` determines when to stop early - MedianStoppingRule is a great default, but see :ref:`Tune's documentation on schedulers <tune-schedulers>` here for a full list to choose from. ``max_iters`` is the maximum number of iterations a given hyperparameter set could run for; it may run for fewer iterations if it is early stopped.
+# The ``early_stopping`` parameter allows us to terminate unpromising configurations. If ``early_stopping=True``,
+# TuneGridSearchCV will default to using Tune's ASHAScheduler. You can pass in a custom
+# algorithm - see :ref:`Tune's documentation on schedulers <tune-schedulers>` here for a full list to choose from.
+# ``max_iters`` is the maximum number of iterations a given hyperparameter set could run for; it may run for fewer iterations if it is early stopped.
 #
 # Try running this compared to the GridSearchCV equivalent, and see the speedup for yourself!
 
@@ -126,7 +129,7 @@ tune_search = TuneSearchCV(
     parameter_grid,
     search_optimization="bayesian",
     n_iter=3,
-    early_stopping="MedianStoppingRule",
+    early_stopping=True,
     max_iters=10,
 )
 tune_search.fit(x_train, y_train)
