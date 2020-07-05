@@ -421,6 +421,7 @@ Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
   RAY_RETURN_NOT_OK(Create(nullptr, 8, object_id, &data));
   RAY_RETURN_NOT_OK(Seal(object_id));
   RAY_RETURN_NOT_OK(Release(object_id));
+  RAY_RETURN_NOT_OK(Delete({object_id}, false, false));
   return Status::OK();
 }
 
