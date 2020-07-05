@@ -1754,43 +1754,22 @@ filegroup(
     ]),
 )
 
-genrule(
-    name = "redis",
-    srcs = [
-    ] + select({
-        "@bazel_tools//src/conditions:windows": [
-            "@com_github_tporadowski_redis_bin//file",
-        ],
-        "//conditions:default": [
-            "@com_github_antirez_redis//:file",  # This is necessary so we can access the root of the directory
-            "@com_github_antirez_redis//:files",  # This is necessary to ensure entire directory tree is accessible
-        ],
+alias(
+    name = "redis-server",
+    actual = select({
+        "@bazel_tools//src/conditions:windows": "@com_github_tporadowski_redis_bin//:redis-server.exe",
+        "//conditions:default": "@com_github_antirez_redis//:redis-server",
     }),
-    outs = [
-        "redis-server",
-        "redis-cli",
-    ],
-    cmd = select({
-        "@bazel_tools//src/conditions:windows": """
-            unzip -q -o -- $(location @com_github_tporadowski_redis_bin//file) redis-server.exe redis-cli.exe &&
-            mv -f -- redis-server.exe $(location redis-server) &&
-            mv -f -- redis-cli.exe    $(location redis-cli)
-        """,
-        "//conditions:default": """
-            tmpdir="redis.tmp" &&
-            path=$(location @com_github_antirez_redis//:file) &&
-            cp -p -L -R -- "$${path%/*}" "$${tmpdir}" &&
-            chmod +x "$${tmpdir}"/deps/jemalloc/configure &&
-            parallel="$$(getconf _NPROCESSORS_ONLN || echo 1)"
-            make -s -C "$${tmpdir}" -j"$${parallel}" V=0 CFLAGS="$${CFLAGS-} -DLUA_USE_MKSTEMP -Wno-pragmas -Wno-empty-body" &&
-            mv "$${tmpdir}"/src/redis-server $(location redis-server) &&
-            chmod +x $(location redis-server) &&
-            mv "$${tmpdir}"/src/redis-cli $(location redis-cli) &&
-            chmod +x $(location redis-cli) &&
-            rm -r -f -- "$${tmpdir}"
-        """,
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "redis-cli",
+    actual = select({
+        "@bazel_tools//src/conditions:windows": "@com_github_tporadowski_redis_bin//:redis-cli.exe",
+        "//conditions:default": "@com_github_antirez_redis//:redis-cli",
     }),
-    visibility = ["//java:__subpackages__"],
+    visibility = ["//visibility:public"],
 )
 
 cc_binary(
