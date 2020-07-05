@@ -462,7 +462,10 @@ class TorchPolicy(Policy):
         super().set_state(state)
 
     @DeveloperAPI
-    def extra_grad_process(self, optimizer, loss):
+    def extra_grad_process(
+            self,
+            optimizer: "torch.optim.Optimizer",
+            loss: TensorType):
         """Called after each optimizer.zero_grad() + loss.backward() call.
 
         Called for each self._optimizers/loss-value pair.
@@ -471,10 +474,11 @@ class TorchPolicy(Policy):
 
         Args:
             optimizer (torch.optim.Optimizer): A torch optimizer object.
-            loss (torch.Tensor): The loss tensor associated with the optimizer.
+            loss (TensorType): The loss tensor associated with the optimizer.
 
         Returns:
-            dict: An info dict.
+            Dict[str, TensorType]: An dict with information on the gradient
+                processing step.
         """
         return {}
 
@@ -517,7 +521,7 @@ class TorchPolicy(Policy):
 
     @DeveloperAPI
     def optimizer(self) -> Union[
-            List[torch.optim.Optimizer], torch.optim.Optimizer]:
+            List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
         """Custom the local PyTorch optimizer(s) to use.
 
         Returns:
