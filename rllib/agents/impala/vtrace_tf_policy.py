@@ -16,7 +16,7 @@ from ray.rllib.policy.tf_policy import LearningRateSchedule, \
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import explained_variance
 
-tf, tfv = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -256,14 +256,14 @@ def choose_optimizer(policy, config):
         if tfv == 2:
             return tf.keras.optimizers.Adam(policy.cur_lr)
         else:
-            return tf.train.AdamOptimizer(policy.cur_lr)
+            return tf1.train.AdamOptimizer(policy.cur_lr)
     else:
         if tfv == 2:
             return tf.keras.optimizers.RMSprop(
                 policy.cur_lr, config["decay"], config["momentum"],
                 config["epsilon"])
         else:
-            return tf.train.RMSPropOptimizer(
+            return tf1.train.RMSPropOptimizer(
                 policy.cur_lr, config["decay"], config["momentum"],
                 config["epsilon"])
 

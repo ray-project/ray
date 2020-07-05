@@ -124,18 +124,18 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     target_model_out_tp1, _ = policy.target_model(input_dict_next, [], None)
 
     # Policy network evaluation.
-    #with tf.variable_scope(POLICY_SCOPE, reuse=True):
-    # prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+    #with tf1.variable_scope(POLICY_SCOPE, reuse=True):
+    # prev_update_ops = set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS))
     policy_t = model.get_policy_output(model_out_t)
     # policy_batchnorm_update_ops = list(
-    #    set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
+    #   set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
-    #with tf.variable_scope(POLICY_TARGET_SCOPE):
+    #with tf1.variable_scope(POLICY_TARGET_SCOPE):
     policy_tp1 = \
         policy.target_model.get_policy_output(target_model_out_tp1)
 
     # Action outputs.
-    #with tf.variable_scope(ACTION_SCOPE, reuse=True):
+    #with tf1.variable_scope(ACTION_SCOPE, reuse=True):
     if policy.config["smooth_target_policy"]:
         target_noise_clip = policy.config["target_noise_clip"]
         clipped_normal_sample = tf.clip_by_value(
@@ -152,29 +152,29 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         policy_tp1_smoothed = policy_tp1
 
     # Q-net(s) evaluation.
-    # prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
-    #with tf.variable_scope(Q_SCOPE):
+    # prev_update_ops = set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS))
+    #with tf1.variable_scope(Q_SCOPE):
     # Q-values for given actions & observations in given current
     q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
 
-    #with tf.variable_scope(Q_SCOPE, reuse=True):
+    #with tf1.variable_scope(Q_SCOPE, reuse=True):
     # Q-values for current policy (no noise) in given current state
     q_t_det_policy = model.get_q_values(model_out_t, policy_t)
 
     if twin_q:
-        #with tf.variable_scope(TWIN_Q_SCOPE):
+        #with tf1.variable_scope(TWIN_Q_SCOPE):
         twin_q_t = model.get_twin_q_values(
             model_out_t, train_batch[SampleBatch.ACTIONS])
     # q_batchnorm_update_ops = list(
-    #     set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
+    #     set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
     # Target q-net(s) evaluation.
-    #with tf.variable_scope(Q_TARGET_SCOPE):
+    #with tf1.variable_scope(Q_TARGET_SCOPE):
     q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
                                              policy_tp1_smoothed)
 
     if twin_q:
-        #with tf.variable_scope(TWIN_Q_TARGET_SCOPE):
+        #with tf1.variable_scope(TWIN_Q_TARGET_SCOPE):
         twin_q_tp1 = policy.target_model.get_twin_q_values(
             target_model_out_tp1, policy_tp1_smoothed)
 
@@ -218,10 +218,10 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     if l2_reg is not None:
         for var in policy.model.policy_variables():
             if "bias" not in var.name:
-                actor_loss += (l2_reg * tf.nn.l2_loss(var))
+                actor_loss += (l2_reg * tf1.nn.l2_loss(var))
         for var in policy.model.q_variables():
             if "bias" not in var.name:
-                critic_loss += (l2_reg * tf.nn.l2_loss(var))
+                critic_loss += (l2_reg * tf1.nn.l2_loss(var))
 
     # Model self-supervised losses.
     if policy.config["use_state_preprocessor"]:
@@ -263,9 +263,9 @@ def make_ddpg_optimizers(policy, config):
         policy._critic_optimizer = tf.keras.optimizers.Adam(
             learning_rate=config["critic_lr"])
     else:
-        policy._actor_optimizer = tf.train.AdamOptimizer(
+        policy._actor_optimizer = tf1.train.AdamOptimizer(
             learning_rate=config["actor_lr"])
-        policy._critic_optimizer = tf.train.AdamOptimizer(
+        policy._critic_optimizer = tf1.train.AdamOptimizer(
             learning_rate=config["critic_lr"])
     return None
 
@@ -306,7 +306,7 @@ def build_apply_op(policy, optimizer, grads_and_vars):
     if tfv == 2:
         policy.global_step.assign_add(1)
     else:
-        with tf.control_dependencies([tf.assign_add(policy.global_step, 1)]):
+        with tf1.control_dependencies([tf1.assign_add(policy.global_step, 1)]):
             return tf.group(actor_op, critic_op)
 
 
@@ -360,7 +360,7 @@ def before_init_fn(policy, obs_space, action_space, config):
     if tfv == 2:
         policy.global_step = get_variable(0, tf_name="global_step")
     else:
-        policy.global_step = tf.train.get_or_create_global_step()
+        policy.global_step = tf1.train.get_or_create_global_step()
 
 
 class ComputeTDErrorMixin:

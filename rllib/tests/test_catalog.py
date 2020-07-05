@@ -14,7 +14,7 @@ from ray.rllib.models.tf.visionnet import VisionNetwork
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 
-tf, tfv = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 class CustomPreprocessor(Preprocessor):
@@ -148,7 +148,7 @@ class ModelCatalogTest(unittest.TestCase):
 
         # test the class works as a distribution
         if tfv == 1:
-            dist_input = tf.placeholder(tf.float32, (None, ) + param_shape)
+            dist_input = tf1.placeholder(tf.float32, (None,) + param_shape)
         else:
             dist_input = tf.zeros((100, ) + param_shape, dtype=tf.float32)
         model = Model()
@@ -165,7 +165,7 @@ class ModelCatalogTest(unittest.TestCase):
             action_space, model_config)
         self.assertEqual(param_shape, (3, ))
         if tfv == 1:
-            dist_input = tf.placeholder(tf.float32, (None, ) + param_shape)
+            dist_input = tf1.placeholder(tf.float32, (None,) + param_shape)
         else:
             dist_input = tf.zeros((100, ) + param_shape, dtype=tf.float32)
         model.model_config = model_config

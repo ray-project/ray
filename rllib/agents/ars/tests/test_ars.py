@@ -25,6 +25,8 @@ class TestARS(unittest.TestCase):
                 print(results)
 
             check_compute_single_action(trainer)
+            trainer.stop()
+        ray.shutdown()
 
 
 if __name__ == "__main__":

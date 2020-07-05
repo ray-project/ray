@@ -9,7 +9,7 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.numpy import LARGE_INTEGER
 from ray.rllib.utils.schedules import Schedule, PiecewiseSchedule
 
-tf, tfv = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
@@ -96,15 +96,12 @@ class EpsilonGreedy(Exploration):
         random_valid_action_logits = tf.where(
             tf.equal(q_values, tf.float32.min),
             tf.ones_like(q_values) * tf.float32.min, tf.ones_like(q_values))
-        tf_func = tf.multinomial if tfv == 1 else tf.random.categorical
         random_actions = tf.squeeze(
-            tf_func(random_valid_action_logits, 1), axis=1)
+            tf.random.categorical(random_valid_action_logits, 1), axis=1)
 
-        tf_func = tf.random_uniform if tfv == 1 else tf.random.uniform
-        chose_random = tf_func(
+        chose_random = tf.random.uniform(
             tf.stack([batch_size]),
-            minval=0, maxval=1, dtype=tf.float32) \
-            < epsilon
+            minval=0, maxval=1, dtype=tf.float32) < epsilon
 
         action = tf.cond(
             pred=tf.constant(explore, dtype=tf.bool)
@@ -118,8 +115,8 @@ class EpsilonGreedy(Exploration):
             self.last_timestep = timestep
             return action, tf.zeros_like(action, dtype=tf.float32)
         else:
-            assign_op = tf.assign(self.last_timestep, timestep)
-            with tf.control_dependencies([assign_op]):
+            assign_op = tf1.assign(self.last_timestep, timestep)
+            with tf1.control_dependencies([assign_op]):
                 return action, tf.zeros_like(action, dtype=tf.float32)
 
     def _get_torch_exploration_action(self, q_values, explore, timestep):

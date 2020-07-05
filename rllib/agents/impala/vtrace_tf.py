@@ -33,7 +33,7 @@ import collections
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.framework import try_import_tf
 
-tf, tfv = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 VTraceFromLogitsReturns = collections.namedtuple("VTraceFromLogitsReturns", [
     "vs", "pg_advantages", "log_rhos", "behaviour_action_log_probs",
@@ -228,7 +228,7 @@ def multi_from_logits(behaviour_policy_logits,
             behaviour_policy_logits, target_policy_logits, actions,
             discounts, rewards, values, bootstrap_value
         ]
-    with tf.name_scope(name, **name_scope_kwargs):
+    with tf1.name_scope(name, **name_scope_kwargs):
         target_action_log_probs = multi_log_probs_from_logits_and_actions(
             target_policy_logits, actions, dist_class, model)
 
@@ -337,19 +337,20 @@ def from_importance_weights(log_rhos,
     if tfv == 1:
         name_scope_kwargs["values"] = [
             log_rhos, discounts, rewards, values, bootstrap_value]
-    with tf.name_scope(name, **name_scope_kwargs):
-        rhos = tf.exp(log_rhos)
+    with tf1.name_scope(name, **name_scope_kwargs):
+        rhos = tf.math.exp(log_rhos)
         if clip_rho_threshold is not None:
             clipped_rhos = tf.minimum(
                 clip_rho_threshold, rhos, name="clipped_rhos")
 
-            tf.summary.histogram("clipped_rhos_1000", tf.minimum(1000.0, rhos))
-            tf.summary.scalar(
+            tf1.summary.histogram(
+                    "clipped_rhos_1000", tf.minimum(1000.0, rhos))
+            tf1.summary.scalar(
                 "num_of_clipped_rhos",
                 tf.reduce_sum(
                     tf.cast(
                         tf.equal(clipped_rhos, clip_rho_threshold), tf.int32)))
-            tf.summary.scalar("size_of_clipped_rhos", tf.size(clipped_rhos))
+            tf1.summary.scalar("size_of_clipped_rhos", tf.size(clipped_rhos))
         else:
             clipped_rhos = rhos
 

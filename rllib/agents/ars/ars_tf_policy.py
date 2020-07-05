@@ -14,7 +14,7 @@ from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import unbatch
 
-tf, tfv = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 tree = try_import_tree()
 
 
@@ -31,9 +31,11 @@ class ARSTFPolicy:
         self.single_threaded = config.get("single_threaded", False)
         if config["framework"] == "tf":
             self.sess = make_session(single_threaded=self.single_threaded)
-            self.inputs = tf.placeholder(
+            self.inputs = tf1.placeholder(
                 tf.float32, [None] + list(self.preprocessor.shape))
         else:
+            if not tf1.executing_eagerly():
+                tf1.enable_eager_execution()
             self.sess = self.inputs = None
 
         # Policy network.
@@ -53,7 +55,7 @@ class ARSTFPolicy:
             self.sampler = dist.sample()
             self.variables = ray.experimental.tf_utils.TensorFlowVariables(
                 dist_inputs, self.sess)
-            self.sess.run(tf.global_variables_initializer())
+            self.sess.run(tf1.global_variables_initializer())
         else:
             self.variables = ray.experimental.tf_utils.TensorFlowVariables(
                 [], None, self.model.variables())

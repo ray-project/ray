@@ -13,7 +13,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.types import ModelConfigDict
 
-tf, tfv = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
@@ -339,7 +339,7 @@ class NullContextManager:
 def flatten(obs, framework):
     """Flatten the given tensor."""
     if framework in ["tf", "tfe"]:
-        return tf.keras.layers.Flatten()(obs)
+        return tf1.keras.layers.Flatten()(obs)
     elif framework == "torch":
         assert torch is not None
         return torch.flatten(obs, start_dim=1)

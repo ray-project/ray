@@ -4,9 +4,6 @@ from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.framework import try_import_tf
-
-tf, tfv = try_import_tf()
 
 
 @DeveloperAPI
@@ -202,11 +199,11 @@ def build_tf_policy(name,
     def with_updates(**overrides):
         return build_tf_policy(**dict(original_kwargs, **overrides))
 
-    def as_eager(cls):
+    def as_eager():
         return eager_tf_policy.build_eager_tf_policy(**original_kwargs)
 
     policy_cls.with_updates = staticmethod(with_updates)
-    policy_cls.as_eager = classmethod(as_eager)
+    policy_cls.as_eager = staticmethod(as_eager)
     policy_cls.__name__ = name
     policy_cls.__qualname__ = name
     return policy_cls

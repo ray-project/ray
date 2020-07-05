@@ -5,7 +5,7 @@ import numpy as np
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 tf1, tf, tfv = try_import_tf()
-if tf:
+if tf1:
     eager_mode = None
     try:
         from tensorflow.python.eager.context import eager_mode
@@ -68,8 +68,8 @@ def framework_iterator(config=None,
 
         # Do we need a test session?
         sess = None
-        if fw == "tf" and tfv == 1 and session is True:
-            sess = tf.Session()
+        if fw == "tf" and session is True:
+            sess = tf1.Session()
             sess.__enter__()
 
         print("framework={}".format(fw))
@@ -80,9 +80,9 @@ def framework_iterator(config=None,
         if fw == "tfe":
             eager_ctx = eager_mode()
             eager_ctx.__enter__()
-            assert tf.executing_eagerly()
+            assert tf1.executing_eagerly()
         elif fw == "tf":
-            assert tfv == 2 or not tf.executing_eagerly()
+            assert tfv == 2 or not tf1.executing_eagerly()
 
         yield fw if session is False else (fw, sess)
 
@@ -174,9 +174,9 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                 raise e
     # Everything else (assume numeric or tf/torch.Tensor).
     else:
-        if tf is not None:
-            # y should never be a non-eager Tensor (y=expected value).
-            if isinstance(y, tf.Tensor):
+        if tf1 is not None:
+            # y should never be a Tensor (y=expected value).
+            if isinstance(y, tf1.Tensor):
                 # In eager mode, numpyize tensors.
                 if tf.executing_eagerly():
                     y = y.numpy()
@@ -184,13 +184,13 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                     raise ValueError(
                         "`y` (expected value) must not be a Tensor. "
                         "Use numpy.ndarray instead")
-            if isinstance(x, tf.Tensor):
+            if isinstance(x, tf1.Tensor):
                 # In eager mode, numpyize tensors.
-                if tf.executing_eagerly():
+                if tf1.executing_eagerly():
                     x = x.numpy()
                 # Otherwise, use a quick tf-session.
                 else:
-                    with tf.Session() as sess:
+                    with tf1.Session() as sess:
                         x = sess.run(x)
                         return check(
                             x,
@@ -285,10 +285,17 @@ def check_compute_single_action(trainer,
             method_to_test = trainer.compute_action
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
-            if isinstance(trainer.workers, list):
-                obs_space = trainer.workers[0].env.observation_space
+            worker_set = getattr(
+                trainer, "workers", getattr(trainer, "_workers", None))
+            assert worker_set
+            if isinstance(worker_set, list):
+                obs_space = trainer.get_policy().observation_space
+                try:
+                    obs_space = obs_space.original_space
+                except AttributeError:
+                    pass
             else:
-                obs_space = trainer.workers.local_worker().env.observation_space
+                obs_space = worker_set.local_worker().env.observation_space
         else:
             method_to_test = pol.compute_single_action
             obs_space = pol.observation_space

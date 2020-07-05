@@ -10,7 +10,7 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
 
-tf, tfv = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +174,7 @@ def postprocess_ppo_gae(policy,
     else:
         next_state = []
         for i in range(policy.num_state_tensors()):
-            next_state.append([sample_batch["state_out_{}".format(i)][-1]])
+            next_state.append(sample_batch["state_out_{}".format(i)][-1])
         last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
                                sample_batch[SampleBatch.ACTIONS][-1],
                                sample_batch[SampleBatch.REWARDS][-1],
@@ -209,9 +209,7 @@ class KLCoeffMixin:
         self.kl_coeff = get_variable(
             float(self.kl_coeff_val),
             tf_name="kl_coeff",
-            #shape=(),
             trainable=False)
-            #dtype=tf.float32)
 
     def update_kl(self, sampled_kl):
         if sampled_kl > 2.0 * self.kl_target:

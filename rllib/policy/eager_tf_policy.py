@@ -16,7 +16,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 
-tf, tfv = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
@@ -239,7 +239,7 @@ def build_eager_tf_policy(name,
                 )
             self.exploration = self._create_exploration()
             self._state_in = [
-                tf.convert_to_tensor(np.array([s]))
+                tf.convert_to_tensor([s])
                 for s in self.model.get_initial_state()
             ]
             input_dict = {
@@ -268,7 +268,7 @@ def build_eager_tf_policy(name,
             elif tfv == 1:
                 self._optimizer = tf.train.AdamOptimizer(config["lr"])
             else:
-                self._optimizer = tf.compat.v1.train.AdamOptimizer(
+                self._optimizer = tf1.compat.v1.train.AdamOptimizer(
                     config["lr"])
 
             if after_init:
@@ -624,8 +624,7 @@ def build_eager_tf_policy(name,
                 SampleBatch.DONES: np.array([False], dtype=np.bool),
                 SampleBatch.REWARDS: np.array([0], dtype=np.float32),
             }
-            if isinstance(self.action_space, Tuple) or isinstance(
-                    self.action_space, Dict):
+            if isinstance(self.action_space, (Dict, Tuple)):
                 dummy_batch[SampleBatch.ACTIONS] = [
                     flatten_to_single_ndarray(self.action_space.sample())
                 ]
@@ -647,7 +646,7 @@ def build_eager_tf_policy(name,
 
             # Convert everything to tensors.
             dummy_batch = tf.nest.map_structure(
-                tf.convert_to_tensor, dummy_batch)
+                tf1.convert_to_tensor, dummy_batch)
 
             # for IMPALA which expects a certain sample batch size.
             def tile_to(tensor, n):
