@@ -63,10 +63,10 @@ class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
         tags[keys[i]] = row.first[i];
       }
       // Current timestamp is used for point not view data time.
-      MetricPoint point{.metric_name = metric_name,
-                        .timestamp = current_sys_time_ms(),
-                        .value = static_cast<double>(row.second),
-                        .tags = tags};
+      MetricPoint point{metric_name,
+                        current_sys_time_ms(),
+                        static_cast<double>(row.second),
+                        tags};
       RAY_LOG(DEBUG) << "Metric name " << metric_name << ", value " << point.value;
       points.push_back(std::move(point));
       if (points.size() >= report_batch_size_) {

@@ -647,7 +647,7 @@ class WorkerInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeToWorkerFailures(
-      const SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe,
+      const SubscribeCallback<WorkerID, rpc::WorkerTableData> &subscribe,
       const StatusCallback &done) = 0;
 
   /// Report a worker failure to GCS asynchronously.
@@ -656,19 +656,31 @@ class WorkerInfoAccessor {
   /// \param callback Callback that will be called when report is complate.
   /// \param Status
   virtual Status AsyncReportWorkerFailure(
-      const std::shared_ptr<rpc::WorkerFailureData> &data_ptr,
+      const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
       const StatusCallback &callback) = 0;
 
-  /// Register a worker to GCS asynchronously.
+  /// Get worker specification from GCS asynchronously.
   ///
-  /// \param worker_type The type of the worker.
-  /// \param worker_id The ID of the worker.
-  /// \param worker_info The information of the worker.
-  /// \return Status.
-  virtual Status AsyncRegisterWorker(
-      rpc::WorkerType worker_type, const WorkerID &worker_id,
-      const std::unordered_map<std::string, std::string> &worker_info,
-      const StatusCallback &callback) = 0;
+  /// \param worker_id The ID of worker to look up in the GCS.
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGet(const WorkerID &worker_id,
+                          const OptionalItemCallback<rpc::WorkerTableData> &callback) = 0;
+
+  /// Get all worker info from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finished.
+  /// \return Status
+  virtual Status AsyncGetAll(const MultiItemCallback<rpc::WorkerTableData> &callback) = 0;
+
+  /// Add worker information to GCS asynchronously.
+  ///
+  /// \param data_ptr The worker that will be add to GCS.
+  /// \param callback Callback that will be called after worker information has been added
+  /// to GCS.
+  /// \return Status
+  virtual Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
+                          const StatusCallback &callback) = 0;
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.

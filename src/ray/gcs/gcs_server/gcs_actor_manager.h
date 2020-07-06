@@ -101,8 +101,6 @@ class GcsActor {
 
   /// Get the immutable ActorTableData of this actor.
   const rpc::ActorTableData &GetActorTableData() const;
-  // Get the immutable copy of ActorTableData of this actor.
-  const rpc::ActorTableData GetActorTableDataCopy() const;
   /// Get the mutable ActorTableData of this actor.
   rpc::ActorTableData *GetMutableActorTableData();
 
@@ -229,6 +227,12 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param job_id The id of finished job.
   void OnJobFinished(const JobID &job_id);
+
+  /// Get the created actors.
+  ///
+  /// \return The created actors.
+  const absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, ActorID>>
+      &GetCreatedActors() const;
 
  private:
   /// A data structure representing an actor's owner.
