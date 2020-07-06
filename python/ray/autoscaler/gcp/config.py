@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
 from googleapiclient import discovery, errors
 from google.oauth2 import service_account
-from google.oauth2.credentials import Credentials
+from google.oauth2.credentials import Credentials as OAuthCredentials
 
 logger = logging.getLogger(__name__)
 
@@ -152,15 +152,13 @@ def construct_clients_from_provider_config(provider_config):
                 "formatted improperly.")
         credentials = service_account.Credentials.from_service_account_info(
             service_account_info)
-        return _create_crm(credentials), \
-            _create_iam(credentials), \
-            _create_compute(credentials)
+    else:
+        # Otherwise the credentials type must be credentials_token.
+        credentials = OAuthCredentials(credentials_field)
 
-    # Otherwise the credentials type must be credentials_token.
-    creds_from_token = Credentials(credentials_field)
-    return _create_crm(creds_from_token), \
-        _create_iam(creds_from_token), \
-        _create_compute(creds_from_token)
+    return _create_crm(credentials), \
+        _create_iam(credentials), \
+        _create_compute(credentials)
 
 
 def bootstrap_gcp(config):
