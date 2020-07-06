@@ -77,7 +77,8 @@ import time  # Just to compare fit times
 start = time.time()
 tune_search.fit(x_train, y_train)
 end = time.time()
-print("Tune Fit Time:", end - start)
+print("Tune GridSearch Fit Time:", end - start)
+# Tune GridSearch Fit Time: 15.436315774917603 (for an 8 core laptop)
 
 #######################################################################
 # Note the slight differences we introduced above:
@@ -100,6 +101,7 @@ start = time.time()
 sklearn_search.fit(x_train, y_train)
 end = time.time()
 print("Sklearn Fit Time:", end - start)
+# Sklearn Fit Time: 47.48055911064148 (for an 8 core laptop)
 
 ###################################################################
 # Using Bayesian Optimization
@@ -133,7 +135,8 @@ tune_search = TuneSearchCV(
     max_iters=10,
 )
 tune_search.fit(x_train, y_train)
-print(tune_search.cv_results_)
+print(tune_search.best_params_)
+# {'alpha': 0.37460266483547777, 'epsilon': 0.09556428757689246}
 
 ################################################################
 # As you can see, it’s very simple to integrate tune-sklearn into existing code. Distributed execution is also easy - you can simply run ``ray.init(address="auto")`` before
