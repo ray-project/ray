@@ -388,10 +388,6 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
-  Status AsyncGetWorkerFailure(
-      const WorkerID &worker_id,
-      const OptionalItemCallback<rpc::WorkerFailureData> &callback) override;
-
  private:
   /// Save the subscribe operation in this function, so we can call it again when GCS
   /// restarts from a failure.

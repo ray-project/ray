@@ -430,10 +430,6 @@ class WorkerInfoGcsServiceHandler {
   virtual void HandleRegisterWorker(const RegisterWorkerRequest &request,
                                     RegisterWorkerReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetWorkerFailure(const GetWorkerFailureRequest &request,
-                                      GetWorkerFailureReply *reply,
-                                      SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `WorkerInfoGcsService`.
@@ -454,7 +450,6 @@ class WorkerInfoGrpcService : public GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     WORKER_INFO_SERVICE_RPC_HANDLER(ReportWorkerFailure);
     WORKER_INFO_SERVICE_RPC_HANDLER(RegisterWorker);
-    WORKER_INFO_SERVICE_RPC_HANDLER(GetWorkerFailure);
   }
 
  private:

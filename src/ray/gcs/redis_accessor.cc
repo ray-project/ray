@@ -838,13 +838,6 @@ Status RedisWorkerInfoAccessor::AsyncRegisterWorker(
   return status;
 }
 
-Status RedisWorkerInfoAccessor::AsyncGetWorkerFailure(
-    const WorkerID &worker_id,
-    const OptionalItemCallback<rpc::WorkerFailureData> &callback) {
-  return Status::NotImplemented(
-      "This method is only available when GCS actor management is enabled.");
-}
-
 }  // namespace gcs
 
 }  // namespace ray

@@ -450,10 +450,6 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
-  Status AsyncGetWorkerFailure(
-      const WorkerID &worker_id,
-      const OptionalItemCallback<rpc::WorkerFailureData> &callback);
-
  private:
   RedisGcsClient *client_impl_{nullptr};
 

@@ -41,10 +41,6 @@ class DefaultWorkerInfoHandler : public rpc::WorkerInfoHandler {
                             RegisterWorkerReply *reply,
                             SendReplyCallback send_reply_callback) override;
 
-  void HandleGetWorkerFailure(const GetWorkerFailureRequest &request,
-                              GetWorkerFailureReply *reply,
-                              SendReplyCallback send_reply_callback) override;
-
  private:
   gcs::RedisGcsClient &gcs_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
