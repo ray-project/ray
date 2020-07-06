@@ -71,8 +71,8 @@ flatbuffers::Offset<flatbuffers::Vector<int64_t>> ToFlatbuffer(
 
 Status PlasmaReceive(int sock, MessageType message_type, std::vector<uint8_t>* buffer) {
   MessageType type;
-  RETURN_NOT_OK(ReadMessage(sock, &type, buffer));
-  ARROW_CHECK(type == message_type)
+  RAY_RETURN_NOT_OK(ReadMessage(sock, &type, buffer));
+  RAY_CHECK(type == message_type)
       << "type = " << static_cast<int64_t>(type)
       << ", message_type = " << static_cast<int64_t>(message_type);
   return Status::OK();
@@ -112,16 +112,13 @@ Status PlasmaErrorStatus(fb::PlasmaError plasma_error) {
     case fb::PlasmaError::OK:
       return Status::OK();
     case fb::PlasmaError::ObjectExists:
-      return MakePlasmaError(PlasmaErrorCode::PlasmaObjectExists,
-                             "object already exists in the plasma store");
+      return Status::ObjectExists("object already exists in the plasma store");
     case fb::PlasmaError::ObjectNonexistent:
-      return MakePlasmaError(PlasmaErrorCode::PlasmaObjectNonexistent,
-                             "object does not exist in the plasma store");
+      return Status::ObjectNotFound("object does not exist in the plasma store");
     case fb::PlasmaError::OutOfMemory:
-      return MakePlasmaError(PlasmaErrorCode::PlasmaStoreFull,
-                             "object does not fit in the plasma store");
+      return Status::ObjectStoreFull("object does not fit in the plasma store");
     default:
-      ARROW_LOG(FATAL) << "unknown plasma error code " << static_cast<int>(plasma_error);
+      RAY_LOG(FATAL) << "unknown plasma error code " << static_cast<int>(plasma_error);
   }
   return Status::OK();
 }
@@ -138,9 +135,9 @@ Status SendSetOptionsRequest(int sock, const std::string& client_name,
 
 Status ReadSetOptionsRequest(uint8_t* data, size_t size, std::string* client_name,
                              int64_t* output_memory_quota) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaSetOptionsRequest>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *client_name = std::string(message->client_name()->str());
   *output_memory_quota = message->output_memory_quota();
   return Status::OK();
@@ -153,9 +150,9 @@ Status SendSetOptionsReply(int sock, PlasmaError error) {
 }
 
 Status ReadSetOptionsReply(uint8_t* data, size_t size) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaSetOptionsReply>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   return PlasmaErrorStatus(message->error());
 }
 
@@ -174,9 +171,9 @@ Status SendGetDebugStringReply(int sock, const std::string& debug_string) {
 }
 
 Status ReadGetDebugStringReply(uint8_t* data, size_t size, std::string* debug_string) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaGetDebugStringReply>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *debug_string = message->debug_string()->str();
   return Status::OK();
 }
@@ -195,9 +192,9 @@ Status SendCreateRequest(int sock, ObjectID object_id, bool evict_if_full,
 Status ReadCreateRequest(uint8_t* data, size_t size, ObjectID* object_id,
                          bool* evict_if_full, int64_t* data_size, int64_t* metadata_size,
                          int* device_num) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaCreateRequest>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *evict_if_full = message->evict_if_full();
   *data_size = message->data_size();
   *metadata_size = message->metadata_size();
@@ -232,7 +229,7 @@ Status SendCreateReply(int sock, ObjectID object_id, PlasmaObject* object,
 #ifdef PLASMA_CUDA
     crb.add_ipc_handle(ipc_handle);
 #else
-    ARROW_LOG(FATAL) << "This should be unreachable.";
+    RAY_LOG(FATAL) << "This should be unreachable.";
 #endif
   }
   auto message = crb.Finish();
@@ -241,9 +238,9 @@ Status SendCreateReply(int sock, ObjectID object_id, PlasmaObject* object,
 
 Status ReadCreateReply(uint8_t* data, size_t size, ObjectID* object_id,
                        PlasmaObject* object, int* store_fd, int64_t* mmap_size) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaCreateReply>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *object_id = ObjectID::FromBinary(message->object_id()->str());
   object->store_fd = message->plasma_object()->segment_index();
   object->data_offset = message->plasma_object()->data_offset();
@@ -266,43 +263,37 @@ Status ReadCreateReply(uint8_t* data, size_t size, ObjectID* object_id,
 }
 
 Status SendCreateAndSealRequest(int sock, const ObjectID& object_id, bool evict_if_full,
-                                const std::string& data, const std::string& metadata,
-                                unsigned char* digest) {
+                                const std::string& data, const std::string& metadata) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto digest_string = fbb.CreateString(reinterpret_cast<char*>(digest), kDigestSize);
   auto message = fb::CreatePlasmaCreateAndSealRequest(
       fbb, fbb.CreateString(object_id.Binary()), evict_if_full, fbb.CreateString(data),
-      fbb.CreateString(metadata), digest_string);
+      fbb.CreateString(metadata));
   return PlasmaSend(sock, MessageType::PlasmaCreateAndSealRequest, &fbb, message);
 }
 
 Status ReadCreateAndSealRequest(uint8_t* data, size_t size, ObjectID* object_id,
                                 bool* evict_if_full, std::string* object_data,
-                                std::string* metadata, std::string* digest) {
-  DCHECK(data);
+                                std::string* metadata) {
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaCreateAndSealRequest>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
 
   *object_id = ObjectID::FromBinary(message->object_id()->str());
   *evict_if_full = message->evict_if_full();
   *object_data = message->data()->str();
   *metadata = message->metadata()->str();
-  ARROW_CHECK(message->digest()->size() == kDigestSize);
-  digest->assign(message->digest()->data(), kDigestSize);
   return Status::OK();
 }
 
 Status SendCreateAndSealBatchRequest(int sock, const std::vector<ObjectID>& object_ids,
                                      bool evict_if_full,
                                      const std::vector<std::string>& data,
-                                     const std::vector<std::string>& metadata,
-                                     const std::vector<std::string>& digests) {
+                                     const std::vector<std::string>& metadata) {
   flatbuffers::FlatBufferBuilder fbb;
 
   auto message = fb::CreatePlasmaCreateAndSealBatchRequest(
       fbb, ToFlatbuffer(&fbb, object_ids.data(), object_ids.size()), evict_if_full,
-      ToFlatbuffer(&fbb, data), ToFlatbuffer(&fbb, metadata),
-      ToFlatbuffer(&fbb, digests));
+      ToFlatbuffer(&fbb, data), ToFlatbuffer(&fbb, metadata));
 
   return PlasmaSend(sock, MessageType::PlasmaCreateAndSealBatchRequest, &fbb, message);
 }
@@ -311,11 +302,10 @@ Status ReadCreateAndSealBatchRequest(uint8_t* data, size_t size,
                                      std::vector<ObjectID>* object_ids,
                                      bool* evict_if_full,
                                      std::vector<std::string>* object_data,
-                                     std::vector<std::string>* metadata,
-                                     std::vector<std::string>* digests) {
-  DCHECK(data);
+                                     std::vector<std::string>* metadata) {
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaCreateAndSealBatchRequest>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
 
   *evict_if_full = message->evict_if_full();
   ConvertToVector(message->object_ids(), object_ids,
@@ -329,9 +319,6 @@ Status ReadCreateAndSealBatchRequest(uint8_t* data, size_t size,
   ConvertToVector(message->metadata(), metadata,
                   [](const flatbuffers::String& element) { return element.str(); });
 
-  ConvertToVector(message->digest(), digests,
-                  [](const flatbuffers::String& element) { return element.str(); });
-
   return Status::OK();
 }
 
@@ -342,9 +329,9 @@ Status SendCreateAndSealReply(int sock, PlasmaError error) {
 }
 
 Status ReadCreateAndSealReply(uint8_t* data, size_t size) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaCreateAndSealReply>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   return PlasmaErrorStatus(message->error());
 }
 
@@ -356,9 +343,9 @@ Status SendCreateAndSealBatchReply(int sock, PlasmaError error) {
 }
 
 Status ReadCreateAndSealBatchReply(uint8_t* data, size_t size) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaCreateAndSealBatchReply>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   return PlasmaErrorStatus(message->error());
 }
 
@@ -369,9 +356,9 @@ Status SendAbortRequest(int sock, ObjectID object_id) {
 }
 
 Status ReadAbortRequest(uint8_t* data, size_t size, ObjectID* object_id) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaAbortRequest>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *object_id = ObjectID::FromBinary(message->object_id()->str());
   return Status::OK();
 }
@@ -383,30 +370,26 @@ Status SendAbortReply(int sock, ObjectID object_id) {
 }
 
 Status ReadAbortReply(uint8_t* data, size_t size, ObjectID* object_id) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaAbortReply>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *object_id = ObjectID::FromBinary(message->object_id()->str());
   return Status::OK();
 }
 
 // Seal messages.
 
-Status SendSealRequest(int sock, ObjectID object_id, const std::string& digest) {
+Status SendSealRequest(int sock, ObjectID object_id) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = fb::CreatePlasmaSealRequest(fbb, fbb.CreateString(object_id.Binary()),
-                                             fbb.CreateString(digest));
+  auto message = fb::CreatePlasmaSealRequest(fbb, fbb.CreateString(object_id.Binary()));
   return PlasmaSend(sock, MessageType::PlasmaSealRequest, &fbb, message);
 }
 
-Status ReadSealRequest(uint8_t* data, size_t size, ObjectID* object_id,
-                       std::string* digest) {
-  DCHECK(data);
+Status ReadSealRequest(uint8_t* data, size_t size, ObjectID* object_id) {
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaSealRequest>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *object_id = ObjectID::FromBinary(message->object_id()->str());
-  ARROW_CHECK_EQ(message->digest()->size(), kDigestSize);
-  digest->assign(message->digest()->data(), kDigestSize);
   return Status::OK();
 }
 
@@ -418,9 +401,9 @@ Status SendSealReply(int sock, ObjectID object_id, PlasmaError error) {
 }
 
 Status ReadSealReply(uint8_t* data, size_t size, ObjectID* object_id) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaSealReply>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *object_id = ObjectID::FromBinary(message->object_id()->str());
   return PlasmaErrorStatus(message->error());
 }
@@ -435,9 +418,9 @@ Status SendReleaseRequest(int sock, ObjectID object_id) {
 }
 
 Status ReadReleaseRequest(uint8_t* data, size_t size, ObjectID* object_id) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaReleaseRequest>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *object_id = ObjectID::FromBinary(message->object_id()->str());
   return Status::OK();
 }
@@ -450,9 +433,9 @@ Status SendReleaseReply(int sock, ObjectID object_id, PlasmaError error) {
 }
 
 Status ReadReleaseReply(uint8_t* data, size_t size, ObjectID* object_id) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaReleaseReply>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *object_id = ObjectID::FromBinary(message->object_id()->str());
   return PlasmaErrorStatus(message->error());
 }
@@ -470,10 +453,10 @@ Status SendDeleteRequest(int sock, const std::vector<ObjectID>& object_ids) {
 Status ReadDeleteRequest(uint8_t* data, size_t size, std::vector<ObjectID>* object_ids) {
   using fb::PlasmaDeleteRequest;
 
-  DCHECK(data);
-  DCHECK(object_ids);
+  RAY_DCHECK(data);
+  RAY_DCHECK(object_ids);
   auto message = flatbuffers::GetRoot<PlasmaDeleteRequest>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   ToVector(*message, object_ids, [](const PlasmaDeleteRequest& request, int i) {
     return ObjectID::FromBinary(request.object_ids()->Get(i)->str());
   });
@@ -482,7 +465,7 @@ Status ReadDeleteRequest(uint8_t* data, size_t size, std::vector<ObjectID>* obje
 
 Status SendDeleteReply(int sock, const std::vector<ObjectID>& object_ids,
                        const std::vector<PlasmaError>& errors) {
-  DCHECK(object_ids.size() == errors.size());
+  RAY_DCHECK(object_ids.size() == errors.size());
   flatbuffers::FlatBufferBuilder fbb;
   auto message = fb::CreatePlasmaDeleteReply(
       fbb, static_cast<int32_t>(object_ids.size()),
@@ -497,11 +480,11 @@ Status ReadDeleteReply(uint8_t* data, size_t size, std::vector<ObjectID>* object
                        std::vector<PlasmaError>* errors) {
   using fb::PlasmaDeleteReply;
 
-  DCHECK(data);
-  DCHECK(object_ids);
-  DCHECK(errors);
+  RAY_DCHECK(data);
+  RAY_DCHECK(object_ids);
+  RAY_DCHECK(errors);
   auto message = flatbuffers::GetRoot<PlasmaDeleteReply>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   ToVector(*message, object_ids, [](const PlasmaDeleteReply& request, int i) {
     return ObjectID::FromBinary(request.object_ids()->Get(i)->str());
   });
@@ -521,9 +504,9 @@ Status SendContainsRequest(int sock, ObjectID object_id) {
 }
 
 Status ReadContainsRequest(uint8_t* data, size_t size, ObjectID* object_id) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaContainsRequest>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *object_id = ObjectID::FromBinary(message->object_id()->str());
   return Status::OK();
 }
@@ -537,60 +520,11 @@ Status SendContainsReply(int sock, ObjectID object_id, bool has_object) {
 
 Status ReadContainsReply(uint8_t* data, size_t size, ObjectID* object_id,
                          bool* has_object) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaContainsReply>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *object_id = ObjectID::FromBinary(message->object_id()->str());
   *has_object = message->has_object();
-  return Status::OK();
-}
-
-// List messages.
-
-Status SendListRequest(int sock) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = fb::CreatePlasmaListRequest(fbb);
-  return PlasmaSend(sock, MessageType::PlasmaListRequest, &fbb, message);
-}
-
-Status ReadListRequest(uint8_t* data, size_t size) { return Status::OK(); }
-
-Status SendListReply(int sock, const ObjectTable& objects) {
-  flatbuffers::FlatBufferBuilder fbb;
-  std::vector<flatbuffers::Offset<fb::ObjectInfo>> object_infos;
-  for (auto const& entry : objects) {
-    auto digest = entry.second->state == ObjectState::PLASMA_CREATED
-                      ? fbb.CreateString("")
-                      : fbb.CreateString(reinterpret_cast<char*>(entry.second->digest),
-                                         kDigestSize);
-    auto info = fb::CreateObjectInfo(fbb, fbb.CreateString(entry.first.Binary()),
-                                     entry.second->data_size, entry.second->metadata_size,
-                                     entry.second->ref_count, entry.second->create_time,
-                                     entry.second->construct_duration, digest);
-    object_infos.push_back(info);
-  }
-  auto message = fb::CreatePlasmaListReply(
-      fbb, fbb.CreateVector(arrow::util::MakeNonNull(object_infos.data()),
-                            object_infos.size()));
-  return PlasmaSend(sock, MessageType::PlasmaListReply, &fbb, message);
-}
-
-Status ReadListReply(uint8_t* data, size_t size, ObjectTable* objects) {
-  DCHECK(data);
-  auto message = flatbuffers::GetRoot<fb::PlasmaListReply>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
-  for (auto const& object : *message->objects()) {
-    ObjectID object_id = ObjectID::FromBinary(object->object_id()->str());
-    auto entry = std::unique_ptr<ObjectTableEntry>(new ObjectTableEntry());
-    entry->data_size = object->data_size();
-    entry->metadata_size = object->metadata_size();
-    entry->ref_count = object->ref_count();
-    entry->create_time = object->create_time();
-    entry->construct_duration = object->construct_duration();
-    entry->state = object->digest()->size() == 0 ? ObjectState::PLASMA_CREATED
-                                                 : ObjectState::PLASMA_SEALED;
-    (*objects)[object_id] = std::move(entry);
-  }
   return Status::OK();
 }
 
@@ -611,9 +545,9 @@ Status SendConnectReply(int sock, int64_t memory_capacity) {
 }
 
 Status ReadConnectReply(uint8_t* data, size_t size, int64_t* memory_capacity) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaConnectReply>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *memory_capacity = message->memory_capacity();
   return Status::OK();
 }
@@ -627,9 +561,9 @@ Status SendEvictRequest(int sock, int64_t num_bytes) {
 }
 
 Status ReadEvictRequest(uint8_t* data, size_t size, int64_t* num_bytes) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaEvictRequest>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *num_bytes = message->num_bytes();
   return Status::OK();
 }
@@ -641,9 +575,9 @@ Status SendEvictReply(int sock, int64_t num_bytes) {
 }
 
 Status ReadEvictReply(uint8_t* data, size_t size, int64_t& num_bytes) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaEvictReply>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   num_bytes = message->num_bytes();
   return Status::OK();
 }
@@ -660,9 +594,9 @@ Status SendGetRequest(int sock, const ObjectID* object_ids, int64_t num_objects,
 
 Status ReadGetRequest(uint8_t* data, size_t size, std::vector<ObjectID>& object_ids,
                       int64_t* timeout_ms) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaGetRequest>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   for (uoffset_t i = 0; i < message->object_ids()->size(); ++i) {
     auto object_id = message->object_ids()->Get(i)->str();
     object_ids.push_back(ObjectID::FromBinary(object_id));
@@ -705,12 +639,12 @@ Status SendGetReply(int sock, ObjectID object_ids[],
 Status ReadGetReply(uint8_t* data, size_t size, ObjectID object_ids[],
                     PlasmaObject plasma_objects[], int64_t num_objects,
                     std::vector<int>& store_fds, std::vector<int64_t>& mmap_sizes) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaGetReply>(data);
 #ifdef PLASMA_CUDA
   int handle_pos = 0;
 #endif
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   for (uoffset_t i = 0; i < num_objects; ++i) {
     object_ids[i] = ObjectID::FromBinary(message->object_ids()->Get(i)->str());
   }
@@ -731,7 +665,7 @@ Status ReadGetReply(uint8_t* data, size_t size, ObjectID object_ids[],
     }
 #endif
   }
-  ARROW_CHECK(message->store_fds()->size() == message->mmap_sizes()->size());
+  RAY_CHECK(message->store_fds()->size() == message->mmap_sizes()->size());
   for (uoffset_t i = 0; i < message->store_fds()->size(); i++) {
     store_fds.push_back(message->store_fds()->Get(i));
     mmap_sizes.push_back(message->mmap_sizes()->Get(i));
@@ -759,10 +693,10 @@ Status SendDataRequest(int sock, ObjectID object_id, const char* address, int po
 
 Status ReadDataRequest(uint8_t* data, size_t size, ObjectID* object_id, char** address,
                        int* port) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaDataRequest>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
-  DCHECK(message->object_id()->size() == sizeof(ObjectID));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(message->object_id()->size() == sizeof(ObjectID));
   *object_id = ObjectID::FromBinary(message->object_id()->str());
 #ifdef _WIN32
   *address = _strdup(message->address()->c_str());
@@ -783,9 +717,9 @@ Status SendDataReply(int sock, ObjectID object_id, int64_t object_size,
 
 Status ReadDataReply(uint8_t* data, size_t size, ObjectID* object_id,
                      int64_t* object_size, int64_t* metadata_size) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaDataReply>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *object_id = ObjectID::FromBinary(message->object_id()->str());
   *object_size = static_cast<int64_t>(message->object_size());
   *metadata_size = static_cast<int64_t>(message->metadata_size());
@@ -805,9 +739,9 @@ Status SendRefreshLRURequest(int sock, const std::vector<ObjectID>& object_ids) 
 
 Status ReadRefreshLRURequest(uint8_t* data, size_t size,
                              std::vector<ObjectID>* object_ids) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaRefreshLRURequest>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   for (uoffset_t i = 0; i < message->object_ids()->size(); ++i) {
     auto object_id = message->object_ids()->Get(i)->str();
     object_ids->push_back(ObjectID::FromBinary(object_id));
@@ -822,9 +756,9 @@ Status SendRefreshLRUReply(int sock) {
 }
 
 Status ReadRefreshLRUReply(uint8_t* data, size_t size) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaRefreshLRUReply>(data);
-  DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   return Status::OK();
 }
 

@@ -9,7 +9,7 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 
@@ -39,27 +39,27 @@ class BatchNormModel(TFModelV2):
     def forward(self, input_dict, state, seq_lens):
         last_layer = input_dict["obs"]
         hiddens = [256, 256]
-        with tf.variable_scope("model", reuse=tf.AUTO_REUSE):
+        with tf1.variable_scope("model", reuse=tf1.AUTO_REUSE):
             for i, size in enumerate(hiddens):
-                last_layer = tf.layers.dense(
+                last_layer = tf1.layers.dense(
                     last_layer,
                     size,
                     kernel_initializer=normc_initializer(1.0),
                     activation=tf.nn.tanh,
                     name="fc{}".format(i))
                 # Add a batch norm layer
-                last_layer = tf.layers.batch_normalization(
+                last_layer = tf1.layers.batch_normalization(
                     last_layer,
                     training=input_dict["is_training"],
                     name="bn_{}".format(i))
 
-            output = tf.layers.dense(
+            output = tf1.layers.dense(
                 last_layer,
                 self.num_outputs,
                 kernel_initializer=normc_initializer(0.01),
                 activation=None,
                 name="out")
-            self._value_out = tf.layers.dense(
+            self._value_out = tf1.layers.dense(
                 last_layer,
                 1,
                 kernel_initializer=normc_initializer(1.0),
@@ -67,8 +67,8 @@ class BatchNormModel(TFModelV2):
                 name="vf")
         if not self._registered:
             self.register_variables(
-                tf.get_collection(
-                    tf.GraphKeys.TRAINABLE_VARIABLES, scope=".+/model/.+"))
+                tf1.get_collection(
+                    tf1.GraphKeys.TRAINABLE_VARIABLES, scope=".+/model/.+"))
             self._registered = True
 
         return output, []

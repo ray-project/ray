@@ -60,6 +60,17 @@ These pages will demonstrate the various features and configurations of Tune.
    :figure: /images/tune.png
    :description: :doc:`A guide to distributed hyperparameter tuning <tune-distributed>`
 
+.. customgalleryitem::
+   :tooltip: Tuning PyTorch Lightning modules
+   :figure: /images/pytorch_lightning_small.png
+   :description: :doc:`Tuning PyTorch Lightning modules <tune-pytorch-lightning>`
+
+.. customgalleryitem::
+   :tooltip: Tuning XGBoost parameters.
+   :figure: /images/xgboost_logo.png
+   :description: :doc:`A guide to tuning XGBoost parameters with Tune <tune-xgboost>`
+
+
 .. raw:: html
 
     </div>
@@ -70,6 +81,8 @@ These pages will demonstrate the various features and configurations of Tune.
    tune-usage.rst
    tune-advanced-tutorial.rst
    tune-distributed.rst
+   tune-pytorch-lightning.rst
+   tune-xgboost.rst
 
 Colab Exercises
 ---------------
@@ -161,6 +174,7 @@ PyTorch Examples
 XGBoost Example
 ~~~~~~~~~~~~~~~
 
+- :ref:`XGBoost tutorial <tune-xgboost>`: A guide to tuning XGBoost parameters with Tune.
 - `xgboost_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/xgboost_example.py>`__: Trains a basic XGBoost model with Tune with the function-based API and an XGBoost callback.
 
 

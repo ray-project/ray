@@ -5,11 +5,11 @@ import fnmatch
 import os
 import subprocess
 import sys
-import tempfile
 import time
 import socket
 
 import ray
+import ray.services
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -88,7 +88,7 @@ def wait_for_children_of_pid_to_exit(pid, timeout=20):
 
 def kill_process_by_name(name, SIGKILL=False):
     for p in psutil.process_iter(attrs=["name"]):
-        if p.info["name"] == name:
+        if p.info["name"] == name + ray.services.EXE_SUFFIX:
             if SIGKILL:
                 p.kill()
             else:
@@ -104,13 +104,17 @@ def run_string_as_driver(driver_script):
     Returns:
         The script's output.
     """
-    # Save the driver script as a file so we can call it using subprocess.
-    with tempfile.NamedTemporaryFile() as f:
-        f.write(driver_script.encode("ascii"))
-        f.flush()
-        out = ray.utils.decode(
-            subprocess.check_output(
-                [sys.executable, f.name], stderr=subprocess.STDOUT))
+    proc = subprocess.Popen(
+        [sys.executable, "-"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+    with proc:
+        output = proc.communicate(driver_script.encode("ascii"))[0]
+        if proc.returncode:
+            raise subprocess.CalledProcessError(proc.returncode, proc.args,
+                                                output, proc.stderr)
+        out = ray.utils.decode(output)
     return out
 
 
@@ -123,14 +127,21 @@ def run_string_as_driver_nonblocking(driver_script):
     Returns:
         A handle to the driver process.
     """
-    # Save the driver script as a file so we can call it using subprocess. We
-    # do not delete this file because if we do then it may get removed before
-    # the Python process tries to run it.
-    with tempfile.NamedTemporaryFile(delete=False) as f:
-        f.write(driver_script.encode("ascii"))
-        f.flush()
-        return subprocess.Popen(
-            [sys.executable, f.name], stdout=subprocess.PIPE)
+    script = "; ".join([
+        "import sys",
+        "script = sys.stdin.read()",
+        "sys.stdin.close()",
+        "del sys",
+        "exec(\"del script\\n\" + script)",
+    ])
+    proc = subprocess.Popen(
+        [sys.executable, "-c", script],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE)
+    proc.stdin.write(driver_script.encode("ascii"))
+    proc.stdin.close()
+    return proc
 
 
 def flat_errors():
@@ -248,7 +259,7 @@ class Semaphore:
         self._sema = asyncio.Semaphore(value=value)
 
     async def acquire(self):
-        self._sema.acquire()
+        await self._sema.acquire()
 
     async def release(self):
         self._sema.release()

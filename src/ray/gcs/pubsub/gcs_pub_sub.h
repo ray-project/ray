@@ -29,7 +29,7 @@ namespace gcs {
 #define NODE_CHANNEL "NODE"
 #define NODE_RESOURCE_CHANNEL "NODE_RESOURCE"
 #define ACTOR_CHANNEL "ACTOR"
-#define WORKER_FAILURE_CHANNEL "WORKER_FAILURE"
+#define WORKER_CHANNEL "WORKER"
 #define OBJECT_CHANNEL "OBJECT"
 #define TASK_CHANNEL "TASK"
 #define TASK_LEASE_CHANNEL "TASK_LEASE"
@@ -140,7 +140,7 @@ class GcsPubSub {
                                   GcsPubSub::Channel &channel)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  Status SubscribeInternal(const std::string &channel, const Callback &subscribe,
+  Status SubscribeInternal(const std::string &channel_name, const Callback &subscribe,
                            const StatusCallback &done,
                            const boost::optional<std::string> &id = boost::none);
 

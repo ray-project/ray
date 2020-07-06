@@ -26,7 +26,14 @@
 
 #ifdef RAY_USE_GLOG
 #include <sys/stat.h>
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4722)  // Ignore non-returning destructor warning in GLOG
+#endif
 #include "glog/logging.h"
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 #endif
 
 #include "ray/util/filesystem.h"
@@ -171,14 +178,15 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
         app_name_without_path = app_file_name;
       }
     }
-    google::SetLogFilenameExtension(app_name_without_path.c_str());
+    google::SetLogFilenameExtension((app_name_without_path + ".log.").c_str());
   }
   for (int lvl = 0; lvl < NUM_SEVERITIES; ++lvl) {
     if (log_dir_.empty()) {
       google::SetStderrLogging(lvl);
       google::base::SetLogger(lvl, &stdout_logger_singleton);
     } else {
-      google::SetLogDestination(lvl, dir_ends_with_slash.c_str());
+      std::string prefix = dir_ends_with_slash + LogSeverityNames[lvl] + '.';
+      google::SetLogDestination(lvl, prefix.c_str());
     }
   }
 #endif

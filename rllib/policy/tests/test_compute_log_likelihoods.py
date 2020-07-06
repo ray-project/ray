@@ -11,7 +11,7 @@ from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.rllib.utils.numpy import one_hot, fc, MIN_LOG_NN_OUTPUT, \
     MAX_LOG_NN_OUTPUT
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 def do_test_log_likelihood(run,

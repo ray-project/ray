@@ -15,9 +15,12 @@ Tune is a Python library for experiment execution and hyperparameter tuning at a
   * Choose among state of the art algorithms such as :ref:`Population Based Training (PBT) <tune-scheduler-pbt>`, :ref:`BayesOptSearch <bayesopt>`, :ref:`HyperBand/ASHA <tune-scheduler-hyperband>`.
   * Move your models from training to serving on the same infrastructure with `Ray Serve`_.
 
-.. _`Ray Serve`: rayserve/overview.html
+.. _`Ray Serve`: serve/index.html
 
 **Want to get started?** Head over to the :ref:`60 second Tune tutorial <tune-60-seconds>`.
+
+.. tip:: Join the `Ray community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray Tune (and other Ray libraries)!
+
 
 Quick Start
 -----------
@@ -48,8 +51,6 @@ If using TF2 and TensorBoard, Tune will also automatically generate TensorBoard 
     :scale: 20%
     :align: center
 
-
-.. tip:: Join the `Ray community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray Tune (and other Ray libraries)!
 
 Why choose Tune?
 ----------------

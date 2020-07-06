@@ -17,28 +17,13 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.tf_ops import minimize_and_clip
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
 
 logger = logging.getLogger(__name__)
 
 
 def build_sac_model(policy, obs_space, action_space, config):
-    if config["model"].get("custom_model"):
-        logger.warning(
-            "Setting use_state_preprocessor=True since a custom model "
-            "was specified.")
-        config["use_state_preprocessor"] = True
-    if not isinstance(action_space, (Box, Discrete)):
-        raise UnsupportedSpaceException(
-            "Action space {} is not supported for SAC.".format(action_space))
-    if isinstance(action_space, Box) and len(action_space.shape) > 1:
-        raise UnsupportedSpaceException(
-            "Action space has multiple dimensions "
-            "{}. ".format(action_space.shape) +
-            "Consider reshaping this into a single dimension, "
-            "using a Tuple action space, or the multi-agent API.")
-
     # 2 cases:
     # 1) with separate state-preprocessor (before obs+action concat).
     # 2) no separate state-preprocessor: concat obs+actions right away.
@@ -51,8 +36,8 @@ def build_sac_model(policy, obs_space, action_space, config):
             logger.warning(
                 "When not using a state-preprocessor with SAC, `fcnet_hiddens`"
                 " will be set to an empty list! Any hidden layer sizes are "
-                "defined via `policy_model.hidden_layer_sizes` and "
-                "`Q_model.hidden_layer_sizes`.")
+                "defined via `policy_model.fcnet_hiddens` and "
+                "`Q_model.fcnet_hiddens`.")
             config["model"]["fcnet_hiddens"] = []
 
     # Force-ignore any additionally provided hidden layer sizes.
@@ -153,10 +138,10 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
     if model.discrete:
         # Get all action probs directly from pi and form their logp.
         log_pis_t = tf.nn.log_softmax(model.get_policy_output(model_out_t), -1)
-        policy_t = tf.exp(log_pis_t)
+        policy_t = tf.math.exp(log_pis_t)
         log_pis_tp1 = tf.nn.log_softmax(
             model.get_policy_output(model_out_tp1), -1)
-        policy_tp1 = tf.exp(log_pis_tp1)
+        policy_tp1 = tf.math.exp(log_pis_tp1)
         # Q-values.
         q_t = model.get_q_values(model_out_t)
         # Target Q-values.
@@ -234,20 +219,20 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
         policy.config["gamma"]**policy.config["n_step"] * q_tp1_best_masked)
 
     # Compute the TD-error (potentially clipped).
-    base_td_error = tf.abs(q_t_selected - q_t_selected_target)
+    base_td_error = tf.math.abs(q_t_selected - q_t_selected_target)
     if policy.config["twin_q"]:
-        twin_td_error = tf.abs(twin_q_t_selected - q_t_selected_target)
+        twin_td_error = tf.math.abs(twin_q_t_selected - q_t_selected_target)
         td_error = 0.5 * (base_td_error + twin_td_error)
     else:
         td_error = base_td_error
 
     critic_loss = [
-        tf.losses.mean_squared_error(
+        tf1.losses.mean_squared_error(
             labels=q_t_selected_target, predictions=q_t_selected, weights=0.5)
     ]
     if policy.config["twin_q"]:
         critic_loss.append(
-            tf.losses.mean_squared_error(
+            tf1.losses.mean_squared_error(
                 labels=q_t_selected_target,
                 predictions=twin_q_t_selected,
                 weights=0.5))
@@ -289,7 +274,7 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
 
     # in a custom apply op we handle the losses separately, but return them
     # combined in one loss for now
-    return actor_loss + tf.add_n(critic_loss) + alpha_loss
+    return actor_loss + tf.math.add_n(critic_loss) + alpha_loss
 
 
 def gradients(policy, optimizer, loss):
@@ -373,7 +358,7 @@ def apply_gradients(policy, optimizer, grads_and_vars):
 
     alpha_apply_ops = policy._alpha_optimizer.apply_gradients(
         policy._alpha_grads_and_vars,
-        global_step=tf.train.get_or_create_global_step())
+        global_step=tf1.train.get_or_create_global_step())
     return tf.group([actor_apply_ops, alpha_apply_ops] + critic_apply_ops)
 
 
@@ -396,20 +381,20 @@ def stats(policy, train_batch):
 class ActorCriticOptimizerMixin:
     def __init__(self, config):
         # create global step for counting the number of update operations
-        self.global_step = tf.train.get_or_create_global_step()
+        self.global_step = tf1.train.get_or_create_global_step()
 
         # use separate optimizers for actor & critic
-        self._actor_optimizer = tf.train.AdamOptimizer(
+        self._actor_optimizer = tf1.train.AdamOptimizer(
             learning_rate=config["optimization"]["actor_learning_rate"])
         self._critic_optimizer = [
-            tf.train.AdamOptimizer(
+            tf1.train.AdamOptimizer(
                 learning_rate=config["optimization"]["critic_learning_rate"])
         ]
         if config["twin_q"]:
             self._critic_optimizer.append(
-                tf.train.AdamOptimizer(learning_rate=config["optimization"][
+                tf1.train.AdamOptimizer(learning_rate=config["optimization"][
                     "critic_learning_rate"]))
-        self._alpha_optimizer = tf.train.AdamOptimizer(
+        self._alpha_optimizer = tf1.train.AdamOptimizer(
             learning_rate=config["optimization"]["entropy_learning_rate"])
 
 
@@ -423,6 +408,19 @@ def setup_mid_mixins(policy, obs_space, action_space, config):
 
 def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy, config)
+
+
+def validate_spaces(pid, observation_space, action_space, config):
+    if not isinstance(action_space, (Box, Discrete)):
+        raise UnsupportedSpaceException(
+            "Action space ({}) of {} is not supported for "
+            "SAC.".format(action_space, pid))
+    if isinstance(action_space, Box) and len(action_space.shape) > 1:
+        raise UnsupportedSpaceException(
+            "Action space ({}) of {} has multiple dimensions "
+            "{}. ".format(action_space, pid, action_space.shape) +
+            "Consider reshaping this into a single dimension, "
+            "using a Tuple action space, or the multi-agent API.")
 
 
 SACTFPolicy = build_tf_policy(
@@ -439,6 +437,7 @@ SACTFPolicy = build_tf_policy(
     mixins=[
         TargetNetworkMixin, ActorCriticOptimizerMixin, ComputeTDErrorMixin
     ],
+    validate_spaces=validate_spaces,
     before_init=setup_early_mixins,
     before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,

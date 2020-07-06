@@ -42,7 +42,7 @@ class JsonWriter(OutputWriter):
         self.ioctx = ioctx or IOContext()
         self.max_file_size = max_file_size
         self.compress_columns = compress_columns
-        if urlparse(path).scheme:
+        if urlparse(path).scheme not in ["", "c"]:
             self.path_is_uri = True
         else:
             path = os.path.abspath(os.path.expanduser(path))

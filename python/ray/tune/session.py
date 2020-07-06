@@ -96,6 +96,8 @@ def make_checkpoint_dir(step=None):
 
                 tune.report(hello="world", ray="tune")
 
+    .. warning:: Do not call this function within the Trainable Class API.
+
     Args:
         step (int): Current training iteration - used for setting
             an index to uniquely identify the checkpoint.
@@ -137,6 +139,8 @@ def save_checkpoint(checkpoint):
                 tune.report(hello="world", ray="tune")
 
         analysis = tune.run(run_me)
+
+    .. warning:: Do not call this function within the Trainable Class API.
 
     Args:
         **kwargs: Any key value pair to be logged by Tune. Any of these

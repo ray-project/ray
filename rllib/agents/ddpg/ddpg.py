@@ -106,9 +106,10 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
     "compress_observations": False,
-    # If set, this will fix the ratio of sampled to replayed timesteps.
-    # Otherwise, replay will proceed at the native ratio determined by
-    # (train_batch_size / rollout_fragment_length).
+    # If set, this will fix the ratio of replayed from a buffer and learned on
+    # timesteps to sampled from an environment and stored in the replay buffer
+    # timesteps. Otherwise, the replay will proceed at the native ratio
+    # determined by (train_batch_size / rollout_fragment_length).
     "training_intensity": None,
 
     # === Optimization ===
@@ -157,6 +158,12 @@ DEFAULT_CONFIG = with_common_config({
 
 
 def validate_config(config):
+    if config["model"]["custom_model"]:
+        logger.warning(
+            "Setting use_state_preprocessor=True since a custom model "
+            "was specified.")
+        config["use_state_preprocessor"] = True
+
     # TODO(sven): Remove at some point.
     #  Backward compatibility of noise-based exploration config.
     schedule_max_timesteps = None
@@ -191,8 +198,7 @@ def validate_config(config):
 
     if config.get("parameter_noise", DEPRECATED_VALUE) != DEPRECATED_VALUE:
         deprecation_warning("parameter_noise", "exploration_config={"
-                            "type=ParameterNoise"
-                            "}")
+                            "type=ParameterNoise}")
 
     if config["exploration_config"]["type"] == "ParameterNoise":
         if config["batch_mode"] != "complete_episodes":

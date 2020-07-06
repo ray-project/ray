@@ -3,6 +3,8 @@ from collections import namedtuple
 import logging
 import multiprocessing
 import os
+import subprocess
+import sys
 
 import ray
 import ray.ray_constants as ray_constants
@@ -121,8 +123,14 @@ class ResourceSpec(
 
         return resources
 
-    def resolve(self, is_head):
-        """Returns a copy with values filled out with system defaults."""
+    def resolve(self, is_head, node_ip_address=None):
+        """Returns a copy with values filled out with system defaults.
+
+        Args:
+            is_head (bool): Whether this is the head node.
+            node_ip_address (str): The IP address of the node that we are on.
+                This is used to automatically create a node id resource.
+        """
 
         resources = (self.resources or {}).copy()
         assert "CPU" not in resources, resources
@@ -130,9 +138,12 @@ class ResourceSpec(
         assert "memory" not in resources, resources
         assert "object_store_memory" not in resources, resources
 
+        if node_ip_address is None:
+            node_ip_address = ray.services.get_node_ip_address()
+
         # Automatically create a node id resource on each node. This is
         # queryable with ray.state.node_ids() and ray.state.current_node_id().
-        resources[NODE_ID_PREFIX + ray.services.get_node_ip_address()] = 1.0
+        resources[NODE_ID_PREFIX + node_ip_address] = 1.0
 
         num_cpus = self.num_cpus
         if num_cpus is None:
@@ -220,12 +231,23 @@ class ResourceSpec(
 def _autodetect_num_gpus():
     """Attempt to detect the number of GPUs on this machine.
 
-    TODO(rkn): This currently assumes Nvidia GPUs and Linux.
+    TODO(rkn): This currently assumes NVIDIA GPUs on Linux.
+    TODO(mehrdadn): This currently does not work on macOS.
+    TODO(mehrdadn): Use a better mechanism for Windows.
+
+    Possibly useful: tensorflow.config.list_physical_devices()
 
     Returns:
         The number of GPUs if any were detected, otherwise 0.
     """
-    proc_gpus_path = "/proc/driver/nvidia/gpus"
-    if os.path.isdir(proc_gpus_path):
-        return len(os.listdir(proc_gpus_path))
-    return 0
+    result = 0
+    if sys.platform.startswith("linux"):
+        proc_gpus_path = "/proc/driver/nvidia/gpus"
+        if os.path.isdir(proc_gpus_path):
+            result = len(os.listdir(proc_gpus_path))
+    elif sys.platform == "win32":
+        props = "AdapterCompatibility"
+        cmdargs = ["WMIC", "PATH", "Win32_VideoController", "GET", props]
+        lines = subprocess.check_output(cmdargs).splitlines()[1:]
+        result = len([l.rstrip() for l in lines if l.startswith(b"NVIDIA")])
+    return result
