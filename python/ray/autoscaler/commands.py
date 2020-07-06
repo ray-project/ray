@@ -351,8 +351,12 @@ def _bootstrap_config(config):
 
 
 def teardown_cluster(config_file, yes, workers_only, override_cluster_name,
-                     keep_min_workers):
+                     keep_min_workers, log_old_style, log_color, verbose):
     """Destroys all nodes of a Ray cluster described by a config json."""
+    cli_logger.old_style = log_old_style
+    cli_logger.color_mode = log_color
+    cli_logger.verbosity = verbose
+    cli_logger.dump_command_output = verbose == 3 # todo: add a separate flag?
 
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
@@ -369,8 +373,16 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name,
         try:
             exec_cluster(config_file, "ray stop", False, False, False, False,
                          False, override_cluster_name, None, False)
-        except Exception:
-            logger.exception("Ignoring error attempting a clean shutdown.")
+        except Exception as e:
+            cli_logger.warning( # todo: add exception info
+                "Exception occured when stopping the cluster Ray runtime.")
+            cli_logger.warning(
+                "Ignoring the exception and "
+                "attempting to shut down the cluster nodes anyway.")
+
+            cli_logger.old_exception(
+                logger,
+                "Ignoring error attempting a clean shutdown.")
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
@@ -383,11 +395,24 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name,
 
             if keep_min_workers:
                 min_workers = config.get("min_workers", 0)
-                logger.info("teardown_cluster: "
-                            "Keeping {} nodes...".format(min_workers))
+
+                cli_logger.print(
+                    "{} random worker nodes will not be shut down. " +
+                    cf.gray("(due to {})"),
+                    cf.bold(min_workers), cf.bold("--keep-min-workers"))
+                cli_logger.old_info(
+                    logger,
+                    "teardown_cluster: Keeping {} nodes...", min_workers)
+
                 workers = random.sample(workers, len(workers) - min_workers)
 
+            # todo: it's weird to kill the head node but not all workers
             if workers_only:
+                cli_logger.print(
+                    "The head node will not be shut down. " +
+                    cf.gray("(due to {})"),
+                    cf.bold("--workers-only"))
+
                 return workers
 
             head = provider.non_terminated_nodes({
@@ -401,11 +426,23 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name,
         A = remaining_nodes()
         with LogTimer("teardown_cluster: done."):
             while A:
-                logger.info("teardown_cluster: "
-                            "Shutting down {} nodes...".format(len(A)))
+                cli_logger.old_info(
+                    logger,
+                    "teardown_cluster: "
+                    "Shutting down {} nodes...", len(A))
+
                 provider.terminate_nodes(A)
-                time.sleep(1)
+
+                cli_logger.print(
+                    "Requested {} nodes to shut down.",
+                    cf.bold(len(A)),
+                    _tags=dict(interval="1s"))
+
+                time.sleep(1) # todo: interval should be a variable
                 A = remaining_nodes()
+                cli_logger.print(
+                    "{} nodes remaining after 1 second.",
+                    cf.bold(len(A)))
     finally:
         provider.cleanup()
 

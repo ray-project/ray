@@ -376,7 +376,7 @@ class AWSNodeProvider(NodeProvider):
         if self.cache_stopped_nodes:
             if node.spot_instance_request_id:
                 cli_logger.print(
-                    "Terminating node {} " +
+                    "Terminating instance {} " +
                     cf.gray("(cannot stop spot instances, only terminate)"),
                     node_id) # todo: show node name?
 
@@ -388,11 +388,11 @@ class AWSNodeProvider(NodeProvider):
                 node.terminate()
             else:
                 cli_logger.print(
-                    "Stopping node {} " +
+                    "Stopping instance {} " +
                     cf.gray(
                         "(to terminate instead, "
                         "set `cache_stopped_nodes: False` "
-                        "under `provider` in the cluster configuration )"),
+                        "under `provider` in the cluster configuration)"),
                     node_id) # todo: show node name?
 
                 cli_logger.old_info(
@@ -421,15 +421,31 @@ class AWSNodeProvider(NodeProvider):
                     on_demand_ids += [node_id]
 
             if on_demand_ids:
-                logger.info(
+                # todo: show node names?
+                cli_logger.print(
+                    "Stopping instances {} " +
+                    cf.gray(
+                        "(to terminate instead, "
+                        "set `cache_stopped_nodes: False` "
+                        "under `provider` in the cluster configuration)"),
+                    cli_logger.render_list(on_demand_ids))
+                cli_logger.old_info(
+                    logger,
                     "AWSNodeProvider: stopping nodes {}. To terminate nodes "
                     "on stop, set 'cache_stopped_nodes: False' in the "
-                    "provider config.".format(on_demand_ids))
+                    "provider config.", on_demand_ids)
+
                 self.ec2.meta.client.stop_instances(InstanceIds=on_demand_ids)
             if spot_ids:
-                logger.info(
+                cli_logger.print(
+                    "Terminating instances {} " +
+                    cf.gray("(cannot stop spot instances, only terminate)"),
+                    cli_logger.render_list(spot_ids))
+                cli_logger.old_info(
+                    logger,
                     "AWSNodeProvider: terminating nodes {} (spot nodes cannot "
-                    "be stopped, only terminated)".format(spot_ids))
+                    "be stopped, only terminated)", spot_ids)
+
                 self.ec2.meta.client.terminate_instances(InstanceIds=spot_ids)
         else:
             self.ec2.meta.client.terminate_instances(InstanceIds=node_ids)

@@ -695,6 +695,20 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
 
 @cli.command(hidden=True)
 @click.argument("cluster_config_file", required=True, type=str)
+@click.option("-v", "--verbose", count=True)
+@click.option(
+    "--log-color",
+    required=False,
+    type=str,
+    default="auto",
+    help=(
+        "Use color logging. "
+        "Valid values are: auto (if stdout is a tty), true, false."))
+@click.option(
+    "--log-old-style",
+    is_flag=True,
+    default=False,
+    help=("Use old logging."))
 @click.option(
     "--workers-only",
     is_flag=True,
@@ -718,10 +732,12 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
     type=str,
     help="Override the configured cluster name.")
 def teardown(cluster_config_file, yes, workers_only, cluster_name,
-             keep_min_workers):
+             keep_min_workers,
+             log_old_style, log_color, verbose):
     """Tear down a Ray cluster."""
     teardown_cluster(cluster_config_file, yes, workers_only, cluster_name,
-                     keep_min_workers)
+                     keep_min_workers,
+                     log_old_style, log_color, verbose)
 
 
 @cli.command()

@@ -68,7 +68,7 @@ def _format_msg(msg, *args, **kwargs):
 class _CliLogger():
     def __init__(self):
         self.strip = False
-        self.old_style = False
+        self.old_style = True
         self.color_mode = "auto"
         self.indent_level = 0
         self.verbosity = 0
@@ -84,9 +84,11 @@ class _CliLogger():
         if self.color_mode == "false":
             self.strip = True
             return
+        if self.color_mode == "auto":
+            self.strip = sys.stdout.isatty()
+            return
 
-        # todo: actually detect ttys here
-        self.strip = False
+        raise ValueError("Invalid log color setting: " + self.color_mode)
 
     def newline(self):
         self._print('')
@@ -212,6 +214,11 @@ class _CliLogger():
             logger.error(_format_msg(msg, *args, **kwargs))
             return
 
+    def old_exception(self, logger, msg, *args, **kwargs):
+        if self.old_style:
+            logger.exception(_format_msg(msg, *args, **kwargs))
+            return
+
     def add_log_info(self, **kwargs):
         for k, v in kwargs.items():
             self.info[k] = v
@@ -263,27 +270,28 @@ class _CliLogger():
         try:
             while True:
                 ans = sys.stdin.readline()
-                ans = ans.strip()
                 ans = ans.lower()
 
                 if ans == "\n":
                     res = default
                     break
-                elif ans in yes_answers:
+
+                ans = ans.strip()
+                if ans in yes_answers:
                     res = True
                     break
-                elif ans in no_answers:
+                if ans in no_answers:
                     res = False
                     break
-                else:
-                    indent = " " * l
-                    self.error(
-                        "{}Invalid answer: {}. "
-                        "Expected {} or {}",
-                        indent, cf.bold(ans.strip()),
-                        self.render_list(yes_answers, "/"),
-                        self.render_list(no_answers, "/"))
-                    self._print(indent + confirm_str, linefeed=False)
+
+                indent = " " * l
+                self.error(
+                    "{}Invalid answer: {}. "
+                    "Expected {} or {}",
+                    indent, cf.bold(ans.strip()),
+                    self.render_list(yes_answers, "/"),
+                    self.render_list(no_answers, "/"))
+                self._print(indent + confirm_str, linefeed=False)
         except KeyboardInterrupt:
             self.newline()
             res = default
