@@ -1,6 +1,6 @@
 import logging
 from uuid import uuid4
-
+from kubernetes.client.rest import ApiException
 from ray.autoscaler.kubernetes import core_api, log_prefix, extensions_beta_api
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
@@ -116,12 +116,19 @@ class KubernetesNodeProvider(NodeProvider):
                     self.namespace, ingress_spec)
 
     def terminate_node(self, node_id):
+        logger.info(log_prefix + "calling delete_namespaced_pod")
         core_api().delete_namespaced_pod(node_id, self.namespace)
-        core_api().delete_namespaced_service(node_id, self.namespace)
-        extensions_beta_api().delete_namespaced_ingress(
-            node_id,
-            self.namespace,
-        )
+        try:
+            core_api().delete_namespaced_service(node_id, self.namespace)
+        except ApiException:
+            pass
+        try:
+            extensions_beta_api().delete_namespaced_ingress(
+                node_id,
+                self.namespace,
+            )
+        except ApiException:
+            pass
 
     def terminate_nodes(self, node_ids):
         for node_id in node_ids:
@@ -140,14 +147,16 @@ class KubernetesNodeProvider(NodeProvider):
 
 
 def _add_service_name_to_service_port(spec, svc_name):
-    """Goes recursively through the ingress spec and adds the
-    right service name in the right places in the spec.
+    """Goes recursively through the ingress manifest and adds the
+    right serviceName next to every servicePort definition.
     """
     if isinstance(spec, dict):
         dict_keys = list(spec.keys())
         for k in dict_keys:
             spec[k] = _add_service_name_to_service_port(spec[k], svc_name)
 
+            # Every place that contains a servicePort definition should also
+            # have the serviceName defined.
             if k == "servicePort":
                 spec["serviceName"] = svc_name
 
