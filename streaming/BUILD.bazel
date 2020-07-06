@@ -1,6 +1,7 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@rules_proto_grpc//python:defs.bzl", "python_proto_compile")
 load("//bazel:ray.bzl", "COPTS")
 
@@ -285,22 +286,20 @@ genrule(
 )
 
 # Streaming java
-genrule(
+copy_file(
     name = "copy_jni_h",
-    srcs = ["@bazel_tools//tools/jdk:jni_header"],
-    outs = ["jni.h"],
-    cmd = "cp -f $< $@",
+    src = "@bazel_tools//tools/jdk:jni_header",
+    out = "jni.h",
 )
 
-genrule(
+copy_file(
     name = "copy_jni_md_h",
-    srcs = select({
-        "@bazel_tools//src/conditions:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"],
-        "@bazel_tools//src/conditions:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
-        "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
+    src = select({
+        "@bazel_tools//src/conditions:windows": "@bazel_tools//tools/jdk:jni_md_header-windows",
+        "@bazel_tools//src/conditions:darwin": "@bazel_tools//tools/jdk:jni_md_header-darwin",
+        "//conditions:default": "@bazel_tools//tools/jdk:jni_md_header-linux",
     }),
-    outs = ["jni_md.h"],
-    cmd = "cp -f $< $@",
+    out = "jni_md.h",
     visibility = ["//visibility:public"],
 )
 
