@@ -14,7 +14,7 @@ ClusterTaskManager::ClusterTaskManager(
       worker_pool_(worker_pool),
       gcs_client_(gcs_client) {}
 
-bool ClusterTaskManager::NewSchedulerSchedulePendingTasks() {
+bool ClusterTaskManager::SchedulePendingTasks() {
   size_t queue_size = tasks_to_schedule_.size();
   bool did_schedule = false;
 
@@ -38,7 +38,7 @@ bool ClusterTaskManager::NewSchedulerSchedulePendingTasks() {
       continue;
     } else {
       if (node_id_string == self_node_id_.Binary()) {
-        did_schedule || = WaitForTaskArgsRequests(work);
+        did_schedule = did_schedule || WaitForTaskArgsRequests(work);
       } else {
         // Should spill over to a different node.
         cluster_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
@@ -57,7 +57,7 @@ bool ClusterTaskManager::NewSchedulerSchedulePendingTasks() {
   return did_schedule;
 }
 
-bool ClusterTaskManager::WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work) {
+bool ClusterTaskManager::WaitForTaskArgsRequests(const Work &work) {
   const Task &task = work.second;
   std::vector<ObjectID> object_ids = task.GetTaskSpecification().GetDependencies();
   bool can_dispatch = true;
@@ -68,7 +68,9 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &wo
       tasks_to_dispatch_.push_back(work);
     } else {
       can_dispatch = false;
-      waiting_tasks_[task.GetTaskSpecification().TaskId()] = work;
+      auto task_id = task.GetTaskSpecification().TaskId();
+      waiting_tasks_.try_emplace(task_id, work);
+      // waiting_tasks_[task_id] = work;
     }
   } else {
     tasks_to_dispatch_.push_back(work);
@@ -76,10 +78,10 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &wo
   return can_dispatch;
 }
 
-std::unique_ptr<std::vector<std::pair<Task, std::shared_ptr<Worker>>>>
+std::unique_ptr<std::vector<std::pair<const Work, std::shared_ptr<Worker>>>>
 ClusterTaskManager::GetDispatchableTasks() {
-  std::unique_ptr<std::vector<std::pair<Task, std::shared_ptr<Worker>>>> dispatchable{
-      new std::vector<std::pair<Task, std::shared_ptr<Worker>>>()};
+  std::unique_ptr<std::vector<std::pair<const Work, std::shared_ptr<Worker>>>> dispatchable{
+      new std::vector<std::pair<const Work, std::shared_ptr<Worker>>>()};
   auto idle_workers = worker_pool_.GetIdleWorkers(Language::PYTHON);
   auto worker_it = idle_workers->begin();
 
@@ -91,7 +93,7 @@ ClusterTaskManager::GetDispatchableTasks() {
   for (size_t queue_size = tasks_to_dispatch_.size(); queue_size > 0; queue_size--) {
     auto work = tasks_to_dispatch_.front();
     auto reply = work.first;
-    Task &task = work.second;
+    const auto &task = work.second;
     auto spec = task.GetTaskSpecification();
     tasks_to_dispatch_.pop_front();
 
@@ -114,7 +116,7 @@ ClusterTaskManager::GetDispatchableTasks() {
       continue;
     }
 
-    std::pair<Task, std::shared_ptr<Worker>> to_dispatch{task, *worker_it};
+    std::pair<const Work, std::shared_ptr<Worker>> to_dispatch{work, *worker_it};
     dispatchable->push_back(to_dispatch);
     worker_it++;
     // worker->SetOwnerAddress(spec.CallerAddress());
@@ -134,7 +136,7 @@ ClusterTaskManager::GetDispatchableTasks() {
 }
 
 void ClusterTaskManager::QueueTask(ScheduleFn fn, const Task &task) {
-  const std::pair<ScheduleFn, Task> work = std::make_pair(fn, task);
+  const Work &work = std::make_pair(fn, task);
   tasks_to_schedule_.push_back(work);
 }
 
@@ -142,7 +144,7 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> readyIds) {
   for (auto task_id : readyIds) {
     auto it = waiting_tasks_.find(task_id);
     if (it == waiting_tasks_.end()) {
-      auto work = *it;
+      const auto &work = *it;
       tasks_to_dispatch_.push_back(work.second);
       waiting_tasks_.erase(it);
     }

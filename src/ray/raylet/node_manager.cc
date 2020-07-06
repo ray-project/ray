@@ -778,7 +778,7 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
     new_resource_scheduler_->AddOrUpdateNode(
         client_id.Binary(), remote_total.GetResourceMap(),
         remote_resources.GetAvailableResources().GetResourceMap());
-    NewSchedulerSchedulePendingTasks();
+    ScheduleAndDispatch();
     return;
   }
 
@@ -1259,7 +1259,7 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<Worker> &worker) {
 
   // Local resource availability changed: invoke scheduling policy for local node.
   if (new_scheduler_enabled_) {
-    NewSchedulerSchedulePendingTasks();
+    ScheduleAndDispatch();
   } else {
     cluster_resource_map_[self_node_id_].SetLoadResources(
         local_queues_.GetResourceLoad());
@@ -1383,7 +1383,7 @@ void NodeManager::ProcessDisconnectClientMessage(
 
     // Since some resources may have been released, we can try to dispatch more tasks. YYY
     if (new_scheduler_enabled_) {
-      NewSchedulerSchedulePendingTasks();
+      ScheduleAndDispatch();
     } else {
       DispatchTasks(local_queues_.GetReadyTasksByClass());
     }
@@ -1646,66 +1646,14 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
   }
 }
 
-void NodeManager::NewSchedulerSchedulePendingTasks() {
+void NodeManager::ScheduleAndDispatch() {
   RAY_CHECK(new_scheduler_enabled_);
-  size_t queue_size = tasks_to_schedule_.size();
-
-  // Check every task in task_to_schedule queue to see
-  // whether it can be scheduled. This avoids head-of-line
-  // blocking where a task which cannot be scheduled because
-  // there are not enough available resources blocks other
-  // tasks from being scheduled.
-  while (queue_size-- > 0) {
-    auto work = tasks_to_schedule_.front();
-    tasks_to_schedule_.pop_front();
-    auto task = work.second;
-    auto request_resources =
-        task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
-    int64_t violations = 0;
-    std::string node_id_string =
-        new_resource_scheduler_->GetBestSchedulableNode(request_resources, &violations);
-    if (node_id_string.empty()) {
-      /// There is no node that has available resources to run the request.
-      tasks_to_schedule_.push_back(work);
-      continue;
-    } else {
-      if (node_id_string == self_node_id_.Binary()) {
-        WaitForTaskArgsRequests(work);
-      } else {
-        // Should spill over to a different node.
-        new_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
-                                                             request_resources);
-
-        ClientID node_id = ClientID::FromBinary(node_id_string);
-        auto node_info_opt = gcs_client_->Nodes().Get(node_id);
-        RAY_CHECK(node_info_opt)
-            << "Spilling back to a node manager, but no GCS info found for node "
-            << node_id;
-        work.first(nullptr, node_id, node_info_opt->node_manager_address(),
-                   node_info_opt->node_manager_port());
-      }
+  if (cluster_task_manager_->SchedulePendingTasks()) {
+    auto to_dispatch = cluster_task_manager_->GetDispatchableTasks();
+    for (auto pair : *to_dispatch) {
+      RAY_LOG(INFO) << "Dispatching...";
     }
-  }
-  DispatchScheduledTasksToWorkers();
-}
 
-void NodeManager::WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work) {
-  RAY_CHECK(new_scheduler_enabled_);
-  const Task &task = work.second;
-  std::vector<ObjectID> object_ids = task.GetTaskSpecification().GetDependencies();
-
-  if (object_ids.size() > 0) {
-    bool args_ready = task_dependency_manager_.SubscribeGetDependencies(
-        task.GetTaskSpecification().TaskId(), task.GetDependencies());
-    if (args_ready) {
-      task_dependency_manager_.UnsubscribeGetDependencies(
-          task.GetTaskSpecification().TaskId());
-      tasks_to_dispatch_.push_back(work);
-    } else {
-      waiting_tasks_[task.GetTaskSpecification().TaskId()] = work;
-    }
-  } else {
-    tasks_to_dispatch_.push_back(work);
   }
 }
 
@@ -1793,7 +1741,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
       send_reply_callback(Status::OK(), nullptr, nullptr);
     };
     cluster_task_manager_->QueueTask(fn, task);
-    NewSchedulerSchedulePendingTasks();
+    ScheduleAndDispatch();
     return;
   }
 
@@ -2292,7 +2240,7 @@ void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &wor
       worker->SetBorrowedCPUInstances(borrowed_cpu_instances);
       worker->MarkBlocked();
     }
-    NewSchedulerSchedulePendingTasks();
+    ScheduleAndDispatch();
     return;
   }
 
@@ -2320,7 +2268,7 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
       new_resource_scheduler_->AddCPUResourceInstances(worker->GetBorrowedCPUInstances());
       worker->MarkUnblocked();
     }
-    NewSchedulerSchedulePendingTasks();
+    ScheduleAndDispatch();
     return;
   }
 
@@ -2956,7 +2904,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
         waiting_tasks_.erase(it);
       }
     }
-    NewSchedulerSchedulePendingTasks();
+    ScheduleAndDispatch();
   } else {
     if (ready_task_ids.size() > 0) {
       std::unordered_set<TaskID> ready_task_id_set(ready_task_ids.begin(),
