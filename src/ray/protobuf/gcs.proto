@@ -41,7 +41,8 @@ enum TablePrefix {
   ACTOR_CHECKPOINT_ID = 16;
   NODE_RESOURCE = 17;
   DIRECT_ACTOR = 18;
-  WORKER_FAILURE = 19;
+  // WORKER is already used in WorkerType, so use WORKERS here.
+  WORKERS = 19;
   TABLE_PREFIX_MAX = 20;
 }
 
@@ -296,13 +297,19 @@ message ActorCheckpointIdData {
   repeated uint64 timestamps = 3;
 }
 
-message WorkerFailureData {
+message WorkerTableData {
+  // Is this worker alive.
+  bool is_alive = 1;
   // Address of the worker that failed.
-  Address worker_address = 1;
-  // The UNIX timestamp at which the worker failed.
+  Address worker_address = 2;
+  // The UNIX timestamp at which this worker's state was updated.
   int64 timestamp = 3;
-  // Is intentional disconnect
+  // Whether it's an intentional disconnect, only applies then `is_alive` is false.
   bool intentional_disconnect = 4;
+  // Type of this worker.
+  WorkerType worker_type = 5;
+  // This is for AddWorker.
+  map<string, bytes> worker_info = 6;
 }
 
 message ResourceMap {
