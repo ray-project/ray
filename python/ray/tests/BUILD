@@ -473,7 +473,7 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
-pytest(
+py_test(
     name = "test_async",
     size = "medium",
     srcs = SRCS + ["test_async.py"],
