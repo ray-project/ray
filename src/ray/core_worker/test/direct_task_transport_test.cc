@@ -169,7 +169,7 @@ class MockRayletClient : public WorkerLeaseInterface {
 };
 
 TEST(TestMemoryStore, TestPromoteToPlasma) {
-  bool num_plasma_puts = 0;
+  size_t num_plasma_puts = 0;
   auto mem = std::make_shared<CoreWorkerMemoryStore>(
       [&](const RayObject &obj, const ObjectID &obj_id) { num_plasma_puts += 1; });
   ObjectID obj1 = ObjectID::FromRandom();

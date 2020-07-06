@@ -486,10 +486,10 @@ cdef execute_task(
             if isinstance(error, RayTaskError):
                 # Avoid recursive nesting of RayTaskError.
                 failure_object = RayTaskError(function_name, backtrace,
-                                              error.cause, proctitle=title)
+                                              error.cause_cls, proctitle=title)
             else:
                 failure_object = RayTaskError(function_name, backtrace,
-                                              error, proctitle=title)
+                                              error.__class__, proctitle=title)
             errors = []
             for _ in range(c_return_ids.size()):
                 errors.append(failure_object)

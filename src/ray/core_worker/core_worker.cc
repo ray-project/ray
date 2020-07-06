@@ -649,8 +649,12 @@ void CoreWorker::RegisterToGcs() {
     worker_info.emplace("stderr_file", options_.stderr_file);
   }
 
-  RAY_CHECK_OK(gcs_client_->Workers().AsyncRegisterWorker(options_.worker_type, worker_id,
-                                                          worker_info, nullptr));
+  auto worker_data = std::make_shared<rpc::WorkerTableData>();
+  worker_data->mutable_worker_address()->set_worker_id(worker_id.Binary());
+  worker_data->set_worker_type(options_.worker_type);
+  worker_data->mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
+
+  RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
 void CoreWorker::CheckForRayletFailure(const boost::system::error_code &error) {
   if (error == boost::asio::error::operation_aborted) {
@@ -1374,6 +1378,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const std::shared_ptr<ResourceMappingType> &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *return_objects,
                                ReferenceCounter::ReferenceTableProto *borrowed_refs) {
+  RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 

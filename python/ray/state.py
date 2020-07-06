@@ -602,25 +602,51 @@ class GlobalState:
         """Get a dictionary mapping worker ID to worker information."""
         self._check_connected()
 
-        worker_keys = self.redis_client.keys("Worker*")
+        # Get all data in worker table
+        worker_table = self.global_state_accessor.get_worker_table()
         workers_data = {}
+        for i in range(len(worker_table)):
+            worker_table_data = gcs_utils.WorkerTableData.FromString(
+                worker_table[i])
+            if worker_table_data.is_alive and \
+                    worker_table_data.worker_type == gcs_utils.WORKER:
+                worker_id = binary_to_hex(
+                    worker_table_data.worker_address.worker_id)
+                worker_info = worker_table_data.worker_info
 
-        for worker_key in worker_keys:
-            worker_info = self.redis_client.hgetall(worker_key)
-            worker_id = binary_to_hex(worker_key[len("Workers:"):])
-
-            workers_data[worker_id] = {
-                "node_ip_address": decode(worker_info[b"node_ip_address"]),
-                "plasma_store_socket": decode(
-                    worker_info[b"plasma_store_socket"])
-            }
-            if b"stderr_file" in worker_info:
-                workers_data[worker_id]["stderr_file"] = decode(
-                    worker_info[b"stderr_file"])
-            if b"stdout_file" in worker_info:
-                workers_data[worker_id]["stdout_file"] = decode(
-                    worker_info[b"stdout_file"])
+                workers_data[worker_id] = {
+                    "node_ip_address": decode(worker_info[b"node_ip_address"]),
+                    "plasma_store_socket": decode(
+                        worker_info[b"plasma_store_socket"])
+                }
+                if b"stderr_file" in worker_info:
+                    workers_data[worker_id]["stderr_file"] = decode(
+                        worker_info[b"stderr_file"])
+                if b"stdout_file" in worker_info:
+                    workers_data[worker_id]["stdout_file"] = decode(
+                        worker_info[b"stdout_file"])
         return workers_data
+
+    def add_worker(self, worker_id, worker_type, worker_info):
+        """ Add a worker to the cluster.
+
+        Args:
+            worker_id: ID of this worker. Type is bytes.
+            worker_type: Type of this worker. Value is ray.gcs_utils.DRIVER or
+                ray.gcs_utils.WORKER.
+            worker_info: Info of this worker. Type is dict{str: str}.
+
+        Returns:
+             Is operation success
+        """
+        worker_data = ray.gcs_utils.WorkerTableData()
+        worker_data.is_alive = True
+        worker_data.worker_address.worker_id = worker_id
+        worker_data.worker_type = worker_type
+        for k, v in worker_info.items():
+            worker_data.worker_info[k] = bytes(v, encoding="utf-8")
+        return self.global_state_accessor.add_worker_info(
+            worker_data.SerializeToString())
 
     def _job_length(self):
         event_log_sets = self.redis_client.keys("event_log*")
@@ -703,12 +729,9 @@ class GlobalState:
             heartbeat_data = pub_message.data
             message = gcs_utils.HeartbeatTableData.FromString(heartbeat_data)
             # Calculate available resources for this client
-            num_resources = len(message.resources_available_label)
             dynamic_resources = {}
-            for i in range(num_resources):
-                resource_id = message.resources_available_label[i]
-                dynamic_resources[resource_id] = (
-                    message.resources_available_capacity[i])
+            for resource_id, capacity in message.resources_available.items():
+                dynamic_resources[resource_id] = capacity
 
             # Update available resources for this client
             client_id = ray.utils.binary_to_hex(message.client_id)
