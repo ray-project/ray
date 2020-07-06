@@ -156,7 +156,7 @@ void ActorManager::AddActorOutOfScopeCallback(
 
 void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                                                 const gcs::ActorTableData &actor_data) {
-  std::unique_ptr<ActorHandle> &actor_handle = GetActorHandle(actor_id);
+  const std::unique_ptr<ActorHandle> &actor_handle = GetActorHandle(actor_id);
   // If any notification comes in, that means this actor is persisted to GCS.
   actor_handle->SetIsPersistedToGCSFlag();
 
@@ -201,7 +201,7 @@ void ActorManager::ResolveActorsLocations() {
     auto current = it++;
     const auto &actor_id = *current;
 
-    std::unique_ptr<ActorHandle> &actor_handle = GetActorHandleInternal(actor_id);
+    const std::unique_ptr<ActorHandle> &actor_handle = GetActorHandleInternal(actor_id);
     const ClientID &node_id =
         ClientID::FromBinary(actor_handle->GetOwnerAddress().raylet_id());
 
@@ -212,10 +212,10 @@ void ActorManager::ResolveActorsLocations() {
     } else {
       // https://github.com/ray-project/ray/pull/8679/files
       // Run a protocol to resolve actors location that haven't been registered to GCS.
-      RAY_CHECK_OK(gcs_client_->Workers().AsyncGetWorkerFailure(
+      RAY_CHECK_OK(gcs_client_->Workers().AsyncGet(
           WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id()),
           [this, actor_id, node_id](
-              Status status, const boost::optional<gcs::WorkerFailureData> &result) {
+              Status status, const boost::optional<gcs::WorkerTableData> &result) {
             if (!status.ok()) {
               return;
             }
