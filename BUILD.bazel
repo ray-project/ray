@@ -8,7 +8,7 @@ load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS")
+load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace")
 
 config_setting(
     name = "windows_msvc-cl",
@@ -1881,60 +1881,90 @@ py_library(
     visibility = ["__subpackages__"],
 )
 
+copy_to_workspace(
+    name = "cp_raylet_so",
+    srcs = ["python/ray/_raylet.so"],
+    subdir = "python/ray",
+)
+
+copy_to_workspace(
+    name = "cp_streaming",
+    srcs = ["python/ray/streaming/_streaming.so"],
+    subdir = "python/ray/streaming",
+)
+
+copy_to_workspace(
+    name = "cp_all_py_proto",
+    srcs = [":all_py_proto"],
+    subdir = "python/ray/core/generated",
+)
+
+copy_to_workspace(
+    name = "cp_redis",
+    srcs = [
+        ":redis-cli",
+        ":redis-server",
+    ],
+    subdir = "python/ray/core/src/ray/thirdparty/redis/src",
+)
+
+copy_to_workspace(
+    name = "cp_libray_redis_module",
+    srcs = [":libray_redis_module.so"],
+    subdir = "python/ray/core/src/ray/gcs/redis_module",
+)
+
+copy_to_workspace(
+    name = "cp_raylet",
+    srcs = [":raylet"],
+    subdir = "python/ray/core/src/ray/raylet",
+)
+
+copy_to_workspace(
+    name = "cp_gcs_server",
+    srcs = [":gcs_server"],
+    subdir = "python/ray/core/src/ray/gcs",
+)
+
+copy_to_workspace(
+    name = "cp_plasma_store_server",
+    srcs = [":plasma_store_server"],
+    subdir = "python/ray/core/src/plasma",
+)
+
 genrule(
     name = "ray_pkg",
     srcs = [
-        "python/ray/_raylet.so",
-        "python/ray/streaming/_streaming.so",
-        "//:python_sources",
-        "//:all_py_proto",
-        "//:redis-server",
-        "//:redis-cli",
-        "//:libray_redis_module.so",
-        "//:raylet",
-        "//:gcs_server",
-        "//:plasma_store_server",
+        ":cp_raylet_so",
+        ":cp_streaming",
+        ":python_sources",
+        ":cp_all_py_proto",
+        ":cp_redis",
+        ":cp_libray_redis_module",
+        ":cp_raylet",
+        ":cp_gcs_server",
+        ":cp_plasma_store_server",
         "//streaming:copy_streaming_py_proto",
     ],
     outs = ["ray_pkg.out"],
     cmd = """
-        WORK_DIR="$$(pwd)"
-        RAYDIR="$$WORK_DIR/python/ray"
-        RAYLET="$(location python/ray/_raylet.so)"
-        RAYLET_TARGET_FILENAME="$${RAYLET##*/}"
         if [ "$${OSTYPE-}" = "msys" ]; then
-            # If Windows, we need to do things differently (e.g. use .pyd instead of .so)
-            RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME%.*}"
-            RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME}.pyd"
-            if [ -f "$${RAYLET%.*}.pdb" ]; then
-                cp -f "$${RAYLET%.*}.pdb" "$${RAYDIR}";
-            fi;
+            mv -f python/ray/_raylet.so python/ray/_raylet.pyd
         fi
-        cp -f "$${RAYLET}" "$${RAYDIR}/$${RAYLET_TARGET_FILENAME}"
-        cp -f $(location python/ray/streaming/_streaming.so) "$$WORK_DIR/python/ray/streaming"
-        mkdir -p "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/"
-        cp -f $(location //:redis-server) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/"
-        cp -f $(location //:redis-cli) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/"
-        mkdir -p "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/"
-        cp -f $(locations //:libray_redis_module.so) "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/"
-        cp -f $(location //:plasma_store_server) "$$WORK_DIR/python/ray/core/src/plasma/"
-        cp -f $(location //:raylet) "$$WORK_DIR/python/ray/core/src/ray/raylet/"
-        cp -f $(location //:gcs_server) "$$WORK_DIR/python/ray/core/src/ray/gcs/"
-        mkdir -p "$$WORK_DIR/python/ray/core/generated/ray/protocol/"
-        for f in $(locations //:all_py_proto); do
-            cp -f "$$f" "$$WORK_DIR/python/ray/core/generated/";
-        done
         # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
         # command to change the import path in the generated file.
-        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/gcs_pb2.py"
-        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/common_pb2.py"
-        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/node_manager_pb2.py"
-        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/node_manager_pb2_grpc.py"
-        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/reporter_pb2.py"
-        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/reporter_pb2_grpc.py"
-        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/core_worker_pb2.py"
-        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/core_worker_pb2_grpc.py"
-        echo "$$WORK_DIR" > $@
+        files=(
+            python/ray/core/generated/gcs_pb2.py
+            python/ray/core/generated/common_pb2.py
+            python/ray/core/generated/node_manager_pb2.py
+            python/ray/core/generated/node_manager_pb2_grpc.py
+            python/ray/core/generated/reporter_pb2.py
+            python/ray/core/generated/reporter_pb2_grpc.py
+            python/ray/core/generated/core_worker_pb2.py
+            python/ray/core/generated/core_worker_pb2_grpc.py
+        )
+        sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
+        echo "$${PWD}" > $@
     """,
     local = 1,
 )

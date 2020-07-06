@@ -3,7 +3,7 @@
 
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@rules_proto_grpc//python:defs.bzl", "python_proto_compile")
-load("//bazel:ray.bzl", "COPTS")
+load("//bazel:ray.bzl", "COPTS", "copy_to_workspace")
 
 proto_library(
     name = "streaming_proto",
@@ -259,25 +259,24 @@ filegroup(
     ],
 )
 
+copy_to_workspace(
+    name = "cp_all_py_proto",
+    srcs = [":all_py_proto"],
+    subdir = "streaming/python/generated",
+)
+
 genrule(
     name = "copy_streaming_py_proto",
     srcs = [
-        ":all_py_proto",
+        ":cp_all_py_proto",
     ],
     outs = [
         "copy_streaming_py_proto.out",
     ],
     cmd = """
-        set -e
-        WORK_DIR="$$(pwd)"
-        # Copy generated files.
-        GENERATED_DIR="$$WORK_DIR/streaming/python/generated"
-        rm -rf "$$GENERATED_DIR"
+        GENERATED_DIR="streaming/python/generated"
         mkdir -p "$$GENERATED_DIR"
         touch "$$GENERATED_DIR/__init__.py"
-        for f in $(locations //streaming:all_py_proto); do
-            cp -f "$$f" "$$GENERATED_DIR"
-        done
         sed -i -E 's/from streaming.src.protobuf/from ./' "$$GENERATED_DIR/remote_call_pb2.py"
         date > $@
     """,
