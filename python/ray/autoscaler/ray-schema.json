@@ -148,7 +148,8 @@
                     "properties": {
                         "type": {
                             "type": "string",
-                            "description": "credentials_token or service_account"
+                            "enum": ["credentials_token", "service_account"],
+                            "description": "Credentials type: either temporary OAuth 2.0 token or permanent service account credentials blob."
                         },
                         "credentials": {
                             "type": "string",

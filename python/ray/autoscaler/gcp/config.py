@@ -1,5 +1,4 @@
 from functools import partial
-import httplib2
 import json
 import os
 import logging
@@ -10,7 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
 from googleapiclient import discovery, errors
 from google.oauth2 import service_account
-from oauth2client.client import AccessTokenCredentials
+from google.oauth2.credentials import Credentials
 
 logger = logging.getLogger(__name__)
 
@@ -105,29 +104,17 @@ def generate_rsa_key_pair():
     return public_key, pem
 
 
-def _create_crm_service_account(gcp_credentials=None):
+def _create_crm(gcp_credentials=None):
     return discovery.build(
         "cloudresourcemanager", "v1", credentials=gcp_credentials)
 
 
-def _create_iam_service_account(gcp_credentials=None):
+def _create_iam(gcp_credentials=None):
     return discovery.build("iam", "v1", credentials=gcp_credentials)
 
 
-def _create_compute_service_account(gcp_credentials=None):
+def _create_compute(gcp_credentials=None):
     return discovery.build("compute", "v1", credentials=gcp_credentials)
-
-
-def _create_crm_oauth_token_request(token_request):
-    return discovery.build("cloudresourcemanager", "v1", http=token_request)
-
-
-def _create_iam_oauth_token_request(token_request):
-    return discovery.build("iam", "v1", http=token_request)
-
-
-def _create_compute_oauth_token_request(token_request):
-    return discovery.build("compute", "v1", http=token_request)
 
 
 def construct_clients_from_provider_config(provider_config):
@@ -137,25 +124,23 @@ def construct_clients_from_provider_config(provider_config):
     """
     gcp_credentials = provider_config.get("gcp_credentials")
     if gcp_credentials is None:
-        logger.info("gcp_credentials not found in cluster yaml file. "
-                    "Falling back to GOOGLE_APPLICATION_CREDENTIALS "
-                    "environment variable.")
+        logger.debug("gcp_credentials not found in cluster yaml file. "
+                     "Falling back to GOOGLE_APPLICATION_CREDENTIALS "
+                     "environment variable.")
         # If gcp_credentials is None, then discovery.build will search for
         # credentials in the local environment.
-        return _create_crm_service_account(), \
-            _create_iam_service_account(), \
-            _create_compute_service_account()
+        return _create_crm(), \
+            _create_iam(), \
+            _create_compute()
 
-    assert ("type" in gcp_credentials and "credentials" in gcp_credentials), \
-        "gcp_credentials cluster yaml field missing 'type'" \
-        " or 'credentials' fields."
+    assert ("type" in gcp_credentials), \
+        "gcp_credentials cluster yaml field missing 'type' field."
+    assert ("credentials" in gcp_credentials), \
+        "gcp_credentials cluster yaml field missing 'credentials' field."
+
     cred_type = gcp_credentials["type"]
     credentials_field = gcp_credentials["credentials"]
-
-    assert (cred_type in ("service_account", "credentials_token")), \
-        "gcp_credentials type must either be 'service_account'" \
-        " or 'credentials_token'."
-
+    __import__("ipdb").set_trace()
     if cred_type == "service_account":
         # If parsing the gcp_credentials failed, then the user likely made a
         # mistake in copying the credentials into the config yaml.
@@ -167,16 +152,15 @@ def construct_clients_from_provider_config(provider_config):
                 "formatted improperly.")
         credentials = service_account.Credentials.from_service_account_info(
             service_account_info)
-        return _create_crm_service_account(credentials), \
-            _create_iam_service_account(credentials), \
-            _create_compute_service_account(credentials)
+        return _create_crm(credentials), \
+            _create_iam(credentials), \
+            _create_compute(credentials)
 
     # Otherwise the credentials type must be credentials_token.
-    creds_from_token = AccessTokenCredentials(credentials_field, "MyAgent/1.0")
-    token_request = creds_from_token.authorize(httplib2.Http())
-    return _create_crm_oauth_token_request(token_request), \
-        _create_iam_oauth_token_request(token_request), \
-        _create_compute_oauth_token_request(token_request)
+    creds_from_token = Credentials(credentials_field)
+    return _create_crm(creds_from_token), \
+        _create_iam(creds_from_token), \
+        _create_compute(creds_from_token)
 
 
 def bootstrap_gcp(config):
