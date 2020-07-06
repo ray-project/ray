@@ -530,11 +530,10 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
       } else {
         // When actor creation request of this actor id is pending in raylet,
         // it doesn't responds, and the actor should be still in leasing state.
-        // TODO(sang): Call raylet->CancelWorkerLease explicitly if worker leaks are
-        // detected. Theoretically, worker leaks should not happen because gcs will
-        // publish the actor dead state to raylet after this part, and it will clean up
-        // leased workers.
-        gcs_actor_scheduler_->CancelLeasingRequest(node_id, actor_id);
+        // NOTE: Raylet will cancel the lease request once it receives the
+        // actor state notification. So this method doesn't have to cancel
+        // outstanding lease request by calling raylet_client->CancelWorkerLease
+        gcs_actor_scheduler_->CancelOnLeasing(node_id, actor_id);
       }
     }
   }

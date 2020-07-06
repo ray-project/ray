@@ -125,8 +125,9 @@ std::vector<ActorID> GcsActorScheduler::CancelOnNode(const ClientID &node_id) {
 
 void GcsActorScheduler::CancelOnLeasing(const ClientID &node_id,
                                         const ActorID &actor_id) {
-  /// Note(sang): It is currently effective only inside RequestWorkerLease callback.
-  /// TODO(sang): Cancel lease request explictly from this API.
+  // NOTE: This method does not currently cancel the outstanding lease request.
+  // It only removes leasing information from the internal state so that
+  // RequestWorkerLease ignores the response from raylet.
   auto node_it = node_to_actors_when_leasing_.find(node_id);
   RAY_CHECK(node_it != node_to_actors_when_leasing_.end());
   node_it->second.erase(actor_id);
