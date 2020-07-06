@@ -623,6 +623,20 @@ def stop(force, verbose):
 
 @cli.command(hidden=True)
 @click.argument("cluster_config_file", required=True, type=str)
+@click.option("-v", "--verbose", count=True)
+@click.option(
+    "--log-color",
+    required=False,
+    type=str,
+    default="auto",
+    help=(
+        "Use color logging. "
+        "Valid values are: auto (if stdout is a tty), true, false."))
+@click.option(
+    "--log-old-style",
+    is_flag=True,
+    default=False,
+    help=("Use old logging."))
 @click.option(
     "--no-restart",
     is_flag=True,
@@ -658,7 +672,8 @@ def stop(force, verbose):
     default=False,
     help="Don't ask for confirmation.")
 def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
-                     restart_only, yes, cluster_name):
+                     restart_only, yes, cluster_name,
+                     log_old_style, log_color, verbose):
     """Create or update a Ray cluster."""
     if restart_only or no_restart:
         assert restart_only != no_restart, "Cannot set both 'restart_only' " \
@@ -674,7 +689,8 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
         except urllib.error.HTTPError as e:
             logger.info("Error downloading file: ", e)
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
-                             no_restart, restart_only, yes, cluster_name)
+                             no_restart, restart_only, yes, cluster_name,
+                             log_old_style, log_color, verbose)
 
 
 @cli.command(hidden=True)

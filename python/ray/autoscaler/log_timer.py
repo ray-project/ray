@@ -1,6 +1,8 @@
 import datetime
 import logging
 
+from ray.autoscaler.cli_logger import cli_logger
+
 logger = logging.getLogger(__name__)
 
 
@@ -13,6 +15,9 @@ class LogTimer:
         self._start_time = datetime.datetime.utcnow()
 
     def __exit__(self, *error_vals):
+        if not cli_logger.old_style:
+            return
+
         td = datetime.datetime.utcnow() - self._start_time
         status = ""
         if self._show_status:

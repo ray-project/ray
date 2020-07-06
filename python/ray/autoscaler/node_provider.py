@@ -84,6 +84,15 @@ NODE_PROVIDERS = {
     "docker": None,
     "external": import_external  # Import an external module
 }
+PROVIDER_PRETTY_NAMES = {
+    "local": "Local",
+    "aws": "AWS",
+    "gcp": "GCP",
+    "azure": "Azure",
+    "kubernetes": "Kubernetes",
+    # "docker": "Docker", # not supported
+    "external": "External"
+}
 
 DEFAULT_CONFIGS = {
     "local": load_local_example_config,
