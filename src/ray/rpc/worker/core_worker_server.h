@@ -34,6 +34,8 @@ namespace rpc {
   RPC_SERVICE_HANDLER(CoreWorkerService, WaitForActorOutOfScope)         \
   RPC_SERVICE_HANDLER(CoreWorkerService, WaitForObjectEviction)          \
   RPC_SERVICE_HANDLER(CoreWorkerService, WaitForRefRemoved)              \
+  RPC_SERVICE_HANDLER(CoreWorkerService, AddObjectLocation)              \
+  RPC_SERVICE_HANDLER(CoreWorkerService, RemoveObjectLocation)           \
   RPC_SERVICE_HANDLER(CoreWorkerService, KillActor)                      \
   RPC_SERVICE_HANDLER(CoreWorkerService, CancelTask)                     \
   RPC_SERVICE_HANDLER(CoreWorkerService, RemoteCancelTask)               \
@@ -49,6 +51,8 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForActorOutOfScope)         \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForObjectEviction)          \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForRefRemoved)              \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AddObjectLocation)              \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RemoveObjectLocation)           \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(KillActor)                      \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(CancelTask)                     \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RemoteCancelTask)               \

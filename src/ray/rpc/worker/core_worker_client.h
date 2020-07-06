@@ -160,6 +160,18 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
+  virtual ray::Status AddObjectLocation(
+      const AddObjectLocationRequest &request,
+      const ClientCallback<AddObjectLocationReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
+  virtual ray::Status RemoveObjectLocation(
+      const RemoveObjectLocationRequest &request,
+      const ClientCallback<RemoveObjectLocationReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
   /// Tell this actor to exit immediately.
   virtual ray::Status KillActor(const KillActorRequest &request,
                                 const ClientCallback<KillActorReply> &callback) {
@@ -237,6 +249,10 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   RPC_CLIENT_METHOD(CoreWorkerService, WaitForActorOutOfScope, grpc_client_, override)
 
   RPC_CLIENT_METHOD(CoreWorkerService, WaitForObjectEviction, grpc_client_, override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, AddObjectLocation, grpc_client_, override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, RemoveObjectLocation, grpc_client_, override)
 
   RPC_CLIENT_METHOD(CoreWorkerService, GetCoreWorkerStats, grpc_client_, override)
 

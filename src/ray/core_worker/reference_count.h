@@ -316,6 +316,9 @@ class ReferenceCounter {
       const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
       rpc::CoreWorkerStats *stats) const LOCKS_EXCLUDED(mutex_);
 
+  void AddObjectLocation(const ObjectID &object_id, const ClientID &node_id);
+  void RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id);
+
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
@@ -464,6 +467,8 @@ class ReferenceCounter {
     /// is inlined (not stored in plasma), then its lineage ref count is 0
     /// because any dependent task will already have the value of the object.
     size_t lineage_ref_count = 0;
+    /// Locations that stores the object (used for object directory)
+    absl::flat_hash_set<ClientID> locations;
 
     /// Callback that will be called when this ObjectID no longer has
     /// references.

@@ -841,6 +841,22 @@ void ReferenceCounter::SetReleaseLineageCallback(
   on_lineage_released_ = callback;
 }
 
+void AddObjectLocation(const ObjectID &object_id, const ClientID &node_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  RAY_CHECK(it != object_id_refs_.end());
+  RAY_CHECK(it->second.owned_by_us);
+  it->second.locations.insert(node_id);
+}
+
+void RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  RAY_CHECK(it != object_id_refs_.end());
+  RAY_CHECK(it->second.owned_by_us);
+  it->second.locations.erase(node_id);
+}
+
 ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(
     const rpc::ObjectReferenceCount &ref_count) {
   Reference ref;
