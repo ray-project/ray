@@ -1899,42 +1899,42 @@ genrule(
     ],
     outs = ["ray_pkg.out"],
     cmd = """
-        WORK_DIR="$$(pwd)" &&
+        WORK_DIR="$$(pwd)"
         RAYDIR="$$WORK_DIR/python/ray"
         RAYLET="$(location python/ray/_raylet.so)"
-        RAYLET_TARGET_FILENAME="$${RAYLET##*/}" &&
+        RAYLET_TARGET_FILENAME="$${RAYLET##*/}"
         if [ "$${OSTYPE-}" = "msys" ]; then
             # If Windows, we need to do things differently (e.g. use .pyd instead of .so)
-            RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME%.*}" &&
-            RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME}.pyd" &&
+            RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME%.*}"
+            RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME}.pyd"
             if [ -f "$${RAYLET%.*}.pdb" ]; then
                 cp -f "$${RAYLET%.*}.pdb" "$${RAYDIR}";
             fi;
-        fi &&
-        cp -f "$${RAYLET}" "$${RAYDIR}/$${RAYLET_TARGET_FILENAME}" &&
-        cp -f $(location python/ray/streaming/_streaming.so) "$$WORK_DIR/python/ray/streaming" &&
-        mkdir -p "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
-        cp -f $(location //:redis-server) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
-        cp -f $(location //:redis-cli) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
-        mkdir -p "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/" &&
-        cp -f $(locations //:libray_redis_module.so) "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/" &&
-        cp -f $(location //:plasma_store_server) "$$WORK_DIR/python/ray/core/src/plasma/" &&
-        cp -f $(location //:raylet) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
-        cp -f $(location //:gcs_server) "$$WORK_DIR/python/ray/core/src/ray/gcs/" &&
-        mkdir -p "$$WORK_DIR/python/ray/core/generated/ray/protocol/" &&
+        fi
+        cp -f "$${RAYLET}" "$${RAYDIR}/$${RAYLET_TARGET_FILENAME}"
+        cp -f $(location python/ray/streaming/_streaming.so) "$$WORK_DIR/python/ray/streaming"
+        mkdir -p "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/"
+        cp -f $(location //:redis-server) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/"
+        cp -f $(location //:redis-cli) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/"
+        mkdir -p "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/"
+        cp -f $(locations //:libray_redis_module.so) "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/"
+        cp -f $(location //:plasma_store_server) "$$WORK_DIR/python/ray/core/src/plasma/"
+        cp -f $(location //:raylet) "$$WORK_DIR/python/ray/core/src/ray/raylet/"
+        cp -f $(location //:gcs_server) "$$WORK_DIR/python/ray/core/src/ray/gcs/"
+        mkdir -p "$$WORK_DIR/python/ray/core/generated/ray/protocol/"
         for f in $(locations //:all_py_proto); do
             cp -f "$$f" "$$WORK_DIR/python/ray/core/generated/";
-        done &&
+        done
         # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
         # command to change the import path in the generated file.
-        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/gcs_pb2.py" &&
-        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/common_pb2.py" &&
-        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/node_manager_pb2.py" &&
-        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/node_manager_pb2_grpc.py" &&
-        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/reporter_pb2.py" &&
-        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/reporter_pb2_grpc.py" &&
-        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/core_worker_pb2.py" &&
-        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/core_worker_pb2_grpc.py" &&
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/gcs_pb2.py"
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/common_pb2.py"
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/node_manager_pb2.py"
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/node_manager_pb2_grpc.py"
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/reporter_pb2.py"
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/reporter_pb2_grpc.py"
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/core_worker_pb2.py"
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/core_worker_pb2_grpc.py"
         echo "$$WORK_DIR" > $@
     """,
     local = 1,
