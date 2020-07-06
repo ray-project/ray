@@ -46,7 +46,7 @@ These pages will demonstrate the various features and configurations of Tune.
     <div class="sphx-glr-bigcontainer">
 
 .. customgalleryitem::
-   :tooltip: A guide to Tune features.
+   :tooltip: Tune User Guide
    :figure: /images/tune.png
    :description: :doc:`Tune User Guide <tune-usage>`
 

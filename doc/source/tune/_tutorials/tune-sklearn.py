@@ -10,7 +10,7 @@ Scikit-Learn is one of the most widely used tools in the ML community for workin
     :align: center
     :width: 50%
 
-Scikit-Learn `has an existing module for model selection <https://scikit-learn.org/stable/modules/grid_search.html>`_, but the algorithms offered Grid Search (GridSearchCV) and Random Search (RandomizedSearchCV). are often considered ineffifient. In this tutorial, we'll cover ``tune-sklearn``, a drop-in replacement for Scikit-Learn’s model selection module with state-of-the-art optimization features such as early stopping and Bayesian Optimization.
+Scikit-Learn `has an existing module for model selection <https://scikit-learn.org/stable/modules/grid_search.html>`_, but the algorithms offered (Grid Search/``GridSearchCV`` and Random Search/``RandomizedSearchCV``) are often considered inefficient. In this tutorial, we'll cover ``tune-sklearn``, a drop-in replacement for Scikit-Learn's model selection module with state-of-the-art optimization features such as early stopping and Bayesian Optimization.
 
 .. tip:: Check out the `tune-sklearn code`_ and :ref:`documentation <tune-sklearn-docs>`.
 
@@ -19,7 +19,7 @@ Scikit-Learn `has an existing module for model selection <https://scikit-learn.o
 Overview
 --------
 
-``tune-sklearn`` is a module that integrates Ray Tune's hyperparameter tuning and scikit-learn's Classifier API. ``tune-sklearn`` has two APIs: :ref:`TuneSearchCV <tunesearchcv-docs>`, and :ref:`TuneGridSearchCV <tunegridsearchcv-docs>`. They are drop-in replacements for Scikit-learn's RandomizedSearchCV and GridSearchCV. so you only need to change less than 5 lines in a standard Scikit-Learn script to use the API.
+``tune-sklearn`` is a module that integrates Ray Tune's hyperparameter tuning and scikit-learn's Classifier API. ``tune-sklearn`` has two APIs: :ref:`TuneSearchCV <tunesearchcv-docs>`, and :ref:`TuneGridSearchCV <tunegridsearchcv-docs>`. They are drop-in replacements for Scikit-learn's RandomizedSearchCV and GridSearchCV, so you only need to change less than 5 lines in a standard Scikit-Learn script to use the API.
 
 Ray Tune's Scikit-learn APIs allows you to easily leverage Bayesian Optimization, HyperBand, and other cutting edge tuning techniques by simply toggling a few parameters. It also supports and provides examples for many other frameworks with Scikit-Learn wrappers such as Skorch (Pytorch), KerasClassifiers (Keras), and XGBoostClassifiers (XGBoost).
 
