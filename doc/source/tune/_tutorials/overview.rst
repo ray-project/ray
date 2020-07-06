@@ -25,11 +25,6 @@ Take a look at any of the below tutorials to get started with Tune.
    :figure: /images/tune.png
    :description: :doc:`A walkthrough to setup your first Tune experiment <tune-tutorial>`
 
-.. customgalleryitem::
-   :tooltip: Tuning XGBoost parameters.
-   :figure: /images/xgboost_logo.png
-   :description: :doc:`A guide to tuning XGBoost parameters with Tune <tune-xgboost>`
-
 .. raw:: html
 
     </div>
@@ -39,7 +34,6 @@ Take a look at any of the below tutorials to get started with Tune.
 
    tune-60-seconds.rst
    tune-tutorial.rst
-   tune-xgboost.rst
 
 
 User Guides
@@ -66,6 +60,17 @@ These pages will demonstrate the various features and configurations of Tune.
    :figure: /images/tune.png
    :description: :doc:`A guide to distributed hyperparameter tuning <tune-distributed>`
 
+.. customgalleryitem::
+   :tooltip: Tuning PyTorch Lightning modules
+   :figure: /images/pytorch_lightning_small.png
+   :description: :doc:`Tuning PyTorch Lightning modules <tune-pytorch-lightning>`
+
+.. customgalleryitem::
+   :tooltip: Tuning XGBoost parameters.
+   :figure: /images/xgboost_logo.png
+   :description: :doc:`A guide to tuning XGBoost parameters with Tune <tune-xgboost>`
+
+
 .. raw:: html
 
     </div>
@@ -76,6 +81,8 @@ These pages will demonstrate the various features and configurations of Tune.
    tune-usage.rst
    tune-advanced-tutorial.rst
    tune-distributed.rst
+   tune-pytorch-lightning.rst
+   tune-xgboost.rst
 
 Colab Exercises
 ---------------

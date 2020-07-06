@@ -28,6 +28,7 @@ GcsNodeManager::NodeFailureDetector::NodeFailureDetector(
     : gcs_table_storage_(std::move(gcs_table_storage)),
       on_node_death_callback_(std::move(on_node_death_callback)),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
+      light_heartbeat_enabled_(RayConfig::instance().light_heartbeat_enabled()),
       detect_timer_(io_service),
       gcs_pub_sub_(std::move(gcs_pub_sub)) {
   Tick();
@@ -48,7 +49,12 @@ void GcsNodeManager::NodeFailureDetector::HandleHeartbeat(
   }
 
   iter->second = num_heartbeats_timeout_;
-  heartbeat_buffer_[node_id] = heartbeat_data;
+  if (!light_heartbeat_enabled_ || heartbeat_data.should_global_gc() ||
+      heartbeat_data.resources_available_size() > 0 ||
+      heartbeat_data.resources_total_size() > 0 ||
+      heartbeat_data.resource_load_size() > 0) {
+    heartbeat_buffer_[node_id] = heartbeat_data;
+  }
 }
 
 /// A periodic timer that checks for timed out clients.
@@ -310,6 +316,7 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
 
 std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     const ray::ClientID &node_id, bool is_intended /*= false*/) {
+  RAY_LOG(INFO) << "Removing node, node id = " << node_id;
   std::shared_ptr<rpc::GcsNodeInfo> removed_node;
   auto iter = alive_nodes_.find(node_id);
   if (iter != alive_nodes_.end()) {

@@ -395,6 +395,10 @@ def get_gpu_ids():
         assigned_ids = [
             global_worker.original_gpu_ids[gpu_id] for gpu_id in assigned_ids
         ]
+        # Give all GPUs in local_mode.
+        if global_worker.mode == LOCAL_MODE:
+            max_gpus = global_worker.node.get_resource_spec().num_gpus
+            return global_worker.original_gpu_ids[:max_gpus]
 
     return assigned_ids
 
@@ -868,15 +872,14 @@ normal_excepthook = sys.excepthook
 
 
 def custom_excepthook(type, value, tb):
-    # If this is a driver, push the exception to redis.
+    # If this is a driver, push the exception to GCS worker table.
     if global_worker.mode == SCRIPT_MODE:
         error_message = "".join(traceback.format_tb(tb))
-        try:
-            global_worker.redis_client.hmset(
-                b"Drivers:" + global_worker.worker_id,
-                {"exception": error_message})
-        except (ConnectionRefusedError, redis.exceptions.ConnectionError):
-            logger.warning("Could not push exception to redis.")
+        worker_id = global_worker.worker_id
+        worker_type = ray.gcs_utils.DRIVER
+        worker_info = {"exception": error_message}
+
+        ray.state.state.add_worker(worker_id, worker_type, worker_info)
     # Call the normal excepthook.
     normal_excepthook(type, value, tb)
 

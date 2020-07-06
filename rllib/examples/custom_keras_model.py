@@ -12,7 +12,7 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.visionnet import VisionNetwork as MyVisionNetwork
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="DQN")  # Try PG, PPO, DQN

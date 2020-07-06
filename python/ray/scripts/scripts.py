@@ -570,7 +570,6 @@ def stop(force, verbose):
         # Keyword to filter, filter by command (True)/filter by args (False)
         ["raylet", True],
         ["plasma_store", True],
-        ["raylet_monitor", True],
         ["gcs_server", True],
         ["monitor.py", False],
         ["redis-server", False],
