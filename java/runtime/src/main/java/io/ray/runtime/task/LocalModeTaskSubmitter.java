@@ -95,9 +95,11 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     // Check whether task arguments are ready.
     for (TaskArg arg : taskSpec.getArgsList()) {
       ByteString idByteString = arg.getObjectRef().getObjectId();
-      ObjectId id = new ObjectId(idByteString.toByteArray());
-      if (!objectStore.isObjectReady(id)) {
-        unreadyObjects.add(id);
+      if (idByteString  != ByteString.EMPTY) {
+        ObjectId id = new ObjectId(idByteString.toByteArray());
+        if (!objectStore.isObjectReady(id)) {
+          unreadyObjects.add(id);
+        }
       }
     }
     if (taskSpec.getType() == TaskType.ACTOR_TASK) {
