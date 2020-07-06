@@ -530,10 +530,10 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
       } else {
         // When actor creation request of this actor id is pending in raylet,
         // it doesn't responds, and the actor should be still in leasing state.
-        // TODO(sang): Theoretically, worker leaks should not happen because
-        // gcs will publish the actor dead state to raylet after, and it will
-        // clean up leased workers.
-        // Call raylet->CancelWorkerLease explicitly if worker leaks are detected.
+        // TODO(sang): Call raylet->CancelWorkerLease explicitly if worker leaks are
+        // detected. Theoretically, worker leaks should not happen because gcs will
+        // publish the actor dead state to raylet after this part, and it will clean up
+        // leased workers.
         gcs_actor_scheduler_->CancelLeasingRequest(node_id, actor_id);
       }
     }
@@ -585,18 +585,16 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
     }
   } else {
     actor_id = gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id);
-  }
-
-  // If actor is not created & not in the creation process, don't do anything.
-  if (actor_id.IsNil()) {
-    return;
+    if (actor_id.IsNil()) {
+      return;
+    }
   }
 
   // Otherwise, try to reconstruct the actor that was already created or in the creation
   // process.
-  RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
-                << " failed, restarting actor " << actor_id
-                << ", intentional exit: " << intentional_exit;
+  RAY_LOG(WARNING) << "Worker " << worker_id << " on node " << node_id
+                   << " failed, restarting actor " << actor_id
+                   << ", intentional exit: " << intentional_exit;
   ReconstructActor(actor_id, /*need_reschedule=*/!intentional_exit);
 }
 

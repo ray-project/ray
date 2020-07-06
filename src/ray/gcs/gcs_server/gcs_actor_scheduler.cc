@@ -123,8 +123,10 @@ std::vector<ActorID> GcsActorScheduler::CancelOnNode(const ClientID &node_id) {
   return actor_ids;
 }
 
-void GcsActorScheduler::CancelLeasingRequest(const ClientID &node_id,
-                                             const ActorID &actor_id) {
+void GcsActorScheduler::CancelOnLeasing(const ClientID &node_id,
+                                        const ActorID &actor_id) {
+  /// Note(sang): It is currently effective only inside RequestWorkerLease callback.
+  /// TODO(sang): Cancel lease request explictly from this API.
   auto node_it = node_to_actors_when_leasing_.find(node_id);
   RAY_CHECK(node_it != node_to_actors_when_leasing_.end());
   node_it->second.erase(actor_id);
@@ -179,6 +181,10 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
           auto actor_iter = iter->second.find(actor->GetActorID());
           if (actor_iter == iter->second.end()) {
             // if actor is not in leasing state, it means it is cancelled.
+            RAY_LOG(INFO) << "Raylet granted a lease request, but the outstanding lease "
+                             "request for "
+                          << actor->GetActorID()
+                          << " has been already cancelled. The response will be ignored.";
             return;
           }
 
@@ -260,7 +266,9 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
                   .emplace(leased_worker->GetWorkerID(), leased_worker)
                   .second);
     actor->UpdateAddress(leased_worker->GetAddress());
-    // Make sure to connect to the client before calling GCS.
+    // Make sure to connect to the client before persisting actor info to GCS.
+    // Without this, there could be a possible race condition. Related issues:
+    // https://github.com/ray-project/ray/pull/9215/files#r449469320
     GetOrConnectCoreWorkerClient(leased_worker->GetAddress());
     RAY_CHECK_OK(gcs_actor_table_.Put(actor->GetActorID(), actor->GetActorTableData(),
                                       [this, actor, leased_worker](Status status) {
