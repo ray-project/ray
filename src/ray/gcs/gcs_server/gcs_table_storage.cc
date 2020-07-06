@@ -112,7 +112,7 @@ template class GcsTable<ClientID, HeartbeatTableData>;
 template class GcsTable<ClientID, HeartbeatBatchTableData>;
 template class GcsTable<JobID, ErrorTableData>;
 template class GcsTable<UniqueID, ProfileTableData>;
-template class GcsTable<WorkerID, WorkerFailureData>;
+template class GcsTable<WorkerID, WorkerTableData>;
 template class GcsTable<ActorID, ActorTableData>;
 template class GcsTable<ActorCheckpointID, ActorCheckpointData>;
 template class GcsTable<ActorID, ActorCheckpointIdData>;
