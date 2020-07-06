@@ -19,9 +19,9 @@ class TestPettingZooEnv(unittest.TestCase):
         ray.shutdown()
 
     def test_pettingzoo_env(self):
-        register_env("prison", lambda _: PettingZooEnv(simple_spread_v0.env()))
+        register_env('prison', lambda _: PettingZooEnv(simple_spread_v0.env()))
 
-        agent_class = get_agent_class("PPO")
+        agent_class = get_agent_class('PPO')
 
         config = deepcopy(agent_class._default_config)
 
@@ -30,12 +30,12 @@ class TestPettingZooEnv(unittest.TestCase):
         act_space = test_env.action_space
         test_env.close()
 
-        config["multiagent"] = {
-                "policies": {
+        config['multiagent'] = {
+                'policies': {
                     # the first tuple value is None -> uses default policy
-                    "av": (None, obs_space, act_space, {}),
+                    'av': (None, obs_space, act_space, {}),
                 },
-                "policy_mapping_fn": lambda agent_id: 'av'
+                'policy_mapping_fn': lambda agent_id: 'av'
                 }
 
         config['log_level'] = 'DEBUG'
@@ -49,7 +49,7 @@ class TestPettingZooEnv(unittest.TestCase):
         agent.train()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     import pytest
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(['-v', __file__]))
