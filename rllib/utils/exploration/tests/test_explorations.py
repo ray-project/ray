@@ -11,9 +11,7 @@ import ray.rllib.agents.impala as impala
 import ray.rllib.agents.pg as pg
 import ray.rllib.agents.ppo as ppo
 import ray.rllib.agents.sac as sac
-from ray.rllib.utils import check, framework_iterator, try_import_tf
-
-tf = try_import_tf()
+from ray.rllib.utils import check, framework_iterator
 
 
 def do_test_explorations(run,

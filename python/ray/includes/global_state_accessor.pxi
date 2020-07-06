@@ -2,6 +2,7 @@ from ray.includes.unique_ids cimport (
     CActorID,
     CClientID,
     CObjectID,
+    CWorkerID,
 )
 
 from ray.includes.global_state_accessor cimport (
@@ -57,3 +58,15 @@ cdef class GlobalStateAccessor:
 
     def get_node_resource_info(self, node_id):
         return self.inner.get().GetNodeResourceInfo(CClientID.FromBinary(node_id.binary()))
+
+    def get_worker_table(self):
+        return self.inner.get().GetAllWorkerInfo()
+
+    def get_worker_info(self, worker_id):
+        worker_info = self.inner.get().GetWorkerInfo(CWorkerID.FromBinary(worker_id.binary()))
+        if worker_info:
+            return c_string(worker_info.get().data(), worker_info.get().size())
+        return None
+
+    def add_worker_info(self, serialized_string):
+        return self.inner.get().AddWorkerInfo(serialized_string)
