@@ -1,3 +1,5 @@
+.. _serialization-guide:
+
 Serialization
 =============
 
@@ -45,7 +47,7 @@ Serialization notes
     l.append(l)
 
     # Try to put this list that recursively contains itself in the object store.
-    ray.put(l)  # ok 
+    ray.put(l)  # ok
 
 - For non-native objects, Ray will always keep a single copy even it is referred multiple times in an object:
 

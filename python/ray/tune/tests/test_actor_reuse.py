@@ -13,19 +13,19 @@ class FrequentPausesScheduler(FIFOScheduler):
 
 def create_resettable_class():
     class MyResettableClass(Trainable):
-        def _setup(self, config):
+        def setup(self, config):
             self.config = config
             self.num_resets = 0
             self.iter = 0
 
-        def _train(self):
+        def step(self):
             self.iter += 1
             return {"num_resets": self.num_resets, "done": self.iter > 1}
 
-        def _save(self, chkpt_dir):
+        def save_checkpoint(self, chkpt_dir):
             return {"iter": self.iter}
 
-        def _restore(self, item):
+        def load_checkpoint(self, item):
             self.iter = item["iter"]
 
         def reset_config(self, new_config):
