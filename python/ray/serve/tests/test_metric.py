@@ -46,29 +46,29 @@ async def test_client():
 
     await collector._push_to_exporter_once()
 
-    assert exporter.metadata == {
-        "counter": MetricMetadata(
-            name="counter",
-            type=MetricType.COUNTER,
-            description="",
-            label_names=("a", "b"),
-            default_labels={"default": "label"},
-        ),
-        "measure": MetricMetadata(
-            name="measure",
-            type=MetricType.MEASURE,
-            description="",
-            label_names=(),
-            default_labels={"default": "label"},
-        )
-    }
-    assert exporter.batches == [("counter", {
-        "a": "1",
-        "b": "2"
-    }, 1), ("counter", {
-        "a": "1",
-        "b": "3"
-    }, 42), ("measure", {}, 2)]
+    assert MetricMetadata(
+        name="counter",
+        type=MetricType.COUNTER,
+        description="",
+        label_names=("a", "b"),
+        default_labels={"default": "label"},
+    ) in exporter.metadata.values()
+    assert MetricMetadata(
+        name="measure",
+        type=MetricType.MEASURE,
+        description="",
+        label_names=(),
+        default_labels={"default": "label"},
+    ) in exporter.metadata.values()
+
+    metric_values = [item.value for item in exporter.batches]
+    assert set(metric_values) == {1, 42, 2}
+
+    metric_labels = [
+        frozenset(item.labels.items()) for item in exporter.batches
+    ]
+    assert frozenset(dict(a="1", b="2").items()) in metric_labels
+    assert frozenset(dict(a="1", b="3").items()) in metric_labels
 
 
 async def test_in_memory_exporter(serve_instance):
@@ -136,6 +136,26 @@ async def test_prometheus_exporter(serve_instance):
         'my_measure{default="label",lang="C++",ray=""} 42.0'
     ]
 
+    for fragment in fragments:
+        assert fragment in metric_stored
+
+
+async def test_prometheus_conflicting_labels(serve_instance):
+    exporter = MetricExporterActor.remote(PrometheusExporter)
+
+    collector_a = MetricClient(
+        exporter, push_interval=2, default_labels={"default": "a"})
+    collector_b = MetricClient(
+        exporter, push_interval=2, default_labels={"default": "b"})
+
+    for collector in [collector_a, collector_b]:
+        counter = collector.new_counter("num")
+        counter.add()
+        await collector._push_to_exporter_once()
+
+    metric_stored = (await exporter.inspect_metrics.remote()).decode()
+
+    fragments = ['num_total{default="a"}', 'num_total{default="b"}']
     for fragment in fragments:
         assert fragment in metric_stored
 

@@ -1,26 +1,33 @@
-"""Graph mode TF policy built using build_tf_policy()."""
-
 from collections import OrderedDict
+import gym
 import logging
 import numpy as np
+from typing import Callable, Dict, List, Optional, Tuple
 
 from ray.util.debug import log_once
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
+from ray.rllib.utils.types import ModelGradients, TensorType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class DynamicTFPolicy(TFPolicy):
     """A TFPolicy that auto-defines placeholders dynamically at runtime.
+
+    Do not sub-class this class directly (neither should you sub-class
+    TFPolicy), but rather use rllib.policy.tf_policy_template.build_tf_policy
+    to generate your custom tf (graph-mode or eager) Policy classes.
 
     Initialization of this class occurs in two phases.
       * Phase 1: the model is created and model variables are initialized.
@@ -39,61 +46,91 @@ class DynamicTFPolicy(TFPolicy):
         dist_class (type): TF action distribution class
     """
 
+    @DeveloperAPI
     def __init__(self,
-                 obs_space,
-                 action_space,
-                 config,
-                 loss_fn,
-                 stats_fn=None,
-                 grad_stats_fn=None,
-                 before_loss_init=None,
-                 make_model=None,
-                 action_sampler_fn=None,
-                 action_distribution_fn=None,
-                 existing_inputs=None,
-                 existing_model=None,
-                 get_batch_divisibility_req=None,
-                 obs_include_prev_action_reward=True):
+                 obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space,
+                 config: TrainerConfigDict,
+                 loss_fn: Callable[
+                     [Policy, ModelV2, type, SampleBatch], TensorType],
+                 *,
+                 stats_fn: Optional[Callable[[Policy, SampleBatch],
+                                             Dict[str, TensorType]]] = None,
+                 grad_stats_fn: Optional[Callable[
+                     [Policy, SampleBatch, ModelGradients],
+                     Dict[str, TensorType]]] = None,
+                 before_loss_init: Optional[Callable[
+                     [Policy, gym.spaces.Space, gym.spaces.Space,
+                      TrainerConfigDict], None]] = None,
+                 make_model: Optional[Callable[
+                     [Policy, gym.spaces.Space, gym.spaces.Space,
+                      TrainerConfigDict], ModelV2]] = None,
+                 action_sampler_fn: Optional[Callable[
+                     [TensorType, List[TensorType]], Tuple[
+                      TensorType, TensorType]]] = None,
+                 action_distribution_fn: Optional[Callable[
+                     [Policy, ModelV2, TensorType, TensorType, TensorType],
+                     Tuple[TensorType, type, List[TensorType]]]] = None,
+                 existing_inputs: Optional[Dict[
+                     str, "tf1.placeholder"]] = None,
+                 existing_model: Optional[ModelV2] = None,
+                 get_batch_divisibility_req: Optional[int] = None,
+                 obs_include_prev_action_reward: bool = True):
         """Initialize a dynamic TF policy.
 
         Arguments:
-            observation_space (gym.Space): Observation space of the policy.
-            action_space (gym.Space): Action space of the policy.
-            config (dict): Policy-specific configuration data.
-            loss_fn (func): function that returns a loss tensor the policy
-                graph, and dict of experience tensor placeholders
-            stats_fn (func): optional function that returns a dict of
-                TF fetches given the policy and batch input tensors
-            grad_stats_fn (func): optional function that returns a dict of
-                TF fetches given the policy and loss gradient tensors
-            before_loss_init (Optional[callable]): Optional function to run
-                prior to loss init that takes the same arguments as __init__.
-            make_model (func): optional function that returns a ModelV2 object
-                given (policy, obs_space, action_space, config).
+            observation_space (gym.spaces.Space): Observation space of the
+                policy.
+            action_space (gym.spaces.Space): Action space of the policy.
+            config (TrainerConfigDict): Policy-specific configuration data.
+            loss_fn (Callable[[Policy, ModelV2, type, SampleBatch],
+                TensorType]): Function that returns a loss tensor for the
+                policy graph.
+            stats_fn (Optional[Callable[[Policy, SampleBatch],
+                Dict[str, TensorType]]]): Optional function that returns a dict
+                of TF fetches given the policy and batch input tensors.
+            grad_stats_fn (Optional[Callable[[Policy, SampleBatch,
+                ModelGradients], Dict[str, TensorType]]]):
+                Optional function that returns a dict of TF fetches given the
+                policy, sample batch, and loss gradient tensors.
+            before_loss_init (Optional[Callable[
+                [Policy, gym.spaces.Space, gym.spaces.Space,
+                TrainerConfigDict], None]]): Optional function to run prior to
+                loss init that takes the same arguments as __init__.
+            make_model (Optional[Callable[[Policy, gym.spaces.Space,
+                gym.spaces.Space, TrainerConfigDict], ModelV2]]): Optional
+                function that returns a ModelV2 object given
+                policy, obs_space, action_space, and policy config.
                 All policy variables should be created in this function. If not
                 specified, a default model will be created.
-            action_sampler_fn (Optional[callable]): An optional callable
-                 returning a tuple of action and action prob tensors given
-                 (policy, model, input_dict, obs_space, action_space, config).
-                 If None, a default action distribution will be used.
-            action_distribution_fn (Optional[callable]): A callable returning
-                distribution inputs (parameters), a dist-class to generate an
-                action distribution object from, and internal-state outputs
-                (or an empty list if not applicable).
+            action_sampler_fn (Optional[Callable[[Policy, ModelV2, Dict[
+                str, TensorType], TensorType, TensorType], Tuple[TensorType,
+                TensorType]]]): A callable returning a sampled action and its
+                log-likelihood given Policy, ModelV2, input_dict, explore,
+                timestep, and is_training.
+            action_distribution_fn (Optional[Callable[[Policy, ModelV2,
+                Dict[str, TensorType], TensorType, TensorType],
+                Tuple[TensorType, type, List[TensorType]]]]): A callable
+                returning distribution inputs (parameters), a dist-class to
+                generate an action distribution object from, and
+                internal-state outputs (or an empty list if not applicable).
                 Note: No Exploration hooks have to be called from within
                 `action_distribution_fn`. It's should only perform a simple
                 forward pass through some model.
-                If None, pass inputs through `self.model()` to get the
-                distribution inputs.
-            existing_inputs (OrderedDict): When copying a policy, this
-                specifies an existing dict of placeholders to use instead of
-                defining new ones
-            existing_model (ModelV2): when copying a policy, this specifies
-                an existing model to clone and share weights with
-            get_batch_divisibility_req (func): optional function that returns
-                the divisibility requirement for sample batches
-            obs_include_prev_action_reward (bool): whether to include the
-                previous action and reward in the model input
+                If None, pass inputs through `self.model()` to get distribution
+                inputs.
+                The callable takes as inputs: Policy, ModelV2, input_dict,
+                explore, timestep, is_training.
+            existing_inputs (Optional[Dict[str, tf1.placeholder]]): When
+                copying a policy, this specifies an existing dict of
+                placeholders to use instead of defining new ones.
+            existing_model (Optional[ModelV2]): When copying a policy, this
+                specifies an existing model to clone and share weights with.
+            get_batch_divisibility_req (Optional[Callable[[Policy], int]]]):
+                Optional callable that returns the divisibility requirement
+                for sample batches given the Policy.
+            obs_include_prev_action_reward (bool): Whether to include the
+                previous action and reward in the model input (default: True).
         """
         self.observation_space = obs_space
         self.action_space = action_space
@@ -258,10 +295,12 @@ class DynamicTFPolicy(TFPolicy):
             before_loss_init(self, obs_space, action_space, config)
 
         if not existing_inputs:
-            self._initialize_loss()
+            self._initialize_loss_dynamically()
 
     @override(TFPolicy)
-    def copy(self, existing_inputs):
+    @DeveloperAPI
+    def copy(self,
+             existing_inputs: List[Tuple[str, "tf1.placeholder"]]) -> TFPolicy:
         """Creates a copy of self using existing input placeholders."""
 
         # Note that there might be RNN state inputs at the end of the list
@@ -306,13 +345,14 @@ class DynamicTFPolicy(TFPolicy):
         return instance
 
     @override(Policy)
-    def get_initial_state(self):
+    @DeveloperAPI
+    def get_initial_state(self) -> List[TensorType]:
         if self.model:
             return self.model.get_initial_state()
         else:
             return []
 
-    def _initialize_loss(self):
+    def _initialize_loss_dynamically(self):
         def fake_array(tensor):
             shape = tensor.shape.as_list()
             shape = [s if s is not None else 1 for s in shape]
@@ -404,7 +444,7 @@ class DynamicTFPolicy(TFPolicy):
                 self._grad_stats_fn(self, train_batch, self._grads))
         self._sess.run(tf1.global_variables_initializer())
 
-    def _do_loss_init(self, train_batch):
+    def _do_loss_init(self, train_batch: SampleBatch):
         loss = self._loss_fn(self, self.model, self.dist_class, train_batch)
         if self._stats_fn:
             self._stats_fetches.update(self._stats_fn(self, train_batch))
