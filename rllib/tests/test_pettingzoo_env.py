@@ -6,7 +6,7 @@ from ray.tune import run_experiments
 from ray.tune.registry import register_env
 from ray.rllib.env import PettingZooEnv
 from ray.rllib.utils.test_utils import framework_iterator
-from pettingzoo.gamma import prison_v0
+from pettingzoo.mpe import simple_world_comm_v0
 
 
 class TestMultiAgentPendulum(unittest.TestCase):
@@ -17,7 +17,7 @@ class TestMultiAgentPendulum(unittest.TestCase):
         ray.shutdown()
 
     def test_multi_agent_pendulum(self):
-        register_env("prison", lambda _: PettingZooEnv(prison_v0.env()))
+        register_env("prison", lambda _: PettingZooEnv(simple_world_comm_v0.env()))
 
         ray.tune(
             "A2C",
