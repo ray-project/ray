@@ -95,7 +95,7 @@ class PettingZooEnv(MultiAgentEnv):
         # initialize with False
         self.dones = dict(zip(self.agents,
                                 [False for _ in self.agents]))
-        self.dones['__all__'] = False
+        self.dones["__all__"] = False
 
         # initialize with None info object
         self.infos = dict(zip(self.agents,
@@ -182,7 +182,7 @@ class PettingZooEnv(MultiAgentEnv):
 
         return self.obs, self.rewards, self.dones, self.infos
 
-    def render(self, mode='human'):
+    def render(self, mode="human"):
         self.aec_env.render(mode=mode)
 
     def close(self):
