@@ -71,6 +71,10 @@ In the above example, note that the ``env_creator`` function takes in an ``env_c
             return self.env.step(action)
 
     register_env("multienv", lambda config: MultiEnv(config))
+	
+.. tip::
+
+   When using logging in an environment, the logging configuration needs to be done inside the environment, which runs inside Ray workers. Any configurations outside the environment, e.g., before starting Ray will be ignored.
 
 OpenAI Gym
 ----------
