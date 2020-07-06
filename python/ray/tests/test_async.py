@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import time
 
 import numpy as np
@@ -96,3 +97,8 @@ def test_wait_mixup(init):
     tasks = [f.remote(0.1).as_future(), g(7), f.remote(5).as_future(), g(2)]
     ready, _ = loop.run_until_complete(asyncio.wait(tasks, timeout=4))
     assert set(ready) == {tasks[0], tasks[-1]}
+
+
+if __name__ == "__main__":
+    import pytest
+    sys.exit(pytest.main(["-v", __file__]))
