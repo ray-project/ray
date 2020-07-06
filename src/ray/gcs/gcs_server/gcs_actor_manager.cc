@@ -760,6 +760,8 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
   RAY_LOG(INFO) << "Loading initial data.";
   auto callback = [this,
                    done](const std::unordered_map<ActorID, ActorTableData> &result) {
+    std::unordered_map<ClientID, std::pair<rpc::Address, std::vector<WorkerID>>>
+        node_to_workers;
     for (auto &item : result) {
       if (item.second.state() != ray::rpc::ActorTableData::DEAD) {
         auto actor = std::make_shared<GcsActor>(item.second);
@@ -779,8 +781,16 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
               worker_client_factory_(actor->GetOwnerAddress());
           workers.emplace(actor->GetOwnerID(), Owner(std::move(client)));
         }
+
+        if (!actor->GetNodeID().IsNil() && !actor->GetWorkerID().IsNil()) {
+          node_to_workers[actor->GetNodeID()].first = actor->GetAddress();
+          node_to_workers[actor->GetNodeID()].second.emplace_back(actor->GetWorkerID());
+        }
       }
     }
+
+    // Notify raylets to release unused workers.
+    gcs_actor_scheduler_->ReleaseUnusedWorkers(node_to_workers);
 
     RAY_LOG(DEBUG) << "The number of registered actors is " << registered_actors_.size()
                    << ", and the number of created actors is " << created_actors_.size();

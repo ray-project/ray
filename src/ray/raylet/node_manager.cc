@@ -1995,6 +1995,29 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
   send_reply_callback(status, nullptr, nullptr);
 }
 
+void NodeManager::HandleReleaseUnusedWorkers(
+    const rpc::ReleaseUnusedWorkersRequest &request,
+    rpc::ReleaseUnusedWorkersReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  std::unordered_map<WorkerID, bool> used_worker_ids;
+  for (int index = 0; index < request.worker_id_list_size(); ++index) {
+    auto worker_id = WorkerID::FromBinary(request.worker_id_list(index));
+    used_worker_ids.emplace(worker_id, true);
+  }
+
+  std::vector<WorkerID> unused_worker_ids;
+  for (auto &iter : leased_workers_) {
+    if (!used_worker_ids.count(iter.first)) {
+      unused_worker_ids.emplace_back(iter.first);
+    }
+  }
+
+  for (auto &iter : unused_worker_ids) {
+    leased_workers_.erase(iter);
+  }
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
                                           rpc::CancelWorkerLeaseReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {

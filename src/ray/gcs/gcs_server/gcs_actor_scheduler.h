@@ -68,6 +68,13 @@ class GcsActorSchedulerInterface {
   /// \return ID of actor associated with the specified node id and worker id.
   virtual ActorID CancelOnWorker(const ClientID &node_id, const WorkerID &worker_id) = 0;
 
+  /// Notify raylets to release unused workers.
+  ///
+  /// \param node_to_workers Currently used workers.
+  virtual void ReleaseUnusedWorkers(
+      const std::unordered_map<ClientID, std::pair<rpc::Address, std::vector<WorkerID>>>
+          &node_to_workers) = 0;
+
   virtual ~GcsActorSchedulerInterface() {}
 };
 
@@ -131,6 +138,13 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param worker_id ID of the worker that the actor is creating on.
   /// \return ID of actor associated with the specified node id and worker id.
   ActorID CancelOnWorker(const ClientID &node_id, const WorkerID &worker_id) override;
+
+  /// Notify raylets to release unused workers.
+  ///
+  /// \param node_to_workers Currently used workers.
+  void ReleaseUnusedWorkers(
+      const std::unordered_map<ClientID, std::pair<rpc::Address, std::vector<WorkerID>>>
+          &node_to_workers) override;
 
  protected:
   /// The GcsLeasedWorker is kind of abstraction of remote leased worker inside raylet. It

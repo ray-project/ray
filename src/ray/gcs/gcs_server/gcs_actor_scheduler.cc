@@ -154,6 +154,15 @@ ActorID GcsActorScheduler::CancelOnWorker(const ClientID &node_id,
   return assigned_actor_id;
 }
 
+void GcsActorScheduler::ReleaseUnusedWorkers(
+    const std::unordered_map<ClientID, std::pair<rpc::Address, std::vector<WorkerID>>>
+        &node_to_workers) {
+  for (auto &iter : node_to_workers) {
+    auto lease_client = GetOrConnectLeaseClient(iter.second.first);
+    RAY_CHECK_OK(lease_client->ReleaseUnusedWorkers(iter.second.second));
+  }
+}
+
 void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
                                             std::shared_ptr<rpc::GcsNodeInfo> node) {
   RAY_CHECK(actor && node);
