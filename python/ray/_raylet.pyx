@@ -82,7 +82,8 @@ from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
 import ray
-from ray.async_compat import (sync_to_async, AsyncGetResponse)
+from ray.async_compat import (
+    sync_to_async, AsyncGetResponse, get_new_event_loop)
 import ray.memory_monitor as memory_monitor
 import ray.ray_constants as ray_constants
 from ray import profiling
@@ -1027,7 +1028,7 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().RemoveActorHandleReference(
             c_actor_id)
 
-    cdef make_actor_handle(self, CActorHandle *c_actor_handle):
+    cdef make_actor_handle(self, const CActorHandle *c_actor_handle):
         worker = ray.worker.global_worker
         worker.check_connected()
         manager = worker.function_actor_manager
@@ -1071,24 +1072,27 @@ cdef class CoreWorker:
                                               ObjectID
                                               outer_object_id):
         cdef:
-            CActorHandle* c_actor_handle
             CObjectID c_outer_object_id = (outer_object_id.native() if
                                            outer_object_id else
                                            CObjectID.Nil())
-        c_actor_id = (CCoreWorkerProcess.GetCoreWorker()
+        c_actor_id = (CCoreWorkerProcess
+                      .GetCoreWorker()
                       .DeserializeAndRegisterActorHandle(
                           bytes, c_outer_object_id))
-        CCoreWorkerProcess.GetCoreWorker().GetActorHandle(
-            c_actor_id, &c_actor_handle)
+        cdef:
+            # NOTE: This handle should not be stored anywhere.
+            const CActorHandle* c_actor_handle = (
+                CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id))
         return self.make_actor_handle(c_actor_handle)
 
     def get_named_actor_handle(self, const c_string &name):
         cdef:
-            CActorHandle* c_actor_handle
+            # NOTE: This handle should not be stored anywhere.
+            const CActorHandle* c_actor_handle = (
+                CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(name))
 
-        with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .GetNamedActorHandle(name, &c_actor_handle))
+        if c_actor_handle == NULL:
+            raise ValueError("Named Actor Handle Not Found")
         return self.make_actor_handle(c_actor_handle)
 
     def serialize_actor_handle(self, ActorID actor_id):
@@ -1187,7 +1191,7 @@ cdef class CoreWorker:
 
     def create_or_get_event_loop(self):
         if self.async_event_loop is None:
-            self.async_event_loop = asyncio.new_event_loop()
+            self.async_event_loop = get_new_event_loop()
             asyncio.set_event_loop(self.async_event_loop)
             # Initialize the async plasma connection.
             # Delayed import due to async_api depends on _raylet.

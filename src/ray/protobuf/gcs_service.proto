@@ -411,23 +411,38 @@ service ErrorInfoGcsService {
 }
 
 message ReportWorkerFailureRequest {
-  WorkerFailureData worker_failure = 1;
+  WorkerTableData worker_failure = 1;
 }
 
 message ReportWorkerFailureReply {
   GcsStatus status = 1;
 }
 
-message RegisterWorkerRequest {
-  /// The type of the worker.
-  WorkerType worker_type = 1;
-  /// The ID of the worker.
-  bytes worker_id = 2;
-  /// The information of the worker in a dictionary.
-  map<string, bytes> worker_info = 3;
+message GetWorkerInfoRequest {
+  // ID of this worker.
+  bytes worker_id = 1;
 }
 
-message RegisterWorkerReply {
+message GetWorkerInfoReply {
+  GcsStatus status = 1;
+  // Data of worker.
+  WorkerTableData worker_table_data = 2;
+}
+
+message GetAllWorkerInfoRequest {
+}
+
+message GetAllWorkerInfoReply {
+  GcsStatus status = 1;
+  // Data of worker
+  repeated WorkerTableData worker_table_data = 2;
+}
+
+message AddWorkerInfoRequest {
+  WorkerTableData worker_data = 1;
+}
+
+message AddWorkerInfoReply {
   GcsStatus status = 1;
 }
 
@@ -435,8 +450,12 @@ message RegisterWorkerReply {
 service WorkerInfoGcsService {
   // Report a worker failure to GCS Service.
   rpc ReportWorkerFailure(ReportWorkerFailureRequest) returns (ReportWorkerFailureReply);
-  // Register a worker to GCS Service.
-  rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerReply);
+  // Get worker information from GCS Service by worker id.
+  rpc GetWorkerInfo(GetWorkerInfoRequest) returns (GetWorkerInfoReply);
+  // Get information of all workers from GCS Service.
+  rpc GetAllWorkerInfo(GetAllWorkerInfoRequest) returns (GetAllWorkerInfoReply);
+  // Add worker information to GCS Service.
+  rpc AddWorkerInfo(AddWorkerInfoRequest) returns (AddWorkerInfoReply);
 }
 
 message CreateActorRequest {
@@ -445,4 +464,9 @@ message CreateActorRequest {
 
 message CreateActorReply {
   GcsStatus status = 1;
+}
+
+enum GcsServiceFailureType {
+  RPC_DISCONNECT = 0;
+  GCS_SERVER_RESTART = 1;
 }

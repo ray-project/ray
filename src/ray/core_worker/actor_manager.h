@@ -36,7 +36,7 @@ class ActorManager {
         direct_actor_submitter_(direct_actor_submitter),
         reference_counter_(reference_counter) {}
 
-  ~ActorManager() {}
+  ~ActorManager() = default;
 
   friend class ActorManagerTest;
 
@@ -62,32 +62,32 @@ class ActorManager {
   /// \param[in] actor_id The actor handle to get.
   /// \return reference to the actor_handle's pointer.
   /// NOTE: Returned actorHandle should not be stored anywhere.
-  std::unique_ptr<ActorHandle> &GetActorHandle(const ActorID &actor_id);
+  const std::unique_ptr<ActorHandle> &GetActorHandle(const ActorID &actor_id);
 
   /// Check if an actor handle that corresponds to an actor_id exists.
   /// \param[in] actor_id The actor id of a handle.
   /// \return True if the actor_handle for an actor_id exists. False otherwise.
   bool CheckActorHandleExists(const ActorID &actor_id);
 
-  /// Give this worker a handle to an actor.
+  /// Give this worker a new handle to an actor.
   ///
   /// This handle will remain as long as the current actor or task is
   /// executing, even if the Python handle goes out of scope. Tasks submitted
   /// through this handle are guaranteed to execute in the same order in which
   /// they are submitted.
   ///
+  /// NOTE: Getting an actor handle from GCS (named actor) is considered as adding a new
+  /// actor handle.
+  ///
   /// \param actor_handle The handle to the actor.
-  /// \param is_owner_handle Whether this is the owner's handle to the actor.
-  /// The owner is the creator of the actor and is responsible for telling the
-  /// actor to disconnect once all handles are out of scope.
   /// \param[in] caller_id The caller's task ID
   /// \param[in] call_site The caller's site.
-  /// \param[in] caller_address The address of the caller.
-  /// \return True if the handle was added and False if we already had a handle
-  /// to the same actor.
-  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle,
-                      const TaskID &caller_id, const std::string &call_site,
-                      const rpc::Address &caller_address);
+  /// \param[in] is_detached Whether or not the actor of a handle is detached (named)
+  /// actor. \return True if the handle was added and False if we already had a handle to
+  /// the same actor.
+  bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+                         const TaskID &caller_id, const std::string &call_site,
+                         const rpc::Address &caller_address, bool is_detached);
 
   /// Add a callback that is called when an actor goes out of scope.
   ///
@@ -111,6 +111,28 @@ class ActorManager {
   void ResolveActorsLocations();
 
  private:
+  /// Give this worker a handle to an actor.
+  ///
+  /// This handle will remain as long as the current actor or task is
+  /// executing, even if the Python handle goes out of scope. Tasks submitted
+  /// through this handle are guaranteed to execute in the same order in which
+  /// they are submitted.
+  ///
+  /// \param actor_handle The handle to the actor.
+  /// \param is_owner_handle Whether this is the owner's handle to the actor.
+  /// The owner is the creator of the actor and is responsible for telling the
+  /// actor to disconnect once all handles are out of scope.
+  /// \param[in] caller_id The caller's task ID
+  /// \param[in] call_site The caller's site.
+  /// \param[in] actor_id The id of an actor
+  /// \param[in] actor_creation_return_id object id of this actor creation
+  /// \return True if the handle was added and False if we already had a handle
+  /// to the same actor.
+  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle,
+                      const TaskID &caller_id, const std::string &call_site,
+                      const rpc::Address &caller_address, const ActorID &actor_id,
+                      const ObjectID &actor_creation_return_id);
+
   /// Handle actor state notification published from GCS.
   ///
   /// \param[in] actor_id The actor id of this notification.

@@ -127,13 +127,13 @@ struct Mocker {
     return error_table_data;
   }
 
-  static std::shared_ptr<rpc::WorkerFailureData> GenWorkerFailureData() {
-    auto worker_failure_data = std::make_shared<rpc::WorkerFailureData>();
-    worker_failure_data->set_timestamp(std::time(nullptr));
+  static std::shared_ptr<rpc::WorkerTableData> GenWorkerTableData() {
+    auto worker_table_data = std::make_shared<rpc::WorkerTableData>();
+    worker_table_data->set_timestamp(std::time(nullptr));
     rpc::Address address;
-    worker_failure_data->mutable_worker_address()->set_raylet_id(
+    worker_table_data->mutable_worker_address()->set_raylet_id(
         ClientID::FromRandom().Binary());
-    return worker_failure_data;
+    return worker_table_data;
   }
 };
 

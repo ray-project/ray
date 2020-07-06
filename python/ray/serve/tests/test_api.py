@@ -559,7 +559,7 @@ def test_shutdown(serve_instance):
         pass
 
     instance_name = "shutdown"
-    serve.init(name=instance_name, http_port=8002)
+    serve.init(name=instance_name, http_port=8003)
     serve.create_backend("backend", f)
     serve.create_endpoint("endpoint", backend="backend")
 

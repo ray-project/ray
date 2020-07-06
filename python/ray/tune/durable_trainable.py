@@ -11,8 +11,7 @@ class DurableTrainable(Trainable):
     """Abstract class for a remote-storage backed fault-tolerant Trainable.
 
     Supports checkpointing to and restoring from remote storage. To use this
-    class, implement the same private methods as ray.tune.Trainable (`_save`,
-    `_train`, `_restore`, `reset_config`, `_setup`, `_stop`).
+    class, implement the same private methods as ray.tune.Trainable.
 
     .. warning:: This class is currently **experimental** and may
         be subject to change.

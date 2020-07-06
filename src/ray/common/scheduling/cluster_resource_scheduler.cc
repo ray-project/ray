@@ -485,7 +485,7 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
     }
   }
 
-  // No check custom resources.
+  // Now check custom resources.
   for (const auto task_req_custom_resource : task_req.custom_resources) {
     auto it = resources.custom_resources.find(task_req_custom_resource.id);
 

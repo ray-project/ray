@@ -659,8 +659,12 @@ void CoreWorker::RegisterToGcs() {
     worker_info.emplace("stderr_file", options_.stderr_file);
   }
 
-  RAY_CHECK_OK(gcs_client_->Workers().AsyncRegisterWorker(options_.worker_type, worker_id,
-                                                          worker_info, nullptr));
+  auto worker_data = std::make_shared<rpc::WorkerTableData>();
+  worker_data->mutable_worker_address()->set_worker_id(worker_id.Binary());
+  worker_data->set_worker_type(options_.worker_type);
+  worker_data->mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
+
+  RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
 void CoreWorker::CheckForRayletFailure(const boost::system::error_code &error) {
   if (error == boost::asio::error::operation_aborted) {
@@ -1165,9 +1169,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_id, GetCallerId(), rpc_address_, job_id, /*actor_cursor=*/return_ids[0],
       function.GetLanguage(), function.GetFunctionDescriptor(), extension_data,
       actor_creation_options.max_task_retries));
-  RAY_CHECK(actor_manager_->AddActorHandle(
-      std::move(actor_handle), !actor_creation_options.is_detached, GetCallerId(),
-      CurrentCallSite(), rpc_address_))
+  RAY_CHECK(actor_manager_->AddNewActorHandle(std::move(actor_handle), GetCallerId(),
+                                              CurrentCallSite(), rpc_address_,
+                                              actor_creation_options.is_detached))
       << "Actor " << actor_id << " already exists";
 
   *return_actor_id = actor_id;
@@ -1194,7 +1198,8 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
                                  const std::vector<TaskArg> &args,
                                  const TaskOptions &task_options,
                                  std::vector<ObjectID> *return_ids) {
-  std::unique_ptr<ActorHandle> &actor_handle = actor_manager_->GetActorHandle(actor_id);
+  const std::unique_ptr<ActorHandle> &actor_handle =
+      actor_manager_->GetActorHandle(actor_id);
 
   // Add one for actor cursor object id for tasks.
   const int num_returns = task_options.num_returns + 1;
@@ -1274,75 +1279,62 @@ ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &seriali
 
 Status CoreWorker::SerializeActorHandle(const ActorID &actor_id, std::string *output,
                                         ObjectID *actor_handle_id) const {
-  std::unique_ptr<ActorHandle> &actor_handle = actor_manager_->GetActorHandle(actor_id);
+  const std::unique_ptr<ActorHandle> &actor_handle =
+      actor_manager_->GetActorHandle(actor_id);
   actor_handle->Serialize(output);
   *actor_handle_id = ObjectID::ForActorHandle(actor_id);
   return Status::OK();
 }
 
-void CoreWorker::GetActorHandle(const ActorID &actor_id,
-                                ActorHandle **actor_handle) const {
-  *actor_handle = actor_manager_->GetActorHandle(actor_id).get();
+const ActorHandle *CoreWorker::GetActorHandle(const ActorID &actor_id) const {
+  return actor_manager_->GetActorHandle(actor_id).get();
 }
 
-Status CoreWorker::GetNamedActorHandle(const std::string &name,
-                                       ActorHandle **actor_handle) {
+const ActorHandle *CoreWorker::GetNamedActorHandle(const std::string &name) {
   RAY_CHECK(RayConfig::instance().gcs_actor_service_enabled());
   RAY_CHECK(!name.empty());
 
   // This call needs to be blocking because we can't return until the actor
   // handle is created, which requires the response from the RPC. This is
-  // implemented using a condition variable that's captured in the RPC
-  // callback. There should be no risk of deadlock because we don't hold any
+  // implemented using a promise that's captured in the RPC callback.
+  // There should be no risk of deadlock because we don't hold any
   // locks during the call and the RPCs run on a separate thread.
   ActorID actor_id;
-  std::shared_ptr<bool> ready = std::make_shared<bool>(false);
-  std::shared_ptr<std::mutex> m = std::make_shared<std::mutex>();
-  std::shared_ptr<std::condition_variable> cv =
-      std::make_shared<std::condition_variable>();
-  std::unique_lock<std::mutex> lk(*m);
+  auto ready_promise = std::promise<void>();
   RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
-      name, [this, &actor_id, name, ready, m, cv](
+      name, [this, &actor_id, name, &ready_promise](
                 Status status, const boost::optional<gcs::ActorTableData> &result) {
         if (status.ok() && result) {
           auto actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(*result));
           actor_id = actor_handle->GetActorID();
-          actor_manager_->AddActorHandle(std::move(actor_handle),
-                                         /*is_owner_handle=*/false, GetCallerId(),
-                                         CurrentCallSite(), rpc_address_);
+          actor_manager_->AddNewActorHandle(std::move(actor_handle), GetCallerId(),
+                                            CurrentCallSite(), rpc_address_,
+                                            /*is_detached*/ true);
         } else {
           RAY_LOG(INFO) << "Failed to look up actor with name: " << name;
           // Use a NIL actor ID to signal that the actor wasn't found.
           actor_id = ActorID::Nil();
         }
-
-        // Notify the main thread that the RPC has finished.
-        {
-          std::unique_lock<std::mutex> lk(*m);
-          *ready = true;
-        }
-        cv->notify_one();
+        ready_promise.set_value();
       }));
-
   // Block until the RPC completes. Set a timeout to avoid hangs if the
   // GCS service crashes.
-  cv->wait_for(lk, std::chrono::seconds(5), [ready] { return *ready; });
-  if (!*ready) {
-    return Status::TimedOut("Timed out trying to get named actor.");
+  if (ready_promise.get_future().wait_for(std::chrono::seconds(5)) !=
+      std::future_status::ready) {
+    RAY_LOG(ERROR) << "There was timeout in getting the actor handle. It is probably "
+                      "because GCS server is dead or there's a high load there.";
+    return nullptr;
   }
 
-  Status status;
   if (actor_id.IsNil()) {
-    std::stringstream stream;
-    stream << "Failed to look up actor with name '" << name
-           << "'. It is either you look up the named actor you didn't create or the named"
-              "actor hasn't been created because named actor creation is asynchronous.";
-    status = Status::NotFound(stream.str());
-  } else {
-    GetActorHandle(actor_id, actor_handle);
-    status = Status::OK();
+    RAY_LOG(WARNING)
+        << "Failed to look up actor with name '" << name
+        << "'. It is either you look up the named actor you didn't create or the named"
+           "actor hasn't been created because named actor creation is asynchronous.";
+    return nullptr;
   }
-  return status;
+
+  return GetActorHandle(actor_id);
 }
 
 const ResourceMappingType CoreWorker::GetResourceIDs() const {
@@ -1408,6 +1400,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const std::shared_ptr<ResourceMappingType> &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *return_objects,
                                ReferenceCounter::ReferenceTableProto *borrowed_refs) {
+  RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
