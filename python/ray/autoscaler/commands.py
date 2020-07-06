@@ -83,9 +83,9 @@ def request_resources(num_cpus=None, bundles=None):
         r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(bundles))
 
 
-def create_or_update_cluster(config_file, override_min_workers,
-                             override_max_workers, no_restart, restart_only,
-                             yes, override_cluster_name):
+def create_or_update_cluster(config_file: str, override_min_workers: Optional[int],
+                             override_max_workers: Optional[int], no_restart: bool, restart_only: bool,
+                             yes: bool, override_cluster_name: Optional[str]):
     """Create or updates an autoscaling Ray cluster from a config json."""
     config = yaml.safe_load(open(config_file).read())
     if override_min_workers is not None:
@@ -99,7 +99,7 @@ def create_or_update_cluster(config_file, override_min_workers,
                             override_cluster_name)
 
 
-def _bootstrap_config(config):
+def _bootstrap_config(config: Dict[str, Any]) -> Dict[str, Any]:
     config = prepare_config(config)
 
     hasher = hashlib.sha1()
@@ -123,8 +123,8 @@ def _bootstrap_config(config):
     return resolved_config
 
 
-def teardown_cluster(config_file, yes, workers_only, override_cluster_name,
-                     keep_min_workers):
+def teardown_cluster(config_file: str, yes: bool, workers_only: bool, override_cluster_name: Optional[str],
+                     keep_min_workers: bool):
     """Destroys all nodes of a Ray cluster described by a config json."""
 
     config = yaml.safe_load(open(config_file).read())
@@ -388,8 +388,8 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         provider.cleanup()
 
 
-def attach_cluster(config_file, start, use_screen, use_tmux,
-                   override_cluster_name, new, port_forward):
+def attach_cluster(config_file: str, start: bool, use_screen: bool, use_tmux: bool,
+                   override_cluster_name: Optional[str], new: bool, port_forward: Any):
     """Attaches to a screen for the specified cluster.
 
     Arguments:
@@ -422,16 +422,16 @@ def attach_cluster(config_file, start, use_screen, use_tmux,
                  override_cluster_name, port_forward)
 
 
-def exec_cluster(config_file,
-                 cmd=None,
-                 run_env="auto",
-                 screen=False,
-                 tmux=False,
-                 stop=False,
-                 start=False,
-                 override_cluster_name=None,
-                 port_forward=None,
-                 with_output=False):
+def exec_cluster(config_file: str,
+                 cmd: Any=None,
+                 run_env: str="auto",
+                 screen: bool=False,
+                 tmux: bool=False,
+                 stop: bool=False,
+                 start: bool=False,
+                 override_cluster_name: Optional[str]=None,
+                 port_forward: Any=None,
+                 with_output: bool=False):
     """Runs a command on the specified cluster.
 
     Arguments:
@@ -540,12 +540,12 @@ def _exec(updater,
         run_env=run_env)
 
 
-def rsync(config_file,
-          source,
-          target,
-          override_cluster_name,
-          down,
-          all_nodes=False):
+def rsync(config_file: str,
+          source: Optional[str],
+          target: Optional[str],
+          override_cluster_name: Optional[str],
+          down: bool,
+          all_nodes: bool=False):
     """Rsyncs files.
 
     Arguments:
@@ -664,10 +664,10 @@ def _get_worker_nodes(config, override_cluster_name):
         provider.cleanup()
 
 
-def _get_head_node(config,
-                   config_file,
-                   override_cluster_name,
-                   create_if_needed=False):
+def _get_head_node(config: Dict[str, Any],
+                   config_file: str,
+                   override_cluster_name: Optional[str],
+                   create_if_needed: bool=False) -> str:
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         head_node_tags = {

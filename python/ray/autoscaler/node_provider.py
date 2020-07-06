@@ -111,7 +111,7 @@ def load_class(path):
     return getattr(module, class_str)
 
 
-def get_node_provider(provider_config, cluster_name):
+def get_node_provider(provider_config: Dict[str, Any], cluster_name: str) -> Any:
     if provider_config["type"] == "external":
         provider_cls = load_class(path=provider_config["module"])
         return provider_cls(provider_config, cluster_name)
