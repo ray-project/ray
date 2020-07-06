@@ -140,7 +140,7 @@ def construct_clients_from_provider_config(provider_config):
 
     cred_type = gcp_credentials["type"]
     credentials_field = gcp_credentials["credentials"]
-    __import__("ipdb").set_trace()
+
     if cred_type == "service_account":
         # If parsing the gcp_credentials failed, then the user likely made a
         # mistake in copying the credentials into the config yaml.
