@@ -13,6 +13,7 @@ except ImportError:
     uvloop = None
 
 import ray
+import gc
 
 
 def get_new_event_loop():
@@ -36,10 +37,10 @@ def sync_to_async(func):
 
 
 # Class encapsulate the get result from direct actor.
-# Case 1: plasma_fallback_id=None, result=<Object>
-# Case 2: plasma_fallback_id=ObjectID, result=None
+# Case 1: fallback_to_plasma=False, result=<Object>
+# Case 2: fallback_to_plasma=True, result=None
 AsyncGetResponse = namedtuple("AsyncGetResponse",
-                              ["plasma_fallback_id", "result"])
+                              ["fallback_to_plasma", "result"])
 
 
 def get_async(object_id):
@@ -67,52 +68,66 @@ def get_async(object_id):
     # user_future is directly returned to the user from this function.
     #     and it will be eventually fulfilled by the final result.
     # inner_future is the first attempt to retrieve the object. It can be
-    #     fulfilled by either core_worker.get_async or plasma_api.as_future.
-    #     When inner_future completes, done_callback will be invoked. This
-    #     callback set the final object in user_future if the object hasn't
-    #     been promoted by plasma, otherwise it will retry from plasma.
-    # retry_plasma_future is only created when we are getting objects that's
-    #     promoted to plasma. It will also invoke the done_callback when it's
-    #     fulfilled.
-
-    def done_callback(future):
+    #     fulfilled by core_worker.get_async. When inner_future completes,
+    #     in_memory_done_callback will be invoked. This callback sets the final
+    #     result in user_future if the object hasn't been promoted by plasma,
+    #     otherwise it will retry from plasma.
+    # retry_plasma_future is only created when we are getting objects stored
+    #     in plasma. The callback for this future sets the final result in
+    #     user_future.
+    def in_memory_done_callback(future):
+        # Result from `Get()` on the in-memory store.
         result = future.result()
-        # Result from async plasma, transparently pass it to user future
-        if isinstance(future, PlasmaObjectFuture):
-            if isinstance(result, ray.exceptions.RayTaskError):
-                ray.worker.last_task_error_raise_time = time.time()
-                user_future.set_exception(result.as_instanceof_cause())
-            else:
-                user_future.set_result(result)
-        else:
-            # Result from direct call.
-            assert isinstance(result, AsyncGetResponse), result
-            if result.plasma_fallback_id is None:
-                # If this future has result set already, we just need to
-                # skip the set result/exception procedure.
-                if user_future.done():
-                    return
+        assert isinstance(result, AsyncGetResponse), result
+        if result.fallback_to_plasma:
 
-                if isinstance(result.result, ray.exceptions.RayTaskError):
+            def plasma_done_callback(future):
+                # Result from `Get()` on the plasma store.
+                result = future.result()
+                assert isinstance(future, PlasmaObjectFuture)
+                if isinstance(result, ray.exceptions.RayTaskError):
                     ray.worker.last_task_error_raise_time = time.time()
-                    user_future.set_exception(
-                        result.result.as_instanceof_cause())
+                    user_future.set_exception(result.as_instanceof_cause())
                 else:
-                    user_future.set_result(result.result)
+                    user_future.set_result(result)
+                del user_future.retry_plasma_future
+                # We have the value now, so we don't need the object ID
+                # anymore.
+                del user_future.object_id
+
+            # Schedule async get to plasma to async get.
+            retry_plasma_future = as_future(user_future.object_id)
+            retry_plasma_future.add_done_callback(plasma_done_callback)
+            # A hack to keep reference to the future so it doesn't get GCed.
+            user_future.retry_plasma_future = retry_plasma_future
+        else:
+            # If this future has result set already, we just need to
+            # skip the set result/exception procedure.
+            if user_future.done():
+                return
+
+            if isinstance(result.result, ray.exceptions.RayTaskError):
+                ray.worker.last_task_error_raise_time = time.time()
+                user_future.set_exception(result.result.as_instanceof_cause())
             else:
-                # Schedule plasma to async get, use the the same callback.
-                retry_plasma_future = as_future(result.plasma_fallback_id)
-                retry_plasma_future.add_done_callback(done_callback)
-                # A hack to keep reference to the future so it doesn't get GC.
-                user_future.retry_plasma_future = retry_plasma_future
+                user_future.set_result(result.result)
+            # We have the value now, so we don't need the object ID anymore.
+            del user_future.object_id
+        # We got the result from the in-memory store, so this future has been
+        # fulfilled.
+        del user_future.inner_future
+
+    # A hack to keep a reference to the object ID for ref counting.
+    # We store this before adding the callbacks to make sure that we have
+    # access to the object ID if we need to fetch the corresponding value from
+    # the plasma store.
+    user_future.object_id = object_id
 
     inner_future = loop.create_future()
     # We must add the done_callback before sending to in_memory_store_get
-    inner_future.add_done_callback(done_callback)
+    inner_future.add_done_callback(in_memory_done_callback)
     core_worker.in_memory_store_get_async(object_id, inner_future)
     # A hack to keep reference to inner_future so it doesn't get GC.
     user_future.inner_future = inner_future
-    # A hack to keep a reference to the object ID for ref counting.
-    user_future.object_id = object_id
 
     return user_future

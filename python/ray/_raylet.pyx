@@ -1313,7 +1313,7 @@ cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
         data_metadata_pairs, ids_to_deserialize)
     loop.call_soon_threadsafe(lambda: py_future.set_result(
         AsyncGetResponse(
-            plasma_fallback_id=None, result=objects[0])))
+            fallback_to_plasma=False, result=objects[0])))
 
 cdef void async_retry_with_plasma_callback(shared_ptr[CRayObject] obj,
                                            CObjectID object_id,
@@ -1322,5 +1322,5 @@ cdef void async_retry_with_plasma_callback(shared_ptr[CRayObject] obj,
     loop = py_future._loop
     loop.call_soon_threadsafe(lambda: py_future.set_result(
                 AsyncGetResponse(
-                    plasma_fallback_id=ObjectID(object_id.Binary()),
+                    fallback_to_plasma=True,
                     result=None)))

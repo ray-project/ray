@@ -47,6 +47,9 @@ class PlasmaEventHandler:
         ready, _ = ray.wait([object_id], timeout=0)
         if ready:
             self._complete_future(object_id)
+            return True
+        else:
+            return False
 
     def as_future(self, object_id, check_ready=True):
         """Turn an object_id into a Future object.
@@ -65,6 +68,7 @@ class PlasmaEventHandler:
         self._waiting_dict[object_id].append(future)
         if not self.check_immediately(object_id) and len(
                 self._waiting_dict[object_id]) == 1:
-            # Only subscribe once
+            # The future is still pending. Only subscribe once per
+            # object.
             self._worker.core_worker.subscribe_to_plasma_object(object_id)
         return future
