@@ -27,16 +27,16 @@ from ray.includes.function_descriptor cimport (
 )
 
 cdef extern from *:
-   """
-   #if __OPTIMIZE__ && __OPTIMIZE__ == 1
-   #undef __OPTIMIZE__
-   int __OPTIMIZE__ = 1;
-   #define __OPTIMIZE__ 1
-   #else
-   int __OPTIMIZE__ = 0;
-   #endif
-   """
-   int __OPTIMIZE__
+    """
+    #if __OPTIMIZE__ && __OPTIMIZE__ == 1
+    #undef __OPTIMIZE__
+    int __OPTIMIZE__ = 1;
+    #define __OPTIMIZE__ 1
+    #else
+    int __OPTIMIZE__ = 0;
+    #endif
+    """
+    int __OPTIMIZE__
 
 cdef extern from "Python.h":
     # Note(simon): This is used to configure asyncio actor stack size.
@@ -98,7 +98,7 @@ cdef class CoreWorker:
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns)
     cdef yield_current_fiber(self, CFiberEvent &fiber_event)
-    cdef make_actor_handle(self, CActorHandle *c_actor_handle)
+    cdef make_actor_handle(self, const CActorHandle *c_actor_handle)
 
 cdef class FunctionDescriptor:
     cdef:

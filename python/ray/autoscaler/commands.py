@@ -137,8 +137,17 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name,
 
     if not workers_only:
         try:
-            exec_cluster(config_file, "ray stop", "auto", False, False, False,
-                         False, override_cluster_name, None, False)
+            exec_cluster(
+                config_file,
+                cmd="ray stop",
+                run_env="auto",
+                screen=False,
+                tmux=False,
+                stop=False,
+                start=False,
+                override_cluster_name=override_cluster_name,
+                port_forward=None,
+                with_output=False)
         except Exception:
             logger.exception("Ignoring error attempting a clean shutdown.")
 
@@ -230,8 +239,16 @@ def kill_node(config_file, yes, hard, override_cluster_name):
 def monitor_cluster(cluster_config_file, num_lines, override_cluster_name):
     """Tails the autoscaler logs of a Ray cluster."""
     cmd = "tail -n {} -f /tmp/ray/session_*/logs/monitor*".format(num_lines)
-    exec_cluster(cluster_config_file, cmd, "auto", False, False, False, False,
-                 override_cluster_name, None)
+    exec_cluster(
+        cluster_config_file,
+        cmd=cmd,
+        run_env="auto",
+        screen=False,
+        tmux=False,
+        stop=False,
+        start=False,
+        override_cluster_name=override_cluster_name,
+        port_forward=None)
 
 
 def warn_about_bad_start_command(start_commands):
@@ -418,11 +435,20 @@ def attach_cluster(config_file, start, use_screen, use_tmux,
                 "--new only makes sense if passing --screen or --tmux")
         cmd = "$SHELL"
 
-    exec_cluster(config_file, cmd, "auto", False, False, False, start,
-                 override_cluster_name, port_forward)
+    exec_cluster(
+        config_file,
+        cmd=cmd,
+        run_env="auto",
+        screen=False,
+        tmux=False,
+        stop=False,
+        start=start,
+        override_cluster_name=override_cluster_name,
+        port_forward=port_forward)
 
 
 def exec_cluster(config_file,
+                 *,
                  cmd=None,
                  run_env="auto",
                  screen=False,
