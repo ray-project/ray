@@ -70,8 +70,6 @@ ActorID GcsActor::GetActorID() const {
 bool GcsActor::IsDetached() const { return actor_table_data_.is_detached(); }
 
 std::string GcsActor::GetName() const {
-  RAY_CHECK(actor_table_data_.is_detached())
-      << "Actor names are only valid for detached actors.";
   return actor_table_data_.name();
 }
 
