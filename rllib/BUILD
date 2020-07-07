@@ -1311,6 +1311,13 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_pettingzoo_env",
+    tags = ["tests_dir", "tests_dir_S"],
+    size = "medium",
+    srcs = ["tests/test_pettingzoo_env.py"]
+)
+
+py_test(
     name = "tests/test_supported_spaces",
     tags = ["tests_dir", "tests_dir_S"],
     size = "enormous",
