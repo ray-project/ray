@@ -463,7 +463,7 @@ class NodeUpdater:
 
             with LogTimer(self.log_prefix +
                           "Synced {} to {}".format(local_path, remote_path)):
-                self.cmd_runner.run("mkdir -p {}".format(
+                self.cmd_runner.run("sudo mkdir -p {}".format(
                     os.path.dirname(remote_path)))
                 sync_cmd(local_path, remote_path)
 
