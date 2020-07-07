@@ -138,9 +138,20 @@ void ActorManager::AddActorOutOfScopeCallback(
   if (it == actor_handles_.end()) {
     actor_out_of_scope_callbacks(actor_id);
   } else {
-    RAY_CHECK(actor_out_of_scope_callbacks_
-                  .emplace(actor_id, std::move(actor_out_of_scope_callbacks))
-                  .second);
+    if (RayConfig::instance().gcs_actor_service_enabled()) {
+      auto callback = [actor_id, actor_out_of_scope_callbacks](const ObjectID &object_id) {
+        actor_out_of_scope_callbacks(actor_id);
+      };
+
+      // Returns true if the object was present and the callback was added. It might have
+      // already been evicted by the time we get this request, in which case we should
+      // respond immediately so the gcs server can destroy the actor.
+      const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
+      if (!reference_counter_->SetDeleteCallback(actor_creation_return_id, callback)) {
+        RAY_LOG(DEBUG) << "ActorID reference already gone for " << actor_id;
+        actor_out_of_scope_callbacks(actor_id);
+      }
+    }
   }
 }
 
