@@ -13,7 +13,6 @@ except ImportError:
     uvloop = None
 
 import ray
-import gc
 
 
 def get_new_event_loop():
