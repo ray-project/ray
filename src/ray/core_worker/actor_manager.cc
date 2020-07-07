@@ -207,22 +207,22 @@ void ActorManager::ResolveActorsLocations() {
 
     if (actor_handle->IsPersistedToGCS()) {
       // if an actor is already persisted to GCS, GCS will be responsible for lifecycle of
-      // actors.
+      // actors, so we don't need to track them anymore.
+      RAY_CHECK(current != actors_pending_location_resolution_.end());
       actors_pending_location_resolution_.erase(current);
     } else {
       // https://github.com/ray-project/ray/pull/8679/files
       // Run a protocol to resolve actors location that haven't been registered to GCS.
       RAY_CHECK_OK(gcs_client_->Workers().AsyncGet(
           WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id()),
-          [this, actor_id, node_id](
-              Status status, const boost::optional<gcs::WorkerTableData> &result) {
-            if (!status.ok()) {
+          [this, actor_id, node_id](Status status,
+                                    const boost::optional<rpc::WorkerTableData> &result) {
+            if (!status.ok() || !result) {
               return;
             }
 
             bool worker_or_node_failed = false;
-            // If a worker failure events is found.
-            if (result) {
+            if (!result->is_alive()) {
               worker_or_node_failed = true;
             } else {
               // Check node failure. We should do this because worker failure event is not
@@ -237,9 +237,8 @@ void ActorManager::ResolveActorsLocations() {
             }
 
             if (worker_or_node_failed) {
-              // Detached actors are not fate sharing with an owner.
               // We should make sure one more time that an actor is not registered to GCS
-              // before resolving actor's location.
+              // before resolving actor's location to avoid race condition.
               RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(
                   actor_id,
                   [this, actor_id](Status status,

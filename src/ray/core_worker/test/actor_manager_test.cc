@@ -90,14 +90,12 @@ class MockWorkerInfoAccessor : public gcs::RedisWorkerInfoAccessor {
   ray::Status AsyncGet(
       const WorkerID &worker_id,
       const gcs::OptionalItemCallback<rpc::WorkerTableData> &callback) override {
-    RAY_LOG(ERROR) << "Sang worker id, " << worker_id;
     async_get_callback_map.emplace(worker_id, callback);
     return Status::OK();
   }
 
-  void InvokeAsyncGetWorkerCallback(
-      const WorkerID &worker_id, ray::Status status,
-      const boost::optional<gcs::WorkerTableData> &result) {
+  void InvokeAsyncGetWorkerCallback(const WorkerID &worker_id, ray::Status status,
+                                    const boost::optional<rpc::WorkerTableData> &result) {
     RAY_LOG(ERROR) << "Sang worker id requested, " << worker_id;
     auto it = async_get_callback_map.find(worker_id);
     RAY_CHECK(it != async_get_callback_map.end());
@@ -369,7 +367,8 @@ TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
 
 TEST_F(ActorManagerTest, TestActorLocationResolutionNormal) {
   ActorID actor_id = AddActorHandle();
-  const std::unique_ptr<ActorHandle> &actor_handle = actor_manager_->GetActorHandle(actor_id);
+  const std::unique_ptr<ActorHandle> &actor_handle =
+      actor_manager_->GetActorHandle(actor_id);
   ASSERT_FALSE(actor_handle->IsPersistedToGCS());
   ASSERT_TRUE(CheckActorIdInResolutionMap(actor_id));
 
@@ -390,7 +389,8 @@ TEST_F(ActorManagerTest, TestActorLocationResolutionNormal) {
 // is reported before it receives a state update from GCS.
 TEST_F(ActorManagerTest, TestActorLocationResolutionWorkerFailed) {
   ActorID actor_id = AddActorHandle();
-  const std::unique_ptr<ActorHandle> &actor_handle = actor_manager_->GetActorHandle(actor_id);
+  const std::unique_ptr<ActorHandle> &actor_handle =
+      actor_manager_->GetActorHandle(actor_id);
   const WorkerID &worker_id =
       WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
   ASSERT_TRUE(CheckActorIdInResolutionMap(actor_id));
@@ -431,7 +431,8 @@ TEST_F(ActorManagerTest, TestActorLocationResolutionWorkerFailed) {
 // is reported before it receives a state update from GCS.
 TEST_F(ActorManagerTest, TestActorLocationResolutionNodeFailed) {
   ActorID actor_id = AddActorHandle();
-  const std::unique_ptr<ActorHandle> &actor_handle = actor_manager_->GetActorHandle(actor_id);
+  const std::unique_ptr<ActorHandle> &actor_handle =
+      actor_manager_->GetActorHandle(actor_id);
   const ClientID &node_id =
       ClientID::FromBinary(actor_handle->GetOwnerAddress().raylet_id());
   ASSERT_TRUE(CheckActorIdInResolutionMap(actor_id));
@@ -447,7 +448,7 @@ TEST_F(ActorManagerTest, TestActorLocationResolutionNodeFailed) {
       WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
   // There's no worker failure.
   worker_info_accessor_->InvokeAsyncGetWorkerCallback(worker_id, ray::Status::OK(),
-                                                             boost::none);
+                                                      boost::none);
   // If async get callback succeed, and there's no actor data,
   // it means the actor is dead before it is persisted.
   // Disconnect an actor and delete the entry from resolution list.
@@ -464,7 +465,8 @@ TEST_F(ActorManagerTest, TestActorLocationResolutionNodeFailed) {
 // In this case, the resolution protocol should not disconnect an actor.
 TEST_F(ActorManagerTest, TestActorLocationResolutionRaceConditionActorRegistered) {
   ActorID actor_id = AddActorHandle();
-  const std::unique_ptr<ActorHandle> &actor_handle = actor_manager_->GetActorHandle(actor_id);
+  const std::unique_ptr<ActorHandle> &actor_handle =
+      actor_manager_->GetActorHandle(actor_id);
   const ClientID &node_id =
       ClientID::FromBinary(actor_handle->GetOwnerAddress().raylet_id());
   ASSERT_TRUE(CheckActorIdInResolutionMap(actor_id));
@@ -480,7 +482,7 @@ TEST_F(ActorManagerTest, TestActorLocationResolutionRaceConditionActorRegistered
       WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
   // There's no worker failure.
   worker_info_accessor_->InvokeAsyncGetWorkerCallback(worker_id, ray::Status::OK(),
-                                                             boost::none);
+                                                      boost::none);
 
   // Let's suppose here, the actor is persisted to GCS.
   // In this case, we should not disconnect.

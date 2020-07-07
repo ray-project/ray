@@ -825,11 +825,6 @@ def test_decorated_method(ray_start_regular):
     assert ray.get(object_id) == 7  # 2 * 3 + 1
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_cpus": 1,
-        "num_nodes": 3,
-    }], indirect=True)
 def test_ray_wait_dead_actor(ray_start_cluster):
     """Tests that methods completed by dead actors are returned as ready"""
     cluster = ray_start_cluster
