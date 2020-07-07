@@ -44,7 +44,7 @@ class TestPettingZooEnv(unittest.TestCase):
         config["train_batch_size"] = 200     # Training batch size -> Fragments are concatenated up to this point.
         config["horizon"] = 200              # After n steps, force reset simulation
         config["no_done_at_end"] = False
-        ray.init(num_cpus=1)
+
         agent = agent_class(env="prison", config=config)
         agent.train()
 
