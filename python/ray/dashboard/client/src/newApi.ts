@@ -5,14 +5,37 @@ type HostnamesResponse = APIResponse<HostnamesResponseData>;
 type NodeSummaryResponse = APIResponse<NodeSummaryResponseData>;
 type NodeDetailsResponse = APIResponse<NodeDetailsResponseData>;
 
+export type GPUProcessStats = {
+  // Sub stat of GPU stats, this type represents the GPU
+  // utilization of a single process of a single GPU.
+  username: string;
+  command: string;
+  gpu_memory_usage: number;
+  pid: number;
+};
+
+export type GPUStats = {
+  // This represents stats fetched from a node about a single GPU
+  uuid: string;
+  name: string;
+  temperature_gpu: number;
+  fan_speed: number;
+  utilization_gpu: number;
+  power_draw: number;
+  enforced_power_limit: number;
+  memory_used: number;
+  memory_total: number;
+  processes: GPUProcessStats[];
+};
+
 const getNodeSummaries = () =>
-  get<NodeSummaryResponse>("/v2/hosts", { view: "summary" });
+  get<NodeSummaryResponse>("/api/v2/hosts", { view: "summary" });
   
 const getHostnames = () =>
-  get<HostnamesResponse>("/v2/hosts", { view: "hostnamelist" });
+  get<HostnamesResponse>("/api/v2/hosts", { view: "hostnamelist" });
 
 const getNodeDetails = (hostname: string) =>
-  get<NodeDetailsResponse>(`/v2/hosts/${hostname}`, {});
+  get<NodeDetailsResponse>(`/api/v2/hosts/${hostname}`, {});
 
 type NodeSummaryResponseData = {
   summaries: NodeSummary[];
@@ -42,6 +65,7 @@ type BaseNodeInfo = {
   ip: string,
   cpu: number,
   cpus: number[],
+  gpus: GPUStats[]; // GPU stats fetched from node, 1 entry per GPU
   mem: number[],
   bootTime: number,
   loadAvg: number[][], // todo figure out what this is
