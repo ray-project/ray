@@ -9,16 +9,22 @@ class PettingZooEnv(MultiAgentEnv):
     (actor-environment-cycle) game from the PettingZoo project via the
     MultiAgentEnv public API.
 
-    It reduces the class of AEC games to Partially Observable Markov (POM) games by imposing the following
-    important restrictions onto an AEC environment:
+    It reduces the class of AEC games to Partially Observable Markov (POM)
+    games by imposing the following important restrictions onto an AEC
+    environment:
 
-    1. Each agent steps in order specified in agents list (unless they are done, in which case, they should be skipped).
+    1. Each agent steps in order specified in agents list (unless they are
+       done, in which case, they should be skipped).
     2. Agents act simultaneously (-> No hard-turn games like chess).
     3. All agents have the same action_spaces and observation_spaces.
-    Note: If, within your aec game, agents do not have homogeneous action / observation spaces, apply SuperSuit wrappers
-    to apply padding functionality: https://github.com/PettingZoo-Team/SuperSuit#built-in-multi-agent-only-functions
-    4. Environments are positive sum games (-> Agents are expected to cooperate to maximize reward).
-    This isn't a hard restriction, it just that standard algorithms aren't expected to work well in highly competitive games.
+       Note: If, within your aec game, agents do not have homogeneous action /
+       observation spaces, apply SuperSuit wrappers
+       to apply padding functionality: https://github.com/PettingZoo-Team/
+       SuperSuit#built-in-multi-agent-only-functions
+    4. Environments are positive sum games (-> Agents are expected to cooperate
+       to maximize reward). This isn't a hard restriction, it just that
+       standard algorithms aren't expected to work well in highly competitive
+       games.
 
     Examples:
         >>> from pettingzoo.gamma import prison_v0
@@ -75,11 +81,18 @@ class PettingZooEnv(MultiAgentEnv):
         # Get first action space, assuming all agents have equal space
         self.action_space = self.action_spaces[self.agents[0]]
 
-        assert all(obs_space == self.observation_space for obs_space in self.aec_env.observation_spaces.values()), \
-            "Observation spaces for all agents must be identical. Perhaps SuperSuit's pad_observations wrapper can help (useage: `supersuit.aec_wrappers.pad_observations(env)`"
+        assert all(obs_space == self.observation_space
+                   for obs_space
+                   in self.aec_env.observation_spaces.values()), \
+            "Observation spaces for all agents must be identical. Perhaps " \
+            "SuperSuit's pad_observations wrapper can help (useage: " \
+            "`supersuit.aec_wrappers.pad_observations(env)`"
 
-        assert all(act_space == self.action_space for act_space in self.aec_env.action_spaces.values()), \
-            "Action spaces for all agents must be identical. Perhaps SuperSuit's pad_action_space wrapper can help (useage: `supersuit.aec_wrappers.pad_action_space(env)`"
+        assert all(act_space == self.action_space
+                   for act_space in self.aec_env.action_spaces.values()), \
+            "Action spaces for all agents must be identical. Perhaps " \
+            "SuperSuit's pad_action_space wrapper can help (useage: " \
+            "`supersuit.aec_wrappers.pad_action_space(env)`"
 
         self.rewards = {}
         self.dones = {}
@@ -149,7 +162,11 @@ class PettingZooEnv(MultiAgentEnv):
             # Execute only for agents that have not been done in previous steps
             if agent in action_dict.keys():
                 if not env_done:
-                    assert agent == self.aec_env.agent_selection, f"environment has a nontrivial ordering, and cannot be used with the POMGameEnv wrapper\nCurrent agent: {self.aec_env.agent_selection}\nExpected agent: {agent}"
+                    assert agent == self.aec_env.agent_selection, \
+                        f"environment has a nontrivial ordering, and " \
+                        "cannot be used with the POMGameEnv wrapper\"" \
+                        "nCurrent agent: {self.aec_env.agent_selection}" \
+                        "\nExpected agent: {agent}"
                     # Execute agent action in environment
                     self.obs[agent] = self.aec_env.step(
                         action_dict[agent], observe=True)
@@ -163,7 +180,8 @@ class PettingZooEnv(MultiAgentEnv):
                 # Update done status
                 self.dones[agent] = self.aec_env.dones[agent]
 
-            # For agents with done = True, remove from dones, rewards and observations
+            # For agents with done = True, remove from dones, rewards and
+            # observations.
             else:
                 del self.dones[agent]
                 del self.rewards[agent]

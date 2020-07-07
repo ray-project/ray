@@ -2,11 +2,9 @@ import unittest
 from copy import deepcopy
 
 import ray
-from ray.tune import run_experiments
 from ray.tune.registry import register_env
 from ray.rllib.env import PettingZooEnv
 from ray.rllib.agents.registry import get_agent_class
-from ray.rllib.utils.test_utils import framework_iterator
 
 from pettingzoo.mpe import simple_spread_v0
 
@@ -40,10 +38,8 @@ class TestPettingZooEnv(unittest.TestCase):
 
         config["log_level"] = "DEBUG"
         config["num_workers"] = 0
-        config[
-            "sample_batch_size"] = 30  # Fragment length, collected at once from each worker and for each agent!
-        config[
-            "train_batch_size"] = 200  # Training batch size -> Fragments are concatenated up to this point.
+        config["rollout_fragment_length"] = 30
+        config["train_batch_size"] = 200
         config["horizon"] = 200  # After n steps, force reset simulation
         config["no_done_at_end"] = False
 
