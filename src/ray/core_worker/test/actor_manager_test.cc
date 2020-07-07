@@ -96,7 +96,6 @@ class MockWorkerInfoAccessor : public gcs::RedisWorkerInfoAccessor {
 
   void InvokeAsyncGetWorkerCallback(const WorkerID &worker_id, ray::Status status,
                                     const boost::optional<rpc::WorkerTableData> &result) {
-    RAY_LOG(ERROR) << "Sang worker id requested, " << worker_id;
     auto it = async_get_callback_map.find(worker_id);
     RAY_CHECK(it != async_get_callback_map.end());
     auto callback = it->second;
@@ -193,22 +192,23 @@ class ActorManagerTest : public ::testing::Test {
 
   void TearDown() { actor_manager_.reset(); }
 
-  ActorID AddActorHandle() const {
+  ActorID AddActorHandle(WorkerID worker_id) const {
     JobID job_id = JobID::FromInt(1);
     const TaskID task_id = TaskID::ForDriverTask(job_id);
     ActorID actor_id = ActorID::Of(job_id, task_id, 1);
-    const auto caller_address = rpc::Address();
+    rpc::Address owner_address;
+    owner_address.set_worker_id(worker_id.Binary());
     const auto call_site = "";
     RayFunction function(ray::Language::PYTHON,
                          ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
 
     auto actor_handle = absl::make_unique<ActorHandle>(
-        actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
+        actor_id, TaskID::Nil(), owner_address, job_id, ObjectID::FromRandom(),
         function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
     EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
         .WillRepeatedly(testing::Return(true));
     actor_manager_->AddNewActorHandle(move(actor_handle), task_id, call_site,
-                                      caller_address, /*is_detached*/ false);
+                                      owner_address, /*is_detached*/ false);
     return actor_id;
   }
 
@@ -314,7 +314,7 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
 }
 
 TEST_F(ActorManagerTest, TestActorStateNotificationPending) {
-  ActorID actor_id = AddActorHandle();
+  ActorID actor_id = AddActorHandle(WorkerID::FromRandom());
   // Nothing happens if state is pending.
   EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _)).Times(0);
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _)).Times(0);
@@ -327,7 +327,7 @@ TEST_F(ActorManagerTest, TestActorStateNotificationPending) {
 }
 
 TEST_F(ActorManagerTest, TestActorStateNotificationRestarting) {
-  ActorID actor_id = AddActorHandle();
+  ActorID actor_id = AddActorHandle(WorkerID::FromRandom());
   // Should disconnect to an actor when actor is restarting.
   EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _)).Times(0);
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _)).Times(1);
@@ -340,7 +340,7 @@ TEST_F(ActorManagerTest, TestActorStateNotificationRestarting) {
 }
 
 TEST_F(ActorManagerTest, TestActorStateNotificationDead) {
-  ActorID actor_id = AddActorHandle();
+  ActorID actor_id = AddActorHandle(WorkerID::FromRandom());
   // Should disconnect to an actor when actor is dead.
   EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _)).Times(0);
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _)).Times(1);
@@ -353,7 +353,7 @@ TEST_F(ActorManagerTest, TestActorStateNotificationDead) {
 }
 
 TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
-  ActorID actor_id = AddActorHandle();
+  ActorID actor_id = AddActorHandle(WorkerID::FromRandom());
   // Should connect to an actor when actor is alive.
   EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _)).Times(1);
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _)).Times(0);
@@ -366,7 +366,7 @@ TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
 }
 
 TEST_F(ActorManagerTest, TestActorLocationResolutionNormal) {
-  ActorID actor_id = AddActorHandle();
+  ActorID actor_id = AddActorHandle(WorkerID::FromRandom());
   const std::unique_ptr<ActorHandle> &actor_handle =
       actor_manager_->GetActorHandle(actor_id);
   ASSERT_FALSE(actor_handle->IsPersistedToGCS());
@@ -388,11 +388,12 @@ TEST_F(ActorManagerTest, TestActorLocationResolutionNormal) {
 // Actor should be disconnected if worker failure event
 // is reported before it receives a state update from GCS.
 TEST_F(ActorManagerTest, TestActorLocationResolutionWorkerFailed) {
-  ActorID actor_id = AddActorHandle();
+  auto worker_id = WorkerID::FromRandom();
+  ActorID actor_id = AddActorHandle(worker_id);
   const std::unique_ptr<ActorHandle> &actor_handle =
       actor_manager_->GetActorHandle(actor_id);
-  const WorkerID &worker_id =
-      WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
+  // const WorkerID &worker_id =
+  //     WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
   ASSERT_TRUE(CheckActorIdInResolutionMap(actor_id));
 
   actor_manager_->ResolveActorsLocations();
@@ -401,14 +402,14 @@ TEST_F(ActorManagerTest, TestActorLocationResolutionWorkerFailed) {
   // If the RPC request fails, do nothing.
   worker_info_accessor_->InvokeAsyncGetWorkerCallback(
       worker_id, ray::Status::Invalid(""),
-      boost::optional<gcs::WorkerTableData>(worker_failure_data));
+      boost::optional<rpc::WorkerTableData>(worker_failure_data));
   ASSERT_TRUE(CheckActorIdInResolutionMap(actor_id));
 
   // If worker failure data is returned, actor handle is disconnected from an actor.
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _)).Times(1);
   worker_info_accessor_->InvokeAsyncGetWorkerCallback(
       worker_id, ray::Status::OK(),
-      boost::optional<gcs::WorkerTableData>(worker_failure_data));
+      boost::optional<rpc::WorkerTableData>(worker_failure_data));
 
   // If async get callback failed, it won't do anything.
   actor_info_accessor_->InvokeAsyncGetCallback(actor_id, ray::Status::Invalid(""),
@@ -430,7 +431,8 @@ TEST_F(ActorManagerTest, TestActorLocationResolutionWorkerFailed) {
 // Actor should be disconnected if the node of an actor failed.
 // is reported before it receives a state update from GCS.
 TEST_F(ActorManagerTest, TestActorLocationResolutionNodeFailed) {
-  ActorID actor_id = AddActorHandle();
+  auto worker_id = WorkerID::FromRandom();
+  ActorID actor_id = AddActorHandle(worker_id);
   const std::unique_ptr<ActorHandle> &actor_handle =
       actor_manager_->GetActorHandle(actor_id);
   const ClientID &node_id =
@@ -444,11 +446,11 @@ TEST_F(ActorManagerTest, TestActorLocationResolutionNodeFailed) {
   EXPECT_CALL(*node_info_accessor_, Get(node_id))
       .WillRepeatedly(testing::Return(boost::optional<rpc::GcsNodeInfo>(node_info)));
 
-  const WorkerID &worker_id =
-      WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
-  // There's no worker failure.
-  worker_info_accessor_->InvokeAsyncGetWorkerCallback(worker_id, ray::Status::OK(),
-                                                      boost::none);
+  rpc::WorkerTableData worker_failure_data;
+  worker_failure_data.set_is_alive(true);
+  worker_info_accessor_->InvokeAsyncGetWorkerCallback(
+      worker_id, ray::Status::OK(),
+      boost::optional<rpc::WorkerTableData>(worker_failure_data));
   // If async get callback succeed, and there's no actor data,
   // it means the actor is dead before it is persisted.
   // Disconnect an actor and delete the entry from resolution list.
@@ -464,7 +466,8 @@ TEST_F(ActorManagerTest, TestActorLocationResolutionNodeFailed) {
 // the node or worker failure is confirmed from our code.
 // In this case, the resolution protocol should not disconnect an actor.
 TEST_F(ActorManagerTest, TestActorLocationResolutionRaceConditionActorRegistered) {
-  ActorID actor_id = AddActorHandle();
+  auto worker_id = WorkerID::FromRandom();
+  ActorID actor_id = AddActorHandle(worker_id);
   const std::unique_ptr<ActorHandle> &actor_handle =
       actor_manager_->GetActorHandle(actor_id);
   const ClientID &node_id =
@@ -478,11 +481,11 @@ TEST_F(ActorManagerTest, TestActorLocationResolutionRaceConditionActorRegistered
   EXPECT_CALL(*node_info_accessor_, Get(node_id))
       .WillRepeatedly(testing::Return(boost::optional<rpc::GcsNodeInfo>(node_info)));
 
-  const WorkerID &worker_id =
-      WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
-  // There's no worker failure.
-  worker_info_accessor_->InvokeAsyncGetWorkerCallback(worker_id, ray::Status::OK(),
-                                                      boost::none);
+  rpc::WorkerTableData worker_failure_data;
+  worker_failure_data.set_is_alive(true);
+  worker_info_accessor_->InvokeAsyncGetWorkerCallback(
+      worker_id, ray::Status::OK(),
+      boost::optional<rpc::WorkerTableData>(worker_failure_data));
 
   // Let's suppose here, the actor is persisted to GCS.
   // In this case, we should not disconnect.

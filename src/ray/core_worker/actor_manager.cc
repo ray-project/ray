@@ -217,12 +217,12 @@ void ActorManager::ResolveActorsLocations() {
           WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id()),
           [this, actor_id, node_id](Status status,
                                     const boost::optional<rpc::WorkerTableData> &result) {
-            if (!status.ok() || !result) {
+            if (!status.ok()) {
               return;
             }
 
             bool worker_or_node_failed = false;
-            if (!result->is_alive()) {
+            if (result && !result->is_alive()) {
               worker_or_node_failed = true;
             } else {
               // Check node failure. We should do this because worker failure event is not
@@ -244,7 +244,7 @@ void ActorManager::ResolveActorsLocations() {
                   [this, actor_id](Status status,
                                    const boost::optional<gcs::ActorTableData> &result) {
                     absl::MutexLock lock(&mutex_);
-                    std::unique_ptr<ActorHandle> &actor_handle =
+                    const std::unique_ptr<ActorHandle> &actor_handle =
                         GetActorHandleInternal(actor_id);
                     if (status.ok() && !result && !actor_handle->IsPersistedToGCS()) {
                       direct_actor_submitter_->DisconnectActor(actor_id, /*dead*/ true);
