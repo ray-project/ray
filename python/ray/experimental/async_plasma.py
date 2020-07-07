@@ -32,8 +32,8 @@ class PlasmaEventHandler:
             try:
                 fut.set_result(obj)
             except asyncio.InvalidStateError:
-                # Avoid issues where process_notifications
-                # and check_immediately both get executed
+                # Avoid issues where the future got set immediately but we also
+                # received a notification about the object from plasma.
                 logger.debug("Failed to set result for future {}."
                              "Most likely already set.".format(fut))
 
@@ -42,14 +42,6 @@ class PlasmaEventHandler:
         for futures in self._waiting_dict.values():
             for fut in futures:
                 fut.cancel()
-
-    def check_immediately(self, object_id):
-        ready, _ = ray.wait([object_id], timeout=0)
-        if ready:
-            self._complete_future(object_id)
-            return True
-        else:
-            return False
 
     def as_future(self, object_id, check_ready=True):
         """Turn an object_id into a Future object.
@@ -66,9 +58,14 @@ class PlasmaEventHandler:
 
         future = PlasmaObjectFuture(loop=self._loop)
         self._waiting_dict[object_id].append(future)
-        if not self.check_immediately(object_id) and len(
-                self._waiting_dict[object_id]) == 1:
-            # The future is still pending. Only subscribe once per
-            # object.
+
+        # Check if the object is ready.
+        ready, _ = ray.wait([object_id], timeout=0)
+        if ready:
+            # The object is ready. Set the result immediately.
+            self._complete_future(object_id)
+        elif len(self._waiting_dict[object_id]) == 1:
+            # The object is not yet ready. Only subscribe to this object if we
+            # haven't already.
             self._worker.core_worker.subscribe_to_plasma_object(object_id)
         return future
