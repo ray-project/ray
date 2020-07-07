@@ -769,20 +769,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id The id to call get on.
   /// \param[in] success_callback The callback to use the result object.
-  /// \param[in] fallback_callback The callback to use when failed to get result.
   /// \param[in] python_future the void* object to be passed to SetResultCallback
   /// \return void
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
-                SetResultCallback fallback_callback, void *python_future);
-
-  /// Connect to plasma store for async futures
-  using PlasmaSubscriptionCallback = std::function<void(ray::ObjectID, int64_t, int64_t)>;
-
-  /// Set callback when an item is added to the plasma store.
-  ///
-  /// \param[in] subscribe_callback The callback when an item is added to plasma.
-  /// \return void
-  void SetPlasmaAddedCallback(PlasmaSubscriptionCallback subscribe_callback);
+                void *python_future);
 
   /// Subscribe to receive notification of an object entering the plasma store.
   ///
@@ -1081,8 +1071,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Queue of tasks to resubmit when the specified time passes.
   std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
 
-  // Plasma Callback
-  PlasmaSubscriptionCallback plasma_done_callback_;
+  // Guard for `async_plasma_callbacks_` map.
+  mutable absl::Mutex plasma_mutex_;
+
+  // Callbacks for when when a plasma object becomes ready.
+  absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
+      async_plasma_callbacks_ GUARDED_BY(plasma_mutex_);
+
+  // Fallback for when GetAsync cannot directly get the requested object.
+  void PlasmaCallback(SetResultCallback success, std::shared_ptr<RayObject> ray_object,
+                      ObjectID object_id, void *py_future);
 
   /// Whether we are shutting down and not running further tasks.
   bool exiting_ = false;
