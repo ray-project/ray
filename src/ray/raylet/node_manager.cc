@@ -3266,9 +3266,8 @@ void NodeManager::ForwardTask(
         // the execution dependencies here since those cannot be transferred
         // between nodes.
         for (size_t i = 0; i < spec.NumArgs(); ++i) {
-          int count = spec.ArgIdCount(i);
-          for (int j = 0; j < count; j++) {
-            ObjectID argument_id = spec.ArgId(i, j);
+          if (spec.ArgByRef(i)) {
+            ObjectID argument_id = spec.ArgId(i);
             // If the argument is local, then push it to the receiving node.
             if (task_dependency_manager_.CheckObjectLocal(argument_id)) {
               object_manager_.Push(argument_id, node_id);

@@ -29,7 +29,8 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
   task.GetMutableMessage().set_task_id(TaskID::ForFakeTask().Binary());
   task.GetMutableMessage().set_num_returns(num_returns);
   for (const ObjectID &dep : dependencies) {
-    task.GetMutableMessage().add_args()->add_object_ids(dep.Binary());
+    task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+        dep.Binary());
   }
   return task;
 }

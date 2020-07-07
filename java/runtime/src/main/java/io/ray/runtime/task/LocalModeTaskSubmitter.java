@@ -19,6 +19,7 @@ import io.ray.runtime.generated.Common;
 import io.ray.runtime.generated.Common.ActorCreationTaskSpec;
 import io.ray.runtime.generated.Common.ActorTaskSpec;
 import io.ray.runtime.generated.Common.Language;
+import io.ray.runtime.generated.Common.ObjectReference;
 import io.ray.runtime.generated.Common.TaskArg;
 import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.generated.Common.TaskType;
@@ -93,7 +94,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     Set<ObjectId> unreadyObjects = new HashSet<>();
     // Check whether task arguments are ready.
     for (TaskArg arg : taskSpec.getArgsList()) {
-      for (ByteString idByteString : arg.getObjectIdsList()) {
+      ByteString idByteString = arg.getObjectRef().getObjectId();
+      if (idByteString  != ByteString.EMPTY) {
         ObjectId id = new ObjectId(idByteString.toByteArray());
         if (!objectStore.isObjectReady(id)) {
           unreadyObjects.add(id);
@@ -130,7 +132,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
                         .setFunctionName(functionDescriptorList.get(1))
                         .setSignature(functionDescriptorList.get(2))))
         .addAllArgs(args.stream().map(arg -> arg.id != null ? TaskArg.newBuilder()
-            .addObjectIds(ByteString.copyFrom(arg.id.getBytes())).build()
+            .setObjectRef(ObjectReference.newBuilder().setObjectId(
+                    ByteString.copyFrom(arg.id.getBytes()))).build()
             : TaskArg.newBuilder().setData(ByteString.copyFrom(arg.value.data))
             .setMetadata(arg.value.metadata != null ? ByteString
                 .copyFrom(arg.value.metadata) : ByteString.EMPTY).build())
@@ -323,9 +326,9 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     List<FunctionArg> functionArgs = new ArrayList<>();
     for (int i = 0; i < taskSpec.getArgsCount(); i++) {
       TaskArg arg = taskSpec.getArgs(i);
-      if (arg.getObjectIdsCount() > 0) {
+      if (arg.getObjectRef().getObjectId() != ByteString.EMPTY) {
         functionArgs.add(FunctionArg
-            .passByReference(new ObjectId(arg.getObjectIds(0).toByteArray())));
+            .passByReference(new ObjectId(arg.getObjectRef().getObjectId().toByteArray())));
       } else {
         functionArgs.add(FunctionArg.passByValue(
             new NativeRayObject(arg.getData().toByteArray(), arg.getMetadata().toByteArray())));

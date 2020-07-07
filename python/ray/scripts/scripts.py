@@ -904,11 +904,11 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     cmd = " ".join(command_parts)
     exec_cluster(
         cluster_config_file,
-        cmd,
-        "docker",
-        screen,
-        tmux,
-        stop,
+        cmd=cmd,
+        run_env="docker",
+        screen=screen,
+        tmux=tmux,
+        stop=stop,
         start=False,
         override_cluster_name=cluster_name,
         port_forward=port_forward)
@@ -958,8 +958,17 @@ def exec(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
          cluster_name, port_forward):
     """Execute a command via SSH on a Ray cluster."""
     port_forward = [(port, port) for port in list(port_forward)]
-    exec_cluster(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
-                 cluster_name, port_forward)
+
+    exec_cluster(
+        cluster_config_file,
+        cmd=cmd,
+        run_env=run_env,
+        screen=screen,
+        tmux=tmux,
+        stop=stop,
+        start=start,
+        override_cluster_name=cluster_name,
+        port_forward=port_forward)
 
 
 @cli.command()
