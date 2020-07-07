@@ -183,13 +183,14 @@ def test_dynamic_res_creation_clientid_multiple(ray_start_cluster):
     start_time = time.time()
 
     def check_resources():
-	resources_created = []
-	for nid in target_node_ids:
-	    target_node = next(
-		node for node in ray.nodes() if node["NodeID"] == nid)
-	    resources = target_node["Resources"]
-	    resources_created.append(resources.get(res_name, None) == res_capacity)
-	return all(resources_created)
+        resources_created = []
+        for nid in target_node_ids:
+            target_node = next(
+                node for node in ray.nodes() if node["NodeID"] == nid)
+            resources = target_node["Resources"]
+            resources_created.append(
+                resources.get(res_name, None) == res_capacity)
+        return all(resources_created)
 
     wait_for_condition(check_resources)
 
