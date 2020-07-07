@@ -132,7 +132,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
                         .setFunctionName(functionDescriptorList.get(1))
                         .setSignature(functionDescriptorList.get(2))))
         .addAllArgs(args.stream().map(arg -> arg.id != null ? TaskArg.newBuilder()
-            .setObjectRef(ObjectReference.newBuilder().setObjectId(ByteString.copyFrom(arg.id.getBytes()))).build()
+            .setObjectRef(ObjectReference.newBuilder().setObjectId(
+                    ByteString.copyFrom(arg.id.getBytes()))).build()
             : TaskArg.newBuilder().setData(ByteString.copyFrom(arg.value.data))
             .setMetadata(arg.value.metadata != null ? ByteString
                 .copyFrom(arg.value.metadata) : ByteString.EMPTY).build())
