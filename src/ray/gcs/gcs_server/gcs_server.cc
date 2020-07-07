@@ -19,11 +19,11 @@
 #include "gcs_job_manager.h"
 #include "gcs_node_manager.h"
 #include "gcs_object_manager.h"
+#include "gcs_worker_manager.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "stats_handler_impl.h"
 #include "task_info_handler_impl.h"
-#include "worker_info_handler_impl.h"
 
 namespace ray {
 namespace gcs {
@@ -92,9 +92,9 @@ void GcsServer::Start() {
       new rpc::ErrorInfoGrpcService(main_service_, *error_info_handler_));
   rpc_server_.RegisterService(*error_info_service_);
 
-  worker_info_handler_ = InitWorkerInfoHandler();
+  gcs_worker_manager_ = InitGcsWorkerManager();
   worker_info_service_.reset(
-      new rpc::WorkerInfoGrpcService(main_service_, *worker_info_handler_));
+      new rpc::WorkerInfoGrpcService(main_service_, *gcs_worker_manager_));
   rpc_server_.RegisterService(*worker_info_service_);
 
   auto load_completed_count = std::make_shared<int>(0);
@@ -191,7 +191,7 @@ void GcsServer::InitGcsActorManager() {
       });
 
   auto on_subscribe = [this](const std::string &id, const std::string &data) {
-    rpc::WorkerFailureData worker_failure_data;
+    rpc::WorkerTableData worker_failure_data;
     worker_failure_data.ParseFromString(data);
     auto &worker_address = worker_failure_data.worker_address();
     WorkerID worker_id = WorkerID::FromBinary(id);
@@ -199,7 +199,7 @@ void GcsServer::InitGcsActorManager() {
     gcs_actor_manager_->OnWorkerDead(node_id, worker_id,
                                      worker_failure_data.intentional_disconnect());
   };
-  RAY_CHECK_OK(gcs_pub_sub_->SubscribeAll(WORKER_FAILURE_CHANNEL, on_subscribe, nullptr));
+  RAY_CHECK_OK(gcs_pub_sub_->SubscribeAll(WORKER_CHANNEL, on_subscribe, nullptr));
 }
 
 void GcsServer::InitGcsJobManager() {
@@ -243,9 +243,9 @@ std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
       new rpc::DefaultErrorInfoHandler(*redis_gcs_client_));
 }
 
-std::unique_ptr<rpc::WorkerInfoHandler> GcsServer::InitWorkerInfoHandler() {
-  return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(new rpc::DefaultWorkerInfoHandler(
-      *redis_gcs_client_, gcs_table_storage_, gcs_pub_sub_));
+std::unique_ptr<GcsWorkerManager> GcsServer::InitGcsWorkerManager() {
+  return std::unique_ptr<GcsWorkerManager>(
+      new GcsWorkerManager(gcs_table_storage_, gcs_pub_sub_));
 }
 
 }  // namespace gcs

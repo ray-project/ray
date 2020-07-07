@@ -1134,10 +1134,10 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_dependency",
+    name = "tests/test_dependency_tf",
     tags = ["tests_dir", "tests_dir_D"],
     size = "small",
-    srcs = ["tests/test_dependency.py"]
+    srcs = ["tests/test_dependency_tf.py"]
 )
 
 py_test(
