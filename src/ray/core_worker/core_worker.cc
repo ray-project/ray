@@ -1836,6 +1836,20 @@ void CoreWorker::HandleWaitForObjectEviction(
   }
 }
 
+void CoreWorker::HandleAddObjectLocation(
+    const rpc::AddObjectLocationRequest &request,
+    rpc::AddObjectLocationReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  reference_counter_->AddObjectLocation(request.object_id(), request.client_id());
+}
+
+void CoreWorker::HandleRemoveObjectLocation(
+    const rpc::RemoveObjectLocationRequest &request,
+    rpc::RemoveObjectLocationReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  reference_counter_->RemoveObjectLocation(request.object_id(), request.client_id());
+}
+
 void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
                                          rpc::WaitForRefRemovedReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
