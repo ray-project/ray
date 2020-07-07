@@ -335,10 +335,7 @@ def test_reconstruction_stress(ray_start_cluster):
 
         cluster.remove_node(node_to_kill, allow_graceful=False)
         node_to_kill = cluster.add_node(
-            num_cpus=1,
-            resources={"node1": 1},
-            object_store_memory=10**8,
-            _internal_config=config)
+            num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
 
         i = 0
         while outputs:

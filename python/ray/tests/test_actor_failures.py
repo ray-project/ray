@@ -291,7 +291,7 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
     ray.init(address=cluster.address)
 
     # Node to place the actor.
-    actor_node = cluster.add_node(num_cpus=1, _internal_config=config)
+    actor_node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
 
     @ray.remote(num_cpus=1, max_restarts=1, max_task_retries=-1)
