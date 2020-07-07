@@ -32,7 +32,7 @@ void BuildCommonTaskSpec(
     ray::TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
     const TaskID &current_task_id, const int task_index, const TaskID &caller_id,
     const ray::rpc::Address &address, const ray::RayFunction &function,
-    const std::vector<ray::TaskArg> &args, uint64_t num_returns,
+    const std::vector<std::unique_ptr<ray::TaskArg>> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     std::vector<ObjectID> *return_ids) {
@@ -43,11 +43,7 @@ void BuildCommonTaskSpec(
                             required_resources, required_placement_resources);
   // Set task arguments.
   for (const auto &arg : args) {
-    if (arg.IsPassedByReference()) {
-      builder.AddByRefArg(arg.GetReference());
-    } else {
-      builder.AddByValueArg(arg.GetValue());
-    }
+    builder.AddArg(*arg);
   }
 
   // Compute return IDs.
@@ -707,6 +703,20 @@ CoreWorker::GetAllReferenceCounts() const {
   return counts;
 }
 
+const rpc::Address &CoreWorker::GetRpcAddress() const { return rpc_address_; }
+
+rpc::Address CoreWorker::GetOwnerAddress(const ObjectID &object_id) const {
+  rpc::Address owner_address;
+  auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
+  RAY_CHECK(has_owner)
+      << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+         "(ObjectID.from_binary(...)) cannot be passed as a task argument because Ray "
+         "does not know which task will create them. "
+         "If this was not how your object ID was generated, please file an issue "
+         "at https://github.com/ray-project/ray/issues/";
+  return owner_address;
+}
+
 void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
                                                     rpc::Address *owner_address) {
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
@@ -1024,9 +1034,10 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
 
 Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only,
                           bool delete_creating_tasks) {
-  // TODO(edoakes): what are the desired semantics for deleting from a non-owner?
-  // Should we just delete locally or ping the owner and delete globally?
-  reference_counter_->DeleteReferences(object_ids);
+  // Release the object from plasma. This does not affect the object's ref
+  // count. If this was called from a non-owning worker, then a warning will be
+  // logged and the object will not get released.
+  reference_counter_->FreePlasmaObjects(object_ids);
 
   // We only delete from plasma, which avoids hangs (issue #7105). In-memory
   // objects are always handled by ref counting only.
@@ -1089,7 +1100,8 @@ Status CoreWorker::SetResource(const std::string &resource_name, const double ca
   return local_raylet_client_->SetResource(resource_name, capacity, client_id);
 }
 
-void CoreWorker::SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
+void CoreWorker::SubmitTask(const RayFunction &function,
+                            const std::vector<std::unique_ptr<TaskArg>> &args,
                             const TaskOptions &task_options,
                             std::vector<ObjectID> *return_ids, int max_retries) {
   TaskSpecBuilder builder;
@@ -1117,7 +1129,7 @@ void CoreWorker::SubmitTask(const RayFunction &function, const std::vector<TaskA
 }
 
 Status CoreWorker::CreateActor(const RayFunction &function,
-                               const std::vector<TaskArg> &args,
+                               const std::vector<std::unique_ptr<TaskArg>> &args,
                                const ActorCreationOptions &actor_creation_options,
                                const std::string &extension_data,
                                ActorID *return_actor_id) {
@@ -1171,7 +1183,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 }
 
 void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
-                                 const std::vector<TaskArg> &args,
+                                 const std::vector<std::unique_ptr<TaskArg>> &args,
                                  const TaskOptions &task_options,
                                  std::vector<ObjectID> *return_ids) {
   ActorHandle *actor_handle = nullptr;
@@ -1629,16 +1641,13 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
 
   for (size_t i = 0; i < task.NumArgs(); ++i) {
     if (task.ArgByRef(i)) {
-      // pass by reference.
-      RAY_CHECK(task.ArgIdCount(i) == 1);
-      // Objects that weren't inlined have been promoted to plasma.
       // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
       // properly redirects to the plasma store.
       if (!options_.is_local_mode) {
         RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                      task.ArgId(i, 0)));
+                                      task.ArgId(i)));
       }
-      const auto &arg_id = task.ArgId(i, 0);
+      const auto &arg_id = task.ArgId(i);
       by_ref_ids.insert(arg_id);
       auto it = by_ref_indices.find(arg_id);
       if (it == by_ref_indices.end()) {
@@ -1653,7 +1662,7 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
       // it finishes.
       borrowed_ids->push_back(arg_id);
     } else {
-      // pass by value.
+      // A pass-by-value argument.
       std::shared_ptr<LocalMemoryBuffer> data = nullptr;
       if (task.ArgDataSize(i)) {
         data = std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(task.ArgData(i)),

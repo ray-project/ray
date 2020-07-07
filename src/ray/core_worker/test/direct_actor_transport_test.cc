@@ -152,9 +152,11 @@ TEST_F(DirectActorSubmitterTest, TestDependencies) {
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
   auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
-  task1.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
+  task1.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      obj1.Binary());
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
-  task2.GetMutableMessage().add_args()->add_object_ids(obj2.Binary());
+  task2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      obj2.Binary());
 
   // Neither task can be submitted yet because they are still waiting on
   // dependencies.
@@ -184,9 +186,11 @@ TEST_F(DirectActorSubmitterTest, TestOutOfOrderDependencies) {
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
   auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
-  task1.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
+  task1.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      obj1.Binary());
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
-  task2.GetMutableMessage().add_args()->add_object_ids(obj2.Binary());
+  task2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      obj2.Binary());
 
   // Neither task can be submitted yet because they are still waiting on
   // dependencies.
@@ -218,7 +222,7 @@ TEST_F(DirectActorSubmitterTest, TestActorDead) {
   auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
   ObjectID obj = ObjectID::FromRandom();
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
-  task2.GetMutableMessage().add_args()->add_object_ids(obj.Binary());
+  task2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj.Binary());
   ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
