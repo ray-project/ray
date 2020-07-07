@@ -111,6 +111,15 @@ class GcsActorManagerTest : public ::testing::Test {
     EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
   }
 
+  rpc::Address RandomAddress() const {
+    rpc::Address address;
+    auto node_id = ClientID::FromRandom();
+    auto worker_id = WorkerID::FromRandom();
+    address.set_raylet_id(node_id.Binary());
+    address.set_worker_id(worker_id.Binary());
+    return address;
+  }
+
   boost::asio::io_service io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::shared_ptr<gcs::StoreClient> store_client_;
@@ -141,12 +150,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   mock_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
-  rpc::Address address;
-  auto node_id = ClientID::FromRandom();
-  auto worker_id = WorkerID::FromRandom();
-  address.set_raylet_id(node_id.Binary());
-  address.set_worker_id(worker_id.Binary());
-  actor->UpdateAddress(address);
+  actor->UpdateAddress(RandomAddress());
   gcs_actor_manager_->OnActorCreationSuccess(actor);
   WaitActorCreated(actor->GetActorID());
   ASSERT_EQ(finished_actors.size(), 1);
@@ -176,12 +180,7 @@ TEST_F(GcsActorManagerTest, TestSchedulingFailed) {
   ASSERT_EQ(finished_actors.size(), 0);
 
   // Check that the actor is in state `ALIVE`.
-  rpc::Address address;
-  auto node_id = ClientID::FromRandom();
-  auto worker_id = WorkerID::FromRandom();
-  address.set_raylet_id(node_id.Binary());
-  address.set_worker_id(worker_id.Binary());
-  actor->UpdateAddress(address);
+  actor->UpdateAddress(RandomAddress());
   gcs_actor_manager_->OnActorCreationSuccess(actor);
   WaitActorCreated(actor->GetActorID());
   ASSERT_EQ(finished_actors.size(), 1);
@@ -202,11 +201,9 @@ TEST_F(GcsActorManagerTest, TestWorkerFailure) {
   mock_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
-  rpc::Address address;
-  auto node_id = ClientID::FromRandom();
-  auto worker_id = WorkerID::FromRandom();
-  address.set_raylet_id(node_id.Binary());
-  address.set_worker_id(worker_id.Binary());
+  auto address = RandomAddress();
+  auto node_id = ClientID::FromBinary(address.raylet_id());
+  auto worker_id = WorkerID::FromBinary(address.worker_id());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor);
   WaitActorCreated(actor->GetActorID());
@@ -243,11 +240,8 @@ TEST_F(GcsActorManagerTest, TestNodeFailure) {
   mock_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
-  rpc::Address address;
-  auto node_id = ClientID::FromRandom();
-  auto worker_id = WorkerID::FromRandom();
-  address.set_raylet_id(node_id.Binary());
-  address.set_worker_id(worker_id.Binary());
+  auto address = RandomAddress();
+  auto node_id = ClientID::FromBinary(address.raylet_id());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor);
   WaitActorCreated(actor->GetActorID());
@@ -286,11 +280,8 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   mock_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
-  rpc::Address address;
-  auto node_id = ClientID::FromRandom();
-  auto worker_id = WorkerID::FromRandom();
-  address.set_raylet_id(node_id.Binary());
-  address.set_worker_id(worker_id.Binary());
+  auto address = RandomAddress();
+  auto node_id = ClientID::FromBinary(address.raylet_id());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor);
   WaitActorCreated(actor->GetActorID());
@@ -348,11 +339,8 @@ TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
   const auto owner_node_id = actor->GetOwnerNodeID();
 
   // Check that the actor is in state `ALIVE`.
-  rpc::Address address;
-  auto node_id = ClientID::FromRandom();
-  auto worker_id = WorkerID::FromRandom();
-  address.set_raylet_id(node_id.Binary());
-  address.set_worker_id(worker_id.Binary());
+  auto address = RandomAddress();
+  auto node_id = ClientID::FromBinary(address.raylet_id());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor);
   WaitActorCreated(actor->GetActorID());
@@ -392,12 +380,7 @@ TEST_F(GcsActorManagerTest, TestDetachedActorRestartWhenCreatorDead) {
   const auto owner_node_id = actor->GetOwnerNodeID();
 
   // Check that the actor is in state `ALIVE`.
-  rpc::Address address;
-  auto node_id = ClientID::FromRandom();
-  auto worker_id = WorkerID::FromRandom();
-  address.set_raylet_id(node_id.Binary());
-  address.set_worker_id(worker_id.Binary());
-  actor->UpdateAddress(address);
+  actor->UpdateAddress(RandomAddress());
   gcs_actor_manager_->OnActorCreationSuccess(actor);
   WaitActorCreated(actor->GetActorID());
   ASSERT_EQ(finished_actors.size(), 1);
@@ -468,11 +451,9 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionWorkerFailure) {
   mock_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
-  rpc::Address address;
-  auto node_id = ClientID::FromRandom();
-  auto worker_id = WorkerID::FromRandom();
-  address.set_raylet_id(node_id.Binary());
-  address.set_worker_id(worker_id.Binary());
+  auto address = RandomAddress();
+  auto node_id = ClientID::FromBinary(address.raylet_id());
+  auto worker_id = WorkerID::FromBinary(address.worker_id());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor);
   WaitActorCreated(actor->GetActorID());
@@ -508,11 +489,8 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNodeFailure) {
   mock_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
-  rpc::Address address;
-  auto node_id = ClientID::FromRandom();
-  auto worker_id = WorkerID::FromRandom();
-  address.set_raylet_id(node_id.Binary());
-  address.set_worker_id(worker_id.Binary());
+  auto address = RandomAddress();
+  auto node_id = ClientID::FromBinary(address.raylet_id());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor);
   WaitActorCreated(actor->GetActorID());
@@ -549,11 +527,9 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNotHappendWhenReconstructed) {
   mock_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
-  rpc::Address address;
-  auto node_id = ClientID::FromRandom();
-  auto worker_id = WorkerID::FromRandom();
-  address.set_raylet_id(node_id.Binary());
-  address.set_worker_id(worker_id.Binary());
+  auto address = RandomAddress();
+  auto node_id = ClientID::FromBinary(address.raylet_id());
+  auto worker_id = WorkerID::FromBinary(address.worker_id());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor);
   WaitActorCreated(actor->GetActorID());
@@ -574,6 +550,29 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNotHappendWhenReconstructed) {
   ASSERT_TRUE(status.IsInvalid());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());
+}
+
+TEST_F(GcsActorManagerTest, TestDestroyActorBeforeActorCreationCompletes) {
+  auto job_id = JobID::FromInt(1);
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
+  RAY_CHECK_OK(gcs_actor_manager_->RegisterActor(
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+        finished_actors.emplace_back(actor);
+      }));
+
+  ASSERT_EQ(finished_actors.size(), 0);
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.clear();
+
+  // Simulate the reply of WaitForActorOutOfScope request to trigger actor destruction.
+  ASSERT_TRUE(worker_client_->Reply());
+
+  // Check that the actor is in state `DEAD`.
+  actor->UpdateAddress(RandomAddress());
+  gcs_actor_manager_->OnActorCreationSuccess(actor);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
 }
 
 }  // namespace ray
