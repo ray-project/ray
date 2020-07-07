@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 
-from ray.autoscaler.docker import _check_docker_running_cmd, with__docker_exec
+from ray.autoscaler.docker import check_docker_running_cmd, with_docker_exec
 from ray.autoscaler.log_timer import LogTimer
 
 logger = logging.getLogger(__name__)
@@ -386,7 +386,7 @@ class DockerCommandRunner(SSHCommandRunner):
 
         if run_env == "docker":
             cmd = self._docker_expand_user(cmd, any_char=True)
-            cmd = with__docker_exec(
+            cmd = with_docker_exec(
                 [cmd], container_name=self.docker_name,
                 with_interactive=True)[0]
 
@@ -437,7 +437,7 @@ class DockerCommandRunner(SSHCommandRunner):
 
     def _check_container_status(self):
         no_exist = "not_present"
-        cmd = _check_docker_running_cmd(self.docker_name) + " ".join(
+        cmd = check_docker_running_cmd(self.docker_name) + " ".join(
             ["||", "echo", quote(no_exist)])
         output = self.ssh_command_runner.run(
             cmd, with_output=True).decode("utf-8").strip()
