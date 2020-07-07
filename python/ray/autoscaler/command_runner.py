@@ -1,33 +1,80 @@
+from getpass import getuser
+from shlex import quote
+from typing import List, Tuple
 import click
+import hashlib
 import logging
 import os
 import subprocess
+import sys
 import time
 
-from threading import Thread
-
-from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
-    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
-    STATUS_SETTING_UP, STATUS_SYNCING_FILES
-from ray.autoscaler.command_runner import NODE_START_WAIT_S
+from ray.autoscaler.docker import check_docker_running_cmd, with_docker_exec
 from ray.autoscaler.log_timer import LogTimer
 
 logger = logging.getLogger(__name__)
 
-READY_CHECK_INTERVAL = 5
-<<<<<<< Updated upstream
+# How long to wait for a node to start, in seconds
+NODE_START_WAIT_S = 300
 HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
 
 
-def with_interactive(cmd):
+def _with_interactive(cmd):
     force_interactive = ("true && source ~/.bashrc && "
                          "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
     return ["bash", "--login", "-c", "-i", quote(force_interactive + cmd)]
 
 
-class KubernetesCommandRunner:
+class CommandRunnerInterface:
+    """Interface to run commands on a remote cluster node.
+
+    Command runner instances are returned by provider.get_command_runner()."""
+
+    def run(self,
+            cmd: str = None,
+            timeout: int = 120,
+            exit_on_fail: bool = False,
+            port_forward: List[Tuple[int, int]] = None,
+            with_output: bool = False,
+            **kwargs) -> str:
+        """Run the given command on the cluster node and optionally get output.
+
+        Args:
+            cmd (str): The command to run.
+            timeout (int): The command timeout in seconds.
+            exit_on_fail (bool): Whether to sys exit on failure.
+            port_forward (list): List of (local, remote) ports to forward, or
+                a single tuple.
+            with_output (bool): Whether to return output.
+        """
+        raise NotImplementedError
+
+    def run_rsync_up(self, source: str, target: str) -> None:
+        """Rsync files up to the cluster node.
+
+        Args:
+            source (str): The (local) source directory or file.
+            target (str): The (remote) destination path.
+        """
+        raise NotImplementedError
+
+    def run_rsync_down(self, source: str, target: str) -> None:
+        """Rsync files down from the cluster node.
+
+        Args:
+            source (str): The (remote) source directory or file.
+            target (str): The (local) destination path.
+        """
+        raise NotImplementedError
+
+    def remote_shell_command_str(self) -> str:
+        """Return the command the user can use to open a shell."""
+        raise NotImplementedError
+
+
+class KubernetesCommandRunner(CommandRunnerInterface):
     def __init__(self, log_prefix, namespace, node_id, auth_config,
                  process_runner):
 
@@ -74,7 +121,7 @@ class KubernetesCommandRunner:
                 self.node_id,
                 "--",
             ]
-            final_cmd += with_interactive(cmd)
+            final_cmd += _with_interactive(cmd)
             logger.info(self.log_prefix + "Running {}".format(final_cmd))
             try:
                 if with_output:
@@ -139,45 +186,7 @@ class KubernetesCommandRunner:
                                             self.node_id)
 
 
-class SSHOptions:
-    def __init__(self, ssh_key, control_path=None, **kwargs):
-        self.ssh_key = ssh_key
-        self.arg_dict = {
-            # Supresses initial fingerprint verification.
-            "StrictHostKeyChecking": "no",
-            # SSH IP and fingerprint pairs no longer added to known_hosts.
-            # This is to remove a "REMOTE HOST IDENTIFICATION HAS CHANGED"
-            # warning if a new node has the same IP as a previously
-            # deleted node, because the fingerprints will not match in
-            # that case.
-            "UserKnownHostsFile": os.devnull,
-            # Try fewer extraneous key pairs.
-            "IdentitiesOnly": "yes",
-            # Abort if port forwarding fails (instead of just printing to
-            # stderr).
-            "ExitOnForwardFailure": "yes",
-            # Quickly kill the connection if network connection breaks (as
-            # opposed to hanging/blocking).
-            "ServerAliveInterval": 5,
-            "ServerAliveCountMax": 3
-        }
-        if control_path:
-            self.arg_dict.update({
-                "ControlMaster": "auto",
-                "ControlPath": "{}/%C".format(control_path),
-                "ControlPersist": "10s",
-            })
-        self.arg_dict.update(kwargs)
-
-    def to_ssh_options_list(self, *, timeout=60):
-        self.arg_dict["ConnectTimeout"] = "{}s".format(timeout)
-        return ["-i", self.ssh_key] + [
-            x for y in (["-o", "{}={}".format(k, v)]
-                        for k, v in self.arg_dict.items()) for x in y
-        ]
-
-
-class SSHCommandRunner:
+class SSHCommandRunner(CommandRunnerInterface):
     def __init__(self, log_prefix, node_id, provider, auth_config,
                  cluster_name, process_runner, use_internal_ip):
 
@@ -196,27 +205,55 @@ class SSHCommandRunner:
         self.ssh_user = auth_config["ssh_user"]
         self.ssh_control_path = ssh_control_path
         self.ssh_ip = None
-        self.base_ssh_options = SSHOptions(self.ssh_private_key,
-                                           self.ssh_control_path)
 
-    def get_node_ip(self):
+    def _get_default_ssh_options(self, connect_timeout):
+        OPTS = [
+            ("ConnectTimeout", "{}s".format(connect_timeout)),
+            # Supresses initial fingerprint verification.
+            ("StrictHostKeyChecking", "no"),
+            # SSH IP and fingerprint pairs no longer added to known_hosts.
+            # This is to remove a "REMOTE HOST IDENTIFICATION HAS CHANGED"
+            # warning if a new node has the same IP as a previously
+            # deleted node, because the fingerprints will not match in
+            # that case.
+            ("UserKnownHostsFile", os.devnull),
+            ("ControlMaster", "auto"),
+            ("ControlPath", "{}/%C".format(self.ssh_control_path)),
+            ("ControlPersist", "10s"),
+            # Try fewer extraneous key pairs.
+            ("IdentitiesOnly", "yes"),
+            # Abort if port forwarding fails (instead of just printing to
+            # stderr).
+            ("ExitOnForwardFailure", "yes"),
+            # Quickly kill the connection if network connection breaks (as
+            # opposed to hanging/blocking).
+            ("ServerAliveInterval", 5),
+            ("ServerAliveCountMax", 3),
+        ]
+
+        return ["-i", self.ssh_private_key] + [
+            x for y in (["-o", "{}={}".format(k, v)] for k, v in OPTS)
+            for x in y
+        ]
+
+    def _get_node_ip(self):
         if self.use_internal_ip:
             return self.provider.internal_ip(self.node_id)
         else:
             return self.provider.external_ip(self.node_id)
 
-    def wait_for_ip(self, deadline):
+    def _wait_for_ip(self, deadline):
         while time.time() < deadline and \
                 not self.provider.is_terminated(self.node_id):
             logger.info(self.log_prefix + "Waiting for IP...")
-            ip = self.get_node_ip()
+            ip = self._get_node_ip()
             if ip is not None:
                 return ip
             time.sleep(10)
 
         return None
 
-    def set_ssh_ip_if_required(self):
+    def _set_ssh_ip_if_required(self):
         if self.ssh_ip is not None:
             return
 
@@ -224,7 +261,7 @@ class SSHCommandRunner:
         #   I think that's reasonable.
         deadline = time.time() + NODE_START_WAIT_S
         with LogTimer(self.log_prefix + "Got IP"):
-            ip = self.wait_for_ip(deadline)
+            ip = self._wait_for_ip(deadline)
             assert ip is not None, "Unable to find IP of node"
 
         self.ssh_ip = ip
@@ -243,16 +280,9 @@ class SSHCommandRunner:
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
-            ssh_options_override=None,
             **kwargs):
-        ssh_options = ssh_options_override or self.base_ssh_options
 
-        assert isinstance(
-            ssh_options, SSHOptions
-        ), "ssh_options must be of type SSHOptions, got {}".format(
-            type(ssh_options))
-
-        self.set_ssh_ip_if_required()
+        self._set_ssh_ip_if_required()
 
         ssh = ["ssh", "-tt"]
 
@@ -264,11 +294,11 @@ class SSHCommandRunner:
                             "{} -> localhost:{}".format(local, remote))
                 ssh += ["-L", "{}:localhost:{}".format(remote, local)]
 
-        final_cmd = ssh + ssh_options.to_ssh_options_list(timeout=timeout) + [
+        final_cmd = ssh + self._get_default_ssh_options(timeout) + [
             "{}@{}".format(self.ssh_user, self.ssh_ip)
         ]
         if cmd:
-            final_cmd += with_interactive(cmd)
+            final_cmd += _with_interactive(cmd)
             logger.info(self.log_prefix +
                         "Running {}".format(" ".join(final_cmd)))
         else:
@@ -292,23 +322,19 @@ class SSHCommandRunner:
                     " failure.") from None
 
     def run_rsync_up(self, source, target):
-        self.set_ssh_ip_if_required()
+        self._set_ssh_ip_if_required()
         self.process_runner.check_call([
             "rsync", "--rsh",
-            " ".join(["ssh"] +
-                     self.base_ssh_options.to_ssh_options_list(timeout=120)),
-            "-avz", source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip,
-                                              target)
+            " ".join(["ssh"] + self._get_default_ssh_options(120)), "-avz",
+            source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target)
         ])
 
     def run_rsync_down(self, source, target):
-        self.set_ssh_ip_if_required()
+        self._set_ssh_ip_if_required()
         self.process_runner.check_call([
             "rsync", "--rsh",
-            " ".join(["ssh"] +
-                     self.base_ssh_options.to_ssh_options_list(timeout=120)),
-            "-avz", "{}@{}:{}".format(self.ssh_user, self.ssh_ip,
-                                      source), target
+            " ".join(["ssh"] + self._get_default_ssh_options(120)), "-avz",
+            "{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target
         ])
 
     def remote_shell_command_str(self):
@@ -322,7 +348,6 @@ class DockerCommandRunner(SSHCommandRunner):
         self.docker_name = docker_config["container_name"]
         self.docker_config = docker_config
         self.home_dir = None
-        self.check_docker_installed()
         self.shutdown = False
 
     def run(self,
@@ -332,7 +357,6 @@ class DockerCommandRunner(SSHCommandRunner):
             port_forward=None,
             with_output=False,
             run_env=True,
-            ssh_options_override=None,
             **kwargs):
         if run_env == "auto":
             run_env = "host" if cmd.find("docker") == 0 else "docker"
@@ -350,23 +374,7 @@ class DockerCommandRunner(SSHCommandRunner):
             timeout=timeout,
             exit_on_fail=exit_on_fail,
             port_forward=None,
-            with_output=False,
-            ssh_options_override=ssh_options_override)
-
-    def check_docker_installed(self):
-        try:
-            self.ssh_command_runner.run("command -v docker")
-            return
-        except Exception:
-            install_commands = [
-                "curl -fsSL https://get.docker.com -o get-docker.sh",
-                "sudo sh get-docker.sh", "sudo usermod -aG docker $USER",
-                "sudo systemctl restart docker -f"
-            ]
-            logger.error(
-                "Docker not installed. You can install Docker by adding the "
-                "following commands to 'initialization_commands':\n" +
-                "\n".join(install_commands))
+            with_output=False)
 
     def shutdown_after_next_cmd(self):
         self.shutdown = True
@@ -414,170 +422,3 @@ class DockerCommandRunner(SSHCommandRunner):
                 return string.replace("~", self.home_dir, 1)
 
         return string
-=======
->>>>>>> Stashed changes
-
-
-class NodeUpdater:
-    """A process for syncing files and running init commands on a node."""
-
-    def __init__(self,
-                 node_id,
-                 provider_config,
-                 provider,
-                 auth_config,
-                 cluster_name,
-                 file_mounts,
-                 initialization_commands,
-                 setup_commands,
-                 ray_start_commands,
-                 runtime_hash,
-                 process_runner=subprocess,
-                 use_internal_ip=False,
-                 docker_config=None):
-
-        self.log_prefix = "NodeUpdater: {}: ".format(node_id)
-        use_internal_ip = (use_internal_ip
-                           or provider_config.get("use_internal_ips", False))
-        self.cmd_runner = provider.get_command_runner(
-            self.log_prefix, node_id, auth_config, cluster_name,
-            process_runner, use_internal_ip, docker_config)
-
-        self.daemon = True
-        self.process_runner = process_runner
-        self.node_id = node_id
-        self.provider = provider
-        self.file_mounts = {
-            remote: os.path.expanduser(local)
-            for remote, local in file_mounts.items()
-        }
-        self.initialization_commands = initialization_commands
-        self.setup_commands = setup_commands
-        self.ray_start_commands = ray_start_commands
-        self.runtime_hash = runtime_hash
-        self.auth_config = auth_config
-
-    def run(self):
-        logger.info(self.log_prefix +
-                    "Updating to {}".format(self.runtime_hash))
-        try:
-            with LogTimer(self.log_prefix +
-                          "Applied config {}".format(self.runtime_hash)):
-                self.do_update()
-        except Exception as e:
-            error_str = str(e)
-            if hasattr(e, "cmd"):
-                error_str = "(Exit Status {}) {}".format(
-                    e.returncode, " ".join(e.cmd))
-            self.provider.set_node_tags(
-                self.node_id, {TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
-            logger.error(self.log_prefix +
-                         "Error executing: {}".format(error_str) + "\n")
-            if isinstance(e, click.ClickException):
-                return
-            raise
-
-        self.provider.set_node_tags(
-            self.node_id, {
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
-                TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
-            })
-
-        self.exitcode = 0
-
-    def sync_file_mounts(self, sync_cmd):
-        # Rsync file mounts
-        for remote_path, local_path in self.file_mounts.items():
-            assert os.path.exists(local_path), local_path
-            if os.path.isdir(local_path):
-                if not local_path.endswith("/"):
-                    local_path += "/"
-                if not remote_path.endswith("/"):
-                    remote_path += "/"
-
-            with LogTimer(self.log_prefix +
-                          "Synced {} to {}".format(local_path, remote_path)):
-                self.cmd_runner.run("mkdir -p {}".format(
-                    os.path.dirname(remote_path)))
-                sync_cmd(local_path, remote_path)
-
-    def wait_ready(self, deadline):
-        with LogTimer(self.log_prefix + "Got remote shell"):
-            logger.info(self.log_prefix + "Waiting for remote shell...")
-
-            while time.time() < deadline and \
-                    not self.provider.is_terminated(self.node_id):
-                try:
-                    logger.debug(self.log_prefix +
-                                 "Waiting for remote shell...")
-
-                    self.cmd_runner.run("uptime", timeout=5)
-                    logger.debug("Uptime succeeded.")
-                    return True
-
-                except Exception as e:
-                    retry_str = str(e)
-                    if hasattr(e, "cmd"):
-                        retry_str = "(Exit Status {}): {}".format(
-                            e.returncode, " ".join(e.cmd))
-                    logger.debug(self.log_prefix +
-                                 "Node not up, retrying: {}".format(retry_str))
-                    time.sleep(READY_CHECK_INTERVAL)
-
-        assert False, "Unable to connect to node"
-
-    def do_update(self):
-        self.provider.set_node_tags(
-            self.node_id, {TAG_RAY_NODE_STATUS: STATUS_WAITING_FOR_SSH})
-        deadline = time.time() + NODE_START_WAIT_S
-        self.wait_ready(deadline)
-
-        node_tags = self.provider.node_tags(self.node_id)
-        logger.debug("Node tags: {}".format(str(node_tags)))
-        if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
-            logger.info(self.log_prefix +
-                        "{} already up-to-date, skip to ray start".format(
-                            self.node_id))
-        else:
-            self.provider.set_node_tags(
-                self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SYNCING_FILES})
-            self.sync_file_mounts(self.rsync_up)
-
-            # Run init commands
-            self.provider.set_node_tags(
-                self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})
-            with LogTimer(
-                    self.log_prefix + "Initialization commands",
-                    show_status=True):
-                for cmd in self.initialization_commands:
-                    self.cmd_runner.run(
-                        cmd,
-                        ssh_options_override=SSHOptions(
-                            self.auth_config.get("ssh_private_key")))
-
-            with LogTimer(
-                    self.log_prefix + "Setup commands", show_status=True):
-                for cmd in self.setup_commands:
-                    self.cmd_runner.run(cmd)
-
-        with LogTimer(
-                self.log_prefix + "Ray start commands", show_status=True):
-            for cmd in self.ray_start_commands:
-                self.cmd_runner.run(cmd)
-
-    def rsync_up(self, source, target):
-        logger.info(self.log_prefix +
-                    "Syncing {} to {}...".format(source, target))
-        self.cmd_runner.run_rsync_up(source, target)
-
-    def rsync_down(self, source, target):
-        logger.info(self.log_prefix +
-                    "Syncing {} from {}...".format(source, target))
-        self.cmd_runner.run_rsync_down(source, target)
-
-
-class NodeUpdaterThread(NodeUpdater, Thread):
-    def __init__(self, *args, **kwargs):
-        Thread.__init__(self)
-        NodeUpdater.__init__(self, *args, **kwargs)
-        self.exitcode = -1
