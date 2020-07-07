@@ -152,7 +152,7 @@ def construct_clients_from_provider_config(provider_config):
                 "formatted improperly.")
         credentials = service_account.Credentials.from_service_account_info(
             service_account_info)
-    else:
+    elif cred_type == "credentials_token":
         # Otherwise the credentials type must be credentials_token.
         credentials = OAuthCredentials(credentials_field)
 
