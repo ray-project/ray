@@ -159,7 +159,6 @@ def test_dynamic_res_creation_clientid_multiple(ray_start_cluster):
     # specifier
     cluster = ray_start_cluster
 
-    TIMEOUT = 5
     res_name = "test_res"
     res_capacity = 1.0
     num_nodes = 3
@@ -183,16 +182,16 @@ def test_dynamic_res_creation_clientid_multiple(ray_start_cluster):
     success = False
     start_time = time.time()
 
-    while time.time() - start_time < TIMEOUT and not success:
-        resources_created = []
-        for nid in target_node_ids:
-            target_node = next(
-                node for node in ray.nodes() if node["NodeID"] == nid)
-            resources = target_node["Resources"]
-            resources_created.append(
-                resources.get(res_name, None) == res_capacity)
-        success = all(resources_created)
-    assert success
+    def check_resources():
+	resources_created = []
+	for nid in target_node_ids:
+	    target_node = next(
+		node for node in ray.nodes() if node["NodeID"] == nid)
+	    resources = target_node["Resources"]
+	    resources_created.append(resources.get(res_name, None) == res_capacity)
+	return all(resources_created)
+
+    wait_for_condition(check_resources)
 
 
 def test_dynamic_res_deletion_clientid(ray_start_cluster):
