@@ -49,6 +49,8 @@ from ray.includes.common cimport (
     CRayStatus,
     CGcsClientOptions,
     CTaskArg,
+    CTaskArgByReference,
+    CTaskArgByValue,
     CTaskType,
     CRayFunction,
     LocalMemoryBuffer,
@@ -261,7 +263,7 @@ cdef int prepare_resources(
 
 cdef prepare_args(
         CoreWorker core_worker,
-        Language language, args, c_vector[CTaskArg] *args_vector):
+        Language language, args, c_vector[unique_ptr[CTaskArg]] *args_vector):
     cdef:
         size_t size
         int64_t put_threshold
@@ -272,8 +274,12 @@ cdef prepare_args(
     put_threshold = RayConfig.instance().max_direct_call_object_size()
     for arg in args:
         if isinstance(arg, ObjectID):
+            c_arg = (<ObjectID>arg).native()
             args_vector.push_back(
-                CTaskArg.PassByReference((<ObjectID>arg).native()))
+                unique_ptr[CTaskArg](new CTaskArgByReference(
+                    c_arg,
+                    CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
+                        c_arg))))
 
         else:
             serialized_arg = worker.get_serialization_context().serialize(arg)
@@ -299,14 +305,16 @@ cdef prepare_args(
                 for object_id in serialized_arg.contained_object_ids:
                     inlined_ids.push_back((<ObjectID>object_id).native())
                 args_vector.push_back(
-                    CTaskArg.PassByValue(make_shared[CRayObject](
-                        arg_data, string_to_buffer(metadata),
-                        inlined_ids)))
+                    unique_ptr[CTaskArg](new CTaskArgByValue(
+                        make_shared[CRayObject](
+                            arg_data, string_to_buffer(metadata),
+                            inlined_ids))))
                 inlined_ids.clear()
             else:
-                args_vector.push_back(
-                    CTaskArg.PassByReference((CObjectID.FromBinary(
-                        core_worker.put_serialized_object(serialized_arg)))))
+                args_vector.push_back(unique_ptr[CTaskArg](
+                    new CTaskArgByReference(CObjectID.FromBinary(
+                        core_worker.put_serialized_object(serialized_arg)),
+                        CCoreWorkerProcess.GetCoreWorker().GetRpcAddress())))
 
 
 def switch_worker_log_if_needed(worker, next_job_id):
@@ -886,7 +894,7 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             CTaskOptions task_options
             CRayFunction ray_function
-            c_vector[CTaskArg] args_vector
+            c_vector[unique_ptr[CTaskArg]] args_vector
             c_vector[CObjectID] return_ids
 
         with self.profile_event(b"submit_task"):
@@ -919,7 +927,7 @@ cdef class CoreWorker:
                      c_string extension_data):
         cdef:
             CRayFunction ray_function
-            c_vector[CTaskArg] args_vector
+            c_vector[unique_ptr[CTaskArg]] args_vector
             c_vector[c_string] dynamic_worker_options
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, double] c_placement_resources
@@ -957,7 +965,7 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             CTaskOptions task_options
             CRayFunction ray_function
-            c_vector[CTaskArg] args_vector
+            c_vector[unique_ptr[CTaskArg]] args_vector
             c_vector[CObjectID] return_ids
 
         with self.profile_event(b"submit_task"):
