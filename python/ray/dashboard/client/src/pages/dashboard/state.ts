@@ -89,7 +89,7 @@ const slice = createSlice({
 
 const clusterWorkerPids = (
   rayletInfo: RayletInfoResponse,
-): Map<string, Set<string>> => {
+): Map<string, Set<number>> => {
   // Groups PIDs registered with the raylet by node IP address
   // This is used to filter out processes belonging to other ray clusters.
   const nodeMap = new Map();
@@ -97,7 +97,7 @@ const clusterWorkerPids = (
   for (const [nodeIp, { workersStats }] of Object.entries(rayletInfo.nodes)) {
     for (const worker of workersStats) {
       if (!worker.isDriver) {
-        workerPids.add(worker.pid.toString());
+        workerPids.add(worker.pid);
       }
     }
     nodeMap.set(nodeIp, workerPids);
@@ -115,14 +115,18 @@ const filterNonClusterWorkerInfo = (
   const filteredClients = nodeInfo.clients.map((client) => {
     const workerPids = workerPidsByIP.get(client.ip);
     const workers = client.workers.filter((worker) =>
-      workerPids?.has(worker.pid.toString()),
+      workerPids?.has(worker.pid),
     );
-    const logs =
-      client.log_count &&
-      filterObj(client.log_count, (pid: string) => workerPids?.has(pid));
-    const errors =
-      client.error_count &&
-      filterObj(client.error_count, (pid: string) => workerPids?.has(pid));
+    const logs = client.log_count
+      ? filterObj(client.log_count, ([pid, _]: [string, any]) =>
+          workerPids?.has(parseInt(pid)),
+        )
+      : {};
+    const errors = client.error_count
+      ? filterObj(client.error_count, ([pid, _]: [string, any]) =>
+          workerPids?.has(parseInt(pid)),
+        )
+      : {};
     client.workers = workers;
     client.log_count = logs;
     client.error_count = errors;
