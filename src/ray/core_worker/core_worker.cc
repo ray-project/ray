@@ -2001,8 +2001,54 @@ void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
   event.Wait();
 }
 
+void CoreWorker::PlasmaCallback(SetResultCallback success,
+                                std::shared_ptr<RayObject> ray_object, ObjectID object_id,
+                                void *py_future) {
+  std::vector<std::shared_ptr<RayObject>> vec;
+  // Check if object is available before subscribing to plasma.
+  if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok() && vec.size() > 0) {
+    return success(vec.front(), object_id, py_future);
+  }
+  {
+    absl::MutexLock lock(&plasma_mutex_);
+    auto it = async_plasma_callbacks_.find(object_id);
+    auto plasma_arrived_callback = [this, success, object_id, py_future]() {
+      GetAsync(object_id, success, py_future);
+    };
+
+    if (it == async_plasma_callbacks_.end()) {
+      async_plasma_callbacks_.emplace(
+          object_id, std::vector<std::function<void(void)>>{plasma_arrived_callback});
+    } else {
+      it->second.push_back({plasma_arrived_callback});
+    }
+  }
+  SubscribeToPlasmaAdd(object_id);
+
+  // Check in-memory store in case object became ready *before* SubscribeToPlasmaAdd.
+  if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok() && vec.size() > 0) {
+    std::vector<std::function<void(void)>> callbacks;
+    {
+      absl::MutexLock lock(&plasma_mutex_);
+      auto after_iter = async_plasma_callbacks_.extract(object_id);
+      callbacks = after_iter.mapped();
+    }
+    for (auto callback : callbacks) {
+      // This callback needs to be asynchronous because it runs on the io_service_, so no
+      // RPCs can be processed while it's running. This can easily lead to deadlock (for
+      // example if the callback calls ray.get() on an object that is dependent on an RPC
+      // to be ready).
+      callback();
+    }
+  }
+}
+
 void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
-                          SetResultCallback fallback_callback, void *python_future) {
+                          void *python_future) {
+  auto fallback_callback =
+      std::bind(&CoreWorker::PlasmaCallback, this, success_callback,
+                std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+
   memory_store_->GetAsync(object_id, [python_future, success_callback, fallback_callback,
                                       object_id](std::shared_ptr<RayObject> ray_object) {
     if (ray_object->IsInPlasmaError()) {
@@ -2013,10 +2059,6 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
   });
 }
 
-void CoreWorker::SetPlasmaAddedCallback(PlasmaSubscriptionCallback subscribe_callback) {
-  plasma_done_callback_ = subscribe_callback;
-}
-
 void CoreWorker::SubscribeToPlasmaAdd(const ObjectID &object_id) {
   RAY_CHECK_OK(local_raylet_client_->SubscribeToPlasma(object_id));
 }
@@ -2024,13 +2066,19 @@ void CoreWorker::SubscribeToPlasmaAdd(const ObjectID &object_id) {
 void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
                                          rpc::PlasmaObjectReadyReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  RAY_CHECK(plasma_done_callback_ != nullptr) << "Plasma done callback not defined.";
-  // This callback needs to be asynchronous because it runs on the io_service_, so no
-  // RPCs can be processed while it's running. This can easily lead to deadlock (for
-  // example if the callback calls ray.get() on an object that is dependent on an RPC
-  // to be ready).
-  plasma_done_callback_(ObjectID::FromBinary(request.object_id()), request.data_size(),
-                        request.metadata_size());
+  std::vector<std::function<void(void)>> callbacks;
+  {
+    absl::MutexLock lock(&plasma_mutex_);
+    auto it = async_plasma_callbacks_.extract(ObjectID::FromBinary(request.object_id()));
+    callbacks = it.mapped();
+  }
+  for (auto callback : callbacks) {
+    // This callback needs to be asynchronous because it runs on the io_service_, so no
+    // RPCs can be processed while it's running. This can easily lead to deadlock (for
+    // example if the callback calls ray.get() on an object that is dependent on an RPC
+    // to be ready).
+    callback();
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
