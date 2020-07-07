@@ -71,6 +71,11 @@ These pages will demonstrate the various features and configurations of Tune.
    :description: :doc:`Tuning PyTorch Lightning modules <tune-pytorch-lightning>`
 
 .. customgalleryitem::
+   :tooltip: How to use Tune with PyTorch
+   :figure: /images/pytorch_logo.png
+   :description: :doc:`How to use Tune with PyTorch <tune-pytorch-cifar>`
+
+.. customgalleryitem::
    :tooltip: Tuning XGBoost parameters.
    :figure: /images/xgboost_logo.png
    :description: :doc:`A guide to tuning XGBoost parameters with Tune <tune-xgboost>`
@@ -87,6 +92,7 @@ These pages will demonstrate the various features and configurations of Tune.
    tune-advanced-tutorial.rst
    tune-distributed.rst
    tune-sklearn.rst
+   tune-pytorch-cifar.rst
    tune-pytorch-lightning.rst
    tune-xgboost.rst
 

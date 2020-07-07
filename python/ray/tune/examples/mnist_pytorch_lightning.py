@@ -185,7 +185,7 @@ def train_mnist_tune_checkpoint(config, checkpoint=None):
 
 
 # __tune_asha_begin__
-def tune_mnist_asha():
+def tune_mnist_asha(num_samples=10, max_num_epochs=10):
     data_dir = mkdtemp(prefix="mnist_data_")
     LightningMNISTClassifier.download_data(data_dir)
     config = {
@@ -198,7 +198,7 @@ def tune_mnist_asha():
     scheduler = ASHAScheduler(
         metric="loss",
         mode="min",
-        max_t=10,
+        max_t=max_num_epochs,
         grace_period=1,
         reduction_factor=2)
     reporter = CLIReporter(
@@ -208,7 +208,7 @@ def tune_mnist_asha():
         train_mnist_tune,
         resources_per_trial={"cpu": 1},
         config=config,
-        num_samples=10,
+        num_samples=num_samples,
         scheduler=scheduler,
         progress_reporter=reporter)
     shutil.rmtree(data_dir)
@@ -250,5 +250,15 @@ def tune_mnist_pbt():
 
 
 if __name__ == "__main__":
-    # tune_mnist_asha()  # ASHA scheduler
-    tune_mnist_pbt()  # population based training
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
+    args, _ = parser.parse_known_args()
+
+    if args.smoke_test:
+        tune_mnist_asha(1, 1)
+    else:
+        tune_mnist_asha()  # ASHA scheduler
+        tune_mnist_pbt()  # population based training
