@@ -421,7 +421,7 @@ TEST_F(GcsActorManagerTest, TestActorWithEmptyName) {
       request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
   // Ensure successful registration.
   ASSERT_TRUE(status.ok());
-  // Make sure actor who with empty name is not managered by named_actors_.
+  // Make sure actor who empty name is not treated as a named actor.
   ASSERT_TRUE(gcs_actor_manager_->GetActorIDByName("").IsNil());
 
   // Gen another `CreateActorRequest` with an empty name.
