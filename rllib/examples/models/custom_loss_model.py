@@ -10,7 +10,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.offline import JsonReader
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 
@@ -73,7 +73,7 @@ class DeprecatedCustomLossModelV1(Model):
 
     def _build_layers_v2(self, input_dict, num_outputs, options):
         self.obs_in = input_dict["obs"]
-        with tf.variable_scope("shared", reuse=tf.AUTO_REUSE):
+        with tf1.variable_scope("shared", reuse=tf1.AUTO_REUSE):
             self.fcnet = FullyConnectedNetwork(input_dict, self.obs_space,
                                                self.action_space, num_outputs,
                                                options)
@@ -179,7 +179,7 @@ class TorchCustomLossModel(TorchModelV2, nn.Module):
         # Add the imitation loss to each already calculated policy loss term.
         # Alternatively (if custom loss has its own optimizer):
         # return policy_loss + [10 * self.imitation_loss]
-        return [l + 10 * self.imitation_loss for l in policy_loss]
+        return [loss_ + 10 * self.imitation_loss for loss_ in policy_loss]
 
     def custom_stats(self):
         return {

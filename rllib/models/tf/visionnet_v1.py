@@ -4,7 +4,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import get_activation_fn, try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 # Deprecated: see as an alternative models/tf.visionnet.py
@@ -24,9 +24,9 @@ class VisionNetwork(Model):
 
         activation = get_activation_fn(options.get("conv_activation"))
 
-        with tf.name_scope("vision_net"):
+        with tf1.name_scope("vision_net"):
             for i, (out_size, kernel, stride) in enumerate(filters[:-1], 1):
-                inputs = tf.layers.conv2d(
+                inputs = tf1.layers.conv2d(
                     inputs,
                     out_size,
                     kernel,
@@ -38,7 +38,7 @@ class VisionNetwork(Model):
 
             # skip final linear layer
             if options.get("no_final_linear"):
-                fc_out = tf.layers.conv2d(
+                fc_out = tf1.layers.conv2d(
                     inputs,
                     num_outputs,
                     kernel,
@@ -48,7 +48,7 @@ class VisionNetwork(Model):
                     name="fc_out")
                 return flatten(fc_out), flatten(fc_out)
 
-            fc1 = tf.layers.conv2d(
+            fc1 = tf1.layers.conv2d(
                 inputs,
                 out_size,
                 kernel,
@@ -56,7 +56,7 @@ class VisionNetwork(Model):
                 activation=activation,
                 padding="valid",
                 name="fc1")
-            fc2 = tf.layers.conv2d(
+            fc2 = tf1.layers.conv2d(
                 fc1,
                 num_outputs, [1, 1],
                 activation=None,
