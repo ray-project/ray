@@ -19,7 +19,7 @@ type NodeSummaryResponseData = {
 };
 
 type NodeDetailsResponseData = {
-  detail: NodeDetails
+  details: NodeDetails
 };
 
 type RayletAddressInformation = {
