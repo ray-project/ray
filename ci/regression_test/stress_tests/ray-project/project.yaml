@@ -25,6 +25,11 @@ commands:
     command: |
       python test_dead_actors.py
 
+  - name: test_light_heartbeat
+    help: "Run a test that listens to raylet heartbeats."
+    command: |
+      python test_light_heartbeat.py
+
 # Pathnames for files and directories that should be saved
 # in a snapshot but that should not be synced with a# session. Pathnames can be relative to the project
 # directory or absolute. Generally, this should be files
