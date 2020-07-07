@@ -193,7 +193,7 @@ RAY_CONFIG(size_t, raylet_max_active_object_ids, 0)
 RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
 
 /// The duration that we wait after the worekr is launched before the
-/// starting_worker_timeout_callback() is called. 
+/// starting_worker_timeout_callback() is called.
 RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
 
 /// This is a timeout used to cause failures in the plasma manager and raylet
