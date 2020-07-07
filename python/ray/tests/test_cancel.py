@@ -158,7 +158,7 @@ def test_comprehensive(ray_start_regular, use_force):
 
 # Running this test with use_force==False is flaky.
 # TODO(ilr): Look into the root of this flakiness.
-@pytest.mark.parametrize("use_force", [False])
+@pytest.mark.parametrize("use_force", [True])
 def test_stress(shutdown_only, use_force):
     ray.init(num_cpus=1)
 
