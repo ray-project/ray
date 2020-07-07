@@ -658,7 +658,6 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
                                              actor_table_data.SerializeAsString(),
                                              nullptr));
         }));
-    // Empty address so that we can avoid scheduler schedules at the same address.
     gcs_actor_scheduler_->Schedule(actor);
   } else {
     // For detached actors, make sure to remove its name.
