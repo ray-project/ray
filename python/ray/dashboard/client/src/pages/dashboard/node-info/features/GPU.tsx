@@ -98,7 +98,12 @@ const WorkerGPUEntry: React.FC<WorkerGPUEntryProps> = ({ resourceSlot }) => {
   // There are other times, such as a partial allocation, where we truly don't
   // know the slot, however this will just plug the hole of 0s coming through
   // as undefined. I have not been able to figure out the root cause.
-  const slotMsg = (allocation >= 1 && slot === undefined) ? "0" : (slot === undefined) ? "?" : slot.toString();
+  const slotMsg =
+    allocation >= 1 && slot === undefined
+      ? "0"
+      : slot === undefined
+      ? "?"
+      : slot.toString();
   return (
     <Typography variant="body1">
       [{slotMsg}]: {allocation}
