@@ -527,6 +527,42 @@ def test_basic_nested_ids(one_worker_100MiB):
     _fill_object_store_and_get(inner_oid_bytes, succeed=False)
 
 
+def test_kill_actor_immediately_after_creation(ray_start_regular):
+    @ray.remote
+    class A:
+        pass
+
+    a = A.remote()
+    b = A.remote()
+
+    ray.kill(a)
+    ray.kill(b)
+    time.sleep(10)
+
+    actors = list(ray.actors().values())
+    dead_state = ray.gcs_utils.ActorTableData.DEAD
+    for actor in actors:
+        assert actor["State"] == dead_state
+
+
+def test_remove_actor_immediately_after_creation(ray_start_regular):
+    @ray.remote
+    class A:
+        pass
+
+    a = A.remote()
+    b = A.remote()
+
+    del a
+    del b
+    time.sleep(10)
+
+    actors = list(ray.actors().values())
+    dead_state = ray.gcs_utils.ActorTableData.DEAD
+    for actor in actors:
+        assert actor["State"] == dead_state
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
