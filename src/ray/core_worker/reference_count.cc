@@ -844,7 +844,12 @@ void ReferenceCounter::SetReleaseLineageCallback(
 void AddObjectLocation(const ObjectID &object_id, const ClientID &node_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
+  // TODO (zhuohan): This will not hold in some cases. We can find out the cases
+  // this line fails in the future.
   RAY_CHECK(it != object_id_refs_.end());
+  // TODO (zhuohan): This is generally true. But when a worker restarts, it
+  // might uses the same address and port as the previous worker.
+  // https://github.com/ray-project/ray/blob/master/src/ray/core_worker/core_worker.cc#L1615
   RAY_CHECK(it->second.owned_by_us);
   it->second.locations.insert(node_id);
 }

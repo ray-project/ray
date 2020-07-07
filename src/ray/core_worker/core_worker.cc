@@ -1840,14 +1840,24 @@ void CoreWorker::HandleAddObjectLocation(
     const rpc::AddObjectLocationRequest &request,
     rpc::AddObjectLocationReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
+    return;
+  }
   reference_counter_->AddObjectLocation(request.object_id(), request.client_id());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::HandleRemoveObjectLocation(
     const rpc::RemoveObjectLocationRequest &request,
     rpc::RemoveObjectLocationReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
+    return;
+  }
   reference_counter_->RemoveObjectLocation(request.object_id(), request.client_id());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
