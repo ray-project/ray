@@ -273,7 +273,14 @@ class AWSNodeProvider(NodeProvider):
             "ResourceType": "instance",
             "Tags": tag_pairs,
         }]
+
         user_tag_specs = conf.get("TagSpecifications", [])
+
+        if "NetworkInterfaces" not in conf:
+            # SubnetIds is not a real config key: we must resolve to a
+            # single SubnetId before invoking the AWS API.
+            subnet_ids = conf.pop("SubnetIds")
+
         # Allow users to add tags and override values of existing
         # tags with their own. This only applies to the resource type
         # "instance". All other resource types are appended to the list of
@@ -292,22 +299,29 @@ class AWSNodeProvider(NodeProvider):
             else:
                 tag_specs += [user_tag_spec]
 
-        # SubnetIds is not a real config key: we must resolve to a
-        # single SubnetId before invoking the AWS API.
-        subnet_ids = conf.pop("SubnetIds")
-
         for attempt in range(1, BOTO_CREATE_MAX_RETRIES + 1):
             try:
-                subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
-                logger.info("NodeProvider: calling create_instances "
-                            "with {} (count={}).".format(subnet_id, count))
-                self.subnet_idx += 1
-                conf.update({
-                    "MinCount": 1,
-                    "MaxCount": count,
-                    "SubnetId": subnet_id,
-                    "TagSpecifications": tag_specs
-                })
+                if "NetworkInterfaces" in conf:
+                    net_ifs = conf["NetworkInterfaces"]
+                    logger.info("NodeProvider: calling create_instances "
+                                "with {} (count={}).".format(net_ifs, count))
+                    conf.update({
+                        "MinCount": 1,
+                        "MaxCount": count,
+                        "TagSpecifications": tag_specs
+                    })
+                else:
+                    subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
+                    logger.info("NodeProvider: calling create_instances "
+                                "with {} (count={}).".format(subnet_id, count))
+                    self.subnet_idx += 1
+                    conf.update({
+                        "MinCount": 1,
+                        "MaxCount": count,
+                        "SubnetId": subnet_id,
+                        "TagSpecifications": tag_specs
+                    })
+                
                 created = self.ec2_fail_fast.create_instances(**conf)
                 for instance in created:
                     logger.info("NodeProvider: Created instance "
