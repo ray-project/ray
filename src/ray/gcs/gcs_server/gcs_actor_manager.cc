@@ -525,8 +525,11 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
                                      [actor_id](const std::shared_ptr<GcsActor> &actor) {
                                        return actor->GetActorID() == actor_id;
                                      });
-      RAY_CHECK(pending_it != pending_actors_.end());
-      pending_actors_.erase(pending_it);
+      // TODO(rkooo567): The actor may be in the state of leasing worker. We need to add
+      // the processing logic of this in https://github.com/ray-project/ray/pull/9215.
+      if (pending_it != pending_actors_.end()) {
+        pending_actors_.erase(pending_it);
+      }
     }
   }
 
@@ -695,7 +698,15 @@ void GcsActorManager::OnActorCreationFailed(std::shared_ptr<GcsActor> actor) {
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor) {
   auto actor_id = actor->GetActorID();
   RAY_LOG(DEBUG) << "Actor created successfully, actor id = " << actor_id;
-  RAY_CHECK(registered_actors_.count(actor_id) > 0);
+  // NOTE: If an actor is deleted immediately after the user creates the actor, reference
+  // counter may return a reply to the request of WaitForActorOutOfScope to GCS server,
+  // and GCS server will destroy the actor. The actor creation is asynchronous, it may be
+  // destroyed before the actor creation is completed.
+  if (registered_actors_.count(actor_id) == 0) {
+    RAY_LOG(WARNING) << "Actor is destroyed before the creation is completed, actor id = "
+                     << actor_id;
+    return;
+  }
   actor->UpdateState(rpc::ActorTableData::ALIVE);
   auto actor_table_data = actor->GetActorTableData();
   // The backend storage is reliable in the future, so the status must be ok.
