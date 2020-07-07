@@ -82,16 +82,19 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CLanguage &GetLanguage()
 
         void SubmitTask(
-            const CRayFunction &function, const c_vector[CTaskArg] &args,
+            const CRayFunction &function,
+            const c_vector[unique_ptr[CTaskArg]] &args,
             const CTaskOptions &options, c_vector[CObjectID] *return_ids,
             int max_retries)
         CRayStatus CreateActor(
-            const CRayFunction &function, const c_vector[CTaskArg] &args,
+            const CRayFunction &function,
+            const c_vector[unique_ptr[CTaskArg]] &args,
             const CActorCreationOptions &options,
             const c_string &extension_data, CActorID *actor_id)
         void SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
-            const c_vector[CTaskArg] &args, const CTaskOptions &options,
+            const c_vector[unique_ptr[CTaskArg]] &args,
+            const CTaskOptions &options,
             c_vector[CObjectID] *return_ids)
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
@@ -128,6 +131,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void RemoveLocalReference(const CObjectID &object_id)
         void PutObjectIntoPlasma(const CRayObject &object,
                                  const CObjectID &object_id)
+        const CAddress &GetRpcAddress() const
+        CAddress GetOwnerAddress(const CObjectID &object_id) const
         void PromoteObjectToPlasma(const CObjectID &object_id)
         void GetOwnershipInfo(const CObjectID &object_id,
                               CAddress *owner_address)
