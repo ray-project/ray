@@ -157,7 +157,8 @@ service NodeManagerService {
   // Release a worker back to its raylet.
   rpc ReturnWorker(ReturnWorkerRequest) returns (ReturnWorkerReply);
   // Notify raylet to release unused workers.
-  rpc ReleaseUnusedWorkers(ReleaseUnusedWorkersRequest) returns (ReleaseUnusedWorkersReply);
+  rpc ReleaseUnusedWorkers(ReleaseUnusedWorkersRequest)
+      returns (ReleaseUnusedWorkersReply);
   // Request resource from the raylet for a bundle.
   rpc RequestResourceReserve(RequestResourceReserveRequest)
       returns (RequestResourceReserveReply);
