@@ -99,5 +99,26 @@ def test_wait_mixup(init):
     assert set(ready) == {tasks[0], tasks[-1]}
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ray_start_regular_shared", [{
+        "object_store_memory": 100 * 1024 * 1024,
+    }],
+    indirect=True)
+async def test_garbage_collection(ray_start_regular_shared):
+    # This is a regression test for
+    # https://github.com/ray-project/ray/issues/9134
+
+    @ray.remote
+    def f():
+        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
+
+    for _ in range(10):
+        await f.remote()
+    for _ in range(10):
+        put_id = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
+        await put_id
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
