@@ -172,7 +172,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         void GetAsync(const CObjectID &object_id,
                       ray_callback_function success_callback,
-                      ray_callback_function fallback_callback,
                       void* python_future)
 
         CRayStatus PushError(const CJobID &job_id, const c_string &type,
@@ -184,10 +183,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SetResource(const c_string &resource_name,
                                const double capacity,
                                const CClientID &client_Id)
-
-        void SetPlasmaAddedCallback(plasma_callback_function callback)
-
-        void SubscribeToPlasmaAdd(const CObjectID &object_id)
 
     cdef cppclass CCoreWorkerOptions "ray::CoreWorkerOptions":
         CWorkerType worker_type
