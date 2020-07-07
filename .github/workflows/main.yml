@@ -60,6 +60,7 @@ jobs:
         fetch-depth: 0
     - name: Configure AWS Credentials
       continue-on-error: true
+      if: github.repository == 'ray-project/ray'
       uses: aws-actions/configure-aws-credentials@v1
       with:
         aws-access-key-id: ${{ secrets.GHA_AWS_ACCESS_KEY_ID }}
