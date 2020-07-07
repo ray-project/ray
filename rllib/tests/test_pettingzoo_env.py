@@ -31,18 +31,20 @@ class TestPettingZooEnv(unittest.TestCase):
         test_env.close()
 
         config["multiagent"] = {
-                "policies": {
-                    # the first tuple value is None -> uses default policy
-                    "av": (None, obs_space, act_space, {}),
-                },
-                "policy_mapping_fn": lambda agent_id: "av"
-                }
+            "policies": {
+                # the first tuple value is None -> uses default policy
+                "av": (None, obs_space, act_space, {}),
+            },
+            "policy_mapping_fn": lambda agent_id: "av"
+        }
 
         config["log_level"] = "DEBUG"
         config["num_workers"] = 0
-        config["sample_batch_size"] = 30     # Fragment length, collected at once from each worker and for each agent!
-        config["train_batch_size"] = 200     # Training batch size -> Fragments are concatenated up to this point.
-        config["horizon"] = 200              # After n steps, force reset simulation
+        config[
+            "sample_batch_size"] = 30  # Fragment length, collected at once from each worker and for each agent!
+        config[
+            "train_batch_size"] = 200  # Training batch size -> Fragments are concatenated up to this point.
+        config["horizon"] = 200  # After n steps, force reset simulation
         config["no_done_at_end"] = False
 
         agent = agent_class(env="prison", config=config)

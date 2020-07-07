@@ -11,7 +11,6 @@ from supersuit.aec_wrappers import normalize_obs, dtype, color_reduction
 
 from numpy import float32
 
-
 if __name__ == "__main__":
     """For this script, you need:
     1. Algorithm name and according module, e.g.: "PPo" + agents.ppo as agent
@@ -51,12 +50,12 @@ if __name__ == "__main__":
 
     # 5. Configuration for multiagent setup with policy sharing:
     config["multiagent"] = {
-            "policies": {
-                # the first tuple value is None -> uses default policy
-                "av": (None, obs_space, act_space, {}),
-            },
-            "policy_mapping_fn": lambda agent_id: "av"
-            }
+        "policies": {
+            # the first tuple value is None -> uses default policy
+            "av": (None, obs_space, act_space, {}),
+        },
+        "policy_mapping_fn": lambda agent_id: "av"
+    }
 
     config["log_level"] = "DEBUG"
     config["num_workers"] = 1
@@ -74,7 +73,7 @@ if __name__ == "__main__":
     # when dones[__all__]= True.
 
     # 6. Initialize ray and trainer object
-    ray.init(num_cpus=num_cpus+1)
+    ray.init(num_cpus=num_cpus + 1)
     trainer = get_agent_class(alg_name)(env="prison", config=config)
 
     # 7. Train once

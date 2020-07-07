@@ -90,20 +90,16 @@ class PettingZooEnv(MultiAgentEnv):
 
     def _init_dicts(self):
         # initialize with zero
-        self.rewards = dict(zip(self.agents,
-                                [0 for _ in self.agents]))
+        self.rewards = dict(zip(self.agents, [0 for _ in self.agents]))
         # initialize with False
-        self.dones = dict(zip(self.agents,
-                                [False for _ in self.agents]))
+        self.dones = dict(zip(self.agents, [False for _ in self.agents]))
         self.dones["__all__"] = False
 
         # initialize with None info object
-        self.infos = dict(zip(self.agents,
-                                [{} for _ in self.agents]))
+        self.infos = dict(zip(self.agents, [{} for _ in self.agents]))
 
         # initialize empty observations
-        self.obs = dict(zip(self.agents,
-                            [None for _ in self.agents]))
+        self.obs = dict(zip(self.agents, [None for _ in self.agents]))
 
     def reset(self):
         """
@@ -155,7 +151,8 @@ class PettingZooEnv(MultiAgentEnv):
                 if not env_done:
                     assert agent == self.aec_env.agent_selection, f"environment has a nontrivial ordering, and cannot be used with the POMGameEnv wrapper\nCurrent agent: {self.aec_env.agent_selection}\nExpected agent: {agent}"
                     # Execute agent action in environment
-                    self.obs[agent] = self.aec_env.step(action_dict[agent], observe=True)
+                    self.obs[agent] = self.aec_env.step(
+                        action_dict[agent], observe=True)
                     if all(self.aec_env.dones.values()):
                         env_done = True
                         self.dones["__all__"] = True
