@@ -157,6 +157,8 @@ class ActorManager {
   /// All actor handle related ref counting logic should be included here.
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
 
+  mutable absl::Mutex mutex_;
+
   /// Map from actor ID to a handle to that actor.
   /// Actor handle is a logical abstraction that holds actor handle's states.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_

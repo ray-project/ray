@@ -79,7 +79,6 @@ class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
       async_get_callback_map;
 };
 
-// SANG-TODO Impelement
 class MockWorkerInfoAccessor : public gcs::RedisWorkerInfoAccessor {
  public:
   MockWorkerInfoAccessor(gcs::RedisGcsClient *client)
@@ -106,7 +105,6 @@ class MockWorkerInfoAccessor : public gcs::RedisWorkerInfoAccessor {
       async_get_callback_map;
 };
 
-// SANG-TODO Impelement
 class MockNodeInfoAccessor : public gcs::RedisNodeInfoAccessor {
  public:
   MockNodeInfoAccessor(gcs::RedisGcsClient *client)

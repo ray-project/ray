@@ -623,6 +623,7 @@ cc_library(
     ),
     hdrs = glob([
         "src/ray/raylet/*.h",
+        "src/ray/core_worker/common.h",
     ]),
     copts = COPTS,
     linkopts = select({
