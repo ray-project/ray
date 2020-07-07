@@ -69,9 +69,7 @@ ActorID GcsActor::GetActorID() const {
 
 bool GcsActor::IsDetached() const { return actor_table_data_.is_detached(); }
 
-std::string GcsActor::GetName() const {
-  return actor_table_data_.name();
-}
+std::string GcsActor::GetName() const { return actor_table_data_.name(); }
 
 TaskSpecification GcsActor::GetCreationTaskSpecification() const {
   const auto &task_spec = actor_table_data_.task_spec();
