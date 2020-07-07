@@ -46,11 +46,7 @@ GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
   promise.get_future().get();
 }
 
-GlobalStateAccessor::~GlobalStateAccessor() {
-  Disconnect();
-  io_service_->stop();
-  thread_io_service_->join();
-}
+GlobalStateAccessor::~GlobalStateAccessor() { Disconnect(); }
 
 bool GlobalStateAccessor::Connect() {
   if (!is_connected_) {
@@ -64,6 +60,8 @@ bool GlobalStateAccessor::Connect() {
 
 void GlobalStateAccessor::Disconnect() {
   if (is_connected_) {
+    io_service_->stop();
+    thread_io_service_->join();
     gcs_client_->Disconnect();
     is_connected_ = false;
   }
@@ -178,6 +176,39 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetActorCheckpointId(
                     actor_checkpoint_id_data, promise)));
   promise.get_future().get();
   return actor_checkpoint_id_data;
+}
+
+std::unique_ptr<std::string> GlobalStateAccessor::GetWorkerInfo(
+    const WorkerID &worker_id) {
+  std::unique_ptr<std::string> worker_table_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Workers().AsyncGet(
+      worker_id, TransformForOptionalItemCallback<rpc::WorkerTableData>(worker_table_data,
+                                                                        promise)));
+  promise.get_future().get();
+  return worker_table_data;
+}
+
+std::vector<std::string> GlobalStateAccessor::GetAllWorkerInfo() {
+  std::vector<std::string> worker_table_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Workers().AsyncGetAll(
+      TransformForMultiItemCallback<rpc::WorkerTableData>(worker_table_data, promise)));
+  promise.get_future().get();
+  return worker_table_data;
+}
+
+bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
+  auto data_ptr = std::make_shared<WorkerTableData>();
+  data_ptr->ParseFromString(serialized_string);
+  std::promise<bool> promise;
+  RAY_CHECK_OK(
+      gcs_client_->Workers().AsyncAdd(data_ptr, [&promise](const Status &status) {
+        RAY_CHECK_OK(status);
+        promise.set_value(true);
+      }));
+  promise.get_future().get();
+  return true;
 }
 
 }  // namespace gcs

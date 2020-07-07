@@ -337,6 +337,19 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// (local, submitted_task) reference counts. For debugging purposes.
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
 
+  /// Get the RPC address of this worker.
+  ///
+  /// \param[out] The RPC address of this worker.
+  const rpc::Address &GetRpcAddress() const;
+
+  /// Get the RPC address of the worker that owns the given object.
+  ///
+  /// \param[in] object_id The object ID. The object must either be owned by
+  /// us, or the caller previously added the ownership information (via
+  /// RegisterOwnershipInfoAndResolveFuture).
+  /// \param[out] The RPC address of the worker that owns this object.
+  rpc::Address GetOwnerAddress(const ObjectID &object_id) const;
+
   /// Promote an object to plasma and get its owner information. This should be
   /// called when serializing an object ID, and the returned information should
   /// be stored with the serialized object ID. For plasma promotion, if the
@@ -545,7 +558,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
-  void SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
+  void SubmitTask(const RayFunction &function,
+                  const std::vector<std::unique_ptr<TaskArg>> &args,
                   const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
                   int max_retries);
 
@@ -560,7 +574,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] actor_id ID of the created actor. This can be used to submit
   /// tasks on the actor.
   /// \return Status error if actor creation fails, likely due to raylet failure.
-  Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
+  Status CreateActor(const RayFunction &function,
+                     const std::vector<std::unique_ptr<TaskArg>> &args,
                      const ActorCreationOptions &actor_creation_options,
                      const std::string &extension_data, ActorID *actor_id);
 
@@ -576,7 +591,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// failed. Tasks can be invalid for direct actor calls because not all tasks
   /// are currently supported.
   void SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
-                       const std::vector<TaskArg> &args, const TaskOptions &task_options,
+                       const std::vector<std::unique_ptr<TaskArg>> &args,
+                       const TaskOptions &task_options,
                        std::vector<ObjectID> *return_ids);
 
   /// Tell an actor to exit immediately, without completing outstanding work.
@@ -753,20 +769,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id The id to call get on.
   /// \param[in] success_callback The callback to use the result object.
-  /// \param[in] fallback_callback The callback to use when failed to get result.
   /// \param[in] python_future the void* object to be passed to SetResultCallback
   /// \return void
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
-                SetResultCallback fallback_callback, void *python_future);
-
-  /// Connect to plasma store for async futures
-  using PlasmaSubscriptionCallback = std::function<void(ray::ObjectID, int64_t, int64_t)>;
-
-  /// Set callback when an item is added to the plasma store.
-  ///
-  /// \param[in] subscribe_callback The callback when an item is added to plasma.
-  /// \return void
-  void SetPlasmaAddedCallback(PlasmaSubscriptionCallback subscribe_callback);
+                void *python_future);
 
   /// Subscribe to receive notification of an object entering the plasma store.
   ///
@@ -1065,8 +1071,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Queue of tasks to resubmit when the specified time passes.
   std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
 
-  // Plasma Callback
-  PlasmaSubscriptionCallback plasma_done_callback_;
+  // Guard for `async_plasma_callbacks_` map.
+  mutable absl::Mutex plasma_mutex_;
+
+  // Callbacks for when when a plasma object becomes ready.
+  absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
+      async_plasma_callbacks_ GUARDED_BY(plasma_mutex_);
+
+  // Fallback for when GetAsync cannot directly get the requested object.
+  void PlasmaCallback(SetResultCallback success, std::shared_ptr<RayObject> ray_object,
+                      ObjectID object_id, void *py_future);
 
   /// Whether we are shutting down and not running further tasks.
   bool exiting_ = false;

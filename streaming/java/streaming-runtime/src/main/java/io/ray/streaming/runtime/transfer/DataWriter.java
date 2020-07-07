@@ -8,7 +8,6 @@ import io.ray.streaming.runtime.util.Platform;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,14 +33,14 @@ public class DataWriter {
    * @param workerConfig   configuration
    */
   public DataWriter(List<String> outputChannels,
-                    Map<String, BaseActorHandle> toActors,
+                    List<BaseActorHandle> toActors,
                     StreamingWorkerConfig workerConfig) {
     Preconditions.checkArgument(!outputChannels.isEmpty());
     Preconditions.checkArgument(outputChannels.size() == toActors.size());
     ChannelCreationParametersBuilder initialParameters =
         new ChannelCreationParametersBuilder().buildOutputQueueParameters(outputChannels, toActors);
     byte[][] outputChannelsBytes = outputChannels.stream()
-        .map(ChannelID::idStrToBytes).toArray(byte[][]::new);
+        .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
     long channelSize = workerConfig.transferConfig.channelSize();
     long[] msgIds = new long[outputChannels.size()];
     for (int i = 0; i < outputChannels.size(); i++) {
@@ -70,7 +69,7 @@ public class DataWriter {
    * @param id   channel id
    * @param item message item data section is specified by [position, limit).
    */
-  public void write(ChannelID id, ByteBuffer item) {
+  public void write(ChannelId id, ByteBuffer item) {
     int size = item.remaining();
     ensureBuffer(size);
     buffer.clear();
@@ -85,10 +84,10 @@ public class DataWriter {
    * @param item message item data section is specified by [position, limit).
    *             item doesn't have to be a direct buffer.
    */
-  public void write(Set<ChannelID> ids, ByteBuffer item) {
+  public void write(Set<ChannelId> ids, ByteBuffer item) {
     int size = item.remaining();
     ensureBuffer(size);
-    for (ChannelID id : ids) {
+    for (ChannelId id : ids) {
       buffer.clear();
       buffer.put(item.duplicate());
       writeMessageNative(nativeWriterPtr, id.getNativeIdPtr(), bufferAddress, size);

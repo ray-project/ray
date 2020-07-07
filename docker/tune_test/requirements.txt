@@ -31,3 +31,5 @@ torchvision
 xgboost
 zoopt>=0.4.0
 timm
+dataclasses
+git+https://github.com/ray-project/tune-sklearn.git#egg=tune-sklearn

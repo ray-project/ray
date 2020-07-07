@@ -11,7 +11,9 @@ import java.nio.file.Paths;
 import org.apache.commons.io.FileUtils;
 
 public class BinaryFileUtil {
-  public static final String REDIS_SERVER_BINARY_NAME = "redis-server";
+  // We use a path here because the top-level Bazel target is an alias
+  public static final String REDIS_SERVER_BINARY_PATH =
+      "external/com_github_antirez_redis/redis-server";
 
   public static final String GCS_SERVER_BINARY_NAME = "gcs_server";
 
@@ -30,10 +32,11 @@ public class BinaryFileUtil {
    * directory concurrently, this operation will be protected by a file lock.
    *
    * @param destDir  a directory to extract resource file to
-   * @param fileName resource file name
+   * @param filePath resource file path
    * @return extracted resource file
    */
-  public static File getFile(String destDir, String fileName) {
+  public static File getFile(String destDir, String filePath) {
+    String fileName = new File(filePath).getName();
     final File dir = new File(destDir);
     if (!dir.exists()) {
       try {
@@ -51,11 +54,11 @@ public class BinaryFileUtil {
       }
 
       // File does not exist.
-      try (InputStream is = BinaryFileUtil.class.getResourceAsStream("/" + fileName)) {
-        Preconditions.checkNotNull(is, "{} doesn't exist.", fileName);
+      try (InputStream is = BinaryFileUtil.class.getResourceAsStream("/" + filePath)) {
+        Preconditions.checkNotNull(is, "{} doesn't exist.", filePath);
         Files.copy(is, Paths.get(file.getCanonicalPath()));
       } catch (IOException e) {
-        throw new RuntimeException("Couldn't get temp file from resource " + fileName, e);
+        throw new RuntimeException("Couldn't get temp file from resource " + filePath, e);
       }
       return file;
     } catch (IOException e) {

@@ -74,7 +74,7 @@ class RunExperimentTest(unittest.TestCase):
                 reporter(timesteps_total=i)
 
         class B(Trainable):
-            def _train(self):
+            def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
         register_trainable("f1", train)
@@ -91,10 +91,10 @@ class RunExperimentTest(unittest.TestCase):
 
     def testCheckpointAtEnd(self):
         class train(Trainable):
-            def _train(self):
+            def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
-            def _save(self, path):
+            def save_checkpoint(self, path):
                 checkpoint = os.path.join(path, "checkpoint")
                 with open(checkpoint, "w") as f:
                     f.write("OK")
@@ -112,7 +112,7 @@ class RunExperimentTest(unittest.TestCase):
 
     def testExportFormats(self):
         class train(Trainable):
-            def _train(self):
+            def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
             def _export_model(self, export_formats, export_dir):
@@ -134,7 +134,7 @@ class RunExperimentTest(unittest.TestCase):
 
     def testInvalidExportFormats(self):
         class train(Trainable):
-            def _train(self):
+            def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
             def _export_model(self, export_formats, export_dir):
@@ -156,7 +156,7 @@ class RunExperimentTest(unittest.TestCase):
         ray.init(resources={"hi": 3})
 
         class train(Trainable):
-            def _train(self):
+            def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
         trials = run_experiments({
