@@ -1,5 +1,5 @@
 import gym
-from gym.spaces import Discrete
+from gym.spaces import Discrete, Box
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.framework import try_import_torch
@@ -27,11 +27,16 @@ class DYNATorchModel(TorchModelV2, nn.Module):
         # Construct the wrapped model handing it a concat'd observation and
         # action space as "input_space" and our obs_space as "output_space".
         # TODO: (sven) get rid of these restrictions on obs/action spaces.
-        assert isinstance(action_space, Discrete)
-        input_space = gym.spaces.Box(
-            obs_space.low[0],
-            obs_space.high[0],
-            shape=(obs_space.shape[0] + action_space.n, ))
+        if isinstance(action_space, Discrete):
+            input_space = gym.spaces.Box(
+                obs_space.low[0],
+                obs_space.high[0],
+                shape=(obs_space.shape[0] + action_space.n, ))
+        elif isinstance(action_space, Box):
+            input_space = gym.spaces.Box(
+                obs_space.low[0],
+                obs_space.high[0],
+                shape=(obs_space.shape[0] + action_space.shape[0], ))
         super(DYNATorchModel, self).__init__(input_space, action_space,
                                              num_outputs, model_config, name)
 
@@ -49,8 +54,11 @@ class DYNATorchModel(TorchModelV2, nn.Module):
         """
 
         # One-hot the actions.
-        actions_flat = nn.functional.one_hot(
-            actions.long(), num_classes=self.action_space.n).float()
+        if isinstance(action_space, Discrete):
+            actions_flat = nn.functional.one_hot(
+                actions.long(), num_classes=self.action_space.n).float()
+        elif isinstance(action_space, Box):
+            actions_flat = torch.cat([observations, actions], -1)
         # Push through our underlying Model.
         next_obs, _ = self.forward({
             "obs_flat": torch.cat([observations, actions_flat], -1)

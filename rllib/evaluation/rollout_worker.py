@@ -435,13 +435,25 @@ class RolloutWorker(ParallelIteratorWorker):
         if self.worker_index == 0:
             logger.info("Built filter map: {}".format(self.filters))
 
-        # Always use vector env for consistency even if num_envs = 1.
-        self.async_env: BaseEnv = BaseEnv.to_base_env(
-            self.env,
-            make_env=make_env,
-            num_envs=num_envs,
-            remote_envs=remote_worker_envs,
-            remote_env_batch_wait_ms=remote_env_batch_wait_ms)
+        from ray.rllib.agents.mbmpo.model_vector_env import _VectorizedModelGymEnv
+        from ray.rllib.env.base_env import _VectorEnvToBaseEnv
+
+        # Temporary for MBMPO
+        if self.worker_index:
+            self.async_env = _VectorEnvToBaseEnv(_VectorizedModelGymEnv(
+                make_env=make_env,
+                            existing_envs=[self.env],
+                            num_envs=num_envs,
+                            action_space=self.env.action_space,
+                            observation_space=self.env.observation_space))
+        else:
+            # Always use vector env for consistency even if num_envs = 1.
+            self.async_env: BaseEnv = BaseEnv.to_base_env(
+                self.env,
+                make_env=make_env,
+                num_envs=num_envs,
+                remote_envs=remote_worker_envs,
+                remote_env_batch_wait_ms=remote_env_batch_wait_ms)
         self.num_envs: int = num_envs
 
         # `truncate_episodes`: Allow a batch to contain more than one episode
@@ -627,6 +639,26 @@ class RolloutWorker(ParallelIteratorWorker):
             self.policy_map[pid].set_weights(w)
         if global_vars:
             self.set_global_vars(global_vars)
+
+    def get_extra_weights(self, model_attr,
+                    policies: List[PolicyID] = None) -> (ModelWeights, dict):
+        if policies is None:
+            policies = self.policy_map.keys()
+        return {
+            pid: policy.get_extra_weights(model_attr)
+            for pid, policy in self.policy_map.items() if pid in policies
+        }
+
+    def set_extra_weights(self, weights: ModelWeights, model_attr, 
+                    global_vars: dict = None) -> None:
+        for pid, w in weights.items():
+            self.policy_map[pid].set_extra_weights(w, model_attr)
+        if global_vars:
+            self.set_global_vars(global_vars)
+
+    def set_dict(self, normalizations):
+        for pid, policy in self.policy_map.items():
+            policy.dynamics_model.set_dict(normalizations)
 
     @DeveloperAPI
     def compute_gradients(

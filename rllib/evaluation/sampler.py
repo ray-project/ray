@@ -20,7 +20,6 @@ from ray.rllib.utils.filter import Filter
 from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.offline import InputReader
-from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray, \
@@ -34,8 +33,6 @@ if TYPE_CHECKING:
     from ray.rllib.agents.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.observation_function import ObservationFunction
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
-
-tree = try_import_tree()
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +168,7 @@ class SyncSampler(SamplerInput):
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
             pack_multiple_episodes_in_batch, callbacks, tf_sess,
             self.perf_stats, soft_horizon, no_done_at_end, observation_fn)
+        self.base_env = None
         self.metrics_queue = queue.Queue()
 
     @override(SamplerInput)
