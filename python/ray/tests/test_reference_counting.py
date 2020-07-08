@@ -11,7 +11,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.test_utils import SignalActor, put_object
+from ray.test_utils import SignalActor, put_object, wait_for_condition
 
 logger = logging.getLogger(__name__)
 
@@ -527,23 +527,8 @@ def test_basic_nested_ids(one_worker_100MiB):
     _fill_object_store_and_get(inner_oid_bytes, succeed=False)
 
 
-def _check_actor_states(expected):
-    actors = list(ray.actors().values())
-    for actor in actors:
-        assert actor["State"] == expected
-
-
-def check_actor_states(expected, timeout=10):
-    start = time.time()
-    while True:
-        try:
-            _check_actor_states(expected)
-            break
-        except AssertionError as e:
-            if time.time() - start > timeout:
-                raise e
-            else:
-                time.sleep(0.1)
+def _all_actors_dead():
+    return all(actor["State"] == DEAD for actor in list(ray.actors().values()))
 
 
 def test_kill_actor_immediately_after_creation(ray_start_regular):
@@ -556,7 +541,7 @@ def test_kill_actor_immediately_after_creation(ray_start_regular):
 
     ray.kill(a)
     ray.kill(b)
-    check_actor_states(ray.gcs_utils.ActorTableData.DEAD)
+    wait_for_condition(_all_actors_dead, timeout=10)
 
 
 def test_remove_actor_immediately_after_creation(ray_start_regular):
@@ -569,7 +554,7 @@ def test_remove_actor_immediately_after_creation(ray_start_regular):
 
     del a
     del b
-    check_actor_states(ray.gcs_utils.ActorTableData.DEAD)
+    wait_for_condition(_all_actors_dead, timeout=10)
 
 
 if __name__ == "__main__":
