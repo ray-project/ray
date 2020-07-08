@@ -412,10 +412,10 @@ def test_skip_plasma(ray_start_regular):
             return x * 2
 
     a = Actor.remote()
-    obj_id = a.f.remote(1)
+    obj_ref = a.f.remote(1)
     # it is not stored in plasma
-    assert not ray.worker.global_worker.core_worker.object_exists(obj_id)
-    assert ray.get(obj_id) == 2
+    assert not ray.worker.global_worker.core_worker.object_exists(obj_ref)
+    assert ray.get(obj_ref) == 2
 
 
 def test_actor_call_order(shutdown_only):
@@ -452,12 +452,12 @@ def test_actor_large_objects(ray_start_regular):
             return np.zeros(10000000)
 
     a = Actor.remote()
-    obj_id = a.f.remote()
-    assert not ray.worker.global_worker.core_worker.object_exists(obj_id)
-    done, _ = ray.wait([obj_id])
+    obj_ref = a.f.remote()
+    assert not ray.worker.global_worker.core_worker.object_exists(obj_ref)
+    done, _ = ray.wait([obj_ref])
     assert len(done) == 1
-    assert ray.worker.global_worker.core_worker.object_exists(obj_id)
-    assert isinstance(ray.get(obj_id), np.ndarray)
+    assert ray.worker.global_worker.core_worker.object_exists(obj_ref)
+    assert isinstance(ray.get(obj_ref), np.ndarray)
 
 
 def test_actor_pass_by_ref(ray_start_regular):

@@ -1022,13 +1022,13 @@ def test_serialized_id(ray_start_cluster):
         return x
 
     @ray.remote
-    def get(obj_ids, test_dependent_task):
-        print("get", obj_ids)
-        obj_id = obj_ids[0]
+    def get(obj_refs, test_dependent_task):
+        print("get", obj_refs)
+        obj_ref = obj_refs[0]
         if test_dependent_task:
-            assert ray.get(dependent_task.remote(obj_id)) == 1
+            assert ray.get(dependent_task.remote(obj_ref)) == 1
         else:
-            assert ray.get(obj_id) == 1
+            assert ray.get(obj_ref) == 1
 
     obj = small_object.remote()
     ray.get(get.remote([obj], False))

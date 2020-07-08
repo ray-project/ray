@@ -131,12 +131,12 @@ class SerializationContext:
             return obj, owner_address
 
         def object_ref_deserializer(serialized_obj):
-            obj_id, owner_address = serialized_obj
+            obj_ref, owner_address = serialized_obj
             # NOTE(swang): Must deserialize the object first before asking
             # the core worker to resolve the value. This is to make sure
             # that the ref count for the ObjectRef is greater than 0 by the
             # time the core worker resolves the value of the object.
-            deserialized_object_ref = id_deserializer(obj_id)
+            deserialized_object_ref = id_deserializer(obj_ref)
             # TODO(edoakes): we should be able to just capture a reference
             # to 'self' here instead, but this function is itself pickled
             # somewhere, which causes an error.
@@ -152,7 +152,7 @@ class SerializationContext:
                 if outer_id is None:
                     outer_id = ray.ObjectRef.nil()
                 worker.core_worker.deserialize_and_register_object_ref(
-                    obj_id[1][0], outer_id, owner_address)
+                    obj_ref[1][0], outer_id, owner_address)
             return deserialized_object_ref
 
         for id_type in ray._raylet._ID_TYPES:

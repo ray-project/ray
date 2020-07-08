@@ -5,8 +5,8 @@ import ray
 from ray.rllib.utils.actors import TaskPool
 
 
-def createMockWorkerAndObjectId(obj_id):
-    return ({obj_id: 1}, obj_id)
+def createMockWorkerAndObjectId(obj_ref):
+    return ({obj_ref: 1}, obj_ref)
 
 
 class TaskPoolTest(unittest.TestCase):

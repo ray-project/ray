@@ -49,7 +49,7 @@ channel_logger = logging.getLogger(__name__)
 cdef class ChannelCreationParameter:
     cdef:
         CChannelCreationParameter parameter
-    
+
     def __cinit__(self, ActorID actor_id, FunctionDescriptor async_func, FunctionDescriptor sync_func):
         cdef:
             shared_ptr[CRayFunction] async_func_ptr
