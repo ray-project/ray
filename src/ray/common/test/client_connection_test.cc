@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <boost/asio.hpp>
+#include <boost/asio/error.hpp>
 #include <list>
 #include <memory>
 
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
@@ -140,6 +140,22 @@ TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
   reader->ProcessMessages();
   io_service_.run();
   ASSERT_EQ(num_messages, 3);
+}
+
+TEST_F(ClientConnectionTest, SimpleAsyncReadWriteBuffers) {
+  auto writer = ServerConnection::Create(std::move(in_));
+  auto reader = ServerConnection::Create(std::move(out_));
+
+  const std::vector<uint8_t> write_buffer = {1, 2, 3, 4, 5};
+  std::vector<uint8_t> read_buffer = {0, 0, 0, 0, 0};
+
+  RAY_CHECK_OK(writer->WriteBuffer({boost::asio::buffer(write_buffer)}));
+  reader->ReadBufferAsync({boost::asio::buffer(read_buffer)},
+                          [&write_buffer, &read_buffer](const ray::Status &status) {
+                            RAY_CHECK_OK(status);
+                            RAY_CHECK(write_buffer == read_buffer);
+                          });
+  io_service_.run();
 }
 
 TEST_F(ClientConnectionTest, SimpleAsyncError) {
