@@ -406,6 +406,12 @@ Status GcsActorManager::RegisterActor(
   actor_to_register_callbacks_[actor_id].emplace_back(std::move(callback));
   RAY_CHECK(registered_actors_.emplace(actor->GetActorID(), actor).second);
 
+  if (!actor->IsDetached() && worker_client_factory_) {
+    // This actor is owned. Send a long polling request to the actor's
+    // owner to determine when the actor should be removed.
+    PollOwnerForActorOutOfScope(actor);
+  }
+
   gcs_actor_scheduler_->Schedule(actor);
   return Status::OK();
 }
@@ -437,10 +443,9 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
   rpc::WaitForActorOutOfScopeRequest wait_request;
   wait_request.set_intended_worker_id(owner_id.Binary());
   wait_request.set_actor_id(actor_id.Binary());
-  auto status = it->second.client->WaitForActorOutOfScope(
-      wait_request,
-      [this, owner_node_id, owner_id, actor_id](
-          const Status &status, const rpc::WaitForActorOutOfScopeReply &reply) {
+  RAY_CHECK_OK(it->second.client->WaitForActorOutOfScope(
+      wait_request, [this, owner_node_id, owner_id, actor_id](
+                        Status status, const rpc::WaitForActorOutOfScopeReply &reply) {
         if (!status.ok()) {
           RAY_LOG(INFO) << "Worker " << owner_id << " failed, destroying actor child";
         }
@@ -451,14 +456,7 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
           // have already been destroyed if the owner died.
           DestroyActor(actor_id);
         }
-      });
-
-  // The owner maybe dead before the actor is created and this actor will be destroyed in
-  // the process of OnWorkerDead.
-  if (!status.ok()) {
-    RAY_LOG(WARNING) << "Failed to send WaitForActorOutOfScope request to owner "
-                     << owner_id;
-  }
+      }));
 }
 
 void GcsActorManager::DestroyActor(const ActorID &actor_id) {
@@ -700,6 +698,15 @@ void GcsActorManager::OnActorCreationFailed(std::shared_ptr<GcsActor> actor) {
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor) {
   auto actor_id = actor->GetActorID();
   RAY_LOG(DEBUG) << "Actor created successfully, actor id = " << actor_id;
+  // NOTE: If an actor is deleted immediately after the user creates the actor, reference
+  // counter may return a reply to the request of WaitForActorOutOfScope to GCS server,
+  // and GCS server will destroy the actor. The actor creation is asynchronous, it may be
+  // destroyed before the actor creation is completed.
+  if (registered_actors_.count(actor_id) == 0) {
+    RAY_LOG(WARNING) << "Actor is destroyed before the creation is completed, actor id = "
+                     << actor_id;
+    return;
+  }
   actor->UpdateState(rpc::ActorTableData::ALIVE);
   auto actor_table_data = actor->GetActorTableData();
   // The backend storage is reliable in the future, so the status must be ok.
@@ -726,12 +733,6 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
         RAY_CHECK(!worker_id.IsNil());
         RAY_CHECK(!node_id.IsNil());
         RAY_CHECK(created_actors_[node_id].emplace(worker_id, actor_id).second);
-
-        if (!actor->IsDetached() && worker_client_factory_) {
-          // This actor is owned. Send a long polling request to the actor's
-          // owner to determine when the actor should be removed.
-          PollOwnerForActorOutOfScope(actor);
-        }
       }));
 }
 
