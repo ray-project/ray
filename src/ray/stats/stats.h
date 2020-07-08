@@ -40,7 +40,7 @@ namespace stats {
 static void Init(
     const TagsType &global_tags, const int metrics_agent_port,
     boost::asio::io_service &io_service,
-    std::shared_ptr<MetricExporterClient> exporter = nullptr,
+    std::shared_ptr<MetricExporterClient> exporter_to_use = nullptr,
     int64_t k_report_batch_size = RayConfig::instance().k_report_batch_size(),
     bool disable_stats = RayConfig::instance().disable_stats()) {
   StatsConfig::instance().SetIsDisableStats(disable_stats);
@@ -49,12 +49,15 @@ static void Init(
     return;
   }
 
-  if (exporter == nullptr) {
-    // Set it static to make it a singleton object.
-    static std::shared_ptr<MetricExporterClient> stdout_exporter(
-        new StdoutExporterClient());
-    static std::shared_ptr<MetricExporterClient> exporter(
+  // Force to have a singleton exporter.
+  static std::shared_ptr<MetricExporterClient> exporter;
+  // Default exporter is metrics agent exporter.
+  if (exporter_to_use == nullptr) {
+    std::shared_ptr<MetricExporterClient> stdout_exporter(new StdoutExporterClient());
+    exporter.reset(
         new MetricsAgentExporter(stdout_exporter, metrics_agent_port, io_service));
+  } else {
+    exporter = exporter_to_use;
   }
 
   MetricExporter::Register(exporter, k_report_batch_size);

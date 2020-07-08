@@ -94,13 +94,6 @@ int main(int argc, char *argv[]) {
   // IO Service for node manager.
   boost::asio::io_service main_service;
 
-  // Initialize stats.
-  const ray::stats::TagsType global_tags = {
-      {ray::stats::JobNameKey, "raylet"},
-      {ray::stats::VersionKey, "0.9.0.dev0"},
-      {ray::stats::NodeAddressKey, node_ip_address}};
-  ray::stats::Init(global_tags, metrics_agent_port, main_service);
-
   // Ensure that the IO service keeps running. Without this, the service will exit as soon
   // as there is no more work to be processed.
   boost::asio::io_service::work main_work(main_service);
@@ -230,6 +223,13 @@ int main(int argc, char *argv[]) {
 
         server->Start();
       }));
+
+  // Initialize stats.
+  const ray::stats::TagsType global_tags = {
+      {ray::stats::JobNameKey, "raylet"},
+      {ray::stats::VersionKey, "0.9.0.dev0"},
+      {ray::stats::NodeAddressKey, node_ip_address}};
+  ray::stats::Init(global_tags, metrics_agent_port, main_service);
 
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop

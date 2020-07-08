@@ -33,12 +33,16 @@ class StatsConfig final {
  public:
   static StatsConfig &instance();
 
+  /// Set the global tags that will be appended to all metrics in this process.
   void SetGlobalTags(const TagsType &global_tags);
 
+  /// Get the current global tags.
   const TagsType &GetGlobalTags() const;
 
+  /// Set if the stats are enabled in this process.
   void SetIsDisableStats(bool disable_stats);
 
+  /// Get whether or not stats are enabled.
   bool IsStatsDisabled() const;
 
  private:
@@ -49,6 +53,7 @@ class StatsConfig final {
 
  private:
   TagsType global_tags_;
+  /// If true, don't collect metrics in this process.
   bool is_stats_disabled_ = true;
 };
 

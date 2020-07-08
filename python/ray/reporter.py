@@ -57,8 +57,6 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
 
     def ReportMetrics(self, request, context):
         # TODO(sang): Process metrics here.
-        print(request)
-        print("\n\n\n\n")
         return reporter_pb2.ReportMetricsReply()
 
 
