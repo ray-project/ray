@@ -42,7 +42,7 @@ static void Init(const std::string &address, const TagsType &global_tags,
     RAY_LOG(INFO) << "Disabled stats.";
     return;
   }
-
+  RAY_LOG(INFO) << "Initialize stats";
   // Enable the Prometheus exporter.
   // Note that the reason for we using local static variables
   // here is to make sure they are single-instances.

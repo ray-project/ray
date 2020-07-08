@@ -21,6 +21,7 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/stats/stats.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -294,6 +295,15 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   // NOTE(edoakes): any initialization depending on RayConfig must happen after this line.
   RayConfig::instance().initialize(internal_config);
+
+  // Initialize stats.
+  const ray::stats::TagsType global_tags = {
+      {ray::stats::ComponentKey, "core_worker"},
+      {ray::stats::VersionKey, "0.9.0.dev0"},
+      {ray::stats::NodeAddressKey, options_.node_ip_address}};
+
+  ray::stats::Init("", global_tags, RayConfig::instance().disable_stats(),
+                   RayConfig::instance().enable_stdout_exporter());
 
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.

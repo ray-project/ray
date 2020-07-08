@@ -92,7 +92,7 @@ int main(int argc, char *argv[]) {
 
   // Initialize stats.
   const ray::stats::TagsType global_tags = {
-      {ray::stats::JobNameKey, "raylet"},
+      {ray::stats::ComponentKey, "raylet"},
       {ray::stats::VersionKey, "0.9.0.dev0"},
       {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(stat_address, global_tags, disable_stats, enable_stdout_exporter);
@@ -112,6 +112,9 @@ int main(int argc, char *argv[]) {
     // TODO(rkn): The line below could throw an exception. What should we do about this?
     raylet_config[config_name] = config_value;
   }
+
+  raylet_config["disable_stats"] = disable_stats ? "true" : "false";
+  raylet_config["enable_stdout_exporter"] = enable_stdout_exporter ? "true" : "false";
 
   RayConfig::instance().initialize(raylet_config);
 
