@@ -61,15 +61,6 @@ jobs:
       with:
         # we need full history to diff against the original for linting etc.
         fetch-depth: 0
-    - name: Install fake Anaconda (uses built-in Python for performance)
-      shell: bash -e -o pipefail -l {0}
-      if: github.repository != 'ray-project/ray' && github.event_name == 'push'
-      run: |
-        if command -v python > /dev/null; then
-          (. ci/travis/conda-stub-github-actions.sh init "${SHELL##*/}" && conda install python="${PYTHON}" && pip --version)
-        else
-          echo "No existing Python installation found! Skipping..."
-        fi
     - name: Configure AWS Credentials
       continue-on-error: true
       if: github.repository == 'ray-project/ray'
@@ -94,10 +85,8 @@ jobs:
       with:
         path: ${{ steps.info.outputs.pip_cache }}
         key: |
-          pip-${{ runner.os }}-${{ hashFiles('**/requirements*.txt') }}-${{ hashFiles('**/setup.py') }}-${{ github.workflow }}-${{ github.job }}-${{ steps.info.outputs.git_tree_hash }}
+          pip-${{ runner.os }}-${{ steps.info.outputs.git_tree_hash }}
         restore-keys: |
-          pip-${{ runner.os }}-${{ hashFiles('**/requirements*.txt') }}-${{ hashFiles('**/setup.py') }}-${{ github.workflow }}-${{ github.job }}
-          pip-${{ runner.os }}-${{ hashFiles('**/requirements*.txt') }}-${{ hashFiles('**/setup.py') }}-
           pip-${{ runner.os }}-
           pip-
     - name: Run Jenkins tests

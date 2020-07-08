@@ -261,43 +261,7 @@ build_wheels() {
       suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       ;;
     msys*)
-      (
-        local backup_conda="${CONDA_PREFIX}.bak" ray_uninstall_status=0
-        test ! -d "${backup_conda}"
-        pip uninstall -y ray || ray_uninstall_status=1
-        mv -n -T -- "${CONDA_PREFIX}" "${backup_conda}"  # Back up conda
-
-        local pyversion pyversions=()
-        for pyversion in 3.6 3.7 3.8; do
-          if [ "${pyversion}" = "${PYTHON-}" ]; then continue; fi  # we'll build ${PYTHON} last
-          pyversions+=("${pyversion}")
-        done
-
-        pyversions+=("${PYTHON-}")  # build this last so any subsequent steps use the right version
-        local local_dir="python/dist"
-        for pyversion in "${pyversions[@]}"; do
-          if [ -z "${pyversion}" ]; then continue; fi
-          "${ROOT_DIR}"/bazel-preclean.sh
-          git clean -q -f -f -x -d -e "${local_dir}" -e python/ray/dashboard/client
-          git checkout -q -f -- .
-          cp -R -f -a -T -- "${backup_conda}" "${CONDA_PREFIX}"
-          local existing_version
-          existing_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
-          if [ "${pyversion}" != "${existing_version}" ]; then
-            suppress_output conda install python="${pyversion}"
-          fi
-          install_ray
-          (cd "${WORKSPACE_DIR}"/python && python setup.py --quiet bdist_wheel)
-          pip uninstall -y ray
-          rm -r -f -- "${CONDA_PREFIX}"
-        done
-
-        mv -n -T -- "${backup_conda}" "${CONDA_PREFIX}"
-        "${ROOT_DIR}"/bazel-preclean.sh
-        if [ 0 -eq "${ray_uninstall_status}" ]; then  # If Ray was previously installed, restore it
-          install_ray
-        fi
-      )
+      suppress_output "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
       ;;
   esac
 }
