@@ -66,6 +66,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
   /// Read a buffer from this connection asynchronously.
   ///
   /// \param buffer The buffer.
+  /// \param handler A callback to run on read completion.
   /// \return Status.
   void ReadBufferAsync(const std::vector<boost::asio::mutable_buffer> &buffer,
                        const std::function<void(const ray::Status &)> &handler);
