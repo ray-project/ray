@@ -61,7 +61,8 @@ class StatsTest : public ::testing::Test {
   void SetUp() {
     const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
                                          {stats::WorkerPidKey, "1000"}};
-    std::shared_ptr<stats::MetricExporterClient> exporter(new stats::StdoutExporterClient());
+    std::shared_ptr<stats::MetricExporterClient> exporter(
+        new stats::StdoutExporterClient());
     ray::stats::Init(global_tags, 10054, io_service_, exporter);
     MockExporter::Register();
   }

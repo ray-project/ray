@@ -40,12 +40,12 @@ namespace stats {
 #include "metric_defs.h"
 
 /// Initialize stats.
-static void Init(const TagsType &global_tags,
-                 const int metrics_agent_port,
-                 boost::asio::io_service &io_service,
-                 std::shared_ptr<MetricExporterClient> exporter = nullptr,
-                 int64_t k_report_batch_size = RayConfig::instance().k_report_batch_size(),
-                 bool disable_stats = RayConfig::instance().disable_stats()) {
+static void Init(
+    const TagsType &global_tags, const int metrics_agent_port,
+    boost::asio::io_service &io_service,
+    std::shared_ptr<MetricExporterClient> exporter = nullptr,
+    int64_t k_report_batch_size = RayConfig::instance().k_report_batch_size(),
+    bool disable_stats = RayConfig::instance().disable_stats()) {
   StatsConfig::instance().SetIsDisableStats(disable_stats);
   if (disable_stats) {
     RAY_LOG(INFO) << "Disabled stats.";
