@@ -179,9 +179,6 @@ def test_dynamic_res_creation_clientid_multiple(ray_start_cluster):
         results.append(set_res.remote(res_name, res_capacity, nid))
     ray.get(results)
 
-    success = False
-    start_time = time.time()
-
     def check_resources():
         resources_created = []
         for nid in target_node_ids:
