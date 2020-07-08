@@ -35,7 +35,7 @@ def test_remote_array_methods(ray_start_2_cpus, reload_modules):
     r_val = ray.get(r_id)
     assert_almost_equal(np.dot(q_val, r_val), a_val)
 
-    # test qr - pass by objectid
+    # test qr - pass by object_ref
     a = ra.random.normal.remote([10, 13])
     q_id, r_id = ra.linalg.qr.remote(a)
     a_val = ray.get(a)

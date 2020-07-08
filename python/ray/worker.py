@@ -225,9 +225,9 @@ class Worker:
         self.mode = mode
 
     def put_object(self, value, object_ref=None, pin_object=True):
-        """Put value in the local object store with object id `objectid`.
+        """Put value in the local object store with object reference `object_ref`.
 
-        This assumes that the value for `objectid` has not yet been placed in
+        This assumes that the value for `object_ref` has not yet been placed in
         the local object store. If the plasma store is full, the worker will
         automatically retry up to DEFAULT_PUT_OBJECT_RETRIES times. Each
         retry will delay for an exponentially doubling amount of time,

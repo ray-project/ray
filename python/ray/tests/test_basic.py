@@ -461,26 +461,26 @@ def test_put_get(shutdown_only):
 
     for i in range(100):
         value_before = i * 10**6
-        objectid = ray.put(value_before)
-        value_after = ray.get(objectid)
+        object_ref = ray.put(value_before)
+        value_after = ray.get(object_ref)
         assert value_before == value_after
 
     for i in range(100):
         value_before = i * 10**6 * 1.0
-        objectid = ray.put(value_before)
-        value_after = ray.get(objectid)
+        object_ref = ray.put(value_before)
+        value_after = ray.get(object_ref)
         assert value_before == value_after
 
     for i in range(100):
         value_before = "h" * i
-        objectid = ray.put(value_before)
-        value_after = ray.get(objectid)
+        object_ref = ray.put(value_before)
+        value_after = ray.get(object_ref)
         assert value_before == value_after
 
     for i in range(100):
         value_before = [1] * i
-        objectid = ray.put(value_before)
-        value_after = ray.get(objectid)
+        object_ref = ray.put(value_before)
+        value_after = ray.get(object_ref)
         assert value_before == value_after
 
 

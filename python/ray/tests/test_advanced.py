@@ -54,17 +54,17 @@ def test_wait_iterables(ray_start_regular):
         time.sleep(delay)
         return 1
 
-    objectids = (f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5))
-    ready_ids, remaining_ids = ray.experimental.wait(objectids)
+    object_refs = (f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5))
+    ready_ids, remaining_ids = ray.experimental.wait(object_refs)
     assert len(ready_ids) == 1
     assert len(remaining_ids) == 3
 
-    objectids = np.array(
+    object_refs = np.array(
         [f.remote(1.0),
          f.remote(0.5),
          f.remote(0.5),
          f.remote(0.5)])
-    ready_ids, remaining_ids = ray.experimental.wait(objectids)
+    ready_ids, remaining_ids = ray.experimental.wait(object_refs)
     assert len(ready_ids) == 1
     assert len(remaining_ids) == 3
 
