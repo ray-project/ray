@@ -64,7 +64,7 @@ class ActorMethod:
             invoking the method. The decorator must return a function that
             takes in two arguments ("args" and "kwargs"). In most cases, it
             should call the function that was passed into the decorator and
-            return the resulting ObjectIDs. For an example, see
+            return the resulting ObjectRefs. For an example, see
             "test_decorated_method" in "python/ray/tests/test_actor.py".
     """
 
@@ -81,7 +81,7 @@ class ActorMethod:
         # opposed to the function execution). The decorator must return a
         # function that takes in two arguments ("args" and "kwargs"). In most
         # cases, it should call the function that was passed into the decorator
-        # and return the resulting ObjectIDs.
+        # and return the resulting ObjectRefs.
         self._decorator = decorator
 
         # Acquire a hard ref to the actor, this is useful mainly when passing
@@ -800,7 +800,7 @@ class ActorHandle:
 
         Args:
             state: The serialized state of the actor handle.
-            outer_object_id: The ObjectID that the serialized actor handle was
+            outer_object_id: The ObjectRef that the serialized actor handle was
                 contained in, if any. This is used for counting references to
                 the actor handle.
 

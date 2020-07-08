@@ -126,7 +126,7 @@ cdef class UniqueID(BaseID):
         return self.data.Hash()
 
 
-cdef class ObjectID(BaseID):
+cdef class ObjectRef(BaseID):
 
     def __init__(self, id):
         check_id(id)
@@ -405,7 +405,7 @@ _ID_TYPES = [
     JobID,
     WorkerID,
     FunctionID,
-    ObjectID,
+    ObjectRef,
     TaskID,
     UniqueID,
 ]

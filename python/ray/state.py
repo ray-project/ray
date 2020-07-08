@@ -168,7 +168,7 @@ class GlobalState:
         self._check_connected()
 
         if object_id is not None:
-            object_id = ray.ObjectID(hex_to_binary(object_id))
+            object_id = ray.ObjectRef(hex_to_binary(object_id))
             object_info = self.global_state_accessor.get_object_info(object_id)
             if object_info is None:
                 return {}
@@ -196,7 +196,7 @@ class GlobalState:
             locations.append(ray.utils.binary_to_hex(location.manager))
 
         object_info = {
-            "ObjectID": ray.utils.binary_to_hex(
+            "ObjectRef": ray.utils.binary_to_hex(
                 object_location_info.object_id),
             "Locations": locations,
         }

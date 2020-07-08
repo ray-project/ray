@@ -134,7 +134,7 @@ class SerializationContext:
             obj_id, owner_address = serialized_obj
             # NOTE(swang): Must deserialize the object first before asking
             # the core worker to resolve the value. This is to make sure
-            # that the ref count for the ObjectID is greater than 0 by the
+            # that the ref count for the ObjectRef is greater than 0 by the
             # time the core worker resolves the value of the object.
             deserialized_object_id = id_deserializer(obj_id)
             # TODO(edoakes): we should be able to just capture a reference
@@ -147,16 +147,16 @@ class SerializationContext:
                 # UniqueIDs are serialized as
                 # (class name, (unique bytes,)).
                 outer_id = context.get_outer_object_id()
-                # outer_id is None in the case that this ObjectID was closed
+                # outer_id is None in the case that this ObjectRef was closed
                 # over in a function or pickled directly using pickle.dumps().
                 if outer_id is None:
-                    outer_id = ray.ObjectID.nil()
+                    outer_id = ray.ObjectRef.nil()
                 worker.core_worker.deserialize_and_register_object_id(
                     obj_id[1][0], outer_id, owner_address)
             return deserialized_object_id
 
         for id_type in ray._raylet._ID_TYPES:
-            if id_type == ray._raylet.ObjectID:
+            if id_type == ray._raylet.ObjectRef:
                 self._register_cloudpickle_serializer(
                     id_type, object_id_serializer, object_id_deserializer)
             else:
@@ -277,7 +277,7 @@ class SerializationContext:
             elif error_type == ErrorType.Value("TASK_CANCELLED"):
                 return RayCancellationError()
             elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
-                return UnreconstructableError(ray.ObjectID(object_id.binary()))
+                return UnreconstructableError(ray.ObjectRef(object_id.binary()))
             else:
                 assert error_type != ErrorType.Value("OBJECT_IN_PLASMA"), \
                     "Tried to get object that has been promoted to plasma."
@@ -330,7 +330,7 @@ class SerializationContext:
                             job_id=self.worker.current_job_id)
                     warning_sent = True
             finally:
-                # Must clear ObjectID to not hold a reference.
+                # Must clear ObjectRef to not hold a reference.
                 self.set_outer_object_id(None)
 
         return results

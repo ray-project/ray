@@ -38,7 +38,7 @@ def _fill_object_store_and_get(oid, succeed=True, object_MiB=40,
         ray.put(np.zeros(object_MiB * 1024 * 1024, dtype=np.uint8))
 
     if type(oid) is bytes:
-        oid = ray.ObjectID(oid)
+        oid = ray.ObjectRef(oid)
 
     if succeed:
         ray.get(oid)
@@ -177,7 +177,7 @@ def test_pass_returned_object_id(one_worker_100MiB, use_ray_put, failure):
 
     def ref_not_exists():
         worker = ray.worker.global_worker
-        inner_oid = ray.ObjectID(inner_oid_binary)
+        inner_oid = ray.ObjectRef(inner_oid_binary)
         return not worker.core_worker.object_exists(inner_oid)
 
     assert wait_for_condition(ref_not_exists)
@@ -244,10 +244,10 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB, use_ray_put,
 
 
 # Call a recursive chain of tasks. The final task in the chain returns an
-# ObjectID returned by a task that it submitted. Every other task in the chain
-# returns the same ObjectID by calling ray.get() on its submitted task and
+# ObjectRef returned by a task that it submitted. Every other task in the chain
+# returns the same ObjectRef by calling ray.get() on its submitted task and
 # returning the result. The reference should still exist while the driver has a
-# reference to the final task's ObjectID.
+# reference to the final task's ObjectRef.
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
 def test_recursively_return_borrowed_object_id(one_worker_100MiB, use_ray_put,

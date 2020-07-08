@@ -21,7 +21,7 @@ from ray.includes.unique_ids cimport (
 from ray._raylet cimport (
     Buffer,
     ActorID,
-    ObjectID,
+    ObjectRef,
     FunctionDescriptor,
 )
 
@@ -190,7 +190,7 @@ cdef class DataWriter:
             channel_logger.info("deleted DataWriter")
             self.writer = NULL
 
-    def write(self, ObjectID qid, const unsigned char[:] value):
+    def write(self, ObjectRef qid, const unsigned char[:] value):
         """support zero-copy bytes, bytearray, array of unsigned char"""
         cdef:
             CObjectID native_id = qid.data

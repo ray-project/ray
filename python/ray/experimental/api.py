@@ -19,10 +19,10 @@ def get(object_ids):
         return ray.get(list(object_ids))
     elif isinstance(object_ids, dict):
         keys_to_get = [
-            k for k, v in object_ids.items() if isinstance(v, ray.ObjectID)
+            k for k, v in object_ids.items() if isinstance(v, ray.ObjectRef)
         ]
         ids_to_get = [
-            v for k, v in object_ids.items() if isinstance(v, ray.ObjectID)
+            v for k, v in object_ids.items() if isinstance(v, ray.ObjectRef)
         ]
         values = ray.get(ids_to_get)
 
@@ -41,7 +41,7 @@ def wait(object_ids, num_returns=1, timeout=None):
     and ndarrays.
 
     Args:
-        object_ids (List[ObjectID], Tuple(ObjectID), np.array(ObjectID)):
+        object_ids (List[ObjectRef], Tuple(ObjectRef), np.array(ObjectRef)):
             List like of object IDs for objects that may or may not be ready.
             Note that these IDs must be unique.
         num_returns (int): The number of object IDs that should be returned.

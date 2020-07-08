@@ -33,7 +33,7 @@ import ray.state
 from ray import (
     ActorID,
     JobID,
-    ObjectID,
+    ObjectRef,
     Language,
 )
 from ray import import_thread
@@ -236,12 +236,12 @@ class Worker:
 
         Args:
             value: The value to put in the object store.
-            object_id (object_id.ObjectID): The object ID of the value to be
+            object_id (object_id.ObjectRef): The object ID of the value to be
                 put. If None, one will be generated.
             pin_object: If set, the object will be pinned at the raylet.
 
         Returns:
-            object_id.ObjectID: The object ID the object was put under.
+            object_id.ObjectRef: The object ID the object was put under.
 
         Raises:
             ray.exceptions.ObjectStoreFullError: This is raised if the attempt
@@ -249,12 +249,12 @@ class Worker:
                 after multiple retries.
         """
         # Make sure that the value is not an object ID.
-        if isinstance(value, ObjectID):
+        if isinstance(value, ObjectRef):
             raise TypeError(
-                "Calling 'put' on an ray.ObjectID is not allowed "
-                "(similarly, returning an ray.ObjectID from a remote "
+                "Calling 'put' on an ray.ObjectRef is not allowed "
+                "(similarly, returning an ray.ObjectRef from a remote "
                 "function is not allowed). If you really want to "
-                "do this, you can wrap the ray.ObjectID in a list and "
+                "do this, you can wrap the ray.ObjectRef in a list and "
                 "call 'put' on it (or return it).")
 
         if self.mode == LOCAL_MODE:
@@ -263,12 +263,12 @@ class Worker:
 
         serialized_value = self.get_serialization_context().serialize(value)
         # This *must* be the first place that we construct this python
-        # ObjectID because an entry with 0 local references is created when
+        # ObjectRef because an entry with 0 local references is created when
         # the object is Put() in the core worker, expecting that this python
         # reference will be created. If another reference is created and
         # removed before this one, it will corrupt the state in the
         # reference counter.
-        return ray.ObjectID(
+        return ray.ObjectRef(
             self.core_worker.put_serialized_object(
                 serialized_value, object_id=object_id, pin_object=pin_object))
 
@@ -284,17 +284,17 @@ class Worker:
         local object store.
 
         Args:
-            object_ids (List[object_id.ObjectID]): A list of the object IDs
+            object_ids (List[object_id.ObjectRef]): A list of the object IDs
                 whose values should be retrieved.
             timeout (float): timeout (float): The maximum amount of time in
                 seconds to wait before returning.
         """
         # Make sure that the values are object IDs.
         for object_id in object_ids:
-            if not isinstance(object_id, ObjectID):
+            if not isinstance(object_id, ObjectRef):
                 raise TypeError(
                     "Attempting to call `get` on the value {}, "
-                    "which is not an ray.ObjectID.".format(object_id))
+                    "which is not an ray.ObjectRef.".format(object_id))
 
         timeout_ms = int(timeout * 1000) if timeout else -1
         data_metadata_pairs = self.core_worker.get_objects(
@@ -1287,7 +1287,7 @@ def connect(node,
     # accesses will be faster. Currently the first access is always slow, and
     # we don't want the user to experience this.
     if mode != LOCAL_MODE:
-        temporary_object_id = ray.ObjectID.from_random()
+        temporary_object_id = ray.ObjectRef.from_random()
         worker.put_object(1, object_id=temporary_object_id)
         ray.internal.free([temporary_object_id])
 
@@ -1511,7 +1511,7 @@ def get(object_ids, timeout=None):
             blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
-        is_individual_id = isinstance(object_ids, ray.ObjectID)
+        is_individual_id = isinstance(object_ids, ray.ObjectRef)
         if is_individual_id:
             object_ids = [object_ids]
 
@@ -1596,7 +1596,7 @@ def wait(object_ids, num_returns=1, timeout=None):
     ``await asyncio.wait(object_ids)``.
 
     Args:
-        object_ids (List[ObjectID]): List of object IDs for objects that may or
+        object_ids (List[ObjectRef]): List of object IDs for objects that may or
             may not be ready. Note that these IDs must be unique.
         num_returns (int): The number of object IDs that should be returned.
         timeout (float): The maximum amount of time in seconds to wait before
@@ -1618,13 +1618,13 @@ def wait(object_ids, num_returns=1, timeout=None):
                          "on object id with asyncio.wait. ")
             blocking_wait_inside_async_warned = True
 
-    if isinstance(object_ids, ObjectID):
-        raise TypeError("wait() expected a list of ray.ObjectID, got a single "
-                        "ray.ObjectID")
+    if isinstance(object_ids, ObjectRef):
+        raise TypeError("wait() expected a list of ray.ObjectRef, got a single "
+                        "ray.ObjectRef")
 
     if not isinstance(object_ids, list):
         raise TypeError(
-            "wait() expected a list of ray.ObjectID, got {}".format(
+            "wait() expected a list of ray.ObjectRef, got {}".format(
                 type(object_ids)))
 
     if timeout is not None and timeout < 0:
@@ -1632,8 +1632,8 @@ def wait(object_ids, num_returns=1, timeout=None):
                          "Received {}".format(timeout))
 
     for object_id in object_ids:
-        if not isinstance(object_id, ObjectID):
-            raise TypeError("wait() expected a list of ray.ObjectID, "
+        if not isinstance(object_id, ObjectRef):
+            raise TypeError("wait() expected a list of ray.ObjectRef, "
                             "got list containing {}".format(type(object_id)))
 
     worker.check_connected()
@@ -1722,7 +1722,7 @@ def cancel(object_id, force=False):
     Calling ray.get on a canceled task will raise a RayCancellationError.
 
     Args:
-        object_id (ObjectID): ObjectID returned by the task
+        object_id (ObjectRef): ObjectRef returned by the task
             that should be canceled.
         force (boolean): Whether to force-kill a running task by killing
             the worker that is running the task.
@@ -1732,7 +1732,7 @@ def cancel(object_id, force=False):
     worker = ray.worker.global_worker
     worker.check_connected()
 
-    if not isinstance(object_id, ray.ObjectID):
+    if not isinstance(object_id, ray.ObjectRef):
         raise TypeError(
             "ray.cancel() only supported for non-actor object IDs. "
             "Got: {}.".format(type(object_id)))

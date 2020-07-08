@@ -65,7 +65,7 @@ class MemoryTableEntry:
         # object info
         self.object_size = int(object_ref.get("objectSize", -1))
         self.call_site = object_ref.get("callSite", "<Unknown>")
-        self.object_id = ray.ObjectID(
+        self.object_id = ray.ObjectRef(
             decode_object_id_if_needed(object_ref["objectId"]))
 
         # reference info
@@ -74,7 +74,7 @@ class MemoryTableEntry:
         self.submitted_task_ref_count = int(
             object_ref.get("submittedTaskRefCount", 0))
         self.contained_in_owned = [
-            ray.ObjectID(decode_object_id_if_needed(object_id))
+            ray.ObjectRef(decode_object_id_if_needed(object_id))
             for object_id in object_ref.get("containedInOwned", [])
         ]
         self.reference_type = self._get_reference_type()

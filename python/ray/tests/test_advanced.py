@@ -355,7 +355,7 @@ def test_identical_function_names(ray_start_regular):
 
 def test_illegal_api_calls(ray_start_regular):
 
-    # Verify that we cannot call put on an ObjectID.
+    # Verify that we cannot call put on an ObjectRef.
     x = ray.put(1)
     with pytest.raises(Exception):
         ray.put(x)

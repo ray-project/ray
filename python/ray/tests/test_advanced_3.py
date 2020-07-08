@@ -283,15 +283,15 @@ def test_specific_job_id():
 
 def test_object_id_properties():
     id_bytes = b"00112233445566778899"
-    object_id = ray.ObjectID(id_bytes)
+    object_id = ray.ObjectRef(id_bytes)
     assert object_id.binary() == id_bytes
-    object_id = ray.ObjectID.nil()
+    object_id = ray.ObjectRef.nil()
     assert object_id.is_nil()
     with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
-        ray.ObjectID(id_bytes + b"1234")
+        ray.ObjectRef(id_bytes + b"1234")
     with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
-        ray.ObjectID(b"0123456789")
-    object_id = ray.ObjectID.from_random()
+        ray.ObjectRef(b"0123456789")
+    object_id = ray.ObjectRef.from_random()
     assert not object_id.is_nil()
     assert object_id.binary() != id_bytes
     id_dumps = pickle.dumps(object_id)
@@ -434,7 +434,7 @@ def test_pandas_parquet_serialization():
 
 
 def test_socket_dir_not_existing(shutdown_only):
-    random_name = ray.ObjectID.from_random().hex()
+    random_name = ray.ObjectRef.from_random().hex()
     temp_raylet_socket_dir = os.path.join(ray.utils.get_ray_temp_dir(),
                                           "tests", random_name)
     temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
@@ -486,20 +486,20 @@ def test_shutdown_disconnect_global_state():
 def test_put_pins_object(ray_start_object_store_memory):
     x_id = ray.put("HI")
     x_binary = x_id.binary()
-    assert ray.get(ray.ObjectID(x_binary)) == "HI"
+    assert ray.get(ray.ObjectRef(x_binary)) == "HI"
 
     # x cannot be evicted since x_id pins it
     for _ in range(10):
         ray.put(np.zeros(10 * 1024 * 1024))
     assert ray.get(x_id) == "HI"
-    assert ray.get(ray.ObjectID(x_binary)) == "HI"
+    assert ray.get(ray.ObjectRef(x_binary)) == "HI"
 
     # now it can be evicted since x_id pins it but x_binary does not
     del x_id
     for _ in range(10):
         ray.put(np.zeros(10 * 1024 * 1024))
     assert not ray.worker.global_worker.core_worker.object_exists(
-        ray.ObjectID(x_binary))
+        ray.ObjectRef(x_binary))
 
     # weakref put
     y_id = ray.put("HI", weakref=True)

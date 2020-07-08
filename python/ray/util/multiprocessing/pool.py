@@ -41,7 +41,7 @@ class ResultThread(threading.Thread):
         self._error_callback = error_callback
         self._total_object_ids = total_object_ids or len(object_ids)
         self._indices = {}
-        # Thread-safe queue used to add ObjectIDs to fetch after creating
+        # Thread-safe queue used to add ObjectRefs to fetch after creating
         # this thread (used to lazily submit for imap and imap_unordered).
         self._new_object_ids = queue.Queue()
         for object_id in object_ids:

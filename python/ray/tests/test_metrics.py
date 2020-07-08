@@ -721,7 +721,7 @@ def test_invalid_memory_entry():
 def test_valid_reference_memory_entry():
     memory_entry = build_local_reference_entry()
     assert memory_entry.reference_type == ReferenceType.LOCAL_REFERENCE
-    assert memory_entry.object_id == ray.ObjectID(
+    assert memory_entry.object_id == ray.ObjectRef(
         decode_object_id_if_needed(OBJECT_ID))
     assert memory_entry.is_valid() is True
 

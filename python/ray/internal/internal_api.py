@@ -48,7 +48,7 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
         >>> free([x_id])  # unpin & delete x globally
 
     Args:
-        object_ids (List[ObjectID]): List of object IDs to delete.
+        object_ids (List[ObjectRef]): List of object IDs to delete.
         local_only (bool): Whether only deleting the list of objects in local
             object store or all object stores.
         delete_creating_tasks (bool): Whether also delete the object creating
@@ -56,18 +56,18 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
     """
     worker = ray.worker.global_worker
 
-    if isinstance(object_ids, ray.ObjectID):
+    if isinstance(object_ids, ray.ObjectRef):
         object_ids = [object_ids]
 
     if not isinstance(object_ids, list):
-        raise TypeError("free() expects a list of ObjectID, got {}".format(
+        raise TypeError("free() expects a list of ObjectRef, got {}".format(
             type(object_ids)))
 
     # Make sure that the values are object IDs.
     for object_id in object_ids:
-        if not isinstance(object_id, ray.ObjectID):
+        if not isinstance(object_id, ray.ObjectRef):
             raise TypeError("Attempting to call `free` on the value {}, "
-                            "which is not an ray.ObjectID.".format(object_id))
+                            "which is not an ray.ObjectRef.".format(object_id))
 
     worker.check_connected()
     with profiling.profile("ray.free"):

@@ -178,7 +178,7 @@ hyperparameters_mapping = {}
 
 ###########################################################################
 # Launch asynchronous parallel tasks for evaluating different
-# hyperparameters. ``accuracy_id`` is an ObjectID that acts as a handle to
+# hyperparameters. ``accuracy_id`` is an ObjectRef that acts as a handle to
 # the remote task. It is used later to fetch the result of the task
 # when the task finishes.
 

@@ -820,7 +820,7 @@ def test_decorated_method(ray_start_regular):
     a = Actor.remote()
 
     object_id, extra = a.decorated_method.remote(3, kwarg=3)
-    assert isinstance(object_id, ray.ObjectID)
+    assert isinstance(object_id, ray.ObjectRef)
     assert extra == {"kwarg": 3}
     assert ray.get(object_id) == 7  # 2 * 3 + 1
 

@@ -1,5 +1,5 @@
 # This workload stresses distributed reference counting by passing and
-# returning serialized ObjectIDs.
+# returning serialized ObjectRefs.
 
 import time
 import json

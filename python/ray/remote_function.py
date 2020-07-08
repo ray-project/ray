@@ -47,7 +47,7 @@ class RemoteFunction:
             invoking the function. The decorator must return a function that
             takes in two arguments ("args" and "kwargs"). In most cases, it
             should call the function that was passed into the decorator and
-            return the resulting ObjectIDs. For an example, see
+            return the resulting ObjectRefs. For an example, see
             "test_decorated_function" in "python/ray/tests/test_basic.py".
         _function_signature: The function signature.
         _last_export_session_and_job: A pair of the last exported session

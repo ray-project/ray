@@ -35,7 +35,7 @@ def _fill_object_store_and_get(oid, succeed=True, object_MiB=40,
         ray.put(np.zeros(object_MiB * 1024 * 1024, dtype=np.uint8))
 
     if type(oid) is bytes:
-        oid = ray.ObjectID(oid)
+        oid = ray.ObjectRef(oid)
 
     if succeed:
         ray.get(oid)
