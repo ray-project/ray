@@ -28,11 +28,6 @@ def do_test_explorations(run,
 
     # Test all frameworks.
     for fw in framework_iterator(core_config):
-        if fw == "tfe" and run in [
-                ddpg.DDPGTrainer, sac.SACTrainer, td3.TD3Trainer
-        ]:
-            continue
-
         print("Agent={}".format(run))
 
         # Test for both the default Agent's exploration AND the `Random`

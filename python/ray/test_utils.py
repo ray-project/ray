@@ -155,6 +155,15 @@ def relevant_errors(error_type):
     return [error for error in flat_errors() if error["type"] == error_type]
 
 
+def wait_for_num_actors(num_actors, timeout=10):
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if len(ray.actors()) >= num_actors:
+            return
+        time.sleep(0.1)
+    raise RayTestTimeoutException("Timed out while waiting for global state.")
+
+
 def wait_for_errors(error_type, num_errors, timeout=20):
     start_time = time.time()
     while time.time() - start_time < timeout:

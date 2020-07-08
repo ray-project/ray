@@ -82,6 +82,10 @@ cdef class Config:
         return RayConfig.instance().kill_worker_timeout_milliseconds()
 
     @staticmethod
+    def worker_register_timeout_seconds():
+        return RayConfig.instance().worker_register_timeout_seconds()
+
+    @staticmethod
     def max_time_for_handler_milliseconds():
         return RayConfig.instance().max_time_for_handler_milliseconds()
 

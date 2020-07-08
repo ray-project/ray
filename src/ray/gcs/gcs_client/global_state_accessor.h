@@ -86,6 +86,12 @@ class GlobalStateAccessor {
   /// deserialized with protobuf function.
   std::string GetNodeResourceInfo(const ClientID &node_id);
 
+  /// Get internal config from GCS Service.
+  ///
+  /// \return map of internal config keys and values. It is stored as a StoredConfig proto
+  /// and serialized as a string to allow multi-language support.
+  std::string GetInternalConfig();
+
   /// Get information of all actors from GCS Service.
   ///
   /// \return All actor info. To support multi-language, we serialize each ActorTableData

@@ -20,7 +20,7 @@ import ray.cluster_utils
 import ray.test_utils
 import setproctitle
 
-from ray.test_utils import RayTestTimeoutException
+from ray.test_utils import RayTestTimeoutException, wait_for_num_actors
 
 logger = logging.getLogger(__name__)
 
@@ -83,15 +83,6 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
     x = ray.put(np.zeros(1000000))
 
     attempt_to_load_balance(f, [x], 100, num_nodes, 25)
-
-
-def wait_for_num_actors(num_actors, timeout=10):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        if len(ray.actors()) >= num_actors:
-            return
-        time.sleep(0.1)
-    raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
 def wait_for_num_objects(num_objects, timeout=10):

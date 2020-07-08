@@ -210,12 +210,13 @@ PettingZoo Multi-Agent Environments
 `PettingZoo <https://github.com/PettingZoo-Team/PettingZoo>`__ is a repository of over 50 diverse multi-agent environments. However, the API is note directly compatible with rllib, but it can be converted into an rllib MultiAgentEnv like in this example
 
 .. code-block:: python
+
     from ray.tune.registry import register_env
     # import the pettingzoo environment
     from pettingzoo.gamma import prison_v0
     # import rllib pettingzoo interface
     from ray.rllib.env import PettingZooEnv
-    # define how to make the environment. This way takes an optinoal environment config, num_floors
+    # define how to make the environment. This way takes an optional environment config, num_floors
     env_creator = lambda config: prison_v0.env(num_floors=config.get("num_floors", 4))
     # register that way to make the environment under an rllib name
     register_env('prison', lambda config: PettingZooEnv(env_creator(config)))
