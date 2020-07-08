@@ -104,9 +104,9 @@ def define_java_module(
         },
     )
 
-def copy_to_workspace(name, srcs, subdir = ""):
-    if subdir.startswith("/") or subdir.startswith("\\"):
-        fail("Subdirectory must be a relative path: " + subdir)
+def copy_to_workspace(name, srcs, dstdir = ""):
+    if dstdir.startswith("/") or dstdir.startswith("\\"):
+        fail("Subdirectory must be a relative path: " + dstdir)
     src_locations = " ".join(["$(locations %s)" % (src,) for src in srcs])
     native.genrule(
         name = name,
@@ -114,30 +114,30 @@ def copy_to_workspace(name, srcs, subdir = ""):
         outs = [name + ".out"],
         # Keep this Bash script equivalent to the batch script below (or take out the batch script)
         cmd = r"""
-            mkdir -p -- {subdir}
+            mkdir -p -- {dstdir}
             for f in {locations}; do
-                rm -f -- {subdir}$${{f##*/}}
-                cp -f -- "$$f" {subdir}
-                echo $$f {subdir}$${{f##*/}}
+                rm -f -- {dstdir}$${{f##*/}}
+                cp -f -- "$$f" {dstdir}
+                echo $$f {dstdir}$${{f##*/}}
             done > $@
         """.format(
             locations = src_locations,
-            subdir = "." + ("/" + subdir.replace("\\", "/")).rstrip("/") + "/",
+            dstdir = "." + ("/" + dstdir.replace("\\", "/")).rstrip("/") + "/",
         ),
         # Keep this batch script equivalent to the Bash script above (or take out the batch script)
         cmd_bat = r"""
             (
-                if not exist {subdir} mkdir {subdir}
+                if not exist {dstdir} mkdir {dstdir}
             ) && (
                 for %f in ({locations}) do @(
-                    (if exist {subdir}%~nxf del /f /q {subdir}%~nxf) &&
-                    copy /B /Y %f {subdir} >NUL &&
-                    (echo %f {subdir}%~nxf)
+                    (if exist {dstdir}%~nxf del /f /q {dstdir}%~nxf) &&
+                    copy /B /Y %f {dstdir} >NUL &&
+                    (echo %f {dstdir}%~nxf)
                 )
             ) > $@
         """.replace("\r", "").replace("\n", " ").format(
             locations = src_locations,
-            subdir = "." + ("\\" + subdir.replace("/", "\\")).rstrip("\\") + "\\",
+            dstdir = "." + ("\\" + dstdir.replace("/", "\\")).rstrip("\\") + "\\",
         ),
         local = 1,
     )
