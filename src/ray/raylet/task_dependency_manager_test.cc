@@ -34,16 +34,6 @@ const static JobID kDefaultJobId = JobID::FromInt(1);
 
 const static TaskID kDefaultDriverTaskId = TaskID::ForDriverTask(kDefaultJobId);
 
-std::vector<rpc::ObjectReference> ObjectIdsToRefs(std::vector<ObjectID> object_ids) {
-  std::vector<rpc::ObjectReference> refs;
-  for (const auto &object_id : object_ids) {
-    rpc::ObjectReference ref;
-    ref.set_object_id(object_id.Binary());
-    refs.push_back(ref);
-  }
-  return refs;
-}
-
 class MockObjectManager : public ObjectManagerInterface {
  public:
   MOCK_METHOD1(Pull, ray::Status(const ObjectID &object_id));
