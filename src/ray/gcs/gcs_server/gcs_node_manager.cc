@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "gcs_node_manager.h"
+
 #include <ray/common/ray_config.h>
 #include <ray/gcs/pb_util.h>
 #include <ray/protobuf/gcs.pb.h>
@@ -286,6 +287,32 @@ void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &re
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
     RAY_LOG(DEBUG) << "Finished deleting node resources, node id = " << node_id;
   }
+}
+
+void GcsNodeManager::HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
+                                             rpc::SetInternalConfigReply *reply,
+                                             rpc::SendReplyCallback send_reply_callback) {
+  auto on_done = [reply, send_reply_callback, request](const Status status) {
+    RAY_LOG(DEBUG) << "Set internal config: " << request.config().DebugString();
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
+  RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(UniqueID::Nil(),
+                                                             request.config(), on_done));
+}
+
+void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest &request,
+                                             rpc::GetInternalConfigReply *reply,
+                                             rpc::SendReplyCallback send_reply_callback) {
+  auto get_internal_config = [reply, send_reply_callback](
+                                 ray::Status status,
+                                 const boost::optional<rpc::StoredConfig> &config) {
+    if (config.has_value()) {
+      reply->mutable_config()->CopyFrom(config.get());
+    }
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
+  RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Get(UniqueID::Nil(),
+                                                             get_internal_config));
 }
 
 std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::GetNode(

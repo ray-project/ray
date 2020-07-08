@@ -36,6 +36,7 @@ using rpc::ObjectTableDataList;
 using rpc::ProfileTableData;
 using rpc::ResourceMap;
 using rpc::ResourceTableData;
+using rpc::StoredConfig;
 using rpc::TaskLeaseData;
 using rpc::TaskReconstructionData;
 using rpc::TaskTableData;
@@ -273,6 +274,14 @@ class GcsWorkerTable : public GcsTable<WorkerID, WorkerTableData> {
   }
 };
 
+class GcsInternalConfigTable : public GcsTable<UniqueID, StoredConfig> {
+ public:
+  explicit GcsInternalConfigTable(std::shared_ptr<StoreClient> &store_client)
+      : GcsTable(store_client) {
+    table_name_ = TablePrefix_Name(TablePrefix::INTERNAL_CONFIG);
+  }
+};
+
 /// \class GcsTableStorage
 ///
 /// This class is not meant to be used directly. All gcs table storage classes should
@@ -354,6 +363,11 @@ class GcsTableStorage {
     return *worker_table_;
   }
 
+  GcsInternalConfigTable &InternalConfigTable() {
+    RAY_CHECK(internal_config_table_ != nullptr);
+    return *internal_config_table_;
+  }
+
  protected:
   std::shared_ptr<StoreClient> store_client_;
   std::unique_ptr<GcsJobTable> job_table_;
@@ -371,6 +385,7 @@ class GcsTableStorage {
   std::unique_ptr<GcsErrorInfoTable> error_info_table_;
   std::unique_ptr<GcsProfileTable> profile_table_;
   std::unique_ptr<GcsWorkerTable> worker_table_;
+  std::unique_ptr<GcsInternalConfigTable> internal_config_table_;
 };
 
 /// \class RedisGcsTableStorage
@@ -395,6 +410,7 @@ class RedisGcsTableStorage : public GcsTableStorage {
     error_info_table_.reset(new GcsErrorInfoTable(store_client_));
     profile_table_.reset(new GcsProfileTable(store_client_));
     worker_table_.reset(new GcsWorkerTable(store_client_));
+    internal_config_table_.reset(new GcsInternalConfigTable(store_client_));
   }
 };
 
@@ -420,6 +436,7 @@ class InMemoryGcsTableStorage : public GcsTableStorage {
     error_info_table_.reset(new GcsErrorInfoTable(store_client_));
     profile_table_.reset(new GcsProfileTable(store_client_));
     worker_table_.reset(new GcsWorkerTable(store_client_));
+    internal_config_table_.reset(new GcsInternalConfigTable(store_client_));
   }
 };
 

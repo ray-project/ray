@@ -36,7 +36,7 @@ for i in range(num_nodes):
         object_store_memory=object_store_memory,
         redis_max_memory=redis_max_memory,
         dashboard_host="0.0.0.0",
-        _internal_config=config,
+        _internal_config=config if i == 0 else None,
     )
 ray.init(address=cluster.address)
 
