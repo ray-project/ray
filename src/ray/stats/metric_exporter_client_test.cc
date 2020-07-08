@@ -169,7 +169,6 @@ TEST_F(MetricExporterClientTest, exporter_client_caculation_test) {
     random_sum.Record(i, {{tag1, std::to_string(i)}, {tag2, std::to_string(i * 2)}});
     random_hist.Record(i, {{tag1, std::to_string(i)}, {tag2, std::to_string(i * 2)}});
   }
-  RAY_LOG(ERROR) << "Record done!!";
   std::this_thread::sleep_for(std::chrono::milliseconds(kReportFlushInterval + 200));
   RAY_LOG(INFO) << "Min " << MockExporterClient1::GetLastestHistMin() << ", mean "
                 << MockExporterClient1::GetLastestHistMean() << ", max "
