@@ -69,11 +69,7 @@ ActorID GcsActor::GetActorID() const {
 
 bool GcsActor::IsDetached() const { return actor_table_data_.is_detached(); }
 
-std::string GcsActor::GetName() const {
-  RAY_CHECK(actor_table_data_.is_detached())
-      << "Actor names are only valid for detached actors.";
-  return actor_table_data_.name();
-}
+std::string GcsActor::GetName() const { return actor_table_data_.name(); }
 
 TaskSpecification GcsActor::GetCreationTaskSpecification() const {
   const auto &task_spec = actor_table_data_.task_spec();
@@ -390,7 +386,7 @@ Status GcsActorManager::RegisterActor(
   }
 
   auto actor = std::make_shared<GcsActor>(request);
-  if (actor->IsDetached()) {
+  if (!actor->GetName().empty()) {
     auto it = named_actors_.find(actor->GetName());
     if (it == named_actors_.end()) {
       named_actors_.emplace(actor->GetName(), actor->GetActorID());
@@ -661,8 +657,8 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
         }));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
-    // For detached actors, make sure to remove its name.
-    if (actor->IsDetached()) {
+    // Remove actor from `named_actors_` if its name is not empty.
+    if (!actor->GetName().empty()) {
       auto it = named_actors_.find(actor->GetName());
       if (it != named_actors_.end()) {
         RAY_CHECK(it->second == actor->GetActorID());
@@ -757,7 +753,7 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
         auto actor = std::make_shared<GcsActor>(item.second);
         registered_actors_.emplace(item.first, actor);
 
-        if (actor->IsDetached()) {
+        if (!actor->GetName().empty()) {
           named_actors_.emplace(actor->GetName(), actor->GetActorID());
         }
 
