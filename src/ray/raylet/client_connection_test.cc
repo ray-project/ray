@@ -72,12 +72,12 @@ TEST_F(ClientConnectionTest, SimpleSyncWrite) {
 
   ClientHandler client_handler = [](ClientConnection &client) {};
 
-  MessageHandler message_handler = [&arr, &num_messages](
-                                       std::shared_ptr<ClientConnection> client,
-                                       int64_t message_type, const uint8_t *message) {
-    ASSERT_TRUE(!std::memcmp(arr, message, 5));
-    num_messages += 1;
-  };
+  MessageHandler message_handler =
+      [&arr, &num_messages](std::shared_ptr<ClientConnection> client,
+                            int64_t message_type, const std::vector<uint8_t> &message) {
+        ASSERT_TRUE(!std::memcmp(arr, message.data(), 5));
+        num_messages += 1;
+      };
 
   auto conn1 = ClientConnection::Create(client_handler, message_handler, std::move(in_),
                                         "conn1", {}, error_message_type_);
@@ -102,19 +102,21 @@ TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
   ClientHandler client_handler = [](ClientConnection &client) {};
 
   MessageHandler noop_handler = [](std::shared_ptr<ClientConnection> client,
-                                   int64_t message_type, const uint8_t *message) {};
+                                   int64_t message_type,
+                                   const std::vector<uint8_t> &message) {};
 
   std::shared_ptr<ClientConnection> reader = NULL;
 
   MessageHandler message_handler = [&msg1, &msg2, &msg3, &num_messages, &reader](
                                        std::shared_ptr<ClientConnection> client,
-                                       int64_t message_type, const uint8_t *message) {
+                                       int64_t message_type,
+                                       const std::vector<uint8_t> &message) {
     if (num_messages == 0) {
-      ASSERT_TRUE(!std::memcmp(msg1, message, 5));
+      ASSERT_TRUE(!std::memcmp(msg1, message.data(), 5));
     } else if (num_messages == 1) {
-      ASSERT_TRUE(!std::memcmp(msg2, message, 5));
+      ASSERT_TRUE(!std::memcmp(msg2, message.data(), 5));
     } else {
-      ASSERT_TRUE(!std::memcmp(msg3, message, 5));
+      ASSERT_TRUE(!std::memcmp(msg3, message.data(), 5));
     }
     num_messages += 1;
     if (num_messages < 3) {
@@ -146,7 +148,8 @@ TEST_F(ClientConnectionTest, SimpleAsyncError) {
   ClientHandler client_handler = [](ClientConnection &client) {};
 
   MessageHandler noop_handler = [](std::shared_ptr<ClientConnection> client,
-                                   int64_t message_type, const uint8_t *message) {};
+                                   int64_t message_type,
+                                   const std::vector<uint8_t> &message) {};
 
   auto writer = ClientConnection::Create(client_handler, noop_handler, std::move(in_),
                                          "writer", {}, error_message_type_);
@@ -166,7 +169,8 @@ TEST_F(ClientConnectionTest, CallbackWithSharedRefDoesNotLeakConnection) {
   ClientHandler client_handler = [](ClientConnection &client) {};
 
   MessageHandler noop_handler = [](std::shared_ptr<ClientConnection> client,
-                                   int64_t message_type, const uint8_t *message) {};
+                                   int64_t message_type,
+                                   const std::vector<uint8_t> &message) {};
 
   auto writer = ClientConnection::Create(client_handler, noop_handler, std::move(in_),
                                          "writer", {}, error_message_type_);
@@ -186,12 +190,12 @@ TEST_F(ClientConnectionTest, ProcessBadMessage) {
 
   ClientHandler client_handler = [](ClientConnection &client) {};
 
-  MessageHandler message_handler = [&arr, &num_messages](
-                                       std::shared_ptr<ClientConnection> client,
-                                       int64_t message_type, const uint8_t *message) {
-    ASSERT_TRUE(!std::memcmp(arr, message, 5));
-    num_messages += 1;
-  };
+  MessageHandler message_handler =
+      [&arr, &num_messages](std::shared_ptr<ClientConnection> client,
+                            int64_t message_type, const std::vector<uint8_t> &message) {
+        ASSERT_TRUE(!std::memcmp(arr, message.data(), 5));
+        num_messages += 1;
+      };
 
   auto writer = ClientConnection::Create(client_handler, message_handler, std::move(in_),
                                          "writer", {}, error_message_type_);

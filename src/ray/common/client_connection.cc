@@ -95,6 +95,17 @@ Status ServerConnection::ReadBuffer(
   return Status::OK();
 }
 
+void ServerConnection::ReadBufferAsync(
+    const std::vector<boost::asio::mutable_buffer> &buffer,
+    const std::function<void(const ray::Status &)> &handler) {
+  // Wait for the message to be read.
+  boost::asio::async_read(
+      socket_, buffer,
+      [handler](const boost::system::error_code &ec, size_t bytes_transferred) {
+        handler(boost_to_ray_status(ec));
+      });
+}
+
 ray::Status ServerConnection::WriteMessage(int64_t type, int64_t length,
                                            const uint8_t *message) {
   sync_writes_ += 1;
@@ -307,7 +318,7 @@ void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
   }
 
   int64_t start_ms = current_time_ms();
-  message_handler_(shared_ClientConnection_from_this(), read_type_, read_message_.data());
+  message_handler_(shared_ClientConnection_from_this(), read_type_, read_message_);
   int64_t interval = current_time_ms() - start_ms;
   if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
     std::string message_type;

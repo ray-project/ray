@@ -104,9 +104,11 @@ class WorkerPoolTest : public ::testing::Test {
                                        const Language &language = Language::PYTHON) {
     std::function<void(ClientConnection &)> client_handler =
         [this](ClientConnection &client) { HandleNewClient(client); };
-    std::function<void(std::shared_ptr<ClientConnection>, int64_t, const uint8_t *)>
+    std::function<void(std::shared_ptr<ClientConnection>, int64_t,
+                       const std::vector<uint8_t> &)>
         message_handler = [this](std::shared_ptr<ClientConnection> client,
-                                 int64_t message_type, const uint8_t *message) {
+                                 int64_t message_type,
+                                 const std::vector<uint8_t> &message) {
           HandleMessage(client, message_type, message);
         };
     local_stream_socket socket(io_service_);
@@ -162,7 +164,8 @@ class WorkerPoolTest : public ::testing::Test {
 
  private:
   void HandleNewClient(ClientConnection &){};
-  void HandleMessage(std::shared_ptr<ClientConnection>, int64_t, const uint8_t *){};
+  void HandleMessage(std::shared_ptr<ClientConnection>, int64_t,
+                     const std::vector<uint8_t> &){};
 };
 
 static inline TaskSpecification ExampleTaskSpec(

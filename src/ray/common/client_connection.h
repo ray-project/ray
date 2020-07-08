@@ -63,6 +63,13 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
   void WriteMessageAsync(int64_t type, int64_t length, const uint8_t *message,
                          const std::function<void(const ray::Status &)> &handler);
 
+  /// Read a buffer from this connection asynchronously.
+  ///
+  /// \param buffer The buffer.
+  /// \return Status.
+  void ReadBufferAsync(const std::vector<boost::asio::mutable_buffer> &buffer,
+                       const std::function<void(const ray::Status &)> &handler);
+
   /// Write a buffer to this connection.
   ///
   /// \param buffer The buffer.
@@ -79,6 +86,16 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
   void Close() {
     boost::system::error_code ec;
     socket_.close(ec);
+  }
+
+  /// Get the native handle of the socket.
+  int GetNativeHandle() { return socket_.native_handle(); }
+
+  /// Set the blocking flag of the underlying socket.
+  Status SetNonBlocking(bool nonblocking) {
+    boost::system::error_code ec;
+    socket_.native_non_blocking(nonblocking, ec);
+    return boost_to_ray_status(ec);
   }
 
   std::string DebugString() const;
@@ -133,8 +150,8 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
 class ClientConnection;
 
 using ClientHandler = std::function<void(ClientConnection &)>;
-using MessageHandler =
-    std::function<void(std::shared_ptr<ClientConnection>, int64_t, const uint8_t *)>;
+using MessageHandler = std::function<void(std::shared_ptr<ClientConnection>, int64_t,
+                                          const std::vector<uint8_t> &)>;
 
 /// \typename ClientConnection
 ///
