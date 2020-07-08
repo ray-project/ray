@@ -1998,10 +1998,10 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
 void NodeManager::HandleReleaseUnusedWorkers(
     const rpc::ReleaseUnusedWorkersRequest &request,
     rpc::ReleaseUnusedWorkersReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  std::unordered_map<WorkerID, bool> used_worker_ids;
+  std::unordered_set<WorkerID> used_worker_ids;
   for (int index = 0; index < request.worker_id_list_size(); ++index) {
     auto worker_id = WorkerID::FromBinary(request.worker_id_list(index));
-    used_worker_ids.emplace(worker_id, true);
+    used_worker_ids.emplace(worker_id);
   }
 
   std::vector<WorkerID> unused_worker_ids;

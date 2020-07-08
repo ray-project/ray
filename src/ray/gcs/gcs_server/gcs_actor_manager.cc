@@ -781,7 +781,8 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
           workers.emplace(actor->GetOwnerID(), Owner(std::move(client)));
         }
 
-        if (!actor->GetNodeID().IsNil() && !actor->GetWorkerID().IsNil()) {
+        if (!actor->GetWorkerID().IsNil()) {
+          RAY_CHECK(!actor->GetNodeID().IsNil());
           node_to_workers[actor->GetNodeID()].emplace_back(actor->GetWorkerID());
         }
       }

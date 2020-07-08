@@ -157,10 +157,9 @@ ActorID GcsActorScheduler::CancelOnWorker(const ClientID &node_id,
 void GcsActorScheduler::ReleaseUnusedWorkers(
     const std::unordered_map<ClientID, std::vector<WorkerID>> &node_to_workers) {
   for (auto &iter : node_to_workers) {
-    auto node = gcs_node_manager_.GetNode(iter.first);
     // If the node is dead, there is no need to send the request of release unused
     // workers.
-    if (node) {
+    if (auto node = gcs_node_manager_.GetNode(iter.first)) {
       rpc::Address address;
       address.set_raylet_id(node->node_id());
       address.set_ip_address(node->node_manager_address());
