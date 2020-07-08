@@ -17,7 +17,6 @@ from ray.test_utils import (
     wait_for_errors,
     wait_for_pid_to_exit,
     generate_internal_config_map,
-    get_non_head_nodes,
     get_other_nodes,
 )
 
@@ -91,6 +90,16 @@ def ray_checkpointable_actor_cls(request):
     return CheckpointableActor
 
 
+@pytest.fixture
+def ray_init_with_task_retry_delay():
+    address = ray.init(
+        _internal_config=json.dumps({
+            "task_retry_delay_ms": 100
+        }))
+    yield address
+    ray.shutdown()
+
+
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "object_store_memory": 150 * 1024 * 1024,
@@ -135,12 +144,8 @@ def test_actor_eviction(ray_start_regular):
     assert num_success > 0
 
 
-def test_actor_restart():
+def test_actor_restart(ray_init_with_task_retry_delay):
     """Test actor restart when actor process is killed."""
-    ray.init(
-        _internal_config=json.dumps({
-            "task_retry_delay_ms": 100,
-        }), )
 
     @ray.remote(max_restarts=1, max_task_retries=-1)
     class RestartableActor:
@@ -214,15 +219,10 @@ def test_actor_restart():
     # Check that the actor won't be restarted.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
-    ray.shutdown()
 
 
-def test_actor_restart_with_retry():
+def test_actor_restart_with_retry(ray_init_with_task_retry_delay):
     """Test actor restart when actor process is killed."""
-    ray.init(
-        _internal_config=json.dumps({
-            "task_retry_delay_ms": 100,
-        }), )
 
     @ray.remote(max_restarts=1, max_task_retries=-1)
     class RestartableActor:
@@ -275,7 +275,6 @@ def test_actor_restart_with_retry():
     # Check that the actor won't be restarted.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
-    ray.shutdown()
 
 
 def test_actor_restart_on_node_failure(ray_start_cluster):
@@ -288,10 +287,12 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _internal_config=config)
-    # Node to place the actor.
-    cluster.add_node(num_cpus=1, _internal_config=config)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
+
+    # Node to place the actor.
+    actor_node = cluster.add_node(num_cpus=1, _internal_config=config)
+    cluster.wait_for_nodes()
 
     @ray.remote(num_cpus=1, max_restarts=1, max_task_retries=-1)
     class RestartableActor:
@@ -307,11 +308,11 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
         def ready(self):
             return
 
-    actor = RestartableActor.remote()
+    actor = RestartableActor.options(detached=True).remote()
     ray.get(actor.ready.remote())
     results = [actor.increase.remote() for _ in range(100)]
     # Kill actor node, while the above task is still being executed.
-    cluster.remove_node(get_non_head_nodes(cluster)[-1])
+    cluster.remove_node(actor_node)
     cluster.add_node(num_cpus=1, _internal_config=config)
     cluster.wait_for_nodes()
     # Check that none of the tasks failed and the actor is restarted.

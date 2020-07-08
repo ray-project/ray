@@ -138,7 +138,7 @@ class TaskRequest {
  public:
   /// List of predefined resources required by the task.
   std::vector<ResourceRequest> predefined_resources;
-  /// List of custom resources required by the tasl.
+  /// List of custom resources required by the task.
   std::vector<ResourceRequestWithId> custom_resources;
   /// List of placement hints. A placement hint is a node on which
   /// we desire to run this task. This is a soft constraint in that
