@@ -229,22 +229,20 @@ class InboundRequest {
 class DependencyWaiter {
  public:
   /// Calls `callback` once the specified objects become available.
-  virtual void Wait(const std::vector<ObjectID> &dependencies,
+  virtual void Wait(const std::vector<rpc::ObjectReference> &dependencies,
                     std::function<void()> on_dependencies_available) = 0;
 };
 
 class DependencyWaiterImpl : public DependencyWaiter {
  public:
-  DependencyWaiterImpl(DependencyWaiterInterface &dependency_client,
-                       const std::shared_ptr<ReferenceCounter> &reference_counter)
-      : dependency_client_(dependency_client), reference_counter_(reference_counter) {}
+  DependencyWaiterImpl(DependencyWaiterInterface &dependency_client)
+      : dependency_client_(dependency_client) {}
 
-  void Wait(const std::vector<ObjectID> &dependencies,
+  void Wait(const std::vector<rpc::ObjectReference> &dependencies,
             std::function<void()> on_dependencies_available) override {
     auto tag = next_request_id_++;
     requests_[tag] = on_dependencies_available;
-    const auto owner_addresses = reference_counter_->GetOwnerAddresses(dependencies);
-    dependency_client_.WaitForDirectActorCallArgs(dependencies, owner_addresses, tag);
+    dependency_client_.WaitForDirectActorCallArgs(dependencies, tag);
   }
 
   /// Fulfills the callback stored by Wait().
@@ -259,8 +257,6 @@ class DependencyWaiterImpl : public DependencyWaiter {
   int64_t next_request_id_ = 0;
   std::unordered_map<int64_t, std::function<void()>> requests_;
   DependencyWaiterInterface &dependency_client_;
-  /// Used to look up a plasma object's owner.
-  const std::shared_ptr<ReferenceCounter> reference_counter_;
 };
 
 /// Wraps a thread-pool to block posts until the pool has free slots. This is used
@@ -312,7 +308,7 @@ class SchedulingQueue {
 
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
-           const std::vector<ObjectID> &dependencies = {}) {
+           const std::vector<rpc::ObjectReference> &dependencies = {}) {
     if (seq_no == -1) {
       accept_request();  // A seq_no of -1 means no ordering constraint.
       return;

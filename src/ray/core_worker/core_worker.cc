@@ -450,8 +450,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory, rpc_address_));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
-    task_argument_waiter_.reset(
-        new DependencyWaiterImpl(*local_raylet_client_, reference_counter_));
+    task_argument_waiter_.reset(new DependencyWaiterImpl(*local_raylet_client_));
     direct_task_receiver_->Init(client_factory, rpc_address_, task_argument_waiter_);
   }
 

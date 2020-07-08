@@ -302,9 +302,14 @@ Status raylet::RayletClient::Wait(const std::vector<ObjectID> &object_ids,
 }
 
 Status raylet::RayletClient::WaitForDirectActorCallArgs(
-    const std::vector<ObjectID> &object_ids,
-    const std::vector<rpc::Address> &owner_addresses, int64_t tag) {
+    const std::vector<rpc::ObjectReference> &references, int64_t tag) {
   flatbuffers::FlatBufferBuilder fbb;
+  std::vector<ObjectID> object_ids;
+  std::vector<rpc::Address> owner_addresses;
+  for (const auto &ref : references) {
+    object_ids.push_back(ObjectID::FromBinary(ref.object_id()));
+    owner_addresses.push_back(ref.owner_address());
+  }
   auto message = protocol::CreateWaitForDirectActorCallArgsRequest(
       fbb, to_flatbuf(fbb, object_ids), AddressesToFlatbuffer(fbb, owner_addresses), tag);
   fbb.Finish(message);

@@ -23,7 +23,7 @@ class MockWaiter : public DependencyWaiter {
  public:
   MockWaiter() {}
 
-  void Wait(const std::vector<ObjectID> &dependencies,
+  void Wait(const std::vector<rpc::ObjectReference> &dependencies,
             std::function<void()> on_dependencies_available) override {
     callbacks_.push_back([on_dependencies_available]() { on_dependencies_available(); });
   }

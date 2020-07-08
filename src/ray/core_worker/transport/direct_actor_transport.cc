@@ -293,13 +293,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     return;
   }
 
-  std::vector<ObjectID> dependencies;
-  for (size_t i = 0; i < task_spec.NumArgs(); ++i) {
-    if (task_spec.ArgByRef(i)) {
-      dependencies.push_back(task_spec.ArgId(i));
-    }
-  }
-
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
   // assigned at initial actor creation time.
   std::shared_ptr<ResourceMappingType> resource_ids;
@@ -394,6 +387,10 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         SchedulingQueue(task_main_io_service_, *waiter_, worker_context_));
     it = result.first;
   }
+  auto dependencies = task_spec.GetDependencies();
+  // Pop the dummy actor dependency.
+  // TODO(swang): Remove this with legacy raylet code.
+  dependencies.pop_back();
   it->second.Add(request.sequence_number(), request.client_processed_up_to(),
                  accept_callback, reject_callback, dependencies);
 }
