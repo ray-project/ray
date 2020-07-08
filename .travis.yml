@@ -16,6 +16,7 @@ before_install:
     if [ -n "${TRAVIS_PULL_REQUEST-}" ]; then to_fetch+=("+refs/pull/${TRAVIS_PULL_REQUEST}/merge:"); fi
     git fetch -q -- origin "${to_fetch[@]}"
     git checkout -qf "${TRAVIS_COMMIT}" --
+    . ci/travis/move-to-brittle-path.sh
 
 matrix:
   include:
