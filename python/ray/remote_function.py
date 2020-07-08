@@ -41,7 +41,7 @@ class RemoteFunction:
         _num_return_vals: The default number of return values for invocations
             of this remote function.
         _max_calls: The number of times a worker can execute this function
-            before executing.
+            before exiting.
         _decorator: An optional decorator that should be applied to the remote
             function invocation (as opposed to the function execution) before
             invoking the function. The decorator must return a function that
