@@ -389,8 +389,10 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   }
   auto dependencies = task_spec.GetDependencies();
   // Pop the dummy actor dependency.
-  // TODO(swang): Remove this with legacy raylet code.
-  dependencies.pop_back();
+  if (task_spec.IsActorTask()) {
+    // TODO(swang): Remove this with legacy raylet code.
+    dependencies.pop_back();
+  }
   it->second.Add(request.sequence_number(), request.client_processed_up_to(),
                  accept_callback, reject_callback, dependencies);
 }
