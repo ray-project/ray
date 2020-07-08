@@ -552,29 +552,6 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNotHappendWhenReconstructed) {
             request1.task_spec().actor_creation_task_spec().actor_id());
 }
 
-TEST_F(GcsActorManagerTest, TestDestroyActorBeforeActorCreationCompletes) {
-  auto job_id = JobID::FromInt(1);
-  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
-  std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  RAY_CHECK_OK(gcs_actor_manager_->RegisterActor(
-      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
-        finished_actors.emplace_back(actor);
-      }));
-
-  ASSERT_EQ(finished_actors.size(), 0);
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.clear();
-
-  // Simulate the reply of WaitForActorOutOfScope request to trigger actor destruction.
-  ASSERT_TRUE(worker_client_->Reply());
-
-  // Check that the actor is in state `DEAD`.
-  actor->UpdateAddress(RandomAddress());
-  gcs_actor_manager_->OnActorCreationSuccess(actor);
-  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
-}
-
 }  // namespace ray
 
 int main(int argc, char **argv) {

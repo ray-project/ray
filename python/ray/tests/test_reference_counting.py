@@ -527,6 +527,25 @@ def test_basic_nested_ids(one_worker_100MiB):
     _fill_object_store_and_get(inner_oid_bytes, succeed=False)
 
 
+def _check_actor_states(expected):
+    actors = list(ray.actors().values())
+    for actor in actors:
+        assert actor["State"] == expected
+
+
+def check_actor_states(expected, timeout=10):
+    start = time.time()
+    while True:
+        try:
+            _check_actor_states(expected)
+            break
+        except AssertionError as e:
+            if time.time() - start > timeout:
+                raise e
+            else:
+                time.sleep(0.1)
+
+
 def test_kill_actor_immediately_after_creation(ray_start_regular):
     @ray.remote
     class A:
@@ -537,12 +556,7 @@ def test_kill_actor_immediately_after_creation(ray_start_regular):
 
     ray.kill(a)
     ray.kill(b)
-    time.sleep(10)
-
-    actors = list(ray.actors().values())
-    dead_state = ray.gcs_utils.ActorTableData.DEAD
-    for actor in actors:
-        assert actor["State"] == dead_state
+    check_actor_states(ray.gcs_utils.ActorTableData.DEAD)
 
 
 def test_remove_actor_immediately_after_creation(ray_start_regular):
@@ -555,12 +569,7 @@ def test_remove_actor_immediately_after_creation(ray_start_regular):
 
     del a
     del b
-    time.sleep(10)
-
-    actors = list(ray.actors().values())
-    dead_state = ray.gcs_utils.ActorTableData.DEAD
-    for actor in actors:
-        assert actor["State"] == dead_state
+    check_actor_states(ray.gcs_utils.ActorTableData.DEAD)
 
 
 if __name__ == "__main__":

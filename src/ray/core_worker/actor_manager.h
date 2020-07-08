@@ -148,11 +148,6 @@ class ActorManager {
   /// Actor handle is a logical abstraction that holds actor handle's states.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(mutex_);
-
-  /// Map from actor ID to a callback. Callback is called when
-  /// the corresponding handles are gone out of scope.
-  absl::flat_hash_map<ActorID, std::function<void(const ActorID &)>>
-      actor_out_of_scope_callbacks_ GUARDED_BY(mutex_);
 };
 
 }  // namespace ray
