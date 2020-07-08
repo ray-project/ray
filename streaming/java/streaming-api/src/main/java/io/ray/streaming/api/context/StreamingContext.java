@@ -27,6 +27,8 @@ public class StreamingContext implements Serializable {
 
   private transient AtomicInteger idGenerator;
 
+  private boolean reuseExistingCluster;
+
   /**
    * The sinks of this streaming job.
    */
@@ -62,7 +64,8 @@ public class StreamingContext implements Serializable {
     jobGraph.printJobGraph();
     LOG.info("JobGraph digraph\n{}", jobGraph.generateDigraph());
 
-    if (Ray.internal() == null) {
+    reuseExistingCluster = Ray.internal() != null;
+    if (!reuseExistingCluster) {
       if (Config.MEMORY_CHANNEL.equalsIgnoreCase(jobConfig.get(Config.CHANNEL_TYPE))) {
         Preconditions.checkArgument(!jobGraph.isCrossLanguageGraph());
         ClusterStarter.startCluster(false, true);
@@ -101,7 +104,7 @@ public class StreamingContext implements Serializable {
   }
 
   public void stop() {
-    if (Ray.internal() != null) {
+    if (!reuseExistingCluster) {
       ClusterStarter.stopCluster(jobGraph.isCrossLanguageGraph());
     }
   }
