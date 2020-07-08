@@ -53,7 +53,7 @@ install_clang() {
 install_toolchains() {
   local uses_clang=1 some_lightweight_target="//:sha256"
   if bazel aquery --noshow_progress --color=no --include_commandline=false --output=textproto --noimplicit_deps "${some_lightweight_target}" |
-     grep -q "^  exec_path: .*/external_Slocal_Uconfig_Ucc_Cmsvc_Ucompiler_Ufiles.*"; then
+     grep "external_Slocal_Uconfig_Ucc_Cmsvc_Ucompiler_Ufiles" > /dev/null; then
     # We detected that we use MSVC, not Clang
     uses_clang=0
   fi
