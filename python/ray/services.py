@@ -1087,11 +1087,8 @@ def start_reporter(redis_address,
     reporter_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "reporter.py")
     command = [
-        sys.executable,
-        "-u",
-        reporter_filepath,
-        "--redis-address={}".format(redis_address),
-        "--port={}".format(port)
+        sys.executable, "-u", reporter_filepath,
+        "--redis-address={}".format(redis_address), "--port={}".format(port)
     ]
     if redis_password:
         command += ["--redis-password", redis_password]

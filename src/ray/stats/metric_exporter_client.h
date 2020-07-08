@@ -14,6 +14,10 @@
 
 #pragma once
 
+#include <boost/asio.hpp>
+
+#include "ray/rpc/client_call.h"
+#include "ray/rpc/metrics_agent_client.h"
 #include "ray/stats/metric.h"
 
 namespace ray {
@@ -51,23 +55,30 @@ class MetricExporterDecorator : public MetricExporterClient {
   std::shared_ptr<MetricExporterClient> exporter_;
 };
 
-// class MetricsAgentExporter : public MetricExporterDecorator {
+class MetricsAgentExporter : public MetricExporterDecorator {
+ public:
+  MetricsAgentExporter(std::shared_ptr<MetricExporterClient> exporter, const int port);
+
+  void ReportMetrics(const std::vector<MetricPoint> &points) override;
+
+ private:
+  /// Event loop where the IO events are handled. e.g. async GCS operations.
+  boost::asio::io_service io_service_;
+  /// Client to call a metrics agent gRPC server.
+  std::unique_ptr<rpc::MetricsAgentClient> client_;
+};
+
+// SANG-TODO Remove it for now.
+// class OpentsdbExporterClient : public MetricExporterDecorator {
 //  public:
-//   MetricsAgentExporter(std::shared_ptr<MetricExporterClient> exporter) : MetricExporterDecorator(exporter) {}
+//   OpentsdbExporterClient(std::shared_ptr<MetricExporterClient> exporter)
+//       : MetricExporterDecorator(exporter) {}
 //   void ReportMetrics(const std::vector<MetricPoint> &points) override {
 //     MetricExporterDecorator::ReportMetrics(points);
+//     // TODO(lingxuan.zlx): opentsdb client is used for report to backend
+//     // storage.
+//   }
 // };
-
-class OpentsdbExporterClient : public MetricExporterDecorator {
- public:
-  OpentsdbExporterClient(std::shared_ptr<MetricExporterClient> exporter)
-      : MetricExporterDecorator(exporter) {}
-  void ReportMetrics(const std::vector<MetricPoint> &points) override {
-    MetricExporterDecorator::ReportMetrics(points);
-    // TODO(lingxuan.zlx): opentsdb client is used for report to backend
-    // storage.
-  }
-};
 
 }  // namespace stats
 }  // namespace ray

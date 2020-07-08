@@ -276,7 +276,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
-    reporter = Reporter(args.redis_address, args.port, redis_password=args.redis_password)
+    reporter = Reporter(
+        args.redis_address, args.port, redis_password=args.redis_password)
 
     try:
         reporter.run()

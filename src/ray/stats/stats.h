@@ -39,15 +39,16 @@ namespace stats {
 
 /// Initialize stats.
 static void Init(const std::string &address, const TagsType &global_tags,
-                 int metrics_agent_port, bool disable_stats = false) {
+                 const int metrics_agent_port, bool disable_stats = false) {
   StatsConfig::instance().SetIsDisableStats(disable_stats);
   if (disable_stats) {
     RAY_LOG(INFO) << "Disabled stats.";
     return;
   }
-  RAY_LOG(ERROR) << "Sangbin stats are enabled " << metrics_agent_port;
 
-  std::shared_ptr<MetricExporterClient> exporter(new StdoutExporterClient());
+  std::shared_ptr<MetricExporterClient> stdout_exporter(new StdoutExporterClient());
+  std::shared_ptr<MetricExporterClient> exporter(
+      new MetricsAgentExporter(stdout_exporter, metrics_agent_port));
   MetricExporter::Register(exporter, RayConfig::instance().k_report_batch_size());
 
   StatsConfig::instance().SetGlobalTags(global_tags);

@@ -19,10 +19,16 @@
 namespace ray {
 namespace stats {
 
+///
+/// Stdout Exporter
+///
 void StdoutExporterClient::ReportMetrics(const std::vector<MetricPoint> &points) {
-  RAY_LOG(ERROR) << "Metric point size : " << points.size();
+  // RAY_LOG(DEBUG) << "Metric point size : " << points.size();
 }
 
+///
+/// Metrics Exporter Decorator
+///
 MetricExporterDecorator::MetricExporterDecorator(
     std::shared_ptr<MetricExporterClient> exporter)
     : exporter_(exporter) {}
@@ -33,11 +39,20 @@ void MetricExporterDecorator::ReportMetrics(const std::vector<MetricPoint> &poin
   }
 }
 
-// SANG-TODO Implement Metrics Agent Client.
-  // // Initialize a rpc client to the new node manager.
-  // std::unique_ptr<rpc::NodeManagerClient> client(
-  //     new rpc::NodeManagerClient(node_info.node_manager_address(),
-  //                                node_info.node_manager_port(), client_call_manager_));
-  // remote_node_manager_clients_.emplace(node_id, std::move(client));
+///
+/// Metrics Agent Exporter
+///
+MetricsAgentExporter::MetricsAgentExporter(std::shared_ptr<MetricExporterClient> exporter,
+                                           const int port)
+    : MetricExporterDecorator(exporter) {
+  rpc::ClientCallManager client_call_manager(io_service_);
+  client_.reset(new rpc::MetricsAgentClient("127.0.0.1", port, client_call_manager));
+}
+
+void MetricsAgentExporter::ReportMetrics(const std::vector<MetricPoint> &points) {
+  MetricExporterDecorator::ReportMetrics(points);
+  // Initialize a rpc client to the new node manager.
+}
+
 }  // namespace stats
 }  // namespace ray
