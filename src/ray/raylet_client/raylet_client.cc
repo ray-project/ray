@@ -319,9 +319,9 @@ Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worke
 }
 
 Status raylet::RayletClient::ReleaseUnusedWorkers(
-    const std::vector<WorkerID> &used_workers) {
+    const std::vector<WorkerID> &workers_in_use) {
   rpc::ReleaseUnusedWorkersRequest request;
-  for (auto &worker_id : used_workers) {
+  for (auto &worker_id : workers_in_use) {
     request.add_worker_id_list(worker_id.Binary());
   }
   return grpc_client_->ReleaseUnusedWorkers(
