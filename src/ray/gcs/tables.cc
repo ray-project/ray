@@ -872,10 +872,10 @@ template class Log<JobID, JobTableData>;
 template class Log<UniqueID, ProfileTableData>;
 template class Log<ClientID, HeartbeatTableData>;
 template class Log<ClientID, HeartbeatBatchTableData>;
-template class Log<WorkerID, WorkerFailureData>;
+template class Log<WorkerID, WorkerTableData>;
 template class Table<ActorCheckpointID, ActorCheckpointData>;
 template class Table<ActorID, ActorCheckpointIdData>;
-template class Table<WorkerID, WorkerFailureData>;
+template class Table<WorkerID, WorkerTableData>;
 template class Table<ActorID, ActorTableData>;
 
 template class Log<ClientID, ResourceTableData>;

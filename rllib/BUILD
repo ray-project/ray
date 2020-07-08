@@ -1134,10 +1134,10 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_dependency",
+    name = "tests/test_dependency_tf",
     tags = ["tests_dir", "tests_dir_D"],
     size = "small",
-    srcs = ["tests/test_dependency.py"]
+    srcs = ["tests/test_dependency_tf.py"]
 )
 
 py_test(
@@ -1308,6 +1308,13 @@ py_test(
     size = "medium",
     srcs = ["tests/test_supported_multi_agent.py"],
     args = ["TestSupportedMultiAgentOffPolicy"]
+)
+
+py_test(
+    name = "tests/test_pettingzoo_env",
+    tags = ["tests_dir", "tests_dir_S"],
+    size = "medium",
+    srcs = ["tests/test_pettingzoo_env.py"]
 )
 
 py_test(

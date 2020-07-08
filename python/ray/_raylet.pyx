@@ -49,6 +49,8 @@ from ray.includes.common cimport (
     CRayStatus,
     CGcsClientOptions,
     CTaskArg,
+    CTaskArgByReference,
+    CTaskArgByValue,
     CTaskType,
     CRayFunction,
     LocalMemoryBuffer,
@@ -83,7 +85,7 @@ from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
 import ray
 from ray.async_compat import (
-    sync_to_async, AsyncGetResponse, get_new_event_loop)
+    sync_to_async, get_new_event_loop)
 import ray.memory_monitor as memory_monitor
 import ray.ray_constants as ray_constants
 from ray import profiling
@@ -261,7 +263,7 @@ cdef int prepare_resources(
 
 cdef prepare_args(
         CoreWorker core_worker,
-        Language language, args, c_vector[CTaskArg] *args_vector):
+        Language language, args, c_vector[unique_ptr[CTaskArg]] *args_vector):
     cdef:
         size_t size
         int64_t put_threshold
@@ -272,8 +274,12 @@ cdef prepare_args(
     put_threshold = RayConfig.instance().max_direct_call_object_size()
     for arg in args:
         if isinstance(arg, ObjectID):
+            c_arg = (<ObjectID>arg).native()
             args_vector.push_back(
-                CTaskArg.PassByReference((<ObjectID>arg).native()))
+                unique_ptr[CTaskArg](new CTaskArgByReference(
+                    c_arg,
+                    CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
+                        c_arg))))
 
         else:
             serialized_arg = worker.get_serialization_context().serialize(arg)
@@ -299,14 +305,16 @@ cdef prepare_args(
                 for object_id in serialized_arg.contained_object_ids:
                     inlined_ids.push_back((<ObjectID>object_id).native())
                 args_vector.push_back(
-                    CTaskArg.PassByValue(make_shared[CRayObject](
-                        arg_data, string_to_buffer(metadata),
-                        inlined_ids)))
+                    unique_ptr[CTaskArg](new CTaskArgByValue(
+                        make_shared[CRayObject](
+                            arg_data, string_to_buffer(metadata),
+                            inlined_ids))))
                 inlined_ids.clear()
             else:
-                args_vector.push_back(
-                    CTaskArg.PassByReference((CObjectID.FromBinary(
-                        core_worker.put_serialized_object(serialized_arg)))))
+                args_vector.push_back(unique_ptr[CTaskArg](
+                    new CTaskArgByReference(CObjectID.FromBinary(
+                        core_worker.put_serialized_object(serialized_arg)),
+                        CCoreWorkerProcess.GetCoreWorker().GetRpcAddress())))
 
 
 def switch_worker_log_if_needed(worker, next_job_id):
@@ -551,19 +559,6 @@ cdef CRayStatus task_execution_handler(
 
     return CRayStatus.OK()
 
-cdef void async_plasma_callback(CObjectID object_id,
-                                int64_t data_size,
-                                int64_t metadata_size) with gil:
-    core_worker = ray.worker.global_worker.core_worker
-    event_handler = core_worker.get_plasma_event_handler()
-    if event_handler is not None:
-        obj_id = ObjectID(object_id.Binary())
-        if data_size > 0 and obj_id:
-            # This must be asynchronous to allow objects to avoid blocking
-            # the IO thread.
-            event_handler._loop.call_soon_threadsafe(
-                event_handler._complete_future, obj_id)
-
 cdef c_bool kill_main_task() nogil:
     with gil:
         if setproctitle.getproctitle() != "ray::IDLE":
@@ -723,15 +718,6 @@ cdef class CoreWorker:
     def set_actor_title(self, title):
         CCoreWorkerProcess.GetCoreWorker().SetActorTitle(title)
 
-    def set_plasma_added_callback(self, plasma_event_handler):
-        self.plasma_event_handler = plasma_event_handler
-        CCoreWorkerProcess.GetCoreWorker().SetPlasmaAddedCallback(
-            async_plasma_callback)
-
-    def subscribe_to_plasma_object(self, ObjectID object_id):
-        CCoreWorkerProcess.GetCoreWorker().SubscribeToPlasmaAdd(
-            object_id.native())
-
     def get_plasma_event_handler(self):
         return self.plasma_event_handler
 
@@ -886,7 +872,7 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             CTaskOptions task_options
             CRayFunction ray_function
-            c_vector[CTaskArg] args_vector
+            c_vector[unique_ptr[CTaskArg]] args_vector
             c_vector[CObjectID] return_ids
 
         with self.profile_event(b"submit_task"):
@@ -919,7 +905,7 @@ cdef class CoreWorker:
                      c_string extension_data):
         cdef:
             CRayFunction ray_function
-            c_vector[CTaskArg] args_vector
+            c_vector[unique_ptr[CTaskArg]] args_vector
             c_vector[c_string] dynamic_worker_options
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, double] c_placement_resources
@@ -957,7 +943,7 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             CTaskOptions task_options
             CRayFunction ray_function
-            c_vector[CTaskArg] args_vector
+            c_vector[unique_ptr[CTaskArg]] args_vector
             c_vector[CObjectID] return_ids
 
         with self.profile_event(b"submit_task"):
@@ -1190,10 +1176,6 @@ cdef class CoreWorker:
         if self.async_event_loop is None:
             self.async_event_loop = get_new_event_loop()
             asyncio.set_event_loop(self.async_event_loop)
-            # Initialize the async plasma connection.
-            # Delayed import due to async_api depends on _raylet.
-            from ray.experimental.async_api import init as plasma_async_init
-            plasma_async_init()
 
         if self.async_thread is None:
             self.async_thread = threading.Thread(
@@ -1255,12 +1237,12 @@ cdef class CoreWorker:
 
         return ref_counts
 
-    def in_memory_store_get_async(self, ObjectID object_id, future):
+    def get_async(self, ObjectID object_id, future):
+        cpython.Py_INCREF(future)
         CCoreWorkerProcess.GetCoreWorker().GetAsync(
-            object_id.native(),
-            async_set_result_callback,
-            async_retry_with_plasma_callback,
-            <void*>future)
+                object_id.native(),
+                async_set_result,
+                <void*>future)
 
     def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
@@ -1294,12 +1276,11 @@ cdef class CoreWorker:
             resource_name.encode("ascii"), capacity,
             CClientID.FromBinary(client_id.binary()))
 
-cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
-                                    CObjectID object_id,
-                                    void *future) with gil:
+cdef void async_set_result(shared_ptr[CRayObject] obj,
+                           CObjectID object_id,
+                           void *future) with gil:
     cdef:
         c_vector[shared_ptr[CRayObject]] objects_to_deserialize
-
     py_future = <object>(future)
     loop = py_future._loop
 
@@ -1309,18 +1290,15 @@ cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
     data_metadata_pairs = RayObjectsToDataMetadataPairs(
         objects_to_deserialize)
     ids_to_deserialize = [ObjectID(object_id.Binary())]
-    objects = ray.worker.global_worker.deserialize_objects(
-        data_metadata_pairs, ids_to_deserialize)
-    loop.call_soon_threadsafe(lambda: py_future.set_result(
-        AsyncGetResponse(
-            plasma_fallback_id=None, result=objects[0])))
+    result = ray.worker.global_worker.deserialize_objects(
+        data_metadata_pairs, ids_to_deserialize)[0]
 
-cdef void async_retry_with_plasma_callback(shared_ptr[CRayObject] obj,
-                                           CObjectID object_id,
-                                           void *future) with gil:
-    py_future = <object>(future)
-    loop = py_future._loop
-    loop.call_soon_threadsafe(lambda: py_future.set_result(
-                AsyncGetResponse(
-                    plasma_fallback_id=ObjectID(object_id.Binary()),
-                    result=None)))
+    def set_future():
+        if isinstance(result, RayTaskError):
+            ray.worker.last_task_error_raise_time = time.time()
+            py_future.set_exception(result.as_instanceof_cause())
+        else:
+            py_future.set_result(result)
+        cpython.Py_DECREF(py_future)
+
+    loop.call_soon_threadsafe(set_future)
