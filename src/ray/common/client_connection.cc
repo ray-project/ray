@@ -29,13 +29,12 @@
 
 namespace ray {
 
-std::shared_ptr<ServerConnection> ServerConnection::Create(
-    boost::asio::generic::stream_protocol::socket &&socket) {
+std::shared_ptr<ServerConnection> ServerConnection::Create(local_stream_socket &&socket) {
   std::shared_ptr<ServerConnection> self(new ServerConnection(std::move(socket)));
   return self;
 }
 
-ServerConnection::ServerConnection(boost::asio::generic::stream_protocol::socket &&socket)
+ServerConnection::ServerConnection(local_stream_socket &&socket)
     : socket_(std::move(socket)),
       async_write_max_messages_(1),
       async_write_queue_(),
@@ -214,8 +213,7 @@ void ServerConnection::DoAsyncWrites() {
 
 std::shared_ptr<ClientConnection> ClientConnection::Create(
     ClientHandler &client_handler, MessageHandler &message_handler,
-    boost::asio::generic::stream_protocol::socket &&socket,
-    const std::string &debug_label,
+    local_stream_socket &&socket, const std::string &debug_label,
     const std::vector<std::string> &message_type_enum_names, int64_t error_message_type) {
   std::shared_ptr<ClientConnection> self(
       new ClientConnection(message_handler, std::move(socket), debug_label,
@@ -226,8 +224,7 @@ std::shared_ptr<ClientConnection> ClientConnection::Create(
 }
 
 ClientConnection::ClientConnection(
-    MessageHandler &message_handler,
-    boost::asio::generic::stream_protocol::socket &&socket,
+    MessageHandler &message_handler, local_stream_socket &&socket,
     const std::string &debug_label,
     const std::vector<std::string> &message_type_enum_names, int64_t error_message_type)
     : ServerConnection(std::move(socket)),
