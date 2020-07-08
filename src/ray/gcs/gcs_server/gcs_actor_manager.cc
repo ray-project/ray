@@ -516,15 +516,21 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
       // The actor was being scheduled and has now been canceled.
       RAY_CHECK(canceled_actor_id == actor_id);
     } else {
-      // The actor was pending scheduling. Remove it from the queue.
       auto pending_it = std::find_if(pending_actors_.begin(), pending_actors_.end(),
                                      [actor_id](const std::shared_ptr<GcsActor> &actor) {
                                        return actor->GetActorID() == actor_id;
                                      });
-      // TODO(rkooo567): The actor may be in the state of leasing worker. We need to add
-      // the processing logic of this in https://github.com/ray-project/ray/pull/9215.
+
+      // The actor was pending scheduling. Remove it from the queue.
       if (pending_it != pending_actors_.end()) {
         pending_actors_.erase(pending_it);
+      } else {
+        // When actor creation request of this actor id is pending in raylet,
+        // it doesn't responds, and the actor should be still in leasing state.
+        // NOTE: Raylet will cancel the lease request once it receives the
+        // actor state notification. So this method doesn't have to cancel
+        // outstanding lease request by calling raylet_client->CancelWorkerLease
+        gcs_actor_scheduler_->CancelOnLeasing(node_id, actor_id);
       }
     }
   }
@@ -562,8 +568,9 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
     }
   }
 
+  // Find if actor is already created or in the creation process (lease request is
+  // granted)
   ActorID actor_id;
-  // Find from worker_to_created_actor_.
   auto iter = created_actors_.find(node_id);
   if (iter != created_actors_.end() && iter->second.count(worker_id)) {
     actor_id = iter->second[worker_id];
@@ -573,14 +580,17 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
     }
   } else {
     actor_id = gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id);
+    if (actor_id.IsNil()) {
+      return;
+    }
   }
 
-  if (!actor_id.IsNil()) {
-    RAY_LOG(WARNING) << "Worker " << worker_id << " on node " << node_id
-                     << " failed, restarting actor " << actor_id;
-    // Reconstruct the actor.
-    ReconstructActor(actor_id, /*need_reschedule=*/!intentional_exit);
-  }
+  // Otherwise, try to reconstruct the actor that was already created or in the creation
+  // process.
+  RAY_LOG(WARNING) << "Worker " << worker_id << " on node " << node_id
+                   << " failed, restarting actor " << actor_id
+                   << ", intentional exit: " << intentional_exit;
+  ReconstructActor(actor_id, /*need_reschedule=*/!intentional_exit);
 }
 
 void GcsActorManager::OnNodeDead(const ClientID &node_id) {

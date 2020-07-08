@@ -23,6 +23,7 @@
 namespace ray {
 
 using ::testing::_;
+using ::testing::Return;
 
 class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
  public:
@@ -34,6 +35,7 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
   MOCK_METHOD1(CancelOnNode, std::vector<ActorID>(const ClientID &node_id));
   MOCK_METHOD2(CancelOnWorker,
                ActorID(const ClientID &node_id, const WorkerID &worker_id));
+  MOCK_METHOD2(CancelOnLeasing, void(const ClientID &node_id, const ActorID &actor_id));
 
   std::vector<std::shared_ptr<gcs::GcsActor>> actors;
 };
@@ -597,6 +599,36 @@ TEST_F(GcsActorManagerTest, TestDestroyActorBeforeActorCreationCompletes) {
   actor->UpdateAddress(RandomAddress());
   gcs_actor_manager_->OnActorCreationSuccess(actor);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
+}
+
+TEST_F(GcsActorManagerTest, TestRaceConditionCancelLease) {
+  // Covers a scenario 1 in this PR https://github.com/ray-project/ray/pull/9215.
+  auto job_id = JobID::FromInt(1);
+  auto create_actor_request =
+      Mocker::GenCreateActorRequest(job_id, /*max_restarts=*/1, /*detached=*/false);
+  std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
+  RAY_CHECK_OK(gcs_actor_manager_->RegisterActor(
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+        finished_actors.emplace_back(actor);
+      }));
+
+  ASSERT_EQ(finished_actors.size(), 0);
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.pop_back();
+  const auto owner_node_id = actor->GetOwnerNodeID();
+  const auto owner_worker_id = actor->GetOwnerID();
+
+  // Check that the actor is in state `ALIVE`.
+  rpc::Address address;
+  auto node_id = ClientID::FromRandom();
+  auto worker_id = WorkerID::FromRandom();
+  address.set_raylet_id(node_id.Binary());
+  address.set_worker_id(worker_id.Binary());
+  actor->UpdateAddress(address);
+  const auto actor_id = actor->GetActorID();
+  EXPECT_CALL(*mock_actor_scheduler_, CancelOnLeasing(node_id, actor_id));
+  gcs_actor_manager_->OnWorkerDead(owner_node_id, owner_worker_id, false);
 }
 
 }  // namespace ray
