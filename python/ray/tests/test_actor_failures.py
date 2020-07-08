@@ -90,6 +90,16 @@ def ray_checkpointable_actor_cls(request):
     return CheckpointableActor
 
 
+@pytest.fixture
+def ray_init_with_task_retry_delay():
+    address = ray.init(
+        _internal_config=json.dumps({
+            "task_retry_delay_ms": 100
+        }))
+    yield address
+    ray.shutdown()
+
+
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "object_store_memory": 150 * 1024 * 1024,
@@ -134,12 +144,8 @@ def test_actor_eviction(ray_start_regular):
     assert num_success > 0
 
 
-def test_actor_restart():
+def test_actor_restart(ray_init_with_task_retry_delay):
     """Test actor restart when actor process is killed."""
-    ray.init(
-        _internal_config=json.dumps({
-            "task_retry_delay_ms": 100,
-        }), )
 
     @ray.remote(max_restarts=1, max_task_retries=-1)
     class RestartableActor:
@@ -213,15 +219,10 @@ def test_actor_restart():
     # Check that the actor won't be restarted.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
-    ray.shutdown()
 
 
-def test_actor_restart_with_retry():
+def test_actor_restart_with_retry(ray_init_with_task_retry_delay):
     """Test actor restart when actor process is killed."""
-    ray.init(
-        _internal_config=json.dumps({
-            "task_retry_delay_ms": 100,
-        }), )
 
     @ray.remote(max_restarts=1, max_task_retries=-1)
     class RestartableActor:
@@ -274,7 +275,6 @@ def test_actor_restart_with_retry():
     # Check that the actor won't be restarted.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
-    ray.shutdown()
 
 
 def test_actor_restart_on_node_failure(ray_start_cluster):
