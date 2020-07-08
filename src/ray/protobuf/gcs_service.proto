@@ -231,6 +231,22 @@ message DeleteResourcesReply {
   GcsStatus status = 1;
 }
 
+message SetInternalConfigRequest {
+  StoredConfig config = 1;
+}
+
+message SetInternalConfigReply {
+  GcsStatus status = 1;
+}
+
+message GetInternalConfigRequest {
+}
+
+message GetInternalConfigReply {
+  GcsStatus status = 1;
+  StoredConfig config = 2;
+}
+
 // Service for node info access.
 service NodeInfoGcsService {
   // Register a node to GCS Service.
@@ -247,6 +263,10 @@ service NodeInfoGcsService {
   rpc UpdateResources(UpdateResourcesRequest) returns (UpdateResourcesReply);
   // Delete resources of a node in GCS Service.
   rpc DeleteResources(DeleteResourcesRequest) returns (DeleteResourcesReply);
+  // Set cluster internal config.
+  rpc SetInternalConfig(SetInternalConfigRequest) returns (SetInternalConfigReply);
+  // Get cluster internal config.
+  rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
 }
 
 message GetObjectLocationsRequest {

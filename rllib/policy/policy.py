@@ -154,14 +154,14 @@ class Policy(metaclass=ABCMeta):
             timestep (Optional[int]): The current (sampling) time step.
 
         Keyword Args:
-            kwargs: forward compatibility placeholder
+            kwargs: Forward compatibility.
 
         Returns:
             Tuple:
-                actions (TensorType): Single action.
-                state_outs (List[TensorType]): List of RNN state outputs,
+                - actions (TensorType): Single action.
+                - state_outs (List[TensorType]): List of RNN state outputs,
                     if any.
-                info (dict): Dictionary of extra features, if any.
+                - info (dict): Dictionary of extra features, if any.
         """
         prev_action_batch = None
         prev_reward_batch = None
