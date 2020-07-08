@@ -56,7 +56,9 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
             profiling_stats=profiling_stats, stdout=stdout, stderr=stderr)
 
     def ReportMetrics(self, request, context):
+        # TODO(sang): Process metrics here.
         print(request)
+        print("\n\n\n\n")
         return reporter_pb2.ReportMetricsReply()
 
 
