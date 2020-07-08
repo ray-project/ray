@@ -685,7 +685,7 @@ class ActorHandle:
             num_return_vals (int): The number of return values for the method.
 
         Returns:
-            object_ids: A list of object IDs returned by the remote actor
+            object_refs: A list of object IDs returned by the remote actor
                 method.
         """
         worker = ray.worker.global_worker
@@ -713,16 +713,16 @@ class ActorHandle:
                 "Cross language remote actor method " \
                 "cannot be executed locally."
 
-        object_ids = worker.core_worker.submit_actor_task(
+        object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language, self._ray_actor_id, function_descriptor,
             list_args, num_return_vals, self._ray_actor_method_cpus)
 
-        if len(object_ids) == 1:
-            object_ids = object_ids[0]
-        elif len(object_ids) == 0:
-            object_ids = None
+        if len(object_refs) == 1:
+            object_refs = object_refs[0]
+        elif len(object_refs) == 0:
+            object_refs = None
 
-        return object_ids
+        return object_refs
 
     def __getattr__(self, item):
         if not self._ray_is_cross_language:
@@ -795,12 +795,12 @@ class ActorHandle:
         return state
 
     @classmethod
-    def _deserialization_helper(cls, state, outer_object_id=None):
+    def _deserialization_helper(cls, state, outer_object_ref=None):
         """This is defined in order to make pickling work.
 
         Args:
             state: The serialized state of the actor handle.
-            outer_object_id: The ObjectRef that the serialized actor handle was
+            outer_object_ref: The ObjectRef that the serialized actor handle was
                 contained in, if any. This is used for counting references to
                 the actor handle.
 
@@ -811,7 +811,7 @@ class ActorHandle:
         if hasattr(worker, "core_worker"):
             # Non-local mode
             return worker.core_worker.deserialize_and_register_actor_handle(
-                state, outer_object_id)
+                state, outer_object_ref)
         else:
             # Local mode
             return cls(

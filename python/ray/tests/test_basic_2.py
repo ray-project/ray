@@ -196,13 +196,13 @@ def test_redefining_remote_functions(shutdown_only):
     }],
     indirect=True)
 def test_get_multiple(ray_start_regular):
-    object_ids = [ray.put(i) for i in range(10)]
-    assert ray.get(object_ids) == list(range(10))
+    object_refs = [ray.put(i) for i in range(10)]
+    assert ray.get(object_refs) == list(range(10))
 
     # Get a random choice of object IDs with duplicates.
     indices = list(np.random.choice(range(10), 5))
     indices += indices
-    results = ray.get([object_ids[i] for i in indices])
+    results = ray.get([object_refs[i] for i in indices])
     assert results == indices
 
 
@@ -214,13 +214,13 @@ def test_get_multiple(ray_start_regular):
     }],
     indirect=True)
 def test_get_multiple_experimental(ray_start_regular):
-    object_ids = [ray.put(i) for i in range(10)]
+    object_refs = [ray.put(i) for i in range(10)]
 
-    object_ids_tuple = tuple(object_ids)
-    assert ray.experimental.get(object_ids_tuple) == list(range(10))
+    object_refs_tuple = tuple(object_refs)
+    assert ray.experimental.get(object_refs_tuple) == list(range(10))
 
-    object_ids_nparray = np.array(object_ids)
-    assert ray.experimental.get(object_ids_nparray) == list(range(10))
+    object_refs_nparray = np.array(object_refs)
+    assert ray.experimental.get(object_refs_nparray) == list(range(10))
 
 
 @pytest.mark.parametrize(
@@ -580,16 +580,16 @@ def test_wait(ray_start_regular):
         time.sleep(delay)
         return
 
-    object_ids = [f.remote(0), f.remote(0), f.remote(0), f.remote(0)]
-    ready_ids, remaining_ids = ray.wait(object_ids)
+    object_refs = [f.remote(0), f.remote(0), f.remote(0), f.remote(0)]
+    ready_ids, remaining_ids = ray.wait(object_refs)
     assert len(ready_ids) == 1
     assert len(remaining_ids) == 3
-    ready_ids, remaining_ids = ray.wait(object_ids, num_returns=4)
-    assert set(ready_ids) == set(object_ids)
+    ready_ids, remaining_ids = ray.wait(object_refs, num_returns=4)
+    assert set(ready_ids) == set(object_refs)
     assert remaining_ids == []
 
-    object_ids = [f.remote(0), f.remote(5)]
-    ready_ids, remaining_ids = ray.wait(object_ids, timeout=0.5, num_returns=2)
+    object_refs = [f.remote(0), f.remote(5)]
+    ready_ids, remaining_ids = ray.wait(object_refs, timeout=0.5, num_returns=2)
     assert len(ready_ids) == 1
     assert len(remaining_ids) == 1
 

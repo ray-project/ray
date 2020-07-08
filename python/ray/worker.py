@@ -121,7 +121,7 @@ class Worker:
         # increment every time when `ray.shutdown` is called.
         self._session_index = 0
         # Functions to run to process the values returned by ray.get. Each
-        # postprocessor must take two arguments ("object_ids", and "values").
+        # postprocessor must take two arguments ("object_refs", and "values").
         self._post_get_hooks = []
 
     @property
@@ -224,7 +224,7 @@ class Worker:
         """
         self.mode = mode
 
-    def put_object(self, value, object_id=None, pin_object=True):
+    def put_object(self, value, object_ref=None, pin_object=True):
         """Put value in the local object store with object id `objectid`.
 
         This assumes that the value for `objectid` has not yet been placed in
@@ -236,12 +236,12 @@ class Worker:
 
         Args:
             value: The value to put in the object store.
-            object_id (object_id.ObjectRef): The object ID of the value to be
+            object_ref (object_ref.ObjectRef): The object ID of the value to be
                 put. If None, one will be generated.
             pin_object: If set, the object will be pinned at the raylet.
 
         Returns:
-            object_id.ObjectRef: The object ID the object was put under.
+            object_ref.ObjectRef: The object ID the object was put under.
 
         Raises:
             ray.exceptions.ObjectStoreFullError: This is raised if the attempt
@@ -258,7 +258,7 @@ class Worker:
                 "call 'put' on it (or return it).")
 
         if self.mode == LOCAL_MODE:
-            assert object_id is None, ("Local Mode does not support "
+            assert object_ref is None, ("Local Mode does not support "
                                        "inserting with an objectID")
 
         serialized_value = self.get_serialization_context().serialize(value)
@@ -270,36 +270,36 @@ class Worker:
         # reference counter.
         return ray.ObjectRef(
             self.core_worker.put_serialized_object(
-                serialized_value, object_id=object_id, pin_object=pin_object))
+                serialized_value, object_ref=object_ref, pin_object=pin_object))
 
-    def deserialize_objects(self, data_metadata_pairs, object_ids):
+    def deserialize_objects(self, data_metadata_pairs, object_refs):
         context = self.get_serialization_context()
-        return context.deserialize_objects(data_metadata_pairs, object_ids)
+        return context.deserialize_objects(data_metadata_pairs, object_refs)
 
-    def get_objects(self, object_ids, timeout=None):
+    def get_objects(self, object_refs, timeout=None):
         """Get the values in the object store associated with the IDs.
 
-        Return the values from the local object store for object_ids. This will
-        block until all the values for object_ids have been written to the
+        Return the values from the local object store for object_refs. This will
+        block until all the values for object_refs have been written to the
         local object store.
 
         Args:
-            object_ids (List[object_id.ObjectRef]): A list of the object IDs
+            object_refs (List[object_ref.ObjectRef]): A list of the object IDs
                 whose values should be retrieved.
             timeout (float): timeout (float): The maximum amount of time in
                 seconds to wait before returning.
         """
         # Make sure that the values are object IDs.
-        for object_id in object_ids:
-            if not isinstance(object_id, ObjectRef):
+        for object_ref in object_refs:
+            if not isinstance(object_ref, ObjectRef):
                 raise TypeError(
                     "Attempting to call `get` on the value {}, "
-                    "which is not an ray.ObjectRef.".format(object_id))
+                    "which is not an ray.ObjectRef.".format(object_ref))
 
         timeout_ms = int(timeout * 1000) if timeout else -1
         data_metadata_pairs = self.core_worker.get_objects(
-            object_ids, self.current_task_id, timeout_ms)
-        return self.deserialize_objects(data_metadata_pairs, object_ids)
+            object_refs, self.current_task_id, timeout_ms)
+        return self.deserialize_objects(data_metadata_pairs, object_refs)
 
     def run_function_on_all_workers(self, function,
                                     run_on_other_drivers=False):
@@ -470,7 +470,7 @@ def init(address=None,
          redis_max_memory=None,
          log_to_driver=True,
          node_ip_address=ray_constants.NODE_DEFAULT_IP,
-         object_id_seed=None,
+         object_ref_seed=None,
          local_mode=False,
          redirect_worker_output=None,
          redirect_output=None,
@@ -551,7 +551,7 @@ def init(address=None,
         log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         node_ip_address (str): The IP address of the node that we are on.
-        object_id_seed (int): Used to seed the deterministic generation of
+        object_ref_seed (int): Used to seed the deterministic generation of
             object IDs. The same value can be used across multiple runs of the
             same driver in order to generate the object IDs in a consistent
             manner. However, the same ID should not be used for different
@@ -690,7 +690,7 @@ def init(address=None,
             redis_port=redis_port,
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
-            object_id_seed=object_id_seed,
+            object_ref_seed=object_ref_seed,
             driver_mode=driver_mode,
             redirect_worker_output=redirect_worker_output,
             redirect_output=redirect_output,
@@ -777,7 +777,7 @@ def init(address=None,
             raylet_ip_address=raylet_ip_address,
             redis_address=redis_address,
             redis_password=redis_password,
-            object_id_seed=object_id_seed,
+            object_ref_seed=object_ref_seed,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
             _internal_config=_internal_config)
@@ -1287,9 +1287,9 @@ def connect(node,
     # accesses will be faster. Currently the first access is always slow, and
     # we don't want the user to experience this.
     if mode != LOCAL_MODE:
-        temporary_object_id = ray.ObjectRef.from_random()
-        worker.put_object(1, object_id=temporary_object_id)
-        ray.internal.free([temporary_object_id])
+        temporary_object_ref = ray.ObjectRef.from_random()
+        worker.put_object(1, object_ref=temporary_object_ref)
+        ray.internal.free([temporary_object_ref])
 
     # Start the import thread
     worker.import_thread = import_thread.ImportThread(worker, mode,
@@ -1468,21 +1468,21 @@ def show_in_webui(message, key="", dtype="text"):
 blocking_get_inside_async_warned = False
 
 
-def get(object_ids, timeout=None):
+def get(object_refs, timeout=None):
     """Get a remote object or a list of remote objects from the object store.
 
     This method blocks until the object corresponding to the object ID is
     available in the local object store. If this object is not in the local
     object store, it will be shipped from an object store that has it (once the
-    object has been created). If object_ids is a list, then the objects
+    object has been created). If object_refs is a list, then the objects
     corresponding to each object in the list will be returned.
 
     This method will issue a warning if it's running inside async context,
-    you can use ``await object_id`` instead of ``ray.get(object_id)``. For
-    a list of object ids, you can use ``await asyncio.gather(*object_ids)``.
+    you can use ``await object_ref`` instead of ``ray.get(object_ref)``. For
+    a list of object ids, you can use ``await asyncio.gather(*object_refs)``.
 
     Args:
-        object_ids: Object ID of the object to get or a list of object IDs to
+        object_refs: Object ID of the object to get or a list of object IDs to
             get.
         timeout (Optional[float]): The maximum amount of time in seconds to
             wait before returning.
@@ -1511,17 +1511,17 @@ def get(object_ids, timeout=None):
             blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
-        is_individual_id = isinstance(object_ids, ray.ObjectRef)
+        is_individual_id = isinstance(object_refs, ray.ObjectRef)
         if is_individual_id:
-            object_ids = [object_ids]
+            object_refs = [object_refs]
 
-        if not isinstance(object_ids, list):
-            raise ValueError("'object_ids' must either be an object ID "
+        if not isinstance(object_refs, list):
+            raise ValueError("'object_refs' must either be an object ID "
                              "or a list of object IDs.")
 
         global last_task_error_raise_time
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
-        values = worker.get_objects(object_ids, timeout=timeout)
+        values = worker.get_objects(object_refs, timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
@@ -1534,7 +1534,7 @@ def get(object_ids, timeout=None):
 
         # Run post processors.
         for post_processor in worker._post_get_hooks:
-            values = post_processor(object_ids, values)
+            values = post_processor(object_refs, values)
 
         if is_individual_id:
             values = values[0]
@@ -1560,20 +1560,20 @@ def put(value, weakref=False):
     worker.check_connected()
     with profiling.profile("ray.put"):
         try:
-            object_id = worker.put_object(value, pin_object=not weakref)
+            object_ref = worker.put_object(value, pin_object=not weakref)
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "
                 "store was full of pinned objects.")
             raise
-        return object_id
+        return object_ref
 
 
 # Global variable to make sure we only send out the warning once.
 blocking_wait_inside_async_warned = False
 
 
-def wait(object_ids, num_returns=1, timeout=None):
+def wait(object_refs, num_returns=1, timeout=None):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -1592,11 +1592,11 @@ def wait(object_ids, num_returns=1, timeout=None):
     the remaining list.
 
     This method will issue a warning if it's running inside an async context.
-    Instead of ``ray.wait(object_ids)``, you can use
-    ``await asyncio.wait(object_ids)``.
+    Instead of ``ray.wait(object_refs)``, you can use
+    ``await asyncio.wait(object_refs)``.
 
     Args:
-        object_ids (List[ObjectRef]): List of object IDs for objects that may or
+        object_refs (List[ObjectRef]): List of object IDs for objects that may or
             may not be ready. Note that these IDs must be unique.
         num_returns (int): The number of object IDs that should be returned.
         timeout (float): The maximum amount of time in seconds to wait before
@@ -1618,23 +1618,23 @@ def wait(object_ids, num_returns=1, timeout=None):
                          "on object id with asyncio.wait. ")
             blocking_wait_inside_async_warned = True
 
-    if isinstance(object_ids, ObjectRef):
+    if isinstance(object_refs, ObjectRef):
         raise TypeError("wait() expected a list of ray.ObjectRef, got a single "
                         "ray.ObjectRef")
 
-    if not isinstance(object_ids, list):
+    if not isinstance(object_refs, list):
         raise TypeError(
             "wait() expected a list of ray.ObjectRef, got {}".format(
-                type(object_ids)))
+                type(object_refs)))
 
     if timeout is not None and timeout < 0:
         raise ValueError("The 'timeout' argument must be nonnegative. "
                          "Received {}".format(timeout))
 
-    for object_id in object_ids:
-        if not isinstance(object_id, ObjectRef):
+    for object_ref in object_refs:
+        if not isinstance(object_ref, ObjectRef):
             raise TypeError("wait() expected a list of ray.ObjectRef, "
-                            "got list containing {}".format(type(object_id)))
+                            "got list containing {}".format(type(object_ref)))
 
     worker.check_connected()
     # TODO(swang): Check main thread.
@@ -1643,22 +1643,22 @@ def wait(object_ids, num_returns=1, timeout=None):
         # TODO(rkn): This is a temporary workaround for
         # https://github.com/ray-project/ray/issues/997. However, it should be
         # fixed in Arrow instead of here.
-        if len(object_ids) == 0:
+        if len(object_refs) == 0:
             return [], []
 
-        if len(object_ids) != len(set(object_ids)):
+        if len(object_refs) != len(set(object_refs)):
             raise ValueError("Wait requires a list of unique object IDs.")
         if num_returns <= 0:
             raise ValueError(
                 "Invalid number of objects to return %d." % num_returns)
-        if num_returns > len(object_ids):
+        if num_returns > len(object_refs):
             raise ValueError("num_returns cannot be greater than the number "
                              "of objects provided to ray.wait.")
 
         timeout = timeout if timeout is not None else 10**6
         timeout_milliseconds = int(timeout * 1000)
         ready_ids, remaining_ids = worker.core_worker.wait(
-            object_ids,
+            object_refs,
             num_returns,
             timeout_milliseconds,
             worker.current_task_id,
@@ -1707,7 +1707,7 @@ def kill(actor, no_restart=True):
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
 
-def cancel(object_id, force=False):
+def cancel(object_ref, force=False):
     """Cancels a task according to the following conditions.
 
     If the specified task is pending execution, it will not be executed. If
@@ -1722,7 +1722,7 @@ def cancel(object_id, force=False):
     Calling ray.get on a canceled task will raise a RayCancellationError.
 
     Args:
-        object_id (ObjectRef): ObjectRef returned by the task
+        object_ref (ObjectRef): ObjectRef returned by the task
             that should be canceled.
         force (boolean): Whether to force-kill a running task by killing
             the worker that is running the task.
@@ -1732,11 +1732,11 @@ def cancel(object_id, force=False):
     worker = ray.worker.global_worker
     worker.check_connected()
 
-    if not isinstance(object_id, ray.ObjectRef):
+    if not isinstance(object_ref, ray.ObjectRef):
         raise TypeError(
             "ray.cancel() only supported for non-actor object IDs. "
-            "Got: {}.".format(type(object_id)))
-    return worker.core_worker.cancel_task(object_id, force)
+            "Got: {}.".format(type(object_ref)))
+    return worker.core_worker.cancel_task(object_ref, force)
 
 
 def _mode(worker=global_worker):

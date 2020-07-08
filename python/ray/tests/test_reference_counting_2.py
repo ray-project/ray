@@ -101,7 +101,7 @@ def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
 # they go out of scope on the caller side.
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
-def test_return_object_id(one_worker_100MiB, use_ray_put, failure):
+def test_return_object_ref(one_worker_100MiB, use_ray_put, failure):
     @ray.remote
     def return_an_id():
         return [
@@ -141,7 +141,7 @@ def test_return_object_id(one_worker_100MiB, use_ray_put, failure):
 # passed into another remote task by the caller.
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
-def test_pass_returned_object_id(one_worker_100MiB, use_ray_put, failure):
+def test_pass_returned_object_ref(one_worker_100MiB, use_ray_put, failure):
     @ray.remote
     def return_an_id():
         return [
@@ -189,7 +189,7 @@ def test_pass_returned_object_id(one_worker_100MiB, use_ray_put, failure):
 # it finishes.
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
-def test_recursively_pass_returned_object_id(one_worker_100MiB, use_ray_put,
+def test_recursively_pass_returned_object_ref(one_worker_100MiB, use_ray_put,
                                              failure):
     @ray.remote
     def return_an_id():
@@ -250,7 +250,7 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB, use_ray_put,
 # reference to the final task's ObjectRef.
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
-def test_recursively_return_borrowed_object_id(one_worker_100MiB, use_ray_put,
+def test_recursively_return_borrowed_object_ref(one_worker_100MiB, use_ray_put,
                                                failure):
     @ray.remote
     def recursive(num_tasks_left):

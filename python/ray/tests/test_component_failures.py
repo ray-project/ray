@@ -125,8 +125,8 @@ def test_dying_worker_wait(ray_start_2_cpus):
     worker_pid = ray.get(get_pid.remote())
 
     @ray.remote
-    def block_in_wait(object_id_in_list):
-        ray.wait(object_id_in_list)
+    def block_in_wait(object_ref_in_list):
+        ray.wait(object_ref_in_list)
 
     # Have the worker wait in a wait call.
     block_in_wait.remote([x_id])

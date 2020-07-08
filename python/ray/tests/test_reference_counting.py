@@ -47,8 +47,8 @@ def _fill_object_store_and_get(oid, succeed=True, object_MiB=40,
 def _check_refcounts(expected):
     actual = ray.worker.global_worker.core_worker.get_all_reference_counts()
     assert len(expected) == len(actual)
-    for object_id, (local, submitted) in expected.items():
-        hex_id = object_id.hex().encode("ascii")
+    for object_ref, (local, submitted) in expected.items():
+        hex_id = object_ref.hex().encode("ascii")
         assert hex_id in actual
         assert local == actual[hex_id]["local"]
         assert submitted == actual[hex_id]["submitted"]
@@ -271,7 +271,7 @@ def test_feature_flag(shutdown_only):
     _fill_object_store_and_get(actor.get_large_object.remote(), succeed=False)
 
 
-def test_out_of_band_serialized_object_id(one_worker_100MiB):
+def test_out_of_band_serialized_object_ref(one_worker_100MiB):
     assert len(
         ray.worker.global_worker.core_worker.get_all_reference_counts()) == 0
     oid = ray.put("hello")
@@ -284,7 +284,7 @@ def test_out_of_band_serialized_object_id(one_worker_100MiB):
     assert ray.get(ray.cloudpickle.loads(oid_str)) == "hello"
 
 
-def test_captured_object_id(one_worker_100MiB):
+def test_captured_object_ref(one_worker_100MiB):
     captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
 
     @ray.remote

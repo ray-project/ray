@@ -441,7 +441,7 @@ def test_passing_arguments_by_value_out_of_the_box(ray_start_regular):
         "local_mode": False
     }],
     indirect=True)
-def test_putting_object_that_closes_over_object_id(ray_start_regular):
+def test_putting_object_that_closes_over_object_ref(ray_start_regular):
     # This test is here to prevent a regression of
     # https://github.com/ray-project/ray/issues/1317.
 

@@ -278,9 +278,9 @@ class Node:
         return self._ray_params.load_code_from_local
 
     @property
-    def object_id_seed(self):
+    def object_ref_seed(self):
         """Get the seed for deterministic generation of object IDs"""
-        return self._ray_params.object_id_seed
+        return self._ray_params.object_ref_seed
 
     @property
     def plasma_store_socket_name(self):

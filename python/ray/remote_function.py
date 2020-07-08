@@ -203,14 +203,14 @@ class RemoteFunction:
                 assert not self._is_cross_language, \
                     "Cross language remote function " \
                     "cannot be executed locally."
-            object_ids = worker.core_worker.submit_task(
+            object_refs = worker.core_worker.submit_task(
                 self._language, self._function_descriptor, list_args,
                 num_return_vals, resources, max_retries)
 
-            if len(object_ids) == 1:
-                return object_ids[0]
-            elif len(object_ids) > 1:
-                return object_ids
+            if len(object_refs) == 1:
+                return object_refs[0]
+            elif len(object_refs) > 1:
+                return object_refs
 
         if self._decorator is not None:
             invocation = self._decorator(invocation)

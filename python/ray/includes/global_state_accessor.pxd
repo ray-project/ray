@@ -20,7 +20,7 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         c_vector[c_string] GetAllNodeInfo()
         c_vector[c_string] GetAllProfileInfo()
         c_vector[c_string] GetAllObjectInfo()
-        unique_ptr[c_string] GetObjectInfo(const CObjectID &object_id)
+        unique_ptr[c_string] GetObjectInfo(const CObjectID &object_ref)
         c_vector[c_string] GetAllActorInfo()
         unique_ptr[c_string] GetActorInfo(const CActorID &actor_id)
         c_string GetNodeResourceInfo(const CClientID &node_id)

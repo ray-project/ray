@@ -138,14 +138,14 @@ cdef class ObjectRef(BaseID):
         # But there are still some dummy object IDs being created outside the
         # context of a core worker.
         if hasattr(worker, "core_worker"):
-            worker.core_worker.add_object_id_reference(self)
+            worker.core_worker.add_object_ref_reference(self)
             self.in_core_worker = True
 
     def __dealloc__(self):
         if self.in_core_worker:
             try:
                 worker = ray.worker.global_worker
-                worker.core_worker.remove_object_id_reference(self)
+                worker.core_worker.remove_object_ref_reference(self)
             except Exception as e:
                 # There is a strange error in rllib that causes the above to
                 # fail. Somehow the global 'ray' variable corresponding to the

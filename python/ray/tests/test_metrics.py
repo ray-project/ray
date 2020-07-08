@@ -10,7 +10,7 @@ from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
-from ray.dashboard.memory import (ReferenceType, decode_object_id_if_needed,
+from ray.dashboard.memory import (ReferenceType, decode_object_ref_if_needed,
                                   MemoryTableEntry, MemoryTable, SortingType)
 from ray.test_utils import (RayTestTimeoutException,
                             wait_until_succeeded_without_exception,
@@ -486,7 +486,7 @@ def test_memory_dashboard(shutdown_only):
         stop_memory_table()
         return True
 
-    def test_serialized_object_id_reference():
+    def test_serialized_object_ref_reference():
         @ray.remote
         def f(arg):
             time.sleep(1)
@@ -508,7 +508,7 @@ def test_memory_dashboard(shutdown_only):
         stop_memory_table()
         return True
 
-    def test_captured_object_id_reference():
+    def test_captured_object_ref_reference():
         a = ray.put(None)
         b = ray.put([a])  # Noqa F841
         del a
@@ -562,12 +562,12 @@ def test_memory_dashboard(shutdown_only):
             True)
 
     assert (wait_for_condition(
-        test_serialized_object_id_reference,
+        test_serialized_object_ref_reference,
         timeout=30000,
         retry_interval_ms=1000) is True)
 
     assert (wait_for_condition(
-        test_captured_object_id_reference,
+        test_captured_object_ref_reference,
         timeout=30000,
         retry_interval_ms=1000) is True)
 
@@ -583,7 +583,7 @@ IS_DRIVER = True
 PID = 1
 OBJECT_ID = "7wpsIhgZiBz/////AQAAyAEAAAA="
 ACTOR_ID = "fffffffffffffffff66d17ba010000c801000000"
-DECODED_ID = decode_object_id_if_needed(OBJECT_ID)
+DECODED_ID = decode_object_ref_if_needed(OBJECT_ID)
 OBJECT_SIZE = 100
 
 
@@ -594,10 +594,10 @@ def build_memory_entry(*,
                        contained_in_owned,
                        object_size,
                        pid,
-                       object_id=OBJECT_ID,
+                       object_ref=OBJECT_ID,
                        node_address=NODE_ADDRESS):
     object_ref = {
-        "objectId": object_id,
+        "objectId": object_ref,
         "callSite": "(task call) /Users:458",
         "objectSize": object_size,
         "localRefCount": local_ref_count,
@@ -662,7 +662,7 @@ def build_actor_handle_entry(object_size=OBJECT_SIZE,
         object_size=object_size,
         pid=pid,
         node_address=node_address,
-        object_id=ACTOR_ID)
+        object_ref=ACTOR_ID)
 
 
 def build_pinned_in_memory_entry(object_size=OBJECT_SIZE,
@@ -721,8 +721,8 @@ def test_invalid_memory_entry():
 def test_valid_reference_memory_entry():
     memory_entry = build_local_reference_entry()
     assert memory_entry.reference_type == ReferenceType.LOCAL_REFERENCE
-    assert memory_entry.object_id == ray.ObjectRef(
-        decode_object_id_if_needed(OBJECT_ID))
+    assert memory_entry.object_ref == ray.ObjectRef(
+        decode_object_ref_if_needed(OBJECT_ID))
     assert memory_entry.is_valid() is True
 
 

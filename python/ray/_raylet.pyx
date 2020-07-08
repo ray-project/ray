@@ -162,31 +162,31 @@ cdef RayObjectsToDataMetadataPairs(
     return data_metadata_pairs
 
 
-cdef VectorToObjectRefs(const c_vector[CObjectID] &object_ids):
+cdef VectorToObjectRefs(const c_vector[CObjectID] &object_refs):
     result = []
-    for i in range(object_ids.size()):
-        result.append(ObjectRef(object_ids[i].Binary()))
+    for i in range(object_refs.size()):
+        result.append(ObjectRef(object_refs[i].Binary()))
     return result
 
 
-cdef c_vector[CObjectID] ObjectRefsToVector(object_ids):
+cdef c_vector[CObjectID] ObjectRefsToVector(object_refs):
     """A helper function that converts a Python list of object IDs to a vector.
 
     Args:
-        object_ids (list): The Python list of object IDs.
+        object_refs (list): The Python list of object IDs.
 
     Returns:
         The output vector.
     """
     cdef:
         c_vector[CObjectID] result
-    for object_id in object_ids:
-        result.push_back((<ObjectRef>object_id).native())
+    for object_ref in object_refs:
+        result.push_back((<ObjectRef>object_ref).native())
     return result
 
 
-def compute_task_id(ObjectRef object_id):
-    return TaskID(object_id.native().TaskId().Binary())
+def compute_task_id(ObjectRef object_ref):
+    return TaskID(object_ref.native().TaskId().Binary())
 
 
 cdef increase_recursion_limit():
@@ -302,8 +302,8 @@ cdef prepare_args(
                 if size > 0:
                     (<SerializedObject>serialized_arg).write_to(
                         Buffer.make(arg_data))
-                for object_id in serialized_arg.contained_object_ids:
-                    inlined_ids.push_back((<ObjectRef>object_id).native())
+                for object_ref in serialized_arg.contained_object_refs:
+                    inlined_ids.push_back((<ObjectRef>object_ref).native())
                 args_vector.push_back(
                     unique_ptr[CTaskArg](new CTaskArgByValue(
                         make_shared[CRayObject](
@@ -436,7 +436,7 @@ cdef execute_task(
                     args, kwargs = [], {}
                 else:
                     metadata_pairs = RayObjectsToDataMetadataPairs(c_args)
-                    object_ids = VectorToObjectRefs(c_arg_reference_ids)
+                    object_refs = VectorToObjectRefs(c_arg_reference_ids)
 
                     if core_worker.current_actor_is_asyncio():
                         # We deserialize objects in event loop thread to
@@ -444,12 +444,12 @@ cdef execute_task(
                         async def deserialize_args():
                             return (ray.worker.global_worker
                                     .deserialize_objects(
-                                        metadata_pairs, object_ids))
+                                        metadata_pairs, object_refs))
                         args = core_worker.run_async_func_in_event_loop(
                             deserialize_args)
                     else:
                         args = ray.worker.global_worker.deserialize_objects(
-                            metadata_pairs, object_ids)
+                            metadata_pairs, object_refs)
 
                     for arg in args:
                         if isinstance(arg, RayError):
@@ -721,45 +721,45 @@ cdef class CoreWorker:
     def get_plasma_event_handler(self):
         return self.plasma_event_handler
 
-    def get_objects(self, object_ids, TaskID current_task_id,
+    def get_objects(self, object_refs, TaskID current_task_id,
                     int64_t timeout_ms=-1):
         cdef:
             c_vector[shared_ptr[CRayObject]] results
             CTaskID c_task_id = current_task_id.native()
-            c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_ids)
+            c_vector[CObjectID] c_object_refs = ObjectRefsToVector(object_refs)
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Get(
-                c_object_ids, timeout_ms, &results))
+                c_object_refs, timeout_ms, &results))
 
         return RayObjectsToDataMetadataPairs(results)
 
-    def object_exists(self, ObjectRef object_id):
+    def object_exists(self, ObjectRef object_ref):
         cdef:
             c_bool has_object
-            CObjectID c_object_id = object_id.native()
+            CObjectID c_object_ref = object_ref.native()
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Contains(
-                c_object_id, &has_object))
+                c_object_ref, &has_object))
 
         return has_object
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
-                            size_t data_size, ObjectRef object_id,
+                            size_t data_size, ObjectRef object_ref,
                             c_vector[CObjectID] contained_ids,
-                            CObjectID *c_object_id, shared_ptr[CBuffer] *data):
-        if object_id is None:
+                            CObjectID *c_object_ref, shared_ptr[CBuffer] *data):
+        if object_ref is None:
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().Create(
                              metadata, data_size, contained_ids,
-                             c_object_id, data))
+                             c_object_ref, data))
         else:
-            c_object_id[0] = object_id.native()
+            c_object_ref[0] = object_ref.native()
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().Create(
                             metadata, data_size,
-                            c_object_id[0], data))
+                            c_object_ref[0], data))
 
         # If data is nullptr, that means the ObjectRef already existed,
         # which we ignore.
@@ -768,68 +768,68 @@ cdef class CoreWorker:
         return data.get() == NULL
 
     def put_serialized_object(self, serialized_object,
-                              ObjectRef object_id=None,
+                              ObjectRef object_ref=None,
                               c_bool pin_object=True):
         cdef:
-            CObjectID c_object_id
+            CObjectID c_object_ref
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
-            c_vector[CObjectID] c_object_id_vector
+            c_vector[CObjectID] c_object_ref_vector
 
         metadata = string_to_buffer(serialized_object.metadata)
         total_bytes = serialized_object.total_bytes
         object_already_exists = self._create_put_buffer(
-            metadata, total_bytes, object_id,
-            ObjectRefsToVector(serialized_object.contained_object_ids),
-            &c_object_id, &data)
+            metadata, total_bytes, object_ref,
+            ObjectRefsToVector(serialized_object.contained_object_refs),
+            &c_object_ref, &data)
 
         if not object_already_exists:
             if total_bytes > 0:
                 (<SerializedObject>serialized_object).write_to(
                     Buffer.make(data))
             if self.is_local_mode:
-                c_object_id_vector.push_back(c_object_id)
+                c_object_ref_vector.push_back(c_object_ref)
                 check_status(CCoreWorkerProcess.GetCoreWorker().Put(
-                        CRayObject(data, metadata, c_object_id_vector),
-                        c_object_id_vector, c_object_id))
+                        CRayObject(data, metadata, c_object_ref_vector),
+                        c_object_ref_vector, c_object_ref))
             else:
                 with nogil:
                     # Using custom object IDs is not supported because we can't
                     # track their lifecycle, so we don't pin the object in this
                     # case.
                     check_status(CCoreWorkerProcess.GetCoreWorker().Seal(
-                                    c_object_id,
-                                    pin_object and object_id is None))
+                                    c_object_ref,
+                                    pin_object and object_ref is None))
 
-        return c_object_id.Binary()
+        return c_object_ref.Binary()
 
-    def wait(self, object_ids, int num_returns, int64_t timeout_ms,
+    def wait(self, object_refs, int num_returns, int64_t timeout_ms,
              TaskID current_task_id):
         cdef:
             c_vector[CObjectID] wait_ids
             c_vector[c_bool] results
             CTaskID c_task_id = current_task_id.native()
 
-        wait_ids = ObjectRefsToVector(object_ids)
+        wait_ids = ObjectRefsToVector(object_refs)
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Wait(
                 wait_ids, num_returns, timeout_ms, &results))
 
-        assert len(results) == len(object_ids)
+        assert len(results) == len(object_refs)
 
         ready, not_ready = [], []
-        for i, object_id in enumerate(object_ids):
+        for i, object_ref in enumerate(object_refs):
             if results[i]:
-                ready.append(object_id)
+                ready.append(object_ref)
             else:
-                not_ready.append(object_id)
+                not_ready.append(object_ref)
 
         return ready, not_ready
 
-    def free_objects(self, object_ids, c_bool local_only,
+    def free_objects(self, object_refs, c_bool local_only,
                      c_bool delete_creating_tasks):
         cdef:
-            c_vector[CObjectID] free_ids = ObjectRefsToVector(object_ids)
+            c_vector[CObjectID] free_ids = ObjectRefsToVector(object_refs)
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
@@ -970,13 +970,13 @@ cdef class CoreWorker:
             check_status(CCoreWorkerProcess.GetCoreWorker().KillActor(
                   c_actor_id, True, no_restart))
 
-    def cancel_task(self, ObjectRef object_id, c_bool force_kill):
+    def cancel_task(self, ObjectRef object_ref, c_bool force_kill):
         cdef:
-            CObjectID c_object_id = object_id.native()
+            CObjectID c_object_ref = object_ref.native()
             CRayStatus status = CRayStatus.OK()
 
         status = CCoreWorkerProcess.GetCoreWorker().CancelTask(
-                                            c_object_id, force_kill)
+                                            c_object_ref, force_kill)
 
         if not status.ok():
             raise TypeError(status.message().decode())
@@ -1056,15 +1056,15 @@ cdef class CoreWorker:
 
     def deserialize_and_register_actor_handle(self, const c_string &bytes,
                                               ObjectRef
-                                              outer_object_id):
+                                              outer_object_ref):
         cdef:
-            CObjectID c_outer_object_id = (outer_object_id.native() if
-                                           outer_object_id else
+            CObjectID c_outer_object_ref = (outer_object_ref.native() if
+                                           outer_object_ref else
                                            CObjectID.Nil())
         c_actor_id = (CCoreWorkerProcess
                       .GetCoreWorker()
                       .DeserializeAndRegisterActorHandle(
-                          bytes, c_outer_object_id))
+                          bytes, c_outer_object_ref))
         cdef:
             # NOTE: This handle should not be stored anywhere.
             const CActorHandle* c_actor_handle = (
@@ -1089,40 +1089,40 @@ cdef class CoreWorker:
             actor_id.native(), &output, &c_actor_handle_id))
         return output, ObjectRef(c_actor_handle_id.Binary())
 
-    def add_object_id_reference(self, ObjectRef object_id):
+    def add_object_ref_reference(self, ObjectRef object_ref):
         # Note: faster to not release GIL for short-running op.
         CCoreWorkerProcess.GetCoreWorker().AddLocalReference(
-            object_id.native())
+            object_ref.native())
 
-    def remove_object_id_reference(self, ObjectRef object_id):
+    def remove_object_ref_reference(self, ObjectRef object_ref):
         # Note: faster to not release GIL for short-running op.
         CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
-            object_id.native())
+            object_ref.native())
 
-    def serialize_and_promote_object_id(self, ObjectRef object_id):
+    def serialize_and_promote_object_ref(self, ObjectRef object_ref):
         cdef:
-            CObjectID c_object_id = object_id.native()
+            CObjectID c_object_ref = object_ref.native()
             CAddress c_owner_address = CAddress()
         CCoreWorkerProcess.GetCoreWorker().PromoteToPlasmaAndGetOwnershipInfo(
-                c_object_id, &c_owner_address)
-        return (object_id,
+                c_object_ref, &c_owner_address)
+        return (object_ref,
                 c_owner_address.SerializeAsString())
 
-    def deserialize_and_register_object_id(
-            self, const c_string &object_id_binary, ObjectRef outer_object_id,
+    def deserialize_and_register_object_ref(
+            self, const c_string &object_ref_binary, ObjectRef outer_object_ref,
             const c_string &serialized_owner_address):
         cdef:
-            CObjectID c_object_id = CObjectID.FromBinary(object_id_binary)
-            CObjectID c_outer_object_id = (outer_object_id.native() if
-                                           outer_object_id else
+            CObjectID c_object_ref = CObjectID.FromBinary(object_ref_binary)
+            CObjectID c_outer_object_ref = (outer_object_ref.native() if
+                                           outer_object_ref else
                                            CObjectID.Nil())
             CAddress c_owner_address = CAddress()
 
         c_owner_address.ParseFromString(serialized_owner_address)
         (CCoreWorkerProcess.GetCoreWorker()
             .RegisterOwnershipInfoAndResolveFuture(
-                c_object_id,
-                c_outer_object_id,
+                c_object_ref,
+                c_outer_object_ref,
                 c_owner_address))
 
     cdef store_task_outputs(
@@ -1151,7 +1151,7 @@ cdef class CoreWorker:
                     string_to_buffer(serialized_object.metadata))
                 serialized_objects.append(serialized_object)
                 contained_ids.push_back(
-                    ObjectRefsToVector(serialized_object.contained_object_ids))
+                    ObjectRefsToVector(serialized_object.contained_object_refs))
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
@@ -1232,18 +1232,18 @@ cdef class CoreWorker:
 
         ref_counts = {}
         while it != c_ref_counts.end():
-            object_id = dereference(it).first.Hex()
-            ref_counts[object_id] = {
+            object_ref = dereference(it).first.Hex()
+            ref_counts[object_ref] = {
                 "local": dereference(it).second.first,
                 "submitted": dereference(it).second.second}
             postincrement(it)
 
         return ref_counts
 
-    def get_async(self, ObjectRef object_id, future):
+    def get_async(self, ObjectRef object_ref, future):
         cpython.Py_INCREF(future)
         CCoreWorkerProcess.GetCoreWorker().GetAsync(
-                object_id.native(),
+                object_ref.native(),
                 async_set_result,
                 <void*>future)
 
@@ -1280,7 +1280,7 @@ cdef class CoreWorker:
             CClientID.FromBinary(client_id.binary()))
 
 cdef void async_set_result(shared_ptr[CRayObject] obj,
-                           CObjectID object_id,
+                           CObjectID object_ref,
                            void *future) with gil:
     cdef:
         c_vector[shared_ptr[CRayObject]] objects_to_deserialize
@@ -1292,7 +1292,7 @@ cdef void async_set_result(shared_ptr[CRayObject] obj,
     objects_to_deserialize.push_back(obj)
     data_metadata_pairs = RayObjectsToDataMetadataPairs(
         objects_to_deserialize)
-    ids_to_deserialize = [ObjectRef(object_id.Binary())]
+    ids_to_deserialize = [ObjectRef(object_ref.Binary())]
     result = ray.worker.global_worker.deserialize_objects(
         data_metadata_pairs, ids_to_deserialize)[0]
 

@@ -179,9 +179,9 @@ def test_profiling_api(ray_start_2_cpus):
             pass
 
     ray.put(1)
-    object_id = f.remote()
-    ray.wait([object_id])
-    ray.get(object_id)
+    object_ref = f.remote()
+    ray.wait([object_ref])
+    ray.get(object_ref)
 
     # Wait until all of the profiling information appears in the profile
     # table.
@@ -259,14 +259,14 @@ def test_object_transfer_dump(ray_start_cluster):
         return
 
     # These objects will live on different nodes.
-    object_ids = [
+    object_refs = [
         f._remote(args=[1], resources={str(i): 1}) for i in range(num_nodes)
     ]
 
     # Broadcast each object from each machine to each other machine.
-    for object_id in object_ids:
+    for object_ref in object_refs:
         ray.get([
-            f._remote(args=[object_id], resources={str(i): 1})
+            f._remote(args=[object_ref], resources={str(i): 1})
             for i in range(num_nodes)
         ])
 

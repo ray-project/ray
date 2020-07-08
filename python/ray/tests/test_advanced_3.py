@@ -281,22 +281,22 @@ def test_specific_job_id():
     ray.shutdown()
 
 
-def test_object_id_properties():
+def test_object_ref_properties():
     id_bytes = b"00112233445566778899"
-    object_id = ray.ObjectRef(id_bytes)
-    assert object_id.binary() == id_bytes
-    object_id = ray.ObjectRef.nil()
-    assert object_id.is_nil()
+    object_ref = ray.ObjectRef(id_bytes)
+    assert object_ref.binary() == id_bytes
+    object_ref = ray.ObjectRef.nil()
+    assert object_ref.is_nil()
     with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
         ray.ObjectRef(id_bytes + b"1234")
     with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
         ray.ObjectRef(b"0123456789")
-    object_id = ray.ObjectRef.from_random()
-    assert not object_id.is_nil()
-    assert object_id.binary() != id_bytes
-    id_dumps = pickle.dumps(object_id)
+    object_ref = ray.ObjectRef.from_random()
+    assert not object_ref.is_nil()
+    assert object_ref.binary() != id_bytes
+    id_dumps = pickle.dumps(object_ref)
     id_from_dumps = pickle.loads(id_dumps)
-    assert id_from_dumps == object_id
+    assert id_from_dumps == object_ref
 
 
 @pytest.fixture
@@ -529,7 +529,7 @@ def test_decorated_function(ray_start_regular):
 
 
 def test_get_postprocess(ray_start_regular):
-    def get_postprocessor(object_ids, values):
+    def get_postprocessor(object_refs, values):
         return [value for value in values if value > 0]
 
     ray.worker.global_worker._post_get_hooks.append(get_postprocessor)

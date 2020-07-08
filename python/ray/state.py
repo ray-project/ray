@@ -155,11 +155,11 @@ class GlobalState:
             result.extend(list(client.scan_iter(match=pattern)))
         return result
 
-    def object_table(self, object_id=None):
+    def object_table(self, object_ref=None):
         """Fetch and parse the object table info for one or more object IDs.
 
         Args:
-            object_id: An object ID to fetch information about. If this is
+            object_ref: An object ID to fetch information about. If this is
                 None, then the entire object table is fetched.
 
         Returns:
@@ -167,9 +167,9 @@ class GlobalState:
         """
         self._check_connected()
 
-        if object_id is not None:
-            object_id = ray.ObjectRef(hex_to_binary(object_id))
-            object_info = self.global_state_accessor.get_object_info(object_id)
+        if object_ref is not None:
+            object_ref = ray.ObjectRef(hex_to_binary(object_ref))
+            object_info = self.global_state_accessor.get_object_info(object_ref)
             if object_info is None:
                 return {}
             else:
@@ -182,7 +182,7 @@ class GlobalState:
             for i in range(len(object_table)):
                 object_location_info = gcs_utils.ObjectLocationInfo.FromString(
                     object_table[i])
-                results[binary_to_hex(object_location_info.object_id)] = \
+                results[binary_to_hex(object_location_info.object_ref)] = \
                     self._gen_object_info(object_location_info)
             return results
 
@@ -197,7 +197,7 @@ class GlobalState:
 
         object_info = {
             "ObjectRef": ray.utils.binary_to_hex(
-                object_location_info.object_id),
+                object_location_info.object_ref),
             "Locations": locations,
         }
         return object_info
@@ -538,21 +538,21 @@ class GlobalState:
 
             for event in items:
                 if event["event_type"] == "transfer_send":
-                    object_id, remote_node_id, _, _ = event["extra_data"]
+                    object_ref, remote_node_id, _, _ = event["extra_data"]
 
                 elif event["event_type"] == "transfer_receive":
-                    object_id, remote_node_id, _, _ = event["extra_data"]
+                    object_ref, remote_node_id, _, _ = event["extra_data"]
 
                 elif event["event_type"] == "receive_pull_request":
-                    object_id, remote_node_id = event["extra_data"]
+                    object_ref, remote_node_id = event["extra_data"]
 
                 else:
                     assert False, "This should be unreachable."
 
                 # Choose a color by reading the first couple of hex digits of
                 # the object ID as an integer and turning that into a color.
-                object_id_int = int(object_id[:2], 16)
-                color = self._chrome_tracing_colors[object_id_int % len(
+                object_ref_int = int(object_ref[:2], 16)
+                color = self._chrome_tracing_colors[object_ref_int % len(
                     self._chrome_tracing_colors)]
 
                 new_event = {
@@ -921,17 +921,17 @@ def actors(actor_id=None):
     return state.actor_table(actor_id=actor_id)
 
 
-def objects(object_id=None):
+def objects(object_ref=None):
     """Fetch and parse the object table info for one or more object IDs.
 
     Args:
-        object_id: An object ID to fetch information about. If this is None,
+        object_ref: An object ID to fetch information about. If this is None,
             then the entire object table is fetched.
 
     Returns:
         Information from the object table.
     """
-    return state.object_table(object_id=object_id)
+    return state.object_table(object_ref=object_ref)
 
 
 def timeline(filename=None):

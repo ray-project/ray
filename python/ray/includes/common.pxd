@@ -219,7 +219,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         pass
 
     cdef cppclass CTaskArgByReference "ray::TaskArgByReference":
-        CTaskArgByReference(const CObjectID &object_id,
+        CTaskArgByReference(const CObjectID &object_ref,
                             const CAddress &owner_address)
 
     cdef cppclass CTaskArgByValue "ray::TaskArgByValue":

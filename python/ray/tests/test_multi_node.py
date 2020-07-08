@@ -175,7 +175,7 @@ def test_cleanup_on_driver_exit(call_ray_start):
 import time
 import ray
 ray.init(address="{}")
-object_ids = [ray.put(i) for i in range(1000)]
+object_refs = [ray.put(i) for i in range(1000)]
 start_time = time.time()
 while time.time() - start_time < 30:
     if len(ray.objects()) == 1000:
