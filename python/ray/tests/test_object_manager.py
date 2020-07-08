@@ -214,10 +214,7 @@ def test_object_transfer_retry(ray_start_cluster):
     object_store_memory = 150 * 1024 * 1024
     cluster.add_node(
         object_store_memory=object_store_memory, _internal_config=config)
-    cluster.add_node(
-        num_gpus=1,
-        object_store_memory=object_store_memory,
-        _internal_config=config)
+    cluster.add_node(num_gpus=1, object_store_memory=object_store_memory)
     ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)

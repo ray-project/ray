@@ -5,13 +5,25 @@ come from either web (parsing Flask request) or python call.
 This actor can be called from HTTP as well as from Python.
 """
 
+import json
 import time
+
+from pygments import formatters, highlight, lexers
 
 import requests
 
 import ray
 from ray import serve
-from ray.serve.utils import pformat_color_json
+
+
+def pformat_color_json(d):
+    """Use pygments to pretty format and colorize dictionary"""
+    formatted_json = json.dumps(d, sort_keys=True, indent=4)
+
+    colorful_json = highlight(formatted_json, lexers.JsonLexer(),
+                              formatters.TerminalFormatter())
+
+    return colorful_json
 
 
 class MagicCounter:

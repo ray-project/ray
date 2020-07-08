@@ -23,6 +23,8 @@ resource = None
 if sys.platform != "win32":
     import resource
 
+EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
+
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
 RUN_PLASMA_STORE_PROFILER = False
@@ -31,7 +33,7 @@ RUN_PLASMA_STORE_PROFILER = False
 RAY_HOME = os.path.join(os.path.dirname(__file__), "../..")
 REDIS_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
-    "core/src/ray/thirdparty/redis/src/redis-server")
+    "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX)
 REDIS_MODULE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "core/src/ray/gcs/redis_module/libray_redis_module.so")
@@ -40,7 +42,7 @@ REDIS_MODULE = os.path.join(
 # credis will be enabled if the environment variable RAY_USE_NEW_GCS is set.
 CREDIS_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
-    "core/src/credis/redis/src/redis-server")
+    "core/src/credis/redis/src/redis-server" + EXE_SUFFIX)
 CREDIS_MASTER_MODULE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "core/src/credis/build/src/libmaster.so")
@@ -51,16 +53,15 @@ CREDIS_MEMBER_MODULE = os.path.join(
 # Location of the plasma object store executable.
 PLASMA_STORE_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
-    "core/src/plasma/plasma_store_server")
+    "core/src/plasma/plasma_store_server" + EXE_SUFFIX)
 
 # Location of the raylet executables.
-RAYLET_MONITOR_EXECUTABLE = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)),
-    "core/src/ray/raylet/raylet_monitor")
 RAYLET_EXECUTABLE = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)), "core/src/ray/raylet/raylet")
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/ray/raylet/raylet" + EXE_SUFFIX)
 GCS_SERVER_EXECUTABLE = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)), "core/src/ray/gcs/gcs_server")
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/ray/gcs/gcs_server" + EXE_SUFFIX)
 
 DEFAULT_JAVA_WORKER_CLASSPATH = [
     os.path.join(
@@ -1259,7 +1260,8 @@ def start_raylet(redis_address,
                  plasma_directory=None,
                  huge_pages=False,
                  fate_share=None,
-                 socket_to_use=None):
+                 socket_to_use=None,
+                 head_node=False):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1401,6 +1403,8 @@ def start_raylet(redis_address,
             command.append("--huge_pages")
     if socket_to_use:
         socket_to_use.close()
+    if head_node:
+        command.append("--head_node")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET,
@@ -1733,47 +1737,6 @@ def start_monitor(redis_address,
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_MONITOR,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file,
-        fate_share=fate_share)
-    return process_info
-
-
-def start_raylet_monitor(redis_address,
-                         stdout_file=None,
-                         stderr_file=None,
-                         redis_password=None,
-                         config=None,
-                         fate_share=None):
-    """Run a process to monitor the other processes.
-
-    Args:
-        redis_address (str): The address that the Redis server is listening on.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
-        redis_password (str): The password of the redis server.
-        config (dict|None): Optional configuration that will
-            override defaults in RayConfig.
-
-    Returns:
-        ProcessInfo for the process that was started.
-    """
-    gcs_ip_address, gcs_port = redis_address.split(":")
-    redis_password = redis_password or ""
-    config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
-    command = [
-        RAYLET_MONITOR_EXECUTABLE,
-        "--redis_address={}".format(gcs_ip_address),
-        "--redis_port={}".format(gcs_port),
-        "--config_list={}".format(config_str),
-    ]
-    if redis_password:
-        command += ["--redis_password={}".format(redis_password)]
-    process_info = start_ray_process(
-        command,
-        ray_constants.PROCESS_TYPE_RAYLET_MONITOR,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         fate_share=fate_share)

@@ -1,6 +1,6 @@
-diff --git deps/hiredis/hiredis.h deps/hiredis/hiredis.h
---- deps/hiredis/hiredis.h
-+++ deps/hiredis/hiredis.h
+diff --git hiredis.h hiredis.h
+--- hiredis.h
++++ hiredis.h
 @@ -87,5 +87,12 @@
 +#ifdef _WIN32
 +#define __redis_strerror_r(errno, buf, len)                                    \

@@ -36,6 +36,10 @@ RAY_CONFIG(int64_t, handler_warning_timeout_ms, 100)
 
 /// The duration between heartbeats sent by the raylets.
 RAY_CONFIG(int64_t, raylet_heartbeat_timeout_milliseconds, 100)
+/// Whether to send heartbeat lightly. When it is enalbed, only changed part,
+/// like should_global_gc or changed resources, will be included in the heartbeat,
+/// and gcs only broadcast the changed heartbeat.
+RAY_CONFIG(bool, light_heartbeat_enabled, false)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
@@ -187,6 +191,10 @@ RAY_CONFIG(size_t, raylet_max_active_object_ids, 0)
 /// The duration that we wait after sending a worker SIGTERM before sending
 /// the worker SIGKILL.
 RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
+
+/// The duration that we wait after the worekr is launched before the
+/// starting_worker_timeout_callback() is called.
+RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
 
 /// This is a timeout used to cause failures in the plasma manager and raylet
 /// when certain event loop handlers take too long.
