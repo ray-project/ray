@@ -528,7 +528,8 @@ def test_basic_nested_ids(one_worker_100MiB):
 
 
 def _all_actors_dead():
-    return all(actor["State"] == DEAD for actor in list(ray.actors().values()))
+    dead_state = ray.gcs_utils.ActorTableData.DEAD
+    return all(actor["State"] == dead_state for actor in list(ray.actors().values()))
 
 
 def test_kill_actor_immediately_after_creation(ray_start_regular):
