@@ -136,7 +136,6 @@ message TaskSpec {
   int32 max_retries = 16;
 }
 
-<<<<<<< HEAD
 message Bundle {
   message BundleIdentifier {
     bytes placement_group_id = 1;
