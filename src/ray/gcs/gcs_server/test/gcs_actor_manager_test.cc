@@ -97,18 +97,38 @@ class GcsActorManagerTest : public ::testing::Test {
   }
 
   void WaitActorCreated(const ActorID &actor_id) {
-    auto condition = [this, actor_id]() {
-      auto created_actors = gcs_actor_manager_->GetCreatedActors();
-      for (auto &node_iter : created_actors) {
-        for (auto &actor_iter : node_iter.second) {
-          if (actor_iter.second == actor_id) {
-            return true;
+    const int wait_interval_ms = 10;
+    int wait_time = 0;
+    while (true) {
+      // The created_actors_ of gcs actor manager will be modified in io_service thread.
+      // In order to avoid multithreading reading and writing created_actors_, we also
+      // send the read operation to io_service thread.
+      std::promise<bool> promise;
+      io_service_.post([this, actor_id, &promise]() {
+        const auto &created_actors = gcs_actor_manager_->GetCreatedActors();
+        for (auto &node_iter : created_actors) {
+          for (auto &actor_iter : node_iter.second) {
+            if (actor_iter.second == actor_id) {
+              promise.set_value(true);
+              return;
+            }
           }
         }
+        promise.set_value(false);
+      });
+
+      if (promise.get_future().get()) {
+        break;
       }
-      return false;
-    };
-    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+
+      // sleep 10ms.
+      usleep(wait_interval_ms * 1000);
+      wait_time += wait_interval_ms;
+      if (wait_time > timeout_ms_.count()) {
+        break;
+      }
+    }
+    RAY_CHECK(wait_time <= timeout_ms_.count());
   }
 
   rpc::Address RandomAddress() const {
