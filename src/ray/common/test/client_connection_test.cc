@@ -149,7 +149,9 @@ TEST_F(ClientConnectionTest, SimpleAsyncReadWriteBuffers) {
   const std::vector<uint8_t> write_buffer = {1, 2, 3, 4, 5};
   std::vector<uint8_t> read_buffer = {0, 0, 0, 0, 0};
 
-  RAY_CHECK_OK(writer->WriteBuffer({boost::asio::buffer(write_buffer)}));
+  writer->WriteBufferAsync({boost::asio::buffer(write_buffer)},
+                           [](const ray::Status &status) { RAY_CHECK_OK(status); });
+
   reader->ReadBufferAsync({boost::asio::buffer(read_buffer)},
                           [&write_buffer, &read_buffer](const ray::Status &status) {
                             RAY_CHECK_OK(status);

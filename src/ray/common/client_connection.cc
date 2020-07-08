@@ -72,6 +72,17 @@ Status ServerConnection::WriteBuffer(
   return ray::Status::OK();
 }
 
+void ServerConnection::WriteBufferAsync(
+    const std::vector<boost::asio::const_buffer> &buffer,
+    const std::function<void(const ray::Status &)> &handler) {
+  // Wait for the message to be written.
+  boost::asio::async_write(
+      socket_, buffer,
+      [handler](const boost::system::error_code &ec, size_t bytes_transferred) {
+        handler(boost_to_ray_status(ec));
+      });
+}
+
 Status ServerConnection::ReadBuffer(
     const std::vector<boost::asio::mutable_buffer> &buffer) {
   boost::system::error_code error;
