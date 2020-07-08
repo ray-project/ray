@@ -18,11 +18,8 @@
 #include <string>
 #include <unordered_map>
 
-// #include "opencensus/exporters/stats/prometheus/prometheus_exporter.h"
-// #include "opencensus/exporters/stats/stdout/stdout_exporter.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
-// #include "prometheus/exposer.h"
 
 #include "ray/common/ray_config.h"
 #include "ray/stats/metric.h"

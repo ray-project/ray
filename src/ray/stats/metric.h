@@ -17,10 +17,8 @@
 #include <memory>
 #include <unordered_map>
 
-// #include "opencensus/exporters/stats/prometheus/prometheus_exporter.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
-// #include "prometheus/exposer.h"
 
 #include "ray/util/logging.h"
 

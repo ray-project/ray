@@ -130,10 +130,6 @@ int main(int argc, char *argv[]) {
 
   std::unique_ptr<ray::raylet::Raylet> server(nullptr);
 
-  // Initialize gcs client
-  ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
-  std::shared_ptr<ray::gcs::GcsClient> gcs_client;
-
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
       [&](::ray::Status status,
           const boost::optional<std::unordered_map<std::string, std::string>>
