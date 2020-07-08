@@ -82,6 +82,8 @@ test:asan --test_env=LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libasan.so.2 /usr/lib
 # test:asan --test_env=LD_PRELOAD="/usr/lib/gcc/x86_64-linux-gnu/7/libasan.so"
 
 # CI configuration:
+aquery:ci --color=no
+aquery:ci --noshow_progress
 build:ci --color=yes
 build:ci --curses=no
 build:ci --disk_cache=~/ray-bazel-cache
@@ -98,6 +100,9 @@ test:ci --nocache_test_results
 test:ci --spawn_strategy=local
 test:ci --test_output=errors
 test:ci --test_verbose_timeout_warnings
+
+aquery:get-toolchain --include_commandline=false
+aquery:get-toolchain --noimplicit_deps
 
 # [Linux] Uncomment this line (or use --config) to print a stack trace on exit.
 #test:linux --config=strace
