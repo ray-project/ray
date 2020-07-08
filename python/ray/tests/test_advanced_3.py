@@ -19,7 +19,11 @@ import ray.cluster_utils
 import ray.test_utils
 import setproctitle
 
-from ray.test_utils import check_call_ray, RayTestTimeoutException, wait_for_num_actors
+from ray.test_utils import (
+    check_call_ray,
+    RayTestTimeoutException,
+    wait_for_num_actors
+)
 
 logger = logging.getLogger(__name__)
 
