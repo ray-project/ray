@@ -13,12 +13,10 @@ from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import check, framework_iterator, \
     check_compute_single_action
 
-tf = try_import_tf()
 
 # Fake CartPole episode of n time steps.
 FAKE_BATCH = {
@@ -40,7 +38,7 @@ FAKE_BATCH = {
 class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls):

@@ -30,7 +30,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import softmax
 from ray.rllib.utils.test_utils import check, framework_iterator
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 
@@ -185,20 +185,20 @@ class VtraceTest(unittest.TestCase):
                 # can deal with that.
                 inputs_ = {
                     # T, B, NUM_ACTIONS
-                    "behaviour_policy_logits": tf.placeholder(
+                    "behaviour_policy_logits": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, None]),
                     # T, B, NUM_ACTIONS
-                    "target_policy_logits": tf.placeholder(
+                    "target_policy_logits": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, None]),
-                    "actions": tf.placeholder(
+                    "actions": tf1.placeholder(
                         dtype=tf.int32, shape=[None, None]),
-                    "discounts": tf.placeholder(
+                    "discounts": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None]),
-                    "rewards": tf.placeholder(
+                    "rewards": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None]),
-                    "values": tf.placeholder(
+                    "values": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None]),
-                    "bootstrap_value": tf.placeholder(
+                    "bootstrap_value": tf1.placeholder(
                         dtype=tf.float32, shape=[None]),
                 }
             else:
@@ -282,15 +282,15 @@ class VtraceTest(unittest.TestCase):
             vtrace = vtrace_tf if fw != "torch" else vtrace_torch
             if fw == "tf":
                 inputs_ = {
-                    "log_rhos": tf.placeholder(
+                    "log_rhos": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, 1]),
-                    "discounts": tf.placeholder(
+                    "discounts": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, 1]),
-                    "rewards": tf.placeholder(
+                    "rewards": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, 42]),
-                    "values": tf.placeholder(
+                    "values": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, 42]),
-                    "bootstrap_value": tf.placeholder(
+                    "bootstrap_value": tf1.placeholder(
                         dtype=tf.float32, shape=[None, 42])
                 }
             else:
@@ -310,16 +310,16 @@ class VtraceTest(unittest.TestCase):
             vtrace = vtrace_tf if fw != "torch" else vtrace_torch
             if fw == "tf":
                 inputs_ = {
-                    "log_rhos": tf.placeholder(
+                    "log_rhos": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, 1]),
-                    "discounts": tf.placeholder(
+                    "discounts": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, 1]),
-                    "rewards": tf.placeholder(
+                    "rewards": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, 42]),
-                    "values": tf.placeholder(
+                    "values": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, 42]),
                     # Should be [None, 42].
-                    "bootstrap_value": tf.placeholder(
+                    "bootstrap_value": tf1.placeholder(
                         dtype=tf.float32, shape=[None])
                 }
             else:

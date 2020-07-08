@@ -22,7 +22,7 @@ from ray.tune.registry import register_env
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.repeated import Repeated
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 _, nn = try_import_torch()
 
 DICT_SPACE = spaces.Dict({
@@ -241,9 +241,9 @@ class DictSpyModel(TFModelV2):
                 pickle.dumps((pos, front_cam, task)),
                 overwrite=True)
             DictSpyModel.capture_index += 1
-            return 0
+            return np.array(0, dtype=np.int64)
 
-        spy_fn = tf.py_func(
+        spy_fn = tf1.py_func(
             spy, [
                 input_dict["obs"]["sensors"]["position"],
                 input_dict["obs"]["sensors"]["front_cam"][0],
@@ -252,9 +252,9 @@ class DictSpyModel(TFModelV2):
             tf.int64,
             stateful=True)
 
-        with tf.control_dependencies([spy_fn]):
-            output = tf.layers.dense(input_dict["obs"]["sensors"]["position"],
-                                     self.num_outputs)
+        with tf1.control_dependencies([spy_fn]):
+            output = tf1.layers.dense(input_dict["obs"]["sensors"]["position"],
+                                      self.num_outputs)
         return output, []
 
 
@@ -270,9 +270,9 @@ class TupleSpyModel(TFModelV2):
                 pickle.dumps((pos, cam, task)),
                 overwrite=True)
             TupleSpyModel.capture_index += 1
-            return 0
+            return np.array(0, dtype=np.int64)
 
-        spy_fn = tf.py_func(
+        spy_fn = tf1.py_func(
             spy, [
                 input_dict["obs"][0],
                 input_dict["obs"][1][0],
@@ -281,8 +281,8 @@ class TupleSpyModel(TFModelV2):
             tf.int64,
             stateful=True)
 
-        with tf.control_dependencies([spy_fn]):
-            output = tf.layers.dense(input_dict["obs"][0], self.num_outputs)
+        with tf1.control_dependencies([spy_fn]):
+            output = tf1.layers.dense(input_dict["obs"][0], self.num_outputs)
         return output, []
 
 

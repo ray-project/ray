@@ -7,7 +7,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 @DeveloperAPI
@@ -160,18 +160,17 @@ class LSTMWrapper(RecurrentNetwork):
 
         # Concat. prev-action/reward if required.
         if self.model_config["lstm_use_prev_action_reward"]:
-            if self.model_config["lstm_use_prev_action_reward"]:
-                wrapped_out = tf.concat(
-                    [
-                        wrapped_out,
-                        tf.reshape(
-                            tf.cast(input_dict[SampleBatch.PREV_ACTIONS],
-                                    tf.float32), [-1, self.action_dim]),
-                        tf.reshape(
-                            tf.cast(input_dict[SampleBatch.PREV_REWARDS],
-                                    tf.float32), [-1, 1]),
-                    ],
-                    axis=1)
+            wrapped_out = tf.concat(
+                [
+                    wrapped_out,
+                    tf.reshape(
+                        tf.cast(input_dict[SampleBatch.PREV_ACTIONS],
+                                tf.float32), [-1, self.action_dim]),
+                    tf.reshape(
+                        tf.cast(input_dict[SampleBatch.PREV_REWARDS],
+                                tf.float32), [-1, 1]),
+                ],
+                axis=1)
 
         # Then through our LSTM.
         input_dict["obs_flat"] = wrapped_out

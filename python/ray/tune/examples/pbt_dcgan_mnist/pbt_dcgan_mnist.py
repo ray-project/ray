@@ -231,7 +231,7 @@ def train(netD, netG, optimG, optimD, criterion, dataloader, iteration,
 
 # __Trainable_begin__
 class PytorchTrainable(tune.Trainable):
-    def _setup(self, config):
+    def setup(self, config):
         use_cuda = config.get("use_gpu") and torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.netD = Discriminator().to(self.device)
@@ -250,13 +250,13 @@ class PytorchTrainable(tune.Trainable):
         with FileLock(os.path.expanduser("~/.data.lock")):
             self.dataloader = get_data_loader()
 
-    def _train(self):
+    def step(self):
         lossG, lossD, is_score = train(
             self.netD, self.netG, self.optimizerG, self.optimizerD,
             self.criterion, self.dataloader, self._iteration, self.device)
         return {"lossg": lossG, "lossd": lossD, "is_score": is_score}
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint")
         torch.save({
             "netDmodel": self.netD.state_dict(),
@@ -267,7 +267,7 @@ class PytorchTrainable(tune.Trainable):
 
         return checkpoint_dir
 
-    def _restore(self, checkpoint_dir):
+    def load_checkpoint(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint")
         checkpoint = torch.load(path)
         self.netD.load_state_dict(checkpoint["netDmodel"])
