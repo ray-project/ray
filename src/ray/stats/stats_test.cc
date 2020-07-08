@@ -61,7 +61,7 @@ class StatsTest : public ::testing::Test {
   void SetUp() {
     const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
                                          {stats::WorkerPidKey, "1000"}};
-    ray::stats::Init("127.0.0.1:8888", global_tags, false);
+    ray::stats::Init("127.0.0.1:8888", global_tags, 10054, false);
     MockExporter::Register();
   }
 

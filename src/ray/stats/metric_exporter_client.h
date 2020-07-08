@@ -51,6 +51,13 @@ class MetricExporterDecorator : public MetricExporterClient {
   std::shared_ptr<MetricExporterClient> exporter_;
 };
 
+// class MetricsAgentExporter : public MetricExporterDecorator {
+//  public:
+//   MetricsAgentExporter(std::shared_ptr<MetricExporterClient> exporter) : MetricExporterDecorator(exporter) {}
+//   void ReportMetrics(const std::vector<MetricPoint> &points) override {
+//     MetricExporterDecorator::ReportMetrics(points);
+// };
+
 class OpentsdbExporterClient : public MetricExporterDecorator {
  public:
   OpentsdbExporterClient(std::shared_ptr<MetricExporterClient> exporter)

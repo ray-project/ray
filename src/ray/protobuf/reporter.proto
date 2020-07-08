@@ -32,8 +32,20 @@ message GetProfilingStatsReply {
   string stderr = 3;
 }
 
+message ReportMetricsRequest {
+  string metric_name = 1;
+  int64 timestamp = 2;
+  double value = 3;
+  map<string, string> tags = 4;
+}
+
+message ReportMetricsReply {
+}
+
 // Service for communicating with the reporter.py process on a remote node.
 service ReporterService {
   // Get the profiling stats.
   rpc GetProfilingStats(GetProfilingStatsRequest) returns (GetProfilingStatsReply);
+  // Report Metrics to the local metrics agents.
+  rpc ReportMetrics(ReportMetricsRequest) returns (ReportMetricsReply);
 }

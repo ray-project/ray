@@ -108,7 +108,7 @@ class MetricExporterClientTest : public ::testing::Test {
   void SetUp() {
     const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
                                          {stats::WorkerPidKey, "1000"}};
-    ray::stats::Init("127.0.0.1:8888", global_tags, false);
+    ray::stats::Init("127.0.0.1:8888", global_tags, 10054, false);
     std::shared_ptr<MetricExporterClient> exporter(new stats::StdoutExporterClient());
     std::shared_ptr<MetricExporterClient> mock1(new MockExporterClient1(exporter));
     std::shared_ptr<MetricExporterClient> mock2(new MockExporterClient2(mock1));

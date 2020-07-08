@@ -87,6 +87,7 @@ class RayParams:
             Java worker.
         java_worker_options (list): The command options for Java worker.
         load_code_from_local: Whether load code from local file or from GCS.
+        metrics_agent_port(int): The port to bind metrics agent.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
     """
@@ -130,6 +131,7 @@ class RayParams:
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
+                 metrics_agent_port=10054, # SANG-TODO Set it None.
                  _internal_config=None):
         self.object_id_seed = object_id_seed
         self.redis_address = redis_address
@@ -167,6 +169,7 @@ class RayParams:
         self.include_java = include_java
         self.java_worker_options = java_worker_options
         self.load_code_from_local = load_code_from_local
+        self.metrics_agent_port = metrics_agent_port
         self._internal_config = _internal_config
         self._check_usage()
 

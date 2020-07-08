@@ -94,11 +94,12 @@ class Reporter:
         redis_client: A client used to communicate with the Redis server.
     """
 
-    def __init__(self, redis_address, redis_password=None):
+    def __init__(self, redis_address, port, redis_password=None):
         """Initialize the reporter object."""
         self.cpu_counts = (psutil.cpu_count(), psutil.cpu_count(logical=False))
         self.ip = ray.services.get_node_ip_address()
         self.hostname = platform.node()
+        self.port = port
 
         _ = psutil.cpu_percent()  # For initialization
 
@@ -222,10 +223,10 @@ class Reporter:
     def run(self):
         """Publish the port."""
         thread_pool = futures.ThreadPoolExecutor(max_workers=10)
-        server = grpc.server(thread_pool, options=(("grpc.so_reuseport", 0), ))
+        server = grpc.server(thread_pool)
         reporter_pb2_grpc.add_ReporterServiceServicer_to_server(
             ReporterServer(), server)
-        port = server.add_insecure_port("[::]:0")
+        port = server.add_insecure_port("[::]:{}".format(self.port))
         server.start()
         self.redis_client.set("REPORTER_PORT:{}".format(self.ip), port)
         """Run the reporter."""
@@ -249,6 +250,11 @@ if __name__ == "__main__":
         type=str,
         help="The address to use for Redis.")
     parser.add_argument(
+        "--port",
+        required=True,
+        type=int,
+        help="The port to bind the reporter process.")
+    parser.add_argument(
         "--redis-password",
         required=False,
         type=str,
@@ -270,7 +276,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
-    reporter = Reporter(args.redis_address, redis_password=args.redis_password)
+    reporter = Reporter(args.redis_address, args.port, redis_password=args.redis_password)
 
     try:
         reporter.run()

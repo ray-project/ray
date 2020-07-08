@@ -28,6 +28,7 @@ DEFINE_string(raylet_socket_name, "", "The socket name of raylet.");
 DEFINE_string(store_socket_name, "", "The socket name of object store.");
 DEFINE_int32(object_manager_port, -1, "The port of object manager.");
 DEFINE_int32(node_manager_port, -1, "The port of node manager.");
+DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(redis_address, "", "The ip address of redis server.");
 DEFINE_int32(redis_port, -1, "The port of redis server.");
@@ -46,8 +47,6 @@ DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
 DEFINE_bool(disable_stats, false, "Whether disable the stats.");
 DEFINE_string(stat_address, "127.0.0.1:8888", "The address that we report metrics to.");
-DEFINE_bool(enable_stdout_exporter, false,
-            "Whether enable the stdout exporter for stats.");
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
 DEFINE_string(plasma_directory, "", "The shared memory directory of the object store.");
@@ -67,6 +66,7 @@ int main(int argc, char *argv[]) {
   const std::string store_socket_name = FLAGS_store_socket_name;
   const int object_manager_port = static_cast<int>(FLAGS_object_manager_port);
   const int node_manager_port = static_cast<int>(FLAGS_node_manager_port);
+  const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
   const std::string node_ip_address = FLAGS_node_ip_address;
   const std::string redis_address = FLAGS_redis_address;
   const int redis_port = static_cast<int>(FLAGS_redis_port);
@@ -84,7 +84,6 @@ int main(int argc, char *argv[]) {
   const std::string session_dir = FLAGS_session_dir;
   const bool disable_stats = FLAGS_disable_stats;
   const std::string stat_address = FLAGS_stat_address;
-  const bool enable_stdout_exporter = FLAGS_enable_stdout_exporter;
   const int64_t object_store_memory = FLAGS_object_store_memory;
   const std::string plasma_directory = FLAGS_plasma_directory;
   const bool huge_pages = FLAGS_huge_pages;
@@ -95,7 +94,7 @@ int main(int argc, char *argv[]) {
       {ray::stats::JobNameKey, "raylet"},
       {ray::stats::VersionKey, "0.9.0.dev0"},
       {ray::stats::NodeAddressKey, node_ip_address}};
-  ray::stats::Init(stat_address, global_tags, disable_stats, enable_stdout_exporter);
+  ray::stats::Init(stat_address, global_tags, metrics_agent_port, disable_stats);
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;

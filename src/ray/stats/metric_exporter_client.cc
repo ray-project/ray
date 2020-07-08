@@ -20,7 +20,7 @@ namespace ray {
 namespace stats {
 
 void StdoutExporterClient::ReportMetrics(const std::vector<MetricPoint> &points) {
-  RAY_LOG(DEBUG) << "Metric point size : " << points.size();
+  RAY_LOG(ERROR) << "Metric point size : " << points.size();
 }
 
 MetricExporterDecorator::MetricExporterDecorator(
@@ -32,5 +32,12 @@ void MetricExporterDecorator::ReportMetrics(const std::vector<MetricPoint> &poin
     exporter_->ReportMetrics(points);
   }
 }
+
+// SANG-TODO Implement Metrics Agent Client.
+  // // Initialize a rpc client to the new node manager.
+  // std::unique_ptr<rpc::NodeManagerClient> client(
+  //     new rpc::NodeManagerClient(node_info.node_manager_address(),
+  //                                node_info.node_manager_port(), client_call_manager_));
+  // remote_node_manager_clients_.emplace(node_id, std::move(client));
 }  // namespace stats
 }  // namespace ray
