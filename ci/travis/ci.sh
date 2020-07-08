@@ -132,6 +132,7 @@ test_python() {
       -python/ray/tests:test_cython
       -python/ray/tests:test_failure
       -python/ray/tests:test_global_gc
+      -python/ray/tests:test_job
       -python/ray/tests:test_memstat
       -python/ray/tests:test_metrics
       -python/ray/tests:test_multi_node
