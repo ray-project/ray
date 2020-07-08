@@ -32,7 +32,7 @@ esac
   missing_symlinks=()
   while read -r mode digest sn path; do
     if [ "${mode}" = 120000 ]; then
-      test -L "${path}" || missing_symlinks+=("${path}")
+      test -L "${path}" || missing_symlinks+=("${paths}")
     fi
   done
   if [ ! 0 -eq "${#missing_symlinks[@]}" ]; then
