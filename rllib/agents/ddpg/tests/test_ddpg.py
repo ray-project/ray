@@ -35,7 +35,7 @@ class TestDDPG(unittest.TestCase):
         config["learning_starts"] = 0
         config["exploration_config"]["random_timesteps"] = 100
 
-        num_iterations = 2
+        num_iterations = 1
 
         # Test against all frameworks.
         for _ in framework_iterator(config):
@@ -44,6 +44,7 @@ class TestDDPG(unittest.TestCase):
                 results = trainer.train()
                 print(results)
             check_compute_single_action(trainer)
+            trainer.stop()
 
     def test_ddpg_exploration_and_with_random_prerun(self):
         """Tests DDPG's Exploration (w/ random actions for n timesteps)."""
@@ -66,6 +67,7 @@ class TestDDPG(unittest.TestCase):
             for _ in range(50):
                 actions.append(trainer.compute_action(obs))
             check(np.std(actions), 0.0, false=True)
+            trainer.stop()
 
             # Check randomness at beginning.
             config["exploration_config"] = {
@@ -95,6 +97,7 @@ class TestDDPG(unittest.TestCase):
             for _ in range(50):
                 a = trainer.compute_action(obs, explore=False)
                 check(a, deterministic_action)
+            trainer.stop()
 
     def test_ddpg_loss_function(self):
         """Tests DDPG loss function results across all frameworks."""

@@ -623,6 +623,7 @@ cc_library(
     ),
     hdrs = glob([
         "src/ray/raylet/*.h",
+        "src/ray/core_worker/common.h",
     ]),
     copts = COPTS,
     linkopts = select({
@@ -792,6 +793,16 @@ cc_test(
 cc_test(
     name = "task_manager_test",
     srcs = ["src/ray/core_worker/test/task_manager_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "actor_manager_test",
+    srcs = ["src/ray/core_worker/test/actor_manager_test.cc"],
     copts = COPTS,
     deps = [
         ":core_worker_lib",

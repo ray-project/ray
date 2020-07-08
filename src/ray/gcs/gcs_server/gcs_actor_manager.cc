@@ -69,11 +69,7 @@ ActorID GcsActor::GetActorID() const {
 
 bool GcsActor::IsDetached() const { return actor_table_data_.is_detached(); }
 
-std::string GcsActor::GetName() const {
-  RAY_CHECK(actor_table_data_.is_detached())
-      << "Actor names are only valid for detached actors.";
-  return actor_table_data_.name();
-}
+std::string GcsActor::GetName() const { return actor_table_data_.name(); }
 
 TaskSpecification GcsActor::GetCreationTaskSpecification() const {
   const auto &task_spec = actor_table_data_.task_spec();
@@ -390,7 +386,7 @@ Status GcsActorManager::RegisterActor(
   }
 
   auto actor = std::make_shared<GcsActor>(request);
-  if (actor->IsDetached()) {
+  if (!actor->GetName().empty()) {
     auto it = named_actors_.find(actor->GetName());
     if (it == named_actors_.end()) {
       named_actors_.emplace(actor->GetName(), actor->GetActorID());
@@ -525,8 +521,11 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
                                      [actor_id](const std::shared_ptr<GcsActor> &actor) {
                                        return actor->GetActorID() == actor_id;
                                      });
-      RAY_CHECK(pending_it != pending_actors_.end());
-      pending_actors_.erase(pending_it);
+      // TODO(rkooo567): The actor may be in the state of leasing worker. We need to add
+      // the processing logic of this in https://github.com/ray-project/ray/pull/9215.
+      if (pending_it != pending_actors_.end()) {
+        pending_actors_.erase(pending_it);
+      }
     }
   }
 
@@ -658,8 +657,8 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
         }));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
-    // For detached actors, make sure to remove its name.
-    if (actor->IsDetached()) {
+    // Remove actor from `named_actors_` if its name is not empty.
+    if (!actor->GetName().empty()) {
       auto it = named_actors_.find(actor->GetName());
       if (it != named_actors_.end()) {
         RAY_CHECK(it->second == actor->GetActorID());
@@ -695,7 +694,15 @@ void GcsActorManager::OnActorCreationFailed(std::shared_ptr<GcsActor> actor) {
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor) {
   auto actor_id = actor->GetActorID();
   RAY_LOG(DEBUG) << "Actor created successfully, actor id = " << actor_id;
-  RAY_CHECK(registered_actors_.count(actor_id) > 0);
+  // NOTE: If an actor is deleted immediately after the user creates the actor, reference
+  // counter may return a reply to the request of WaitForActorOutOfScope to GCS server,
+  // and GCS server will destroy the actor. The actor creation is asynchronous, it may be
+  // destroyed before the actor creation is completed.
+  if (registered_actors_.count(actor_id) == 0) {
+    RAY_LOG(WARNING) << "Actor is destroyed before the creation is completed, actor id = "
+                     << actor_id;
+    return;
+  }
   actor->UpdateState(rpc::ActorTableData::ALIVE);
   auto actor_table_data = actor->GetActorTableData();
   // The backend storage is reliable in the future, so the status must be ok.
@@ -746,7 +753,7 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
         auto actor = std::make_shared<GcsActor>(item.second);
         registered_actors_.emplace(item.first, actor);
 
-        if (actor->IsDetached()) {
+        if (!actor->GetName().empty()) {
           named_actors_.emplace(actor->GetName(), actor->GetActorID());
         }
 

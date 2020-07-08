@@ -1,5 +1,3 @@
-import numpy as np
-
 from ray.rllib.models.tf.layers import NoisyLayer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.framework import try_import_tf
@@ -76,7 +74,9 @@ class DistributionalQTFModel(TFModelV2):
                 for i in range(len(q_hiddens)):
                     if use_noisy:
                         action_out = NoisyLayer(
-                            "{}hidden_{}".format(prefix, i), q_hiddens[i], sigma0)(action_out)
+                            "{}hidden_{}".format(prefix, i),
+                            q_hiddens[i],
+                            sigma0)(action_out)
                     elif add_layer_norm:
                         action_out = tf.keras.layers.Dense(
                             units=q_hiddens[i],
@@ -155,48 +155,13 @@ class DistributionalQTFModel(TFModelV2):
                     units=num_atoms, activation=None)(state_out)
             return state_score
 
-        #if tf1.executing_eagerly():
-        #    from tensorflow.python.ops import variable_scope
-        #    # Have to use a variable store to reuse variables in eager mode
-        #    store = variable_scope.EagerVariableStore()
-
-        #    # Save the scope objects, since in eager we will execute this
-        #    # path repeatedly and there is no guarantee it will always be run
-        #    # in the same original scope.
-        #    with tf1.variable_scope(name + "/action_value") as action_scope:
-        #        pass
-        #    with tf1.variable_scope(name + "/state_value") as state_scope:
-        #        pass
-
-        #    def build_action_value_in_scope(model_out):
-        #        with store.as_default():
-        #            with tf1.variable_scope(
-                            action_scope, reuse=tf1.AUTO_REUSE):
-        #                return build_action_value(model_out)
-
-        #    def build_state_score_in_scope(model_out):
-        #        with store.as_default():
-        #            with tf1.variable_scope(
-                            state_scope, reuse=tf1.AUTO_REUSE):
-        #                return build_state_score(model_out)
-        #else:
-
-        #    def build_action_value_in_scope(model_out):
-        #        with tf1.variable_scope(
-        #                name + "/action_value", reuse=tf1.AUTO_REUSE):
-        #            return build_action_value(model_out)
-
-        #    def build_state_score_in_scope(model_out):
-        #        with tf1.variable_scope(
-        #                name + "/state_value", reuse=tf1.AUTO_REUSE):
-        #            return build_state_score(model_out)
-
         q_out = build_action_value(name + "/action_value/", self.model_out)
         self.q_value_head = tf.keras.Model(self.model_out, q_out)
         self.register_variables(self.q_value_head.variables)
 
         if dueling:
-            state_out = build_state_score(name + "/state_value/", self.model_out)
+            state_out = build_state_score(
+                name + "/state_value/", self.model_out)
             self.state_value_head = tf.keras.Model(self.model_out, state_out)
             self.register_variables(self.state_value_head.variables)
 
@@ -219,67 +184,3 @@ class DistributionalQTFModel(TFModelV2):
         """Returns the state value prediction for the given state embedding."""
 
         return self.state_value_head(model_out)
-
-    #TODO: (sven) Move into tf layers folder for re-use in other algos / exploration schemas.
-    def _noisy_layer(self,
-                     prefix,
-                     action_in,
-                     out_size,
-                     sigma0,
-                     non_linear=True):
-        """
-        a common dense layer: y = w^{T}x + b
-        a noisy layer: y = (w + \\epsilon_w*\\sigma_w)^{T}x +
-            (b+\\epsilon_b*\\sigma_b)
-        where \epsilon are random variables sampled from factorized normal
-        distributions and \\sigma are trainable variables which are expected to
-        vanish along the training procedure
-        """
-        in_size = int(action_in.shape[1])
-
-        epsilon_in = tf.random.normal(shape=[in_size])
-        epsilon_out = tf.random.normal(shape=[out_size])
-        epsilon_in = self._f_epsilon(epsilon_in)
-        epsilon_out = self._f_epsilon(epsilon_out)
-        epsilon_w = tf.matmul(
-            a=tf.expand_dims(epsilon_in, -1), b=tf.expand_dims(epsilon_out, 0))
-        epsilon_b = epsilon_out
-        sigma_w = tf1.get_variable(
-            name=prefix + "_sigma_w",
-            shape=[in_size, out_size],
-            dtype=tf.float32,
-            initializer=tf1.random_uniform_initializer(
-                minval=-1.0 / np.sqrt(float(in_size)),
-                maxval=1.0 / np.sqrt(float(in_size))))
-        # TF noise generation can be unreliable on GPU
-        # If generating the noise on the CPU,
-        # lowering sigma0 to 0.1 may be helpful
-        sigma_b = tf1.get_variable(
-            name=prefix + "_sigma_b",
-            shape=[out_size],
-            dtype=tf.float32,  # 0.5~GPU, 0.1~CPU
-            initializer=tf1.constant_initializer(
-                sigma0 / np.sqrt(float(in_size))))
-
-        w = tf1.get_variable(
-            name=prefix + "_fc_w",
-            shape=[in_size, out_size],
-            dtype=tf.float32,
-            initializer=tf.initializers.GlorotUniform())
-        b = tf1.get_variable(
-            name=prefix + "_fc_b",
-            shape=[out_size],
-            dtype=tf.float32,
-            initializer=tf.initializers.Zeros())
-
-        action_activation = \
-            tf.keras.layers.Lambda(lambda x: tf.matmul(
-                x, w + sigma_w * epsilon_w) + b + sigma_b * epsilon_b)(
-                action_in)
-
-        if not non_linear:
-            return action_activation
-        return tf.nn.relu(action_activation)
-
-    def _f_epsilon(self, x):
-        return tf.math.sign(x) * tf.math.sqrt(tf.math.abs(x))

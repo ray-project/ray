@@ -771,7 +771,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work);
 
   // TODO(swang): Evict entries from these caches.
-  /// Cache for the WorkerFailureTable in the GCS.
+  /// Cache for the WorkerTable in the GCS.
   absl::flat_hash_set<WorkerID> failed_workers_cache_;
   /// Cache for the ClientTable in the GCS.
   absl::flat_hash_set<ClientID> failed_nodes_cache_;

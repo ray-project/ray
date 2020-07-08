@@ -32,6 +32,7 @@ class TestA3C(unittest.TestCase):
                     results = trainer.train()
                     print(results)
                 check_compute_single_action(trainer)
+                trainer.stop()
 
 
 if __name__ == "__main__":

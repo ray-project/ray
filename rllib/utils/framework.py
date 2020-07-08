@@ -39,7 +39,8 @@ def try_import_tf(error=False):
     if "TF_CPP_MIN_LOG_LEVEL" not in os.environ:
         os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-    #TODO: Allow env var to force compat.v1 behavior even if tf2.x installed.
+    # TODO: (sven) Allow env var to force compat.v1 behavior even if tf2.x
+    #  installed.
 
     # Try to reuse already imported tf module. This will avoid going through
     # the initial import steps below and thereby switching off v2_behavior
@@ -181,10 +182,10 @@ def get_variable(value,
             tf.Variable.
         torch_tensor (bool): For framework="torch": Whether to actually create
             a torch.tensor, or just a python value (default).
-        device (Optional[torch.Device]): An optional torch device to use for the
-            created torch tensor.
-        shape (Optional[TensorShape]): An optional shape to use iff `value` does
-            not have any (e.g. if it's an initializer w/o explicit value).
+        device (Optional[torch.Device]): An optional torch device to use for
+            the created torch tensor.
+        shape (Optional[TensorShape]): An optional shape to use iff `value`
+            does not have any (e.g. if it's an initializer w/o explicit value).
         dtype (Optional[TensorType]): An optional dtype to use iff `value` does
             not have any (e.g. if it's an initializer w/o explicit value).
 

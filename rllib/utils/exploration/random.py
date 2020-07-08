@@ -28,7 +28,7 @@ class Random(Exploration):
 
         Args:
             action_space (Space): The gym action space used by the environment.
-            framework (Optional[str]): One of None, "tf", "torch".
+            framework (Optional[str]): One of None, "tf", "tfe", "torch".
         """
         super().__init__(
             action_space=action_space,

@@ -25,13 +25,14 @@ class TestA2C(unittest.TestCase):
 
         # Test against all frameworks.
         for fw in framework_iterator(config):
-            config["sample_async"] = fw == "tf"
+            config["sample_async"] = fw in ["tf", "tfe"]
             for env in ["PongDeterministic-v0"]:
                 trainer = a3c.A2CTrainer(config=config, env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
                     print(results)
                 check_compute_single_action(trainer)
+                trainer.stop()
 
     def test_a2c_exec_impl(ray_start_regular):
         config = {"min_iter_time_s": 0}
@@ -39,6 +40,7 @@ class TestA2C(unittest.TestCase):
             trainer = a3c.A2CTrainer(env="CartPole-v0", config=config)
             assert isinstance(trainer.train(), dict)
             check_compute_single_action(trainer)
+            trainer.stop()
 
     def test_a2c_exec_impl_microbatch(ray_start_regular):
         config = {
@@ -49,6 +51,7 @@ class TestA2C(unittest.TestCase):
             trainer = a3c.A2CTrainer(env="CartPole-v0", config=config)
             assert isinstance(trainer.train(), dict)
             check_compute_single_action(trainer)
+            trainer.stop()
 
 
 if __name__ == "__main__":
