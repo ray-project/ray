@@ -533,7 +533,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   // happen if the owner of the actor dies while there are still callers.
   // TODO(swang): We can skip this step and delete the actor table entry
   // entirely if the callers check directly whether the owner is still alive.
-  actor->UpdateAddress(rpc::Address());
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
   auto actor_table_data =
@@ -625,7 +624,6 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   RAY_CHECK(actor != nullptr);
   auto node_id = actor->GetNodeID();
   auto worker_id = actor->GetWorkerID();
-  actor->UpdateAddress(rpc::Address());
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   // If the need_reschedule is set to false, then set the `remaining_restarts` to 0
   // so that the actor will never be rescheduled.
@@ -646,14 +644,18 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   if (remaining_restarts != 0) {
     mutable_actor_table_data->set_num_restarts(++num_restarts);
     mutable_actor_table_data->set_state(rpc::ActorTableData::RESTARTING);
+    const auto actor_table_data = actor->GetActorTableData();
+    // Make sure to reset the address before flushing to GCS. Otherwise,
+    // GCS will mistakenly consider this lease request succeeds when restarting.
+    actor->UpdateAddress(rpc::Address());
     mutable_actor_table_data->clear_resource_mapping();
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, *mutable_actor_table_data,
-        [this, actor_id, mutable_actor_table_data](Status status) {
-          RAY_CHECK_OK(gcs_pub_sub_->Publish(
-              ACTOR_CHANNEL, actor_id.Hex(),
-              mutable_actor_table_data->SerializeAsString(), nullptr));
+        [this, actor_id, actor_table_data](Status status) {
+          RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
+                                             actor_table_data.SerializeAsString(),
+                                             nullptr));
         }));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
