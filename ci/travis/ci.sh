@@ -118,12 +118,7 @@ test_core() {
     "//:*"
   )
   case "${OSTYPE}" in
-    linux*)
-      args+=(
-        -//:sample_test  # TestEqualOccurrenceChance fails on Ubuntu on GitHub Actions for some reason
-      )
-      ;;
-    msys*)
+    msys)
       args+=(
         -//:redis_gcs_client_test
         -//:core_worker_test
@@ -141,10 +136,8 @@ test_python() {
   if [ "${OSTYPE}" = msys ]; then
     local args=(python/ray/tests/...)
     args+=(
-      -python/ray/tests:test_actor_failures  # flaky
       -python/ray/tests:test_advanced_2
       -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
-      -python/ray/tests:test_array  # timeout
       -python/ray/tests:test_autoscaler_aws
       -python/ray/tests:test_component_failures
       -python/ray/tests:test_cython
@@ -154,13 +147,11 @@ test_python() {
       -python/ray/tests:test_metrics
       -python/ray/tests:test_multi_node
       -python/ray/tests:test_multi_node_2
-      -python/ray/tests:test_multiprocessing  # flaky/timeout
+      -python/ray/tests:test_multiprocessing  # test_connect_to_ray() fails to connect to raylet
       -python/ray/tests:test_node_manager
       -python/ray/tests:test_object_manager
       -python/ray/tests:test_projects
-      -python/ray/tests:test_ray_init  # flaky
-      -python/ray/tests:test_reconstruction  # UnreconstructableError
-      -python/ray/tests:test_reference_counting_2  # UnreconstructableError
+      -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_webui
