@@ -55,6 +55,10 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
         return reporter_pb2.GetProfilingStatsReply(
             profiling_stats=profiling_stats, stdout=stdout, stderr=stderr)
 
+    def ReportMetrics(self, request, context):
+        print(request)
+        return reporter_pb2.ReportMetricsReply()
+
 
 def recursive_asdict(o):
     if isinstance(o, tuple) and hasattr(o, "_asdict"):

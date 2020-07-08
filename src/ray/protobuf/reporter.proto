@@ -16,6 +16,8 @@ syntax = "proto3";
 
 package ray.rpc;
 
+import "src/ray/protobuf/common.proto";
+
 message GetProfilingStatsRequest {
   // PID of the worker process.
   uint32 pid = 1;
@@ -33,10 +35,7 @@ message GetProfilingStatsReply {
 }
 
 message ReportMetricsRequest {
-  string metric_name = 1;
-  int64 timestamp = 2;
-  double value = 3;
-  map<string, string> tags = 4;
+  repeated MetricPoint metrics_point = 1;
 }
 
 message ReportMetricsReply {

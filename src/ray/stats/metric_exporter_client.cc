@@ -23,7 +23,7 @@ namespace stats {
 /// Stdout Exporter
 ///
 void StdoutExporterClient::ReportMetrics(const std::vector<MetricPoint> &points) {
-  // RAY_LOG(DEBUG) << "Metric point size : " << points.size();
+  RAY_LOG(DEBUG) << "Metric point size : " << points.size();
 }
 
 ///
@@ -43,15 +43,29 @@ void MetricExporterDecorator::ReportMetrics(const std::vector<MetricPoint> &poin
 /// Metrics Agent Exporter
 ///
 MetricsAgentExporter::MetricsAgentExporter(std::shared_ptr<MetricExporterClient> exporter,
-                                           const int port)
-    : MetricExporterDecorator(exporter) {
-  rpc::ClientCallManager client_call_manager(io_service_);
-  client_.reset(new rpc::MetricsAgentClient("127.0.0.1", port, client_call_manager));
+                                           const int port,
+                                           boost::asio::io_service &io_service)
+    : MetricExporterDecorator(exporter), client_call_manager_(io_service) {
+  const std::string address = "127.0.0.1";
+  client_.reset(new rpc::MetricsAgentClient(address, port, client_call_manager_));
 }
 
 void MetricsAgentExporter::ReportMetrics(const std::vector<MetricPoint> &points) {
   MetricExporterDecorator::ReportMetrics(points);
-  // Initialize a rpc client to the new node manager.
+  rpc::ReportMetricsRequest request;
+  for (auto point : points) {
+    auto metric_point = request.add_metrics_point();
+    metric_point->set_metric_name(point.metric_name);
+    metric_point->set_timestamp(point.timestamp);
+    metric_point->set_value(point.value);
+    auto mutable_tags = metric_point->mutable_tags();
+    for (auto &tag : point.tags) {
+      (*mutable_tags)[tag.first] = tag.second;
+    }
+  }
+
+  // TODO(sang): Should retry metrics report if it fails.
+  client_->ReportMetrics(request, nullptr);
 }
 
 }  // namespace stats

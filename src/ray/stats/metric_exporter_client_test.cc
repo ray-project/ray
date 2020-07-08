@@ -108,17 +108,19 @@ class MetricExporterClientTest : public ::testing::Test {
   void SetUp() {
     const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
                                          {stats::WorkerPidKey, "1000"}};
-    ray::stats::Init("127.0.0.1:8888", global_tags, 10054, false);
     std::shared_ptr<MetricExporterClient> exporter(new stats::StdoutExporterClient());
     std::shared_ptr<MetricExporterClient> mock1(new MockExporterClient1(exporter));
     std::shared_ptr<MetricExporterClient> mock2(new MockExporterClient2(mock1));
-    MetricExporter::Register(mock2, kMockReportBatchSize);
+    ray::stats::Init(global_tags, 10054, io_service_, mock2, kMockReportBatchSize);
   }
 
   void Shutdown() {
     MockExporterClient1::ResetCount();
     MockExporterClient2::ResetCount();
   }
+
+ private:
+  boost::asio::io_service io_service_;
 };
 
 int MockExporterClient1::client1_count;
@@ -167,6 +169,7 @@ TEST_F(MetricExporterClientTest, exporter_client_caculation_test) {
     random_sum.Record(i, {{tag1, std::to_string(i)}, {tag2, std::to_string(i * 2)}});
     random_hist.Record(i, {{tag1, std::to_string(i)}, {tag2, std::to_string(i * 2)}});
   }
+  RAY_LOG(ERROR) << "Record done!!";
   std::this_thread::sleep_for(std::chrono::milliseconds(kReportFlushInterval + 200));
   RAY_LOG(INFO) << "Min " << MockExporterClient1::GetLastestHistMin() << ", mean "
                 << MockExporterClient1::GetLastestHistMean() << ", max "

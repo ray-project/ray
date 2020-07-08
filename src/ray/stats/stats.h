@@ -34,23 +34,33 @@ namespace ray {
 
 namespace stats {
 
+#include <boost/asio.hpp>
+
 /// Include metric_defs.h to define measure items.
 #include "metric_defs.h"
 
 /// Initialize stats.
-static void Init(const std::string &address, const TagsType &global_tags,
-                 const int metrics_agent_port, bool disable_stats = false) {
+static void Init(const TagsType &global_tags,
+                 const int metrics_agent_port,
+                 boost::asio::io_service &io_service,
+                 std::shared_ptr<MetricExporterClient> exporter = nullptr,
+                 int64_t k_report_batch_size = RayConfig::instance().k_report_batch_size(),
+                 bool disable_stats = RayConfig::instance().disable_stats()) {
   StatsConfig::instance().SetIsDisableStats(disable_stats);
   if (disable_stats) {
     RAY_LOG(INFO) << "Disabled stats.";
     return;
   }
 
-  std::shared_ptr<MetricExporterClient> stdout_exporter(new StdoutExporterClient());
-  std::shared_ptr<MetricExporterClient> exporter(
-      new MetricsAgentExporter(stdout_exporter, metrics_agent_port));
-  MetricExporter::Register(exporter, RayConfig::instance().k_report_batch_size());
+  if (exporter == nullptr) {
+    // Set it static to make it a singleton object.
+    static std::shared_ptr<MetricExporterClient> stdout_exporter(
+        new StdoutExporterClient());
+    static std::shared_ptr<MetricExporterClient> exporter(
+        new MetricsAgentExporter(stdout_exporter, metrics_agent_port, io_service));
+  }
 
+  MetricExporter::Register(exporter, k_report_batch_size);
   StatsConfig::instance().SetGlobalTags(global_tags);
 }
 

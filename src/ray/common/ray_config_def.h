@@ -314,3 +314,6 @@ RAY_CONFIG(bool, gcs_actor_service_enabled,
 
 /// The batch size for metrics export.
 RAY_CONFIG(int64_t, k_report_batch_size, 100)
+
+/// Whether or not we enable metrics collection.
+RAY_CONFIG(int64_t, disable_stats, false)

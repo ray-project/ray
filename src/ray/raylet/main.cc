@@ -45,8 +45,6 @@ DEFINE_string(java_worker_command, "", "Java worker command.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
-DEFINE_bool(disable_stats, false, "Whether disable the stats.");
-DEFINE_string(stat_address, "127.0.0.1:8888", "The address that we report metrics to.");
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
 DEFINE_string(plasma_directory, "", "The shared memory directory of the object store.");
@@ -82,19 +80,10 @@ int main(int argc, char *argv[]) {
   const std::string redis_password = FLAGS_redis_password;
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
-  const bool disable_stats = FLAGS_disable_stats;
-  const std::string stat_address = FLAGS_stat_address;
   const int64_t object_store_memory = FLAGS_object_store_memory;
   const std::string plasma_directory = FLAGS_plasma_directory;
   const bool huge_pages = FLAGS_huge_pages;
   gflags::ShutDownCommandLineFlags();
-
-  // Initialize stats.
-  const ray::stats::TagsType global_tags = {
-      {ray::stats::JobNameKey, "raylet"},
-      {ray::stats::VersionKey, "0.9.0.dev0"},
-      {ray::stats::NodeAddressKey, node_ip_address}};
-  ray::stats::Init(stat_address, global_tags, metrics_agent_port, disable_stats);
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
@@ -189,6 +178,13 @@ int main(int argc, char *argv[]) {
 
   // Initialize the node manager.
   boost::asio::io_service main_service;
+
+  // Initialize stats.
+  const ray::stats::TagsType global_tags = {
+      {ray::stats::JobNameKey, "raylet"},
+      {ray::stats::VersionKey, "0.9.0.dev0"},
+      {ray::stats::NodeAddressKey, node_ip_address}};
+  ray::stats::Init(global_tags, metrics_agent_port, main_service);
 
   // Initialize gcs client
   ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
