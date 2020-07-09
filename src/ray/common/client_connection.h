@@ -63,6 +63,13 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
   void WriteMessageAsync(int64_t type, int64_t length, const uint8_t *message,
                          const std::function<void(const ray::Status &)> &handler);
 
+  /// Read a message from the client.
+  ///
+  /// \param type The message type (e.g., a flatbuffer enum).
+  /// \param message A pointer to the message buffer.
+  /// \return Status.
+  Status ReadMessage(int64_t type, std::vector<uint8_t> *message);
+
   /// Write a buffer to this connection.
   ///
   /// \param buffer The buffer.

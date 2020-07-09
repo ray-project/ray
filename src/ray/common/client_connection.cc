@@ -121,13 +121,38 @@ ray::Status ServerConnection::WriteMessage(int64_t type, int64_t length,
   sync_writes_ += 1;
   bytes_written_ += length;
 
-  std::vector<boost::asio::const_buffer> message_buffers;
   auto write_cookie = RayConfig::instance().ray_cookie();
-  message_buffers.push_back(boost::asio::buffer(&write_cookie, sizeof(write_cookie)));
-  message_buffers.push_back(boost::asio::buffer(&type, sizeof(type)));
-  message_buffers.push_back(boost::asio::buffer(&length, sizeof(length)));
-  message_buffers.push_back(boost::asio::buffer(message, length));
-  return WriteBuffer(message_buffers);
+  return WriteBuffer({
+    boost::asio::buffer(&write_cookie, sizeof(write_cookie)),
+    boost::asio::buffer(&type, sizeof(type)),
+    boost::asio::buffer(&length, sizeof(length)),
+    boost::asio::buffer(message, length),
+  });
+}
+
+Status ServerConnection::ReadMessage(int64_t type, std::vector<uint8_t> *message) {
+  int64_t read_cookie, read_type, read_length;
+  // Wait for a message header from the client. The message header includes the
+  // protocol version, the message type, and the length of the message.
+  RAY_RETURN_NOT_OK(ReadBuffer({
+      boost::asio::buffer(&read_cookie, sizeof(read_cookie)),
+      boost::asio::buffer(&read_type, sizeof(read_type)),
+      boost::asio::buffer(&read_length, sizeof(read_length)),
+  }));
+  if (read_cookie != RayConfig::instance().ray_cookie()) {
+    std::ostringstream ss;
+    ss << "Ray cookie mismatch for received message. "
+       << "Received cookie: " << read_cookie;
+    return Status::IOError(ss.str());
+  }
+  if (type != read_type) {
+    std::ostringstream ss;
+    ss << "Connection corrupted. Expected message type: " << type
+       << ", receviced message type: " << read_type;
+    return Status::IOError(ss.str());
+  }
+  message->resize(read_length);
+  return ReadBuffer({boost::asio::buffer(*message)});
 }
 
 void ServerConnection::WriteMessageAsync(
@@ -253,10 +278,11 @@ void ClientConnection::Register() {
 void ClientConnection::ProcessMessages() {
   // Wait for a message header from the client. The message header includes the
   // protocol version, the message type, and the length of the message.
-  std::vector<boost::asio::mutable_buffer> header;
-  header.push_back(boost::asio::buffer(&read_cookie_, sizeof(read_cookie_)));
-  header.push_back(boost::asio::buffer(&read_type_, sizeof(read_type_)));
-  header.push_back(boost::asio::buffer(&read_length_, sizeof(read_length_)));
+  std::vector<boost::asio::mutable_buffer> header{
+      boost::asio::buffer(&read_cookie_, sizeof(read_cookie_)),
+      boost::asio::buffer(&read_type_, sizeof(read_type_)),
+      boost::asio::buffer(&read_length_, sizeof(read_length_)),
+  };
   boost::asio::async_read(
       ServerConnection::socket_, header,
       boost::bind(&ClientConnection::ProcessMessageHeader,
