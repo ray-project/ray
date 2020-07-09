@@ -25,7 +25,8 @@ from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_TYPE_WORKER, NODE_TYPE_HEAD
 
 from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
-from ray.autoscaler.updater import NodeUpdaterThread, DockerCommandRunner
+from ray.autoscaler.updater import NodeUpdaterThread
+from ray.autoscaler.command_runner import DockerCommandRunner
 from ray.autoscaler.log_timer import LogTimer
 from ray.worker import global_worker
 
