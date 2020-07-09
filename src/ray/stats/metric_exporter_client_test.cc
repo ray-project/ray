@@ -21,9 +21,9 @@
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "opencensus/stats/internal/stats_exporter_impl.h"
 #include "ray/stats/metric_exporter.h"
 #include "ray/stats/metric_exporter_client.h"
-#include "opencensus/stats/internal/stats_exporter_impl.h"
 #include "ray/stats/stats.h"
 
 namespace ray {
@@ -116,7 +116,7 @@ uint32_t kReportFlushInterval = 500;
 
 class MetricExporterClientTest : public ::testing::Test {
  public:
-  void SetUp() {
+  virtual void SetUp() override {
     const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
                                          {stats::WorkerPidKey, "1000"}};
     absl::Duration report_interval = absl::Milliseconds(kReportFlushInterval);
@@ -130,14 +130,12 @@ class MetricExporterClientTest : public ::testing::Test {
     MetricExporter::Register(mock2, kMockReportBatchSize);
   }
 
-  void TearDown() {
-    Shutdown();
-  }
+  virtual void TearDown() override { Shutdown(); }
 
   void Shutdown() {
+    opencensus::stats::StatsExporterImpl::Get()->ClearHandlersForTesting();
     MockExporterClient1::ResetCount();
     MockExporterClient2::ResetCount();
-    opencensus::stats::StatsExporterImpl::Get()->ClearHandlersForTesting();
   }
 };
 
@@ -176,7 +174,8 @@ TEST_F(MetricExporterClientTest, exporter_client_caculation_test) {
   for (int i = 0; i < 50; i++) {
     hist_vector.push_back((double)(i * 10.0));
   }
-  static stats::Histogram random_hist("ray.random.hist", "", "", hist_vector, {tag1, tag2});
+  static stats::Histogram random_hist("ray.random.hist", "", "", hist_vector,
+                                      {tag1, tag2});
   for (size_t i = 0; i < 500; ++i) {
     random_counter.Record(i, {{tag1, std::to_string(i)}, {tag2, std::to_string(i * 2)}});
     random_gauge.Record(i, {{tag1, std::to_string(i)}, {tag2, std::to_string(i * 2)}});
