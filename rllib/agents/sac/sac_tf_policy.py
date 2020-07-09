@@ -15,7 +15,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-from ray.rllib.utils.tf_ops import minimize_and_clip
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -227,15 +226,14 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
         td_error = base_td_error
 
     critic_loss = [
-        tf1.losses.mean_squared_error(
-            labels=q_t_selected_target, predictions=q_t_selected, weights=0.5)
+        0.5 * tf.keras.losses.MSE(
+            y_true=q_t_selected_target, y_pred=q_t_selected)
     ]
     if policy.config["twin_q"]:
         critic_loss.append(
-            tf1.losses.mean_squared_error(
-                labels=q_t_selected_target,
-                predictions=twin_q_t_selected,
-                weights=0.5))
+            0.5 * tf.keras.losses.MSE(
+                y_true=q_t_selected_target,
+                y_pred=twin_q_t_selected))
 
     # Alpha- and actor losses.
     # Note: In the papers, alpha is used directly, here we take the log.
@@ -277,63 +275,64 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
     return actor_loss + tf.math.add_n(critic_loss) + alpha_loss
 
 
-def gradients(policy, optimizer, loss):
-    if policy.config["grad_clip"]:
-        actor_grads_and_vars = minimize_and_clip(
-            optimizer,  # isn't optimizer not well defined here (which one)?
-            policy.actor_loss,
-            var_list=policy.model.policy_variables(),
-            clip_val=policy.config["grad_clip"])
+def gradients_fn(policy, optimizer, loss):
+    # Eager: Use GradientTape.
+    if policy.config["framework"] == "tfe":
+        tape = optimizer.tape
+        pol_weights = policy.model.policy_variables()
+        actor_grads_and_vars = list(zip(tape.gradient(
+            policy.actor_loss, pol_weights), pol_weights))
+        q_weights = policy.model.q_variables()
         if policy.config["twin_q"]:
-            q_variables = policy.model.q_variables()
-            half_cutoff = len(q_variables) // 2
-            critic_grads_and_vars = []
-            critic_grads_and_vars += minimize_and_clip(
-                optimizer,
-                policy.critic_loss[0],
-                var_list=q_variables[:half_cutoff],
-                clip_val=policy.config["grad_clip"])
-            critic_grads_and_vars += minimize_and_clip(
-                optimizer,
-                policy.critic_loss[1],
-                var_list=q_variables[half_cutoff:],
-                clip_val=policy.config["grad_clip"])
+            half_cutoff = len(q_weights) // 2
+            grads_1 = tape.gradient(
+                policy.critic_loss[0], q_weights[:half_cutoff])
+            grads_2 = tape.gradient(
+                policy.critic_loss[1], q_weights[half_cutoff:])
+            critic_grads_and_vars = \
+                list(zip(grads_1, q_weights[:half_cutoff])) + \
+                list(zip(grads_2, q_weights[half_cutoff:]))
         else:
-            critic_grads_and_vars = minimize_and_clip(
-                optimizer,
-                policy.critic_loss[0],
-                var_list=policy.model.q_variables(),
-                clip_val=policy.config["grad_clip"])
-        alpha_grads_and_vars = minimize_and_clip(
-            optimizer,
-            policy.alpha_loss,
-            var_list=[policy.model.log_alpha],
-            clip_val=policy.config["grad_clip"])
+            critic_grads_and_vars = list(zip(tape.gradient(
+                policy.critic_loss[0], q_weights), q_weights))
+
+        alpha_vars = [policy.model.log_alpha]
+        alpha_grads_and_vars = list(zip(tape.gradient(
+            policy.alpha_loss, alpha_vars), alpha_vars))
+    # Tf1.x: Use optimizer.compute_gradients()
     else:
         actor_grads_and_vars = policy._actor_optimizer.compute_gradients(
             policy.actor_loss, var_list=policy.model.policy_variables())
+
+        q_weights = policy.model.q_variables()
         if policy.config["twin_q"]:
-            q_variables = policy.model.q_variables()
-            half_cutoff = len(q_variables) // 2
+            half_cutoff = len(q_weights) // 2
             base_q_optimizer, twin_q_optimizer = policy._critic_optimizer
             critic_grads_and_vars = base_q_optimizer.compute_gradients(
-                policy.critic_loss[0], var_list=q_variables[:half_cutoff]
+                policy.critic_loss[0], var_list=q_weights[:half_cutoff]
             ) + twin_q_optimizer.compute_gradients(
-                policy.critic_loss[1], var_list=q_variables[half_cutoff:])
+                policy.critic_loss[1], var_list=q_weights[half_cutoff:])
         else:
             critic_grads_and_vars = policy._critic_optimizer[
                 0].compute_gradients(
-                    policy.critic_loss[0], var_list=policy.model.q_variables())
+                    policy.critic_loss[0], var_list=q_weights)
         alpha_grads_and_vars = policy._alpha_optimizer.compute_gradients(
             policy.alpha_loss, var_list=[policy.model.log_alpha])
 
-    # save these for later use in build_apply_op
-    policy._actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
-                                    if g is not None]
-    policy._critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
-                                     if g is not None]
-    policy._alpha_grads_and_vars = [(g, v) for (g, v) in alpha_grads_and_vars
-                                    if g is not None]
+    # Clip if necessary.
+    if policy.config["grad_clip"]:
+        clip_func = tf.clip_by_norm
+    else:
+        clip_func = tf.identity
+
+    # Save grads and vars for later use in `build_apply_op`.
+    policy._actor_grads_and_vars = [
+        (clip_func(g), v) for (g, v) in actor_grads_and_vars if g is not None]
+    policy._critic_grads_and_vars = [
+        (clip_func(g), v) for (g, v) in critic_grads_and_vars if g is not None]
+    policy._alpha_grads_and_vars = [
+        (clip_func(g), v) for (g, v) in alpha_grads_and_vars if g is not None]
+
     grads_and_vars = (
         policy._actor_grads_and_vars + policy._critic_grads_and_vars +
         policy._alpha_grads_and_vars)
@@ -431,7 +430,7 @@ SACTFPolicy = build_tf_policy(
     action_distribution_fn=get_distribution_inputs_and_class,
     loss_fn=sac_actor_critic_loss,
     stats_fn=stats,
-    gradients_fn=gradients,
+    gradients_fn=gradients_fn,
     apply_gradients_fn=apply_gradients,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
     mixins=[

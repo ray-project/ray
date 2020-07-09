@@ -770,6 +770,9 @@ def init(address=None,
         if _internal_config is not None and len(_internal_config) != 0:
             raise ValueError("When connecting to an existing cluster, "
                              "_internal_config must not be provided.")
+        if lru_evict:
+            raise ValueError("When connecting to an existing cluster, "
+                             "lru_evict must not be provided.")
 
         # In this case, we only need to connect the node.
         ray_params = ray.parameter.RayParams(
