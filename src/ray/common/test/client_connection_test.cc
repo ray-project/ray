@@ -142,6 +142,18 @@ TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
   ASSERT_EQ(num_messages, 3);
 }
 
+TEST_F(ClientConnectionTest, SimpleSyncReadWriteMessage) {
+  auto writer = ServerConnection::Create(std::move(in_));
+  auto reader = ServerConnection::Create(std::move(out_));
+
+  const std::vector<uint8_t> write_buffer = {1, 2, 3, 4, 5};
+  std::vector<uint8_t> read_buffer;
+
+  RAY_CHECK_OK(writer->WriteMessage(42, write_buffer.size(), write_buffer.data()));
+  RAY_CHECK_OK(reader->ReadMessage(42, &read_buffer));
+  RAY_CHECK(write_buffer == read_buffer);
+}
+
 TEST_F(ClientConnectionTest, SimpleAsyncReadWriteBuffers) {
   auto writer = ServerConnection::Create(std::move(in_));
   auto reader = ServerConnection::Create(std::move(out_));

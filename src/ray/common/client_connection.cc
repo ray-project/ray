@@ -123,10 +123,10 @@ ray::Status ServerConnection::WriteMessage(int64_t type, int64_t length,
 
   auto write_cookie = RayConfig::instance().ray_cookie();
   return WriteBuffer({
-    boost::asio::buffer(&write_cookie, sizeof(write_cookie)),
-    boost::asio::buffer(&type, sizeof(type)),
-    boost::asio::buffer(&length, sizeof(length)),
-    boost::asio::buffer(message, length),
+      boost::asio::buffer(&write_cookie, sizeof(write_cookie)),
+      boost::asio::buffer(&type, sizeof(type)),
+      boost::asio::buffer(&length, sizeof(length)),
+      boost::asio::buffer(message, length),
   });
 }
 
