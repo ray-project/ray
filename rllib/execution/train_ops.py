@@ -135,50 +135,50 @@ class TrainTFMultiGPU:
         # reuse is set to AUTO_REUSE because Adam nodes are created after
         # all of the device copies are created.
         self.optimizers = {}
-        if tfv == 2:
-            for policy_id in self.policies:
-                policy = self.workers.local_worker().get_policy(policy_id)
-                with tf1.variable_scope(policy_id, reuse=tf1.AUTO_REUSE):
-                    # TODO: multi-GPU for tfe.
-                    if policy._state_inputs:
-                        rnn_inputs = policy._state_inputs + [
-                            policy._seq_lens
-                        ]
-                    else:
-                        rnn_inputs = []
-                    self.optimizers[policy_id] = (
-                        LocalSyncParallelOptimizer(
-                            policy._optimizer,
-                            self.devices,
-                            [v for _, v in policy._loss_inputs],
-                            rnn_inputs,
-                            self.per_device_batch_size,
-                            policy.copy))
-        else:
-            with self.workers.local_worker().tf_sess.graph.as_default():
-                with self.workers.local_worker().tf_sess.as_default():
-                    for policy_id in self.policies:
-                        policy = self.workers.local_worker().get_policy(
-                            policy_id)
-                        with tf1.variable_scope(
-                                policy_id, reuse=tf1.AUTO_REUSE):
-                            if policy._state_inputs:
-                                rnn_inputs = policy._state_inputs + [
-                                    policy._seq_lens
-                                ]
-                            else:
-                                rnn_inputs = []
-                            self.optimizers[policy_id] = (
-                                LocalSyncParallelOptimizer(
-                                    policy._optimizer,
-                                    self.devices,
-                                    [v for _, v in policy._loss_inputs],
-                                    rnn_inputs,
-                                    self.per_device_batch_size,
-                                    policy.copy))
+        #if tfv == 2:
+        #    for policy_id in self.policies:
+        #        policy = self.workers.local_worker().get_policy(policy_id)
+        #        with tf1.variable_scope(policy_id, reuse=tf1.AUTO_REUSE):
+        #            # TODO: multi-GPU for tfe.
+        #            if policy._state_inputs:
+        #                rnn_inputs = policy._state_inputs + [
+        #                    policy._seq_lens
+        #                ]
+        #            else:
+        #                rnn_inputs = []
+        #            self.optimizers[policy_id] = (
+        #                LocalSyncParallelOptimizer(
+        #                    policy._optimizer,
+        #                    self.devices,
+        #                    [v for _, v in policy._loss_inputs],
+        #                    rnn_inputs,
+        #                    self.per_device_batch_size,
+        #                    policy.copy))
+        #else:
+        with self.workers.local_worker().tf_sess.graph.as_default():
+            with self.workers.local_worker().tf_sess.as_default():
+                for policy_id in self.policies:
+                    policy = self.workers.local_worker().get_policy(
+                        policy_id)
+                    with tf1.variable_scope(
+                            policy_id, reuse=tf1.AUTO_REUSE):
+                        if policy._state_inputs:
+                            rnn_inputs = policy._state_inputs + [
+                                policy._seq_lens
+                            ]
+                        else:
+                            rnn_inputs = []
+                        self.optimizers[policy_id] = (
+                            LocalSyncParallelOptimizer(
+                                policy._optimizer,
+                                self.devices,
+                                [v for _, v in policy._loss_inputs],
+                                rnn_inputs,
+                                self.per_device_batch_size,
+                                policy.copy))
 
-                    self.sess = self.workers.local_worker().tf_sess
-                    self.sess.run(tf1.global_variables_initializer())
+                self.sess = self.workers.local_worker().tf_sess
+                self.sess.run(tf1.global_variables_initializer())
 
     def __call__(self,
                  samples: SampleBatchType) -> (SampleBatchType, List[dict]):
