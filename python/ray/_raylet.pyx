@@ -112,8 +112,8 @@ include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
 
-# Expose GCC & Clang macro to report whether C++ optimizations were enabled
-# during compilation.
+# Expose GCC & Clang macro to report
+# whether C++ optimizations were enabled during compilation.
 OPTIMIZED = __OPTIMIZE__
 
 logger = logging.getLogger(__name__)
@@ -1014,7 +1014,7 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().RemoveActorHandleReference(
             c_actor_id)
 
-    cdef make_actor_handle(self, CActorHandle *c_actor_handle):
+    cdef make_actor_handle(self, const CActorHandle *c_actor_handle):
         worker = ray.worker.global_worker
         worker.check_connected()
         manager = worker.function_actor_manager
@@ -1058,24 +1058,27 @@ cdef class CoreWorker:
                                               ObjectID
                                               outer_object_id):
         cdef:
-            CActorHandle* c_actor_handle
             CObjectID c_outer_object_id = (outer_object_id.native() if
                                            outer_object_id else
                                            CObjectID.Nil())
-        c_actor_id = (CCoreWorkerProcess.GetCoreWorker()
+        c_actor_id = (CCoreWorkerProcess
+                      .GetCoreWorker()
                       .DeserializeAndRegisterActorHandle(
                           bytes, c_outer_object_id))
-        check_status(CCoreWorkerProcess.GetCoreWorker().GetActorHandle(
-            c_actor_id, &c_actor_handle))
+        cdef:
+            # NOTE: This handle should not be stored anywhere.
+            const CActorHandle* c_actor_handle = (
+                CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id))
         return self.make_actor_handle(c_actor_handle)
 
     def get_named_actor_handle(self, const c_string &name):
         cdef:
-            CActorHandle* c_actor_handle
+            # NOTE: This handle should not be stored anywhere.
+            const CActorHandle* c_actor_handle = (
+                CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(name))
 
-        with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .GetNamedActorHandle(name, &c_actor_handle))
+        if c_actor_handle == NULL:
+            raise ValueError("Named Actor Handle Not Found")
         return self.make_actor_handle(c_actor_handle)
 
     def serialize_actor_handle(self, ActorID actor_id):

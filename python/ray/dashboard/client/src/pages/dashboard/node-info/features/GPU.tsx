@@ -1,7 +1,9 @@
-import { Typography } from "@material-ui/core";
+import { Box, Tooltip, Typography } from "@material-ui/core";
 import React from "react";
-import { RayletWorkerStats } from "../../../../api";
+import { GPUStats , RayletWorkerStats, ResourceSlot } from "../../../../api";
+import { RightPaddedTypography } from "../../../../common/CustomTypography";
 import { Accessor } from "../../../../common/tableUtils";
+
 import UsageBar from "../../../../common/UsageBar";
 import { getWeightedAverage, sum } from "../../../../common/util";
 import {
@@ -13,6 +15,8 @@ import {
   WorkerFeatureData,
   WorkerFeatureRenderFn,
 } from "./types";
+
+const GPU_COL_WIDTH = 120;
 
 const clusterGPUUtilization = (nodes: Array<Node>): number => {
   const utils = nodes
@@ -42,7 +46,7 @@ const nodeGPUAccessor: Accessor<NodeFeatureData> = ({ node }) =>
 const ClusterGPU: ClusterFeatureRenderFn = ({ nodes }) => {
   const clusterAverageUtilization = clusterGPUUtilization(nodes);
   return (
-    <div style={{ minWidth: 60 }}>
+    <div style={{ minWidth: GPU_COL_WIDTH }}>
       {isNaN(clusterAverageUtilization) ? (
         <Typography color="textSecondary" component="span" variant="inherit">
           N/A
@@ -58,32 +62,86 @@ const ClusterGPU: ClusterFeatureRenderFn = ({ nodes }) => {
 };
 
 const NodeGPU: NodeFeatureRenderFn = ({ node }) => {
-  const nodeUtil = nodeGPUUtilization(node);
   return (
-    <div style={{ minWidth: 60 }}>
-      {isNaN(nodeUtil) ? (
+    <div style={{ minWidth: GPU_COL_WIDTH }}>
+      {hasGPU ? (
+        node.gpus.map((gpu, i) => <NodeGPUEntry gpu={gpu} slot={i} />)
+      ) : (
         <Typography color="textSecondary" component="span" variant="inherit">
           N/A
         </Typography>
-      ) : (
-        <UsageBar percent={nodeUtil} text={`${nodeUtil.toFixed(1)}%`} />
       )}
     </div>
   );
 };
 
+type NodeGPUEntryProps = {
+  slot: number;
+  gpu: GPUStats;
+};
+
+const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ gpu, slot }) => {
+  return (
+    <Box display="flex" style={{ minWidth: GPU_COL_WIDTH }}>
+      <Tooltip title={gpu.name}>
+        <RightPaddedTypography variant="body1">[{slot}]:</RightPaddedTypography>
+      </Tooltip>
+      <UsageBar
+        percent={gpu.utilization_gpu}
+        text={`${gpu.utilization_gpu.toFixed(1)}%`}
+      />
+    </Box>
+  );
+};
+
+type WorkerGPUEntryProps = {
+  resourceSlot: ResourceSlot;
+};
+
+const WorkerGPUEntry: React.FC<WorkerGPUEntryProps> = ({ resourceSlot }) => {
+  const { allocation, slot } = resourceSlot;
+  // This is a bit of  a dirty hack . For some reason, the slot GPU slot
+  // 0 as assigned always shows up as undefined in the API response.
+  // There are other times, such as a partial allocation, where we truly don't
+  // know the slot, however this will just plug the hole of 0s coming through
+  // as undefined. I have not been able to figure out the root cause.
+  const slotMsg =
+    allocation >= 1 && slot === undefined
+      ? "0"
+      : slot === undefined
+      ? "?"
+      : slot.toString();
+  return (
+    <Typography variant="body1">
+      [{slotMsg}]: {allocation}
+    </Typography>
+  );
+};
+
 const WorkerGPU: WorkerFeatureRenderFn = ({ rayletWorker }) => {
-  const aggregateAllocation = workerGPUUtilization(rayletWorker);
+  const workerRes = rayletWorker?.coreWorkerStats.usedResources;
+  const workerUsedGPUResources = workerRes?.["GPU"];
   let message;
-  if (aggregateAllocation === undefined) {
+  if (workerUsedGPUResources === undefined) {
     message = (
       <Typography color="textSecondary" component="span" variant="inherit">
         N/A
       </Typography>
     );
   } else {
-    const plural = aggregateAllocation === 1 ? "" : "s";
-    message = <b>{`${aggregateAllocation} GPU${plural} in use`}</b>;
+    message = workerUsedGPUResources.resourceSlots
+      .sort((slot1, slot2) => {
+        if (slot1.slot === undefined && slot2.slot === undefined) {
+          return 0;
+        } else if (slot1.slot === undefined) {
+          return 1;
+        } else if (slot2.slot === undefined) {
+          return -1;
+        } else {
+          return slot1.slot - slot2.slot;
+        }
+      })
+      .map((resourceSlot) => <WorkerGPUEntry resourceSlot={resourceSlot} />);
   }
   return <div style={{ minWidth: 60 }}>{message}</div>;
 };
