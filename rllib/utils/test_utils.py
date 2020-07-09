@@ -61,7 +61,7 @@ def framework_iterator(config=None,
                            "installed)!".format(fw))
             continue
         elif fw == "tfe" and not eager_mode:
-            logger.warning("framework_iterator skipping eager (could not "
+            logger.warning("framework_iterator skipping tf-eager (could not "
                            "import `eager_mode` from tensorflow.python)!")
             continue
         elif fw == "tf2" and tfv != 2:
@@ -81,7 +81,7 @@ def framework_iterator(config=None,
         config["framework"] = fw
 
         eager_ctx = None
-        if fw == "tfe":
+        if fw in ["tfe", "tf2"]:
             eager_ctx = eager_mode()
             eager_ctx.__enter__()
             assert tf1.executing_eagerly()
