@@ -202,6 +202,14 @@ class NodeInfoGcsServiceHandler {
   virtual void HandleDeleteResources(const DeleteResourcesRequest &request,
                                      DeleteResourcesReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleSetInternalConfig(const SetInternalConfigRequest &request,
+                                       SetInternalConfigReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetInternalConfig(const GetInternalConfigRequest &request,
+                                       GetInternalConfigReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeInfoGcsService`.
@@ -227,6 +235,8 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(GetResources);
     NODE_INFO_SERVICE_RPC_HANDLER(UpdateResources);
     NODE_INFO_SERVICE_RPC_HANDLER(DeleteResources);
+    NODE_INFO_SERVICE_RPC_HANDLER(SetInternalConfig);
+    NODE_INFO_SERVICE_RPC_HANDLER(GetInternalConfig);
   }
 
  private:
