@@ -178,14 +178,8 @@ class LSTMWrapper(RecurrentNetwork):
 
     @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):
-        try:
-            model_out, self._value_out, h, c = self._rnn_model([inputs, seq_lens] +
-                                                               state)
-        except Exception as e:
-            print()
-            model_out, self._value_out, h, c = self._rnn_model(
-                [inputs, seq_lens] +
-                state)
+        model_out, self._value_out, h, c = self._rnn_model([inputs, seq_lens] +
+                                                           state)
         return model_out, [h, c]
 
     @override(ModelV2)

@@ -321,7 +321,8 @@ class TestMultiAgentEnv(unittest.TestCase):
 
     def test_returning_model_based_rollouts_data(self):
 
-        def _compute_actions(policy, model, obs_batch, episodes=None, **kwargs):
+        def _compute_actions(
+                policy, model, obs_batch, episodes=None, **kwargs):
             # Pretend we did a model-based rollout and want to return
             # the extra trajectory.
             builder = episodes[0].new_batch_builder()

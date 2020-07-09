@@ -222,7 +222,6 @@ def multi_from_logits(behaviour_policy_logits,
         behaviour_policy_logits[i].shape.assert_has_rank(3)
         target_policy_logits[i].shape.assert_has_rank(3)
 
-    name_scope_kwargs = {}
     with tf1.name_scope(name, values=[
         behaviour_policy_logits, target_policy_logits, actions,
         discounts, rewards, values, bootstrap_value
@@ -331,7 +330,6 @@ def from_importance_weights(log_rhos,
     if clip_pg_rho_threshold is not None:
         clip_pg_rho_threshold.shape.assert_has_rank(0)
 
-    name_scope_kwargs = {}
     with tf1.name_scope(name, values=[
         log_rhos, discounts, rewards, values, bootstrap_value
     ]):
