@@ -65,6 +65,13 @@ class Analysis:
             mode (str): One of [min, max].
         """
         rows = self._retrieve_rows(metric=metric, mode=mode)
+        if not rows:
+            # only nans encountered when retrieving rows
+            logger.warning("Not able to retrieve the best config for {} "
+                           "according to the specified metric "
+                           "(only nans encountered).".format(
+                               self._experiment_dir))
+            return None
         all_configs = self.get_all_configs()
         compare_op = max if mode == "max" else min
         best_path = compare_op(rows, key=lambda k: rows[k][metric])
@@ -77,11 +84,20 @@ class Analysis:
             metric (str): Key for trial info to order on.
             mode (str): One of [min, max].
         """
+        assert mode in ["max", "min"]
         df = self.dataframe(metric=metric, mode=mode)
-        if mode == "max":
-            return df.iloc[df[metric].idxmax()].logdir
-        elif mode == "min":
-            return df.iloc[df[metric].idxmin()].logdir
+        mode_idx = pd.Series.idxmax if mode == "max" else pd.Series.idxmin
+        try:
+            return df.iloc[mode_idx(df[metric])].logdir
+        except KeyError:
+            # all dirs contains only nan values
+            # for the specified metric
+            # -> df is an empty dataframe
+            logger.warning("Not able to retrieve the best logdir for {} "
+                           "according to the specified metric "
+                           "(only nans encountered).".format(
+                               self._experiment_dir))
+            return None
 
     def fetch_trial_dataframes(self):
         fail_count = 0
@@ -165,8 +181,9 @@ class Analysis:
                 rows[path] = df.iloc[idx].to_dict()
             except TypeError:
                 # idx is nan
-                logger.warning("Non-numerical value encountered. \
-                    Not considering the trial: {}".format(path))
+                logger.warning(
+                    "Warning: Non-numerical value(s) encountered for {}".
+                    format(path))
 
         return rows
 
