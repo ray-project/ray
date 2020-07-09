@@ -12,6 +12,7 @@ import zipfile
 
 from itertools import chain
 
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -138,10 +139,22 @@ def download(url):
             import requests
         except ImportError:
             requests = False
-    if requests:
-        result = requests.get(url).content
-    else:
-        result = urllib.request.urlopen(url).read()
+    result = None
+    if requests and result is None:
+        try:
+            result = requests.get(url).content
+        except requests.exceptions.SSLError:
+            pass  # This can happen with old SSL/TLS components.
+    if result is None:
+        # This fallback is for users who don't have requests installed.
+        try:
+            result = urllib.request.urlopen(url).read()
+        except urllib.error.URLError:
+            pass  # This can happen with old SSL/TLS components.
+    if result is None:
+        # This fallback is necessary on Python 3.5 on macOS due to TLS 1.2.
+        curl_args = ["curl", "-s", "-L", "-f", "-o", "-", url]
+        result = subprocess.check_output(curl_args)
     return result
 
 
