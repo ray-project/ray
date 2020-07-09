@@ -47,6 +47,8 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int64_t kill_worker_timeout_milliseconds() const
 
+        int64_t worker_register_timeout_seconds() const
+
         int64_t max_time_for_handler_milliseconds() const
 
         int64_t max_time_for_loop() const

@@ -132,6 +132,7 @@ test_python() {
       -python/ray/tests:test_cython
       -python/ray/tests:test_failure
       -python/ray/tests:test_global_gc
+      -python/ray/tests:test_job
       -python/ray/tests:test_memstat
       -python/ray/tests:test_metrics
       -python/ray/tests:test_multi_node
@@ -200,7 +201,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      sphinx-build -q -E -T -b html source _build/html
+      sphinx-build -q -E -W -T -b html source _build/html
     fi
   )
 }
@@ -225,6 +226,9 @@ install_go() {
 
 install_ray() {
   (
+    # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
+    bazel build -k "//:*"  # Full build first, since pip install will build only a subset of targets
+
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
     pip install -v -e .
@@ -447,9 +451,6 @@ init() {
 }
 
 build() {
-  # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
-  bazel build -k "//:*"  # Full build first, since pip install will build only a subset of targets
-
   if ! need_wheels; then
     install_ray
     if [ "${LINT-}" = 1 ]; then

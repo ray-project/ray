@@ -13,7 +13,9 @@
 // limitations under the License.
 
 #include "ray/core_worker/lib/java/io_ray_runtime_actor_NativeActorHandle.h"
+
 #include <jni.h>
+
 #include "ray/common/id.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/common.h"
@@ -27,10 +29,8 @@ extern "C" {
 JNIEXPORT jint JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeGetLanguage(
     JNIEnv *env, jclass o, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
-  ray::ActorHandle *native_actor_handle = nullptr;
-  auto status = ray::CoreWorkerProcess::GetCoreWorker().GetActorHandle(
-      actor_id, &native_actor_handle);
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, false);
+  const ray::ActorHandle *native_actor_handle =
+      ray::CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id);
   return native_actor_handle->ActorLanguage();
 }
 
@@ -38,10 +38,8 @@ JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_actor_NativeActorHandle_nativeGetActorCreationTaskFunctionDescriptor(
     JNIEnv *env, jclass o, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
-  ray::ActorHandle *native_actor_handle = nullptr;
-  auto status = ray::CoreWorkerProcess::GetCoreWorker().GetActorHandle(
-      actor_id, &native_actor_handle);
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
+  const ray::ActorHandle *native_actor_handle =
+      ray::CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id);
   auto function_descriptor = native_actor_handle->ActorCreationTaskFunctionDescriptor();
   return NativeRayFunctionDescriptorToJavaStringList(env, function_descriptor);
 }
@@ -59,8 +57,9 @@ JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeS
   return bytes;
 }
 
-JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(
-    JNIEnv *env, jclass o, jbyteArray data) {
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(JNIEnv *env, jclass o,
+                                                              jbyteArray data) {
   auto buffer = JavaByteArrayToNativeBuffer(env, data);
   RAY_CHECK(buffer->Size() > 0);
   auto binary = std::string(reinterpret_cast<char *>(buffer->Data()), buffer->Size());

@@ -89,13 +89,11 @@ class DependencyWaiterInterface {
   /// Wait for the given objects, asynchronously. The core worker is notified when
   /// the wait completes.
   ///
-  /// \param object_ids The objects to wait for.
-  /// \param owner_addresses The addresses of the workers that own the objects.
+  /// \param references The objects to wait for.
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
   virtual ray::Status WaitForDirectActorCallArgs(
-      const std::vector<ObjectID> &object_ids,
-      const std::vector<rpc::Address> &owner_addresses, int64_t tag) = 0;
+      const std::vector<rpc::ObjectReference> &references, int64_t tag) = 0;
 
   virtual ~DependencyWaiterInterface(){};
 };
@@ -244,13 +242,11 @@ class RayletClient : public PinObjectsInterface,
   /// Wait for the given objects, asynchronously. The core worker is notified when
   /// the wait completes.
   ///
-  /// \param object_ids The objects to wait for.
-  /// \param owner_addresses The addresses of the workers that own the objects.
+  /// \param references The objects to wait for.
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
-  ray::Status WaitForDirectActorCallArgs(const std::vector<ObjectID> &object_ids,
-                                         const std::vector<rpc::Address> &owner_addresses,
-                                         int64_t tag) override;
+  ray::Status WaitForDirectActorCallArgs(
+      const std::vector<rpc::ObjectReference> &references, int64_t tag) override;
 
   /// Push an error to the relevant driver.
   ///

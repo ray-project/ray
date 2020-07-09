@@ -43,6 +43,14 @@ class StatsConfig final {
 
   bool IsStatsDisabled() const;
 
+  void SetReportInterval(const absl::Duration interval);
+
+  const absl::Duration &GetReportInterval() const;
+
+  void SetHarvestInterval(const absl::Duration interval);
+
+  const absl::Duration &GetHarvestInterval() const;
+
  private:
   StatsConfig() = default;
   ~StatsConfig() = default;
@@ -52,6 +60,13 @@ class StatsConfig final {
  private:
   TagsType global_tags_;
   bool is_stats_disabled_ = true;
+  // Regular reporting interval for all reporters.
+  absl::Duration report_interval_ = absl::Seconds(10);
+  // Time interval for periodic aggregation.
+  // Exporter may capture empty collection if harvest interval is longer than
+  // report interval. So harvest interval is suggusted to be half of report
+  // interval.
+  absl::Duration harvest_interval_ = absl::Seconds(5);
 };
 
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.

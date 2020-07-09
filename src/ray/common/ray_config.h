@@ -58,7 +58,8 @@ class RayConfig {
                       value.end(),            \
                       value.begin(),          \
                       ::tolower);             \
-       name##_ = value == "true";             \
+       name##_ = value == "true" ||           \
+                 value == "1";                \
     } else {                                  \
       std::istringstream stream(pair.second); \
       stream >> name##_;                      \

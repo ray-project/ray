@@ -12,8 +12,7 @@ class TestParameterNoise(unittest.TestCase):
             ddpg.DDPGTrainer,
             ddpg.DEFAULT_CONFIG,
             "Pendulum-v0", {},
-            np.array([1.0, 0.0, -1.0]),
-            fws="tf")
+            np.array([1.0, 0.0, -1.0]))
 
     def test_dqn_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
@@ -23,18 +22,16 @@ class TestParameterNoise(unittest.TestCase):
                 "is_slippery": False,
                 "map_name": "4x4"
             },
-            np.array(0),
-            fws=("tf", "tfe"))
+            np.array(0))
 
-    def do_test_parameter_noise_exploration(self, trainer_cls, config, env,
-                                            env_config, obs, fws):
+    def do_test_parameter_noise_exploration(
+            self, trainer_cls, config, env, env_config, obs):
         """Tests, whether an Agent works with ParameterNoise."""
         core_config = config.copy()
         core_config["num_workers"] = 0  # Run locally.
         core_config["env_config"] = env_config
 
-        for fw in framework_iterator(core_config, fws):
-
+        for fw in framework_iterator(core_config):
             config = core_config.copy()
 
             # Algo with ParameterNoise exploration (config["explore"]=True).
@@ -44,13 +41,15 @@ class TestParameterNoise(unittest.TestCase):
 
             trainer = trainer_cls(config=config, env=env)
             policy = trainer.get_policy()
+            pol_sess = getattr(policy, "_sess", None)
+
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
             noise_before = self._get_current_noise(policy, fw)
             check(noise_before, 0.0)
             initial_weights = self._get_current_weight(policy, fw)
 
             # Pseudo-start an episode and compare the weights before and after.
-            policy.exploration.on_episode_start(policy, tf_sess=policy._sess)
+            policy.exploration.on_episode_start(policy, tf_sess=pol_sess)
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
             noise_after_ep_start = self._get_current_noise(policy, fw)
             weights_after_ep_start = self._get_current_weight(policy, fw)
@@ -91,7 +90,7 @@ class TestParameterNoise(unittest.TestCase):
 
             # Pseudo-end the episode and compare weights again.
             # Make sure they are the original ones.
-            policy.exploration.on_episode_end(policy, tf_sess=policy._sess)
+            policy.exploration.on_episode_end(policy, tf_sess=pol_sess)
             weights_after_ep_end = self._get_current_weight(policy, fw)
             check(current_weight - noise, weights_after_ep_end, decimals=5)
 
@@ -111,7 +110,7 @@ class TestParameterNoise(unittest.TestCase):
 
             # Pseudo-start an episode and compare the weights before and after
             # (they should be the same).
-            policy.exploration.on_episode_start(policy, tf_sess=policy._sess)
+            policy.exploration.on_episode_start(policy, tf_sess=pol_sess)
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
 
             # Should be the same, as we don't do anything at the beginning of
@@ -136,7 +135,7 @@ class TestParameterNoise(unittest.TestCase):
             # Pseudo-end the episode and compare weights again.
             # Make sure they are the original ones (no noise permanently
             # applied throughout the episode).
-            policy.exploration.on_episode_end(policy, tf_sess=policy._sess)
+            policy.exploration.on_episode_end(policy, tf_sess=pol_sess)
             weights_after_episode_end = self._get_current_weight(policy, fw)
             check(initial_weights, weights_after_episode_end)
             # Noise should still be the same (re-sampling only happens at
@@ -170,7 +169,7 @@ class TestParameterNoise(unittest.TestCase):
             # the same action for the same input (parameter noise is
             # deterministic).
             policy = trainer.get_policy()
-            policy.exploration.on_episode_start(policy, tf_sess=policy._sess)
+            policy.exploration.on_episode_start(policy, tf_sess=pol_sess)
             a_ = trainer.compute_action(obs)
             for _ in range(10):
                 a = trainer.compute_action(obs, explore=True)

@@ -350,14 +350,20 @@ std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
   for (const auto &object_id : object_ids) {
     rpc::Address owner_addr;
     bool has_owner = GetOwnerInternal(object_id, &owner_addr);
-    RAY_CHECK(has_owner)
-        << object_id
-        << " Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
-           "(ObjectID.from_binary(...)) cannot be passed to ray.get(), ray.wait(), or as "
-           "a task argument because Ray does not know which task will create them. "
-           "If this was not how your object ID was generated, please file an issue "
-           "at https://github.com/ray-project/ray/issues/";
-    owner_addresses.push_back(owner_addr);
+    if (!has_owner) {
+      RAY_LOG(WARNING)
+          << " Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+             "(ObjectID.from_binary(...)) cannot be passed to ray.get(), ray.wait(), or "
+             "as "
+             "a task argument because Ray does not know which task will create them. "
+             "If this was not how your object ID was generated, please file an issue "
+             "at https://github.com/ray-project/ray/issues/";
+      // TODO(swang): Java does not seem to keep the ref count properly, so the
+      // entry may get deleted.
+      owner_addresses.push_back(rpc::Address());
+    } else {
+      owner_addresses.push_back(owner_addr);
+    }
   }
   return owner_addresses;
 }

@@ -4,6 +4,7 @@ import numpy as np
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.maml.maml_tf_policy import MAMLTFPolicy
+from ray.rllib.agents.maml.maml_torch_policy import MAMLTorchPolicy
 from ray.rllib.agents.trainer_template import build_trainer
 from typing import List
 from ray.rllib.evaluation.metrics import get_learner_stats
@@ -198,9 +199,8 @@ def execution_plan(workers, config):
 
 
 def get_policy_class(config):
-    # @mluo: TODO
     if config["framework"] == "torch":
-        raise ValueError("MAML not implemented in Pytorch yet")
+        return MAMLTorchPolicy
     return MAMLTFPolicy
 
 

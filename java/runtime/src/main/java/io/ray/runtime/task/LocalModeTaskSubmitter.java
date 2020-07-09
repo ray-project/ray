@@ -95,9 +95,11 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     // Check whether task arguments are ready.
     for (TaskArg arg : taskSpec.getArgsList()) {
       ByteString idByteString = arg.getObjectRef().getObjectId();
-      ObjectId id = new ObjectId(idByteString.toByteArray());
-      if (!objectStore.isObjectReady(id)) {
-        unreadyObjects.add(id);
+      if (idByteString  != ByteString.EMPTY) {
+        ObjectId id = new ObjectId(idByteString.toByteArray());
+        if (!objectStore.isObjectReady(id)) {
+          unreadyObjects.add(id);
+        }
       }
     }
     if (taskSpec.getType() == TaskType.ACTOR_TASK) {
@@ -130,7 +132,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
                         .setFunctionName(functionDescriptorList.get(1))
                         .setSignature(functionDescriptorList.get(2))))
         .addAllArgs(args.stream().map(arg -> arg.id != null ? TaskArg.newBuilder()
-            .setObjectRef(ObjectReference.newBuilder().setObjectId(ByteString.copyFrom(arg.id.getBytes()))).build()
+            .setObjectRef(ObjectReference.newBuilder().setObjectId(
+                    ByteString.copyFrom(arg.id.getBytes()))).build()
             : TaskArg.newBuilder().setData(ByteString.copyFrom(arg.value.data))
             .setMetadata(arg.value.metadata != null ? ByteString
                 .copyFrom(arg.value.metadata) : ByteString.EMPTY).build())

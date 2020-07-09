@@ -273,7 +273,7 @@ ray::Status NodeManager::RegisterGcs() {
   // node failure. These workers can be identified by comparing the raylet_id
   // in their rpc::Address to the ID of a failed raylet.
   const auto &worker_failure_handler =
-      [this](const WorkerID &id, const gcs::WorkerFailureData &worker_failure_data) {
+      [this](const WorkerID &id, const gcs::WorkerTableData &worker_failure_data) {
         HandleUnexpectedWorkerFailure(worker_failure_data.worker_address());
       };
   RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
@@ -370,8 +370,8 @@ void NodeManager::Heartbeat() {
             local_resources.GetAvailableResources())) {
       for (const auto &resource_pair :
            local_resources.GetAvailableResources().GetResourceMap()) {
-        heartbeat_data->add_resources_available_label(resource_pair.first);
-        heartbeat_data->add_resources_available_capacity(resource_pair.second);
+        (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
+            resource_pair.second;
       }
       last_heartbeat_resources_.SetAvailableResources(
           ResourceSet(local_resources.GetAvailableResources()));
@@ -381,8 +381,8 @@ void NodeManager::Heartbeat() {
             local_resources.GetTotalResources())) {
       for (const auto &resource_pair :
            local_resources.GetTotalResources().GetResourceMap()) {
-        heartbeat_data->add_resources_total_label(resource_pair.first);
-        heartbeat_data->add_resources_total_capacity(resource_pair.second);
+        (*heartbeat_data->mutable_resources_total())[resource_pair.first] =
+            resource_pair.second;
       }
       last_heartbeat_resources_.SetTotalResources(
           ResourceSet(local_resources.GetTotalResources()));
@@ -393,8 +393,8 @@ void NodeManager::Heartbeat() {
             local_resources.GetLoadResources())) {
       for (const auto &resource_pair :
            local_resources.GetLoadResources().GetResourceMap()) {
-        heartbeat_data->add_resource_load_label(resource_pair.first);
-        heartbeat_data->add_resource_load_capacity(resource_pair.second);
+        (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
+            resource_pair.second;
       }
       last_heartbeat_resources_.SetLoadResources(
           ResourceSet(local_resources.GetLoadResources()));
@@ -403,16 +403,16 @@ void NodeManager::Heartbeat() {
     // If light heartbeat disabled, we send whole resources information every time.
     for (const auto &resource_pair :
          local_resources.GetAvailableResources().GetResourceMap()) {
-      heartbeat_data->add_resources_available_label(resource_pair.first);
-      heartbeat_data->add_resources_available_capacity(resource_pair.second);
+      (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
+          resource_pair.second;
     }
     last_heartbeat_resources_.SetAvailableResources(
         ResourceSet(local_resources.GetAvailableResources()));
 
     for (const auto &resource_pair :
          local_resources.GetTotalResources().GetResourceMap()) {
-      heartbeat_data->add_resources_total_label(resource_pair.first);
-      heartbeat_data->add_resources_total_capacity(resource_pair.second);
+      (*heartbeat_data->mutable_resources_total())[resource_pair.first] =
+          resource_pair.second;
     }
     last_heartbeat_resources_.SetTotalResources(
         ResourceSet(local_resources.GetTotalResources()));
@@ -420,8 +420,8 @@ void NodeManager::Heartbeat() {
     local_resources.SetLoadResources(local_queues_.GetResourceLoad());
     for (const auto &resource_pair :
          local_resources.GetLoadResources().GetResourceMap()) {
-      heartbeat_data->add_resource_load_label(resource_pair.first);
-      heartbeat_data->add_resource_load_capacity(resource_pair.second);
+      (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
+          resource_pair.second;
     }
     last_heartbeat_resources_.SetLoadResources(
         ResourceSet(local_resources.GetLoadResources()));
@@ -819,37 +819,26 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   // If light heartbeat enabled, we update remote resources only when related resources
   // map in heartbeat is not empty.
   if (light_heartbeat_enabled_) {
-    if (heartbeat_data.resources_total_label_size() > 0) {
-      ResourceSet remote_total(
-          VectorFromProtobuf(heartbeat_data.resources_total_label()),
-          VectorFromProtobuf(heartbeat_data.resources_total_capacity()));
+    if (heartbeat_data.resources_total_size() > 0) {
+      ResourceSet remote_total(MapFromProtobuf(heartbeat_data.resources_total()));
       remote_resources.SetTotalResources(std::move(remote_total));
     }
-    if (heartbeat_data.resources_available_label_size() > 0) {
-      ResourceSet remote_available(
-          VectorFromProtobuf(heartbeat_data.resources_available_label()),
-          VectorFromProtobuf(heartbeat_data.resources_available_capacity()));
+    if (heartbeat_data.resources_available_size() > 0) {
+      ResourceSet remote_available(MapFromProtobuf(heartbeat_data.resources_available()));
       remote_resources.SetAvailableResources(std::move(remote_available));
     }
-    if (heartbeat_data.resource_load_label_size() > 0) {
-      ResourceSet remote_load(
-          VectorFromProtobuf(heartbeat_data.resource_load_label()),
-          VectorFromProtobuf(heartbeat_data.resource_load_capacity()));
+    if (heartbeat_data.resource_load_size() > 0) {
+      ResourceSet remote_load(MapFromProtobuf(heartbeat_data.resource_load()));
       // Extract the load information and save it locally.
       remote_resources.SetLoadResources(std::move(remote_load));
     }
   } else {
     // If light heartbeat disabled, we update remote resources every time.
-    ResourceSet remote_total(
-        VectorFromProtobuf(heartbeat_data.resources_total_label()),
-        VectorFromProtobuf(heartbeat_data.resources_total_capacity()));
+    ResourceSet remote_total(MapFromProtobuf(heartbeat_data.resources_total()));
     remote_resources.SetTotalResources(std::move(remote_total));
-    ResourceSet remote_available(
-        VectorFromProtobuf(heartbeat_data.resources_available_label()),
-        VectorFromProtobuf(heartbeat_data.resources_available_capacity()));
+    ResourceSet remote_available(MapFromProtobuf(heartbeat_data.resources_available()));
     remote_resources.SetAvailableResources(std::move(remote_available));
-    ResourceSet remote_load(VectorFromProtobuf(heartbeat_data.resource_load_label()),
-                            VectorFromProtobuf(heartbeat_data.resource_load_capacity()));
+    ResourceSet remote_load(MapFromProtobuf(heartbeat_data.resource_load()));
     // Extract the load information and save it locally.
     remote_resources.SetLoadResources(std::move(remote_load));
   }
@@ -2196,8 +2185,8 @@ void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
                                       const JobID &job_id) {
   const std::string meta = std::to_string(static_cast<int>(error_type));
   for (const auto &object_id : objects_to_fail) {
-    arrow::Status status = store_client_.CreateAndSeal(object_id, "", meta);
-    if (!status.ok() && !plasma::IsPlasmaObjectExists(status)) {
+    Status status = store_client_.CreateAndSeal(object_id, "", meta);
+    if (!status.ok() && !status.IsObjectExists()) {
       RAY_LOG(INFO) << "Marking plasma object failed " << object_id;
       // If we failed to save the error code, log a warning and push an error message
       // to the driver.

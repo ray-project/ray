@@ -100,10 +100,12 @@ def ray_deps_setup():
         ],
     )
 
-    http_file(
+    auto_http_archive(
         name = "com_github_tporadowski_redis_bin",
+        build_file = "//bazel:BUILD.redis",
+        strip_prefix = None,
+        url = "https://github.com/tporadowski/redis/releases/download/v4.0.14.2/Redis-x64-4.0.14.2.zip",
         sha256 = "6fac443543244c803311de5883b714a7ae3c4fa0594cad51d75b24c4ef45b353",
-        urls = ["https://github.com/tporadowski/redis/releases/download/v4.0.14.2/Redis-x64-4.0.14.2.zip"],
     )
 
     auto_http_archive(
@@ -116,6 +118,13 @@ def ray_deps_setup():
         name = "bazel_common",
         url = "https://github.com/google/bazel-common/archive/084aadd3b854cad5d5e754a7e7d958ac531e6801.tar.gz",
         sha256 = "a6e372118bc961b182a3a86344c0385b6b509882929c6b12dc03bb5084c775d5",
+    )
+
+    auto_http_archive(
+        name = "bazel_skylib",
+        strip_prefix = None,
+        url = "https://github.com/bazelbuild/bazel-skylib/releases/download/1.0.2/bazel-skylib-1.0.2.tar.gz",
+        sha256 = "97e70364e9249702246c0e9444bccdc4b847bed1eb03c5a3ece4f83dfe6abc44",
     )
 
     auto_http_archive(
@@ -195,8 +204,11 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "io_opencensus_cpp",
-        url = "https://github.com/census-instrumentation/opencensus-cpp/archive/3aa11f20dd610cb8d2f7c62e58d1e69196aadf11.tar.gz",
-        sha256 = "a0b4e2d3c4479cc343c003f0c31f48e9e05461cb232815e348fc0358bfa8bb79",
+        url = "https://github.com/census-instrumentation/opencensus-cpp/archive/b14a5c0dcc2da8a7fc438fab637845c73438b703.zip",
+        sha256 = "6592e07672e7f7980687f6c1abda81974d8d379e273fea3b54b6c4d855489b9d",
+        patches = [
+            "//thirdparty/patches:opencensus-cpp-harvest-interval.patch",
+        ]
     )
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.

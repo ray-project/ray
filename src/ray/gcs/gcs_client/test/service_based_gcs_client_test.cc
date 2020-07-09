@@ -455,7 +455,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   bool SubscribeToWorkerFailures(
-      const gcs::SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe) {
+      const gcs::SubscribeCallback<WorkerID, rpc::WorkerTableData> &subscribe) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
@@ -463,11 +463,18 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   bool ReportWorkerFailure(
-      const std::shared_ptr<rpc::WorkerFailureData> &worker_failure_data) {
+      const std::shared_ptr<rpc::WorkerTableData> &worker_failure_data) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Workers().AsyncReportWorkerFailure(
         worker_failure_data,
         [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool AddWorker(const std::shared_ptr<rpc::WorkerTableData> &worker_data) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(
+        worker_data, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -824,14 +831,22 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerInfo) {
   // Subscribe to all unexpected failure of workers from GCS.
   std::atomic<int> worker_failure_count(0);
   auto on_subscribe = [&worker_failure_count](const WorkerID &worker_id,
-                                              const rpc::WorkerFailureData &result) {
+                                              const rpc::WorkerTableData &result) {
     ++worker_failure_count;
   };
   ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
 
-  // Report a worker failure to GCS.
-  auto worker_failure_data = Mocker::GenWorkerFailureData();
-  ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
+  // Report a worker failure to GCS when this worker doesn't exist.
+  auto worker_data = Mocker::GenWorkerTableData();
+  worker_data->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
+  ASSERT_TRUE(ReportWorkerFailure(worker_data));
+  WaitPendingDone(worker_failure_count, 0);
+
+  // Add a worker to GCS.
+  ASSERT_TRUE(AddWorker(worker_data));
+
+  // Report a worker failure to GCS when this worker is actually exist.
+  ASSERT_TRUE(ReportWorkerFailure(worker_data));
   WaitPendingDone(worker_failure_count, 1);
 }
 
@@ -1065,7 +1080,7 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerTableResubscribe) {
   // Subscribe to all unexpected failure of workers from GCS.
   std::atomic<int> worker_failure_count(0);
   auto on_subscribe = [&worker_failure_count](const WorkerID &worker_id,
-                                              const rpc::WorkerFailureData &result) {
+                                              const rpc::WorkerTableData &result) {
     ++worker_failure_count;
   };
   ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
@@ -1073,9 +1088,13 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerTableResubscribe) {
   // Restart GCS
   RestartGcsServer();
 
+  // Add a worker before report worker failure to GCS.
+  auto worker_data = Mocker::GenWorkerTableData();
+  worker_data->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
+  ASSERT_TRUE(AddWorker(worker_data));
+
   // Report a worker failure to GCS and check if resubscribe works.
-  auto worker_failure_data = Mocker::GenWorkerFailureData();
-  ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
+  ASSERT_TRUE(ReportWorkerFailure(worker_data));
   WaitPendingDone(worker_failure_count, 1);
 }
 
