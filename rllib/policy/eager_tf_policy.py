@@ -325,16 +325,15 @@ def build_eager_tf_policy(name,
             self._is_training = False
             self._state_in = state_batches
 
-            if tf.executing_eagerly():
-                n = len(obs_batch)
-            else:
-                n = obs_batch.shape[0]
-            seq_lens = tf.ones(n, dtype=tf.int32)
+            if not tf1.executing_eagerly():
+                tf1.enable_eager_execution()
 
             input_dict = {
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
                 "is_training": tf.constant(False),
             }
+            n = input_dict[SampleBatch.CUR_OBS].shape[0]
+            seq_lens = tf.ones(n, dtype=tf.int32)
             if obs_include_prev_action_reward:
                 if prev_action_batch is not None:
                     input_dict[SampleBatch.PREV_ACTIONS] = \
