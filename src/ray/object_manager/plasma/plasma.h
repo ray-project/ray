@@ -88,6 +88,18 @@ struct Client {
   std::string name = "anonymous_client";
 };
 
+std::ostream &operator<<(std::ostream &os, const std::shared_ptr<Client> &client);
+
+/// Connection to Plasma Store.
+struct StoreConn {
+  explicit StoreConn(int fd) : fd(fd) {}
+
+  /// The file descriptor used to communicate with the store.
+  int fd;
+};
+
+std::ostream &operator<<(std::ostream &os, const std::shared_ptr<StoreConn> &store_conn);
+
 // TODO(pcm): Replace this by the flatbuffers message PlasmaObjectSpec.
 struct PlasmaObject {
 #ifdef PLASMA_CUDA

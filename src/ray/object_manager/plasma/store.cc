@@ -711,18 +711,18 @@ void PlasmaStore::ConnectClient(int listener_sock) {
       RAY_LOG(FATAL) << "Failed to process file event: " << s;
     }
   });
-  RAY_LOG(DEBUG) << "New connection with fd " << client_fd;
+  RAY_LOG(DEBUG) << "New connection with fd " << client;
 }
 
 void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
-  int client_fd = client->fd;
-  RAY_CHECK(client_fd > 0);
   auto it = connected_clients_.find(client);
   RAY_CHECK(it != connected_clients_.end());
+  int client_fd = client->fd;
+  RAY_CHECK(client_fd > 0);
   loop_->RemoveFileEvent(client_fd);
   // Close the socket.
   close(client_fd);
-  RAY_LOG(DEBUG) << "Disconnecting client on fd " << client_fd;
+  RAY_LOG(DEBUG) << "Disconnecting client on fd " << client;
   // Release all the objects that the client was using.
   eviction_policy_.ClientDisconnected(client.get());
   std::unordered_map<ObjectID, ObjectTableEntry*> sealed_objects;
@@ -878,7 +878,7 @@ void PlasmaStore::SubscribeToUpdates(const std::shared_ptr<Client> &client) {
   if (fd < 0) {
     // This may mean that the client died before sending the file descriptor.
     RAY_LOG(WARNING) << "Failed to receive file descriptor from client on fd "
-                       << client->fd << ".";
+                       << client << ".";
     return;
   }
 
@@ -1079,7 +1079,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client) {
                      client->fd);
     } break;
     case fb::MessageType::PlasmaDisconnectClient:
-      RAY_LOG(DEBUG) << "Disconnecting client on fd " << client->fd;
+      RAY_LOG(DEBUG) << "Disconnecting client on fd " << client;
       DisconnectClient(client);
       break;
     case fb::MessageType::PlasmaSetOptionsRequest: {
