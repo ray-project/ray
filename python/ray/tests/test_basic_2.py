@@ -589,7 +589,8 @@ def test_wait(ray_start_regular):
     assert remaining_ids == []
 
     object_refs = [f.remote(0), f.remote(5)]
-    ready_ids, remaining_ids = ray.wait(object_refs, timeout=0.5, num_returns=2)
+    ready_ids, remaining_ids = ray.wait(
+        object_refs, timeout=0.5, num_returns=2)
     assert len(ready_ids) == 1
     assert len(remaining_ids) == 1
 

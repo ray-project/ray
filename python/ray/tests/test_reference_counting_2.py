@@ -190,7 +190,7 @@ def test_pass_returned_object_ref(one_worker_100MiB, use_ray_put, failure):
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
 def test_recursively_pass_returned_object_ref(one_worker_100MiB, use_ray_put,
-                                             failure):
+                                              failure):
     @ray.remote
     def return_an_id():
         return put_object(
@@ -251,7 +251,7 @@ def test_recursively_pass_returned_object_ref(one_worker_100MiB, use_ray_put,
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
 def test_recursively_return_borrowed_object_ref(one_worker_100MiB, use_ray_put,
-                                               failure):
+                                                failure):
     @ray.remote
     def recursive(num_tasks_left):
         if num_tasks_left == 0:

@@ -460,7 +460,7 @@ class Pool:
 
         self._check_running()
         object_ref = self._run_batch(self._random_actor_index(), func,
-                                    [(args, kwargs)])
+                                     [(args, kwargs)])
         return AsyncResult(
             [object_ref], callback, error_callback, single_result=True)
 

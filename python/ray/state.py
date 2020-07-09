@@ -169,7 +169,8 @@ class GlobalState:
 
         if object_ref is not None:
             object_ref = ray.ObjectRef(hex_to_binary(object_ref))
-            object_info = self.global_state_accessor.get_object_info(object_ref)
+            object_info = self.global_state_accessor.get_object_info(
+                object_ref)
             if object_info is None:
                 return {}
             else:

@@ -236,12 +236,12 @@ class Worker:
 
         Args:
             value: The value to put in the object store.
-            object_ref (object_ref.ObjectRef): The object ref of the value to be
+            object_ref (ObjectRef): The object ref of the value to be
                 put. If None, one will be generated.
             pin_object: If set, the object will be pinned at the raylet.
 
         Returns:
-            object_ref.ObjectRef: The object ref the object was put under.
+            ObjectRef: The object ref the object was put under.
 
         Raises:
             ray.exceptions.ObjectStoreFullError: This is raised if the attempt
@@ -259,7 +259,7 @@ class Worker:
 
         if self.mode == LOCAL_MODE:
             assert object_ref is None, ("Local Mode does not support "
-                                       "inserting with an objectID")
+                                        "inserting with an objectID")
 
         serialized_value = self.get_serialization_context().serialize(value)
         # This *must* be the first place that we construct this python
@@ -270,7 +270,8 @@ class Worker:
         # reference counter.
         return ray.ObjectRef(
             self.core_worker.put_serialized_object(
-                serialized_value, object_ref=object_ref, pin_object=pin_object))
+                serialized_value, object_ref=object_ref,
+                pin_object=pin_object))
 
     def deserialize_objects(self, data_metadata_pairs, object_refs):
         context = self.get_serialization_context()
@@ -279,9 +280,9 @@ class Worker:
     def get_objects(self, object_refs, timeout=None):
         """Get the values in the object store associated with the IDs.
 
-        Return the values from the local object store for object_refs. This will
-        block until all the values for object_refs have been written to the
-        local object store.
+        Return the values from the local object store for object_refs. This
+        will block until all the values for object_refs have been written to
+        the local object store.
 
         Args:
             object_refs (List[object_ref.ObjectRef]): A list of the object refs
@@ -1482,8 +1483,8 @@ def get(object_refs, timeout=None):
     a list of object refs, you can use ``await asyncio.gather(*object_refs)``.
 
     Args:
-        object_refs: Object ref of the object to get or a list of object refs to
-            get.
+        object_refs: Object ref of the object to get or a list of object refs
+            to get.
         timeout (Optional[float]): The maximum amount of time in seconds to
             wait before returning.
 
@@ -1596,8 +1597,8 @@ def wait(object_refs, num_returns=1, timeout=None):
     ``await asyncio.wait(object_refs)``.
 
     Args:
-        object_refs (List[ObjectRef]): List of object refs for objects that may or
-            may not be ready. Note that these IDs must be unique.
+        object_refs (List[ObjectRef]): List of object refs for objects that may
+            or may not be ready. Note that these IDs must be unique.
         num_returns (int): The number of object refs that should be returned.
         timeout (float): The maximum amount of time in seconds to wait before
             returning.
@@ -1619,8 +1620,9 @@ def wait(object_refs, num_returns=1, timeout=None):
             blocking_wait_inside_async_warned = True
 
     if isinstance(object_refs, ObjectRef):
-        raise TypeError("wait() expected a list of ray.ObjectRef, got a single "
-                        "ray.ObjectRef")
+        raise TypeError(
+            "wait() expected a list of ray.ObjectRef, got a single "
+            "ray.ObjectRef")
 
     if not isinstance(object_refs, list):
         raise TypeError(

@@ -122,8 +122,8 @@ class MemoryTableEntry:
         # task, which is an actor handle.
         random_bits = object_ref_hex[:TASKID_RANDOM_BITS_SIZE]
         actor_random_bits = object_ref_hex[TASKID_RANDOM_BITS_SIZE:
-                                          TASKID_RANDOM_BITS_SIZE +
-                                          ACTORID_RANDOM_BITS_SIZE]
+                                           TASKID_RANDOM_BITS_SIZE +
+                                           ACTORID_RANDOM_BITS_SIZE]
         if (random_bits == "f" * 16 and not actor_random_bits == "f" * 8):
             return True
         else:

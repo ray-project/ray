@@ -66,8 +66,9 @@ def free(object_refs, local_only=False, delete_creating_tasks=False):
     # Make sure that the values are object refs.
     for object_ref in object_refs:
         if not isinstance(object_ref, ray.ObjectRef):
-            raise TypeError("Attempting to call `free` on the value {}, "
-                            "which is not an ray.ObjectRef.".format(object_ref))
+            raise TypeError(
+                "Attempting to call `free` on the value {}, "
+                "which is not an ray.ObjectRef.".format(object_ref))
 
     worker.check_connected()
     with profiling.profile("ray.free"):

@@ -17,10 +17,11 @@ class DistArray:
         else:
             self.object_refs = np.empty(self.num_blocks, dtype=object)
         if self.num_blocks != list(self.object_refs.shape):
-            raise Exception("The fields `num_blocks` and `object_refs` are "
-                            "inconsistent, `num_blocks` is {} and `object_refs` "
-                            "has shape {}".format(self.num_blocks,
-                                                  list(self.object_refs.shape)))
+            raise Exception(
+                "The fields `num_blocks` and `object_refs` are "
+                "inconsistent, `num_blocks` is {} and `object_refs` "
+                "has shape {}".format(self.num_blocks,
+                                      list(self.object_refs.shape)))
 
     @staticmethod
     def compute_block_lower(index, shape):
@@ -143,7 +144,8 @@ def triu(a):
         elif i == j:
             result.object_refs[i, j] = ra.triu.remote(a.object_refs[i, j])
         else:
-            result.object_refs[i, j] = ra.zeros_like.remote(a.object_refs[i, j])
+            result.object_refs[i, j] = ra.zeros_like.remote(
+                a.object_refs[i, j])
     return result
 
 
@@ -159,7 +161,8 @@ def tril(a):
         elif i == j:
             result.object_refs[i, j] = ra.tril.remote(a.object_refs[i, j])
         else:
-            result.object_refs[i, j] = ra.zeros_like.remote(a.object_refs[i, j])
+            result.object_refs[i, j] = ra.zeros_like.remote(
+                a.object_refs[i, j])
     return result
 
 
@@ -264,7 +267,7 @@ def add(x1, x2):
     result = DistArray(x1.shape)
     for index in np.ndindex(*result.num_blocks):
         result.object_refs[index] = ra.add.remote(x1.object_refs[index],
-                                                x2.object_refs[index])
+                                                  x2.object_refs[index])
     return result
 
 
@@ -278,5 +281,5 @@ def subtract(x1, x2):
     result = DistArray(x1.shape)
     for index in np.ndindex(*result.num_blocks):
         result.object_refs[index] = ra.subtract.remote(x1.object_refs[index],
-                                                     x2.object_refs[index])
+                                                       x2.object_refs[index])
     return result

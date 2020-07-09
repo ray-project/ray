@@ -207,7 +207,8 @@ def qr(a):
             W_c = ra.sum_list.remote(*W_rcs)
             for r in range(i, a.num_blocks[0]):
                 y_ri = y_val.object_refs[r - i, 0]
-                A_rc = qr_helper1.remote(a_work.object_refs[r, c], y_ri, t, W_c)
+                A_rc = qr_helper1.remote(a_work.object_refs[r, c], y_ri, t,
+                                         W_c)
                 a_work.object_refs[r, c] = A_rc
             r_res.object_refs[i, c] = a_work.object_refs[i, c]
 

@@ -800,9 +800,9 @@ class ActorHandle:
 
         Args:
             state: The serialized state of the actor handle.
-            outer_object_ref: The ObjectRef that the serialized actor handle was
-                contained in, if any. This is used for counting references to
-                the actor handle.
+            outer_object_ref: The ObjectRef that the serialized actor handle
+                was contained in, if any. This is used for counting references
+                to the actor handle.
 
         """
         worker = ray.worker.global_worker
