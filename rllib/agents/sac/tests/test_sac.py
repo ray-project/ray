@@ -54,7 +54,7 @@ class TestSAC(unittest.TestCase):
         config["learning_starts"] = 0
         config["prioritized_replay"] = True
         num_iterations = 1
-        for _ in framework_iterator(config, ("tf", "torch")):
+        for _ in framework_iterator(config):
             # Test for different env types (discrete w/ and w/o image, + cont).
             for env in [
                     "Pendulum-v0", "MsPacmanNoFrameskip-v4", "CartPole-v0"
