@@ -100,15 +100,23 @@ class GcsActorManagerTest : public ::testing::Test {
 
   void WaitActorCreated(const ActorID &actor_id) {
     auto condition = [this, actor_id]() {
-      auto created_actors = gcs_actor_manager_->GetCreatedActors();
-      for (auto &node_iter : created_actors) {
-        for (auto &actor_iter : node_iter.second) {
-          if (actor_iter.second == actor_id) {
-            return true;
+      // The created_actors_ of gcs actor manager will be modified in io_service thread.
+      // In order to avoid multithreading reading and writing created_actors_, we also
+      // send the read operation to io_service thread.
+      std::promise<bool> promise;
+      io_service_.post([this, actor_id, &promise]() {
+        const auto &created_actors = gcs_actor_manager_->GetCreatedActors();
+        for (auto &node_iter : created_actors) {
+          for (auto &actor_iter : node_iter.second) {
+            if (actor_iter.second == actor_id) {
+              promise.set_value(true);
+              return;
+            }
           }
         }
-      }
-      return false;
+        promise.set_value(false);
+      });
+      return promise.get_future().get();
     };
     EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
   }
