@@ -640,26 +640,6 @@ class RolloutWorker(ParallelIteratorWorker):
         if global_vars:
             self.set_global_vars(global_vars)
 
-    def get_extra_weights(self, model_attr,
-                    policies: List[PolicyID] = None) -> (ModelWeights, dict):
-        if policies is None:
-            policies = self.policy_map.keys()
-        return {
-            pid: policy.get_extra_weights(model_attr)
-            for pid, policy in self.policy_map.items() if pid in policies
-        }
-
-    def set_extra_weights(self, weights: ModelWeights, model_attr, 
-                    global_vars: dict = None) -> None:
-        for pid, w in weights.items():
-            self.policy_map[pid].set_extra_weights(w, model_attr)
-        if global_vars:
-            self.set_global_vars(global_vars)
-
-    def set_dict(self, normalizations):
-        for pid, policy in self.policy_map.items():
-            policy.dynamics_model.set_dict(normalizations)
-
     @DeveloperAPI
     def compute_gradients(
             self, samples: SampleBatchType) -> Tuple[ModelGradients, dict]:
@@ -844,10 +824,10 @@ class RolloutWorker(ParallelIteratorWorker):
         return func(self.policy_map[policy_id])
 
     @DeveloperAPI
-    def foreach_policy(self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
+    def foreach_policy(self, func: Callable[[Policy, PolicyID], T], **kwargs) -> List[T]:
         """Apply the given function to each (policy, policy_id) tuple."""
 
-        return [func(policy, pid) for pid, policy in self.policy_map.items()]
+        return [func(policy, pid, **kwargs) for pid, policy in self.policy_map.items()]
 
     @DeveloperAPI
     def foreach_trainable_policy(

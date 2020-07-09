@@ -388,18 +388,6 @@ class TorchPolicy(Policy):
         weights = convert_to_torch_tensor(weights, device=self.device)
         self.model.load_state_dict(weights)
 
-    def get_extra_weights(self, model_attr):
-        model = getattr(self, model_attr)
-        return {
-            k: v.cpu().detach().numpy()
-            for k, v in model.state_dict().items()
-        }
-
-    def set_extra_weights(self, weights, model_attr):
-        weights = convert_to_torch_tensor(weights, device=self.device)
-        model = getattr(self, model_attr)
-        model.load_state_dict(weights)
-
     @override(Policy)
     def get_state(self):
         state = super().get_state()

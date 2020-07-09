@@ -16,6 +16,8 @@ from ray.util.iter import from_actors
 from ray.rllib.utils.types import SampleBatchType
 from ray.rllib.agents.mbmpo.model_ensemble import DynamicsEnsembleCustomModel
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID 
+from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
+    convert_to_torch_tensor
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +195,7 @@ class MetaUpdate:
             normalization_dict = ray.put(self.workers.local_worker().policy_map[DEFAULT_POLICY_ID].dynamics_model.normalizations)
             for e in self.workers.remote_workers():
                 e.set_dict.remote(normalization_dict)
-            
+
             res = self.metric_gen.__call__(None)
             res.update(adapt_metrics_dict)
             self.step_counter = 0
@@ -206,23 +208,54 @@ class MetaUpdate:
 
 def sync_ensemble(workers, model_attr="dynamics_model"):
     if workers.remote_workers():
-        weights = ray.put(workers.local_worker().get_extra_weights(model_attr))
+        weights = ray.put(workers.local_worker().get_ensemble_weights(model_attr))
+        set_func = ray.put(set_ensemble_weights)
         for e in workers.remote_workers():
-            e.set_extra_weights.remote(weights, model_attr)
+            e.foreach_policy.remote(set_func, weights=weights)
+
+def sync_stats(workers):
+    normalization_dict = ray.put(workers.local_worker().policy_map[DEFAULT_POLICY_ID].dynamics_model.normalizations)
+    set_func = ray.put(set_normalizations)
+    for e in workers.remote_workers():
+        e.foreach_policy.remote(set_func, normalizations=normalization_dict)
+
+def fit_dynamics(policy, pid):
+    policy.dynamics_model.fit()
+
+def get_ensemble_weights(worker):
+    policy_map = self.policy_map
+
+    def policy_ensemble_weights(policy):
+        model = getattr(policy, model_attr)
+        return {
+            k: v.cpu().detach().numpy()
+            for k, v in model.state_dict().items()
+        }
+
+    return {
+            pid: policy_ensemble_weights(policy)
+            for pid, policy in self.policy_map.items() if pid in policies
+    }
+
+def set_policy_weights(policy, pid, weights):
+    weights = convert_to_torch_tensor(weights, device=policy.device)
+    model = policy.dynamics_model
+    model.load_state_dict(weights)
+
+def set_normalizations(policy, pid, normalizations):
+    policy.dynamics_model.set_dict(normalizations)
 
 def execution_plan(workers, config):
     # Train TD Models
-    # TODO: @mluo Make this less messy :(
-    metrics = workers.local_worker().policy_map[DEFAULT_POLICY_ID].dynamics_model.fit()
-    #metrics = _get_shared_metrics()
-    #metrics.counters[STEPS_SAMPLED_COUNTER] += metrics[STEPS_SAMPLED_COUNTER]
+    metrics = workers.local_worker().foreach_policy(fit_dynamics)[0]
 
     # Sync workers policy with workers
     workers.sync_weights()
 
     # Sync TD Models and other important data (normalization stats) with workers
     sync_ensemble(workers)
-    normalization_dict = ray.put(workers.local_worker().policy_map[DEFAULT_POLICY_ID].dynamics_model.normalizations)
+    sync_stats(workers)
+    
     for e in workers.remote_workers():
         e.set_dict.remote(normalization_dict)
 
