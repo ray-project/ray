@@ -816,13 +816,8 @@ class LearningRateSchedule:
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
-        #TODO: unify
-        if tfv == 2:
-            self.cur_lr = tf.Variable(
-                lr, name="lr", trainable=False)
-        else:
-            self.cur_lr = tf1.get_variable(
-                "lr", initializer=lr, trainable=False)
+        self.cur_lr = tf1.get_variable(
+            "lr", initializer=lr, trainable=False)
         if lr_schedule is None:
             self.lr_schedule = ConstantSchedule(lr, framework=None)
         else:

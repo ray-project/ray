@@ -356,7 +356,7 @@ def apply_gradients(policy, optimizer, grads_and_vars):
             policy._critic_optimizer[0].apply_gradients(cgrads)
         ]
 
-    if tfv == 2 and policy.config["framework"] == "tfe":
+    if policy.config["framework"] in ["tf2", "tfe"]:
         policy._alpha_optimizer.apply_gradients(policy._alpha_grads_and_vars)
         return
     else:

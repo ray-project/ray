@@ -111,7 +111,7 @@ class EpsilonGreedy(Exploration):
             ),
             false_fn=lambda: exploit_action)
 
-        if tfv == 2:
+        if self.framework in ["tf2", "tfe"]:
             self.last_timestep = timestep
             return action, tf.zeros_like(action, dtype=tf.float32)
         else:

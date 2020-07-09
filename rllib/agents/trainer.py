@@ -583,7 +583,7 @@ class Trainer(Trainable):
 
         # Enable eager/tracing support.
         if tf1 and self.config["framework"] in ["tfe", "tf2"]:
-            if self.config["framework"] == "tf2" and tfv == 1:
+            if self.config["framework"] == "tf2" and tfv < 2:
                 raise ValueError("`framework`=tf2, but tf-version is < 2.0!")
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()

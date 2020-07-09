@@ -38,7 +38,7 @@ class ReweightedImitationLoss:
         adv = cumulative_rewards - state_values
 
         # update averaged advantage norm
-        if tfv == 2:
+        if policy.config["framework"] in ["tf2", "tfe"]:
             policy._ma_adv_norm.assign_add(
                 1e-6 * (tf.reduce_mean(
                     tf.math.square(adv)) - policy._ma_adv_norm))

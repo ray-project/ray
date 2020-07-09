@@ -95,7 +95,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
             shape=[self.action_space.low.size], stddev=self.stddev)
         ou_new = self.ou_theta * -self.ou_state + \
             self.ou_sigma * gaussian_sample
-        if tfv == 2:
+        if self.framework in ["tf2", "tfe"]:
             self.ou_state.assign_add(ou_new)
             ou_state_new = self.ou_state
         else:
