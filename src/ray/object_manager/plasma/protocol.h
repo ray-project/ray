@@ -62,7 +62,7 @@ Status SendSetOptionsRequest(int sock, const std::string& client_name,
 Status ReadSetOptionsRequest(uint8_t* data, size_t size, std::string* client_name,
                              int64_t* output_memory_quota);
 
-Status SendSetOptionsReply(int sock, PlasmaError error);
+Status SendSetOptionsReply(const std::shared_ptr<Client> &client, PlasmaError error);
 
 Status ReadSetOptionsReply(uint8_t* data, size_t size);
 
@@ -70,7 +70,7 @@ Status ReadSetOptionsReply(uint8_t* data, size_t size);
 
 Status SendGetDebugStringRequest(int sock);
 
-Status SendGetDebugStringReply(int sock, const std::string& debug_string);
+Status SendGetDebugStringReply(const std::shared_ptr<Client> &client, const std::string& debug_string);
 
 Status ReadGetDebugStringReply(uint8_t* data, size_t size, std::string* debug_string);
 
@@ -83,7 +83,7 @@ Status ReadCreateRequest(uint8_t* data, size_t size, ObjectID* object_id,
                          bool* evict_if_full, int64_t* data_size, int64_t* metadata_size,
                          int* device_num);
 
-Status SendCreateReply(int sock, ObjectID object_id, PlasmaObject* object,
+Status SendCreateReply(const std::shared_ptr<Client> &client, ObjectID object_id, PlasmaObject* object,
                        PlasmaError error, int64_t mmap_size);
 
 Status ReadCreateReply(uint8_t* data, size_t size, ObjectID* object_id,
@@ -107,11 +107,11 @@ Status ReadCreateAndSealBatchRequest(uint8_t* data, size_t size,
                                      std::vector<std::string>* object_data,
                                      std::vector<std::string>* metadata);
 
-Status SendCreateAndSealReply(int sock, PlasmaError error);
+Status SendCreateAndSealReply(const std::shared_ptr<Client> &client, PlasmaError error);
 
 Status ReadCreateAndSealReply(uint8_t* data, size_t size);
 
-Status SendCreateAndSealBatchReply(int sock, PlasmaError error);
+Status SendCreateAndSealBatchReply(const std::shared_ptr<Client> &client, PlasmaError error);
 
 Status ReadCreateAndSealBatchReply(uint8_t* data, size_t size);
 
@@ -119,7 +119,7 @@ Status SendAbortRequest(int sock, ObjectID object_id);
 
 Status ReadAbortRequest(uint8_t* data, size_t size, ObjectID* object_id);
 
-Status SendAbortReply(int sock, ObjectID object_id);
+Status SendAbortReply(const std::shared_ptr<Client> &client, ObjectID object_id);
 
 Status ReadAbortReply(uint8_t* data, size_t size, ObjectID* object_id);
 
@@ -129,7 +129,7 @@ Status SendSealRequest(int sock, ObjectID object_id);
 
 Status ReadSealRequest(uint8_t* data, size_t size, ObjectID* object_id);
 
-Status SendSealReply(int sock, ObjectID object_id, PlasmaError error);
+Status SendSealReply(const std::shared_ptr<Client> &client, ObjectID object_id, PlasmaError error);
 
 Status ReadSealReply(uint8_t* data, size_t size, ObjectID* object_id);
 
@@ -141,7 +141,7 @@ Status SendGetRequest(int sock, const ObjectID* object_ids, int64_t num_objects,
 Status ReadGetRequest(uint8_t* data, size_t size, std::vector<ObjectID>& object_ids,
                       int64_t* timeout_ms);
 
-Status SendGetReply(int sock, ObjectID object_ids[],
+Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[],
                     std::unordered_map<ObjectID, PlasmaObject>& plasma_objects,
                     int64_t num_objects, const std::vector<int>& store_fds,
                     const std::vector<int64_t>& mmap_sizes);
@@ -156,7 +156,7 @@ Status SendReleaseRequest(int sock, ObjectID object_id);
 
 Status ReadReleaseRequest(uint8_t* data, size_t size, ObjectID* object_id);
 
-Status SendReleaseReply(int sock, ObjectID object_id, PlasmaError error);
+Status SendReleaseReply(const std::shared_ptr<Client> &client, ObjectID object_id, PlasmaError error);
 
 Status ReadReleaseReply(uint8_t* data, size_t size, ObjectID* object_id);
 
@@ -166,7 +166,7 @@ Status SendDeleteRequest(int sock, const std::vector<ObjectID>& object_ids);
 
 Status ReadDeleteRequest(uint8_t* data, size_t size, std::vector<ObjectID>* object_ids);
 
-Status SendDeleteReply(int sock, const std::vector<ObjectID>& object_ids,
+Status SendDeleteReply(const std::shared_ptr<Client> &client, const std::vector<ObjectID>& object_ids,
                        const std::vector<PlasmaError>& errors);
 
 Status ReadDeleteReply(uint8_t* data, size_t size, std::vector<ObjectID>* object_ids,
@@ -178,7 +178,7 @@ Status SendContainsRequest(int sock, ObjectID object_id);
 
 Status ReadContainsRequest(uint8_t* data, size_t size, ObjectID* object_id);
 
-Status SendContainsReply(int sock, ObjectID object_id, bool has_object);
+Status SendContainsReply(const std::shared_ptr<Client> &client, ObjectID object_id, bool has_object);
 
 Status ReadContainsReply(uint8_t* data, size_t size, ObjectID* object_id,
                          bool* has_object);
@@ -189,7 +189,7 @@ Status SendConnectRequest(int sock);
 
 Status ReadConnectRequest(uint8_t* data, size_t size);
 
-Status SendConnectReply(int sock, int64_t memory_capacity);
+Status SendConnectReply(const std::shared_ptr<Client> &client, int64_t memory_capacity);
 
 Status ReadConnectReply(uint8_t* data, size_t size, int64_t* memory_capacity);
 
@@ -199,7 +199,7 @@ Status SendEvictRequest(int sock, int64_t num_bytes);
 
 Status ReadEvictRequest(uint8_t* data, size_t size, int64_t* num_bytes);
 
-Status SendEvictReply(int sock, int64_t num_bytes);
+Status SendEvictReply(const std::shared_ptr<Client> &client, int64_t num_bytes);
 
 Status ReadEvictReply(uint8_t* data, size_t size, int64_t& num_bytes);
 
@@ -214,7 +214,7 @@ Status SendDataRequest(int sock, ObjectID object_id, const char* address, int po
 Status ReadDataRequest(uint8_t* data, size_t size, ObjectID* object_id, char** address,
                        int* port);
 
-Status SendDataReply(int sock, ObjectID object_id, int64_t object_size,
+Status SendDataReply(const std::shared_ptr<Client> &client, ObjectID object_id, int64_t object_size,
                      int64_t metadata_size);
 
 Status ReadDataReply(uint8_t* data, size_t size, ObjectID* object_id,
@@ -227,7 +227,7 @@ Status SendRefreshLRURequest(int sock, const std::vector<ObjectID>& object_ids);
 Status ReadRefreshLRURequest(uint8_t* data, size_t size,
                              std::vector<ObjectID>* object_ids);
 
-Status SendRefreshLRUReply(int sock);
+Status SendRefreshLRUReply(const std::shared_ptr<Client> &client);
 
 Status ReadRefreshLRUReply(uint8_t* data, size_t size);
 

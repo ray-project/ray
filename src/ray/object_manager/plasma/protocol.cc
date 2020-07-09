@@ -107,6 +107,13 @@ Status PlasmaSend(int sock, MessageType message_type, flatbuffers::FlatBufferBui
   return WriteMessage(sock, message_type, fbb->GetSize(), fbb->GetBufferPointer());
 }
 
+template <typename Message>
+Status PlasmaSend(const std::shared_ptr<Client> &client, MessageType message_type, flatbuffers::FlatBufferBuilder* fbb,
+                  const Message& message) {
+  fbb->Finish(message);
+  return WriteMessage(client->fd, message_type, fbb->GetSize(), fbb->GetBufferPointer());
+}
+
 Status PlasmaErrorStatus(fb::PlasmaError plasma_error) {
   switch (plasma_error) {
     case fb::PlasmaError::OK:
@@ -143,10 +150,10 @@ Status ReadSetOptionsRequest(uint8_t* data, size_t size, std::string* client_nam
   return Status::OK();
 }
 
-Status SendSetOptionsReply(int sock, PlasmaError error) {
+Status SendSetOptionsReply(const std::shared_ptr<Client> &client, PlasmaError error) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = fb::CreatePlasmaSetOptionsReply(fbb, error);
-  return PlasmaSend(sock, MessageType::PlasmaSetOptionsReply, &fbb, message);
+  return PlasmaSend(client, MessageType::PlasmaSetOptionsReply, &fbb, message);
 }
 
 Status ReadSetOptionsReply(uint8_t* data, size_t size) {
@@ -164,10 +171,10 @@ Status SendGetDebugStringRequest(int sock) {
   return PlasmaSend(sock, MessageType::PlasmaGetDebugStringRequest, &fbb, message);
 }
 
-Status SendGetDebugStringReply(int sock, const std::string& debug_string) {
+Status SendGetDebugStringReply(const std::shared_ptr<Client> &client, const std::string& debug_string) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = fb::CreatePlasmaGetDebugStringReply(fbb, fbb.CreateString(debug_string));
-  return PlasmaSend(sock, MessageType::PlasmaGetDebugStringReply, &fbb, message);
+  return PlasmaSend(client, MessageType::PlasmaGetDebugStringReply, &fbb, message);
 }
 
 Status ReadGetDebugStringReply(uint8_t* data, size_t size, std::string* debug_string) {
@@ -203,7 +210,7 @@ Status ReadCreateRequest(uint8_t* data, size_t size, ObjectID* object_id,
   return Status::OK();
 }
 
-Status SendCreateReply(int sock, ObjectID object_id, PlasmaObject* object,
+Status SendCreateReply(const std::shared_ptr<Client> &client, ObjectID object_id, PlasmaObject* object,
                        PlasmaError error_code, int64_t mmap_size) {
   flatbuffers::FlatBufferBuilder fbb;
   PlasmaObjectSpec plasma_object(object->store_fd, object->data_offset, object->data_size,
@@ -233,7 +240,7 @@ Status SendCreateReply(int sock, ObjectID object_id, PlasmaObject* object,
 #endif
   }
   auto message = crb.Finish();
-  return PlasmaSend(sock, MessageType::PlasmaCreateReply, &fbb, message);
+  return PlasmaSend(client, MessageType::PlasmaCreateReply, &fbb, message);
 }
 
 Status ReadCreateReply(uint8_t* data, size_t size, ObjectID* object_id,
@@ -322,10 +329,10 @@ Status ReadCreateAndSealBatchRequest(uint8_t* data, size_t size,
   return Status::OK();
 }
 
-Status SendCreateAndSealReply(int sock, PlasmaError error) {
+Status SendCreateAndSealReply(const std::shared_ptr<Client> &client, PlasmaError error) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = fb::CreatePlasmaCreateAndSealReply(fbb, static_cast<PlasmaError>(error));
-  return PlasmaSend(sock, MessageType::PlasmaCreateAndSealReply, &fbb, message);
+  return PlasmaSend(client, MessageType::PlasmaCreateAndSealReply, &fbb, message);
 }
 
 Status ReadCreateAndSealReply(uint8_t* data, size_t size) {
@@ -335,11 +342,11 @@ Status ReadCreateAndSealReply(uint8_t* data, size_t size) {
   return PlasmaErrorStatus(message->error());
 }
 
-Status SendCreateAndSealBatchReply(int sock, PlasmaError error) {
+Status SendCreateAndSealBatchReply(const std::shared_ptr<Client> &client, PlasmaError error) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       fb::CreatePlasmaCreateAndSealBatchReply(fbb, static_cast<PlasmaError>(error));
-  return PlasmaSend(sock, MessageType::PlasmaCreateAndSealBatchReply, &fbb, message);
+  return PlasmaSend(client, MessageType::PlasmaCreateAndSealBatchReply, &fbb, message);
 }
 
 Status ReadCreateAndSealBatchReply(uint8_t* data, size_t size) {
@@ -363,10 +370,10 @@ Status ReadAbortRequest(uint8_t* data, size_t size, ObjectID* object_id) {
   return Status::OK();
 }
 
-Status SendAbortReply(int sock, ObjectID object_id) {
+Status SendAbortReply(const std::shared_ptr<Client> &client, ObjectID object_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = fb::CreatePlasmaAbortReply(fbb, fbb.CreateString(object_id.Binary()));
-  return PlasmaSend(sock, MessageType::PlasmaAbortReply, &fbb, message);
+  return PlasmaSend(client, MessageType::PlasmaAbortReply, &fbb, message);
 }
 
 Status ReadAbortReply(uint8_t* data, size_t size, ObjectID* object_id) {
@@ -393,11 +400,11 @@ Status ReadSealRequest(uint8_t* data, size_t size, ObjectID* object_id) {
   return Status::OK();
 }
 
-Status SendSealReply(int sock, ObjectID object_id, PlasmaError error) {
+Status SendSealReply(const std::shared_ptr<Client> &client, ObjectID object_id, PlasmaError error) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       fb::CreatePlasmaSealReply(fbb, fbb.CreateString(object_id.Binary()), error);
-  return PlasmaSend(sock, MessageType::PlasmaSealReply, &fbb, message);
+  return PlasmaSend(client, MessageType::PlasmaSealReply, &fbb, message);
 }
 
 Status ReadSealReply(uint8_t* data, size_t size, ObjectID* object_id) {
@@ -425,11 +432,11 @@ Status ReadReleaseRequest(uint8_t* data, size_t size, ObjectID* object_id) {
   return Status::OK();
 }
 
-Status SendReleaseReply(int sock, ObjectID object_id, PlasmaError error) {
+Status SendReleaseReply(const std::shared_ptr<Client> &client, ObjectID object_id, PlasmaError error) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       fb::CreatePlasmaReleaseReply(fbb, fbb.CreateString(object_id.Binary()), error);
-  return PlasmaSend(sock, MessageType::PlasmaReleaseReply, &fbb, message);
+  return PlasmaSend(client, MessageType::PlasmaReleaseReply, &fbb, message);
 }
 
 Status ReadReleaseReply(uint8_t* data, size_t size, ObjectID* object_id) {
@@ -463,7 +470,7 @@ Status ReadDeleteRequest(uint8_t* data, size_t size, std::vector<ObjectID>* obje
   return Status::OK();
 }
 
-Status SendDeleteReply(int sock, const std::vector<ObjectID>& object_ids,
+Status SendDeleteReply(const std::shared_ptr<Client> &client, const std::vector<ObjectID>& object_ids,
                        const std::vector<PlasmaError>& errors) {
   RAY_DCHECK(object_ids.size() == errors.size());
   flatbuffers::FlatBufferBuilder fbb;
@@ -473,7 +480,7 @@ Status SendDeleteReply(int sock, const std::vector<ObjectID>& object_ids,
       fbb.CreateVector(
           arrow::util::MakeNonNull(reinterpret_cast<const int32_t*>(errors.data())),
           object_ids.size()));
-  return PlasmaSend(sock, MessageType::PlasmaDeleteReply, &fbb, message);
+  return PlasmaSend(client, MessageType::PlasmaDeleteReply, &fbb, message);
 }
 
 Status ReadDeleteReply(uint8_t* data, size_t size, std::vector<ObjectID>* object_ids,
@@ -511,11 +518,11 @@ Status ReadContainsRequest(uint8_t* data, size_t size, ObjectID* object_id) {
   return Status::OK();
 }
 
-Status SendContainsReply(int sock, ObjectID object_id, bool has_object) {
+Status SendContainsReply(const std::shared_ptr<Client> &client, ObjectID object_id, bool has_object) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = fb::CreatePlasmaContainsReply(fbb, fbb.CreateString(object_id.Binary()),
                                                has_object);
-  return PlasmaSend(sock, MessageType::PlasmaContainsReply, &fbb, message);
+  return PlasmaSend(client, MessageType::PlasmaContainsReply, &fbb, message);
 }
 
 Status ReadContainsReply(uint8_t* data, size_t size, ObjectID* object_id,
@@ -538,10 +545,10 @@ Status SendConnectRequest(int sock) {
 
 Status ReadConnectRequest(uint8_t* data) { return Status::OK(); }
 
-Status SendConnectReply(int sock, int64_t memory_capacity) {
+Status SendConnectReply(const std::shared_ptr<Client> &client, int64_t memory_capacity) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = fb::CreatePlasmaConnectReply(fbb, memory_capacity);
-  return PlasmaSend(sock, MessageType::PlasmaConnectReply, &fbb, message);
+  return PlasmaSend(client, MessageType::PlasmaConnectReply, &fbb, message);
 }
 
 Status ReadConnectReply(uint8_t* data, size_t size, int64_t* memory_capacity) {
@@ -568,10 +575,10 @@ Status ReadEvictRequest(uint8_t* data, size_t size, int64_t* num_bytes) {
   return Status::OK();
 }
 
-Status SendEvictReply(int sock, int64_t num_bytes) {
+Status SendEvictReply(const std::shared_ptr<Client> &client, int64_t num_bytes) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = fb::CreatePlasmaEvictReply(fbb, num_bytes);
-  return PlasmaSend(sock, MessageType::PlasmaEvictReply, &fbb, message);
+  return PlasmaSend(client, MessageType::PlasmaEvictReply, &fbb, message);
 }
 
 Status ReadEvictReply(uint8_t* data, size_t size, int64_t& num_bytes) {
@@ -605,7 +612,7 @@ Status ReadGetRequest(uint8_t* data, size_t size, std::vector<ObjectID>& object_
   return Status::OK();
 }
 
-Status SendGetReply(int sock, ObjectID object_ids[],
+Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[],
                     std::unordered_map<ObjectID, PlasmaObject>& plasma_objects,
                     int64_t num_objects, const std::vector<int>& store_fds,
                     const std::vector<int64_t>& mmap_sizes) {
@@ -633,7 +640,7 @@ Status SendGetReply(int sock, ObjectID object_ids[],
       fbb.CreateVector(arrow::util::MakeNonNull(store_fds.data()), store_fds.size()),
       fbb.CreateVector(arrow::util::MakeNonNull(mmap_sizes.data()), mmap_sizes.size()),
       fbb.CreateVector(arrow::util::MakeNonNull(handles.data()), handles.size()));
-  return PlasmaSend(sock, MessageType::PlasmaGetReply, &fbb, message);
+  return PlasmaSend(client, MessageType::PlasmaGetReply, &fbb, message);
 }
 
 Status ReadGetReply(uint8_t* data, size_t size, ObjectID object_ids[],
@@ -707,12 +714,12 @@ Status ReadDataRequest(uint8_t* data, size_t size, ObjectID* object_id, char** a
   return Status::OK();
 }
 
-Status SendDataReply(int sock, ObjectID object_id, int64_t object_size,
+Status SendDataReply(const std::shared_ptr<Client> &client, ObjectID object_id, int64_t object_size,
                      int64_t metadata_size) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = fb::CreatePlasmaDataReply(fbb, fbb.CreateString(object_id.Binary()),
                                            object_size, metadata_size);
-  return PlasmaSend(sock, MessageType::PlasmaDataReply, &fbb, message);
+  return PlasmaSend(client, MessageType::PlasmaDataReply, &fbb, message);
 }
 
 Status ReadDataReply(uint8_t* data, size_t size, ObjectID* object_id,
@@ -749,10 +756,10 @@ Status ReadRefreshLRURequest(uint8_t* data, size_t size,
   return Status::OK();
 }
 
-Status SendRefreshLRUReply(int sock) {
+Status SendRefreshLRUReply(const std::shared_ptr<Client> &client) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = fb::CreatePlasmaRefreshLRUReply(fbb);
-  return PlasmaSend(sock, MessageType::PlasmaRefreshLRUReply, &fbb, message);
+  return PlasmaSend(client, MessageType::PlasmaRefreshLRUReply, &fbb, message);
 }
 
 Status ReadRefreshLRUReply(uint8_t* data, size_t size) {
