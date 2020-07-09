@@ -5,15 +5,15 @@ import ray
 from ray.rllib.utils.actors import TaskPool
 
 
-def createMockWorkerAndObjectId(obj_ref):
+def createMockWorkerAndObjectRef(obj_ref):
     return ({obj_ref: 1}, obj_ref)
 
 
 class TaskPoolTest(unittest.TestCase):
     @patch("ray.wait")
     def test_completed_prefetch_yieldsAllComplete(self, rayWaitMock):
-        task1 = createMockWorkerAndObjectId(1)
-        task2 = createMockWorkerAndObjectId(2)
+        task1 = createMockWorkerAndObjectRef(1)
+        task2 = createMockWorkerAndObjectRef(2)
         # Return the second task as complete and the first as pending
         rayWaitMock.return_value = ([2], [1])
 
@@ -32,7 +32,7 @@ class TaskPoolTest(unittest.TestCase):
         # items and the second call yields the final one
         pool = TaskPool()
         for i in range(1000):
-            task = createMockWorkerAndObjectId(i)
+            task = createMockWorkerAndObjectRef(i)
             pool.add(*task)
 
         rayWaitMock.return_value = (list(range(1000)), [])
@@ -53,7 +53,7 @@ class TaskPoolTest(unittest.TestCase):
         # and the second call yields the final one
         pool = TaskPool()
         for i in range(1000):
-            task = createMockWorkerAndObjectId(i)
+            task = createMockWorkerAndObjectRef(i)
             pool.add(*task)
 
         rayWaitMock.return_value = (list(range(1000)), [])
@@ -76,7 +76,7 @@ class TaskPoolTest(unittest.TestCase):
         # fetched tasks resulting in stale object refs being returned
         pool = TaskPool()
         for i in range(10):
-            task = createMockWorkerAndObjectId(i)
+            task = createMockWorkerAndObjectRef(i)
             pool.add(*task)
 
         rayWaitMock.return_value = (list(range(10)), [])
@@ -102,7 +102,7 @@ class TaskPoolTest(unittest.TestCase):
         tasks = []
 
         for i in range(10):
-            task = createMockWorkerAndObjectId(i)
+            task = createMockWorkerAndObjectRef(i)
             pool.add(*task)
             tasks.append(task)
 
