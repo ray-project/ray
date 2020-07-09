@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "gcs_table_storage.h"
+
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/callback.h"
@@ -120,6 +121,7 @@ template class GcsTable<TaskID, TaskTableData>;
 template class GcsTable<TaskID, TaskLeaseData>;
 template class GcsTable<TaskID, TaskReconstructionData>;
 template class GcsTable<ObjectID, ObjectTableDataList>;
+template class GcsTable<UniqueID, StoredConfig>;
 template class GcsTableWithJobId<ActorID, ActorTableData>;
 template class GcsTableWithJobId<ActorID, ActorCheckpointIdData>;
 template class GcsTableWithJobId<TaskID, TaskTableData>;

@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include "ray/stats/metric.h"
+#include "opencensus/stats/internal/aggregation_window.h"
+#include "opencensus/stats/internal/set_aggregation_window.h"
 
 namespace ray {
 
@@ -29,7 +31,6 @@ static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
   for (const auto &key : keys) {
     view_descriptor = view_descriptor.add_column(key);
   }
-
   opencensus::stats::View view(view_descriptor);
   view_descriptor.RegisterForExport();
 }
@@ -50,6 +51,20 @@ void StatsConfig::SetIsDisableStats(bool disable_stats) {
 }
 
 bool StatsConfig::IsStatsDisabled() const { return is_stats_disabled_; }
+
+void StatsConfig::SetReportInterval(const absl::Duration interval) {
+  report_interval_ = interval;
+}
+
+const absl::Duration &StatsConfig::GetReportInterval() const { return report_interval_; }
+
+void StatsConfig::SetHarvestInterval(const absl::Duration interval) {
+  harvest_interval_ = interval;
+}
+
+const absl::Duration &StatsConfig::GetHarvestInterval() const {
+  return harvest_interval_;
+}
 
 void Metric::Record(double value, const TagsType &tags) {
   if (StatsConfig::instance().IsStatsDisabled()) {
