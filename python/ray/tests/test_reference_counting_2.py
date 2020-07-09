@@ -97,7 +97,7 @@ def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
 
 
-# Test that serialized objectIDs returned from remote tasks are pinned until
+# Test that serialized ObjectRefs returned from remote tasks are pinned until
 # they go out of scope on the caller side.
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
@@ -137,7 +137,7 @@ def test_return_object_ref(one_worker_100MiB, use_ray_put, failure):
     _fill_object_store_and_get(inner_oid_binary, succeed=False)
 
 
-# Test that serialized objectIDs returned from remote tasks are pinned if
+# Test that serialized ObjectRefs returned from remote tasks are pinned if
 # passed into another remote task by the caller.
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])

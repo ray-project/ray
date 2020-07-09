@@ -8,7 +8,7 @@ import ray
 
 from ray._raylet import (TaskID, ActorID, JobID)
 
-# These values are used to calculate if objectIDs are actor handles.
+# These values are used to calculate if objectRefs are actor handles.
 TASKID_BYTES_SIZE = TaskID.size()
 ACTORID_BYTES_SIZE = ActorID.size()
 JOBID_BYTES_SIZE = JobID.size()
@@ -18,17 +18,17 @@ ACTORID_RANDOM_BITS_SIZE = (ACTORID_BYTES_SIZE - JOBID_BYTES_SIZE) * 2
 
 
 def decode_object_ref_if_needed(object_ref: str) -> bytes:
-    """Decode objectID bytes string.
+    """Decode objectRef bytes string.
 
-    gRPC reply contains an objectID that is encodded by Base64.
-    This function is used to decode the objectID.
-    Note that there are times that objectID is already decoded as
+    gRPC reply contains an objectRef that is encodded by Base64.
+    This function is used to decode the objectRef.
+    Note that there are times that objectRef is already decoded as
     a hex string. In this case, just convert it to a binary number.
     """
     if object_ref.endswith("="):
         # If the object ref ends with =, that means it is base64 encoded.
         # Object ids will always have = as a padding
-        # when it is base64 encoded because objectID is always 20B.
+        # when it is base64 encoded because objectRef is always 20B.
         return base64.standard_b64decode(object_ref)
     else:
         return ray.utils.hex_to_binary(object_ref)
@@ -66,7 +66,7 @@ class MemoryTableEntry:
         self.object_size = int(object_ref.get("objectSize", -1))
         self.call_site = object_ref.get("callSite", "<Unknown>")
         self.object_ref = ray.ObjectRef(
-            decode_object_ref_if_needed(object_ref["objectId"]))
+            decode_object_ref_if_needed(object_ref["objectRef"]))
 
         # reference info
         self.local_ref_count = int(object_ref.get("localRefCount", 0))

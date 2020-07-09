@@ -259,7 +259,7 @@ class Worker:
 
         if self.mode == LOCAL_MODE:
             assert object_ref is None, ("Local Mode does not support "
-                                        "inserting with an objectID")
+                                        "inserting with an ObjectRef")
 
         serialized_value = self.get_serialization_context().serialize(value)
         # This *must* be the first place that we construct this python
