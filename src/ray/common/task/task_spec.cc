@@ -117,6 +117,11 @@ ObjectID TaskSpecification::ArgId(size_t arg_index) const {
   return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
 }
 
+rpc::ObjectReference TaskSpecification::ArgRef(size_t arg_index) const {
+  RAY_CHECK(ArgByRef(arg_index));
+  return message_->args(arg_index).object_ref();
+}
+
 const uint8_t *TaskSpecification::ArgData(size_t arg_index) const {
   return reinterpret_cast<const uint8_t *>(message_->args(arg_index).data().data());
 }
@@ -141,7 +146,7 @@ const ResourceSet &TaskSpecification::GetRequiredResources() const {
   return *required_resources_;
 }
 
-std::vector<ObjectID> TaskSpecification::GetDependencies() const {
+std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {
   std::vector<ObjectID> dependencies;
   for (size_t i = 0; i < NumArgs(); ++i) {
     if (ArgByRef(i)) {
@@ -150,6 +155,21 @@ std::vector<ObjectID> TaskSpecification::GetDependencies() const {
   }
   if (IsActorTask()) {
     dependencies.push_back(PreviousActorTaskDummyObjectId());
+  }
+  return dependencies;
+}
+
+std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies() const {
+  std::vector<rpc::ObjectReference> dependencies;
+  for (size_t i = 0; i < NumArgs(); ++i) {
+    if (ArgByRef(i)) {
+      dependencies.push_back(message_->args(i).object_ref());
+    }
+  }
+  if (IsActorTask()) {
+    const auto &dummy_ref =
+        GetReferenceForActorDummyObject(PreviousActorTaskDummyObjectId());
+    dependencies.push_back(dummy_ref);
   }
   return dependencies;
 }

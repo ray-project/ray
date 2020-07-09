@@ -121,6 +121,13 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
+        name = "bazel_skylib",
+        strip_prefix = None,
+        url = "https://github.com/bazelbuild/bazel-skylib/releases/download/1.0.2/bazel-skylib-1.0.2.tar.gz",
+        sha256 = "97e70364e9249702246c0e9444bccdc4b847bed1eb03c5a3ece4f83dfe6abc44",
+    )
+
+    auto_http_archive(
         name = "com_github_checkstyle_java",
         url = "https://github.com/ray-project/checkstyle_java/archive/ef367030d1433877a3360bbfceca18a5d0791bdd.tar.gz",
         sha256 = "847d391156d7dcc9424e6a8ba06ff23ea2914c725b18d92028074b2ed8de3da9",
@@ -197,8 +204,11 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "io_opencensus_cpp",
-        url = "https://github.com/census-instrumentation/opencensus-cpp/archive/3aa11f20dd610cb8d2f7c62e58d1e69196aadf11.tar.gz",
-        sha256 = "a0b4e2d3c4479cc343c003f0c31f48e9e05461cb232815e348fc0358bfa8bb79",
+        url = "https://github.com/census-instrumentation/opencensus-cpp/archive/b14a5c0dcc2da8a7fc438fab637845c73438b703.zip",
+        sha256 = "6592e07672e7f7980687f6c1abda81974d8d379e273fea3b54b6c4d855489b9d",
+        patches = [
+            "//thirdparty/patches:opencensus-cpp-harvest-interval.patch",
+        ]
     )
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.

@@ -89,11 +89,11 @@ class DependencyWaiterInterface {
   /// Wait for the given objects, asynchronously. The core worker is notified when
   /// the wait completes.
   ///
-  /// \param object_ids The objects to wait for.
+  /// \param references The objects to wait for.
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
-  virtual ray::Status WaitForDirectActorCallArgs(const std::vector<ObjectID> &object_ids,
-                                                 int64_t tag) = 0;
+  virtual ray::Status WaitForDirectActorCallArgs(
+      const std::vector<rpc::ObjectReference> &references, int64_t tag) = 0;
 
   virtual ~DependencyWaiterInterface(){};
 };
@@ -191,13 +191,16 @@ class RayletClient : public PinObjectsInterface,
 
   /// Tell the raylet to reconstruct or fetch objects.
   ///
-  /// \param object_ids The IDs of the objects to reconstruct.
+  /// \param object_ids The IDs of the objects to fetch.
+  /// \param owner_addresses The addresses of the workers that own the objects.
   /// \param fetch_only Only fetch objects, do not reconstruct them.
   /// \param mark_worker_blocked Set to false if current task is a direct call task.
   /// \param current_task_id The task that needs the objects.
   /// \return int 0 means correct, other numbers mean error.
-  ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids, bool fetch_only,
-                                 bool mark_worker_blocked, const TaskID &current_task_id);
+  ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
+                                 const std::vector<rpc::Address> &owner_addresses,
+                                 bool fetch_only, bool mark_worker_blocked,
+                                 const TaskID &current_task_id);
 
   /// Notify the raylet that this client (worker) is no longer blocked.
   ///
@@ -221,6 +224,7 @@ class RayletClient : public PinObjectsInterface,
   /// found.
   ///
   /// \param object_ids The objects to wait for.
+  /// \param owner_addresses The addresses of the workers that own the objects.
   /// \param num_returns The number of objects to wait for.
   /// \param timeout_milliseconds Duration, in milliseconds, to wait before returning.
   /// \param wait_local Whether to wait for objects to appear on this node.
@@ -229,7 +233,8 @@ class RayletClient : public PinObjectsInterface,
   /// \param result A pair with the first element containing the object ids that were
   /// found, and the second element the objects that were not found.
   /// \return ray::Status.
-  ray::Status Wait(const std::vector<ObjectID> &object_ids, int num_returns,
+  ray::Status Wait(const std::vector<ObjectID> &object_ids,
+                   const std::vector<rpc::Address> &owner_addresses, int num_returns,
                    int64_t timeout_milliseconds, bool wait_local,
                    bool mark_worker_blocked, const TaskID &current_task_id,
                    WaitResultPair *result);
@@ -237,11 +242,11 @@ class RayletClient : public PinObjectsInterface,
   /// Wait for the given objects, asynchronously. The core worker is notified when
   /// the wait completes.
   ///
-  /// \param object_ids The objects to wait for.
+  /// \param references The objects to wait for.
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
-  ray::Status WaitForDirectActorCallArgs(const std::vector<ObjectID> &object_ids,
-                                         int64_t tag) override;
+  ray::Status WaitForDirectActorCallArgs(
+      const std::vector<rpc::ObjectReference> &references, int64_t tag) override;
 
   /// Push an error to the relevant driver.
   ///
