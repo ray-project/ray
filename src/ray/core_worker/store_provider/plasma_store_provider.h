@@ -138,6 +138,12 @@ class CoreWorkerPlasmaStoreProvider {
   static void WarnIfAttemptedTooManyTimes(int num_attempts,
                                           const absl::flat_hash_set<ObjectID> &remaining);
 
+  /// Put something in the plasma store so that subsequent plasma store accesses
+  /// will be faster. Currently the first access is always slow, and we don't
+  /// want the user to experience this.
+  /// \return status
+  Status WarmupStore();
+
   const std::shared_ptr<raylet::RayletClient> raylet_client_;
   plasma::PlasmaClient store_client_;
   /// Used to look up a plasma object's owner.

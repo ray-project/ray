@@ -774,14 +774,15 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
-  uint8_t array2[] = {10, 11, 12, 13, 14, 15};
+  const size_t array2_size = 200 * 1024;
+  uint8_t *array2 = new uint8_t[array2_size];
 
   std::vector<RayObject> buffers;
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)),
                        std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2),
                        std::vector<ObjectID>());
-  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2)),
-                       std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2) / 2),
+  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, array2_size),
+                       std::make_shared<LocalMemoryBuffer>(array2, array2_size / 2),
                        std::vector<ObjectID>());
 
   std::vector<ObjectID> ids(buffers.size());
@@ -822,6 +823,8 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   // to process the command.
   usleep(200 * 1000);
   ASSERT_TRUE(core_worker.Get(ids, 0, &results).IsTimedOut());
+  // Since array2 has been deleted from the plasma store, the Get should
+  // timeout and return nullptr for all results.
   ASSERT_EQ(results.size(), 2);
   ASSERT_TRUE(!results[0]);
   ASSERT_TRUE(!results[1]);

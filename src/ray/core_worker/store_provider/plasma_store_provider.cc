@@ -40,6 +40,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   }
   buffer_tracker_ = std::make_shared<BufferTracker>();
   RAY_CHECK_OK(store_client_.Connect(store_socket));
+  RAY_CHECK_OK(WarmupStore());
 }
 
 CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
@@ -417,6 +418,16 @@ void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
         << " happened in raylet backend. " << remaining.size()
         << " object(s) pending: " << oss.str() << ".";
   }
+}
+
+Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
+  ObjectID object_id = ObjectID::FromRandom();
+  std::shared_ptr<Buffer> data;
+  RAY_RETURN_NOT_OK(Create(nullptr, 8, object_id, &data));
+  RAY_RETURN_NOT_OK(Seal(object_id));
+  RAY_RETURN_NOT_OK(Release(object_id));
+  RAY_RETURN_NOT_OK(Delete({object_id}, false, false));
+  return Status::OK();
 }
 
 }  // namespace ray
