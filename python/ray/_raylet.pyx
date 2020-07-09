@@ -103,6 +103,7 @@ import msgpack
 
 cimport cpython
 
+include "includes/object_ref.pxi"
 include "includes/unique_ids.pxi"
 include "includes/ray_config.pxi"
 include "includes/function_descriptor.pxi"
