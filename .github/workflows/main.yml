@@ -73,7 +73,11 @@ jobs:
       id: info
       shell: bash
       run: |
-        case "${OSTYPE}" in linux*) pip_cache=~/.cache/pip;; darwin*) pip_cache=~/Library/Caches/pip;; msys) pip_cache="${LOCALAPPDATA}\pip\Cache";; esac
+        case "${OSTYPE}" in
+          linux*) pip_cache=~/.cache/pip;;
+          darwin*) pip_cache=~/Library/Caches/pip;;
+          msys) pip_cache="${LOCALAPPDATA}\pip\Cache";;
+        esac
         cat <<-EOF
         ::set-output name=git_tree_hash::$(git cat-file -p HEAD | sed -n "s/^tree //p")
         ::set-output name=pip_cache::${pip_cache}
