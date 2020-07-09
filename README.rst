@@ -90,7 +90,7 @@ To run this example, you will need to install the following:
     $ pip install ray[tune]
 
 
-This example runs a parallel grid search to train a Convolutional Neural Network using PyTorch.
+This example runs a parallel grid search to optimize an example objective function.
 
 .. code-block:: python
 
