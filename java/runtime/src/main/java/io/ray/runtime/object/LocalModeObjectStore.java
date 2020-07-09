@@ -2,6 +2,7 @@ package io.ray.runtime.object;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.id.ObjectId;
+import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
 import java.util.ArrayList;
 import java.util.List;
@@ -98,10 +99,10 @@ public class LocalModeObjectStore extends ObjectStore {
   }
 
   @Override
-  public void addLocalReference(ObjectId objectId) {
+  public void addLocalReference(UniqueId workerId, ObjectId objectId) {
   }
 
   @Override
-  public void removeLocalReference(ObjectId objectId) {
+  public void removeLocalReference(UniqueId workerId, ObjectId objectId) {
   }
 }

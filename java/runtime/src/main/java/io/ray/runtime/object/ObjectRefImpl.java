@@ -4,6 +4,7 @@ import com.google.common.base.Preconditions;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
+import io.ray.api.id.UniqueId;
 import io.ray.runtime.RayRuntimeInternal;
 import java.io.IOException;
 import java.io.Serializable;
@@ -15,9 +16,9 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Serializable {
 
   private final ObjectId id;
 
-  // In GC thread, we don't know which runtime this object binds to, so we need to store a reference
-  // of the runtime for later uses.
-  private transient RayRuntimeInternal runtime;
+  // In GC thread, we don't know which worker this object binds to, so we need to
+  // store the worker ID for later uses.
+  private transient UniqueId workerId;
 
   private Class<T> type;
 
@@ -45,34 +46,31 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Serializable {
   @Override
   protected void finalize() throws Throwable {
     try {
-      // Maybe the reference is already removed in unit test.
-      if (runtime != null) {
-        removeLocalReference();
-      }
+      removeLocalReference();
     } finally {
       super.finalize();
     }
   }
 
-  private void readObject(java.io.ObjectInputStream in)
-      throws IOException, ClassNotFoundException {
+  private void readObject(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
     in.defaultReadObject();
     addLocalReference();
   }
 
   private void addLocalReference() {
-    Preconditions.checkState(runtime == null);
-    runtime = (RayRuntimeInternal) Ray.internal();
-    Preconditions.checkState(!runtime.isShutdown(), "The runtime is already shutdown.");
-    runtime.getObjectStore().addLocalReference(id);
+    Preconditions.checkState(workerId == null);
+    RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
+    workerId = runtime.getWorkerContext().getCurrentWorkerId();
+    runtime.getObjectStore().addLocalReference(workerId, id);
   }
 
   // This method is public for test purposes only.
   public void removeLocalReference() {
-    Preconditions.checkState(runtime != null);
+    Preconditions.checkState(workerId != null);
+    RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
     // It's possible that GC is executed after the runtime is shutdown.
-    if (!runtime.isShutdown()) {
-      runtime.getObjectStore().removeLocalReference(id);
+    if (runtime != null) {
+      runtime.getObjectStore().removeLocalReference(workerId, id);
     }
     runtime = null;
   }

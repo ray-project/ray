@@ -177,9 +177,12 @@ class CoreWorkerProcess {
   /// `CoreWorkerProcess` has full control of the destruction timing of `CoreWorker`.
   static CoreWorker &GetCoreWorker();
 
-  /// Like `GetCoreWorker`, but returns a shared pointer.
+  /// Try to get the `CoreWorker` instance by worker ID.
   /// If the current thread is not associated with a core worker, returns a null pointer.
-  static std::shared_ptr<CoreWorker> TryGetCoreWorker();
+  ///
+  /// \param[in] workerId The worker ID.
+  /// \return The `CoreWorker` instance.
+  static std::shared_ptr<CoreWorker> TryGetWorker(const WorkerID &worker_id);
 
   /// Set the core worker associated with the current thread by worker ID.
   /// Currently used by Java worker only.
@@ -217,7 +220,7 @@ class CoreWorkerProcess {
   /// Check that the core worker environment is initialized for this process.
   ///
   /// \return Void.
-  static void EnsureInitialized();
+  static void EnsureInitialized() LOCKS_EXCLUDED(instance_mutex_);
 
   /// Get the `CoreWorker` instance by worker ID.
   ///
@@ -239,6 +242,8 @@ class CoreWorkerProcess {
 
   /// The global instance of `CoreWorkerProcess`.
   static std::unique_ptr<CoreWorkerProcess> instance_;
+
+  static absl::Mutex instance_mutex_;
 
   /// The various options.
   const CoreWorkerOptions options_;

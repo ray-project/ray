@@ -54,8 +54,6 @@ public class RayDevRuntime extends AbstractRayRuntime {
     }
     taskExecutor = null;
     RayConfig.reset();
-
-    super.shutdown();
   }
 
   @Override

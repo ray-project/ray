@@ -2,6 +2,7 @@ package io.ray.runtime.object;
 
 import io.ray.api.id.BaseId;
 import io.ray.api.id.ObjectId;
+import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
 import java.util.HashMap;
 import java.util.List;
@@ -47,13 +48,13 @@ public class NativeObjectStore extends ObjectStore {
   }
 
   @Override
-  public void addLocalReference(ObjectId objectId) {
-    nativeAddLocalReference(objectId.getBytes());
+  public void addLocalReference(UniqueId workerId, ObjectId objectId) {
+    nativeAddLocalReference(workerId.getBytes(), objectId.getBytes());
   }
 
   @Override
-  public void removeLocalReference(ObjectId objectId) {
-    nativeRemoveLocalReference(objectId.getBytes());
+  public void removeLocalReference(UniqueId workerId, ObjectId objectId) {
+    nativeRemoveLocalReference(workerId.getBytes(), objectId.getBytes());
   }
 
   public Map<ObjectId, long[]> getAllReferenceCounts() {
@@ -81,9 +82,9 @@ public class NativeObjectStore extends ObjectStore {
   private static native void nativeDelete(List<byte[]> objectIds, boolean localOnly,
       boolean deleteCreatingTasks);
 
-  private static native void nativeAddLocalReference(byte[] objectId);
+  private static native void nativeAddLocalReference(byte[] workerId, byte[] objectId);
 
-  private static native void nativeRemoveLocalReference(byte[] objectId);
+  private static native void nativeRemoveLocalReference(byte[] workerId, byte[] objectId);
 
   private static native Map<byte[], long[]> nativeGetAllReferenceCounts();
 }

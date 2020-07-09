@@ -115,8 +115,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     }
     RayConfig.reset();
     LOGGER.debug("RayNativeRuntime shutdown");
-
-    super.shutdown();
   }
 
   // For test purpose only

@@ -56,8 +56,6 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   protected TaskSubmitter taskSubmitter;
   protected WorkerContext workerContext;
 
-  private boolean isShutdown = false;
-
   /**
    * Whether the required thread context is set on the current thread.
    */
@@ -68,16 +66,6 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     setIsContextSet(rayConfig.workerMode == Common.WorkerType.DRIVER);
     functionManager = new FunctionManager(rayConfig.jobResourcePath);
     runtimeContext = new RuntimeContextImpl(this);
-  }
-
-  @Override
-  public void shutdown() {
-    isShutdown = true;
-  }
-
-  @Override
-  public boolean isShutdown() {
-    return isShutdown;
   }
 
   @Override

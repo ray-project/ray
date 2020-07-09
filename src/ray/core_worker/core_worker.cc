@@ -59,19 +59,36 @@ namespace ray {
 
 std::unique_ptr<CoreWorkerProcess> CoreWorkerProcess::instance_;
 
+absl::Mutex CoreWorkerProcess::instance_mutex_;
+
 thread_local std::weak_ptr<CoreWorker> CoreWorkerProcess::current_core_worker_;
 
 void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
-  RAY_CHECK(!instance_) << "The process is already initialized for core worker.";
+  {
+    // Check with reader lock first to crash early.
+    absl::ReaderMutexLock lock(&instance_mutex_);
+    RAY_CHECK(!instance_) << "The process is already initialized for core worker.";
+  }
+  absl::MutexLock lock(&instance_mutex_);
+  RAY_CHECK(!instance_);
   instance_ = std::unique_ptr<CoreWorkerProcess>(new CoreWorkerProcess(options));
 }
 
 void CoreWorkerProcess::Shutdown() {
+  {
+    // Check with reader lock first to crash early.
+    absl::ReaderMutexLock lock(&instance_mutex_);
+    if (!instance_) {
+      return;
+    }
+    RAY_CHECK(instance_->options_.worker_type == WorkerType::DRIVER)
+        << "The `Shutdown` interface is for driver only.";
+  }
+  absl::MutexLock lock(&instance_mutex_);
   if (!instance_) {
     return;
   }
-  RAY_CHECK(instance_->options_.worker_type == WorkerType::DRIVER)
-      << "The `Shutdown` interface is for driver only.";
+  RAY_CHECK(instance_->options_.worker_type == WorkerType::DRIVER);
   RAY_CHECK(instance_->global_worker_);
   instance_->global_worker_->Disconnect();
   instance_->global_worker_->Shutdown();
@@ -79,7 +96,10 @@ void CoreWorkerProcess::Shutdown() {
   instance_.reset();
 }
 
-bool CoreWorkerProcess::IsInitialized() { return instance_ != nullptr; }
+bool CoreWorkerProcess::IsInitialized() {
+  absl::ReaderMutexLock lock(&instance_mutex_);
+  return instance_ != nullptr;
+}
 
 CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
     : options_(options),
@@ -145,30 +165,38 @@ void CoreWorkerProcess::EnsureInitialized() {
                        << "shutdown.";
 }
 
-std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetCoreWorker() {
+std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &worker_id) {
+  absl::ReaderMutexLock lock(&instance_mutex_);
   if (!instance_) {
     return nullptr;
   }
+  absl::ReaderMutexLock workers_lock(&instance_->worker_map_mutex_);
+  auto it = instance_->workers_.find(worker_id);
+  if (it != instance_->workers_.end()) {
+    return it->second;
+  }
+  return nullptr;
+}
+
+CoreWorker &CoreWorkerProcess::GetCoreWorker() {
+  absl::ReaderMutexLock lock(&instance_mutex_);
+  EnsureInitialized();
   if (instance_->options_.num_workers == 1) {
     // TODO(mehrdadn): Remove this when the bug is resolved.
     // Somewhat consistently reproducible via
     // python/ray/tests/test_basic.py::test_background_tasks_with_max_calls
     // with -c opt on Windows.
     RAY_CHECK(instance_->global_worker_) << "global_worker_ must not be NULL";
-    return instance_->global_worker_;
+    return *instance_->global_worker_;
   }
-  return current_core_worker_.lock();
-}
-
-CoreWorker &CoreWorkerProcess::GetCoreWorker() {
-  EnsureInitialized();
-  auto core_worker = TryGetCoreWorker();
-  RAY_CHECK(core_worker)
+  auto ptr = current_core_worker_.lock();
+  RAY_CHECK(ptr != nullptr)
       << "The current thread is not bound with a core worker instance.";
-  return *core_worker;
+  return *ptr;
 }
 
 void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
+  absl::ReaderMutexLock lock(&instance_mutex_);
   EnsureInitialized();
   if (instance_->options_.num_workers == 1) {
     RAY_CHECK(instance_->global_worker_->GetWorkerID() == worker_id);
@@ -220,28 +248,32 @@ void CoreWorkerProcess::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
 }
 
 void CoreWorkerProcess::RunTaskExecutionLoop() {
-  EnsureInitialized();
-  RAY_CHECK(instance_->options_.worker_type == WorkerType::WORKER);
-  if (instance_->options_.num_workers == 1) {
-    // Run the task loop in the current thread only if the number of workers is 1.
-    auto worker =
-        instance_->global_worker_ ? instance_->global_worker_ : instance_->CreateWorker();
-    worker->RunTaskExecutionLoop();
-    instance_->RemoveWorker(worker);
-  } else {
-    std::vector<std::thread> worker_threads;
-    for (int i = 0; i < instance_->options_.num_workers; i++) {
-      worker_threads.emplace_back([]() {
-        auto worker = instance_->CreateWorker();
-        worker->RunTaskExecutionLoop();
-        instance_->RemoveWorker(worker);
-      });
-    }
-    for (auto &thread : worker_threads) {
-      thread.join();
+  {
+    absl::ReaderMutexLock lock(&instance_mutex_);
+    EnsureInitialized();
+    RAY_CHECK(instance_->options_.worker_type == WorkerType::WORKER);
+    if (instance_->options_.num_workers == 1) {
+      // Run the task loop in the current thread only if the number of workers is 1.
+      auto worker = instance_->global_worker_ ? instance_->global_worker_
+                                              : instance_->CreateWorker();
+      worker->RunTaskExecutionLoop();
+      instance_->RemoveWorker(worker);
+    } else {
+      std::vector<std::thread> worker_threads;
+      for (int i = 0; i < instance_->options_.num_workers; i++) {
+        worker_threads.emplace_back([]() {
+          auto worker = instance_->CreateWorker();
+          worker->RunTaskExecutionLoop();
+          instance_->RemoveWorker(worker);
+        });
+      }
+      for (auto &thread : worker_threads) {
+        thread.join();
+      }
     }
   }
 
+  absl::MutexLock lock(&instance_mutex_);
   instance_.reset();
 }
 
