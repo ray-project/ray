@@ -33,9 +33,9 @@ that supports top level ``await``:
     await actor.run_concurrent.remote()
 
 
-ObjectIDs as asyncio.Futures
+ObjectRefs as asyncio.Futures
 ----------------------------
-ObjectIDs can be translated to asyncio.Future. This feature
+ObjectRefs can be translated to asyncio.Future. This feature
 make it possible to ``await`` on ray futures in existing concurrent
 applications.
 
