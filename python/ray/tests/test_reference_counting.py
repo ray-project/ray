@@ -11,7 +11,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.test_utils import SignalActor, put_object
+from ray.test_utils import SignalActor, put_object, wait_for_condition
 
 logger = logging.getLogger(__name__)
 
@@ -525,6 +525,37 @@ def test_basic_nested_ids(one_worker_100MiB):
     # Remove the outer reference and check that the inner object gets evicted.
     del outer_oid
     _fill_object_store_and_get(inner_oid_bytes, succeed=False)
+
+
+def _all_actors_dead():
+    return all(actor["State"] == ray.gcs_utils.ActorTableData.DEAD
+               for actor in list(ray.actors().values()))
+
+
+def test_kill_actor_immediately_after_creation(ray_start_regular):
+    @ray.remote
+    class A:
+        pass
+
+    a = A.remote()
+    b = A.remote()
+
+    ray.kill(a)
+    ray.kill(b)
+    wait_for_condition(_all_actors_dead, timeout=10)
+
+
+def test_remove_actor_immediately_after_creation(ray_start_regular):
+    @ray.remote
+    class A:
+        pass
+
+    a = A.remote()
+    b = A.remote()
+
+    del a
+    del b
+    wait_for_condition(_all_actors_dead, timeout=10)
 
 
 if __name__ == "__main__":
