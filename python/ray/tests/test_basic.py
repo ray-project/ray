@@ -728,6 +728,21 @@ def test_args_stars_after(ray_start_regular):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
+def test_object_id_backward_compatibility(ray_start_regular):
+    # We've renamed Python's `ObjectID` to `ObjectRef`, and added a type
+    # alias for backward compatibility.
+    # This test is to make sure legacy code can still use `ObjectID`.
+    # TODO(hchen): once we completely remove Python's `ObjectID`,
+    # this test can be removed as well.
+
+    # Check that these 2 types are the same.
+    assert ray.ObjectID == ray.ObjectRef
+    object_ref = ray.put(1)
+    # Check that users can use either type in `isinstance`
+    assert isinstance(object_ref, ray.ObjectID)
+    assert isinstance(object_ref, ray.ObjectRef)
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))
