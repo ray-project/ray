@@ -1,48 +1,45 @@
 package io.ray.runtime.metric;
 
-import com.google.common.base.Preconditions;
+import java.util.Objects;
 
 /**
  * Tagkey mapping java object to stats tagkey object.
  */
 public class TagKey {
 
-  /**
-   * Raw pointer for tag key.
-   */
-  private long tagKeyPointer = 0L;
-
   private String tagKey;
 
   public TagKey(String key) {
     tagKey =  key;
-    tagKeyPointer = registerTagkeyNative(key);
-    Preconditions.checkState(tagKeyPointer != 0,
-      "Tagkey native pointer must not be 0.");
+    registerTagkeyNative(key);
   }
 
-  private native long registerTagkeyNative(String tagKey);
+  public String getTagKey() {
+    return tagKey;
+  }
 
-  /**
-   * Destroy raw object from stats.
-   */
-  public void unregisterTagKey() {
-    if (0 != tagKeyPointer) {
-      unregisterTagKey(tagKeyPointer);
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
     }
-    tagKeyPointer = 0;
+    if (!(o instanceof TagKey)) {
+      return false;
+    }
+    TagKey tagKey1 = (TagKey) o;
+    return Objects.equals(tagKey, tagKey1.tagKey);
   }
 
-  private native void unregisterTagKey(long tagKeyPtr);
-
-  public long getNativePointer() {
-    return tagKeyPointer;
+  @Override
+  public int hashCode() {
+    return Objects.hash(tagKey);
   }
+
+  private native void registerTagkeyNative(String tagKey);
 
   @Override
   public String toString() {
     return "TagKey{" +
-      "tagKeyPointer=" + tagKeyPointer +
       ", tagKey='" + tagKey + '\'' +
       '}';
   }

@@ -24,10 +24,10 @@ extern "C" {
 /*
  * Class:     io_ray_runtime_metric_Gauge
  * Method:    registerGaugeNative
- * Signature: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[J)J
+ * Signature: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)J
  */
 JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_Gauge_registerGaugeNative(
-    JNIEnv *, jobject, jstring, jstring, jstring, jlongArray);
+    JNIEnv *, jobject, jstring, jstring, jstring, jobject);
 
 /*
  * Class:     io_ray_runtime_metric_Gauge
@@ -40,11 +40,11 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_metric_Gauge_unregisterGauge(JNIEnv *
 /*
  * Class:     io_ray_runtime_metric_Gauge
  * Method:    recordNative
- * Signature: (JD[JLjava/util/List;)V
+ * Signature: (JDLjava/util/List;Ljava/util/List;)V
  */
 JNIEXPORT void JNICALL Java_io_ray_runtime_metric_Gauge_recordNative(JNIEnv *, jobject,
                                                                      jlong, jdouble,
-                                                                     jlongArray, jobject);
+                                                                     jobject, jobject);
 
 #ifdef __cplusplus
 }

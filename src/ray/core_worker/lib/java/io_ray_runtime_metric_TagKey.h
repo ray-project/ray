@@ -24,19 +24,11 @@ extern "C" {
 /*
  * Class:     io_ray_runtime_metric_TagKey
  * Method:    registerTagkeyNative
- * Signature: (Ljava/lang/String;)J
+ * Signature: (Ljava/lang/String;)V
  */
-JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_TagKey_registerTagkeyNative(JNIEnv *,
-                                                                               jobject,
-                                                                               jstring);
-
-/*
- * Class:     io_ray_runtime_metric_TagKey
- * Method:    unregisterTagKey
- * Signature: (J)V
- */
-JNIEXPORT void JNICALL Java_io_ray_runtime_metric_TagKey_unregisterTagKey(JNIEnv *,
-                                                                          jobject, jlong);
+JNIEXPORT void JNICALL Java_io_ray_runtime_metric_TagKey_registerTagkeyNative(JNIEnv *,
+                                                                              jobject,
+                                                                              jstring);
 
 #ifdef __cplusplus
 }

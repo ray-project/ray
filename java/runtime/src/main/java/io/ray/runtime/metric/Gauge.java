@@ -1,11 +1,15 @@
 package io.ray.runtime.metric;
 
+import com.google.common.base.Preconditions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
-import com.google.common.base.Preconditions;
 
+/**
+ * Gauge metric for recording last value and mapping object from stats.
+ */
 public class Gauge implements Metric {
 
   private String name;
@@ -15,13 +19,15 @@ public class Gauge implements Metric {
 
   public Gauge(String name, String description, String unit, Map<TagKey, String> tags) {
     gaugePtr = registerGaugeNative(name, description, unit,
-      tags.keySet().stream().mapToLong(TagKey::getNativePointer).toArray());
+      tags.keySet().stream().map(TagKey::getTagKey).collect(Collectors.toList()));
     this.name = name;
+
     this.tags = tags;
   }
 
   private native long registerGaugeNative(String name, String description,
-                                          String unit, long[] nativeTagKeyPtrList);
+                                          String unit, List<String> tagKeys);
+
   private native void unregisterGauge(long gaugePtr);
 
   public void update(double value) {
@@ -52,11 +58,11 @@ public class Gauge implements Metric {
     }
     // Get tag value list from map;
     recordNative(gaugePtr, value, nativeTagKeyList.stream()
-      .mapToLong(TagKey::getNativePointer).toArray(), tagValues);
+        .map(TagKey::getTagKey).collect(Collectors.toList()), tagValues);
   }
 
   private native void recordNative(long gaugePtr, double value,
-                             long[] nativeTagKeyPtrList,
+                             List tagKeys,
                              List<String> tagValues);
 
   @Override

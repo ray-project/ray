@@ -272,6 +272,16 @@ inline void JavaStringListToNativeStringVector(JNIEnv *env, jobject java_list,
       });
 }
 
+/// Convert a Java long array to C++ std::vector<long>.
+inline void JavaLongArrayToNativeLongVector(JNIEnv *env, jlongArray long_array,
+                                            std::vector<long> *native_vector) {
+  jlong *long_array_ptr = env->GetLongArrayElements(long_array, nullptr);
+  jsize vec_size = env->GetArrayLength(long_array);
+  native_vector->insert(native_vector->begin(), long_array_ptr,
+                        long_array_ptr + vec_size);
+  env->ReleaseLongArrayElements(long_array, long_array_ptr, 0);
+}
+
 /// Convert a C++ std::vector to a Java List.
 template <typename NativeT>
 inline jobject NativeVectorToJavaList(
