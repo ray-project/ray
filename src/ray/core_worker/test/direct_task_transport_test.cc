@@ -112,7 +112,9 @@ class MockRayletClient : public WorkerLeaseInterface {
     return Status::OK();
   }
 
-  ray::Status ReleaseUnusedWorkers(const std::vector<WorkerID> &workers_in_use) override {
+  ray::Status ReleaseUnusedWorkers(
+      const std::vector<WorkerID> &workers_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override {
     return Status::OK();
   }
 

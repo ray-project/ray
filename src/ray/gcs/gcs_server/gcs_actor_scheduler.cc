@@ -155,17 +155,31 @@ ActorID GcsActorScheduler::CancelOnWorker(const ClientID &node_id,
 }
 
 void GcsActorScheduler::ReleaseUnusedWorkers(
-    const std::unordered_map<ClientID, std::vector<WorkerID>> &node_to_workers) {
-  for (auto &iter : node_to_workers) {
-    // If the node is dead, there is no need to send the request of release unused
-    // workers.
-    if (auto node = gcs_node_manager_.GetNode(iter.first)) {
-      rpc::Address address;
-      address.set_raylet_id(node->node_id());
-      address.set_ip_address(node->node_manager_address());
-      address.set_port(node->node_manager_port());
-      auto lease_client = GetOrConnectLeaseClient(address);
-      RAY_CHECK_OK(lease_client->ReleaseUnusedWorkers(iter.second));
+    const std::unordered_map<ClientID, std::vector<WorkerID>> &node_to_workers,
+    const EmptyCallback &callback) {
+  RAY_CHECK(callback);
+  // If the node is dead, there is no need to send the request of release unused
+  // workers.
+  const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  // We need to send a request to each node, because it may be successful in the lease
+  // worker, but GCS server has not processed it before GCS server is restarted.
+  for (const auto &alive_node : alive_nodes) {
+    rpc::Address address;
+    address.set_raylet_id(alive_node.second->node_id());
+    address.set_ip_address(alive_node.second->node_manager_address());
+    address.set_port(alive_node.second->node_manager_port());
+    auto lease_client = GetOrConnectLeaseClient(address);
+    auto release_unused_workers_callback =
+        [callback](const Status &status, const rpc::ReleaseUnusedWorkersReply &reply) {
+          callback();
+        };
+    auto iter = node_to_workers.find(alive_node.first);
+    if (iter != node_to_workers.end()) {
+      RAY_CHECK_OK(lease_client->ReleaseUnusedWorkers(iter->second,
+                                                      release_unused_workers_callback));
+    } else {
+      RAY_CHECK_OK(
+          lease_client->ReleaseUnusedWorkers({}, release_unused_workers_callback));
     }
   }
 }
@@ -257,7 +271,9 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
     // node, and then try again on the new node.
     RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
     auto spill_back_node_id = ClientID::FromBinary(retry_at_raylet_address.raylet_id());
-    if (auto spill_back_node = gcs_node_manager_.GetNode(spill_back_node_id)) {
+    auto spill_back_node = gcs_node_manager_.GetNode(spill_back_node_id);
+    if (spill_back_node != nullptr &&
+        !nodes_of_releasing_unused_workers_.contains(spill_back_node_id)) {
       actor->UpdateAddress(retry_at_raylet_address);
       RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
                     .emplace(actor->GetActorID())
@@ -375,17 +391,27 @@ void GcsActorScheduler::DoRetryCreatingActorOnWorker(
 
 std::shared_ptr<rpc::GcsNodeInfo> GcsActorScheduler::SelectNodeRandomly() const {
   auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
-  if (alive_nodes.empty()) {
+  // When we select the available nodes, we need to filter out the nodes that are
+  // releasing unused workers, because we need to ensure that it releases unused workers
+  // before processing the lease worker request.
+  absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> available_nodes;
+  for (auto &alive_node : alive_nodes) {
+    if (!nodes_of_releasing_unused_workers_.contains(alive_node.first)) {
+      available_nodes[alive_node.first] = alive_node.second;
+    }
+  }
+
+  if (available_nodes.empty()) {
     return nullptr;
   }
 
   static std::mt19937_64 gen_(
       std::chrono::high_resolution_clock::now().time_since_epoch().count());
-  std::uniform_int_distribution<int> distribution(0, alive_nodes.size() - 1);
+  std::uniform_int_distribution<int> distribution(0, available_nodes.size() - 1);
   int key_index = distribution(gen_);
   int index = 0;
-  auto iter = alive_nodes.begin();
-  for (; index != key_index && iter != alive_nodes.end(); ++index, ++iter)
+  auto iter = available_nodes.begin();
+  for (; index != key_index && iter != available_nodes.end(); ++index, ++iter)
     ;
   return iter->second;
 }

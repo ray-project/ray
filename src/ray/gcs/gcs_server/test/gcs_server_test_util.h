@@ -77,7 +77,8 @@ struct GcsServerMocker {
     }
 
     ray::Status ReleaseUnusedWorkers(
-        const std::vector<WorkerID> &workers_in_use) override {
+        const std::vector<WorkerID> &workers_in_use,
+        const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override {
       return Status::OK();
     }
 

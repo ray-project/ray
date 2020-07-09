@@ -1998,6 +1998,8 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
 void NodeManager::HandleReleaseUnusedWorkers(
     const rpc::ReleaseUnusedWorkersRequest &request,
     rpc::ReleaseUnusedWorkersReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  // TODO(ffbin): At present, we have not cleaned up the lease worker requests that are
+  // still waiting to be scheduled, which will be implemented in the next pr.
   std::unordered_set<WorkerID> used_worker_ids;
   for (int index = 0; index < request.worker_id_list_size(); ++index) {
     auto worker_id = WorkerID::FromBinary(request.worker_id_list(index));
