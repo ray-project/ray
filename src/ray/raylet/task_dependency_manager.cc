@@ -513,6 +513,22 @@ void TaskDependencyManager::RecordMetrics() const {
       pending_tasks_.size(), {{stats::ValueTypeKey, "num_pending_tasks"}});
 }
 
+bool TaskDependencyManager::GetOwnerAddress(const ObjectID &object_id,
+                                            rpc::Address *owner_address) const {
+  const auto creating_task_entry = required_tasks_.find(object_id.TaskId());
+  if (creating_task_entry == required_tasks_.end()) {
+    return false;
+  }
+
+  const auto it = creating_task_entry->second.find(object_id);
+  if (it == creating_task_entry->second.end()) {
+    return false;
+  }
+
+  *owner_address = it->second.owner_address;
+  return true;
+}
+
 }  // namespace raylet
 
 }  // namespace ray
