@@ -3,12 +3,6 @@
 How to use Tune with PyTorch
 ============================
 
-Hyperparameter tuning can make the difference between an average model and a highly
-accurate one. Often simple things like choosing a different learning rate or changing
-a network layer size can have a dramatic impact on your model performance. Fortunately,
-Tune makes exploring these optimal parameter combinations easy - and works nicely
-together with PyTorch.
-
 In this walkthrough, we will show you how to integrate Tune into your PyTorch
 training workflow. We will follow `this tutorial from the PyTorch documentation
 <https://pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html>`_ for training
@@ -16,6 +10,12 @@ a CIFAR10 image classifier.
 
 .. image:: /images/pytorch_logo.png
   :align: center
+
+Hyperparameter tuning can make the difference between an average model and a highly
+accurate one. Often simple things like choosing a different learning rate or changing
+a network layer size can have a dramatic impact on your model performance. Fortunately,
+Tune makes exploring these optimal parameter combinations easy - and works nicely
+together with PyTorch.
 
 As you will see, we only need to add some slight modifications. In particular, we
 need to
@@ -123,6 +123,7 @@ The full code example looks like this:
    :language: python
    :start-after: __train_begin__
    :end-before: __train_end__
+   :emphasize-lines: 2,4,5,8,18,23,68-71,73
 
 As you can see, most of the code is adapted directly from the example.
 
