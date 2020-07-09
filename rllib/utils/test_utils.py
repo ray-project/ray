@@ -42,13 +42,13 @@ def framework_iterator(config=None,
     config = config or {}
     frameworks = [frameworks] if isinstance(frameworks, str) else \
         list(frameworks)
-    if tfv == 2 and "tf" in frameworks:
-        # Both tf present -> remove "tf".
-        if "tfe" in frameworks:
-            frameworks.remove("tf")
-        # Only "tf" present -> replace with "tfe".
-        else:
-            frameworks[frameworks.index("tf")] = "tfe"
+    #if tfv == 2 and "tf" in frameworks:
+    #    # Both tf present -> remove "tf".
+    #    if "tfe" in frameworks:
+    #        frameworks.remove("tf")
+    #    # Only "tf" present -> replace with "tfe".
+    #    else:
+    #        frameworks[frameworks.index("tf")] = "tfe"
 
     for fw in frameworks:
         # Skip non-installed frameworks.
@@ -64,7 +64,11 @@ def framework_iterator(config=None,
             logger.warning("framework_iterator skipping eager (could not "
                            "import `eager_mode` from tensorflow.python)!")
             continue
-        assert fw in ["tf", "tfe", "torch", None]
+        elif fw == "tf2" and tfv != 2:
+            logger.warning(
+                "framework_iterator skipping tf2.x (tf version is < 2.0)!")
+            continue
+        assert fw in ["tf2", "tf", "tfe", "torch", None]
 
         # Do we need a test session?
         sess = None
@@ -82,7 +86,10 @@ def framework_iterator(config=None,
             eager_ctx.__enter__()
             assert tf1.executing_eagerly()
         elif fw == "tf":
-            assert tfv == 2 or not tf1.executing_eagerly()
+            assert not tf1.executing_eagerly()
+        # If framework == tf2 -> tf version must be 2.
+        elif fw == "tf2":
+            assert tf.executing_eagerly()
 
         yield fw if session is False else (fw, sess)
 

@@ -20,7 +20,8 @@ class TestSimpleQ(unittest.TestCase):
         config = dqn.SIMPLE_Q_DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(
+                config, frameworks=("tf2", "tf", "tfe", "torch")):
             trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
             num_iterations = 2
             for i in range(num_iterations):
@@ -38,7 +39,8 @@ class TestSimpleQ(unittest.TestCase):
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
 
-        for fw in framework_iterator(config):
+        for fw in framework_iterator(
+                config, frameworks=("tf2", "tf", "tfe", "torch")):
             # Generate Trainer and get its default Policy object.
             trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
             policy = trainer.get_policy()

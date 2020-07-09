@@ -138,9 +138,8 @@ class TrainTFMultiGPU:
         if tfv == 2:
             for policy_id in self.policies:
                 policy = self.workers.local_worker().get_policy(policy_id)
-                with tf.compat.v1.variable_scope(
-                        policy_id, reuse=tf.compat.v1.AUTO_REUSE):
-                    #TODO: multi-GPU for tfe
+                with tf1.variable_scope(policy_id, reuse=tf1.AUTO_REUSE):
+                    #TODO: multi-GPU for tfe.
                     if policy._state_inputs:
                         rnn_inputs = policy._state_inputs + [
                             policy._seq_lens

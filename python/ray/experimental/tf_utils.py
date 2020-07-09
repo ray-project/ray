@@ -79,16 +79,10 @@ class TensorFlowVariables:
                     or "VarHandle" in tf_obj.node_def.op):
                 variable_names.append(tf_obj.node_def.name)
         self.variables = OrderedDict()
-        if tfv == 1:
-            variable_list = [
-                v for v in tf.global_variables()
-                if v.op.node_def.name in variable_names
-            ]
-        else:
-            variable_list = [
-                v for v in tf1.compat.v1.global_variables()
-                if v.op.node_def.name in variable_names
-            ]
+        variable_list = [
+            v for v in tf1.global_variables()
+            if v.op.node_def.name in variable_names
+        ]
         if input_variables is not None:
             variable_list += input_variables
 

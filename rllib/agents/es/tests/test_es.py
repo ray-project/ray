@@ -18,7 +18,8 @@ class TestES(unittest.TestCase):
 
         num_iterations = 2
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(
+                config, frameworks=("tf2", "tf", "tfe", "torch")):
             plain_config = config.copy()
             trainer = es.ESTrainer(config=plain_config, env="CartPole-v0")
             for i in range(num_iterations):

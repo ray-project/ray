@@ -25,7 +25,8 @@ class TestDQN(unittest.TestCase):
         config["num_workers"] = 2
         num_iterations = 1
 
-        for fw in framework_iterator(config):
+        for fw in framework_iterator(
+                config, frameworks=("tf2", "tf", "tfe", "torch")):
             # Double-dueling DQN.
             plain_config = config.copy()
             trainer = dqn.DQNTrainer(config=plain_config, env="CartPole-v0")
@@ -60,7 +61,8 @@ class TestDQN(unittest.TestCase):
         obs = np.array(0)
 
         # Test against all frameworks.
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(
+                config, frameworks=("tf2", "tf", "tfe", "torch")):
             # Default EpsilonGreedy setup.
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             # Setting explore=False should always return the same action.

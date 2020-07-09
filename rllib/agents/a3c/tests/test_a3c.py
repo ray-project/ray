@@ -24,7 +24,8 @@ class TestA3C(unittest.TestCase):
         num_iterations = 1
 
         # Test against all frameworks.
-        for fw in framework_iterator(config):
+        for fw in framework_iterator(
+                config, frameworks=("tf2", "tf", "tfe", "torch")):
             config["sample_async"] = fw == "tf"
             for env in ["CartPole-v0", "Pendulum-v0", "PongDeterministic-v0"]:
                 trainer = a3c.A3CTrainer(config=config, env=env)

@@ -134,7 +134,7 @@ def validate_config(config):
             "Using the simple minibatch optimizer. This will significantly "
             "reduce performance, consider simple_optimizer=False.")
     # Multi-gpu not supported for PyTorch and tf-eager.
-    elif config["framework"] in ["tfe", "torch"]:
+    elif config["framework"] in ["tf2", "tfe", "torch"]:
         config["simple_optimizer"] = True
 
 
