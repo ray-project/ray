@@ -172,9 +172,9 @@ class TestModules(unittest.TestCase):
                 relative_position_embedding_torch(20, 15).numpy())
 
         # B is batch size
-        B = 32
+        B = 30
         # D_in is attention dim, L is memory_tau
-        L, D_in, D_out = 2, 16, 2
+        L, D_in, D_out = 3, 12, 5
 
         for fw, sess in framework_iterator(session=True):
 
@@ -184,28 +184,29 @@ class TestModules(unittest.TestCase):
                 x = torch.randn(B, L, D_in)
                 y = torch.randn(B, L, D_out)
 
-                value_labels = torch.randn(B, L, D_in)
-                memory_labels = torch.randn(B, L, D_out)
+                value_labels = torch.randn(B, L, 1)
+                memory_labels = torch.randn(B, L, D_in)
 
                 attention_net = TorchGTrXLNet(
                     observation_space=gym.spaces.Box(
                         low=float("-inf"), high=float("inf"), shape=(D_in, )),
                     action_space=gym.spaces.Discrete(D_out),
                     num_outputs=D_out,
-                    model_config={"max_seq_len": 2},
+                    model_config={"max_seq_len": 9},
                     name="TestTorchAttentionNet",
                     num_transformer_units=2,
                     attn_dim=D_in,
                     num_heads=2,
                     memory_tau=L,
                     head_dim=D_out,
-                    ff_hidden_dim=16,
+                    ff_hidden_dim=17,
                     init_gate_bias=2.0)
 
                 init_state = attention_net.get_initial_state()
 
                 # Get initial state and add a batch dimension.
-                init_state = [np.expand_dims(s, 0) for s in init_state]
+                init_state = [np.tile(s, (B, 1, 1)) for s in init_state]
+                    #[np.expand_dims(s, 0) for s in init_state]
                 seq_lens_init = torch.full(size=(B, ), fill_value=L)
 
                 # Torch implementation expects a formatted input_dict instead
@@ -219,6 +220,7 @@ class TestModules(unittest.TestCase):
                     seq_lens=seq_lens_init)
             # Framework is tensorflow or tensorflow-eager.
             else:
+                continue
                 x = np.random.random((B, L, D_in))
                 y = np.random.random((B, L, D_out))
 
