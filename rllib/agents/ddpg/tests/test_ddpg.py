@@ -209,11 +209,8 @@ class TestDDPG(unittest.TestCase):
 
             # Set all weights (of all nets) to fixed values.
             if weights_dict is None:
-                assert fw in ["tf", "tfe"]  # Start with the tf vars-dict.
-                if tfv == 2:
-                    weights_dict = policy.get_weights(as_dict=True)
-                else:
-                    weights_dict = policy.get_weights()
+                assert fw == "tf"  # Start with the tf vars-dict.
+                weights_dict = policy.get_weights()
             else:
                 assert fw == "torch"  # Then transfer that to torch Model.
                 model_dict = self._translate_weights_to_torch(
