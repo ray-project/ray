@@ -4,17 +4,9 @@ import time
 
 import ray
 import ray.cluster_utils
-import ray.test_utils
+from ray.test_utils import wait_for_condition
 
 logger = logging.getLogger(__name__)
-
-
-def wait_for_condition(condition_predictor):
-    return ray.test_utils.wait_for_condition(
-        condition_predictor,
-        timeout=5,
-        retry_interval_ms=500,
-    )
 
 
 def test_dynamic_res_creation(ray_start_regular):
@@ -55,7 +47,7 @@ def test_dynamic_res_deletion(shutdown_only):
         cluster_res = ray.cluster_resources()
         return res_name not in available_res and res_name not in cluster_res
 
-    ray.test_utils.wait_for_condition(check_resources)
+    wait_for_condition(check_resources)
 
 
 def test_dynamic_res_infeasible_rescheduling(ray_start_regular):
