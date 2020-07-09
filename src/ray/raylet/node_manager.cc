@@ -2008,7 +2008,8 @@ void NodeManager::HandleReleaseUnusedWorkers(
 
   std::vector<WorkerID> unused_worker_ids;
   for (auto &iter : leased_workers_) {
-    if (!used_worker_ids.count(iter.first)) {
+    // We need to exclude workers used by common tasks.
+    if (!iter.second->GetActorId().IsNil() && !used_worker_ids.count(iter.first)) {
       unused_worker_ids.emplace_back(iter.first);
     }
   }
