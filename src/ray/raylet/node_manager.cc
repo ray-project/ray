@@ -1699,6 +1699,7 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
       // Try next task in the dispatch queue.
       continue;
     }
+
     worker->SetOwnerAddress(spec.CallerAddress());
     if (spec.IsActorCreationTask()) {
       // The actor belongs to this worker now.
@@ -1723,13 +1724,9 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
   // blocking where a task which cannot be scheduled because
   // there are not enough available resources blocks other
   // tasks from being scheduled.
-  while (queue_size > 0) {
-    if (queue_size == 0) {
-      return;
-    } else {
-      queue_size--;
-    }
+  while (queue_size-- > 0) {
     auto work = tasks_to_schedule_.front();
+    tasks_to_schedule_.pop_front();
     auto task = work.second;
     auto request_resources =
         task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
@@ -1738,13 +1735,13 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
         new_resource_scheduler_->GetBestSchedulableNode(request_resources, &violations);
     if (node_id_string.empty()) {
       /// There is no node that has available resources to run the request.
-      tasks_to_schedule_.pop_front();
       tasks_to_schedule_.push_back(work);
       continue;
     } else {
       if (node_id_string == self_node_id_.Binary()) {
         WaitForTaskArgsRequests(work);
       } else {
+        // Should spill over to a different node.
         new_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
                                                              request_resources);
 
@@ -1756,7 +1753,6 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
         work.first(nullptr, node_id, node_info_opt->node_manager_address(),
                    node_info_opt->node_manager_port());
       }
-      tasks_to_schedule_.pop_front();
     }
   }
   DispatchScheduledTasksToWorkers();
@@ -1875,7 +1871,6 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 
   // Override the task dispatch to call back to the client instead of executing the
   // task directly on the worker.
-  RAY_LOG(DEBUG) << "Worker lease request " << task.GetTaskSpecification().TaskId();
   TaskID task_id = task.GetTaskSpecification().TaskId();
   rpc::Address owner_address = task.GetTaskSpecification().CallerAddress();
   task.OnDispatchInstead(
