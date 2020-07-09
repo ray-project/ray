@@ -821,8 +821,6 @@ def test_raylet_crash_when_get(ray_start_regular):
 
     object_id = ray.put(None)
     ray.internal.free(object_id)
-    while ray.worker.global_worker.core_worker.object_exists(object_id):
-        time.sleep(1)
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
@@ -984,8 +982,6 @@ def test_eviction(ray_start_cluster):
     assert (isinstance(ray.get(obj), np.ndarray))
     # Evict the object.
     ray.internal.free([obj])
-    while ray.worker.global_worker.core_worker.object_exists(obj):
-        time.sleep(1)
     # ray.get throws an exception.
     with pytest.raises(ray.exceptions.UnreconstructableError):
         ray.get(obj)
