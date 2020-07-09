@@ -70,4 +70,3 @@ cdef class ObjectRef(BaseID):
         # Delayed import because this can only be imported in py3.
         from ray.async_compat import get_async
         return get_async(self)
-

@@ -177,7 +177,8 @@ cdef class MessagePackSerializer(object):
                 raise Exception('Unrecognized ext type id: {}'.format(code))
         try:
             gc.disable()  # Performance optimization for msgpack.
-            return msgpack.loads(s, ext_hook=_ext_hook, raw=False, strict_map_key=False)
+            return msgpack.loads(s, ext_hook=_ext_hook, raw=False,
+                                 strict_map_key=False)
         finally:
             gc.enable()
 
@@ -438,13 +439,17 @@ cdef class MessagePackSerializedObject(SerializedObject):
     def __init__(self, metadata, msgpack_data,
                  SerializedObject nest_serialized_object=None):
         if nest_serialized_object:
-            contained_object_refs = nest_serialized_object.contained_object_refs
+            contained_object_refs = (
+                nest_serialized_object.contained_object_refs
+            )
             total_bytes = nest_serialized_object.total_bytes
         else:
             contained_object_refs = []
             total_bytes = 0
-        super(MessagePackSerializedObject, self).__init__(metadata,
-                                                          contained_object_refs)
+        super(MessagePackSerializedObject, self).__init__(
+            metadata,
+            contained_object_refs,
+        )
         self.nest_serialized_object = nest_serialized_object
         self.msgpack_header = msgpack_header = msgpack.dumps(len(msgpack_data))
         self.msgpack_data = msgpack_data

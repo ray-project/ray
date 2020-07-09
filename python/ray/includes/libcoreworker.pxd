@@ -41,10 +41,10 @@ ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
 
 ctypedef void (*ray_callback_function) \
     (shared_ptr[CRayObject] result_object,
-     CObjectID object_ref, void* user_data)
+     CObjectID object_id, void* user_data)
 
 ctypedef void (*plasma_callback_function) \
-    (CObjectID object_ref, int64_t data_size, int64_t metadata_size)
+    (CObjectID object_id, int64_t data_size, int64_t metadata_size)
 
 cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfiler "ray::worker::Profiler":
@@ -99,15 +99,15 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
             c_bool no_restart)
-        CRayStatus CancelTask(const CObjectID &object_ref, c_bool force_kill)
+        CRayStatus CancelTask(const CObjectID &object_id, c_bool force_kill)
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)
         CRayStatus AllocateReturnObjects(
-            const c_vector[CObjectID] &object_refs,
+            const c_vector[CObjectID] &object_ids,
             const c_vector[size_t] &data_sizes,
             const c_vector[shared_ptr[CBuffer]] &metadatas,
-            const c_vector[c_vector[CObjectID]] &contained_object_refs,
+            const c_vector[c_vector[CObjectID]] &contained_object_ids,
             c_vector[shared_ptr[CRayObject]] *return_objects)
 
         CJobID GetCurrentJobId()
@@ -119,46 +119,46 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         const ResourceMappingType &GetResourceIDs() const
         void RemoveActorHandleReference(const CActorID &actor_id)
         CActorID DeserializeAndRegisterActorHandle(const c_string &bytes, const
-                                                   CObjectID &outer_object_ref)
+                                                   CObjectID &outer_object_id)
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
                                         *bytes,
                                         CObjectID *c_actor_handle_id)
         const CActorHandle* GetActorHandle(const CActorID &actor_id) const
         const CActorHandle* GetNamedActorHandle(const c_string &name)
-        void AddLocalReference(const CObjectID &object_ref)
-        void RemoveLocalReference(const CObjectID &object_ref)
+        void AddLocalReference(const CObjectID &object_id)
+        void RemoveLocalReference(const CObjectID &object_id)
         const CAddress &GetRpcAddress() const
-        CAddress GetOwnerAddress(const CObjectID &object_ref) const
-        void PromoteObjectToPlasma(const CObjectID &object_ref)
-        void PromoteToPlasmaAndGetOwnershipInfo(const CObjectID &object_ref,
+        CAddress GetOwnerAddress(const CObjectID &object_id) const
+        void PromoteObjectToPlasma(const CObjectID &object_id)
+        void PromoteToPlasmaAndGetOwnershipInfo(const CObjectID &object_id,
                                                 CAddress *owner_address)
         void RegisterOwnershipInfoAndResolveFuture(
-                const CObjectID &object_ref,
-                const CObjectID &outer_object_ref,
+                const CObjectID &object_id,
+                const CObjectID &outer_object_id,
                 const CAddress &owner_address)
 
         CRayStatus SetClientOptions(c_string client_name, int64_t limit)
         CRayStatus Put(const CRayObject &object,
-                       const c_vector[CObjectID] &contained_object_refs,
-                       CObjectID *object_ref)
+                       const c_vector[CObjectID] &contained_object_ids,
+                       CObjectID *object_id)
         CRayStatus Put(const CRayObject &object,
-                       const c_vector[CObjectID] &contained_object_refs,
-                       const CObjectID &object_ref)
+                       const c_vector[CObjectID] &contained_object_ids,
+                       const CObjectID &object_id)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
                           const size_t data_size,
-                          const c_vector[CObjectID] &contained_object_refs,
-                          CObjectID *object_ref, shared_ptr[CBuffer] *data)
+                          const c_vector[CObjectID] &contained_object_ids,
+                          CObjectID *object_id, shared_ptr[CBuffer] *data)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
                           const size_t data_size,
-                          const CObjectID &object_ref,
+                          const CObjectID &object_id,
                           shared_ptr[CBuffer] *data)
-        CRayStatus Seal(const CObjectID &object_ref, c_bool pin_object)
+        CRayStatus Seal(const CObjectID &object_id, c_bool pin_object)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results)
-        CRayStatus Contains(const CObjectID &object_ref, c_bool *has_object)
-        CRayStatus Wait(const c_vector[CObjectID] &object_refs, int num_objects,
-                        int64_t timeout_ms, c_vector[c_bool] *results)
-        CRayStatus Delete(const c_vector[CObjectID] &object_refs,
+        CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
+        CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
+                        int64_t timeout_ms, c_vector[c_bool] *results,)
+        CRayStatus Delete(const c_vector[CObjectID] &object_ids,
                           c_bool local_only, c_bool delete_creating_tasks)
         CRayStatus TriggerGlobalGC()
         c_string MemoryUsageString()
@@ -168,7 +168,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         unordered_map[CObjectID, pair[size_t, size_t]] GetAllReferenceCounts()
 
-        void GetAsync(const CObjectID &object_ref,
+        void GetAsync(const CObjectID &object_id,
                       ray_callback_function success_callback,
                       void* python_future)
 
