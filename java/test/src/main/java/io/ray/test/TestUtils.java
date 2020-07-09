@@ -1,16 +1,18 @@
 package io.ray.test;
 
+import com.google.common.base.Preconditions;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.RayRuntimeProxy;
 import io.ray.runtime.config.RunMode;
+import io.ray.runtime.task.ArgumentsBuilder;
+import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.function.Supplier;
-import org.ray.runtime.util.RuntimeUtil;
 import org.testng.Assert;
 import org.testng.SkipException;
 
@@ -18,7 +20,16 @@ public class TestUtils {
 
   public static class LargeObject implements Serializable {
 
-    public byte[] data = new byte[1024 * 1024];
+    public byte[] data;
+
+    public LargeObject() {
+      this(1024 * 1024);
+    }
+
+    public LargeObject(int size) {
+      Preconditions.checkState(size > ArgumentsBuilder.LARGEST_SIZE_PASS_BY_VALUE);
+      data = new byte[size];
+    }
   }
 
   private static final int WAIT_INTERVAL_MS = 5;

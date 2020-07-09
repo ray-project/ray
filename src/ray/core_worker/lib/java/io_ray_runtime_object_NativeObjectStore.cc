@@ -92,26 +92,23 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete
 }
 
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(
-    JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jbyteArray objectId) {
+Java_io_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(
+    JNIEnv *env, jclass, jbyteArray objectId) {
   auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
-  reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)
-      ->AddLocalReference(object_id);
+  ray::CoreWorkerProcess::GetCoreWorker().AddLocalReference(object_id);
 }
 
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(
-    JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jbyteArray objectId) {
+Java_io_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(
+    JNIEnv *env, jclass, jbyteArray objectId) {
   auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
-  reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)
-      ->RemoveLocalReference(object_id);
+  ray::CoreWorkerProcess::GetCoreWorker().RemoveLocalReference(object_id);
 }
 
 JNIEXPORT jobject JNICALL
-Java_org_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(
-    JNIEnv *env, jclass, jlong nativeCoreWorkerPointer) {
-  auto reference_counts = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)
-                              ->GetAllReferenceCounts();
+Java_io_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv *env,
+                                                                         jclass) {
+  auto reference_counts = ray::CoreWorkerProcess::GetCoreWorker().GetAllReferenceCounts();
   return NativeMapToJavaMap<ray::ObjectID, std::pair<size_t, size_t>>(
       env, reference_counts,
       [](JNIEnv *env, const ray::ObjectID &key) {

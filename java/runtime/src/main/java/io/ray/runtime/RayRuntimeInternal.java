@@ -30,4 +30,6 @@ public interface RayRuntimeInternal extends RayRuntime {
   void setIsContextSet(boolean isContextSet);
 
   void run();
+
+  boolean isShutdown();
 }

@@ -66,32 +66,31 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete
     JNIEnv *, jclass, jobject, jboolean, jboolean);
 
 /*
- * Class:     org_ray_runtime_object_NativeObjectStore
+ * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativeAddLocalReference
- * Signature: (J[B)V
+ * Signature: ([B)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(JNIEnv *, jclass,
-                                                                      jlong, jbyteArray);
+Java_io_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(JNIEnv *, jclass,
+                                                                     jbyteArray);
 
 /*
- * Class:     org_ray_runtime_object_NativeObjectStore
+ * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativeRemoveLocalReference
- * Signature: (J[B)V
+ * Signature: ([B)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(JNIEnv *, jclass,
-                                                                         jlong,
-                                                                         jbyteArray);
+Java_io_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(JNIEnv *, jclass,
+                                                                        jbyteArray);
 
 /*
- * Class:     org_ray_runtime_object_NativeObjectStore
+ * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativeGetAllReferenceCounts
- * Signature: (J)Ljava/util/Map;
+ * Signature: ()Ljava/util/Map;
  */
 JNIEXPORT jobject JNICALL
-Java_org_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv *,
-                                                                          jclass, jlong);
+Java_io_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv *,
+                                                                         jclass);
 
 #ifdef __cplusplus
 }

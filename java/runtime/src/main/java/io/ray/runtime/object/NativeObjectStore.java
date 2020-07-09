@@ -3,7 +3,9 @@ package io.ray.runtime.object;
 import io.ray.api.id.BaseId;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.context.WorkerContext;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,18 +48,18 @@ public class NativeObjectStore extends ObjectStore {
 
   @Override
   public void addLocalReference(ObjectId objectId) {
-    nativeAddLocalReference(nativeCoreWorkerPointer, objectId.getBytes());
+    nativeAddLocalReference(objectId.getBytes());
   }
 
   @Override
   public void removeLocalReference(ObjectId objectId) {
-    nativeRemoveLocalReference(nativeCoreWorkerPointer, objectId.getBytes());
+    nativeRemoveLocalReference(objectId.getBytes());
   }
 
   public Map<ObjectId, long[]> getAllReferenceCounts() {
     Map<ObjectId, long[]> referenceCounts = new HashMap<>();
     for (Map.Entry<byte[], long[]> entry :
-        nativeGetAllReferenceCounts(nativeCoreWorkerPointer).entrySet()) {
+        nativeGetAllReferenceCounts().entrySet()) {
       referenceCounts.put(new ObjectId(entry.getKey()), entry.getValue());
     }
     return referenceCounts;
@@ -79,11 +81,9 @@ public class NativeObjectStore extends ObjectStore {
   private static native void nativeDelete(List<byte[]> objectIds, boolean localOnly,
       boolean deleteCreatingTasks);
 
-  private static native void nativeAddLocalReference(long nativeCoreWorkerPointer, byte[] objectId);
+  private static native void nativeAddLocalReference(byte[] objectId);
 
-  private static native void nativeRemoveLocalReference(long nativeCoreWorkerPointer,
-      byte[] objectId);
+  private static native void nativeRemoveLocalReference(byte[] objectId);
 
-  private static native Map<byte[], long[]> nativeGetAllReferenceCounts(
-      long nativeCoreWorkerPointer);
+  private static native Map<byte[], long[]> nativeGetAllReferenceCounts();
 }

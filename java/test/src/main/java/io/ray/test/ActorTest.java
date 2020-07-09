@@ -1,5 +1,6 @@
 package io.ray.test;
 
+import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
@@ -10,7 +11,6 @@ import io.ray.api.id.UniqueId;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import com.google.common.collect.ImmutableList;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -43,8 +43,8 @@ public class ActorTest extends BaseTest {
       return value;
     }
 
-    public LargeObject createLargeObject() {
-      return new LargeObject();
+    public TestUtils.LargeObject createLargeObject() {
+      return new TestUtils.LargeObject();
     }
   }
 
@@ -137,8 +137,8 @@ public class ActorTest extends BaseTest {
     Assert.assertEquals(value.get(), Integer.valueOf(100));
 
     // Call an actor method.
-    RayObject<LargeObject> largeValue = Ray.call(Counter::createLargeObject, counter);
-    Assert.assertTrue(largeValue.get() instanceof LargeObject);
+    ObjectRef<TestUtils.LargeObject> largeValue = counter.task(Counter::createLargeObject).remote();
+    Assert.assertTrue(largeValue.get() instanceof TestUtils.LargeObject);
     // Delete the object from the object store.
     Ray.internal().free(ImmutableList.of(largeValue.getId()), false, false);
     // Wait for delete RPC to propagate

@@ -75,6 +75,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     isShutdown = true;
   }
 
+  @Override
   public boolean isShutdown() {
     return isShutdown;
   }

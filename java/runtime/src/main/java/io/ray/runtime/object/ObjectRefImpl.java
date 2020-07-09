@@ -1,8 +1,11 @@
 package io.ray.runtime.object;
 
+import com.google.common.base.Preconditions;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
+import io.ray.runtime.RayRuntimeInternal;
+import java.io.IOException;
 import java.io.Serializable;
 
 /**
@@ -14,7 +17,7 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Serializable {
 
   // In GC thread, we don't know which runtime this object binds to, so we need to store a reference
   // of the runtime for later uses.
-  private transient AbstractRayRuntime runtime;
+  private transient RayRuntimeInternal runtime;
 
   private Class<T> type;
 
@@ -59,7 +62,7 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Serializable {
 
   private void addLocalReference() {
     Preconditions.checkState(runtime == null);
-    runtime = RuntimeUtil.getRuntime();
+    runtime = (RayRuntimeInternal) Ray.internal();
     Preconditions.checkState(!runtime.isShutdown(), "The runtime is already shutdown.");
     runtime.getObjectStore().addLocalReference(id);
   }
