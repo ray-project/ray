@@ -349,15 +349,10 @@ Status RedisJobInfoAccessor::DoAsyncAppend(const std::shared_ptr<JobTableData> &
   return client_impl_->job_table().Append(job_id, job_id, data_ptr, on_done);
 }
 
-Status RedisJobInfoAccessor::AsyncSubscribeToFinishedJobs(
+Status RedisJobInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<JobID, JobTableData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const JobID &job_id, const JobTableData &job_data) {
-    if (job_data.is_dead()) {
-      subscribe(job_id, job_data);
-    }
-  };
-  return job_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), on_subscribe, done);
+  return job_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
 }
 
 RedisTaskInfoAccessor::RedisTaskInfoAccessor(RedisGcsClient *client_impl)
