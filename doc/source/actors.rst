@@ -60,9 +60,9 @@ Any method of the actor can return multiple object IDs with the ``ray.method`` d
 
     f = Foo.remote()
 
-    obj_id1, obj_id2 = f.bar.remote()
-    assert ray.get(obj_id1) == 1
-    assert ray.get(obj_id2) == 2
+    obj_ref1, obj_ref2 = f.bar.remote()
+    assert ray.get(obj_ref1) == 1
+    assert ray.get(obj_ref2) == 2
 
 .. _actor-resource-guide:
 

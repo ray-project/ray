@@ -181,8 +181,8 @@ Remote functions can be canceled by calling ``ray.cancel`` on the returned Objec
       time.sleep(10e6)
       return 100
 
-  obj_id = blocking_operation.remote()
-  ray.cancel(obj_id)
+  obj_ref = blocking_operation.remote()
+  ray.cancel(obj_ref)
 
 .. autofunction:: ray.cancel
     :noindex:
@@ -228,8 +228,8 @@ Otherwise, we deserialize the object data into a Python object.
 .. code-block:: python
 
     y = 1
-    obj_id = ray.put(y)
-    assert ray.get(obj_id) == 1
+    obj_ref = ray.put(y)
+    assert ray.get(obj_ref) == 1
 
 You can also set a timeout to return early from a ``get`` that's blocking for too long.
 
@@ -241,9 +241,9 @@ You can also set a timeout to return early from a ``get`` that's blocking for to
     def long_running_function()
         time.sleep(8)
 
-    obj_id = long_running_function.remote()
+    obj_ref = long_running_function.remote()
     try:
-        ray.get(obj_id, timeout=4)
+        ray.get(obj_ref, timeout=4)
     except RayTimeoutError:
         print("`get` timed out.")
 
@@ -324,8 +324,8 @@ value.
 
 .. code-block:: python
 
-  obj_id = a1.increment.remote()
-  ray.get(obj_id) == 1
+  obj_ref = a1.increment.remote()
+  ray.get(obj_ref) == 1
 
 
 Methods called on different actors can execute in parallel, and methods called on the same actor are executed serially in the order that they are called. Methods on the same actor will share state with one another, as shown below.
