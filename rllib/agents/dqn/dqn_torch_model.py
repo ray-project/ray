@@ -55,9 +55,8 @@ class DQNTorchModel(TorchModelV2, nn.Module):
 
         # Dueling case: Build the shared (advantages and value) fc-network.
         advantage_module = nn.Sequential()
-        value_module = None
+        value_module = nn.Sequential()
         if self.dueling:
-            value_module = nn.Sequential()
             for i, n in enumerate(q_hiddens):
                 advantage_module.add_module("dueling_A_{}".format(i),
                                             nn.Linear(ins, n))
@@ -82,14 +81,11 @@ class DQNTorchModel(TorchModelV2, nn.Module):
                     value_module.add_module("LayerNorm_V_{}".format(i),
                                             nn.LayerNorm(n))
                 ins = n
-            # Actual Advantages layer (nodes=num-actions) and
-            # value layer (nodes=1).
-            advantage_module.add_module("A", nn.Linear(ins, action_space.n))
-            value_module.add_module("V", nn.Linear(ins, 1))
-        # Non-dueling:
-        # Q-value layer (use main module's outputs as Q-values).
-        else:
-            pass
+
+        # Actual Advantages layer (nodes=num-actions) and
+        # value layer (nodes=1).
+        advantage_module.add_module("A", nn.Linear(ins, action_space.n))
+        value_module.add_module("V", nn.Linear(ins, 1))
 
         self.advantage_module = advantage_module
         self.value_module = value_module
