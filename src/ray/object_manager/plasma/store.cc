@@ -90,8 +90,6 @@ GetRequest::GetRequest(const std::shared_ptr<Client> &client, const std::vector<
   num_objects_to_wait_for = unique_ids.size();
 }
 
-Client::Client(int fd) : fd(fd), notification_fd(-1) {}
-
 PlasmaStore::PlasmaStore(EventLoop* loop, std::string directory, bool hugepages_enabled,
                          const std::string& socket_name,
                          std::shared_ptr<ExternalStore> external_store)
@@ -719,9 +717,6 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   RAY_CHECK(it != connected_clients_.end());
   int client_fd = client->fd;
   RAY_CHECK(client_fd > 0);
-  loop_->RemoveFileEvent(client_fd);
-  // Close the socket.
-  close(client_fd);
   RAY_LOG(DEBUG) << "Disconnecting client on fd " << client;
   // Release all the objects that the client was using.
   eviction_policy_.ClientDisconnected(client.get());
@@ -761,6 +756,9 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
     // Reset fd.
     client->notification_fd = -1;
   }
+
+  // We lose the last borrower of the Client instance here.
+  loop_->RemoveFileEvent(client_fd);
 
   connected_clients_.erase(it);
 }
