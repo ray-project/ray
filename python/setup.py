@@ -16,8 +16,6 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-requests = None  # lazy-loaded (slow import)
-
 # Ideally, we could include these files by putting them in a
 # MANIFEST.in or using the package_data argument to setup, but the
 # MANIFEST.in gets applied at the very beginning when setup.py runs
@@ -133,25 +131,9 @@ def is_invalid_windows_platform():
 
 
 def download(url):
-    global requests
-    if requests is None:
-        try:
-            import requests
-        except ImportError:
-            requests = False
-    result = None
-    if requests and result is None:
-        try:
-            result = requests.get(url).content
-        except requests.exceptions.SSLError:
-            pass  # This can happen with old SSL/TLS components.
-    if result is None:
-        # This fallback is for users who don't have requests installed.
-        try:
-            result = urllib.request.urlopen(url).read()
-        except urllib.error.URLError:
-            pass  # This can happen with old SSL/TLS components.
-    if result is None:
+    try:
+        result = urllib.request.urlopen(url).read()
+    except urllib.error.URLError:
         # This fallback is necessary on Python 3.5 on macOS due to TLS 1.2.
         curl_args = ["curl", "-s", "-L", "-f", "-o", "-", url]
         result = subprocess.check_output(curl_args)
