@@ -163,7 +163,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetCoreWorker() {
 CoreWorker &CoreWorkerProcess::GetCoreWorker() {
   EnsureInitialized();
   auto core_worker = TryGetCoreWorker();
-  RAY_CHECK(core_worker) << "The current thread is not bound with a core worker instance.";
+  RAY_CHECK(core_worker)
+      << "The current thread is not bound with a core worker instance.";
   return *core_worker;
 }
 
