@@ -121,6 +121,13 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
+        name = "bazel_skylib",
+        strip_prefix = None,
+        url = "https://github.com/bazelbuild/bazel-skylib/releases/download/1.0.2/bazel-skylib-1.0.2.tar.gz",
+        sha256 = "97e70364e9249702246c0e9444bccdc4b847bed1eb03c5a3ece4f83dfe6abc44",
+    )
+
+    auto_http_archive(
         name = "com_github_checkstyle_java",
         url = "https://github.com/ray-project/checkstyle_java/archive/ef367030d1433877a3360bbfceca18a5d0791bdd.tar.gz",
         sha256 = "847d391156d7dcc9424e6a8ba06ff23ea2914c725b18d92028074b2ed8de3da9",
