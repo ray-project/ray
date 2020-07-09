@@ -110,7 +110,7 @@ def create_array(size):
 @ray.remote
 def no_op(*values):
     # The reason that this function takes *values is so that we can pass in
-    # an arbitrary number of object IDs to create task dependencies.
+    # an arbitrary number of object refs to create task dependencies.
     return 1
 
 

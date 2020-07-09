@@ -119,7 +119,7 @@ def test_global_state_api(shutdown_only):
 
     # A driver/worker creates a temporary object during startup. Although the
     # temporary object is freed immediately, in a rare case, we can still find
-    # the object ID in GCS because Raylet removes the object ID from GCS
+    # the object ref in GCS because Raylet removes the object ref from GCS
     # asynchronously.
     # Because we can't control when workers create the temporary objects, so
     # We can't assert that `ray.objects()` returns an empty dict. Here we just

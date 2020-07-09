@@ -11,7 +11,7 @@ cdef class ObjectRef(BaseID):
 
         worker = ray.worker.global_worker
         # TODO(edoakes): We should be able to remove the in_core_worker flag.
-        # But there are still some dummy object IDs being created outside the
+        # But there are still some dummy object refs being created outside the
         # context of a core worker.
         if hasattr(worker, "core_worker"):
             worker.core_worker.add_object_ref_reference(self)

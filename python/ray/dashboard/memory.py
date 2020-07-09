@@ -26,7 +26,7 @@ def decode_object_ref_if_needed(object_ref: str) -> bytes:
     a hex string. In this case, just convert it to a binary number.
     """
     if object_ref.endswith("="):
-        # If the object id ends with =, that means it is base64 encoded.
+        # If the object ref ends with =, that means it is base64 encoded.
         # Object ids will always have = as a padding
         # when it is base64 encoded because objectID is always 20B.
         return base64.standard_b64decode(object_ref)
@@ -81,7 +81,7 @@ class MemoryTableEntry:
 
     def is_valid(self) -> bool:
         # If the entry doesn't have a reference type or some invalid state,
-        # (e.g., no object ID presented), it is considered invalid.
+        # (e.g., no object ref presented), it is considered invalid.
         if (not self.pinned_in_memory and self.local_ref_count == 0
                 and self.submitted_task_ref_count == 0
                 and len(self.contained_in_owned) == 0):

@@ -47,7 +47,7 @@ def _fill_object_store_and_get(oid, succeed=True, object_MiB=40,
             ray.get(oid, timeout=0.1)
 
 
-# Test that an object containing object IDs within it pins the inner IDs
+# Test that an object containing object refs within it pins the inner IDs
 # recursively and for submitted tasks.
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])

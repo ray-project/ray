@@ -236,19 +236,19 @@ class Worker:
 
         Args:
             value: The value to put in the object store.
-            object_ref (object_ref.ObjectRef): The object ID of the value to be
+            object_ref (object_ref.ObjectRef): The object ref of the value to be
                 put. If None, one will be generated.
             pin_object: If set, the object will be pinned at the raylet.
 
         Returns:
-            object_ref.ObjectRef: The object ID the object was put under.
+            object_ref.ObjectRef: The object ref the object was put under.
 
         Raises:
             ray.exceptions.ObjectStoreFullError: This is raised if the attempt
                 to store the object fails because the object store is full even
                 after multiple retries.
         """
-        # Make sure that the value is not an object ID.
+        # Make sure that the value is not an object ref.
         if isinstance(value, ObjectRef):
             raise TypeError(
                 "Calling 'put' on an ray.ObjectRef is not allowed "
@@ -284,12 +284,12 @@ class Worker:
         local object store.
 
         Args:
-            object_refs (List[object_ref.ObjectRef]): A list of the object IDs
+            object_refs (List[object_ref.ObjectRef]): A list of the object refs
                 whose values should be retrieved.
             timeout (float): timeout (float): The maximum amount of time in
                 seconds to wait before returning.
         """
-        # Make sure that the values are object IDs.
+        # Make sure that the values are object refs.
         for object_ref in object_refs:
             if not isinstance(object_ref, ObjectRef):
                 raise TypeError(
@@ -552,8 +552,8 @@ def init(address=None,
             processes on all nodes will be directed to the driver.
         node_ip_address (str): The IP address of the node that we are on.
         object_ref_seed (int): Used to seed the deterministic generation of
-            object IDs. The same value can be used across multiple runs of the
-            same driver in order to generate the object IDs in a consistent
+            object refs. The same value can be used across multiple runs of the
+            same driver in order to generate the object refs in a consistent
             manner. However, the same ID should not be used for different
             drivers.
         local_mode (bool): If true, the code will be executed serially. This
@@ -1471,7 +1471,7 @@ blocking_get_inside_async_warned = False
 def get(object_refs, timeout=None):
     """Get a remote object or a list of remote objects from the object store.
 
-    This method blocks until the object corresponding to the object ID is
+    This method blocks until the object corresponding to the object ref is
     available in the local object store. If this object is not in the local
     object store, it will be shipped from an object store that has it (once the
     object has been created). If object_refs is a list, then the objects
@@ -1479,10 +1479,10 @@ def get(object_refs, timeout=None):
 
     This method will issue a warning if it's running inside async context,
     you can use ``await object_ref`` instead of ``ray.get(object_ref)``. For
-    a list of object ids, you can use ``await asyncio.gather(*object_refs)``.
+    a list of object refs, you can use ``await asyncio.gather(*object_refs)``.
 
     Args:
-        object_refs: Object ID of the object to get or a list of object IDs to
+        object_refs: Object ref of the object to get or a list of object refs to
             get.
         timeout (Optional[float]): The maximum amount of time in seconds to
             wait before returning.
@@ -1506,7 +1506,7 @@ def get(object_refs, timeout=None):
         if not blocking_get_inside_async_warned:
             logger.debug("Using blocking ray.get inside async actor. "
                          "This blocks the event loop. Please use `await` "
-                         "on object id with asyncio.gather if you want to "
+                         "on object ref with asyncio.gather if you want to "
                          "yield execution to the event loop instead.")
             blocking_get_inside_async_warned = True
 
@@ -1516,8 +1516,8 @@ def get(object_refs, timeout=None):
             object_refs = [object_refs]
 
         if not isinstance(object_refs, list):
-            raise ValueError("'object_refs' must either be an object ID "
-                             "or a list of object IDs.")
+            raise ValueError("'object_refs' must either be an object ref "
+                             "or a list of object refs.")
 
         global last_task_error_raise_time
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
@@ -1554,7 +1554,7 @@ def put(value, weakref=False):
             It allows Ray to more aggressively reclaim memory.
 
     Returns:
-        The object ID assigned to this value.
+        The object ref assigned to this value.
     """
     worker = global_worker
     worker.check_connected()
@@ -1579,14 +1579,14 @@ def wait(object_refs, num_returns=1, timeout=None):
     If timeout is set, the function returns either when the requested number of
     IDs are ready or when the timeout is reached, whichever occurs first. If it
     is not set, the function simply waits until that number of objects is ready
-    and returns that exact number of object IDs.
+    and returns that exact number of object refs.
 
-    This method returns two lists. The first list consists of object IDs that
+    This method returns two lists. The first list consists of object refs that
     correspond to objects that are available in the object store. The second
-    list corresponds to the rest of the object IDs (which may or may not be
+    list corresponds to the rest of the object refs (which may or may not be
     ready).
 
-    Ordering of the input list of object IDs is preserved. That is, if A
+    Ordering of the input list of object refs is preserved. That is, if A
     precedes B in the input list, and both are in the ready list, then A will
     precede B in the ready list. This also holds true if A and B are both in
     the remaining list.
@@ -1596,14 +1596,14 @@ def wait(object_refs, num_returns=1, timeout=None):
     ``await asyncio.wait(object_refs)``.
 
     Args:
-        object_refs (List[ObjectRef]): List of object IDs for objects that may or
+        object_refs (List[ObjectRef]): List of object refs for objects that may or
             may not be ready. Note that these IDs must be unique.
-        num_returns (int): The number of object IDs that should be returned.
+        num_returns (int): The number of object refs that should be returned.
         timeout (float): The maximum amount of time in seconds to wait before
             returning.
 
     Returns:
-        A list of object IDs that are ready and a list of the remaining object
+        A list of object refs that are ready and a list of the remaining object
         IDs.
     """
     worker = global_worker
@@ -1615,7 +1615,7 @@ def wait(object_refs, num_returns=1, timeout=None):
         if not blocking_wait_inside_async_warned:
             logger.debug("Using blocking ray.wait inside async method. "
                          "This blocks the event loop. Please use `await` "
-                         "on object id with asyncio.wait. ")
+                         "on object ref with asyncio.wait. ")
             blocking_wait_inside_async_warned = True
 
     if isinstance(object_refs, ObjectRef):
@@ -1647,7 +1647,7 @@ def wait(object_refs, num_returns=1, timeout=None):
             return [], []
 
         if len(object_refs) != len(set(object_refs)):
-            raise ValueError("Wait requires a list of unique object IDs.")
+            raise ValueError("Wait requires a list of unique object refs.")
         if num_returns <= 0:
             raise ValueError(
                 "Invalid number of objects to return %d." % num_returns)
@@ -1734,7 +1734,7 @@ def cancel(object_ref, force=False):
 
     if not isinstance(object_ref, ray.ObjectRef):
         raise TypeError(
-            "ray.cancel() only supported for non-actor object IDs. "
+            "ray.cancel() only supported for non-actor object refs. "
             "Got: {}.".format(type(object_ref)))
     return worker.core_worker.cancel_task(object_ref, force)
 
@@ -1815,7 +1815,7 @@ def remote(*args, **kwargs):
     It can also be used with specific keyword arguments:
 
     * **num_return_vals:** This is only for *remote functions*. It specifies
-      the number of object IDs returned by the remote function invocation.
+      the number of object refs returned by the remote function invocation.
     * **num_cpus:** The quantity of CPU cores to reserve for this task or for
       the lifetime of the actor.
     * **num_gpus:** The quantity of GPUs to reserve for this task or for the

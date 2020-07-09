@@ -171,10 +171,10 @@ cdef VectorToObjectRefs(const c_vector[CObjectID] &object_refs):
 
 
 cdef c_vector[CObjectID] ObjectRefsToVector(object_refs):
-    """A helper function that converts a Python list of object IDs to a vector.
+    """A helper function that converts a Python list of object refs to a vector.
 
     Args:
-        object_refs (list): The Python list of object IDs.
+        object_refs (list): The Python list of object refs.
 
     Returns:
         The output vector.
@@ -795,7 +795,7 @@ cdef class CoreWorker:
                         c_object_id_vector, c_object_id))
             else:
                 with nogil:
-                    # Using custom object IDs is not supported because we can't
+                    # Using custom object refs is not supported because we can't
                     # track their lifecycle, so we don't pin the object in this
                     # case.
                     check_status(CCoreWorkerProcess.GetCoreWorker().Seal(

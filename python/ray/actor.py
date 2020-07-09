@@ -31,7 +31,7 @@ def method(*args, **kwargs):
         _, _ = f.bar.remote()
 
     Args:
-        num_return_vals: The number of object IDs that should be returned by
+        num_return_vals: The number of object refs that should be returned by
             invocations of this actor method.
     """
     assert len(args) == 0
@@ -685,7 +685,7 @@ class ActorHandle:
             num_return_vals (int): The number of return values for the method.
 
         Returns:
-            object_refs: A list of object IDs returned by the remote actor
+            object_refs: A list of object refs returned by the remote actor
                 method.
         """
         worker = ray.worker.global_worker

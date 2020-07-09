@@ -52,7 +52,7 @@ class DistArray:
         return [int(np.ceil(1.0 * a / BLOCK_SIZE)) for a in shape]
 
     def assemble(self):
-        """Assemble an array from a distributed array of object IDs."""
+        """Assemble an array from a distributed array of object refs."""
         first_block = ray.get(self.object_refs[(0, ) * self.ndim])
         dtype = first_block.dtype
         result = np.zeros(self.shape, dtype=dtype)
