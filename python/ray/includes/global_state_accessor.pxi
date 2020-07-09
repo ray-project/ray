@@ -47,7 +47,8 @@ cdef class GlobalStateAccessor:
         return self.inner.get().GetAllObjectInfo()
 
     def get_object_info(self, object_ref):
-        object_info = self.inner.get().GetObjectInfo(CObjectID.FromBinary(object_ref.binary()))
+        object_info = self.inner.get().GetObjectInfo(
+            CObjectID.FromBinary(object_ref.binary()))
         if object_info:
             return c_string(object_info.get().data(), object_info.get().size())
         return None
@@ -56,19 +57,22 @@ cdef class GlobalStateAccessor:
         return self.inner.get().GetAllActorInfo()
 
     def get_actor_info(self, actor_id):
-        actor_info = self.inner.get().GetActorInfo(CActorID.FromBinary(actor_id.binary()))
+        actor_info = self.inner.get().GetActorInfo(
+            CActorID.FromBinary(actor_id.binary()))
         if actor_info:
             return c_string(actor_info.get().data(), actor_info.get().size())
         return None
 
     def get_node_resource_info(self, node_id):
-        return self.inner.get().GetNodeResourceInfo(CClientID.FromBinary(node_id.binary()))
+        return self.inner.get().GetNodeResourceInfo(
+            CClientID.FromBinary(node_id.binary()))
 
     def get_worker_table(self):
         return self.inner.get().GetAllWorkerInfo()
 
     def get_worker_info(self, worker_id):
-        worker_info = self.inner.get().GetWorkerInfo(CWorkerID.FromBinary(worker_id.binary()))
+        worker_info = self.inner.get().GetWorkerInfo(
+            CWorkerID.FromBinary(worker_id.binary()))
         if worker_info:
             return c_string(worker_info.get().data(), worker_info.get().size())
         return None
