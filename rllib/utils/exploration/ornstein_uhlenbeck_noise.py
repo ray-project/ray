@@ -129,7 +129,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
         logp = tf.zeros(shape=(batch_size,), dtype=tf.float32)
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
-        if tfv == 2:
+        if self.framework in ["tf2", "tfe"]:
             if timestep is None:
                 self.last_timestep.assign_add(1)
             else:

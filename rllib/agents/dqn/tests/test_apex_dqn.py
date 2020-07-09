@@ -37,8 +37,7 @@ class TestApexDQN(unittest.TestCase):
         config["min_iter_time_s"] = 1
         config["optimizer"]["num_replay_buffer_shards"] = 1
 
-        for _ in framework_iterator(
-                config, frameworks=("tf2", "tf", "tfe", "torch")):
+        for _ in framework_iterator(config):
             plain_config = config.copy()
             trainer = apex.ApexTrainer(config=plain_config, env="CartPole-v0")
 

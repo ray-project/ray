@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def framework_iterator(config=None,
-                       frameworks=("tf", "tfe", "torch"),
+                       frameworks=("tf2", "tf", "tfe", "torch"),
                        session=False):
     """An generator that allows for looping through n frameworks for testing.
 
@@ -29,26 +29,23 @@ def framework_iterator(config=None,
         config (Optional[dict]): An optional config dict to alter in place
             depending on the iteration.
         frameworks (Tuple[str]): A list/tuple of the frameworks to be tested.
-            Allowed are: "tf", "tfe", "torch", and None.
+            Allowed are: "tf2", "tf", "tfe", "torch", and None.
         session (bool): If True and only in the tf-case: Enter a tf.Session()
             and yield that as second return value (otherwise yield (fw, None)).
 
     Yields:
         str: If enter_session is False:
-            The current framework ("tf", "tfe", "torch") used.
+            The current framework ("tf2", "tf", "tfe", "torch") used.
         Tuple(str, Union[None,tf.Session]: If enter_session is True:
             A tuple of the current fw and the tf.Session if fw="tf".
     """
     config = config or {}
     frameworks = [frameworks] if isinstance(frameworks, str) else \
         list(frameworks)
-    #if tfv == 2 and "tf" in frameworks:
-    #    # Both tf present -> remove "tf".
-    #    if "tfe" in frameworks:
-    #        frameworks.remove("tf")
-    #    # Only "tf" present -> replace with "tfe".
-    #    else:
-    #        frameworks[frameworks.index("tf")] = "tfe"
+
+    # Both tf2 and tfe present -> remove "tfe" or "tf2" depending on version.
+    if "tf2" in frameworks and "tfe" in frameworks:
+        frameworks.remove("tfe" if tfv == 2 else "tf2")
 
     for fw in frameworks:
         # Skip non-installed frameworks.
@@ -81,15 +78,14 @@ def framework_iterator(config=None,
         config["framework"] = fw
 
         eager_ctx = None
+        # Enable eager mode for tf2 and tfe.
         if fw in ["tfe", "tf2"]:
             eager_ctx = eager_mode()
             eager_ctx.__enter__()
             assert tf1.executing_eagerly()
+        # Make sure, eager mode is off.
         elif fw == "tf":
             assert not tf1.executing_eagerly()
-        # If framework == tf2 -> tf version must be 2.
-        elif fw == "tf2":
-            assert tf.executing_eagerly()
 
         yield fw if session is False else (fw, sess)
 
