@@ -39,7 +39,7 @@ Running ``ray memory`` from the command line while a Ray application is running 
 .. code-block::
 
   -----------------------------------------------------------------------------------------------------
-  Object ID                                Reference Type       Object Size   Reference Creation Site
+  Object ref                                Reference Type       Object Size   Reference Creation Site
   =====================================================================================================
   ; worker pid=18301
   45b95b1c8bd3a9c4ffffffff010000c801000000  LOCAL_REFERENCE                ?   (deserialize task arg) __main__..f
@@ -70,7 +70,7 @@ In this example, we create references to two objects: one that is ``ray.put()`` 
 .. code-block::
 
   -----------------------------------------------------------------------------------------------------
-  Object ID                                Reference Type       Object Size   Reference Creation Site
+  Object ref                                Reference Type       Object Size   Reference Creation Site
   =====================================================================================================
   ; driver pid=18867
   ffffffffffffffffffffffff0100008801000000  LOCAL_REFERENCE               77   (put object) ../test.py:<module>:9
@@ -94,7 +94,7 @@ In this example, we create a ``numpy`` array and then store it in the object sto
 .. code-block::
 
   -----------------------------------------------------------------------------------------------------
-  Object ID                                Reference Type       Object Size   Reference Creation Site
+  Object ref                                Reference Type       Object Size   Reference Creation Site
   =====================================================================================================
   ; driver pid=25090
   ffffffffffffffffffffffff0100008801000000  PINNED_IN_MEMORY             229   test.py:<module>:7
@@ -119,7 +119,7 @@ In this example, we first create an object via ``ray.put()`` and then submit a t
 .. code-block::
 
   -----------------------------------------------------------------------------------------------------
-  Object ID                                Reference Type       Object Size   Reference Creation Site
+  Object ref                                Reference Type       Object Size   Reference Creation Site
   =====================================================================================================
   ; worker pid=18971
   ffffffffffffffffffffffff0100008801000000  PINNED_IN_MEMORY              77   (deserialize task arg) __main__..f
@@ -147,7 +147,7 @@ In this example, we again create an object via ``ray.put()``, but then pass it t
 .. code-block::
 
   -----------------------------------------------------------------------------------------------------
-  Object ID                                Reference Type       Object Size   Reference Creation Site
+  Object ref                                Reference Type       Object Size   Reference Creation Site
   =====================================================================================================
   ; worker pid=19002
   ffffffffffffffffffffffff0100008801000000  LOCAL_REFERENCE               77   (deserialize task arg) __main__..f
@@ -171,7 +171,7 @@ In this example, we first create an object via ``ray.put()``, then capture its `
 .. code-block::
 
   -----------------------------------------------------------------------------------------------------
-  Object ID                                Reference Type       Object Size   Reference Creation Site
+  Object ref                                Reference Type       Object Size   Reference Creation Site
   =====================================================================================================
   ; driver pid=19047
   ffffffffffffffffffffffff0100008802000000  LOCAL_REFERENCE             1551   (put object) ../test.py:<module>:10

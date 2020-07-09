@@ -319,7 +319,7 @@ Memory
 
 **Type**: Type of a process. It is either a driver or worker.
 
-**Object ID**: Object ID of a Ray object.
+**Object ref**: Object ref of a Ray object.
 
 **Object Size** Object Size of a Ray object in bytes.
 

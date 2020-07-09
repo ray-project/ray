@@ -91,7 +91,7 @@ See the `ray.remote package reference <package-ref.html>`__ page for specific do
 
 .. _ray-object-ids:
 
-**Object IDs** can also be passed into remote functions. When the function actually gets executed, **the argument will be a retrieved as a regular Python object**. For example, take this function:
+**Object refs** can also be passed into remote functions. When the function actually gets executed, **the argument will be a retrieved as a regular Python object**. For example, take this function:
 
 .. code:: python
 
@@ -172,7 +172,7 @@ Further, remote functions can return multiple object refs.
 
   a_id, b_id, c_id = return_multiple.remote()
 
-Remote functions can be canceled by calling ``ray.cancel`` on the returned Object ID. Remote actor functions can be stopped by killing the actor using the ``ray.kill`` interface.
+Remote functions can be canceled by calling ``ray.cancel`` on the returned Object ref. Remote actor functions can be stopped by killing the actor using the ``ray.kill`` interface.
 
 .. code-block:: python
 
@@ -196,7 +196,7 @@ An **object ref** is essentially a unique ID that can be used to refer to a
 remote object. If you're familiar with futures, our object refs are conceptually
 similar.
 
-Object IDs can be created in multiple ways.
+Object refs can be created in multiple ways.
 
   1. They are returned by remote function calls.
   2. They are returned by ``ray.put``.
