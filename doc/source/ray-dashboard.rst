@@ -254,10 +254,10 @@ Logical View (Experimental)
 
 **Excuted**: A number of executed tasks for this actor.
 
-**NumObjectIdsInScope**: Number of object IDs in scope for this actor. object IDs
+**NumObjectIdsInScope**: Number of object refs in scope for this actor. object refs
 in scope will not be evicted unless object stores are full.
 
-**NumLocalObjects**: Number of object IDs that are in this actor's local memory.
+**NumLocalObjects**: Number of object refs that are in this actor's local memory.
 Only big objects (>100KB) are residing in plasma object stores, and other small
 objects are staying in local memory.
 

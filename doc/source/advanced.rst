@@ -97,7 +97,7 @@ For example, consider the following.
 
     @ray.remote
     def g():
-        # Call f 4 times and return the resulting object IDs.
+        # Call f 4 times and return the resulting object refs.
         return [f.remote() for _ in range(4)]
 
     @ray.remote

@@ -47,7 +47,7 @@ When the above actor is instantiated, the following events happen.
 Actor Methods
 -------------
 
-Any method of the actor can return multiple object IDs with the ``ray.method`` decorator:
+Any method of the actor can return multiple object refs with the ``ray.method`` decorator:
 
 .. code-block:: python
 
