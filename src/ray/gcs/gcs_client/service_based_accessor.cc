@@ -767,6 +767,39 @@ void ServiceBasedNodeInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restar
   }
 }
 
+Status ServiceBasedNodeInfoAccessor::AsyncSetInternalConfig(
+    std::unordered_map<std::string, std::string> &config) {
+  rpc::SetInternalConfigRequest request;
+  request.mutable_config()->mutable_config()->insert(config.begin(), config.end());
+
+  client_impl_->GetGcsRpcClient().SetInternalConfig(
+      request, [](const Status &status, const rpc::SetInternalConfigReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to set internal config: " << status.message();
+        }
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedNodeInfoAccessor::AsyncGetInternalConfig(
+    const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback) {
+  rpc::GetInternalConfigRequest request;
+  client_impl_->GetGcsRpcClient().GetInternalConfig(
+      request,
+      [callback](const Status &status, const rpc::GetInternalConfigReply &reply) {
+        if (status.ok() && reply.has_config()) {
+          RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config().DebugString();
+          callback(status,
+                   std::unordered_map<std::string, std::string>(
+                       reply.config().config().begin(), reply.config().config().end()));
+        } else {
+          RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
+          callback(status, boost::none);
+        }
+      });
+  return Status::OK();
+}
+
 ServiceBasedTaskInfoAccessor::ServiceBasedTaskInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}

@@ -1,17 +1,17 @@
 import logging
 import os
 import sys
-from typing import Any, Union
+from typing import Any, Optional
+
+from ray.rllib.utils.types import TensorStructType, TensorShape, TensorType
 
 logger = logging.getLogger(__name__)
 
 # Represents a generic tensor type.
-# TODO(ekl) this is duplicated in types.py
-TensorType = Any
+TensorType = TensorType
 
 # Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
-# TODO(ekl) this is duplicated in types.py
-TensorStructType = Union[TensorType, dict, tuple]
+TensorStructType = TensorStructType
 
 
 def try_import_tf(error=False):
@@ -38,6 +38,9 @@ def try_import_tf(error=False):
 
     if "TF_CPP_MIN_LOG_LEVEL" not in os.environ:
         os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
+    # TODO: (sven) Allow env var to force compat.v1 behavior even if tf2.x
+    #  installed.
 
     # Try to reuse already imported tf module. This will avoid going through
     # the initial import steps below and thereby switching off v2_behavior
@@ -160,15 +163,18 @@ def _torch_stubs():
 
 
 def get_variable(value,
-                 framework="tf",
-                 trainable=False,
-                 tf_name="unnamed-variable",
-                 torch_tensor=False,
-                 device=None):
+                 framework: str = "tf",
+                 trainable: bool = False,
+                 tf_name: str = "unnamed-variable",
+                 torch_tensor: bool = False,
+                 device: Optional[str] = None,
+                 shape: Optional[TensorShape] = None,
+                 dtype: Optional[Any] = None):
     """
     Args:
         value (any): The initial value to use. In the non-tf case, this will
-            be returned as is.
+            be returned as is. In the tf case, this could be a tf-Initializer
+            object.
         framework (str): One of "tf", "torch", or None.
         trainable (bool): Whether the generated variable should be
             trainable (tf)/require_grad (torch) or not (default: False).
@@ -176,19 +182,27 @@ def get_variable(value,
             tf.Variable.
         torch_tensor (bool): For framework="torch": Whether to actually create
             a torch.tensor, or just a python value (default).
+        device (Optional[torch.Device]): An optional torch device to use for
+            the created torch tensor.
+        shape (Optional[TensorShape]): An optional shape to use iff `value`
+            does not have any (e.g. if it's an initializer w/o explicit value).
+        dtype (Optional[TensorType]): An optional dtype to use iff `value` does
+            not have any (e.g. if it's an initializer w/o explicit value).
 
     Returns:
         any: A framework-specific variable (tf.Variable, torch.tensor, or
             python primitive).
     """
-    if framework == "tf":
+    if framework in ["tf", "tfe"]:
         import tensorflow as tf
-        dtype = getattr(
+        dtype = dtype or getattr(
             value, "dtype", tf.float32
             if isinstance(value, float) else tf.int32
             if isinstance(value, int) else None)
         return tf.compat.v1.get_variable(
-            tf_name, initializer=value, dtype=dtype, trainable=trainable)
+            tf_name, initializer=value, dtype=dtype, trainable=trainable,
+            **({} if shape is None else {"shape": shape})
+        )
     elif framework == "torch" and torch_tensor is True:
         torch, _ = try_import_torch()
         var_ = torch.from_numpy(value)

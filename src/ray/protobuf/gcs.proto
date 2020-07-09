@@ -43,7 +43,8 @@ enum TablePrefix {
   DIRECT_ACTOR = 18;
   // WORKER is already used in WorkerType, so use WORKERS here.
   WORKERS = 19;
-  TABLE_PREFIX_MAX = 20;
+  INTERNAL_CONFIG = 20;
+  TABLE_PREFIX_MAX = 21;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -162,8 +163,8 @@ message ProfileTableData {
     string event_type = 1;
     // The start time of the event.
     double start_time = 2;
-    // The end time of the event. If the event is a point event, then this should
-    // be the same as the start time.
+    // The end time of the event. If the event is a point event, then this
+    // should be the same as the start time.
     double end_time = 3;
     // Additional data associated with the event. This data must be serialized
     // using JSON.
@@ -316,6 +317,10 @@ message ResourceMap {
   map<string, ResourceTableData> items = 1;
 }
 
+message StoredConfig {
+  map<string, string> config = 1;
+}
+
 message ObjectTableDataList {
   repeated ObjectTableData items = 1;
 }
@@ -346,29 +351,33 @@ message PubSubMessage {
   bytes data = 2;
 }
 
-// This enum type is used as object's metadata to indicate the object's creating
-// task has failed because of a certain error.
-// TODO(hchen): We may want to make these errors more specific. E.g., we may want
-// to distinguish between intentional and expected actor failures, and between
-// worker process failure and node failure.
+// This enum type is used as object's metadata to indicate the object's
+// creating task has failed because of a certain error.
+// TODO(hchen): We may want to make these errors more specific. E.g., we may
+// want to distinguish between intentional and expected actor failures, and
+// between worker process failure and node failure.
 enum ErrorType {
-  // Indicates that a task failed because the worker died unexpectedly while executing it.
+  // Indicates that a task failed because the worker died unexpectedly while
+  // executing it.
   WORKER_DIED = 0;
-  // Indicates that a task failed because the actor died unexpectedly before finishing it.
+  // Indicates that a task failed because the actor died unexpectedly before
+  // finishing it.
   ACTOR_DIED = 1;
   // Indicates that an object is lost and cannot be restarted.
-  // Note, this currently only happens to actor objects. When the actor's state is already
-  // after the object's creating task, the actor cannot re-run the task.
+  // Note, this currently only happens to actor objects. When the actor's
+  // state is already after the object's creating task, the actor cannot
+  // re-run the task.
   // TODO(hchen): we may want to reuse this error type for more cases. E.g.,
   // 1) A object that was put by the driver.
-  // 2) The object's creating task is already cleaned up from GCS (this currently
+  // 2) The object's creating task is already cleaned up from GCS (this
+  // currently
   //    crashes raylet).
   OBJECT_UNRECONSTRUCTABLE = 2;
   // Indicates that a task failed due to user code failure.
   TASK_EXECUTION_EXCEPTION = 3;
-  // Indicates that the object has been placed in plasma. This error shouldn't ever be
-  // exposed to user code; it is only used internally to indicate the result of a direct
-  // call has been placed in plasma.
+  // Indicates that the object has been placed in plasma. This error shouldn't
+  // ever be exposed to user code; it is only used internally to indicate the
+  // result of a direct call has been placed in plasma.
   OBJECT_IN_PLASMA = 4;
   // Indicates that an object has been cancelled.
   TASK_CANCELLED = 5;

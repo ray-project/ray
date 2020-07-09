@@ -88,11 +88,7 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
                         assert isinstance(a.get_policy().model, FCNetV2)
             if train:
                 a.train()
-            try:
-                a.stop()
-            except Exception as e:
-                print("Ignoring error stopping agent", e)
-                pass
+            a.stop()
         print(stat)
 
     frameworks = ("torch", "tf")
@@ -108,7 +104,7 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
             _do_check(alg, config, a_name, o_name)
 
 
-class TestSupportedSpaces(unittest.TestCase):
+class TestSupportedSpacesPG(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init(num_cpus=4)
@@ -124,40 +120,6 @@ class TestSupportedSpaces(unittest.TestCase):
     def test_appo(self):
         check_support("APPO", {"num_gpus": 0, "vtrace": False}, train=False)
         check_support("APPO", {"num_gpus": 0, "vtrace": True})
-
-    def test_ars(self):
-        check_support(
-            "ARS", {
-                "num_workers": 1,
-                "noise_size": 1500000,
-                "num_rollouts": 1,
-                "rollouts_used": 1
-            })
-
-    def test_ddpg(self):
-        check_support(
-            "DDPG", {
-                "exploration_config": {
-                    "ou_base_scale": 100.0
-                },
-                "timesteps_per_iteration": 1,
-                "buffer_size": 1000,
-                "use_state_preprocessor": True,
-            },
-            check_bounds=True)
-
-    def test_dqn(self):
-        config = {"timesteps_per_iteration": 1, "buffer_size": 1000}
-        check_support("DQN", config, tfe=True)
-
-    def test_es(self):
-        check_support(
-            "ES", {
-                "num_workers": 1,
-                "noise_size": 1500000,
-                "episodes_per_batch": 1,
-                "train_batch_size": 1
-            })
 
     def test_impala(self):
         check_support("IMPALA", {"num_gpus": 0})
@@ -176,21 +138,70 @@ class TestSupportedSpaces(unittest.TestCase):
         config = {"num_workers": 1, "optimizer": {}}
         check_support("PG", config, train=False, check_bounds=True, tfe=True)
 
+
+class TestSupportedSpacesOffPolicy(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init(num_cpus=4)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
+    def test_ddpg(self):
+        check_support(
+            "DDPG", {
+                "exploration_config": {
+                    "ou_base_scale": 100.0
+                },
+                "timesteps_per_iteration": 1,
+                "buffer_size": 1000,
+                "use_state_preprocessor": True,
+            },
+            check_bounds=True)
+
+    def test_dqn(self):
+        config = {"timesteps_per_iteration": 1, "buffer_size": 1000}
+        check_support("DQN", config, tfe=True)
+
     def test_sac(self):
         check_support("SAC", {"buffer_size": 1000}, check_bounds=True)
+
+
+class TestSupportedSpacesEvolutionAlgos(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init(num_cpus=4)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
+    def test_ars(self):
+        check_support(
+            "ARS", {
+                "num_workers": 1,
+                "noise_size": 1500000,
+                "num_rollouts": 1,
+                "rollouts_used": 1
+            })
+
+    def test_es(self):
+        check_support(
+            "ES", {
+                "num_workers": 1,
+                "noise_size": 1500000,
+                "episodes_per_batch": 1,
+                "train_batch_size": 1
+            })
 
 
 if __name__ == "__main__":
     import pytest
     import sys
 
-    if len(sys.argv) > 1 and sys.argv[1] == "--smoke":
-        ACTION_SPACES_TO_TEST = {
-            "discrete": Discrete(5),
-        }
-        OBSERVATION_SPACES_TO_TEST = {
-            "vector": Box(0.0, 1.0, (5, ), dtype=np.float32),
-            "atari": Box(0.0, 1.0, (210, 160, 3), dtype=np.float32),
-        }
-
-    sys.exit(pytest.main(["-v", __file__]))
+    # One can specify the specific TestCase class to run.
+    # None for all unittest.TestCase classes in this file.
+    class_ = sys.argv[1] if len(sys.argv) > 0 else None
+    sys.exit(pytest.main(
+        ["-v", __file__ + ("" if class_ is None else "::" + class_)]))
