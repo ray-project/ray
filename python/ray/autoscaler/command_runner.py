@@ -219,7 +219,7 @@ class SSHOptions:
     def to_ssh_options_list(self, *, timeout=60):
         self.arg_dict["ConnectTimeout"] = "{}s".format(timeout)
         return ["-i", self.ssh_key] + [
-            x for y in (["-o", "{}={}".format(k, quote(v))]
+            x for y in (["-o", "{}={}".format(k, v)]
                         for k, v in self.arg_dict.items() if v is not None) for x in y
         ]
 
@@ -344,7 +344,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         self._set_ssh_ip_if_required()
         self.process_runner.check_call([
             "rsync", "--rsh",
-            " ".join(["ssh"] +
+            subprocess.list2cmdline(["ssh"] +
                      self.base_ssh_options.to_ssh_options_list(timeout=120)),
             "-avz", source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip,
                                               target)
@@ -354,7 +354,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         self._set_ssh_ip_if_required()
         self.process_runner.check_call([
             "rsync", "--rsh",
-            " ".join(["ssh"] +
+            subprocess.list2cmdline(["ssh"] +
                      self.base_ssh_options.to_ssh_options_list(timeout=120)),
             "-avz", "{}@{}:{}".format(self.ssh_user, self.ssh_ip,
                                       source), target
