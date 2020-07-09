@@ -119,6 +119,9 @@ void GcsServer::Start() {
 
         // Store gcs rpc server address in redis.
         StoreGcsServerAddressInRedis();
+
+        // Start node failure detector.
+        gcs_node_manager_->StartNodeFailureDetector();
         is_started_ = true;
       };
       gcs_actor_manager_->LoadInitialData(actor_manager_load_initial_data_callback);
