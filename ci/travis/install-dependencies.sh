@@ -202,7 +202,6 @@ install_toolchains() {
 install_dependencies() {
 
   install_bazel
-  "${WORKSPACE_DIR}"/ci/suppress_output bazel fetch "//:*" &  # Begin fetching packages in the background (network-bound)
 
   install_base
   install_toolchains
