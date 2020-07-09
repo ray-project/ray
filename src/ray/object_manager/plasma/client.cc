@@ -1104,7 +1104,6 @@ Status PlasmaClient::Impl::Disconnect() {
 
   // Close the connections to Plasma. The Plasma store will release the objects
   // that were in use by us when handling the SIGPIPE.
-  close(store_conn_->fd);
   store_conn_.reset();
   return Status::OK();
 }
