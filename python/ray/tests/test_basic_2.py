@@ -199,7 +199,7 @@ def test_get_multiple(ray_start_regular):
     object_refs = [ray.put(i) for i in range(10)]
     assert ray.get(object_refs) == list(range(10))
 
-    # Get a random choice of object refs with duplicates.
+    # Get a random choice of object IDs with duplicates.
     indices = list(np.random.choice(range(10), 5))
     indices += indices
     results = ray.get([object_refs[i] for i in indices])
@@ -593,7 +593,7 @@ def test_wait(ray_start_regular):
     assert len(ready_ids) == 1
     assert len(remaining_ids) == 1
 
-    # Verify that calling wait with duplicate object refs throws an
+    # Verify that calling wait with duplicate object IDs throws an
     # exception.
     x = ray.put(1)
     with pytest.raises(Exception):

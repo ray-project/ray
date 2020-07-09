@@ -81,20 +81,20 @@ def test_multiple_waits_and_gets(shutdown_only):
 
     @ray.remote
     def g(l):
-        # The argument l should be a list containing one object ref.
+        # The argument l should be a list containing one object ID.
         ray.wait([l[0]])
 
     @ray.remote
     def h(l):
-        # The argument l should be a list containing one object ref.
+        # The argument l should be a list containing one object ID.
         ray.get(l[0])
 
-    # Make sure that multiple wait requests involving the same object ref
+    # Make sure that multiple wait requests involving the same object ID
     # all return.
     x = f.remote(1)
     ray.get([g.remote([x]), g.remote([x])])
 
-    # Make sure that multiple get requests involving the same object ref all
+    # Make sure that multiple get requests involving the same object ID all
     # return.
     x = f.remote(1)
     ray.get([h.remote([x]), h.remote([x])])

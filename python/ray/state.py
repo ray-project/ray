@@ -131,7 +131,7 @@ class GlobalState:
         """Execute a Redis command on the appropriate Redis shard based on key.
 
         Args:
-            key: The object ref or the task ID that the query is about.
+            key: The object ID or the task ID that the query is about.
             args: The command to run.
 
         Returns:
@@ -156,10 +156,10 @@ class GlobalState:
         return result
 
     def object_table(self, object_ref=None):
-        """Fetch and parse the object table info for one or more object refs.
+        """Fetch and parse the object table info for one or more object IDs.
 
         Args:
-            object_ref: An object ref to fetch information about. If this is
+            object_ref: An object ID to fetch information about. If this is
                 None, then the entire object table is fetched.
 
         Returns:
@@ -550,7 +550,7 @@ class GlobalState:
                     assert False, "This should be unreachable."
 
                 # Choose a color by reading the first couple of hex digits of
-                # the object ref as an integer and turning that into a color.
+                # the object ID as an integer and turning that into a color.
                 object_ref_int = int(object_ref[:2], 16)
                 color = self._chrome_tracing_colors[object_ref_int % len(
                     self._chrome_tracing_colors)]
@@ -922,10 +922,10 @@ def actors(actor_id=None):
 
 
 def objects(object_ref=None):
-    """Fetch and parse the object table info for one or more object refs.
+    """Fetch and parse the object table info for one or more object IDs.
 
     Args:
-        object_ref: An object ref to fetch information about. If this is None,
+        object_ref: An object ID to fetch information about. If this is None,
             then the entire object table is fetched.
 
     Returns:

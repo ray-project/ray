@@ -479,7 +479,7 @@ def test_multiple_actor_restart(ray_start_cluster_head):
     # Wait for the actors to start up.
     time.sleep(1)
 
-    # This is a mapping from actor handles to object refs returned by
+    # This is a mapping from actor handles to object IDs returned by
     # methods on that actor.
     result_ids = collections.defaultdict(lambda: [])
 

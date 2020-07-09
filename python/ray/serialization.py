@@ -88,7 +88,7 @@ def _try_to_compute_deterministic_class_id(cls, depth=5):
 class SerializationContext:
     """Initialize the serialization library.
 
-    This defines a custom serializer for object refs and also tells ray to
+    This defines a custom serializer for object IDs and also tells ray to
     serialize several exception classes that we define for error handling.
     """
 
@@ -197,7 +197,7 @@ class SerializationContext:
 
     def add_contained_object_ref(self, object_ref):
         if self.is_in_band_serialization():
-            # This object ref is being stored in an object. Add the ref to the
+            # This object ID is being stored in an object. Add the ID to the
             # list of IDs contained in the object so that we keep the inner
             # object value alive as long as the outer object is in scope.
             if not hasattr(self._thread_local, "object_refs"):

@@ -48,7 +48,7 @@ def free(object_refs, local_only=False, delete_creating_tasks=False):
         >>> free([x_id])  # unpin & delete x globally
 
     Args:
-        object_refs (List[ObjectRef]): List of object refs to delete.
+        object_refs (List[ObjectRef]): List of object IDs to delete.
         local_only (bool): Whether only deleting the list of objects in local
             object store or all object stores.
         delete_creating_tasks (bool): Whether also delete the object creating
@@ -63,7 +63,7 @@ def free(object_refs, local_only=False, delete_creating_tasks=False):
         raise TypeError("free() expects a list of ObjectRef, got {}".format(
             type(object_refs)))
 
-    # Make sure that the values are object refs.
+    # Make sure that the values are object IDs.
     for object_ref in object_refs:
         if not isinstance(object_ref, ray.ObjectRef):
             raise TypeError("Attempting to call `free` on the value {}, "

@@ -196,7 +196,7 @@ def test_basic_pinning(one_worker_100MiB):
     @ray.remote
     class Actor(object):
         def __init__(self):
-            # Hold a long-lived reference to a ray.put object's ref. The object
+            # Hold a long-lived reference to a ray.put object's ID. The object
             # should not be garbage collected while the actor is alive because
             # the object is pinned by the raylet.
             self.large_object = ray.put(
@@ -299,7 +299,7 @@ def test_captured_object_ref(one_worker_100MiB):
     del f
     del captured_id
 
-    # Test that the captured object ref is pinned despite having no local
+    # Test that the captured object ID is pinned despite having no local
     # references.
     ray.get(signal.send.remote())
     _fill_object_store_and_get(oid)
@@ -320,7 +320,7 @@ def test_captured_object_ref(one_worker_100MiB):
     del Actor
     del captured_id
 
-    # Test that the captured object ref is pinned despite having no local
+    # Test that the captured object ID is pinned despite having no local
     # references.
     ray.get(signal.send.remote())
     _fill_object_store_and_get(oid)
@@ -413,7 +413,7 @@ def test_recursive_serialized_reference(one_worker_100MiB, use_ray_put,
 
 # Test that a passed reference held by an actor after the method finishes
 # is kept until the reference is removed from the actor. Also tests giving
-# the actor a duplicate reference to the same object ref.
+# the actor a duplicate reference to the same object ID.
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
 def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put,
@@ -469,7 +469,7 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put,
 
 # Test that a passed reference held by an actor after a task finishes
 # is kept until the reference is removed from the worker. Also tests giving
-# the worker a duplicate reference to the same object ref.
+# the worker a duplicate reference to the same object ID.
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
 def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
@@ -510,7 +510,7 @@ def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
 
 
-# Test that an object containing object refs within it pins the inner refs.
+# Test that an object containing object IDs within it pins the inner IDs.
 def test_basic_nested_ids(one_worker_100MiB):
     inner_oid = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
     outer_oid = ray.put([inner_oid])
