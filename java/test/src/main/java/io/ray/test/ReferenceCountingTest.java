@@ -134,6 +134,8 @@ public class ReferenceCountingTest extends BaseTest {
     ((ObjectRefImpl<?>) dependency).removeLocalReference();
     ((ObjectRefImpl<?>) result).removeLocalReference();
     checkRefCounts(ImmutableMap.of());
+
+    // TODO(kfstorm): Add remaining code of this test case based on Python test case `test_dependency_refcounts`.
   }
 
   public static int fBasicPinning(Object arg) {

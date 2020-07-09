@@ -102,7 +102,13 @@ JNIEXPORT void JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(
     JNIEnv *env, jclass, jbyteArray objectId) {
   auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
-  ray::CoreWorkerProcess::GetCoreWorker().RemoveLocalReference(object_id);
+  // We can't control the timing of Java GC, so it's normal that this method is called but
+  // core worker is shutting down (or already shut down). If we can't get a core worker
+  // instance here, skip calling the `RemoveLocalReference` method.
+  auto core_worker = ray::CoreWorkerProcess::TryGetCoreWorker();
+  if (core_worker) {
+    core_worker->RemoveLocalReference(object_id);
+  }
 }
 
 JNIEXPORT jobject JNICALL
