@@ -21,6 +21,7 @@
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
+#include "ray/core_worker/reference_count.h"
 #include "ray/object_manager/plasma/client.h"
 #include "ray/raylet/raylet_client.h"
 
@@ -35,6 +36,7 @@ class CoreWorkerPlasmaStoreProvider {
   CoreWorkerPlasmaStoreProvider(
       const std::string &store_socket,
       const std::shared_ptr<raylet::RayletClient> raylet_client,
+      const std::shared_ptr<ReferenceCounter> reference_counter,
       std::function<Status()> check_signals, bool evict_if_full,
       std::function<void()> on_store_full = nullptr,
       std::function<std::string()> get_current_call_site = nullptr);
@@ -138,6 +140,8 @@ class CoreWorkerPlasmaStoreProvider {
 
   const std::shared_ptr<raylet::RayletClient> raylet_client_;
   plasma::PlasmaClient store_client_;
+  /// Used to look up a plasma object's owner.
+  const std::shared_ptr<ReferenceCounter> reference_counter_;
   std::mutex store_client_mutex_;
   std::function<Status()> check_signals_;
   const bool evict_if_full_;

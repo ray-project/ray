@@ -849,10 +849,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void ExecuteTaskLocalMode(const TaskSpecification &task_spec,
                             const ActorID &actor_id = ActorID::Nil());
 
-  /// Build arguments for task executor. This would loop through all the arguments
-  /// in task spec, and for each of them that's passed by reference (ObjectID),
-  /// fetch its content from store and; for arguments that are passed by value,
-  /// just copy their content.
+  /// Get the values of the task arguments for the executor. Values are
+  /// retrieved from the local plasma store or, if the value is inlined, from
+  /// the task spec.
+  ///
+  /// This also pins all plasma arguments and ObjectIDs that were contained in
+  /// an inlined argument by adding a local reference in the reference counter.
+  /// This is to ensure that we have the address of the object's owner, which
+  /// is needed to retrieve the value. It also ensures that when the task
+  /// completes, we can retrieve any metadata about objects that are still
+  /// being borrowed by this process. The IDs should be unpinned once the task
+  /// completes.
   ///
   /// \param spec[in] task Task specification.
   /// \param args[out] args Argument data as RayObjects.
@@ -863,16 +870,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///                  // TODO(edoakes): this is a bit of a hack that's necessary because
   ///                  we have separate serialization paths for by-value and by-reference
   ///                  arguments in Python. This should ideally be handled better there.
-  /// \param args[out] borrowed_ids ObjectIDs that we are borrowing from the
-  ///                  task caller for the duration of the task execution. This
-  ///                  vector will be populated with all argument IDs that were
-  ///                  passed by reference and any ObjectIDs that were included
-  ///                  in the task spec's inlined arguments.
-  /// \return The arguments for passing to task executor.
-  Status BuildArgsForExecutor(const TaskSpecification &task,
-                              std::vector<std::shared_ptr<RayObject>> *args,
-                              std::vector<ObjectID> *arg_reference_ids,
-                              std::vector<ObjectID> *borrowed_ids);
+  /// \param args[out] pinned_ids ObjectIDs that should be unpinned once the
+  ///                  task completes execution.  This vector will be populated
+  ///                  with all argument IDs that were passed by reference and
+  ///                  any ObjectIDs that were included in the task spec's
+  ///                  inlined arguments.
+  /// \return Error if the values could not be retrieved.
+  Status GetAndPinArgsForExecutor(const TaskSpecification &task,
+                                  std::vector<std::shared_ptr<RayObject>> *args,
+                                  std::vector<ObjectID> *arg_reference_ids,
+                                  std::vector<ObjectID> *pinned_ids);
 
   /// Returns whether the message was sent to the wrong worker. The right error reply
   /// is sent automatically. Messages end up on the wrong worker when a worker dies
@@ -1047,6 +1054,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Common rpc service for all worker modules.
   rpc::CoreWorkerGrpcService grpc_service_;
+
+  /// Used to notify the task receiver when the arguments of a queued
+  /// actor task are ready.
+  std::shared_ptr<DependencyWaiterImpl> task_argument_waiter_;
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;

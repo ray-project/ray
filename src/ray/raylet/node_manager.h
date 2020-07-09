@@ -353,14 +353,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// wait call.
   ///
   /// \param client The client that is executing the blocked task.
-  /// \param required_object_ids The IDs that the client is blocked waiting for.
+  /// \param required_object_refs The objects that the client is blocked waiting for.
   /// \param current_task_id The task that is blocked.
   /// \param ray_get Whether the task is blocked in a `ray.get` call.
   /// \param mark_worker_blocked Whether to mark the worker as blocked. This
   ///                            should be False for direct calls.
   /// \return Void.
   void AsyncResolveObjects(const std::shared_ptr<ClientConnection> &client,
-                           const std::vector<ObjectID> &required_object_ids,
+                           const std::vector<rpc::ObjectReference> &required_object_refs,
                            const TaskID &current_task_id, bool ray_get,
                            bool mark_worker_blocked);
 

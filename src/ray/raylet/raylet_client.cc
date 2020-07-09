@@ -34,6 +34,24 @@
 
 using MessageType = ray::protocol::MessageType;
 
+namespace {
+
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>>>
+AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
+                      const std::vector<ray::rpc::Address> &addresses) {
+  std::vector<flatbuffers::Offset<ray::protocol::Address>> address_vec;
+  address_vec.reserve(addresses.size());
+  for (const auto &addr : addresses) {
+    auto fbb_addr = ray::protocol::CreateAddress(
+        fbb, fbb.CreateString(addr.raylet_id()), fbb.CreateString(addr.ip_address()),
+        addr.port(), fbb.CreateString(addr.worker_id()));
+    address_vec.push_back(fbb_addr);
+  }
+  return fbb.CreateVector(address_vec);
+}
+
+}  // namespace
+
 namespace ray {
 
 static int read_bytes(local_stream_socket &conn, void *cursor, size_t length) {
@@ -216,14 +234,16 @@ Status raylet::RayletClient::TaskDone() {
   return conn_->WriteMessage(MessageType::TaskDone);
 }
 
-Status raylet::RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
-                                                bool fetch_only, bool mark_worker_blocked,
-                                                const TaskID &current_task_id) {
+Status raylet::RayletClient::FetchOrReconstruct(
+    const std::vector<ObjectID> &object_ids,
+    const std::vector<rpc::Address> &owner_addresses, bool fetch_only,
+    bool mark_worker_blocked, const TaskID &current_task_id) {
+  RAY_CHECK(object_ids.size() == owner_addresses.size());
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
-  auto message = protocol::CreateFetchOrReconstruct(fbb, object_ids_message, fetch_only,
-                                                    mark_worker_blocked,
-                                                    to_flatbuf(fbb, current_task_id));
+  auto message = protocol::CreateFetchOrReconstruct(
+      fbb, object_ids_message, AddressesToFlatbuffer(fbb, owner_addresses), fetch_only,
+      mark_worker_blocked, to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   auto status = conn_->WriteMessage(MessageType::FetchOrReconstruct, &fbb);
   return status;
@@ -251,14 +271,16 @@ Status raylet::RayletClient::NotifyDirectCallTaskUnblocked() {
 }
 
 Status raylet::RayletClient::Wait(const std::vector<ObjectID> &object_ids,
+                                  const std::vector<rpc::Address> &owner_addresses,
                                   int num_returns, int64_t timeout_milliseconds,
                                   bool wait_local, bool mark_worker_blocked,
                                   const TaskID &current_task_id, WaitResultPair *result) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateWaitRequest(
-      fbb, to_flatbuf(fbb, object_ids), num_returns, timeout_milliseconds, wait_local,
-      mark_worker_blocked, to_flatbuf(fbb, current_task_id));
+      fbb, to_flatbuf(fbb, object_ids), AddressesToFlatbuffer(fbb, owner_addresses),
+      num_returns, timeout_milliseconds, wait_local, mark_worker_blocked,
+      to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   std::unique_ptr<uint8_t[]> reply;
   auto status = conn_->AtomicRequestReply(MessageType::WaitRequest,
@@ -280,10 +302,16 @@ Status raylet::RayletClient::Wait(const std::vector<ObjectID> &object_ids,
 }
 
 Status raylet::RayletClient::WaitForDirectActorCallArgs(
-    const std::vector<ObjectID> &object_ids, int64_t tag) {
+    const std::vector<rpc::ObjectReference> &references, int64_t tag) {
   flatbuffers::FlatBufferBuilder fbb;
+  std::vector<ObjectID> object_ids;
+  std::vector<rpc::Address> owner_addresses;
+  for (const auto &ref : references) {
+    object_ids.push_back(ObjectID::FromBinary(ref.object_id()));
+    owner_addresses.push_back(ref.owner_address());
+  }
   auto message = protocol::CreateWaitForDirectActorCallArgsRequest(
-      fbb, to_flatbuf(fbb, object_ids), tag);
+      fbb, to_flatbuf(fbb, object_ids), AddressesToFlatbuffer(fbb, owner_addresses), tag);
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::WaitForDirectActorCallArgsRequest, &fbb);
 }
