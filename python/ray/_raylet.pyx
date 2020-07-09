@@ -795,9 +795,9 @@ cdef class CoreWorker:
                         c_object_id_vector, c_object_id))
             else:
                 with nogil:
-                    # Using custom object refs is not supported because we can't
-                    # track their lifecycle, so we don't pin the object in this
-                    # case.
+                    # Using custom object refs is not supported because we
+                    # can't track their lifecycle, so we don't pin the object
+                    # in this case.
                     check_status(CCoreWorkerProcess.GetCoreWorker().Seal(
                                     c_object_id,
                                     pin_object and object_ref is None))
@@ -1110,8 +1110,10 @@ cdef class CoreWorker:
                 c_owner_address.SerializeAsString())
 
     def deserialize_and_register_object_ref(
-            self, const c_string &object_ref_binary, ObjectRef outer_object_ref,
-            const c_string &serialized_owner_address):
+            self, const c_string &object_ref_binary,
+            ObjectRef outer_object_ref,
+            const c_string &serialized_owner_address,
+    ):
         cdef:
             CObjectID c_object_id = CObjectID.FromBinary(object_ref_binary)
             CObjectID c_outer_object_id = (outer_object_ref.native() if
@@ -1152,7 +1154,8 @@ cdef class CoreWorker:
                     string_to_buffer(serialized_object.metadata))
                 serialized_objects.append(serialized_object)
                 contained_ids.push_back(
-                    ObjectRefsToVector(serialized_object.contained_object_refs))
+                    ObjectRefsToVector(serialized_object.contained_object_refs)
+                )
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
