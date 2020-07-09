@@ -38,9 +38,6 @@ def do_test_log_likelihood(run,
 
     # Test against all frameworks.
     for fw in framework_iterator(config):
-        if run in [sac.SACTrainer] and fw == "tfe":
-            continue
-
         trainer = run(config=config, env=env)
 
         policy = trainer.get_policy()
@@ -171,7 +168,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
             config,
             prev_a,
             continuous=True,
-            layer_key=("sequential/action", (0, 2),
+            layer_key=("sequential/action", (2, 4),
                        ("action_model.action_0.", "action_model.action_out.")),
             logp_func=logp_func)
 

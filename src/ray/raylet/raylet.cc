@@ -134,8 +134,8 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
     };
     MessageHandler message_handler = [this](std::shared_ptr<ClientConnection> client,
                                             int64_t message_type,
-                                            const uint8_t *message) {
-      node_manager_.ProcessClientMessage(client, message_type, message);
+                                            const std::vector<uint8_t> &message) {
+      node_manager_.ProcessClientMessage(client, message_type, message.data());
     };
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = ClientConnection::Create(

@@ -19,6 +19,7 @@
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/actor_manager.h"
+#include "ray/core_worker/actor_reporter.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/future_resolver.h"
@@ -672,17 +673,22 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Get a handle to an actor.
   ///
+  /// NOTE: This function should be called ONLY WHEN we know actor handle exists.
+  /// NOTE: The actor_handle obtained by this function should not be stored anywhere
+  /// because this method returns the raw pointer to what a unique pointer points to.
+  ///
   /// \param[in] actor_id The actor handle to get.
-  /// \param[out] actor_handle A handle to the requested actor.
   /// \return Status::Invalid if we don't have this actor handle.
-  Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
+  const ActorHandle *GetActorHandle(const ActorID &actor_id) const;
 
   /// Get a handle to a named actor.
   ///
+  /// NOTE: The actor_handle obtained by this function should not be stored anywhere.
+  ///
   /// \param[in] name The name of the actor whose handle to get.
   /// \param[out] actor_handle A handle to the requested actor.
-  /// \return Status::NotFound if an actor with the specified name wasn't found.
-  Status GetNamedActorHandle(const std::string &name, ActorHandle **actor_handle);
+  /// \return The raw pointer to the actor handle if found, nullptr otherwise.
+  const ActorHandle *GetNamedActorHandle(const std::string &name);
 
   ///
   /// The following methods are handlers for the core worker's gRPC server, which follow
@@ -769,20 +775,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id The id to call get on.
   /// \param[in] success_callback The callback to use the result object.
-  /// \param[in] fallback_callback The callback to use when failed to get result.
   /// \param[in] python_future the void* object to be passed to SetResultCallback
   /// \return void
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
-                SetResultCallback fallback_callback, void *python_future);
-
-  /// Connect to plasma store for async futures
-  using PlasmaSubscriptionCallback = std::function<void(ray::ObjectID, int64_t, int64_t)>;
-
-  /// Set callback when an item is added to the plasma store.
-  ///
-  /// \param[in] subscribe_callback The callback when an item is added to plasma.
-  /// \return void
-  void SetPlasmaAddedCallback(PlasmaSubscriptionCallback subscribe_callback);
+                void *python_future);
 
   /// Subscribe to receive notification of an object entering the plasma store.
   ///
@@ -823,21 +819,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void AddLocalReference(const ObjectID &object_id, std::string call_site) {
     reference_counter_->AddLocalReference(object_id, call_site);
   }
-
-  /// Give this worker a handle to an actor.
-  ///
-  /// This handle will remain as long as the current actor or task is
-  /// executing, even if the Python handle goes out of scope. Tasks submitted
-  /// through this handle are guaranteed to execute in the same order in which
-  /// they are submitted.
-  ///
-  /// \param actor_handle The handle to the actor.
-  /// \param is_owner_handle Whether this is the owner's handle to the actor.
-  /// The owner is the creator of the actor and is responsible for telling the
-  /// actor to disconnect once all handles are out of scope.
-  /// \return True if the handle was added and False if we already had a handle
-  /// to the same actor.
-  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle);
 
   ///
   /// Private methods related to task execution. Should not be used by driver processes.
@@ -1009,10 +990,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<TaskManager> task_manager_;
 
   // Interface for publishing actor death event for actor creation failure.
-  std::shared_ptr<ActorManager> actor_manager_;
+  std::shared_ptr<ActorReporter> actor_reporter_;
 
   // Interface to submit tasks directly to other actors.
-  std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
+  std::shared_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
@@ -1020,20 +1001,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Manages recovery of objects stored in remote plasma nodes.
   std::unique_ptr<ObjectRecoveryManager> object_recovery_manager_;
 
-  // TODO(swang): Refactor to merge actor_handles_mutex_ and all fields that it
-  // protects into the ActorManager.
-  /// The `actor_handles_` field could be mutated concurrently due to multi-threading, we
-  /// need a mutex to protect it.
-  mutable absl::Mutex actor_handles_mutex_;
+  ///
+  /// Fields related to actor handles.
+  ///
 
-  /// Map from actor ID to a handle to that actor.
-  absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
-      GUARDED_BY(actor_handles_mutex_);
-
-  /// Map from actor ID to a callback to call when all local handles to that
-  /// actor have gone out of scpoe.
-  absl::flat_hash_map<ActorID, std::function<void(const ActorID &)>>
-      actor_out_of_scope_callbacks_ GUARDED_BY(actor_handles_mutex_);
+  /// Interface to manage actor handles.
+  std::unique_ptr<ActorManager> actor_manager_;
 
   ///
   /// Fields related to task execution.
@@ -1092,8 +1065,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Queue of tasks to resubmit when the specified time passes.
   std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
 
-  // Plasma Callback
-  PlasmaSubscriptionCallback plasma_done_callback_;
+  // Guard for `async_plasma_callbacks_` map.
+  mutable absl::Mutex plasma_mutex_;
+
+  // Callbacks for when when a plasma object becomes ready.
+  absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
+      async_plasma_callbacks_ GUARDED_BY(plasma_mutex_);
+
+  // Fallback for when GetAsync cannot directly get the requested object.
+  void PlasmaCallback(SetResultCallback success, std::shared_ptr<RayObject> ray_object,
+                      ObjectID object_id, void *py_future);
 
   /// Whether we are shutting down and not running further tasks.
   bool exiting_ = false;
