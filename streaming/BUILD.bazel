@@ -262,7 +262,7 @@ filegroup(
 copy_to_workspace(
     name = "cp_all_py_proto",
     srcs = [":all_py_proto"],
-    subdir = "streaming/python/generated",
+    dstdir = "streaming/python/generated",
 )
 
 genrule(

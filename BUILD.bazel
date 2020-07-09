@@ -1884,19 +1884,19 @@ py_library(
 copy_to_workspace(
     name = "cp_raylet_so",
     srcs = ["python/ray/_raylet.so"],
-    subdir = "python/ray",
+    dstdir = "python/ray",
 )
 
 copy_to_workspace(
     name = "cp_streaming",
     srcs = ["python/ray/streaming/_streaming.so"],
-    subdir = "python/ray/streaming",
+    dstdir = "python/ray/streaming",
 )
 
 copy_to_workspace(
     name = "cp_all_py_proto",
     srcs = [":all_py_proto"],
-    subdir = "python/ray/core/generated",
+    dstdir = "python/ray/core/generated",
 )
 
 copy_to_workspace(
@@ -1905,31 +1905,31 @@ copy_to_workspace(
         ":redis-cli",
         ":redis-server",
     ],
-    subdir = "python/ray/core/src/ray/thirdparty/redis/src",
+    dstdir = "python/ray/core/src/ray/thirdparty/redis/src",
 )
 
 copy_to_workspace(
     name = "cp_libray_redis_module",
     srcs = [":libray_redis_module.so"],
-    subdir = "python/ray/core/src/ray/gcs/redis_module",
+    dstdir = "python/ray/core/src/ray/gcs/redis_module",
 )
 
 copy_to_workspace(
     name = "cp_raylet",
     srcs = [":raylet"],
-    subdir = "python/ray/core/src/ray/raylet",
+    dstdir = "python/ray/core/src/ray/raylet",
 )
 
 copy_to_workspace(
     name = "cp_gcs_server",
     srcs = [":gcs_server"],
-    subdir = "python/ray/core/src/ray/gcs",
+    dstdir = "python/ray/core/src/ray/gcs",
 )
 
 copy_to_workspace(
     name = "cp_plasma_store_server",
     srcs = [":plasma_store_server"],
-    subdir = "python/ray/core/src/plasma",
+    dstdir = "python/ray/core/src/plasma",
 )
 
 genrule(
