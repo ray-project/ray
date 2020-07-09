@@ -1,6 +1,7 @@
 package io.ray.test;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.gson.Gson;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
@@ -12,13 +13,25 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 @Test
 public class ReferenceCountingTest extends BaseTest {
-  @BeforeMethod
+  @BeforeClass
   public void setUp() {
+    System.setProperty("ray.object-store.size", "100 MB");
+  }
+
+  @AfterClass
+  public void tearDown() {
+    System.clearProperty("ray.object-store.size");
+  }
+
+  @BeforeMethod
+  public void setUpCase() {
     TestUtils.skipTestUnderSingleProcess();
   }
 
@@ -30,8 +43,11 @@ public class ReferenceCountingTest extends BaseTest {
               .getAllReferenceCounts();
       try {
         Assert.assertEquals(actual, expected);
+        return;
       } catch (AssertionError e) {
         if (Duration.between(start, Instant.now()).compareTo(timeout) >= 0) {
+          System.out.println("Actual: " + new Gson().toJson(actual));
+          System.out.println("Expected: " + new Gson().toJson(expected));
           throw e;
         } else {
           try {

@@ -220,7 +220,7 @@ class CoreWorkerProcess {
   /// Check that the core worker environment is initialized for this process.
   ///
   /// \return Void.
-  static void EnsureInitialized() LOCKS_EXCLUDED(instance_mutex_);
+  static void EnsureInitialized() SHARED_LOCKS_REQUIRED(instance_mutex_);
 
   /// Get the `CoreWorker` instance by worker ID.
   ///
