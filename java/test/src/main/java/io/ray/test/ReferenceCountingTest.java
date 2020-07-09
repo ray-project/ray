@@ -48,11 +48,11 @@ public class ReferenceCountingTest extends BaseTest {
     checkRefCounts(expected, Duration.ofSeconds(10));
   }
 
-  public static int foo(int x) {
+  private static int foo(int x) {
     return x + 1;
   }
 
-  public static int sleep() {
+  private static int sleep() {
     try {
       Thread.sleep(100);
     } catch (InterruptedException e) {
@@ -61,7 +61,7 @@ public class ReferenceCountingTest extends BaseTest {
     return 1;
   }
 
-  public static Object oneDepencency(ObjectRef<?> obj, TestLock testLock) {
+  private static Object oneDepencency(ObjectRef<?> obj, TestLock testLock) {
     if (testLock != null) {
       testLock.waitLock();
     }
@@ -137,7 +137,7 @@ public class ReferenceCountingTest extends BaseTest {
     // `test_dependency_refcounts`.
   }
 
-  public static int fooBasicPinning(Object arg) {
+  private static int fooBasicPinning(Object arg) {
     return 0;
   }
 
@@ -176,11 +176,11 @@ public class ReferenceCountingTest extends BaseTest {
     actor.task(ActorBasicPinning::getLargeObject).remote().get();
   }
 
-  public static Object pending(TestUtils.LargeObject input1, int input2) {
+  private static Object pending(TestUtils.LargeObject input1, int input2) {
     return null;
   }
 
-  public static int signal(TestLock testLock) {
+  private static int signal(TestLock testLock) {
     testLock.waitLock();
     return 0;
   }
