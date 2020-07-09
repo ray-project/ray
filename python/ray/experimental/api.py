@@ -9,8 +9,8 @@ def get(object_refs):
     ndarrays and dictionaries.
 
     Args:
-        object_refs: Object ID of the object to get, a list, tuple, ndarray of
-            object IDs to get or a dict of {key: object ID}.
+        object_refs: Object ref of the object to get, a list, tuple, ndarray of
+            object refs to get or a dict of {key: object ref}.
 
     Returns:
         A Python object, a list of Python objects or a dict of {key: object}.
@@ -42,14 +42,14 @@ def wait(object_refs, num_returns=1, timeout=None):
 
     Args:
         object_refs (List[ObjectRef], Tuple(ObjectRef), np.array(ObjectRef)):
-            List like of object IDs for objects that may or may not be ready.
+            List like of object refs for objects that may or may not be ready.
             Note that these IDs must be unique.
-        num_returns (int): The number of object IDs that should be returned.
+        num_returns (int): The number of object refs that should be returned.
         timeout (float): The maximum amount of time in seconds to wait before
             returning.
 
     Returns:
-        A list of object IDs that are ready and a list of the remaining object
+        A list of object refs that are ready and a list of the remaining object
             IDs.
     """
     if isinstance(object_refs, (tuple, np.ndarray)):

@@ -236,19 +236,19 @@ class Worker:
 
         Args:
             value: The value to put in the object store.
-            object_ref (object_ref.ObjectRef): The object ID of the value to be
+            object_ref (ObjectRef): The object ref of the value to be
                 put. If None, one will be generated.
             pin_object: If set, the object will be pinned at the raylet.
 
         Returns:
-            object_ref.ObjectRef: The object ID the object was put under.
+            ObjectRef: The object ref the object was put under.
 
         Raises:
             ray.exceptions.ObjectStoreFullError: This is raised if the attempt
                 to store the object fails because the object store is full even
                 after multiple retries.
         """
-        # Make sure that the value is not an object ID.
+        # Make sure that the value is not an object ref.
         if isinstance(value, ObjectRef):
             raise TypeError(
                 "Calling 'put' on an ray.ObjectRef is not allowed "
@@ -259,7 +259,7 @@ class Worker:
 
         if self.mode == LOCAL_MODE:
             assert object_ref is None, ("Local Mode does not support "
-                                       "inserting with an objectID")
+                                       "inserting with an ObjectRef")
 
         serialized_value = self.get_serialization_context().serialize(value)
         # This *must* be the first place that we construct this python
@@ -277,19 +277,19 @@ class Worker:
         return context.deserialize_objects(data_metadata_pairs, object_refs)
 
     def get_objects(self, object_refs, timeout=None):
-        """Get the values in the object store associated with the IDs.
+        """Get the values in the object store associated with the refs.
 
         Return the values from the local object store for object_refs. This will
         block until all the values for object_refs have been written to the
         local object store.
 
         Args:
-            object_refs (List[object_ref.ObjectRef]): A list of the object IDs
+            object_refs (List[object_ref.ObjectRef]): A list of the object refs
                 whose values should be retrieved.
             timeout (float): timeout (float): The maximum amount of time in
                 seconds to wait before returning.
         """
-        # Make sure that the values are object IDs.
+        # Make sure that the values are object refs.
         for object_ref in object_refs:
             if not isinstance(object_ref, ObjectRef):
                 raise TypeError(
@@ -552,8 +552,8 @@ def init(address=None,
             processes on all nodes will be directed to the driver.
         node_ip_address (str): The IP address of the node that we are on.
         object_ref_seed (int): Used to seed the deterministic generation of
-            object IDs. The same value can be used across multiple runs of the
-            same driver in order to generate the object IDs in a consistent
+            object refs. The same value can be used across multiple runs of the
+            same driver in order to generate the object refs in a consistent
             manner. However, the same ID should not be used for different
             drivers.
         local_mode (bool): If true, the code will be executed serially. This

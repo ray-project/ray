@@ -8,7 +8,7 @@ import ray
 
 from ray._raylet import (TaskID, ActorID, JobID)
 
-# These values are used to calculate if objectIDs are actor handles.
+# These values are used to calculate if ObjectRefs are actor handles.
 TASKID_BYTES_SIZE = TaskID.size()
 ACTORID_BYTES_SIZE = ActorID.size()
 JOBID_BYTES_SIZE = JobID.size()
@@ -18,17 +18,17 @@ ACTORID_RANDOM_BITS_SIZE = (ACTORID_BYTES_SIZE - JOBID_BYTES_SIZE) * 2
 
 
 def decode_object_ref_if_needed(object_ref: str) -> bytes:
-    """Decode objectID bytes string.
+    """Decode ObjectRef bytes string.
 
-    gRPC reply contains an objectID that is encodded by Base64.
-    This function is used to decode the objectID.
-    Note that there are times that objectID is already decoded as
+    gRPC reply contains an ObjectRef that is encodded by Base64.
+    This function is used to decode the ObjectRef.
+    Note that there are times that ObjectRef is already decoded as
     a hex string. In this case, just convert it to a binary number.
     """
     if object_ref.endswith("="):
-        # If the object id ends with =, that means it is base64 encoded.
-        # Object ids will always have = as a padding
-        # when it is base64 encoded because objectID is always 20B.
+        # If the ObjectRef ends with =, that means it is base64 encoded.
+        # ObjectRefs will always have = as a padding
+        # when it is base64 encoded because ObjectRef is always 20B.
         return base64.standard_b64decode(object_ref)
     else:
         return ray.utils.hex_to_binary(object_ref)

@@ -47,7 +47,7 @@ def _fill_object_store_and_get(oid, succeed=True, object_MiB=40,
             ray.get(oid, timeout=0.1)
 
 
-# Test that an object containing object IDs within it pins the inner IDs
+# Test that an object containing object refs within it pins the inner refs
 # recursively and for submitted tasks.
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
@@ -97,7 +97,7 @@ def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
 
 
-# Test that serialized objectIDs returned from remote tasks are pinned until
+# Test that serialized ObjectRefs returned from remote tasks are pinned until
 # they go out of scope on the caller side.
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
@@ -137,7 +137,7 @@ def test_return_object_ref(one_worker_100MiB, use_ray_put, failure):
     _fill_object_store_and_get(inner_oid_binary, succeed=False)
 
 
-# Test that serialized objectIDs returned from remote tasks are pinned if
+# Test that serialized ObjectRefs returned from remote tasks are pinned if
 # passed into another remote task by the caller.
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])

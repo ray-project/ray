@@ -279,7 +279,7 @@ class Node:
 
     @property
     def object_ref_seed(self):
-        """Get the seed for deterministic generation of object IDs"""
+        """Get the seed for deterministic generation of object refs"""
         return self._ray_params.object_ref_seed
 
     @property

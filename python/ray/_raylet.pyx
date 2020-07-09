@@ -170,7 +170,7 @@ cdef VectorToObjectRefs(const c_vector[CObjectID] &object_refs):
 
 
 cdef c_vector[CObjectID] ObjectRefsToVector(object_refs):
-    """A helper function that converts a Python list of object IDs to a vector.
+    """A helper function that converts a Python list of object refs to a vector.
 
     Args:
         object_refs (list): The Python list of object IDs.

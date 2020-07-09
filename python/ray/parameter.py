@@ -41,8 +41,8 @@ class RayParams:
         max_worker_port (int): The highest port number that workers will bind
             on. If set, min_worker_port must also be set.
         object_ref_seed (int): Used to seed the deterministic generation of
-            object IDs. The same value can be used across multiple runs of the
-            same job in order to generate the object IDs in a consistent
+            object refs. The same value can be used across multiple runs of the
+            same job in order to generate the object refs in a consistent
             manner. However, the same ID should not be used for different jobs.
         redirect_worker_output: True if the stdout and stderr of worker
             processes should be redirected to files.
