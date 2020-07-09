@@ -699,7 +699,6 @@ void PlasmaStore::EvictObjects(const std::vector<ObjectID>& object_ids) {
 void PlasmaStore::ConnectClient(int listener_sock) {
   int client_fd = AcceptClient(listener_sock);
   auto client = std::make_shared<Client>(client_fd);
-  connected_clients_.insert(client);
 
   // Add a callback to handle events on this socket.
   // TODO(pcm): Check return value.
@@ -713,8 +712,6 @@ void PlasmaStore::ConnectClient(int listener_sock) {
 }
 
 void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
-  auto it = connected_clients_.find(client);
-  RAY_CHECK(it != connected_clients_.end());
   int client_fd = client->fd;
   RAY_CHECK(client_fd > 0);
   RAY_LOG(DEBUG) << "Disconnecting client on fd " << client;
@@ -759,8 +756,6 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
 
   // We lose the last borrower of the Client instance here.
   loop_->RemoveFileEvent(client_fd);
-
-  connected_clients_.erase(it);
 }
 
 /// Send notifications about sealed objects to the subscribers. This is called

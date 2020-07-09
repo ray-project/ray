@@ -246,8 +246,6 @@ class PlasmaStore {
   /// reorganize the code slightly.
   NotificationMap pending_notifications_;
 
-  std::unordered_set<std::shared_ptr<Client>> connected_clients_;
-
   std::unordered_set<ObjectID> deletion_cache_;
 
   /// Manages worker threads for handling asynchronous/multi-threaded requests
