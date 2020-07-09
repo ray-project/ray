@@ -61,10 +61,10 @@ This causes a few changes in behavior:
 
         assert regular_function() == 1
 
-        object_id = remote_function.remote()
+        object_ref = remote_function.remote()
 
         # The value of the original `regular_function`
-        assert ray.get(object_id) == 1
+        assert ray.get(object_ref) == 1
 
 3. **Parallelism:** Invocations of ``regular_function`` happen
    **serially**, for example
@@ -204,7 +204,7 @@ Object IDs can be created in multiple ways.
 .. code-block:: python
 
     y = 1
-    object_id = ray.put(y)
+    object_ref = ray.put(y)
 
 .. autofunction:: ray.put
     :noindex:
@@ -257,7 +257,7 @@ works as follows.
 
 .. code:: python
 
-    ready_ids, remaining_ids = ray.wait(object_ids, num_returns=1, timeout=None)
+    ready_ids, remaining_ids = ray.wait(object_refs, num_returns=1, timeout=None)
 
 .. autofunction:: ray.wait
     :noindex:
