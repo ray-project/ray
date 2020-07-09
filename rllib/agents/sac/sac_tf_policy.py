@@ -386,7 +386,7 @@ class ActorCriticOptimizerMixin:
     def __init__(self, config):
         # - Create global step for counting the number of update operations.
         # - Use separate optimizers for actor & critic.
-        if config["framework"] == "tf2":
+        if config["framework"] in ["tf2", "tfe"]:
             self.global_step = get_variable(0, tf_name="global_step")
             self._actor_optimizer = tf.keras.optimizers.Adam(
                 learning_rate=config["optimization"]["actor_learning_rate"])

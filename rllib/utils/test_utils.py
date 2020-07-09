@@ -79,7 +79,7 @@ def framework_iterator(config=None,
 
         eager_ctx = None
         # Enable eager mode for tf2 and tfe.
-        if fw in ["tfe", "tf2"]:
+        if fw in ["tf2", "tfe"]:
             eager_ctx = eager_mode()
             eager_ctx.__enter__()
             assert tf1.executing_eagerly()

@@ -236,7 +236,7 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
 
 def make_ddpg_optimizers(policy, config):
     # Create separate optimizers for actor & critic losses.
-    if tfv == 2:
+    if policy.config["framework"] in ["tf2", "tfe"]:
         policy._actor_optimizer = tf.keras.optimizers.Adam(
             learning_rate=config["actor_lr"])
         policy._critic_optimizer = tf.keras.optimizers.Adam(
@@ -275,7 +275,7 @@ def build_apply_op(policy, optimizer, grads_and_vars):
 
 
 def gradients_fn(policy, optimizer, loss):
-    if policy.config["framework"] in ["tfe", "tf2"]:
+    if policy.config["framework"] in ["tf2", "tfe"]:
         tape = optimizer.tape
         pol_weights = policy.model.policy_variables()
         actor_grads_and_vars = list(zip(tape.gradient(

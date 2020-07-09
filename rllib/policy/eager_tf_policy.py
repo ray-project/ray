@@ -265,10 +265,8 @@ def build_eager_tf_policy(name,
 
             if optimizer_fn:
                 self._optimizer = optimizer_fn(self, config)
-            elif tfv == 2:
-                self._optimizer = tf.keras.optimizers.Adam(config["lr"])
             else:
-                self._optimizer = tf1.train.AdamOptimizer(config["lr"])
+                self._optimizer = tf.keras.optimizers.Adam(config["lr"])
 
             if after_init:
                 after_init(self, observation_space, action_space, config)

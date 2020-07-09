@@ -253,7 +253,7 @@ def postprocess_trajectory(policy,
 
 def choose_optimizer(policy, config):
     if policy.config["opt_type"] == "adam":
-        if tfv == 2:
+        if policy.config["framework"] in ["tf2", "tfe"]:
             return tf.keras.optimizers.Adam(policy.cur_lr)
         else:
             return tf1.train.AdamOptimizer(policy.cur_lr)

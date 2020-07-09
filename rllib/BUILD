@@ -42,7 +42,7 @@
 
 # A2C/A3C
 py_test(
-    name = "regression_test_a2c_cartpole_tf",
+    name = "run_regression_tests_cartpole_a2c_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf", "learning_tests_cartpole"],
     size = "medium",
@@ -52,7 +52,7 @@ py_test(
 )
 
 py_test(
-    name = "regression_test_a2c_cartpole_torch",
+    name = "run_regression_tests_cartpole_a2c_torch",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_torch", "learning_tests_cartpole"],
     size = "medium",
@@ -62,7 +62,7 @@ py_test(
 )
 
 py_test(
-    name = "regression_test_a3c_cartpole_tf",
+    name = "run_regression_tests_cartpole_a3c_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf", "learning_tests_cartpole"],
     size = "medium",
@@ -72,7 +72,7 @@ py_test(
 )
 
 py_test(
-    name = "regression_test_a3c_cartpole_torch",
+    name = "run_regression_tests_cartpole_a3c_torch",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_torch", "learning_tests_cartpole"],
     size = "medium",
