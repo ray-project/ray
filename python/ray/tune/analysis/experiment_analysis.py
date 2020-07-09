@@ -161,7 +161,12 @@ class Analysis:
                 idx = df[metric].idxmin()
             else:
                 idx = -1
-            rows[path] = df.iloc[idx].to_dict()
+            try:
+                rows[path] = df.iloc[idx].to_dict()
+            except TypeError:
+                # idx is nan
+                logger.warning("Non-numerical value encountered. \
+                    Not considering the trial: {}".format(path))
 
         return rows
 
