@@ -1,4 +1,5 @@
 import random
+import copy
 import threading
 from collections import defaultdict
 import logging
@@ -9,7 +10,7 @@ from botocore.config import Config
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME, \
-    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_TYPE
+    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_TYPE, TAG_RAY_INSTANCE_TYPE
 from ray.ray_constants import BOTO_MAX_RETRIES, BOTO_CREATE_MAX_RETRIES
 from ray.autoscaler.log_timer import LogTimer
 
@@ -34,10 +35,12 @@ def from_aws_format(tags):
     return tags
 
 
-def make_ec2_client(region, max_retries):
+def make_ec2_client(region, max_retries, aws_credentials=None):
     """Make client, retrying requests up to `max_retries`."""
     config = Config(retries={"max_attempts": max_retries})
-    return boto3.resource("ec2", region_name=region, config=config)
+    aws_credentials = aws_credentials or {}
+    return boto3.resource(
+        "ec2", region_name=region, config=config, **aws_credentials)
 
 
 class AWSNodeProvider(NodeProvider):
@@ -45,10 +48,16 @@ class AWSNodeProvider(NodeProvider):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes",
                                                        True)
+        aws_credentials = provider_config.get("aws_credentials")
+
         self.ec2 = make_ec2_client(
-            region=provider_config["region"], max_retries=BOTO_MAX_RETRIES)
+            region=provider_config["region"],
+            max_retries=BOTO_MAX_RETRIES,
+            aws_credentials=aws_credentials)
         self.ec2_fail_fast = make_ec2_client(
-            region=provider_config["region"], max_retries=0)
+            region=provider_config["region"],
+            max_retries=0,
+            aws_credentials=aws_credentials)
 
         # Try availability zones round-robin, starting from random offset
         self.subnet_idx = random.randint(0, 100)
@@ -176,7 +185,19 @@ class AWSNodeProvider(NodeProvider):
 
             self.tag_cache_update_event.set()
 
+    def create_node_of_type(self, node_config, tags, instance_type, count):
+        assert instance_type is not None
+        node_config["InstanceType"] = instance_type
+        return self.create_node(node_config, tags, count)
+
+    def get_instance_type(self, node_config):
+        return node_config["InstanceType"]
+
     def create_node(self, node_config, tags, count):
+        # Always add the instance type tag, since node reuse is unsafe
+        # otherwise.
+        tags = copy.deepcopy(tags)
+        tags[TAG_RAY_INSTANCE_TYPE] = node_config["InstanceType"]
         # Try to reuse previously stopped nodes with compatible configs
         if self.cache_stopped_nodes:
             filters = [
@@ -191,6 +212,10 @@ class AWSNodeProvider(NodeProvider):
                 {
                     "Name": "tag:{}".format(TAG_RAY_NODE_TYPE),
                     "Values": [tags[TAG_RAY_NODE_TYPE]],
+                },
+                {
+                    "Name": "tag:{}".format(TAG_RAY_INSTANCE_TYPE),
+                    "Values": [tags[TAG_RAY_INSTANCE_TYPE]],
                 },
                 {
                     "Name": "tag:{}".format(TAG_RAY_LAUNCH_CONFIG),

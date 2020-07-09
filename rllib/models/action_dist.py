@@ -30,6 +30,15 @@ class ActionDistribution:
         raise NotImplementedError
 
     @DeveloperAPI
+    def deterministic_sample(self):
+        """
+        Get the deterministic "sampling" output from the distribution.
+        This is usually the max likelihood output, i.e. mean for Normal, argmax
+        for Categorical, etc..
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
     def sampled_action_logp(self):
         """Returns the log probability of the last sampled action."""
         raise NotImplementedError

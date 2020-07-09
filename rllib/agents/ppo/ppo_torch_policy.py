@@ -1,19 +1,18 @@
 import logging
+import numpy as np
 
 import ray
-from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
     setup_config
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.policy import ACTION_LOGP
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
     LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.utils.explained_variance import explained_variance
-from ray.rllib.utils.torch_ops import sequence_mask
-from ray.rllib.utils import try_import_torch
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_ops import convert_to_torch_tensor, \
+    explained_variance, sequence_mask
 
 torch, nn = try_import_torch()
 
@@ -67,9 +66,16 @@ class PPOLoss:
             vf_loss_coeff (float): Coefficient of the value function loss
             use_gae (bool): If true, use the Generalized Advantage Estimator.
         """
+        if valid_mask is not None:
+            num_valid = torch.sum(valid_mask)
 
-        def reduce_mean_valid(t):
-            return torch.mean(t * valid_mask)
+            def reduce_mean_valid(t):
+                return torch.sum(t * valid_mask) / num_valid
+
+        else:
+
+            def reduce_mean_valid(t):
+                return torch.mean(t)
 
         prev_dist = dist_class(prev_logits, model)
         # Make loss functions.
@@ -109,13 +115,11 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
     logits, state = model.from_batch(train_batch)
     action_dist = dist_class(logits, model)
 
+    mask = None
     if state:
         max_seq_len = torch.max(train_batch["seq_lens"])
         mask = sequence_mask(train_batch["seq_lens"], max_seq_len)
         mask = torch.reshape(mask, [-1])
-    else:
-        mask = torch.ones_like(
-            train_batch[Postprocessing.ADVANTAGES], dtype=torch.bool)
 
     policy.loss_obj = PPOLoss(
         dist_class,
@@ -123,8 +127,8 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
         train_batch[Postprocessing.VALUE_TARGETS],
         train_batch[Postprocessing.ADVANTAGES],
         train_batch[SampleBatch.ACTIONS],
-        train_batch[BEHAVIOUR_LOGITS],
-        train_batch[ACTION_LOGP],
+        train_batch[SampleBatch.ACTION_DIST_INPUTS],
+        train_batch[SampleBatch.ACTION_LOGP],
         train_batch[SampleBatch.VF_PREDS],
         action_dist,
         model.value_function(),
@@ -144,27 +148,22 @@ def kl_and_loss_stats(policy, train_batch):
     return {
         "cur_kl_coeff": policy.kl_coeff,
         "cur_lr": policy.cur_lr,
-        "total_loss": policy.loss_obj.loss.cpu().detach().numpy(),
-        "policy_loss": policy.loss_obj.mean_policy_loss.cpu().detach().numpy(),
-        "vf_loss": policy.loss_obj.mean_vf_loss.cpu().detach().numpy(),
+        "total_loss": policy.loss_obj.loss,
+        "policy_loss": policy.loss_obj.mean_policy_loss,
+        "vf_loss": policy.loss_obj.mean_vf_loss,
         "vf_explained_var": explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS],
-            policy.model.value_function(),
-            framework="torch").cpu().detach().numpy(),
-        "kl": policy.loss_obj.mean_kl.cpu().detach().numpy(),
-        "entropy": policy.loss_obj.mean_entropy.cpu().detach().numpy(),
+            policy.model.value_function()),
+        "kl": policy.loss_obj.mean_kl,
+        "entropy": policy.loss_obj.mean_entropy,
         "entropy_coeff": policy.entropy_coeff,
     }
 
 
-def vf_preds_and_logits_fetches(policy, input_dict, state_batches, model,
-                                action_dist):
-    """Adds value function and logits outputs to experience train_batches."""
+def vf_preds_fetches(policy, input_dict, state_batches, model, action_dist):
+    """Adds value function outputs to experience train_batches."""
     return {
-        SampleBatch.VF_PREDS: policy.model.value_function().cpu().numpy(),
-        BEHAVIOUR_LOGITS: policy.model.last_output().cpu().numpy(),
-        ACTION_LOGP: action_dist.logp(
-            input_dict[SampleBatch.ACTIONS]).cpu().numpy(),
+        SampleBatch.VF_PREDS: policy.model.value_function(),
     }
 
 
@@ -188,14 +187,15 @@ class ValueNetworkMixin:
 
             def value(ob, prev_action, prev_reward, *state):
                 model_out, _ = self.model({
-                    SampleBatch.CUR_OBS: torch.Tensor([ob]).to(self.device),
-                    SampleBatch.PREV_ACTIONS: torch.Tensor([prev_action]).to(
-                        self.device),
-                    SampleBatch.PREV_REWARDS: torch.Tensor([prev_reward]).to(
-                        self.device),
+                    SampleBatch.CUR_OBS: convert_to_torch_tensor(
+                        np.asarray([ob])),
+                    SampleBatch.PREV_ACTIONS: convert_to_torch_tensor(
+                        np.asarray([prev_action])),
+                    SampleBatch.PREV_REWARDS: convert_to_torch_tensor(
+                        np.asarray([prev_reward])),
                     "is_training": False,
-                }, [torch.Tensor([s]).to(self.device) for s in state],
-                                          torch.Tensor([1]).to(self.device))
+                }, [convert_to_torch_tensor(np.asarray([s])) for s in state],
+                    convert_to_torch_tensor(np.asarray([1])))
                 return self.model.value_function()[0]
 
         else:
@@ -219,9 +219,12 @@ PPOTorchPolicy = build_torch_policy(
     get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
     loss_fn=ppo_surrogate_loss,
     stats_fn=kl_and_loss_stats,
-    extra_action_out_fn=vf_preds_and_logits_fetches,
+    extra_action_out_fn=vf_preds_fetches,
     postprocess_fn=postprocess_ppo_gae,
     extra_grad_process_fn=apply_grad_clipping,
     before_init=setup_config,
     after_init=setup_mixins,
-    mixins=[KLCoeffMixin, ValueNetworkMixin])
+    mixins=[
+        LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
+        ValueNetworkMixin
+    ])

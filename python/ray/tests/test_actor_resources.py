@@ -12,9 +12,6 @@ import time
 import ray
 import ray.test_utils
 import ray.cluster_utils
-from ray import ray_constants
-
-RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
 
 
 def test_actor_deletion_with_gpus(shutdown_only):
@@ -81,94 +78,6 @@ def test_actor_class_methods(ray_start_regular):
     assert ray.get(a.echo.remote(2)) == 2
     assert ray.get(a.f.remote()) == 2
     assert ray.get(a.g.remote(2)) == 4
-
-
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="no actor method resources")
-def test_resource_assignment(shutdown_only):
-    """Test to make sure that we assign resource to actors at instantiation."""
-    # This test will create 16 actors. Declaring this many CPUs initially will
-    # speed up the test because the workers will be started ahead of time.
-    ray.init(
-        num_cpus=16,
-        num_gpus=1,
-        resources={"Custom": 1},
-        object_store_memory=int(150 * 1024 * 1024))
-
-    class Actor:
-        def __init__(self):
-            self.resources = ray.get_resource_ids()
-
-        def get_actor_resources(self):
-            return self.resources
-
-        def get_actor_method_resources(self):
-            return ray.get_resource_ids()
-
-    decorator_resource_args = [{}, {
-        "num_cpus": 0.1
-    }, {
-        "num_gpus": 0.1
-    }, {
-        "resources": {
-            "Custom": 0.1
-        }
-    }]
-    instantiation_resource_args = [{}, {
-        "num_cpus": 0.2
-    }, {
-        "num_gpus": 0.2
-    }, {
-        "resources": {
-            "Custom": 0.2
-        }
-    }]
-    for decorator_args in decorator_resource_args:
-        for instantiation_args in instantiation_resource_args:
-            if len(decorator_args) == 0:
-                actor_class = ray.remote(Actor)
-            else:
-                actor_class = ray.remote(**decorator_args)(Actor)
-            actor = actor_class._remote(**instantiation_args)
-            actor_resources = ray.get(actor.get_actor_resources.remote())
-            actor_method_resources = ray.get(
-                actor.get_actor_method_resources.remote())
-            if len(decorator_args) == 0 and len(instantiation_args) == 0:
-                assert len(actor_resources) == 0, (
-                    "Actor should not be assigned resources.")
-                assert list(actor_method_resources.keys()) == [
-                    "CPU"
-                ], ("Actor method should only have CPUs")
-                assert actor_method_resources["CPU"][0][1] == 1, (
-                    "Actor method should default to one cpu.")
-            else:
-                if ("num_cpus" not in decorator_args
-                        and "num_cpus" not in instantiation_args):
-                    assert actor_resources["CPU"][0][1] == 1, (
-                        "Actor should default to one cpu.")
-                correct_resources = {}
-                defined_resources = decorator_args.copy()
-                defined_resources.update(instantiation_args)
-                for resource, value in defined_resources.items():
-                    if resource == "num_cpus":
-                        correct_resources["CPU"] = value
-                    elif resource == "num_gpus":
-                        correct_resources["GPU"] = value
-                    elif resource == "resources":
-                        for custom_resource, amount in value.items():
-                            correct_resources[custom_resource] = amount
-                for resource, amount in correct_resources.items():
-                    assert (actor_resources[resource][0][0] ==
-                            actor_method_resources[resource][0][0]), (
-                                "Should have assigned same {} for both actor ",
-                                "and actor method.".format(resource))
-                    assert (actor_resources[resource][0][
-                        1] == actor_method_resources[resource][0][1]), (
-                            "Should have assigned same amount of {} for both ",
-                            "actor and actor method.".format(resource))
-                    assert actor_resources[resource][0][1] == amount, (
-                        "Actor should have {amount} {resource} but has ",
-                        "{amount} {resource}".format(
-                            amount=amount, resource=resource))
 
 
 @pytest.mark.skipif(
@@ -657,8 +566,10 @@ def test_lifetime_and_transient_resources(ray_start_regular):
 
 def test_custom_label_placement(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=2, resources={"CustomResource1": 2})
-    cluster.add_node(num_cpus=2, resources={"CustomResource2": 2})
+    custom_resource1_node = cluster.add_node(
+        num_cpus=2, resources={"CustomResource1": 2})
+    custom_resource2_node = cluster.add_node(
+        num_cpus=2, resources={"CustomResource2": 2})
     ray.init(address=cluster.address)
 
     @ray.remote(resources={"CustomResource1": 1})
@@ -671,17 +582,15 @@ def test_custom_label_placement(ray_start_cluster):
         def get_location(self):
             return ray.worker.global_worker.node.unique_id
 
-    node_id = ray.worker.global_worker.node.unique_id
-
     # Create some actors.
     actors1 = [ResourceActor1.remote() for _ in range(2)]
     actors2 = [ResourceActor2.remote() for _ in range(2)]
     locations1 = ray.get([a.get_location.remote() for a in actors1])
     locations2 = ray.get([a.get_location.remote() for a in actors2])
     for location in locations1:
-        assert location == node_id
+        assert location == custom_resource1_node.unique_id
     for location in locations2:
-        assert location != node_id
+        assert location == custom_resource2_node.unique_id
 
 
 def test_creating_more_actors_than_resources(shutdown_only):

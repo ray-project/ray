@@ -1,7 +1,32 @@
 import ray.worker
 from ray import profiling
 
-__all__ = ["free"]
+__all__ = ["free", "global_gc"]
+
+
+def global_gc():
+    """Trigger gc.collect() on all workers in the cluster."""
+
+    worker = ray.worker.global_worker
+    worker.core_worker.global_gc()
+
+
+def memory_summary():
+    """Returns a formatted string describing memory usage in the cluster."""
+
+    import grpc
+    from ray.core.generated import node_manager_pb2
+    from ray.core.generated import node_manager_pb2_grpc
+
+    # We can ask any Raylet for the global memory info.
+    raylet = ray.nodes()[0]
+    raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
+                                    ray.nodes()[0]["NodeManagerPort"])
+    channel = grpc.insecure_channel(raylet_address)
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+    reply = stub.FormatGlobalMemoryInfo(
+        node_manager_pb2.FormatGlobalMemoryInfoRequest(), timeout=30.0)
+    return reply.memory_summary
 
 
 def free(object_ids, local_only=False, delete_creating_tasks=False):
@@ -29,7 +54,7 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
         delete_creating_tasks (bool): Whether also delete the object creating
             tasks.
     """
-    worker = ray.worker.get_global_worker()
+    worker = ray.worker.global_worker
 
     if isinstance(object_ids, ray.ObjectID):
         object_ids = [object_ids]
@@ -43,10 +68,6 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
         if not isinstance(object_id, ray.ObjectID):
             raise TypeError("Attempting to call `free` on the value {}, "
                             "which is not an ray.ObjectID.".format(object_id))
-
-    if ray.worker._mode() == ray.worker.LOCAL_MODE:
-        worker.local_mode_manager.free(object_ids)
-        return
 
     worker.check_connected()
     with profiling.profile("ray.free"):

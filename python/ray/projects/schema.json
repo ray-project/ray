@@ -150,18 +150,15 @@
             }
           },
           "config": {
+            "description": "Configuration options for the command",
             "type": "object",
-            "items": {
-              "description": "Configuration options for the command",
-              "type": "object",
-              "properties": {
-                "tmux": {
-                  "description": "If true, the command will be run inside of tmux",
-                  "type": "boolean"
-                }
-              },
-              "additionalProperties": false
-            }
+            "properties": {
+              "tmux": {
+                "description": "If true, the command will be run inside of tmux",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": [
@@ -171,7 +168,12 @@
         "additionalProperties": false
       }
     },
-    "output_files": {}
+    "output_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
   },
   "required": [
     "name",

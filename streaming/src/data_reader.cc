@@ -17,11 +17,11 @@ namespace streaming {
 const uint32_t DataReader::kReadItemTimeout = 1000;
 
 void DataReader::Init(const std::vector<ObjectID> &input_ids,
-                      const std::vector<ActorID> &actor_ids,
+                      const std::vector<ChannelCreationParameter> &init_params,
                       const std::vector<uint64_t> &queue_seq_ids,
                       const std::vector<uint64_t> &streaming_msg_ids,
                       int64_t timer_interval) {
-  Init(input_ids, actor_ids, timer_interval);
+  Init(input_ids, init_params, timer_interval);
   for (size_t i = 0; i < input_ids.size(); ++i) {
     auto &q_id = input_ids[i];
     channel_info_map_[q_id].current_seq_id = queue_seq_ids[i];
@@ -30,7 +30,8 @@ void DataReader::Init(const std::vector<ObjectID> &input_ids,
 }
 
 void DataReader::Init(const std::vector<ObjectID> &input_ids,
-                      const std::vector<ActorID> &actor_ids, int64_t timer_interval) {
+                      const std::vector<ChannelCreationParameter> &init_params,
+                      int64_t timer_interval) {
   STREAMING_LOG(INFO) << input_ids.size() << " queue to init.";
 
   transfer_config_->Set(ConfigEnum::QUEUE_ID_VECTOR, input_ids);
@@ -47,7 +48,7 @@ void DataReader::Init(const std::vector<ObjectID> &input_ids,
     STREAMING_LOG(INFO) << "[Reader] Init queue id: " << q_id;
     auto &channel_info = channel_info_map_[q_id];
     channel_info.channel_id = q_id;
-    channel_info.actor_id = actor_ids[i];
+    channel_info.parameter = init_params[i];
     channel_info.last_queue_item_delay = 0;
     channel_info.last_queue_item_latency = 0;
     channel_info.last_queue_target_diff = 0;
@@ -199,10 +200,9 @@ StreamingStatus DataReader::GetMergedMessageBundle(std::shared_ptr<DataBundle> &
 
 StreamingStatus DataReader::GetBundle(const uint32_t timeout_ms,
                                       std::shared_ptr<DataBundle> &message) {
-  // Notify consumed every item in this mode.
+  // Notify upstream that last fetched item has been consumed.
   if (last_fetched_queue_item_) {
-    NotifyConsumedItem(channel_info_map_[last_fetched_queue_item_->from],
-                       last_fetched_queue_item_->seq_id);
+    NotifyConsumed(last_fetched_queue_item_);
   }
 
   /// DataBundle will be returned to the upper layer in the following cases:
@@ -246,7 +246,7 @@ StreamingStatus DataReader::GetBundle(const uint32_t timeout_ms,
     RETURN_IF_NOT_OK(GetMergedMessageBundle(message, is_valid_break));
     if (!is_valid_break) {
       empty_bundle_cnt++;
-      NotifyConsumedItem(channel_info_map_[message->from], message->seq_id);
+      NotifyConsumed(message);
     }
   }
   last_message_latency_ += current_time_ms() - start_time;
@@ -280,6 +280,37 @@ DataReader::~DataReader() { STREAMING_LOG(INFO) << "Streaming reader deconstruct
 
 void DataReader::Stop() {
   runtime_context_->SetRuntimeStatus(RuntimeStatus::Interrupted);
+}
+
+void DataReader::NotifyConsumed(std::shared_ptr<DataBundle> &message) {
+  auto &channel_info = channel_info_map_[message->from];
+  auto &queue_info = channel_info.queue_info;
+  channel_info.notify_cnt++;
+  if (queue_info.target_seq_id <= message->seq_id) {
+    NotifyConsumedItem(channel_info, message->seq_id);
+
+    channel_map_[channel_info.channel_id]->RefreshChannelInfo();
+    if (queue_info.last_seq_id != QUEUE_INVALID_SEQ_ID) {
+      uint64_t original_target_seq_id = queue_info.target_seq_id;
+      queue_info.target_seq_id = std::min(
+          queue_info.last_seq_id,
+          message->seq_id + runtime_context_->GetConfig().GetReaderConsumedStep());
+      channel_info.last_queue_target_diff =
+          queue_info.target_seq_id - original_target_seq_id;
+    } else {
+      STREAMING_LOG(WARNING) << "[Reader] [QueueInfo] channel id " << message->from
+                             << ", last seq id " << queue_info.last_seq_id;
+    }
+    STREAMING_LOG(DEBUG) << "[Reader] [Consumed] Trigger notify consumed"
+                         << ", channel id => " << message->from << ", last seq id => "
+                         << queue_info.last_seq_id << ", target seq id => "
+                         << queue_info.target_seq_id << ", consumed seq id => "
+                         << message->seq_id << ", last message id => "
+                         << message->meta->GetLastMessageId() << ", bundle type => "
+                         << static_cast<uint32_t>(message->meta->GetBundleType())
+                         << ", last message bundle ts => "
+                         << message->meta->GetMessageBundleTs();
+  }
 }
 
 bool StreamingReaderMsgPtrComparator::operator()(const std::shared_ptr<DataBundle> &a,

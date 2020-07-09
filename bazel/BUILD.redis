@@ -1,12 +1,43 @@
-COPTS = [] + select({
-    "@bazel_tools//src/conditions:windows": [
-        "-Dssize_t=ptrdiff_t",  # no ssize_t on Windows
-        "-fcolor-diagnostics",
-        "-fansi-escape-codes",
+exports_files(
+    [
+        "redis-server.exe",
+        "redis-cli.exe",
     ],
-    "//conditions:default": [
+    visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "bin",
+    srcs = glob(["**"]),
+    outs = [
+        "redis-server",
+        "redis-cli",
     ],
-})
+    cmd = """
+        tmpdir="redis.tmp"
+        path=$(location Makefile)
+        cp -p -L -R -- "$${path%/*}" "$${tmpdir}"
+        chmod +x "$${tmpdir}"/deps/jemalloc/configure
+        parallel="$$(getconf _NPROCESSORS_ONLN || echo 1)"
+        make -s -C "$${tmpdir}" -j"$${parallel}" V=0 CFLAGS="$${CFLAGS-} -DLUA_USE_MKSTEMP -Wno-pragmas -Wno-empty-body"
+        mv "$${tmpdir}"/src/redis-server $(location redis-server)
+        chmod +x $(location redis-server)
+        mv "$${tmpdir}"/src/redis-cli $(location redis-cli)
+        chmod +x $(location redis-cli)
+        rm -r -f -- "$${tmpdir}"
+    """,
+    visibility = ["//visibility:public"],
+)
+
+# This library is for internal hiredis use, because hiredis assumes a
+# different include prefix for itself than external libraries do.
+cc_library(
+    name = "_hiredis",
+    hdrs = [
+        "deps/hiredis/dict.c",
+    ],
+    strip_include_prefix = "deps/hiredis",
+)
 
 cc_library(
     name = "hiredis",
@@ -23,13 +54,11 @@ cc_library(
     hdrs = glob([
         "deps/hiredis/*.h",
         "deps/hiredis/adapters/*.h",
-        "deps/hiredis/dict.c",
     ]),
-    copts = COPTS,
-    includes = ["deps"],
+    includes = ["deps/hiredis"],
     strip_include_prefix = "deps",
     deps = [
-        "@com_github_ray_project_ray//:platform_shims",
+        ":_hiredis",
     ],
     visibility = ["//visibility:public"],
 )

@@ -1,8 +1,11 @@
-import numpy as np
 import joblib
+import sys
+import time
+
+import numpy as np
+
 from sklearn.datasets import load_digits, load_iris
 from sklearn.model_selection import RandomizedSearchCV
-from time import time
 from sklearn.datasets import fetch_openml
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.ensemble import RandomForestClassifier
@@ -43,8 +46,7 @@ def test_svm_single_node(shutdown_only):
     }
 
     model = SVC(kernel="rbf")
-    search = RandomizedSearchCV(
-        model, param_space, cv=3, n_iter=50, verbose=10)
+    search = RandomizedSearchCV(model, param_space, cv=3, n_iter=2, verbose=10)
     register_ray()
     with joblib.parallel_backend("ray"):
         search.fit(digits.data, digits.target)
@@ -61,8 +63,7 @@ def test_svm_multiple_nodes(ray_start_cluster_2_nodes):
     }
 
     model = SVC(kernel="rbf")
-    search = RandomizedSearchCV(
-        model, param_space, cv=5, n_iter=100, verbose=10)
+    search = RandomizedSearchCV(model, param_space, cv=5, n_iter=2, verbose=10)
     register_ray()
     with joblib.parallel_backend("ray"):
         search.fit(digits.data, digits.target)
@@ -120,7 +121,7 @@ def test_sklearn_benchmarks(ray_start_cluster_2_nodes):
 
     # Create train-test split.
     print("Creating train-test split...")
-    n_train = 6000
+    n_train = 100
     X_train = X[:n_train]
     y_train = y[:n_train]
     register_ray()
@@ -142,9 +143,9 @@ def test_sklearn_benchmarks(ray_start_cluster_2_nodes):
 
             if "n_jobs" in estimator_params:
                 estimator.set_params(n_jobs=num_jobs)
-            time_start = time()
+            time_start = time.time()
             estimator.fit(X_train, y_train)
-            train_time[name] = time() - time_start
+            train_time[name] = time.time() - time_start
             print("training", name, "took", train_time[name], "seconds")
 
 
@@ -157,3 +158,8 @@ def test_cross_validation(shutdown_only):
     assert len(accuracy) == 5
     for result in accuracy:
         assert result > 0.95
+
+
+if __name__ == "__main__":
+    import pytest
+    sys.exit(pytest.main(["-v", __file__]))

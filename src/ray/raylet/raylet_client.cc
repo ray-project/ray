@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "raylet_client.h"
 
 #include <inttypes.h>
@@ -16,23 +30,23 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/util/logging.h"
-#include "ray/util/url.h"
+#include "ray/util/util.h"
 
 using MessageType = ray::protocol::MessageType;
 
-static int read_bytes(local_stream_protocol::socket &conn, void *cursor, size_t length) {
+namespace ray {
+
+static int read_bytes(local_stream_socket &conn, void *cursor, size_t length) {
   boost::system::error_code ec;
   size_t nread = boost::asio::read(conn, boost::asio::buffer(cursor, length), ec);
   return nread == length ? 0 : -1;
 }
 
-static int write_bytes(local_stream_protocol::socket &conn, void *cursor, size_t length) {
+static int write_bytes(local_stream_socket &conn, void *cursor, size_t length) {
   boost::system::error_code ec;
   size_t nread = boost::asio::write(conn, boost::asio::buffer(cursor, length), ec);
   return nread == length ? 0 : -1;
 }
-
-namespace ray {
 
 raylet::RayletConnection::RayletConnection(boost::asio::io_service &io_service,
                                            const std::string &raylet_socket,
@@ -40,20 +54,15 @@ raylet::RayletConnection::RayletConnection(boost::asio::io_service &io_service,
     : conn_(io_service) {
   // Pick the default values if the user did not specify.
   if (num_retries < 0) {
-    num_retries = RayConfig::instance().num_connect_attempts();
+    num_retries = RayConfig::instance().raylet_client_num_connect_attempts();
   }
   if (timeout < 0) {
-    timeout = RayConfig::instance().connect_timeout_milliseconds();
+    timeout = RayConfig::instance().raylet_client_connect_timeout_milliseconds();
   }
   RAY_CHECK(!raylet_socket.empty());
   boost::system::error_code ec;
   for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
-#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-    local_stream_protocol::endpoint endpoint(raylet_socket);
-#else
-    local_stream_protocol::endpoint endpoint = parse_ip_tcp_endpoint(raylet_socket);
-#endif
-    if (!conn_.connect(endpoint, ec)) {
+    if (!conn_.connect(ParseUrlEndpoint(raylet_socket), ec)) {
       break;
     }
     if (num_attempts > 0) {
@@ -154,9 +163,11 @@ raylet::RayletClient::RayletClient(
 
 raylet::RayletClient::RayletClient(
     boost::asio::io_service &io_service,
-    std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client,
+    std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
     const std::string &raylet_socket, const WorkerID &worker_id, bool is_worker,
-    const JobID &job_id, const Language &language, ClientID *raylet_id, int port)
+    const JobID &job_id, const Language &language, const std::string &ip_address,
+    ClientID *raylet_id, int *port,
+    std::unordered_map<std::string, std::string> *internal_config)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<raylet::RayletConnection>(
@@ -165,7 +176,7 @@ raylet::RayletClient::RayletClient(
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateRegisterClientRequest(
       fbb, is_worker, to_flatbuf(fbb, worker_id), getpid(), to_flatbuf(fbb, job_id),
-      language, port);
+      language, fbb.CreateString(ip_address));
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
@@ -175,17 +186,25 @@ raylet::RayletClient::RayletClient(
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Unable to register worker with raylet.");
   auto reply_message = flatbuffers::GetRoot<protocol::RegisterClientReply>(reply.get());
   *raylet_id = ClientID::FromBinary(reply_message->raylet_id()->str());
+  *port = reply_message->port();
+
+  RAY_CHECK(internal_config);
+  auto keys = reply_message->internal_config_keys();
+  auto values = reply_message->internal_config_values();
+  RAY_CHECK(keys->size() == values->size());
+  for (size_t i = 0; i < keys->size(); i++) {
+    internal_config->emplace(keys->Get(i)->str(), values->Get(i)->str());
+  }
+}
+
+Status raylet::RayletClient::AnnounceWorkerPort(int port) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = protocol::CreateAnnounceWorkerPort(fbb, port);
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::AnnounceWorkerPort, &fbb);
 }
 
 Status raylet::RayletClient::SubmitTask(const TaskSpecification &task_spec) {
-  for (size_t i = 0; i < task_spec.NumArgs(); i++) {
-    if (task_spec.ArgByRef(i)) {
-      for (size_t j = 0; j < task_spec.ArgIdCount(i); j++) {
-        RAY_CHECK(!task_spec.ArgId(i, j).IsDirectCallType())
-            << "Passing direct call objects to non-direct tasks is not allowed.";
-      }
-    }
-  }
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       protocol::CreateSubmitTaskRequest(fbb, fbb.CreateString(task_spec.Serialize()));
@@ -366,14 +385,36 @@ Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worke
       });
 }
 
-Status raylet::RayletClient::PinObjectIDs(const rpc::Address &caller_address,
-                                          const std::vector<ObjectID> &object_ids) {
+ray::Status raylet::RayletClient::CancelWorkerLease(
+    const TaskID &task_id,
+    const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) {
+  rpc::CancelWorkerLeaseRequest request;
+  request.set_task_id(task_id.Binary());
+  return grpc_client_->CancelWorkerLease(request, callback);
+}
+
+Status raylet::RayletClient::PinObjectIDs(
+    const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
+    const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) {
   rpc::PinObjectIDsRequest request;
   request.mutable_owner_address()->CopyFrom(caller_address);
   for (const ObjectID &object_id : object_ids) {
     request.add_object_ids(object_id.Binary());
   }
-  return grpc_client_->PinObjectIDs(request, nullptr);
+  return grpc_client_->PinObjectIDs(request, callback);
+}
+
+Status raylet::RayletClient::GlobalGC(
+    const rpc::ClientCallback<rpc::GlobalGCReply> &callback) {
+  rpc::GlobalGCRequest request;
+  return grpc_client_->GlobalGC(request, callback);
+}
+
+Status raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = protocol::CreateSubscribePlasmaReady(fbb, to_flatbuf(fbb, object_id));
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::SubscribePlasmaReady, &fbb);
 }
 
 }  // namespace ray

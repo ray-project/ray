@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/gcs/redis_async_context.h"
 
 extern "C" {
@@ -36,7 +50,11 @@ void RedisAsyncContext::RedisAsyncHandleRead() {
   // This function will execute the callbacks which are registered by
   // `redisvAsyncCommand`, `redisAsyncCommandArgv` and so on.
   std::lock_guard<std::mutex> lock(mutex_);
-
+  // TODO(mehrdadn): Remove this when the bug is resolved.
+  // Somewhat consistently reproducible via
+  // python/ray/tests/test_basic.py::test_background_tasks_with_max_calls
+  // with -c opt on Windows.
+  RAY_CHECK(redis_async_context_) << "redis_async_context_ must not be NULL here";
   redisAsyncHandleRead(redis_async_context_);
 }
 

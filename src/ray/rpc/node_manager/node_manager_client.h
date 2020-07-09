@@ -1,15 +1,28 @@
-#ifndef RAY_RPC_NODE_MANAGER_CLIENT_H
-#define RAY_RPC_NODE_MANAGER_CLIENT_H
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
 
 #include <grpcpp/grpcpp.h>
 
 #include <thread>
 
 #include "ray/common/status.h"
+#include "ray/protobuf/node_manager.grpc.pb.h"
+#include "ray/protobuf/node_manager.pb.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
-#include "src/ray/protobuf/node_manager.grpc.pb.h"
-#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 namespace rpc {
@@ -73,8 +86,14 @@ class NodeManagerWorkerClient
   /// Return a worker lease.
   RPC_CLIENT_METHOD(NodeManagerService, ReturnWorker, grpc_client_, )
 
+  /// Cancel a pending worker lease request.
+  RPC_CLIENT_METHOD(NodeManagerService, CancelWorkerLease, grpc_client_, )
+
   /// Notify the raylet to pin the provided object IDs.
   RPC_CLIENT_METHOD(NodeManagerService, PinObjectIDs, grpc_client_, )
+
+  /// Trigger global GC across the cluster.
+  RPC_CLIENT_METHOD(NodeManagerService, GlobalGC, grpc_client_, )
 
  private:
   /// Constructor.
@@ -98,5 +117,3 @@ class NodeManagerWorkerClient
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif  // RAY_RPC_NODE_MANAGER_CLIENT_H

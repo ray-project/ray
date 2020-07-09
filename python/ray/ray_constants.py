@@ -13,21 +13,17 @@ def env_integer(key, default):
     return default
 
 
-def direct_call_enabled():
-    return bool(int(os.environ.get("RAY_FORCE_DIRECT", "1")))
+def env_bool(key, default):
+    if key in os.environ:
+        return True if os.environ[key].lower() == "true" else False
+    return default
 
 
 ID_SIZE = 20
 
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
-DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 20 * 10**9
-# The default number of retries to call `put` when the object store is full.
-DEFAULT_PUT_OBJECT_RETRIES = 5
-# The default seconds for delay between calls to retry `put` when
-# the object store is full. This delay is exponentially doubled up to
-# DEFAULT_PUT_OBJECT_RETRIES times.
-DEFAULT_PUT_OBJECT_DELAY = 1
+DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 200 * 10**9
 # The smallest cap on the memory used by the object store that we allow.
 # This must be greater than MEMORY_RESOURCE_UNIT_BYTES * 0.7
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
@@ -36,7 +32,11 @@ OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
 DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
 # The smallest cap on the memory used by Redis that we allow.
 REDIS_MINIMUM_MEMORY_BYTES = 10**7
+# If a user does not specify a port for the primary Ray service,
+# we attempt to start the service running at this port.
+DEFAULT_PORT = 6379
 
+DEFAULT_DASHBOARD_PORT = 8265
 # Default resource requirements for actors when no resource requirements are
 # specified.
 DEFAULT_ACTOR_METHOD_CPU_SIMPLE = 1
@@ -163,15 +163,9 @@ LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
                      " 'warning', 'error', 'critical'], default='info'")
 
-# A constant indicating that an actor doesn't need reconstructions.
-NO_RECONSTRUCTION = 0
-# A constant indicating that an actor should be reconstructed infinite times.
-INFINITE_RECONSTRUCTION = 2**30
-
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"
-PROCESS_TYPE_RAYLET_MONITOR = "raylet_monitor"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
 PROCESS_TYPE_REPORTER = "reporter"
 PROCESS_TYPE_DASHBOARD = "dashboard"
@@ -184,13 +178,12 @@ PROCESS_TYPE_GCS_SERVER = "gcs_server"
 
 LOG_MONITOR_MAX_OPEN_FILES = 200
 
-# A constant used as object metadata to indicate the object is raw binary.
-RAW_BUFFER_METADATA = b"RAW"
-# A constant used as object metadata to indicate the object is pickled. This
-# format is only ever used for Python inline task argument values.
-PICKLE_BUFFER_METADATA = b"PICKLE"
-# A constant used as object metadata to indicate the object is pickle5 format.
-PICKLE5_BUFFER_METADATA = b"PICKLE5"
+# A constant used as object metadata to indicate the object is cross language.
+OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"XLANG"
+# A constant used as object metadata to indicate the object is python specific.
+OBJECT_METADATA_TYPE_PYTHON = b"PYTHON"
+# A constant used as object metadata to indicate the object is raw bytes.
+OBJECT_METADATA_TYPE_RAW = b"RAW"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 
@@ -203,3 +196,7 @@ NODE_DEFAULT_IP = "127.0.0.1"
 
 # The Mach kernel page size in bytes.
 MACH_PAGE_SIZE_BYTES = 4096
+
+# Max 64 bit integer value, which is needed to ensure against overflow
+# in C++ when passing integer values cross-language.
+MAX_INT64_VALUE = 9223372036854775807

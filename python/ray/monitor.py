@@ -6,13 +6,14 @@ import traceback
 import json
 
 import ray
-from ray.autoscaler.autoscaler import LoadMetrics, StandardAutoscaler
+from ray.autoscaler.autoscaler import StandardAutoscaler
+from ray.autoscaler.load_metrics import LoadMetrics
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
-from ray.utils import (binary_to_hex, binary_to_object_id, binary_to_task_id,
-                       hex_to_binary, setup_logger)
+from ray.utils import binary_to_hex, setup_logger
 from ray.autoscaler.commands import teardown_cluster
+import redis
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,10 @@ class Monitor:
             redis_address, redis_password=redis_password)
         self.redis = ray.services.create_redis_client(
             redis_address, password=redis_password)
+        # Set the redis client and mode so _internal_kv works for autoscaler.
+        worker = ray.worker.global_worker
+        worker.redis_client = self.redis
+        worker.mode = 0
         # Setup subscriptions to the primary Redis server and the Redis shards.
         self.primary_subscribe_client = self.redis.pubsub(
             ignore_subscribe_messages=True)
@@ -54,7 +59,12 @@ class Monitor:
     def __del__(self):
         """Destruct the monitor object."""
         # We close the pubsub client to avoid leaking file descriptors.
-        self.primary_subscribe_client.close()
+        try:
+            primary_subscribe_client = self.primary_subscribe_client
+        except AttributeError:
+            primary_subscribe_client = None
+        if primary_subscribe_client is not None:
+            primary_subscribe_client.close()
 
     def subscribe(self, channel):
         """Subscribe to the given channel on the primary Redis shard.
@@ -67,24 +77,29 @@ class Monitor:
         """
         self.primary_subscribe_client.subscribe(channel)
 
+    def psubscribe(self, pattern):
+        """Subscribe to the given pattern on the primary Redis shard.
+
+        Args:
+            pattern (str): The pattern to subscribe to.
+
+        Raises:
+            Exception: An exception is raised if the subscription fails.
+        """
+        self.primary_subscribe_client.psubscribe(pattern)
+
     def xray_heartbeat_batch_handler(self, unused_channel, data):
         """Handle an xray heartbeat batch message from Redis."""
 
-        gcs_entries = ray.gcs_utils.GcsEntry.FromString(data)
-        heartbeat_data = gcs_entries.entries[0]
+        pub_message = ray.gcs_utils.PubSubMessage.FromString(data)
+        heartbeat_data = pub_message.data
 
         message = ray.gcs_utils.HeartbeatBatchTableData.FromString(
             heartbeat_data)
         for heartbeat_message in message.batch:
-            resource_load = dict(
-                zip(heartbeat_message.resource_load_label,
-                    heartbeat_message.resource_load_capacity))
-            total_resources = dict(
-                zip(heartbeat_message.resources_total_label,
-                    heartbeat_message.resources_total_capacity))
-            available_resources = dict(
-                zip(heartbeat_message.resources_available_label,
-                    heartbeat_message.resources_available_capacity))
+            resource_load = dict(heartbeat_message.resource_load)
+            total_resources = dict(heartbeat_message.resources_total)
+            available_resources = dict(heartbeat_message.resources_available)
             for resource in total_resources:
                 available_resources.setdefault(resource, 0.0)
 
@@ -99,74 +114,6 @@ class Monitor:
                     "Monitor: "
                     "could not find ip for client {}".format(client_id))
 
-    def _xray_clean_up_entries_for_job(self, job_id):
-        """Remove this job's object/task entries from redis.
-
-        Removes control-state entries of all tasks and task return
-        objects belonging to the driver.
-
-        Args:
-            job_id: The job id.
-        """
-
-        xray_task_table_prefix = (
-            ray.gcs_utils.TablePrefix_RAYLET_TASK_string.encode("ascii"))
-        xray_object_table_prefix = (
-            ray.gcs_utils.TablePrefix_OBJECT_string.encode("ascii"))
-
-        task_table_objects = ray.tasks()
-        job_id_hex = binary_to_hex(job_id)
-        job_task_id_bins = set()
-        for task_id_hex, task_info in task_table_objects.items():
-            task_table_object = task_info["TaskSpec"]
-            task_job_id_hex = task_table_object["JobID"]
-            if job_id_hex != task_job_id_hex:
-                # Ignore tasks that aren't from this driver.
-                continue
-            job_task_id_bins.add(hex_to_binary(task_id_hex))
-
-        # Get objects associated with the driver.
-        object_table_objects = ray.objects()
-        job_object_id_bins = set()
-        for object_id, _ in object_table_objects.items():
-            task_id_bin = ray._raylet.compute_task_id(object_id).binary()
-            if task_id_bin in job_task_id_bins:
-                job_object_id_bins.add(object_id.binary())
-
-        def to_shard_index(id_bin):
-            if len(id_bin) == ray.TaskID.size():
-                return binary_to_task_id(id_bin).redis_shard_hash() % len(
-                    ray.state.state.redis_clients)
-            else:
-                return binary_to_object_id(id_bin).redis_shard_hash() % len(
-                    ray.state.state.redis_clients)
-
-        # Form the redis keys to delete.
-        sharded_keys = [[] for _ in range(len(ray.state.state.redis_clients))]
-        for task_id_bin in job_task_id_bins:
-            sharded_keys[to_shard_index(task_id_bin)].append(
-                xray_task_table_prefix + task_id_bin)
-        for object_id_bin in job_object_id_bins:
-            sharded_keys[to_shard_index(object_id_bin)].append(
-                xray_object_table_prefix + object_id_bin)
-
-        # Remove with best effort.
-        for shard_index in range(len(sharded_keys)):
-            keys = sharded_keys[shard_index]
-            if len(keys) == 0:
-                continue
-            redis = ray.state.state.redis_clients[shard_index]
-            num_deleted = redis.delete(*keys)
-            logger.info("Monitor: "
-                        "Removed {} dead redis entries of the "
-                        "driver from redis shard {}.".format(
-                            num_deleted, shard_index))
-            if num_deleted != len(keys):
-                logger.warning("Monitor: "
-                               "Failed to remove {} relevant redis "
-                               "entries from redis shard {}.".format(
-                                   len(keys) - num_deleted, shard_index))
-
     def xray_job_notification_handler(self, unused_channel, data):
         """Handle a notification that a job has been added or removed.
 
@@ -174,15 +121,14 @@ class Monitor:
             unused_channel: The message channel.
             data: The message data.
         """
-        gcs_entries = ray.gcs_utils.GcsEntry.FromString(data)
-        job_data = gcs_entries.entries[0]
+        pub_message = ray.gcs_utils.PubSubMessage.FromString(data)
+        job_data = pub_message.data
         message = ray.gcs_utils.JobTableData.FromString(job_data)
         job_id = message.job_id
         if message.is_dead:
             logger.info("Monitor: "
                         "XRay Driver {} has been removed.".format(
                             binary_to_hex(job_id)))
-            self._xray_clean_up_entries_for_job(job_id)
 
     def autoscaler_resource_request_handler(self, _, data):
         """Handle a notification of a resource request for the autoscaler.
@@ -214,27 +160,32 @@ class Monitor:
         subscribe_clients = [self.primary_subscribe_client]
         for subscribe_client in subscribe_clients:
             for _ in range(max_messages):
-                message = subscribe_client.get_message()
+                message = None
+                try:
+                    message = subscribe_client.get_message()
+                except redis.exceptions.ConnectionError:
+                    pass
                 if message is None:
                     # Continue on to the next subscribe client.
                     break
 
                 # Parse the message.
+                pattern = message["pattern"]
                 channel = message["channel"]
                 data = message["data"]
 
                 # Determine the appropriate message handler.
-                if channel == ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL:
+                if pattern == ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN:
                     # Similar functionality as raylet info channel
                     message_handler = self.xray_heartbeat_batch_handler
-                elif channel == ray.gcs_utils.XRAY_JOB_CHANNEL:
+                elif pattern == ray.gcs_utils.XRAY_JOB_PATTERN:
                     # Handles driver death.
                     message_handler = self.xray_job_notification_handler
                 elif (channel ==
                       ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL):
                     message_handler = self.autoscaler_resource_request_handler
                 else:
-                    raise Exception("This code should be unreachable.")
+                    assert False, "This code should be unreachable."
 
                 # Call the handler.
                 message_handler(channel, data)
@@ -264,8 +215,8 @@ class Monitor:
         clients and cleaning up state accordingly.
         """
         # Initialize the subscription channel.
-        self.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
-        self.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
+        self.psubscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN)
+        self.psubscribe(ray.gcs_utils.XRAY_JOB_PATTERN)
 
         if self.autoscaler:
             self.subscribe(

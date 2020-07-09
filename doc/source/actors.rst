@@ -1,3 +1,5 @@
+.. _actor-guide:
+
 Using Actors
 ============
 
@@ -62,6 +64,7 @@ Any method of the actor can return multiple object IDs with the ``ray.method`` d
     assert ray.get(obj_id1) == 1
     assert ray.get(obj_id2) == 2
 
+.. _actor-resource-guide:
 
 Resources with Actors
 ---------------------
@@ -87,7 +90,7 @@ If you want to use custom resources, make sure your cluster is configured to
 have these resources (see `configuration instructions
 <configure.html#cluster-resources>`__):
 
-.. important::
+.. note::
 
   * If you specify resource requirements in an actor class's remote decorator,
     then the actor will acquire those resources for its entire lifetime (if you
@@ -147,7 +150,7 @@ collected. The ``ObjectID`` resulting from the task can be waited on to wait
 for the actor to exit (calling ``ray.get()`` on it will raise a ``RayActorError``).
 Note that this method of termination will wait until any previously submitted
 tasks finish executing. If you want to terminate an actor immediately, you can
-call ``actor_handle.__ray_kill__()``. This will cause the actor to exit immediately
+call ``ray.kill(actor_handle)``. This will cause the actor to exit immediately
 and any pending tasks to fail. Any exit handlers installed in the actor using
 ``atexit`` will be called.
 

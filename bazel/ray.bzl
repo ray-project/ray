@@ -2,15 +2,41 @@ load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_publ
 load("@com_github_checkstyle_java//checkstyle:checkstyle.bzl", "checkstyle_test")
 load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
 
-# TODO(mehrdadn): (How to) support dynamic linking?
-PROPAGATED_WINDOWS_DEFINES = ["RAY_STATIC"]
+WINDOWS_COPTS = [
+    # TODO(mehrdadn): (How to) support dynamic linking?
+    "-DRAY_STATIC",
+]
 
 COPTS = ["-DRAY_USE_GLOG"] + select({
-    "@bazel_tools//src/conditions:windows": [
-        "-DWIN32_LEAN_AND_MEAN=",  # Block the inclusion of WinSock.h, which is obsolete and causes errors
+    "//:windows_msvc-cl": [
+    ] + WINDOWS_COPTS,
+    "//:windows_clang-cl": [
         "-Wno-builtin-macro-redefined",  # To get rid of warnings caused by deterministic build macros (e.g. #define __DATE__ "redacted")
         "-Wno-microsoft-unqualified-friend",  # This shouldn't normally be enabled, but otherwise we get: google/protobuf/map_field.h: warning: unqualified friend declaration referring to type outside of the nearest enclosing namespace is a Microsoft extension; add a nested name specifier (for: friend class DynamicMessage)
-    ] + ["-D" + define for define in PROPAGATED_WINDOWS_DEFINES],
+    ] + WINDOWS_COPTS,
+    "//conditions:default": [
+    ],
+})
+
+PYX_COPTS = select({
+    "//:windows_msvc-cl": [
+    ],
+    "//conditions:default": [
+        # Ignore this warning since CPython and Cython have issue removing deprecated tp_print on MacOS
+        "-Wno-deprecated-declarations",
+    ],
+}) + select({
+    "@bazel_tools//src/conditions:windows": [
+        "/FI" + "src/shims/windows/python-nondebug.h",
+    ],
+    "//conditions:default": [
+    ],
+})
+
+PYX_SRCS = [] + select({
+    "@bazel_tools//src/conditions:windows": [
+        "src/shims/windows/python-nondebug.h",
+    ],
     "//conditions:default": [
     ],
 })
@@ -34,7 +60,7 @@ def define_java_module(
         define_test_lib = False,
         test_deps = [],
         **kwargs):
-    lib_name = "org_ray_ray_" + name
+    lib_name = "io_ray_ray_" + name
     pom_file_targets = [lib_name]
     native.java_library(
         name = lib_name,
@@ -46,15 +72,15 @@ def define_java_module(
         **kwargs
     )
     checkstyle_test(
-        name = "org_ray_ray_" + name + "-checkstyle",
-        target = ":org_ray_ray_" + name,
+        name = "io_ray_ray_" + name + "-checkstyle",
+        target = ":io_ray_ray_" + name,
         config = "//java:checkstyle.xml",
         suppressions = "//java:checkstyle-suppressions.xml",
         size = "small",
         tags = ["checkstyle"],
     )
     if define_test_lib:
-        test_lib_name = "org_ray_ray_" + name + "_test"
+        test_lib_name = "io_ray_ray_" + name + "_test"
         pom_file_targets.append(test_lib_name)
         native.java_library(
             name = test_lib_name,
@@ -62,15 +88,15 @@ def define_java_module(
             deps = test_deps,
         )
         checkstyle_test(
-            name = "org_ray_ray_" + name + "_test-checkstyle",
-            target = ":org_ray_ray_" + name + "_test",
+            name = "io_ray_ray_" + name + "_test-checkstyle",
+            target = ":io_ray_ray_" + name + "_test",
             config = "//java:checkstyle.xml",
             suppressions = "//java:checkstyle-suppressions.xml",
             size = "small",
             tags = ["checkstyle"],
         )
     pom_file(
-        name = "org_ray_ray_" + name + "_pom",
+        name = "io_ray_ray_" + name + "_pom",
         targets = pom_file_targets,
         template_file = name + "/pom_template.xml",
         substitutions = {

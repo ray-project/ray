@@ -4,15 +4,10 @@ import subprocess
 import time
 
 import ray
-from ray import ray_constants
 from ray.test_utils import (
-    RayTestTimeoutException,
-    run_string_as_driver,
-    run_string_as_driver_nonblocking,
-    wait_for_children_of_pid,
-    wait_for_children_of_pid_to_exit,
-    kill_process_by_name,
-)
+    RayTestTimeoutException, run_string_as_driver,
+    run_string_as_driver_nonblocking, wait_for_children_of_pid,
+    wait_for_children_of_pid_to_exit, kill_process_by_name, Semaphore)
 
 
 def test_error_isolation(call_ray_start):
@@ -168,6 +163,39 @@ print("success")
         assert "success" in out
 
 
+def test_cleanup_on_driver_exit(call_ray_start):
+    # This test will create a driver that creates a bunch of objects and then
+    # exits. The entries in the object table should be cleaned up.
+    address = call_ray_start
+
+    ray.init(address=address)
+
+    # Define a driver that creates a bunch of objects and exits.
+    driver_script = """
+import time
+import ray
+ray.init(address="{}")
+object_ids = [ray.put(i) for i in range(1000)]
+start_time = time.time()
+while time.time() - start_time < 30:
+    if len(ray.objects()) == 1000:
+        break
+else:
+    raise Exception("Objects did not appear in object table.")
+print("success")
+""".format(address)
+
+    run_string_as_driver(driver_script)
+
+    # Make sure the objects are removed from the object table.
+    start_time = time.time()
+    while time.time() - start_time < 30:
+        if len(ray.objects()) == 0:
+            break
+    else:
+        raise Exception("Objects were not all removed from object table.")
+
+
 def test_drivers_named_actors(call_ray_start):
     # This test will create some drivers that submit some tasks to the same
     # named actor.
@@ -187,8 +215,7 @@ class Counter:
     def increment(self):
         self.count += 1
         return self.count
-counter = Counter.remote()
-ray.util.register_actor("Counter", counter)
+counter = Counter.options(name="Counter").remote()
 time.sleep(100)
 """.format(address)
 
@@ -199,7 +226,7 @@ import time
 ray.init(address="{}")
 while True:
     try:
-        counter = ray.util.get_actor("Counter")
+        counter = ray.get_actor("Counter")
         break
     except ValueError:
         time.sleep(1)
@@ -253,7 +280,10 @@ ray.get([a.log.remote(), f.remote()])
 
 
 @pytest.mark.parametrize(
-    "call_ray_start", ["ray start --head --num-cpus=1 --num-gpus=1"],
+    "call_ray_start", [
+        "ray start --head --num-cpus=1 --num-gpus=1 " +
+        "--min-worker-port=0 --max-worker-port=0"
+    ],
     indirect=True)
 def test_drivers_release_resources(call_ray_start):
     address = call_ray_start
@@ -302,6 +332,7 @@ print("success")
             print(output_line)
             if output_line == "success":
                 return
+            time.sleep(1)
         raise RayTestTimeoutException(
             "Timed out waiting for process to print success.")
 
@@ -324,60 +355,66 @@ def test_calling_start_ray_head(call_ray_stop_only):
     # should also test the non-head node code path.
 
     # Test starting Ray with no arguments.
-    subprocess.check_output(["ray", "start", "--head"])
-    subprocess.check_output(["ray", "stop"])
+    subprocess.check_call(["ray", "start", "--head"])
+    subprocess.check_call(["ray", "stop"])
 
     # Test starting Ray with a redis port specified.
-    subprocess.check_output(["ray", "start", "--head", "--redis-port", "6379"])
-    subprocess.check_output(["ray", "stop"])
+    subprocess.check_call(["ray", "start", "--head"])
+    subprocess.check_call(["ray", "stop"])
 
     # Test starting Ray with a node IP address specified.
-    subprocess.check_output(
+    subprocess.check_call(
         ["ray", "start", "--head", "--node-ip-address", "127.0.0.1"])
-    subprocess.check_output(["ray", "stop"])
+    subprocess.check_call(["ray", "stop"])
 
     # Test starting Ray with the object manager and node manager ports
     # specified.
-    subprocess.check_output([
+    subprocess.check_call([
         "ray", "start", "--head", "--object-manager-port", "12345",
         "--node-manager-port", "54321"
     ])
-    subprocess.check_output(["ray", "stop"])
+    subprocess.check_call(["ray", "stop"])
+
+    # Test starting Ray with the worker port range specified.
+    subprocess.check_call([
+        "ray", "start", "--head", "--min-worker-port", "50000",
+        "--max-worker-port", "51000"
+    ])
+    subprocess.check_call(["ray", "stop"])
 
     # Test starting Ray with the number of CPUs specified.
-    subprocess.check_output(["ray", "start", "--head", "--num-cpus", "2"])
-    subprocess.check_output(["ray", "stop"])
+    subprocess.check_call(["ray", "start", "--head", "--num-cpus", "2"])
+    subprocess.check_call(["ray", "stop"])
 
     # Test starting Ray with the number of GPUs specified.
-    subprocess.check_output(["ray", "start", "--head", "--num-gpus", "100"])
-    subprocess.check_output(["ray", "stop"])
+    subprocess.check_call(["ray", "start", "--head", "--num-gpus", "100"])
+    subprocess.check_call(["ray", "stop"])
 
     # Test starting Ray with the max redis clients specified.
-    subprocess.check_output(
+    subprocess.check_call(
         ["ray", "start", "--head", "--redis-max-clients", "100"])
-    subprocess.check_output(["ray", "stop"])
+    subprocess.check_call(["ray", "stop"])
 
     if "RAY_USE_NEW_GCS" not in os.environ:
         # Test starting Ray with redis shard ports specified.
-        subprocess.check_output([
+        subprocess.check_call([
             "ray", "start", "--head", "--redis-shard-ports", "6380,6381,6382"
         ])
-        subprocess.check_output(["ray", "stop"])
+        subprocess.check_call(["ray", "stop"])
 
         # Test starting Ray with all arguments specified.
-        subprocess.check_output([
-            "ray", "start", "--head", "--redis-port", "6379",
-            "--redis-shard-ports", "6380,6381,6382", "--object-manager-port",
-            "12345", "--num-cpus", "2", "--num-gpus", "0",
-            "--redis-max-clients", "100", "--resources", "{\"Custom\": 1}"
+        subprocess.check_call([
+            "ray", "start", "--head", "--redis-shard-ports", "6380,6381,6382",
+            "--object-manager-port", "12345", "--num-cpus", "2", "--num-gpus",
+            "0", "--redis-max-clients", "100", "--resources", "{\"Custom\": 1}"
         ])
-        subprocess.check_output(["ray", "stop"])
+        subprocess.check_call(["ray", "stop"])
 
     # Test starting Ray with invalid arguments.
     with pytest.raises(subprocess.CalledProcessError):
-        subprocess.check_output(
+        subprocess.check_call(
             ["ray", "start", "--head", "--address", "127.0.0.1:6379"])
-    subprocess.check_output(["ray", "stop"])
+    subprocess.check_call(["ray", "stop"])
 
     # Test --block. Killing a child process should cause the command to exit.
     blocked = subprocess.Popen(["ray", "start", "--head", "--block"])
@@ -388,7 +425,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     assert blocked.returncode is None
 
     kill_process_by_name("raylet")
-    wait_for_children_of_pid_to_exit(blocked.pid, timeout=120)
+    wait_for_children_of_pid_to_exit(blocked.pid, timeout=30)
     blocked.wait()
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
@@ -400,16 +437,14 @@ def test_calling_start_ray_head(call_ray_stop_only):
     wait_for_children_of_pid(blocked.pid, num_children=7, timeout=30)
 
     blocked.terminate()
-    wait_for_children_of_pid_to_exit(blocked.pid, timeout=120)
+    wait_for_children_of_pid_to_exit(blocked.pid, timeout=30)
     blocked.wait()
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
 
 @pytest.mark.parametrize(
-    "call_ray_start", [
-        "ray start --head --num-cpus=1 " +
-        "--node-ip-address=localhost --redis-port=6379"
-    ],
+    "call_ray_start",
+    ["ray start --head --num-cpus=1 " + "--node-ip-address=localhost"],
     indirect=True)
 def test_using_hostnames(call_ray_start):
     ray.init(node_ip_address="localhost", address="localhost:6379")
@@ -480,9 +515,7 @@ print("success")
         assert "success" in out
 
 
-@pytest.mark.skipif(
-    ray_constants.direct_call_enabled(),
-    reason="fate sharing not implemented yet")
+@pytest.mark.skip(reason="fate sharing not implemented yet")
 def test_driver_exiting_when_worker_blocked(call_ray_start):
     # This test will create some drivers that submit some tasks and then
     # exit without waiting for the tasks to complete.
@@ -597,24 +630,75 @@ print("success")
     ray.get(f.remote())
 
 
-@pytest.mark.parametrize(
-    "call_ray_start", ["ray start --head --num-cpus=1 --use-pickle"],
-    indirect=True)
-def test_use_pickle(call_ray_start):
-    address = call_ray_start
+def test_multi_driver_logging(ray_start_regular):
+    address_info = ray_start_regular
+    address = address_info["redis_address"]
 
-    ray.init(address=address, use_pickle=True)
+    # ray.init(address=address)
+    driver1_wait = Semaphore.options(name="driver1_wait").remote(value=0)
+    driver2_wait = Semaphore.options(name="driver2_wait").remote(value=0)
+    main_wait = Semaphore.options(name="main_wait").remote(value=0)
 
-    assert ray.worker.global_worker.use_pickle
-    x = (2, "hello")
+    # Params are address, semaphore name, output1, output2
+    driver_script_template = """
+import ray
+import sys
+from ray.test_utils import Semaphore
 
-    @ray.remote
-    def f(x):
-        assert x == (2, "hello")
-        assert ray.worker.global_worker.use_pickle
-        return (3, "world")
+@ray.remote(num_cpus=0)
+def remote_print(s, file=None):
+    print(s, file=file)
 
-    assert ray.get(f.remote(x)) == (3, "world")
+ray.init(address="{}")
+
+driver_wait = ray.get_actor("{}")
+main_wait = ray.get_actor("main_wait")
+
+ray.get(main_wait.release.remote())
+ray.get(driver_wait.acquire.remote())
+
+s1 = "{}"
+ray.get(remote_print.remote(s1))
+
+ray.get(main_wait.release.remote())
+ray.get(driver_wait.acquire.remote())
+
+s2 = "{}"
+ray.get(remote_print.remote(s2))
+
+ray.get(main_wait.release.remote())
+    """
+
+    p1 = run_string_as_driver_nonblocking(
+        driver_script_template.format(address, "driver1_wait", "1", "2"))
+    p2 = run_string_as_driver_nonblocking(
+        driver_script_template.format(address, "driver2_wait", "3", "4"))
+
+    ray.get(main_wait.acquire.remote())
+    ray.get(main_wait.acquire.remote())
+    # At this point both of the other drivers are fully initialized.
+
+    ray.get(driver1_wait.release.remote())
+    ray.get(driver2_wait.release.remote())
+
+    # At this point driver1 should receive '1' and driver2 '3'
+    ray.get(main_wait.acquire.remote())
+    ray.get(main_wait.acquire.remote())
+
+    ray.get(driver1_wait.release.remote())
+    ray.get(driver2_wait.release.remote())
+
+    # At this point driver1 should receive '2' and driver2 '4'
+    ray.get(main_wait.acquire.remote())
+    ray.get(main_wait.acquire.remote())
+
+    driver1_out = p1.stdout.read().decode("ascii").split("\n")
+    driver2_out = p2.stdout.read().decode("ascii").split("\n")
+
+    assert driver1_out[0][-1] == "1"
+    assert driver1_out[1][-1] == "2"
+    assert driver2_out[0][-1] == "3"
+    assert driver2_out[1][-1] == "4"
 
 
 if __name__ == "__main__":

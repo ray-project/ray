@@ -32,7 +32,9 @@ You can start Ray on a single machine by adding this to your python script.
 
 Ray will then be able to utilize all cores of your machine. Find out how to configure the number of cores Ray will use at :ref:`configuring-ray`.
 
-To start a multi-node Ray cluster, see the `cluster setup page <using-ray-on-a-cluster.html>`__.
+To start a multi-node Ray cluster, see the :ref:`cluster setup page <cluster-index>`.
+
+.. _ray-remote-functions:
 
 Remote functions (Tasks)
 ------------------------
@@ -82,7 +84,12 @@ This causes a few changes in behavior:
        for _ in range(4):
            remote_function.remote()
 
+The invocations are executed in parallel because the call to ``remote_function.remote()`` doesn't block.
+All computation is performed in the background, driven by Ray's internal event loop.
+
 See the `ray.remote package reference <package-ref.html>`__ page for specific documentation on how to use ``ray.remote``.
+
+.. _ray-object-ids:
 
 **Object IDs** can also be passed into remote functions. When the function actually gets executed, **the argument will be a retrieved as a regular Python object**. For example, take this function:
 
@@ -165,6 +172,20 @@ Further, remote functions can return multiple object IDs.
 
   a_id, b_id, c_id = return_multiple.remote()
 
+Remote functions can be canceled by calling ``ray.cancel`` on the returned Object ID. Remote actor functions can be stopped by killing the actor using the ``ray.kill`` interface.
+
+.. code-block:: python
+
+  @ray.remote
+  def blocking_operation():
+      time.sleep(10e6)
+      return 100
+
+  obj_id = blocking_operation.remote()
+  ray.cancel(obj_id)
+
+.. autofunction:: ray.cancel
+    :noindex:
 
 Objects in Ray
 --------------
@@ -188,7 +209,7 @@ Object IDs can be created in multiple ways.
 .. autofunction:: ray.put
     :noindex:
 
-.. important::
+.. note::
 
     Remote objects are immutable. That is, their values cannot be changed after
     creation. This allows remote objects to be replicated in multiple object

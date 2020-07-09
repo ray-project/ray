@@ -1,14 +1,24 @@
-#ifndef RAY_CONSTANTS_H_
-#define RAY_CONSTANTS_H_
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
 
 #include <limits.h>
 #include <stdint.h>
 
 /// Length of Ray full-length IDs in bytes.
 constexpr size_t kUniqueIDSize = 20;
-
-/// Length of plasma ID in bytes.
-constexpr size_t kPlasmaIdSize = 20;
 
 /// An ObjectID's bytes are split into the task ID itself and the index of the
 /// object's creation. This is the maximum width of the object index in bits.
@@ -27,6 +37,8 @@ constexpr char kTaskTablePrefix[] = "TaskTable";
 constexpr char kWorkerDynamicOptionPlaceholderPrefix[] =
     "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_";
 
-constexpr char kWorkerNumWorkersPlaceholder[] = "RAY_WORKER_NUM_WORKERS_PLACEHOLDER";
+constexpr char kWorkerRayletConfigPlaceholder[] = "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER";
 
-#endif  // RAY_CONSTANTS_H_
+/// Public DNS address which is is used to connect and get local IP.
+constexpr char kPublicDNSServerIp[] = "8.8.8.8";
+constexpr int kPublicDNSServerPort = 53;

@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/raylet/actor_registration.h"
 
 #include <sstream>
@@ -51,12 +65,19 @@ const JobID ActorRegistration::GetJobId() const {
   return JobID::FromBinary(actor_table_data_.job_id());
 }
 
-const int64_t ActorRegistration::GetMaxReconstructions() const {
-  return actor_table_data_.max_reconstructions();
+const int64_t ActorRegistration::GetMaxRestarts() const {
+  return actor_table_data_.max_restarts();
 }
 
-const int64_t ActorRegistration::GetRemainingReconstructions() const {
-  return actor_table_data_.remaining_reconstructions();
+const int64_t ActorRegistration::GetRemainingRestarts() const {
+  if (actor_table_data_.max_restarts() == -1) {
+    return -1;
+  }
+  return actor_table_data_.max_restarts() - actor_table_data_.num_restarts();
+}
+
+const uint64_t ActorRegistration::GetNumRestarts() const {
+  return actor_table_data_.num_restarts();
 }
 
 const std::unordered_map<TaskID, ActorRegistration::FrontierLeaf>

@@ -199,9 +199,9 @@ class SessionRunner:
             requirements_txt = project_environment["requirements"]
 
             # Create a temporary requirements_txt in the head node.
-            remote_requirements_txt = (
-                "/tmp/" + "ray_project_requirements_txt_{}".format(
-                    time.time()))
+            remote_requirements_txt = os.path.join(
+                ray.utils.get_user_temp_dir(),
+                "ray_project_requirements_txt_{}".format(time.time()))
 
             rsync(
                 self.project_definition.cluster_yaml(),
@@ -229,7 +229,7 @@ class SessionRunner:
         exec_cluster(
             config_file=self.project_definition.cluster_yaml(),
             cmd=cmd,
-            docker=False,
+            run_env=config.get("run_env", "auto"),
             screen=False,
             tmux=config.get("tmux", False),
             stop=False,

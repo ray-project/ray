@@ -3,6 +3,8 @@ import logging
 import os
 import yaml
 
+from ray.autoscaler.updater import SSHCommandRunner, DockerCommandRunner
+
 logger = logging.getLogger(__name__)
 
 
@@ -16,6 +18,12 @@ def import_gcp():
     from ray.autoscaler.gcp.config import bootstrap_gcp
     from ray.autoscaler.gcp.node_provider import GCPNodeProvider
     return bootstrap_gcp, GCPNodeProvider
+
+
+def import_azure():
+    from ray.autoscaler.azure.config import bootstrap_azure
+    from ray.autoscaler.azure.node_provider import AzureNodeProvider
+    return bootstrap_azure, AzureNodeProvider
 
 
 def import_local():
@@ -52,6 +60,12 @@ def load_gcp_example_config():
     return os.path.join(os.path.dirname(ray_gcp.__file__), "example-full.yaml")
 
 
+def load_azure_example_config():
+    import ray.autoscaler.azure as ray_azure
+    return os.path.join(
+        os.path.dirname(ray_azure.__file__), "example-full.yaml")
+
+
 def import_external():
     """Mock a normal provider importer."""
 
@@ -65,7 +79,7 @@ NODE_PROVIDERS = {
     "local": import_local,
     "aws": import_aws,
     "gcp": import_gcp,
-    "azure": None,  # TODO: support more node providers
+    "azure": import_azure,
     "kubernetes": import_kubernetes,
     "docker": None,
     "external": import_external  # Import an external module
@@ -75,7 +89,7 @@ DEFAULT_CONFIGS = {
     "local": load_local_example_config,
     "aws": load_aws_example_config,
     "gcp": load_gcp_example_config,
-    "azure": None,  # TODO: support more node providers
+    "azure": load_azure_example_config,
     "kubernetes": load_kubernetes_example_config,
     "docker": None,
 }
@@ -196,3 +210,57 @@ class NodeProvider:
     def cleanup(self):
         """Clean-up when a Provider is no longer required."""
         pass
+
+    def create_node_of_type(self, node_config, tags, instance_type, count):
+        """Creates a number of nodes with a given instance type.
+
+        This is an optional method only required if using the resource
+        demand scheduler.
+        """
+        assert instance_type is not None
+        raise NotImplementedError
+
+    def get_instance_type(self, node_config):
+        """Returns the instance type of this node config.
+
+        This is an optional method only required if using the resource
+        demand scheduler."""
+        return None
+
+    def get_command_runner(self,
+                           log_prefix,
+                           node_id,
+                           auth_config,
+                           cluster_name,
+                           process_runner,
+                           use_internal_ip,
+                           docker_config=None):
+        """ Returns the CommandRunner class used to perform SSH commands.
+
+        Args:
+        log_prefix(str): stores "NodeUpdater: {}: ".format(<node_id>). Used
+            to print progress in the CommandRunner.
+        node_id(str): the node ID.
+        auth_config(dict): the authentication configs from the autoscaler
+            yaml file.
+        cluster_name(str): the name of the cluster.
+        process_runner(module): the module to use to run the commands
+            in the CommandRunner. E.g., subprocess.
+        use_internal_ip(bool): whether the node_id belongs to an internal ip
+            or external ip.
+        docker_config(dict): If set, the docker information of the docker
+            container that commands should be run on.
+        """
+        common_args = {
+            "log_prefix": log_prefix,
+            "node_id": node_id,
+            "provider": self,
+            "auth_config": auth_config,
+            "cluster_name": cluster_name,
+            "process_runner": process_runner,
+            "use_internal_ip": use_internal_ip
+        }
+        if docker_config and docker_config["container_name"] != "":
+            return DockerCommandRunner(docker_config, **common_args)
+        else:
+            return SSHCommandRunner(**common_args)

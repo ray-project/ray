@@ -1,10 +1,24 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 syntax = "proto3";
 
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 
-option java_package = "org.ray.runtime.generated";
+option java_package = "io.ray.runtime.generated";
 
 // These indexes are mapped to strings in ray_redis_module.cc.
 enum TablePrefix {
@@ -27,7 +41,8 @@ enum TablePrefix {
   ACTOR_CHECKPOINT_ID = 16;
   NODE_RESOURCE = 17;
   DIRECT_ACTOR = 18;
-  WORKER_FAILURE = 19;
+  // WORKER is already used in WorkerType, so use WORKERS here.
+  WORKERS = 19;
   TABLE_PREFIX_MAX = 20;
 }
 
@@ -85,40 +100,48 @@ message TaskTableData {
 message ActorTableData {
   // State of an actor.
   enum ActorState {
+    // Actor is pending.
+    PENDING = 0;
     // Actor is alive.
-    ALIVE = 0;
-    // Actor is dead, now being reconstructed.
+    ALIVE = 1;
+    // Actor is dead, now being restarted.
     // After reconstruction finishes, the state will become alive again.
-    RECONSTRUCTING = 1;
-    // Actor is already dead and won't be reconstructed.
-    DEAD = 2;
+    RESTARTING = 2;
+    // Actor is already dead and won't be restarted.
+    DEAD = 3;
   }
   // The ID of the actor that was created.
   bytes actor_id = 1;
   // The ID of the caller of the actor creation task.
   bytes parent_id = 2;
   // The dummy object ID returned by the actor creation task. If the actor
-  // dies, then this is the object that should be reconstructed for the actor
+  // dies, then this is the object that should be restarted for the actor
   // to be recreated.
   bytes actor_creation_dummy_object_id = 3;
   // The ID of the job that created the actor.
   bytes job_id = 4;
   // Current state of this actor.
   ActorState state = 6;
-  // Max number of times this actor should be reconstructed.
-  uint64 max_reconstructions = 7;
-  // Remaining number of reconstructions.
-  uint64 remaining_reconstructions = 8;
+  // Max number of times this actor should be restarted,
+  // a value of -1 indicates an infinite number of reconstruction attempts.
+  int64 max_restarts = 7;
+  // Number of restarts that have already been performed on this actor.
+  uint64 num_restarts = 8;
   // The address of the the actor.
   Address address = 9;
   // The address of the the actor's owner (parent).
   Address owner_address = 10;
-  // Whether direct actor call is used.
-  bool is_direct_call = 11;
   // Whether the actor is persistent.
-  bool is_detached = 12;
+  bool is_detached = 11;
+  // Name of the actor. Only populated if is_detached is true.
+  string name = 12;
   // Timestamp that the actor is created or reconstructed.
   double timestamp = 13;
+  // The task specification of this actor's creation task.
+  TaskSpec task_spec = 14;
+  // Resource mapping ids acquired by the leased worker. This field is only set when this
+  // actor already has a leased worker.
+  repeated ResourceMapEntry resource_mapping = 15;
 }
 
 message ErrorTableData {
@@ -199,18 +222,16 @@ message GcsNodeInfo {
 message HeartbeatTableData {
   // Node manager client id
   bytes client_id = 1;
-  // TODO(hchen): Define the following resources in map format.
   // Resource capacity currently available on this node manager.
-  repeated string resources_available_label = 2;
-  repeated double resources_available_capacity = 3;
+  map<string, double> resources_available = 2;
   // Total resource capacity configured for this node manager.
-  repeated string resources_total_label = 4;
-  repeated double resources_total_capacity = 5;
+  map<string, double> resources_total = 3;
   // Aggregate outstanding resource load on this node manager.
-  repeated string resource_load_label = 6;
-  repeated double resource_load_capacity = 7;
+  map<string, double> resource_load = 4;
   // Object IDs that are in use by workers on this node manager's node.
-  repeated bytes active_object_id = 8;
+  repeated bytes active_object_id = 5;
+  // Whether this node manager is requesting global GC.
+  bool should_global_gc = 6;
 }
 
 message HeartbeatBatchTableData {
@@ -238,8 +259,8 @@ message JobTableData {
   bool is_dead = 2;
   // The UNIX timestamp corresponding to this event (job added or removed).
   int64 timestamp = 3;
-  // IP of the node this job was started on.
-  string node_manager_address = 4;
+  // IP address of the driver that started this job.
+  string driver_ip_address = 4;
   // Process ID of the driver running this job.
   int64 driver_pid = 5;
 }
@@ -276,11 +297,53 @@ message ActorCheckpointIdData {
   repeated uint64 timestamps = 3;
 }
 
-message WorkerFailureData {
+message WorkerTableData {
+  // Is this worker alive.
+  bool is_alive = 1;
   // Address of the worker that failed.
-  Address worker_address = 1;
-  // The UNIX timestamp at which the worker failed.
+  Address worker_address = 2;
+  // The UNIX timestamp at which this worker's state was updated.
   int64 timestamp = 3;
+  // Whether it's an intentional disconnect, only applies then `is_alive` is false.
+  bool intentional_disconnect = 4;
+  // Type of this worker.
+  WorkerType worker_type = 5;
+  // This is for AddWorker.
+  map<string, bytes> worker_info = 6;
+}
+
+message ResourceMap {
+  map<string, ResourceTableData> items = 1;
+}
+
+message ObjectTableDataList {
+  repeated ObjectTableData items = 1;
+}
+
+message ObjectLocationInfo {
+  bytes object_id = 1;
+  repeated ObjectTableData locations = 2;
+}
+
+// A notification message about one object's locations being changed.
+message ObjectLocationChange {
+  bool is_add = 1;
+  ObjectTableData data = 2;
+}
+
+// A notification message about one node's resources being changed.
+message NodeResourceChange {
+  // ID of the node whose resources have changed.
+  bytes node_id = 1;
+  // Labels of the updated resources and their latest capacities.
+  map<string, double> updated_resources = 2;
+  // Labels of the resources that were deleted.
+  repeated string deleted_resources = 3;
+}
+
+message PubSubMessage {
+  bytes id = 1;
+  bytes data = 2;
 }
 
 // This enum type is used as object's metadata to indicate the object's creating
@@ -293,7 +356,7 @@ enum ErrorType {
   WORKER_DIED = 0;
   // Indicates that a task failed because the actor died unexpectedly before finishing it.
   ACTOR_DIED = 1;
-  // Indicates that an object is lost and cannot be reconstructed.
+  // Indicates that an object is lost and cannot be restarted.
   // Note, this currently only happens to actor objects. When the actor's state is already
   // after the object's creating task, the actor cannot re-run the task.
   // TODO(hchen): we may want to reuse this error type for more cases. E.g.,
@@ -307,4 +370,8 @@ enum ErrorType {
   // exposed to user code; it is only used internally to indicate the result of a direct
   // call has been placed in plasma.
   OBJECT_IN_PLASMA = 4;
+  // Indicates that an object has been cancelled.
+  TASK_CANCELLED = 5;
+  // Inidicates that creating the GCS service failed to create the actor.
+  ACTOR_CREATION_FAILED = 6;
 }

@@ -1,7 +1,9 @@
 import ray.cloudpickle as cloudpickle
+from collections import deque
 import copy
 from datetime import datetime
 import logging
+import platform
 import shutil
 import uuid
 import time
@@ -41,35 +43,37 @@ class Location:
     def __str__(self):
         if not self.pid:
             return ""
-        elif self.hostname == os.uname()[1]:
+        elif self.hostname == platform.node():
             return "pid={}".format(self.pid)
         else:
             return "{}:{}".format(self.hostname, self.pid)
 
 
 class ExportFormat:
-    """Describes the format to export the trial Trainable.
+    """Describes the format to import/export the trial Trainable.
 
     This may correspond to different file formats based on the
     Trainable implementation.
     """
     CHECKPOINT = "checkpoint"
     MODEL = "model"
+    H5 = "h5"
 
     @staticmethod
-    def validate(export_formats):
-        """Validates export_formats.
+    def validate(formats):
+        """Validates formats.
 
         Raises:
             ValueError if the format is unknown.
         """
-        for i in range(len(export_formats)):
-            export_formats[i] = export_formats[i].strip().lower()
-            if export_formats[i] not in [
-                    ExportFormat.CHECKPOINT, ExportFormat.MODEL
+        for i in range(len(formats)):
+            formats[i] = formats[i].strip().lower()
+            if formats[i] not in [
+                    ExportFormat.CHECKPOINT, ExportFormat.MODEL,
+                    ExportFormat.H5
             ]:
-                raise TuneError("Unsupported export format: " +
-                                export_formats[i])
+                raise TuneError("Unsupported import/export format: " +
+                                formats[i])
 
 
 def checkpoint_deleter(trial_id, runner):
@@ -102,6 +106,27 @@ def checkpoint_deleter(trial_id, runner):
     return delete
 
 
+class TrialInfo:
+    """Serializable struct for holding information for a Trial.
+
+    Attributes:
+        trial_name (str): String name of the current trial.
+        trial_id (str): trial_id of the trial
+    """
+
+    def __init__(self, trial):
+        self._trial_name = str(trial)
+        self._trial_id = trial.trial_id
+
+    @property
+    def trial_name(self):
+        return self._trial_name
+
+    @property
+    def trial_id(self):
+        return self._trial_id
+
+
 class Trial:
     """A trial object holds the state for one model training run.
 
@@ -110,6 +135,19 @@ class Trial:
 
     Trials start in the PENDING state, and transition to RUNNING once started.
     On error it transitions to ERROR, otherwise TERMINATED on success.
+
+    Attributes:
+        trainable_name (str): Name of the trainable object to be executed.
+        config (dict): Provided configuration dictionary with evaluated params.
+        trial_id (str): Unique identifier for the trial.
+        local_dir (str): Local_dir as passed to tune.run.
+        logdir (str): Directory where the trial logs are saved.
+        evaluated_params (dict): Evaluated parameters by search algorithm,
+        experiment_tag (str): Identifying trial name to show in the console.
+        resources (Resources): Amount of resources that this trial will use.
+        status (str): One of PENDING, RUNNING, PAUSED, TERMINATED, ERROR/
+        error_file (str): Path to the errors that this trial has raised.
+
     """
 
     PENDING = "PENDING"
@@ -155,8 +193,7 @@ class Trial:
         self.evaluated_params = evaluated_params or {}
         self.experiment_tag = experiment_tag
         trainable_cls = self.get_trainable_cls()
-        if trainable_cls and hasattr(trainable_cls,
-                                     "default_resource_request"):
+        if trainable_cls:
             default_resources = trainable_cls.default_resource_request(
                 self.config)
             if default_resources:
@@ -179,8 +216,13 @@ class Trial:
         self.last_result = {}
         self.last_update_time = -float("inf")
 
-        # stores in memory max/min/last result for each metric by trial
+        # stores in memory max/min/avg/last-n-avg/last result for each
+        # metric by trial
         self.metric_analysis = {}
+
+        # keep a moving average over these last n steps
+        self.n_steps = [5, 10]
+        self.metric_n_steps = {}
 
         self.export_formats = export_formats
         self.status = Trial.PENDING
@@ -204,11 +246,10 @@ class Trial:
         self.sync_on_checkpoint = sync_on_checkpoint
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
-            checkpoint_deleter(str(self), self.runner))
-        checkpoint = Checkpoint(Checkpoint.PERSISTENT, restore_path)
-        self.checkpoint_manager.newest_persistent_checkpoint = checkpoint
+            checkpoint_deleter(self._trainable_name(), self.runner))
 
         # Restoration fields
+        self.restore_path = restore_path
         self.restoring_from = None
         self.num_failures = 0
 
@@ -237,14 +278,16 @@ class Trial:
     def checkpoint(self):
         """Returns the most recent checkpoint.
 
-        If the trial is PAUSED, this is the most recent MEMORY checkpoint.
-        Otherwise, it is the most recent PERSISTENT checkpoint.
+        If the trial is in ERROR state, the most recent PERSISTENT checkpoint
+        is returned.
         """
-        if self.status == Trial.PAUSED:
-            assert self.checkpoint_manager.newest_memory_checkpoint.value
-            return self.checkpoint_manager.newest_memory_checkpoint
+        if self.status == Trial.ERROR:
+            checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
         else:
-            return self.checkpoint_manager.newest_persistent_checkpoint
+            checkpoint = self.checkpoint_manager.newest_checkpoint
+        if checkpoint.value is None:
+            checkpoint = Checkpoint(Checkpoint.PERSISTENT, self.restore_path)
+        return checkpoint
 
     @classmethod
     def generate_id(cls):
@@ -271,7 +314,8 @@ class Trial:
         if not self.result_logger:
             if not self.logdir:
                 self.logdir = Trial.create_logdir(
-                    str(self) + "_" + self.experiment_tag, self.local_dir)
+                    self._trainable_name() + "_" + self.experiment_tag,
+                    self.local_dir)
             else:
                 os.makedirs(self.logdir, exist_ok=True)
 
@@ -296,7 +340,8 @@ class Trial:
 
     def set_runner(self, runner):
         self.runner = runner
-        self.checkpoint_manager.delete = checkpoint_deleter(str(self), runner)
+        self.checkpoint_manager.delete = checkpoint_deleter(
+            self._trainable_name(), runner)
 
     def set_location(self, location):
         """Sets the location of the trial."""
@@ -432,20 +477,40 @@ class Trial:
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
+
         for metric, value in flatten_dict(result).items():
             if isinstance(value, Number):
                 if metric not in self.metric_analysis:
                     self.metric_analysis[metric] = {
                         "max": value,
                         "min": value,
+                        "avg": value,
                         "last": value
                     }
+                    self.metric_n_steps[metric] = {}
+                    for n in self.n_steps:
+                        key = "last-{:d}-avg".format(n)
+                        self.metric_analysis[metric][key] = value
+                        # Store n as string for correct restore.
+                        self.metric_n_steps[metric][str(n)] = deque(
+                            [value], maxlen=n)
                 else:
+                    step = result["training_iteration"] or 1
                     self.metric_analysis[metric]["max"] = max(
                         value, self.metric_analysis[metric]["max"])
                     self.metric_analysis[metric]["min"] = min(
                         value, self.metric_analysis[metric]["min"])
+                    self.metric_analysis[metric]["avg"] = 1 / step * (
+                        value +
+                        (step - 1) * self.metric_analysis[metric]["avg"])
                     self.metric_analysis[metric]["last"] = value
+
+                    for n in self.n_steps:
+                        key = "last-{:d}-avg".format(n)
+                        self.metric_n_steps[metric][str(n)].append(value)
+                        self.metric_analysis[metric][key] = sum(
+                            self.metric_n_steps[metric][str(n)]) / len(
+                                self.metric_n_steps[metric][str(n)])
 
     def get_trainable_cls(self):
         return get_trainable_cls(self.trainable_name)
@@ -465,9 +530,12 @@ class Trial:
         return self.saving_to is not None
 
     def __repr__(self):
-        return str(self)
+        return self._trainable_name(include_trial_id=True)
 
     def __str__(self):
+        return self._trainable_name(include_trial_id=True)
+
+    def _trainable_name(self, include_trial_id=False):
         """Combines ``env`` with ``trainable_name`` and ``trial_id``.
 
         Can be overridden with a custom string creator.
@@ -482,7 +550,8 @@ class Trial:
             identifier = "{}_{}".format(self.trainable_name, env)
         else:
             identifier = self.trainable_name
-        identifier += "_" + self.trial_id
+        if include_trial_id:
+            identifier += "_" + self.trial_id
         return identifier.replace("/", "_")
 
     def __getstate__(self):

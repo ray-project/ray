@@ -1,9 +1,23 @@
-#ifndef RAY_RAYLET_WORKER_POOL_H
-#define RAY_RAYLET_WORKER_POOL_H
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
 
 #include <inttypes.h>
 
 #include <boost/asio/io_service.hpp>
+#include <queue>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -40,11 +54,21 @@ class WorkerPool {
   /// \param maximum_startup_concurrency The maximum number of worker processes
   /// that can be started in parallel (typically this should be set to the number of CPU
   /// resources on the machine).
+  /// \param min_worker_port The lowest port number that workers started will bind on.
+  /// If this is set to 0, workers will bind on random ports.
+  /// \param max_worker_port The highest port number that workers started will bind on.
+  /// If this is not set to 0, min_worker_port must also not be set to 0.
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
+  /// \param raylet_config The raylet config list of this node.
+  /// \param starting_worker_timeout_callback The callback that will be triggered once
+  /// it times out to start a worker.
   WorkerPool(boost::asio::io_service &io_service, int num_workers,
-             int maximum_startup_concurrency, std::shared_ptr<gcs::GcsClient> gcs_client,
-             const WorkerCommandMap &worker_commands);
+             int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
+             std::shared_ptr<gcs::GcsClient> gcs_client,
+             const WorkerCommandMap &worker_commands,
+             const std::unordered_map<std::string, std::string> &raylet_config,
+             std::function<void()> starting_worker_timeout_callback);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
@@ -52,15 +76,20 @@ class WorkerPool {
   /// Register a new worker. The Worker should be added by the caller to the
   /// pool after it becomes idle (e.g., requests a work assignment).
   ///
-  /// \param The Worker to be registered.
+  /// \param[in] worker The worker to be registered.
+  /// \param[in] pid The PID of the worker.
+  /// \param[out] port The port that this worker's gRPC server should listen on.
+  /// Returns 0 if the worker should bind on a random port.
   /// \return If the registration is successful.
-  Status RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t pid);
+  Status RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t pid, int *port);
 
   /// Register a new driver.
   ///
-  /// \param The driver to be registered.
+  /// \param[in] worker The driver to be registered.
+  /// \param[out] port The port that this driver's gRPC server should listen on.
+  /// Returns 0 if the driver should bind on a random port.
   /// \return If the registration is successful.
-  Status RegisterDriver(const std::shared_ptr<Worker> &worker);
+  Status RegisterDriver(const std::shared_ptr<Worker> &worker, int *port);
 
   /// Get the client connection's registered worker.
   ///
@@ -68,7 +97,7 @@ class WorkerPool {
   /// \return The Worker that owns the given client connection. Returns nullptr
   /// if the client has not registered a worker yet.
   std::shared_ptr<Worker> GetRegisteredWorker(
-      const std::shared_ptr<LocalClientConnection> &connection) const;
+      const std::shared_ptr<ClientConnection> &connection) const;
 
   /// Get the client connection's registered driver.
   ///
@@ -76,7 +105,7 @@ class WorkerPool {
   /// \return The Worker that owns the given client connection. Returns nullptr
   /// if the client has not registered a driver.
   std::shared_ptr<Worker> GetRegisteredDriver(
-      const std::shared_ptr<LocalClientConnection> &connection) const;
+      const std::shared_ptr<ClientConnection> &connection) const;
 
   /// Disconnect a registered worker.
   ///
@@ -116,15 +145,15 @@ class WorkerPool {
   std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForJob(
       const JobID &job_id) const;
 
-  /// Get all the workers.
+  /// Get all the registered workers.
   ///
   /// \return A list containing all the workers.
-  const std::vector<std::shared_ptr<Worker>> GetAllWorkers() const;
+  const std::vector<std::shared_ptr<Worker>> GetAllRegisteredWorkers() const;
 
-  /// Get all the drivers.
+  /// Get all the registered drivers.
   ///
   /// \return A list containing all the drivers.
-  const std::vector<std::shared_ptr<Worker>> GetAllDrivers() const;
+  const std::vector<std::shared_ptr<Worker>> GetAllRegisteredDrivers() const;
 
   /// Whether there is a pending worker for the given task.
   /// Note that, this is only used for actor creation task with dynamic options.
@@ -221,18 +250,42 @@ class WorkerPool {
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
 
+  /// Start a timer to monitor the starting worker process.
+  ///
+  /// If any workers in this process don't register within the timeout
+  /// (due to worker process crash or any other reasons), remove them
+  /// from `starting_worker_processes`. Otherwise if we'll mistakenly
+  /// think there are unregistered workers, and won't start new workers.
+  void MonitorStartingWorkerProcess(const Process &proc, const Language &language);
+
+  /// Get the next unallocated port in the free ports list. If a port range isn't
+  /// configured, returns 0.
+  /// NOTE: Ray does not 'reserve' these ports from being used by other services.
+  /// There is a race condition where another service binds to the port sometime
+  /// after this function returns and before the Worker/Driver uses the port.
+  /// \param[out] port The next available port.
+  Status GetNextFreePort(int *port);
+
+  /// Mark this port as free to be used by another worker.
+  /// \param[in] port The port to mark as free.
+  void MarkPortAsFree(int port);
+
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   boost::asio::io_service *io_service_;
   /// The maximum number of worker processes that can be started concurrently.
   int maximum_startup_concurrency_;
+  /// Keeps track of unused ports that newly-created workers can bind on.
+  /// If null, workers will not be passed ports and will choose them randomly.
+  std::unique_ptr<std::queue<int>> free_ports_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
-
+  /// The raylet config list of this node.
+  std::unordered_map<std::string, std::string> raylet_config_;
+  /// The callback that will be triggered once it times out to start a worker.
+  std::function<void()> starting_worker_timeout_callback_;
   FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);
 };
 
 }  // namespace raylet
 
 }  // namespace ray
-
-#endif  // RAY_RAYLET_WORKER_POOL_H

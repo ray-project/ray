@@ -10,6 +10,7 @@ from libcpp.list cimport list as c_list
 from ray.includes.common cimport (
     CRayFunction,
     LANGUAGE_PYTHON,
+    LANGUAGE_JAVA,
     CBuffer
 )
 
@@ -19,13 +20,10 @@ from ray.includes.unique_ids cimport (
 )
 from ray._raylet cimport (
     Buffer,
-    CoreWorker,
     ActorID,
     ObjectID,
     FunctionDescriptor,
 )
-
-from ray.includes.libcoreworker cimport CCoreWorker
 
 cimport ray.streaming.includes.libstreaming as libstreaming
 from ray.streaming.includes.libstreaming cimport (
@@ -39,29 +37,43 @@ from ray.streaming.includes.libstreaming cimport (
     CReaderClient,
     CWriterClient,
     CLocalMemoryBuffer,
+    CChannelCreationParameter,
 )
+from ray._raylet import JavaFunctionDescriptor
 
 import logging
 
 
 channel_logger = logging.getLogger(__name__)
 
+cdef class ChannelCreationParameter:
+    cdef:
+        CChannelCreationParameter parameter
+    
+    def __cinit__(self, ActorID actor_id, FunctionDescriptor async_func, FunctionDescriptor sync_func):
+        cdef:
+            shared_ptr[CRayFunction] async_func_ptr
+            shared_ptr[CRayFunction] sync_func_ptr
+        self.parameter = CChannelCreationParameter()
+        self.parameter.actor_id = (<ActorID>actor_id).data
+        if isinstance(async_func, JavaFunctionDescriptor):
+            self.parameter.async_function = make_shared[CRayFunction](LANGUAGE_JAVA, async_func.descriptor)
+        else:
+            self.parameter.async_function = make_shared[CRayFunction](LANGUAGE_PYTHON, async_func.descriptor)
+        if isinstance(sync_func, JavaFunctionDescriptor):
+            self.parameter.sync_function = make_shared[CRayFunction](LANGUAGE_JAVA, sync_func.descriptor)
+        else:
+            self.parameter.sync_function = make_shared[CRayFunction](LANGUAGE_PYTHON, sync_func.descriptor)
+
+    cdef CChannelCreationParameter get_parameter(self):
+        return self.parameter
 
 cdef class ReaderClient:
     cdef:
         CReaderClient *client
 
-    def __cinit__(self,
-                  CoreWorker worker,
-                  FunctionDescriptor async_func,
-                  FunctionDescriptor sync_func):
-        cdef:
-            CCoreWorker *core_worker = worker.core_worker.get()
-            CRayFunction async_native_func
-            CRayFunction sync_native_func
-        async_native_func = CRayFunction(LANGUAGE_PYTHON, async_func.descriptor)
-        sync_native_func = CRayFunction(LANGUAGE_PYTHON, sync_func.descriptor)
-        self.client = new CReaderClient(core_worker, async_native_func, sync_native_func)
+    def __cinit__(self):
+        self.client = new CReaderClient()
 
     def __dealloc__(self):
         del self.client
@@ -90,17 +102,8 @@ cdef class WriterClient:
     cdef:
         CWriterClient * client
 
-    def __cinit__(self,
-                  CoreWorker worker,
-                  FunctionDescriptor async_func,
-                  FunctionDescriptor sync_func):
-        cdef:
-            CCoreWorker *core_worker = worker.core_worker.get()
-            CRayFunction async_native_func
-            CRayFunction sync_native_func
-        async_native_func = CRayFunction(LANGUAGE_PYTHON, async_func.descriptor)
-        sync_native_func = CRayFunction(LANGUAGE_PYTHON, sync_func.descriptor)
-        self.client = new CWriterClient(core_worker, async_native_func, sync_native_func)
+    def __cinit__(self):
+        self.client = new CWriterClient()
 
     def __dealloc__(self):
         del self.client
@@ -134,19 +137,21 @@ cdef class DataWriter:
 
     @staticmethod
     def create(list py_output_channels,
-               list output_actor_ids: list[ActorID],
+               list output_creation_parameters: list[ChannelCreationParameter],
                uint64_t queue_size,
                list py_msg_ids,
                bytes config_bytes,
                c_bool is_mock):
         cdef:
             c_vector[CObjectID] channel_ids = bytes_list_to_qid_vec(py_output_channels)
-            c_vector[CActorID] actor_ids
+            c_vector[CChannelCreationParameter] initial_parameters
             c_vector[uint64_t] msg_ids
             CDataWriter *c_writer
+            ChannelCreationParameter parameter
             cdef const unsigned char[:] config_data
-        for actor_id in output_actor_ids:
-            actor_ids.push_back((<ActorID>actor_id).data)
+        for param in output_creation_parameters:
+            parameter = param
+            initial_parameters.push_back(parameter.get_parameter())
         for py_msg_id in py_msg_ids:
             msg_ids.push_back(<uint64_t>py_msg_id)
 
@@ -155,7 +160,7 @@ cdef class DataWriter:
             ctx.get().MarkMockTest()
         if config_bytes:
             config_data = config_bytes
-            channel_logger.info("load config, config bytes size: %s", config_data.nbytes)
+            channel_logger.info("DataWriter load config, config bytes size: %s", config_data.nbytes)
             ctx.get().SetConfig(<uint8_t *>(&config_data[0]), config_data.nbytes)
         c_writer = new CDataWriter(ctx)
         cdef:
@@ -163,7 +168,7 @@ cdef class DataWriter:
             c_vector[uint64_t] queue_size_vec
         for i in range(channel_ids.size()):
             queue_size_vec.push_back(queue_size)
-        cdef CStreamingStatus status = c_writer.Init(channel_ids, actor_ids, msg_ids, queue_size_vec)
+        cdef CStreamingStatus status = c_writer.Init(channel_ids, initial_parameters, msg_ids, queue_size_vec)
         if remain_id_vec.size() != 0:
             channel_logger.warning("failed queue amounts => %s", remain_id_vec.size())
         if <uint32_t>status != <uint32_t> libstreaming.StatusOK:
@@ -212,7 +217,7 @@ cdef class DataReader:
 
     @staticmethod
     def create(list py_input_queues,
-               list input_actor_ids: list[ActorID],
+               list input_creation_parameters: list[ChannelCreationParameter],
                list py_seq_ids,
                list py_msg_ids,
                int64_t timer_interval,
@@ -221,13 +226,15 @@ cdef class DataReader:
                c_bool is_mock):
         cdef:
             c_vector[CObjectID] queue_id_vec = bytes_list_to_qid_vec(py_input_queues)
-            c_vector[CActorID] actor_ids
+            c_vector[CChannelCreationParameter] initial_parameters
             c_vector[uint64_t] seq_ids
             c_vector[uint64_t] msg_ids
             CDataReader *c_reader
+            ChannelCreationParameter parameter
             cdef const unsigned char[:] config_data
-        for actor_id in input_actor_ids:
-            actor_ids.push_back((<ActorID>actor_id).data)
+        for param in input_creation_parameters:
+            parameter = param
+            initial_parameters.push_back(parameter.get_parameter())
         for py_seq_id in py_seq_ids:
             seq_ids.push_back(<uint64_t>py_seq_id)
         for py_msg_id in py_msg_ids:
@@ -235,12 +242,12 @@ cdef class DataReader:
         cdef shared_ptr[CRuntimeContext] ctx = make_shared[CRuntimeContext]()
         if config_bytes:
             config_data = config_bytes
-            channel_logger.info("load config, config bytes size: %s", config_data.nbytes)
+            channel_logger.info("DataReader load config, config bytes size: %s", config_data.nbytes)
             ctx.get().SetConfig(<uint8_t *>(&(config_data[0])), config_data.nbytes)
         if is_mock:
             ctx.get().MarkMockTest()
         c_reader = new CDataReader(ctx)
-        c_reader.Init(queue_id_vec, actor_ids, seq_ids, msg_ids, timer_interval)
+        c_reader.Init(queue_id_vec, initial_parameters, seq_ids, msg_ids, timer_interval)
         channel_logger.info("create native reader succeed")
         cdef DataReader reader = DataReader.__new__(DataReader)
         reader.reader = c_reader
@@ -289,7 +296,7 @@ cdef class DataReader:
                 msg_id = msg.get().GetMessageSeqId()
                 msgs.append((msg_bytes, msg_id, timestamp, qid_bytes))
             return msgs
-        elif  bundle_type == <uint32_t> libstreaming.BundleTypeEmpty:
+        elif bundle_type == <uint32_t> libstreaming.BundleTypeEmpty:
             return []
         else:
             raise Exception("Unsupported bundle type {}".format(bundle_type))

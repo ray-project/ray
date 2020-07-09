@@ -1,5 +1,5 @@
-import unittest
 import numpy as np
+import unittest
 
 import ray
 from ray.rllib.utils.filter import RunningStat, MeanStdFilter
@@ -71,12 +71,15 @@ class MSFTest(unittest.TestCase):
 
 class FilterManagerTest(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=1, object_store_memory=1000 * 1024 * 1024)
+        ray.init(
+            num_cpus=1,
+            object_store_memory=1000 * 1024 * 1024,
+            ignore_reinit_error=True)
 
     def tearDown(self):
         ray.shutdown()
 
-    def testSynchronize(self):
+    def test_synchronize(self):
         """Synchronize applies filter buffer onto own filter"""
         filt1 = MeanStdFilter(())
         for i in range(10):
@@ -103,4 +106,6 @@ class FilterManagerTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

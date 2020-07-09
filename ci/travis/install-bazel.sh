@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-version="1.1.0"
+version="3.2.0"
 achitecture="${HOSTTYPE}"
 platform="unknown"
 case "${OSTYPE}" in
@@ -26,26 +26,59 @@ case "${OSTYPE}" in
     exit 1
 esac
 
+# Sanity check: Verify we have symlinks where we expect them, or Bazel can produce weird "missing input file" errors.
+# This is most likely to occur on Windows, where symlinks are sometimes disabled by default.
+{ git ls-files -s || true; } | {
+  missing_symlinks=()
+  while read -r mode digest sn path; do
+    if [ "${mode}" = 120000 ]; then
+      test -L "${path}" || missing_symlinks+=("${paths}")
+    fi
+  done
+  if [ ! 0 -eq "${#missing_symlinks[@]}" ]; then
+    echo "error: expected symlink: ${missing_symlinks[@]}" 1>&2
+    echo "For a correct build, please run 'git config --local core.symlinks true' and re-run git checkout." 1>&2
+    false
+  fi
+}
+
 if [ "${OSTYPE}" = "msys" ]; then
   target="${MINGW_DIR-/usr}/bin/bazel.exe"
   mkdir -p "${target%/*}"
-  curl -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-${achitecture}.exe"
+  curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-${achitecture}.exe"
 else
   target="./install.sh"
-  curl -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
+  curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
   chmod +x "${target}"
-  "${target}" --user
+  if [ "${CI-}" = true ]; then
+    sudo "${target}" > /dev/null  # system-wide install for CI
+    command -V bazel 1>&2
+  else
+    "${target}" --user > /dev/null
+  fi
   rm -f "${target}"
 fi
 
+for bazel_cfg in ${BAZEL_CONFIG-}; do
+  echo "build --config=${bazel_cfg}" >> ~/.bazelrc
+done
 if [ "${TRAVIS-}" = true ]; then
-  # Use bazel disk cache if this script is running in Travis.
-  mkdir -p "${HOME}/ray-bazel-cache"
-  echo "build --disk_cache=${HOME}/ray-bazel-cache" >> "${HOME}/.bazelrc"
+  echo "build --config=ci-travis" >> ~/.bazelrc
+
+  # If we are in Travis, most of the compilation result will be cached.
+  # This means we are I/O bounded. By default, Bazel set the number of concurrent
+  # jobs to the the number cores on the machine, which are not efficient for
+  # network bounded cache downloading workload. Therefore we increase the number
+  # of jobs to 50
+  # NOTE: Normally --jobs should be under 'build:ci-travis' in .bazelrc, but we put
+  # it under 'build' here avoid conflicts with other --config options.
+  echo "build --jobs=50" >> ~/.bazelrc
 fi
-if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_TOKEN-}" ]; then
-  # Use ray google cloud cache
-  echo "build --remote_cache=https://storage.googleapis.com/ray-bazel-cache" >> "${HOME}/.bazelrc"
+if [ "${GITHUB_ACTIONS-}" = true ]; then
+  echo "build --config=ci-github" >> ~/.bazelrc
+fi
+if [ "${CI-}" = true ]; then
+  echo "build --config=ci" >> ~/.bazelrc
   # If we are in master build, we can write to the cache as well.
   upload=0
   if [ "${TRAVIS_PULL_REQUEST-false}" = false ]; then
@@ -67,13 +100,17 @@ if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_TOKEN-}" ]; then
     fi
   fi
   if [ 0 -ne "${upload}" ]; then
-    translated_path="${HOME}/bazel_cache_credential.json"
+    translated_path=~/bazel_cache_credential.json
     if [ "${OSTYPE}" = msys ]; then  # On Windows, we need path translation
       translated_path="$(cygpath -m -- "${translated_path}")"
     fi
-    echo "build --google_credentials=\"${translated_path}\"" >> "${HOME}/.bazelrc"
+    cat <<EOF >> ~/.bazelrc
+build --google_credentials="${translated_path}"
+EOF
   else
     echo "Using remote build cache in read-only mode." 1>&2
-    echo "build --remote_upload_local_results=false" >> "${HOME}/.bazelrc"
+    cat <<EOF >> ~/.bazelrc
+build --remote_upload_local_results=false
+EOF
   fi
 fi

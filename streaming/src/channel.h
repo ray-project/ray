@@ -1,5 +1,4 @@
-#ifndef RAY_CHANNEL_H
-#define RAY_CHANNEL_H
+#pragma once
 
 #include "config/streaming_config.h"
 #include "queue/queue_handler.h"
@@ -17,6 +16,12 @@ struct StreamingQueueInfo {
   uint64_t consumed_seq_id = 0;
 };
 
+struct ChannelCreationParameter {
+  ActorID actor_id;
+  std::shared_ptr<ray::RayFunction> async_function;
+  std::shared_ptr<ray::RayFunction> sync_function;
+};
+
 /// PrducerChannelinfo and ConsumerChannelInfo contains channel information and
 /// its metrics that help us to debug or show important messages in logging.
 struct ProducerChannelInfo {
@@ -28,7 +33,7 @@ struct ProducerChannelInfo {
   StreamingQueueInfo queue_info;
   uint32_t queue_size;
   int64_t message_pass_by_ts;
-  ActorID actor_id;
+  ChannelCreationParameter parameter;
 
   /// The following parameters are used for event driven to record different
   /// input events.
@@ -51,11 +56,13 @@ struct ConsumerChannelInfo {
 
   StreamingQueueInfo queue_info;
 
-  uint64_t last_queue_item_delay;
-  uint64_t last_queue_item_latency;
-  uint64_t last_queue_target_diff;
-  uint64_t get_queue_item_times;
-  ActorID actor_id;
+  uint64_t last_queue_item_delay = 0;
+  uint64_t last_queue_item_latency = 0;
+  uint64_t last_queue_target_diff = 0;
+  uint64_t get_queue_item_times = 0;
+  ChannelCreationParameter parameter;
+  // Total count of notify request.
+  uint64_t notify_cnt = 0;
 };
 
 /// Two types of channel are presented:
@@ -162,7 +169,7 @@ class MockProducer : public ProducerChannel {
     return StreamingStatus::OK;
   }
 
-  StreamingStatus RefreshChannelInfo() override { return StreamingStatus::OK; }
+  StreamingStatus RefreshChannelInfo() override;
 
   StreamingStatus ProduceItemToChannel(uint8_t *data, uint32_t data_size) override;
 
@@ -182,7 +189,7 @@ class MockConsumer : public ConsumerChannel {
                                           uint64_t checkpoint_offset) override {
     return StreamingStatus::OK;
   }
-  StreamingStatus RefreshChannelInfo() override { return StreamingStatus::OK; }
+  StreamingStatus RefreshChannelInfo() override;
   StreamingStatus ConsumeItemFromChannel(uint64_t &offset_id, uint8_t *&data,
                                          uint32_t &data_size, uint32_t timeout) override;
   StreamingStatus NotifyChannelConsumed(uint64_t offset_id) override;
@@ -190,5 +197,3 @@ class MockConsumer : public ConsumerChannel {
 
 }  // namespace streaming
 }  // namespace ray
-
-#endif  // RAY_CHANNEL_H

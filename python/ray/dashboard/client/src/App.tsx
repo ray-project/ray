@@ -1,4 +1,4 @@
-import CssBaseline from "@material-ui/core/CssBaseline";
+import { CssBaseline } from "@material-ui/core";
 import React from "react";
 import { Provider } from "react-redux";
 import { BrowserRouter, Route } from "react-router-dom";

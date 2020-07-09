@@ -2,8 +2,9 @@
 #define UNISTD_H
 
 #include <getopt.h>
+#include <io.h>       // open/read/write/close
+#include <process.h>  // getpid
 
-#include <io.h>  // open/read/write/close
 #ifndef EXTERN_C
 #ifdef __cplusplus
 #define EXTERN_C extern "C"
@@ -40,6 +41,8 @@ EXTERN_C WINBASEAPI void WINAPI Sleep(DWORD dwMilliseconds);
 typedef unsigned int useconds_t;
 int usleep(useconds_t usec);
 unsigned sleep(unsigned seconds);
+
+pid_t getppid();
 
 __declspec(
     deprecated("Killing a process by ID has an inherent race condition on Windows"

@@ -6,7 +6,7 @@ set -x
 set -e
 
 # As the supported Python versions change, edit this array:
-SUPPORTED_PYTHONS=( "3.5" "3.6" "3.7" )
+SUPPORTED_PYTHONS=( "3.5" "3.6" "3.7" "3.8" )
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
@@ -31,6 +31,8 @@ if [[ "$unamestr" == "Linux" ]]; then
   PARALLEL=1
 elif [[ "$unamestr" == "Darwin" ]]; then
   PARALLEL=$(sysctl -n hw.ncpu)
+elif [[ "${OSTYPE}" == "msys" ]]; then
+  PARALLEL="${NUMBER_OF_PROCESSORS-1}"
 else
   echo "Unrecognized platform."
   exit 1
@@ -106,50 +108,59 @@ echo "Using Python executable $PYTHON_EXECUTABLE."
 
 # Find the bazel executable. The script ci/travis/install-bazel.sh doesn't
 # always put the bazel executable on the PATH.
-BAZEL_EXECUTABLE=$(PATH="$PATH:$HOME/.bazel/bin" which bazel)
-echo "Using Bazel executable $BAZEL_EXECUTABLE."
+if [ -z "${BAZEL_EXECUTABLE-}" ]; then
+  BAZEL_EXECUTABLE=$(PATH="$PATH:$HOME/.bazel/bin" which bazel)
+fi
+if [ -f "${BAZEL_EXECUTABLE}" ]; then
+  echo "Using Bazel executable $BAZEL_EXECUTABLE."
+else
+  echo "Bazel not found: BAZEL_EXECUTABLE=\"${BAZEL_EXECUTABLE}\""
+  exit 1
+fi
 
 # Now we build everything.
 BUILD_DIR="$ROOT_DIR/build/"
 if [ ! -d "${BUILD_DIR}" ]; then
-mkdir -p "${BUILD_DIR}"
+  mkdir -p "${BUILD_DIR}"
 fi
 
 pushd "$BUILD_DIR"
 
-# The following line installs pyarrow from S3, these wheels have been
-# generated from https://github.com/ray-project/arrow-build from
-# the commit listed in the command.
-if [ -z "$SKIP_THIRDPARTY_INSTALL" ]; then
-    "$PYTHON_EXECUTABLE" -m pip install -q \
-        --target="$ROOT_DIR/python/ray/pyarrow_files" pyarrow==0.14.0.RAY \
-        --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/3a11193d9530fe8ec7fdb98057f853b708f6f6ae/index.html
-fi
-
-WORK_DIR=`mktemp -d`
-pushd $WORK_DIR
-git clone https://github.com/suquark/pickle5-backport
-pushd pickle5-backport
-  git checkout 8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72
-  "$PYTHON_EXECUTABLE" setup.py bdist_wheel
-  unzip -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
-popd
-popd
-
-
-if [ -z "$SKIP_THIRDPARTY_INSTALL" ]; then
-    "$PYTHON_EXECUTABLE" -m pip install -q psutil setproctitle \
-            --target="$ROOT_DIR/python/ray/thirdparty_files"
-fi
-
-export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
 
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
-  "$BAZEL_EXECUTABLE" build //java:ray_java_pkg --verbose_failures
+  "$BAZEL_EXECUTABLE" build //java:ray_java_pkg
 fi
 
 if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
-  "$BAZEL_EXECUTABLE" build //:ray_pkg --verbose_failures
+  pickle5_available=0
+  pickle5_path="$ROOT_DIR/python/ray/pickle5_files"
+  # Check if the current Python alrady has pickle5 (either comes with newer Python versions, or has been installed by us before).
+  check_pickle5_command="import sys\nif sys.version_info < (3, 8, 2): import pickle5;"
+  if PYTHONPATH="$pickle5_path:$PYTHONPATH" "$PYTHON_EXECUTABLE" -s -c "exec(\"$check_pickle5_command\")" 2>/dev/null; then
+    pickle5_available=1
+  fi
+  if [ 1 -ne "${pickle5_available}" ]; then
+    # Install pickle5-backport.
+    TEMP_DIR="$(mktemp -d)"
+    pushd "$TEMP_DIR"
+    curl -f -s -L -R -o "pickle5-backport.zip" "https://github.com/pitrou/pickle5-backport/archive/c0c1a158f59366696161e0dffdd10cfe17601372.zip"
+    unzip -q pickle5-backport.zip
+    pushd pickle5-backport-c0c1a158f59366696161e0dffdd10cfe17601372
+      CC=gcc "$PYTHON_EXECUTABLE" setup.py --quiet bdist_wheel
+      unzip -q -o dist/*.whl -d "$pickle5_path"
+    popd
+    popd
+    rm -rf "$TEMP_DIR"
+  fi
+
+  if [ -z "$SKIP_THIRDPARTY_INSTALL" ]; then
+      CC=gcc "$PYTHON_EXECUTABLE" -m pip install -q psutil setproctitle \
+              --target="$ROOT_DIR/python/ray/thirdparty_files"
+  fi
+
+  export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
+
+  "$BAZEL_EXECUTABLE" build //:ray_pkg
 fi
 
 popd

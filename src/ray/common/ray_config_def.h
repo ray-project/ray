@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // This header file is used to avoid code duplication.
 // It can be included multiple times in ray_config.h, and each inclusion
 // could use a different definition of the RAY_CONFIG macro.
@@ -22,6 +36,10 @@ RAY_CONFIG(int64_t, handler_warning_timeout_ms, 100)
 
 /// The duration between heartbeats sent by the raylets.
 RAY_CONFIG(int64_t, raylet_heartbeat_timeout_milliseconds, 100)
+/// Whether to send heartbeat lightly. When it is enalbed, only changed part,
+/// like should_global_gc or changed resources, will be included in the heartbeat,
+/// and gcs only broadcast the changed heartbeat.
+RAY_CONFIG(bool, light_heartbeat_enabled, false)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
@@ -58,7 +76,36 @@ RAY_CONFIG(bool, object_pinning_enabled, true)
 /// cluster and all objects that contain it are also out of scope. If this flag
 /// is off and object_pinning_enabled is turned on, then an object will not be
 /// LRU evicted until it is out of scope on the CREATOR of the ObjectID.
-RAY_CONFIG(bool, distributed_ref_counting_enabled, false)
+RAY_CONFIG(bool, distributed_ref_counting_enabled, true)
+
+/// Whether to record the creation sites of object references. This adds more
+/// information to `ray memstat`, but introduces a little extra overhead when
+/// creating object references.
+RAY_CONFIG(bool, record_ref_creation_sites, true)
+
+/// If object_pinning_enabled is on, then objects that have been unpinned are
+/// added to a local cache. When the cache is flushed, all objects in the cache
+/// will be eagerly evicted in a batch by freeing all plasma copies in the
+/// cluster. If set, then this is the duration between attempts to flush the
+/// local cache. If this is set to 0, then the objects will be freed as soon as
+/// they enter the cache. To disable eager eviction, set this to -1.
+/// NOTE(swang): If distributed_ref_counting_enabled is off, then this will
+/// likely cause spurious object lost errors for Object IDs that were
+/// serialized, then either passed as an argument or returned from a task.
+/// NOTE(swang): The timer is checked by the raylet during every heartbeat, so
+/// this should be set to a value larger than
+/// raylet_heartbeat_timeout_milliseconds.
+RAY_CONFIG(int64_t, free_objects_period_milliseconds, 1000)
+
+/// If object_pinning_enabled is on, then objects that have been unpinned are
+/// added to a local cache. When the cache is flushed, all objects in the cache
+/// will be eagerly evicted in a batch by freeing all plasma copies in the
+/// cluster. This is the maximum number of objects in the local cache before it
+/// is flushed. To disable eager eviction, set free_objects_period_milliseconds
+/// to -1.
+RAY_CONFIG(size_t, free_objects_batch_size, 100)
+
+RAY_CONFIG(bool, lineage_pinning_enabled, false)
 
 /// Whether to enable the new scheduler. The new scheduler is designed
 /// only to work with  direct calls. Once direct calls afre becoming
@@ -69,8 +116,19 @@ RAY_CONFIG(bool, new_scheduler_enabled, false)
 // Objects larger than this size will be spilled/promoted to plasma.
 RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 
+// The max gRPC message size (the gRPC internal default is 4MB). We use a higher
+// limit in Ray to avoid crashing with many small inlined task arguments.
+RAY_CONFIG(int64_t, max_grpc_message_size, 100 * 1024 * 1024)
+
+// Number of times to retry creating a gRPC server.
+RAY_CONFIG(int64_t, grpc_server_num_retries, 1)
+
+// Retry timeout for trying to create a gRPC server. Only applies if the number
+// of retries is non zero.
+RAY_CONFIG(int64_t, grpc_server_retry_timeout_milliseconds, 1000)
+
 // The min number of retries for direct actor creation tasks. The actual number
-// of creation retries will be MAX(actor_creation_min_retries, max_reconstructions).
+// of creation retries will be MAX(actor_creation_min_retries, max_restarts).
 RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
 
 /// The initial period for a task execution lease. The lease will expire this
@@ -102,9 +160,9 @@ RAY_CONFIG(uint64_t, max_lineage_size, 100)
 /// objects to store.
 RAY_CONFIG(int64_t, actor_max_dummy_objects, 1000)
 
-/// Number of times we try connecting to a socket.
-RAY_CONFIG(int64_t, num_connect_attempts, 5)
-RAY_CONFIG(int64_t, connect_timeout_milliseconds, 500)
+/// Number of times raylet client tries connecting to a raylet.
+RAY_CONFIG(int64_t, raylet_client_num_connect_attempts, 10)
+RAY_CONFIG(int64_t, raylet_client_connect_timeout_milliseconds, 1000)
 
 /// The duration that the raylet will wait before reinitiating a
 /// fetch request for a missing task dependency. This time may adapt based on
@@ -133,6 +191,10 @@ RAY_CONFIG(size_t, raylet_max_active_object_ids, 0)
 /// The duration that we wait after sending a worker SIGTERM before sending
 /// the worker SIGKILL.
 RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
+
+/// The duration that we wait after the worekr is launched before the
+/// starting_worker_timeout_callback() is called.
+RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
 
 /// This is a timeout used to cause failures in the plasma manager and raylet
 /// when certain event loop handlers take too long.
@@ -201,6 +263,9 @@ RAY_CONFIG(int32_t, num_actor_checkpoints_to_keep, 20)
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
 
+/// Maximum number of items in one batch to scan from GCS storage.
+RAY_CONFIG(uint32_t, maximum_gcs_scan_batch_size, 1000)
+
 /// When getting objects from object store, print a warning every this number of attempts.
 RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
 
@@ -211,4 +276,42 @@ RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 /// Allow up to 5 seconds for connecting to gcs service.
 /// Note: this only takes effect when gcs service is enabled.
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
-RAY_CONFIG(int64_t, gcs_service_connect_wait_milliseconds, 100)
+/// Waiting time for each gcs service connection.
+RAY_CONFIG(int64_t, internal_gcs_service_connect_wait_milliseconds, 100)
+/// The interval at which the gcs server will check if redis has gone down.
+/// When this happens, gcs server will kill itself.
+RAY_CONFIG(int64_t, gcs_redis_heartbeat_interval_milliseconds, 100)
+/// Duration to wait between retries for leasing worker in gcs server.
+RAY_CONFIG(uint32_t, gcs_lease_worker_retry_interval_ms, 200)
+/// Duration to wait between retries for creating actor in gcs server.
+RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
+
+/// Maximum number of times to retry putting an object when the plasma store is full.
+/// Can be set to -1 to enable unlimited retries.
+RAY_CONFIG(int32_t, object_store_full_max_retries, 5)
+/// Duration to sleep after failing to put an object in plasma because it is full.
+/// This will be exponentially increased for each retry.
+RAY_CONFIG(uint32_t, object_store_full_initial_delay_ms, 1000)
+
+/// Duration to wait between retries for failed tasks.
+RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
+
+/// Duration to wait between retrying to kill a task.
+RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
+
+/// The interval at which the gcs rpc client will check if gcs rpc server is ready.
+RAY_CONFIG(int64_t, ping_gcs_rpc_server_interval_milliseconds, 1000)
+
+/// Maximum number of times to retry ping gcs rpc server when gcs server restarts.
+RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 600)
+
+/// Whether start the Plasma Store as a Raylet thread.
+RAY_CONFIG(bool, plasma_store_as_thread, false)
+
+/// The interval at which the gcs client will check if the address of gcs service has
+/// changed. When the address changed, we will resubscribe again.
+RAY_CONFIG(int64_t, gcs_service_address_check_interval_milliseconds, 1000)
+
+RAY_CONFIG(bool, gcs_actor_service_enabled,
+           getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") != nullptr &&
+               getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == std::string("true"))

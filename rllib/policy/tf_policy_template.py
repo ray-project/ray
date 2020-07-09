@@ -4,13 +4,11 @@ from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils import try_import_tf
-
-tf = try_import_tf()
 
 
 @DeveloperAPI
 def build_tf_policy(name,
+                    *,
                     loss_fn,
                     get_default_config=None,
                     postprocess_fn=None,
@@ -21,11 +19,13 @@ def build_tf_policy(name,
                     grad_stats_fn=None,
                     extra_action_fetches_fn=None,
                     extra_learn_fetches_fn=None,
+                    validate_spaces=None,
                     before_init=None,
                     before_loss_init=None,
                     after_init=None,
                     make_model=None,
                     action_sampler_fn=None,
+                    action_distribution_fn=None,
                     mixins=None,
                     get_batch_divisibility_req=None,
                     obs_include_prev_action_reward=True):
@@ -71,6 +71,9 @@ def build_tf_policy(name,
             a dict of TF fetches given the policy object
         extra_learn_fetches_fn (func): optional function that returns a dict of
             extra values to fetch and return when learning on a batch
+        validate_spaces (Optional[callable]): Optional callable that takes the
+            Policy, observation_space, action_space, and config to check for
+            correctness.
         before_init (func): optional function to run at the beginning of
             policy init that takes the same arguments as the policy constructor
         before_loss_init (func): optional function to run prior to loss
@@ -81,10 +84,12 @@ def build_tf_policy(name,
             given (policy, obs_space, action_space, config).
             All policy variables should be created in this function. If not
             specified, a default model will be created.
-        action_sampler_fn (func): optional function that returns a
-            tuple of action and action prob tensors given
-            (policy, model, input_dict, obs_space, action_space, config).
-            If not specified, a default action distribution will be used.
+        action_sampler_fn (Optional[callable]): A callable returning a sampled
+            action and its log-likelihood given some (obs and state) inputs.
+        action_distribution_fn (Optional[callable]): A callable returning
+            distribution inputs (parameters), a dist-class to generate an
+            action distribution object from, and internal-state outputs (or an
+            empty list if not applicable).
         mixins (list): list of any class mixins for the returned policy class.
             These mixins will be applied in order and will have higher
             precedence than the DynamicTFPolicy class
@@ -109,6 +114,9 @@ def build_tf_policy(name,
             if get_default_config:
                 config = dict(get_default_config(), **config)
 
+            if validate_spaces:
+                validate_spaces(self, obs_space, action_space, config)
+
             if before_init:
                 before_init(self, obs_space, action_space, config)
 
@@ -123,15 +131,16 @@ def build_tf_policy(name,
 
             DynamicTFPolicy.__init__(
                 self,
-                obs_space,
-                action_space,
-                config,
-                loss_fn,
+                obs_space=obs_space,
+                action_space=action_space,
+                config=config,
+                loss_fn=loss_fn,
                 stats_fn=stats_fn,
                 grad_stats_fn=grad_stats_fn,
                 before_loss_init=before_loss_init_wrapper,
                 make_model=make_model,
                 action_sampler_fn=action_sampler_fn,
+                action_distribution_fn=action_distribution_fn,
                 existing_model=existing_model,
                 existing_inputs=existing_inputs,
                 get_batch_divisibility_req=get_batch_divisibility_req,
@@ -145,10 +154,10 @@ def build_tf_policy(name,
                                    sample_batch,
                                    other_agent_batches=None,
                                    episode=None):
-            if not postprocess_fn:
-                return sample_batch
-            return postprocess_fn(self, sample_batch, other_agent_batches,
-                                  episode)
+            if postprocess_fn:
+                return postprocess_fn(self, sample_batch, other_agent_batches,
+                                      episode)
+            return sample_batch
 
         @override(TFPolicy)
         def optimizer(self):
@@ -180,7 +189,7 @@ def build_tf_policy(name,
         @override(TFPolicy)
         def extra_compute_grad_fetches(self):
             if extra_learn_fetches_fn:
-                # auto-add empty learner stats dict if needed
+                # Auto-add empty learner stats dict if needed.
                 return dict({
                     LEARNER_STATS_KEY: {}
                 }, **extra_learn_fetches_fn(self))

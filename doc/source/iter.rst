@@ -1,4 +1,4 @@
-Distributed Iterators
+Parallel Iterators
 =====================
 
 .. _`issue on GitHub`: https://github.com/ray-project/ray/issues
@@ -198,10 +198,14 @@ distributed training:
     work = [train.remote(shard) for shard in it.shards()]
     ray.get(work)
 
+.. tip:: Using ParallelIterator built-in functions is typically most efficient.
+         For example, if you find yourself using list comprehensions like
+         ``[foo(x) for x in iter.gather_async()]``, consider using
+         ``iter.for_each(foo)`` instead!
+
 API Reference
 -------------
 
 .. automodule:: ray.util.iter
     :members:
     :show-inheritance:
-    :special-members:

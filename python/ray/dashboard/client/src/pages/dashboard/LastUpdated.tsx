@@ -1,7 +1,10 @@
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
-import Typography from "@material-ui/core/Typography";
+import {
+  createStyles,
+  Theme,
+  Typography,
+  WithStyles,
+  withStyles,
+} from "@material-ui/core";
 import React from "react";
 import { connect } from "react-redux";
 import { StoreState } from "../../store";
@@ -9,23 +12,23 @@ import { StoreState } from "../../store";
 const styles = (theme: Theme) =>
   createStyles({
     root: {
-      marginTop: theme.spacing(2)
+      marginTop: theme.spacing(2),
     },
     lastUpdated: {
       color: theme.palette.text.secondary,
       fontSize: "0.8125rem",
-      textAlign: "center"
+      textAlign: "center",
     },
     error: {
       color: theme.palette.error.main,
       fontSize: "0.8125rem",
-      textAlign: "center"
-    }
+      textAlign: "center",
+    },
   });
 
 const mapStateToProps = (state: StoreState) => ({
   lastUpdatedAt: state.dashboard.lastUpdatedAt,
-  error: state.dashboard.error
+  error: state.dashboard.error,
 });
 
 class LastUpdated extends React.Component<

@@ -836,6 +836,9 @@ spec:
                           to an implementation-defined value. More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/'
                         type: object
                     type: object
+                  serviceAccountName:
+                    description: The service acccount name.
+                    type: string
                   tolerations:
                     description: The pod this Toleration is attached to tolerates
                       any taint that matches the triple <key,value,effect> using the

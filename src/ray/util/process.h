@@ -1,5 +1,18 @@
-#ifndef RAY_UTIL_PROCESS_H
-#define RAY_UTIL_PROCESS_H
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
 
 #ifdef __linux__
 #include <fcntl.h>
@@ -9,8 +22,10 @@
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 #ifndef PID_MAX_LIMIT
 // This is defined by Linux to be the maximum allowable number of processes
@@ -43,7 +58,11 @@ class Process {
   /// \param[in] argv The command-line of the process to spawn (terminated with NULL).
   /// \param[in] io_service Boost.Asio I/O service (optional).
   /// \param[in] ec Returns any error that occurred when spawning the process.
-  explicit Process(const char *argv[], void *io_service, std::error_code &ec);
+  /// \param[in] decouple True iff the parent will not wait for the child to exit.
+  explicit Process(const char *argv[], void *io_service, std::error_code &ec,
+                   bool decouple = false);
+  /// Convenience function to run the given command line and wait for it to finish.
+  static std::error_code Call(const std::vector<std::string> &args);
   static Process CreateNewDummy();
   static Process FromPid(pid_t pid);
   pid_t GetId() const;
@@ -54,6 +73,11 @@ class Process {
   bool IsValid() const;
   /// Forcefully kills the process. Unsafe for unowned processes.
   void Kill();
+  /// Convenience function to start a process in the background.
+  /// \param pid_file A file to write the PID of the spawned process in.
+  static std::pair<Process, std::error_code> Spawn(
+      const std::vector<std::string> &args, bool decouple,
+      const std::string &pid_file = std::string());
   /// Waits for process to terminate. Not supported for unowned processes.
   /// \return The process's exit code. Returns 0 for a dummy process, -1 for a null one.
   int Wait() const;
@@ -77,5 +101,3 @@ struct hash<ray::Process> {
 };
 
 }  // namespace std
-
-#endif

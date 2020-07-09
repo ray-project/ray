@@ -175,6 +175,11 @@ class HyperBandScheduler(FIFOScheduler):
             return TrialScheduler.CONTINUE
 
         action = self._process_bracket(trial_runner, bracket)
+        logger.info("{action} for {trial} on {metric}={metric_val}".format(
+            action=action,
+            trial=trial,
+            metric=self._time_attr,
+            metric_val=result.get(self._time_attr)))
         return action
 
     def _process_bracket(self, trial_runner, bracket):
@@ -376,10 +381,14 @@ class Bracket:
 
         assert trial in self._live_trials
         assert self._get_result_time(result) >= 0
+        observed_time = self._get_result_time(result)
+        last_observed = self._get_result_time(self._live_trials[trial])
 
-        delta = self._get_result_time(result) - \
-            self._get_result_time(self._live_trials[trial])
-        assert delta >= 0
+        delta = last_observed - observed_time
+        if delta >= 0:
+            logger.info("Restoring from a previous point in time. "
+                        "Previous={}; Now={}".format(last_observed,
+                                                     observed_time))
         self._completed_progress += delta
         self._live_trials[trial] = result
 
@@ -419,7 +428,7 @@ class Bracket:
     def _calculate_total_work(self, n, r, s):
         work = 0
         cumulative_r = r
-        for i in range(s + 1):
+        for _ in range(s + 1):
             work += int(n) * int(r)
             n /= self._eta
             n = int(np.ceil(n))

@@ -7,12 +7,13 @@ collection and policy optimization.
 
 import argparse
 import gym
+import numpy as np
 
 import ray
 from ray import tune
-from ray.rllib.policy import Policy
 from ray.rllib.evaluation import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 
 parser = argparse.ArgumentParser()
@@ -30,7 +31,7 @@ class CustomPolicy(Policy):
     """
 
     def __init__(self, observation_space, action_space, config):
-        Policy.__init__(self, observation_space, action_space, config)
+        super().__init__(observation_space, action_space, config)
         # example parameter
         self.w = 1.0
 
@@ -43,7 +44,8 @@ class CustomPolicy(Policy):
                         episodes=None,
                         **kwargs):
         # return random actions
-        return [self.action_space.sample() for _ in obs_batch], [], {}
+        return np.array([self.action_space.sample()
+                         for _ in obs_batch]), [], {}
 
     def learn_on_batch(self, samples):
         # implement your learning code here

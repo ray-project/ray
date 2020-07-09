@@ -1,7 +1,22 @@
-#ifndef RAY_CONFIG_H
-#define RAY_CONFIG_H
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
+#pragma once
+
+#include <algorithm>
 #include <sstream>
+#include <typeinfo>
 #include <unordered_map>
 
 #include "ray/util/logging.h"
@@ -37,8 +52,18 @@ class RayConfig {
 /// A helper macro that helps to set a value to a config item.
 #define RAY_CONFIG(type, name, default_value) \
   if (pair.first == #name) {                  \
-    std::istringstream stream(pair.second);   \
-    stream >> name##_;                        \
+    if (typeid(type) == typeid(bool)) {       \
+       std::string value = pair.second;       \
+       std::transform(value.begin(),          \
+                      value.end(),            \
+                      value.begin(),          \
+                      ::tolower);             \
+       name##_ = value == "true" ||           \
+                 value == "1";                \
+    } else {                                  \
+      std::istringstream stream(pair.second); \
+      stream >> name##_;                      \
+    }                                         \
     continue;                                 \
   }
 
@@ -54,5 +79,3 @@ class RayConfig {
 #undef RAY_CONFIG
 };
 // clang-format on
-
-#endif  // RAY_CONFIG_H

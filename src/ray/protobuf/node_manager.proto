@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 syntax = "proto3";
 
 package ray.rpc;
@@ -18,6 +32,9 @@ message RequestWorkerLeaseReply {
   Address retry_at_raylet_address = 2;
   // Resource mapping ids acquired by the leased worker.
   repeated ResourceMapEntry resource_mapping = 3;
+  // Whether this lease request was canceled. In this case, the
+  // client should try again if the resources are still required.
+  bool canceled = 4;
 }
 
 // Release a worker back to its raylet.
@@ -32,6 +49,19 @@ message ReturnWorkerRequest {
 }
 
 message ReturnWorkerReply {
+}
+
+message CancelWorkerLeaseRequest {
+  // The task to cancel.
+  bytes task_id = 1;
+}
+
+message CancelWorkerLeaseReply {
+  // Whether the cancellation request was successful. Cancellation
+  // succeeds if the node manager has the task queued upon receiving
+  // the cancellation request, and the node manager has not yet
+  // granted the lease.
+  bool success = 1;
 }
 
 message ForwardTaskRequest {
@@ -56,6 +86,9 @@ message PinObjectIDsReply {
 }
 
 message GetNodeStatsRequest {
+  // Whether to include memory stats. This could be large since it includes
+  // metadata for all live object references.
+  bool include_memory_info = 1;
 }
 
 message WorkerStats {
@@ -65,6 +98,8 @@ message WorkerStats {
   bool is_driver = 2;
   // Debug information returned from the core worker.
   CoreWorkerStats core_worker_stats = 3;
+  // Error string if fetching core worker stats failed.
+  string fetch_error = 4;
 }
 
 message GetNodeStatsReply {
@@ -75,16 +110,39 @@ message GetNodeStatsReply {
   repeated TaskSpec ready_tasks = 5;
 }
 
+message GlobalGCRequest {
+}
+
+message GlobalGCReply {
+}
+
+message FormatGlobalMemoryInfoRequest {
+}
+
+message FormatGlobalMemoryInfoReply {
+  // A tabular summary of the memory stats. To get this data in structured form, you
+  // can instead use GetNodeStats() directly.
+  string memory_summary = 1;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Request a worker from the raylet.
   rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
   // Release a worker back to its raylet.
   rpc ReturnWorker(ReturnWorkerRequest) returns (ReturnWorkerReply);
+  // Cancel a pending lease request. This only returns success if the
+  // lease request was not yet granted.
+  rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
   // Forward a task and its uncommitted lineage to the remote node manager.
   rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
   // Pin the provided object IDs.
   rpc PinObjectIDs(PinObjectIDsRequest) returns (PinObjectIDsReply);
   // Get the current node stats.
   rpc GetNodeStats(GetNodeStatsRequest) returns (GetNodeStatsReply);
+  // Trigger garbage collection in all workers across the cluster.
+  rpc GlobalGC(GlobalGCRequest) returns (GlobalGCReply);
+  // Get global object reference stats in formatted form.
+  rpc FormatGlobalMemoryInfo(FormatGlobalMemoryInfoRequest)
+      returns (FormatGlobalMemoryInfoReply);
 }

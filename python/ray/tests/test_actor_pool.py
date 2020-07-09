@@ -1,3 +1,4 @@
+import sys
 import time
 import pytest
 
@@ -106,7 +107,7 @@ def test_get_next_timeout(init):
             pass
 
         def f(self, x):
-            while (True):
+            while True:
                 x = x + 1
                 time.sleep(1)
             return None
@@ -118,7 +119,7 @@ def test_get_next_timeout(init):
     pool = ActorPool(actors)
     pool.submit(lambda a, v: a.f.remote(v), 0)
     with pytest.raises(TimeoutError):
-        pool.get_next_unordered(5)
+        pool.get_next_unordered(timeout=0.1)
 
 
 def test_get_next_unordered_timeout(init):
@@ -128,7 +129,7 @@ def test_get_next_unordered_timeout(init):
             pass
 
         def f(self, x):
-            while (True):
+            while True:
                 x + 1
                 time.sleep(1)
             return
@@ -141,4 +142,8 @@ def test_get_next_unordered_timeout(init):
 
     pool.submit(lambda a, v: a.f.remote(v), 0)
     with pytest.raises(TimeoutError):
-        pool.get_next_unordered(5)
+        pool.get_next_unordered(timeout=0.1)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

@@ -1,5 +1,4 @@
-#ifndef RAY_DATA_READER_H
-#define RAY_DATA_READER_H
+#pragma once
 
 #include <cstdlib>
 #include <functional>
@@ -78,11 +77,13 @@ class DataReader {
   ///  \param channel_seq_ids
   ///  \param msg_ids
   ///  \param timer_interval
-  void Init(const std::vector<ObjectID> &input_ids, const std::vector<ActorID> &actor_ids,
+  void Init(const std::vector<ObjectID> &input_ids,
+            const std::vector<ChannelCreationParameter> &init_params,
             const std::vector<uint64_t> &channel_seq_ids,
             const std::vector<uint64_t> &msg_ids, int64_t timer_interval);
 
-  void Init(const std::vector<ObjectID> &input_ids, const std::vector<ActorID> &actor_ids,
+  void Init(const std::vector<ObjectID> &input_ids,
+            const std::vector<ChannelCreationParameter> &init_params,
             int64_t timer_interval);
 
   /// Get latest message from input queues.
@@ -98,10 +99,12 @@ class DataReader {
 
   /// Notify input queues to clear data whose seq id is equal or less than offset.
   /// It's used when checkpoint is done.
-  ///  \param channel_info
-  ///  \param offset
-  ///
+  ///  \param channel_info consumer's channel info
+  ///  \param offset consumed channel offset
   void NotifyConsumedItem(ConsumerChannelInfo &channel_info, uint64_t offset);
+
+  //// Notify message related channel to clear data.
+  void NotifyConsumed(std::shared_ptr<DataBundle> &message);
 
  private:
   /// Create channels and connect to all upstream.
@@ -124,4 +127,3 @@ class DataReader {
 };
 }  // namespace streaming
 }  // namespace ray
-#endif  // RAY_DATA_READER_H

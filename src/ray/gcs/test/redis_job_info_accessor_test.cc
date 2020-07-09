@@ -1,9 +1,24 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include <memory>
+
 #include "gtest/gtest.h"
+#include "ray/common/test_util.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/test/accessor_test_base.h"
-#include "ray/util/test_util.h"
 
 namespace ray {
 
@@ -16,7 +31,7 @@ class RedisJobInfoAccessorTest : public AccessorTestBase<JobID, JobTableData> {
       JobID job_id = JobID::FromInt(i);
       std::shared_ptr<JobTableData> job_data_ptr =
           CreateJobTableData(job_id, /*is_dead*/ false, /*timestamp*/ 1,
-                             /*node_manager_address*/ "", /*driver_pid*/ i);
+                             /*driver_ip_address*/ "", /*driver_pid*/ i);
       id_to_data_[job_id] = job_data_ptr;
     }
   }
@@ -76,8 +91,8 @@ TEST_F(RedisJobInfoAccessorTest, AddAndSubscribe) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

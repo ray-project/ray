@@ -1,7 +1,21 @@
-#ifndef RAY_COMMON_JAVA_JNI_UTILS_H
-#define RAY_COMMON_JAVA_JNI_UTILS_H
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
 
 #include <jni.h>
+
 #include "ray/common/buffer.h"
 #include "ray/common/function_descriptor.h"
 #include "ray/common/id.h"
@@ -104,12 +118,8 @@ extern jfieldID java_base_task_options_resources;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
-/// DEFAULT_USE_DIRECT_CALL field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_default_use_direct_call;
-/// maxReconstructions field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_max_reconstructions;
-/// useDirectCall field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_use_direct_call;
+/// maxRestarts field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_max_restarts;
 /// jvmOptions field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_jvm_options;
 /// maxConcurrency field of ActorCreationOptions class
@@ -137,9 +147,6 @@ extern jfieldID java_native_ray_object_metadata;
 extern jclass java_task_executor_class;
 /// execute method of TaskExecutor class
 extern jmethodID java_task_executor_execute;
-
-/// The `get` method in TaskExecutor class
-extern jmethodID java_task_executor_get;
 
 #define CURRENT_JNI_VERSION JNI_VERSION_1_8
 
@@ -231,6 +238,14 @@ inline jobject IdToJavaByteBuffer(JNIEnv *env, const ID &id) {
       reinterpret_cast<void *>(const_cast<uint8_t *>(id.Data())), id.Size());
 }
 
+/// Convert C++ String to a Java ByteArray.
+inline jbyteArray NativeStringToJavaByteArray(JNIEnv *env, const std::string &str) {
+  jbyteArray array = env->NewByteArray(str.size());
+  env->SetByteArrayRegion(array, 0, str.size(),
+                          reinterpret_cast<const jbyte *>(str.c_str()));
+  return array;
+}
+
 /// Convert a Java String to C++ std::string.
 inline std::string JavaStringToNativeString(JNIEnv *env, jstring jstr) {
   const char *c_str = env->GetStringUTFChars(jstr, nullptr);
@@ -314,15 +329,15 @@ inline std::unordered_map<key_type, value_type> JavaMapToNativeMap(
       RAY_CHECK_JAVA_EXCEPTION(env);
       jobject map_entry = env->CallObjectMethod(iterator, java_iterator_next);
       RAY_CHECK_JAVA_EXCEPTION(env);
-      jobject java_key = env->CallObjectMethod(map_entry, java_map_entry_get_key);
+      auto java_key = env->CallObjectMethod(map_entry, java_map_entry_get_key);
       RAY_CHECK_JAVA_EXCEPTION(env);
       key_type key = key_converter(env, java_key);
-      jobject java_value = env->CallObjectMethod(map_entry, java_map_entry_get_value);
+      auto java_value = env->CallObjectMethod(map_entry, java_map_entry_get_value);
       RAY_CHECK_JAVA_EXCEPTION(env);
       value_type value = value_converter(env, java_value);
       native_map.emplace(key, value);
-      env->DeleteLocalRef(java_value);
       env->DeleteLocalRef(java_key);
+      env->DeleteLocalRef(java_value);
       env->DeleteLocalRef(map_entry);
     }
     RAY_CHECK_JAVA_EXCEPTION(env);
@@ -435,5 +450,3 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
   RAY_LOG(FATAL) << "Unknown function descriptor type: " << function_descriptor->Type();
   return NativeStringVectorToJavaStringList(env, std::vector<std::string>());
 }
-
-#endif  // RAY_COMMON_JAVA_JNI_UTILS_H

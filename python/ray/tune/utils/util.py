@@ -58,7 +58,12 @@ class UtilMonitor(Thread):
                 self.values["ram_util_percent"].append(
                     float(getattr(psutil.virtual_memory(), "percent")))
             if GPUtil is not None:
-                for gpu in GPUtil.getGPUs():
+                gpu_list = []
+                try:
+                    gpu_list = GPUtil.getGPUs()
+                except Exception:
+                    logger.debug("GPUtil failed to retrieve GPUs.")
+                for gpu in gpu_list:
                     self.values["gpu_util_percent" + str(gpu.id)].append(
                         float(gpu.load))
                     self.values["vram_util_percent" + str(gpu.id)].append(
@@ -146,29 +151,50 @@ def merge_dicts(d1, d2):
     return merged
 
 
-def deep_update(original, new_dict, new_keys_allowed, whitelist):
+def deep_update(original,
+                new_dict,
+                new_keys_allowed=False,
+                allow_new_subkey_list=None,
+                override_all_if_type_changes=None):
     """Updates original dict with values from new_dict recursively.
+
     If new key is introduced in new_dict, then if new_keys_allowed is not
     True, an error will be thrown. Further, for sub-dicts, if the key is
-    in the whitelist, then new subkeys can be introduced.
+    in the allow_new_subkey_list, then new subkeys can be introduced.
 
     Args:
         original (dict): Dictionary with default values.
         new_dict (dict): Dictionary with values to be updated
         new_keys_allowed (bool): Whether new keys are allowed.
-        whitelist (list): List of keys that correspond to dict values
-            where new subkeys can be introduced. This is only at
-            the top level.
+        allow_new_subkey_list (Optional[List[str]]): List of keys that
+            correspond to dict values where new subkeys can be introduced.
+            This is only at the top level.
+        override_all_if_type_changes(Optional[List[str]]): List of top level
+            keys with value=dict, for which we always simply override the
+            entire value (dict), iff the "type" key in that value dict changes.
     """
+    allow_new_subkey_list = allow_new_subkey_list or []
+    override_all_if_type_changes = override_all_if_type_changes or []
+
     for k, value in new_dict.items():
-        if k not in original:
-            if not new_keys_allowed:
-                raise Exception("Unknown config parameter `{}` ".format(k))
+        if k not in original and not new_keys_allowed:
+            raise Exception("Unknown config parameter `{}` ".format(k))
+
+        # Both orginal value and new one are dicts.
         if isinstance(original.get(k), dict) and isinstance(value, dict):
-            if k in whitelist:
-                deep_update(original[k], value, True, [])
+            # Check old type vs old one. If different, override entire value.
+            if k in override_all_if_type_changes and \
+                    "type" in value and "type" in original[k] and \
+                    value["type"] != original[k]["type"]:
+                original[k] = value
+            # Allowed key -> ok to add new subkeys.
+            elif k in allow_new_subkey_list:
+                deep_update(original[k], value, True)
+            # Non-allowed key.
             else:
-                deep_update(original[k], value, new_keys_allowed, [])
+                deep_update(original[k], value, new_keys_allowed)
+        # Original value not a dict OR new value not a dict:
+        # Override entire value.
         else:
             original[k] = value
     return original

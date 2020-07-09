@@ -4,6 +4,7 @@
 import argparse
 import click
 import os
+import shutil
 import subprocess
 
 import ray
@@ -22,14 +23,25 @@ def do_link(package, force=False, local_path=""):
                 package_home, local_home),
             default=True):
         return
-    if os.access(os.path.dirname(package_home), os.W_OK):
-        subprocess.check_call(["rm", "-rf", package_home])
-        subprocess.check_call(["ln", "-s", local_home, package_home])
+    # Windows: Create directory junction.
+    if os.name == "nt":
+        try:
+            shutil.rmtree(package_home)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            os.remove(package_home)
+        subprocess.check_call(
+            ["mklink", "/J", package_home, local_home], shell=True)
+    # Posix: Use `ln -s` to create softlink.
     else:
-        print("You don't have write permission to {}, using sudo:".format(
-            package_home))
-        subprocess.check_call(["sudo", "rm", "-rf", package_home])
-        subprocess.check_call(["sudo", "ln", "-s", local_home, package_home])
+        sudo = []
+        if not os.access(os.path.dirname(package_home), os.W_OK):
+            print("You don't have write permission to {}, using sudo:".format(
+                package_home))
+            sudo = ["sudo"]
+        subprocess.check_call(sudo + ["rm", "-rf", package_home])
+        subprocess.check_call(sudo + ["ln", "-s", local_home, package_home])
 
 
 if __name__ == "__main__":
@@ -47,10 +59,12 @@ if __name__ == "__main__":
     do_link("internal", force=args.yes)
     do_link("tests", force=args.yes)
     do_link("experimental", force=args.yes)
+    do_link("util", force=args.yes)
+    do_link("dashboard", force=args.yes)
     print("Created links.\n\nIf you run into issues initializing Ray, please "
           "ensure that your local repo and the installed Ray are in sync "
           "(pip install -U the latest wheels at "
-          "https://ray.readthedocs.io/en/latest/installation.html, "
+          "https://docs.ray.io/en/latest/installation.html, "
           "and ensure you are up-to-date on the master branch on git).\n\n"
           "Note that you may need to delete the package symlinks when pip "
           "installing new Ray versions to prevent pip from overwriting files "

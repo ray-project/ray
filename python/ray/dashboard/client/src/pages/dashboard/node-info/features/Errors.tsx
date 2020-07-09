@@ -1,10 +1,10 @@
-import Typography from "@material-ui/core/Typography";
+import { Typography } from "@material-ui/core";
 import React from "react";
 import SpanButton from "../../../../common/SpanButton";
 import {
   ClusterFeatureComponent,
   NodeFeatureComponent,
-  WorkerFeatureComponent
+  WorkerFeatureComponent,
 } from "./types";
 
 export const makeClusterErrors = (errorCounts: {
@@ -38,7 +38,7 @@ export const makeNodeErrors = (
     perWorker: { [pid: string]: number };
     total: number;
   },
-  setErrorDialog: (hostname: string, pid: number | null) => void
+  setErrorDialog: (hostname: string, pid: number | null) => void,
 ): NodeFeatureComponent => ({ node }) =>
   errorCounts.total === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
@@ -55,14 +55,14 @@ export const makeWorkerErrors = (
     perWorker: { [pid: string]: number };
     total: number;
   },
-  setErrorDialog: (hostname: string, pid: number | null) => void
+  setErrorDialog: (hostname: string, pid: number | null) => void,
 ): WorkerFeatureComponent => ({ node, worker }) =>
-  errorCounts.perWorker[worker.pid] === 0 ? (
-    <Typography color="textSecondary" component="span" variant="inherit">
-      No errors
-    </Typography>
-  ) : (
+  errorCounts.perWorker[worker.pid] ? (
     <SpanButton onClick={() => setErrorDialog(node.hostname, worker.pid)}>
       View errors ({errorCounts.perWorker[worker.pid].toLocaleString()})
     </SpanButton>
+  ) : (
+    <Typography color="textSecondary" component="span" variant="inherit">
+      No errors
+    </Typography>
   );

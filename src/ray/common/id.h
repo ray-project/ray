@@ -1,24 +1,35 @@
-#ifndef RAY_ID_H_
-#define RAY_ID_H_
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
 
 #include <inttypes.h>
 #include <limits.h>
 
 #include <chrono>
 #include <cstring>
+#include <msgpack.hpp>
 #include <mutex>
 #include <random>
 #include <string>
 
-#include "plasma/common.h"
 #include "ray/common/constants.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 #include "ray/util/visibility.h"
 
 namespace ray {
-
-enum class TaskTransportType { RAYLET, DIRECT };
 
 class TaskID;
 class WorkerID;
@@ -92,6 +103,8 @@ class UniqueID : public BaseID<UniqueID> {
 
   UniqueID() : BaseID() {}
 
+  MSGPACK_DEFINE(id_);
+
  protected:
   UniqueID(const std::string &binary);
 
@@ -111,6 +124,8 @@ class JobID : public BaseID<JobID> {
   static JobID FromRandom() = delete;
 
   JobID() : BaseID() {}
+
+  MSGPACK_DEFINE(id_);
 
  private:
   uint8_t id_[kLength];
@@ -156,6 +171,8 @@ class ActorID : public BaseID<ActorID> {
   ///
   /// \return The job id to which this actor belongs.
   JobID JobId() const;
+
+  MSGPACK_DEFINE(id_);
 
  private:
   uint8_t id_[kLength];
@@ -224,6 +241,8 @@ class TaskID : public BaseID<TaskID> {
   /// \return The `JobID` of the job which creates this task.
   JobID JobId() const;
 
+  MSGPACK_DEFINE(id_);
+
  private:
   uint8_t id_[kLength];
 };
@@ -253,16 +272,6 @@ class ObjectID : public BaseID<ObjectID> {
 
   static size_t Size() { return kLength; }
 
-  /// Generate ObjectID by the given binary string of a plasma id.
-  ///
-  /// \param from The binary string of the given plasma id.
-  /// \return The ObjectID converted from a binary string of the plasma id.
-  static ObjectID FromPlasmaIdBinary(const std::string &from);
-
-  plasma::ObjectID ToPlasmaId() const;
-
-  ObjectID(const plasma::UniqueID &from);
-
   /// Get the index of this object in the task that created it.
   ///
   /// \return The index of object creation according to the task that created
@@ -289,65 +298,39 @@ class ObjectID : public BaseID<ObjectID> {
   /// \return True if this object is a return value of a task.
   bool IsReturnObject() const;
 
-  /// Return if this is a direct actor call object.
-  ///
-  /// \return True if this is a direct actor object return.
-  bool IsDirectCallType() const {
-    return GetTransportType() == static_cast<uint8_t>(TaskTransportType::DIRECT);
-  }
-
-  /// Return this object id with a changed transport type.
-  ///
-  /// \return Copy of this object id with the specified transport type.
-  ObjectID WithTransportType(TaskTransportType transport_type) const;
-
-  /// Return this object id with the plasma transport type.
-  ///
-  /// \return Copy of this object id with the plasma transport type.
-  ObjectID WithPlasmaTransportType() const;
-
-  /// Return this object id with the direct call transport type.
-  ///
-  /// \return Copy of this object id with the direct call transport type.
-  ObjectID WithDirectTransportType() const;
-
-  /// Get the transport type of this object.
-  ///
-  /// \return The type of the transport which is used to transfer this object.
-  uint8_t GetTransportType() const;
-
   /// Compute the object ID of an object put by the task.
   ///
   /// \param task_id The task ID of the task that created the object.
   /// \param index What index of the object put in the task.
-  /// \param transport_type Which type of the transport that is used to
-  ///        transfer this object.
   ///
   /// \return The computed object ID.
-  static ObjectID ForPut(const TaskID &task_id, ObjectIDIndexType put_index,
-                         uint8_t transport_type);
+  static ObjectID ForPut(const TaskID &task_id, ObjectIDIndexType put_index);
 
   /// Compute the object ID of an object returned by the task.
   ///
   /// \param task_id The task ID of the task that created the object.
   /// \param return_index What index of the object returned by in the task.
-  /// \param transport_type Which type of the transport that is used to
-  ///        transfer this object.
   ///
   /// \return The computed object ID.
-  static ObjectID ForTaskReturn(const TaskID &task_id, ObjectIDIndexType return_index,
-                                uint8_t transport_type);
+  static ObjectID ForTaskReturn(const TaskID &task_id, ObjectIDIndexType return_index);
 
   /// Create an object id randomly.
   ///
   /// Warning: this can duplicate IDs after a fork() call. We assume this
   /// never happens.
   ///
-  /// \param transport_type Which type of the transport that is used to
-  ///        transfer this object.
-  ///
   /// \return A random object id.
   static ObjectID FromRandom();
+
+  /// Compute the object ID that is used to track an actor's lifetime. This
+  /// object does not actually have a value; it is just used for counting
+  /// references (handles) to the actor.
+  ///
+  /// \param actor_id The ID of the actor to track.
+  /// \return The computed object ID.
+  static ObjectID ForActorHandle(const ActorID &actor_id);
+
+  MSGPACK_DEFINE(id_);
 
  private:
   /// A helper method to generate an ObjectID.
@@ -422,7 +405,7 @@ template <typename T>
 T BaseID<T>::FromBinary(const std::string &binary) {
   RAY_CHECK(binary.size() == T::Size() || binary.size() == 0)
       << "expected size is " << T::Size() << ", but got " << binary.size();
-  T t = T::Nil();
+  T t;
   std::memcpy(t.MutableData(), binary.data(), binary.size());
   return t;
 }
@@ -510,4 +493,3 @@ DEFINE_UNIQUE_ID(ObjectID);
 
 #undef DEFINE_UNIQUE_ID
 }  // namespace std
-#endif  // RAY_ID_H_

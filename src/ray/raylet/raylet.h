@@ -1,5 +1,18 @@
-#ifndef RAY_RAYLET_RAYLET_H
-#define RAY_RAYLET_RAYLET_H
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
 
 #include <list>
 
@@ -83,11 +96,9 @@ class Raylet {
   /// An acceptor for new clients.
   boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor_;
   /// The socket to listen on for new clients.
-  local_stream_protocol::socket socket_;
+  local_stream_socket socket_;
 };
 
 }  // namespace raylet
 
 }  // namespace ray
-
-#endif  // RAY_RAYLET_RAYLET_H

@@ -1,10 +1,24 @@
-#ifndef RAY_RPC_GRPC_CLIENT_H
-#define RAY_RPC_GRPC_CLIENT_H
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
 
 #include <grpcpp/grpcpp.h>
 #include <boost/asio.hpp>
 
 #include "ray/common/grpc_util.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/rpc/client_call.h"
 
@@ -14,10 +28,8 @@ namespace rpc {
 // This macro wraps the logic to call a specific RPC method of a service,
 // to make it easier to implement a new RPC client.
 #define INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client) \
-  ({                                                                    \
-    rpc_client->CallMethod<METHOD##Request, METHOD##Reply>(             \
-        &SERVICE::Stub::PrepareAsync##METHOD, request, callback);       \
-  })
+  (rpc_client->CallMethod<METHOD##Request, METHOD##Reply>(              \
+      &SERVICE::Stub::PrepareAsync##METHOD, request, callback))
 
 // Define a void RPC client method.
 #define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)               \
@@ -42,6 +54,8 @@ class GrpcClient {
     // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
     // this configurable, or selectively set it for known local connections only.
     argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
+    argument.SetMaxSendMessageSize(RayConfig::instance().max_grpc_message_size());
+    argument.SetMaxReceiveMessageSize(RayConfig::instance().max_grpc_message_size());
     std::shared_ptr<grpc::Channel> channel =
         grpc::CreateCustomChannel(address + ":" + std::to_string(port),
                                   grpc::InsecureChannelCredentials(), argument);
@@ -56,6 +70,8 @@ class GrpcClient {
     grpc::ChannelArguments argument;
     argument.SetResourceQuota(quota);
     argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
+    argument.SetMaxSendMessageSize(RayConfig::instance().max_grpc_message_size());
+    argument.SetMaxReceiveMessageSize(RayConfig::instance().max_grpc_message_size());
     std::shared_ptr<grpc::Channel> channel =
         grpc::CreateCustomChannel(address + ":" + std::to_string(port),
                                   grpc::InsecureChannelCredentials(), argument);
@@ -90,5 +106,3 @@ class GrpcClient {
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif

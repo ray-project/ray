@@ -1,0 +1,56 @@
+cluster_name: ray-release-microbenchmark
+min_workers: 0
+max_workers: 0
+target_utilization_fraction: 0.8
+idle_timeout_minutes: 5
+
+# Cloud-provider specific configuration.
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+auth:
+    ssh_user: ubuntu
+
+head_node:
+    InstanceType: m4.16xlarge
+    ImageId: ami-06d51e91cea0dac8d  # Ubuntu 18.04
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+              VolumeSize: 150
+
+worker_nodes:
+    InstanceType: m5.large
+    ImageId: ami-06d51e91cea0dac8d  # Ubuntu 18.04
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+              VolumeSize: 150
+
+    # Run workers on spot by default. Comment this out to use on-demand.
+    InstanceMarketOptions:
+        MarketType: spot
+
+# List of shell commands to run to set up nodes.
+setup_commands:
+    # Install latest TensorFlow
+    - echo set-window-option -g mouse on > ~/.tmux.conf
+    - echo 'termcapinfo xterm* ti@:te@' > ~/.screenrc
+
+# Custom commands that will be run on the head node after common setup.
+head_setup_commands: 
+    # Install Anaconda.
+    - wget --quiet https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh || true
+    - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
+    - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
+    - pip install -U pip 
+
+# Custom commands that will be run on worker nodes after common setup.
+worker_setup_commands: []
+
+# Command to start ray on the head node. You don't need to change this.
+head_start_ray_commands: []
+
+# Command to start ray on worker nodes. You don't need to change this.
+worker_start_ray_commands: []

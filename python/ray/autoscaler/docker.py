@@ -23,7 +23,6 @@ def dockerize_if_needed(config):
     worker_docker_image = config["docker"].get("worker_image", docker_image)
     worker_run_options = config["docker"].get("worker_run_options", [])
 
-    ssh_user = config["auth"]["ssh_user"]
     if not docker_image and not (head_docker_image and worker_docker_image):
         if cname:
             logger.warning(
@@ -32,6 +31,7 @@ def dockerize_if_needed(config):
         return config
     else:
         assert cname, "Must provide container name!"
+    ssh_user = config["auth"]["ssh_user"]
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
 
     if docker_pull:
@@ -62,22 +62,26 @@ def dockerize_if_needed(config):
     return config
 
 
-def with_docker_exec(cmds, container_name, env_vars=None):
+def with_docker_exec(cmds,
+                     container_name,
+                     env_vars=None,
+                     with_interactive=False):
     env_str = ""
     if env_vars:
         env_str = " ".join(
             ["-e {env}=${env}".format(env=env) for env in env_vars])
     return [
-        "docker exec {} {} /bin/sh -c {} ".format(env_str, container_name,
-                                                  quote(cmd)) for cmd in cmds
+        "docker exec {interactive} {env} {container} /bin/bash -c {cmd} ".
+        format(
+            interactive="-it" if with_interactive else "",
+            env=env_str,
+            container=container_name,
+            cmd=quote(cmd)) for cmd in cmds
     ]
 
 
-def aptwait_cmd():
-    return ("while sudo fuser"
-            " /var/{lib/{dpkg,apt/lists},cache/apt/archives}/lock"
-            " >/dev/null 2>&1; "
-            "do echo 'Waiting for release of dpkg/apt locks'; sleep 5; done")
+def check_docker_running_cmd(cname):
+    return " ".join(["docker", "inspect", "-f", "'{{.State.Running}}'", cname])
 
 
 def docker_start_cmds(user, image, mount, cname, user_options):
@@ -98,16 +102,15 @@ def docker_start_cmds(user, image, mount, cname, user_options):
         ["-e {name}={val}".format(name=k, val=v) for k, v in env_vars.items()])
 
     user_options_str = " ".join(user_options)
+    # TODO(ilr) Check command type
     # docker run command
-    docker_check = [
-        "docker", "inspect", "-f", "'{{.State.Running}}'", cname, "||"
-    ]
+    docker_check = check_docker_running_cmd(cname) + " || "
     docker_run = [
         "docker", "run", "--rm", "--name {}".format(cname), "-d", "-it",
         port_flags, mount_flags, env_flags, user_options_str, "--net=host",
         image, "bash"
     ]
-    cmds.append(" ".join(docker_check + docker_run))
+    cmds.append(docker_check + " ".join(docker_run))
 
     return cmds
 

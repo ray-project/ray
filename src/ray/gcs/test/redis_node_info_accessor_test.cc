@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include <memory>
 #include "gtest/gtest.h"
 #include "ray/gcs/redis_accessor.h"
@@ -112,15 +126,15 @@ TEST_F(NodeDynamicResourceTest, Subscribe) {
   }
   WaitPendingDone(wait_pending_timeout_);
 
-  auto subscribe = [this](const ClientID &id,
-                          const ResourceChangeNotification &notification) {
+  auto subscribe = [this](const rpc::NodeResourceChange &notification) {
+    auto id = ClientID::FromBinary(notification.node_id());
     RAY_LOG(INFO) << "receive client id=" << id;
     auto it = id_to_resource_map_.find(id);
     ASSERT_TRUE(it != id_to_resource_map_.end());
-    if (notification.IsAdded()) {
-      ASSERT_EQ(notification.GetData().size(), it->second.size());
+    if (0 == notification.deleted_resources_size()) {
+      ASSERT_EQ(notification.updated_resources_size(), it->second.size());
     } else {
-      ASSERT_EQ(notification.GetData().size(), resource_to_delete_.size());
+      ASSERT_EQ(notification.deleted_resources_size(), resource_to_delete_.size());
     }
     --sub_pending_count_;
   };
@@ -158,8 +172,8 @@ TEST_F(NodeDynamicResourceTest, Subscribe) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

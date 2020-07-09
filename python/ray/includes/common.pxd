@@ -88,6 +88,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         @staticmethod
         CRayStatus UnexpectedSystemExit()
 
+        @staticmethod
+        CRayStatus NotFound()
+
         c_bool ok()
         c_bool IsOutOfMemory()
         c_bool IsKeyError()
@@ -101,6 +104,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsTimedOut()
         c_bool IsInterrupted()
         c_bool IsSystemExit()
+        c_bool IsNotFound()
 
         c_string ToString()
         c_string CodeAsString()
@@ -193,6 +197,9 @@ cdef extern from "ray/common/buffer.h" namespace "ray" nogil:
 
 cdef extern from "ray/common/ray_object.h" nogil:
     cdef cppclass CRayObject "ray::RayObject":
+        CRayObject(const shared_ptr[CBuffer] &data,
+                   const shared_ptr[CBuffer] &metadata,
+                   const c_vector[CObjectID] &nested_ids)
         c_bool HasData() const
         c_bool HasMetadata() const
         const size_t DataSize() const
@@ -209,26 +216,30 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const CFunctionDescriptor GetFunctionDescriptor()
 
     cdef cppclass CTaskArg "ray::TaskArg":
-        @staticmethod
-        CTaskArg PassByReference(const CObjectID &object_id)
+        pass
 
-        @staticmethod
-        CTaskArg PassByValue(const shared_ptr[CRayObject] &data)
+    cdef cppclass CTaskArgByReference "ray::TaskArgByReference":
+        CTaskArgByReference(const CObjectID &object_id,
+                            const CAddress &owner_address)
+
+    cdef cppclass CTaskArgByValue "ray::TaskArgByValue":
+        CTaskArgByValue(const shared_ptr[CRayObject] &data)
 
     cdef cppclass CTaskOptions "ray::TaskOptions":
         CTaskOptions()
-        CTaskOptions(int num_returns, c_bool is_direct_call,
+        CTaskOptions(int num_returns,
                      unordered_map[c_string, double] &resources)
 
     cdef cppclass CActorCreationOptions "ray::ActorCreationOptions":
         CActorCreationOptions()
         CActorCreationOptions(
-            uint64_t max_reconstructions, c_bool is_direct_call,
+            int64_t max_restarts,
+            int64_t max_task_retries,
             int32_t max_concurrency,
             const unordered_map[c_string, double] &resources,
             const unordered_map[c_string, double] &placement_resources,
             const c_vector[c_string] &dynamic_worker_options,
-            c_bool is_detached, c_bool is_asyncio)
+            c_bool is_detached, c_string &name, c_bool is_asyncio)
 
 cdef extern from "ray/gcs/gcs_client.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":

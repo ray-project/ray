@@ -26,7 +26,7 @@ from torch.nn import functional as F
 from scipy.stats import entropy
 
 # Training parameters
-dataroot = "/tmp/"
+dataroot = ray.utils.get_user_temp_dir() + os.sep
 workers = 2
 batch_size = 64
 image_size = 32
@@ -48,6 +48,8 @@ beta1 = 0.5
 
 # iterations of actual training in each Trainable _train
 train_iterations_per_step = 5
+
+MODEL_PATH = os.path.expanduser("~/.ray/models/mnist_cnn.pt")
 
 
 def get_data_loader():
@@ -229,7 +231,7 @@ def train(netD, netG, optimG, optimD, criterion, dataloader, iteration,
 
 # __Trainable_begin__
 class PytorchTrainable(tune.Trainable):
-    def _setup(self, config):
+    def setup(self, config):
         use_cuda = config.get("use_gpu") and torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.netD = Discriminator().to(self.device)
@@ -248,13 +250,13 @@ class PytorchTrainable(tune.Trainable):
         with FileLock(os.path.expanduser("~/.data.lock")):
             self.dataloader = get_data_loader()
 
-    def _train(self):
+    def step(self):
         lossG, lossD, is_score = train(
             self.netD, self.netG, self.optimizerG, self.optimizerD,
             self.criterion, self.dataloader, self._iteration, self.device)
         return {"lossg": lossG, "lossd": lossD, "is_score": is_score}
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint")
         torch.save({
             "netDmodel": self.netD.state_dict(),
@@ -265,7 +267,7 @@ class PytorchTrainable(tune.Trainable):
 
         return checkpoint_dir
 
-    def _restore(self, checkpoint_dir):
+    def load_checkpoint(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint")
         checkpoint = torch.load(path)
         self.netD.load_state_dict(checkpoint["netDmodel"])
@@ -305,6 +307,16 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     ray.init()
 
+    import urllib.request
+    # Download a pre-trained MNIST model for inception score calculation.
+    # This is a tiny model (<100kb).
+    if not os.path.exists(MODEL_PATH):
+        print("downloading model")
+        os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+        urllib.request.urlretrieve(
+            "https://github.com/ray-project/ray/raw/master/python/ray/tune/"
+            "examples/pbt_dcgan_mnist/mnist_cnn.pt", MODEL_PATH)
+
     dataloader = get_data_loader()
     if not args.smoke_test:
         # Plot some training images
@@ -322,10 +334,7 @@ if __name__ == "__main__":
 
     # load the pretrained mnist classification model for inception_score
     mnist_cnn = Net()
-    model_path = os.path.join(
-        os.path.dirname(ray.__file__),
-        "tune/examples/pbt_dcgan_mnist/mnist_cnn.pt")
-    mnist_cnn.load_state_dict(torch.load(model_path))
+    mnist_cnn.load_state_dict(torch.load(MODEL_PATH))
     mnist_cnn.eval()
     mnist_model_ref = ray.put(mnist_cnn)
 

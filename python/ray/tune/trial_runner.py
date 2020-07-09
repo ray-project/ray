@@ -70,7 +70,8 @@ class _TuneFunctionDecoder(json.JSONDecoder):
 class TrialRunner:
     """A TrialRunner implements the event loop for scheduling trials on Ray.
 
-    Example:
+    .. code-block: python
+
         runner = TrialRunner()
         runner.add_trial(Trial(...))
         runner.add_trial(Trial(...))
@@ -87,6 +88,28 @@ class TrialRunner:
     could deadlock waiting for new resources to become available. Furthermore,
     oversubscribing the cluster could degrade training performance, leading to
     misleading benchmark results.
+
+    Args:
+        search_alg (SearchAlgorithm): SearchAlgorithm for generating
+            Trial objects.
+        scheduler (TrialScheduler): Defaults to FIFOScheduler.
+        launch_web_server (bool): Flag for starting TuneServer
+        local_checkpoint_dir (str): Path where
+            global checkpoints are stored and restored from.
+        remote_checkpoint_dir (str): Remote path where
+            global checkpoints are stored and restored from. Used
+            if `resume` == REMOTE.
+        stopper: Custom class for stopping whole experiments. See
+            ``Stopper``.
+        resume (str|False): see `tune.py:run`.
+        sync_to_cloud (func|str): See `tune.py:run`.
+        server_port (int): Port number for launching TuneServer.
+        fail_fast (bool): Finishes as soon as a trial fails if True.
+        verbose (bool): Flag for verbosity. If False, trial results
+            will not be output.
+        checkpoint_period (int): Trial runner checkpoint periodicity in
+            seconds. Defaults to 10.
+        trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
     """
 
     CKPT_FILE_TMPL = "experiment_state-{}.json"
@@ -102,32 +125,10 @@ class TrialRunner:
                  stopper=None,
                  resume=False,
                  server_port=TuneServer.DEFAULT_PORT,
+                 fail_fast=False,
                  verbose=True,
                  checkpoint_period=10,
                  trial_executor=None):
-        """Initializes a new TrialRunner.
-
-        Args:
-            search_alg (SearchAlgorithm): SearchAlgorithm for generating
-                Trial objects.
-            scheduler (TrialScheduler): Defaults to FIFOScheduler.
-            launch_web_server (bool): Flag for starting TuneServer
-            local_checkpoint_dir (str): Path where
-                global checkpoints are stored and restored from.
-            remote_checkpoint_dir (str): Remote path where
-                global checkpoints are stored and restored from. Used
-                if `resume` == REMOTE.
-            stopper: Custom class for stopping whole experiments. See
-                ``Stopper``.
-            resume (str|False): see `tune.py:run`.
-            sync_to_cloud (func|str): See `tune.py:run`.
-            server_port (int): Port number for launching TuneServer.
-            verbose (bool): Flag for verbosity. If False, trial results
-                will not be output.
-            checkpoint_period (int): Trial runner checkpoint periodicity in
-                seconds. Defaults to 10.
-            trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
-        """
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
@@ -138,6 +139,8 @@ class TrialRunner:
             os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float("inf")))
         self._total_time = 0
         self._iteration = 0
+        self._has_errored = False
+        self._fail_fast = fail_fast
         self._verbose = verbose
 
         self._server = None
@@ -148,6 +151,7 @@ class TrialRunner:
         self._trials = []
         self._cached_trial_decisions = {}
         self._stop_queue = []
+        self._should_stop_experiment = False  # used by TuneServer
         self._local_checkpoint_dir = local_checkpoint_dir
 
         if self._local_checkpoint_dir:
@@ -221,6 +225,7 @@ class TrialRunner:
             #  which may also contain trial checkpoints. We should selectively
             #  sync the necessary files instead.
             self._syncer.sync_down_if_needed()
+            self._syncer.wait()
 
             if not self.checkpoint_exists(self._local_checkpoint_dir):
                 raise ValueError("Called resume when no checkpoint exists "
@@ -271,7 +276,7 @@ class TrialRunner:
         with open(tmp_file_name, "w") as f:
             json.dump(runner_state, f, indent=2, cls=_TuneFunctionEncoder)
 
-        os.rename(tmp_file_name, self.checkpoint_file)
+        os.replace(tmp_file_name, self.checkpoint_file)
         if force:
             self._syncer.sync_up()
         else:
@@ -288,7 +293,6 @@ class TrialRunner:
         with open(newest_ckpt_path, "r") as f:
             runner_state = json.load(f, cls=_TuneFunctionDecoder)
             self.checkpoint_file = newest_ckpt_path
-
         logger.warning("".join([
             "Attempting to resume experiment from {}. ".format(
                 self._local_checkpoint_dir), "This feature is experimental, "
@@ -347,7 +351,7 @@ class TrialRunner:
 
         if self._server:
             with warn_if_slow("server"):
-                self._process_requests()
+                self._process_stop_requests()
 
             if self.is_finished():
                 self._server.shutdown()
@@ -380,10 +384,14 @@ class TrialRunner:
         self.trial_executor.try_checkpoint_metadata(trial)
 
     def debug_string(self, delim="\n"):
+        result_keys = [
+            list(t.last_result) for t in self.get_trials() if t.last_result
+        ]
+        metrics = set().union(*result_keys)
         messages = [
             self._scheduler_alg.debug_string(),
             self.trial_executor.debug_string(),
-            trial_progress_str(self.get_trials()),
+            trial_progress_str(self.get_trials(), metrics),
         ]
         return delim.join(messages)
 
@@ -392,11 +400,15 @@ class TrialRunner:
         return self.trial_executor.has_resources(resources)
 
     def _stop_experiment_if_needed(self):
-        """Stops all trials if the user condition is satisfied."""
-
-        if self._stopper.stop_all():
-            [self.trial_executor.stop_trial(t) for t in self._trials]
-            logger.info("All trials stopped due to ``stopper.stop_all``.")
+        """Stops all trials."""
+        fail_fast = self._fail_fast and self._has_errored
+        if (self._stopper.stop_all() or fail_fast
+                or self._should_stop_experiment):
+            self._search_alg.set_finished()
+            [
+                self.trial_executor.stop_trial(t) for t in self._trials
+                if t.status is not Trial.ERROR
+            ]
 
     def _get_next_trial(self):
         """Replenishes queue.
@@ -459,6 +471,7 @@ class TrialRunner:
             result = self.trial_executor.fetch_result(trial)
 
             is_duplicate = RESULT_DUPLICATE in result
+            force_checkpoint = result.get(SHOULD_CHECKPOINT, False)
             # TrialScheduler and SearchAlgorithm still receive a
             # notification because there may be special handling for
             # the `on_trial_complete` hook.
@@ -487,9 +500,7 @@ class TrialRunner:
                 if decision == TrialScheduler.STOP:
                     with warn_if_slow("search_alg.on_trial_complete"):
                         self._search_alg.on_trial_complete(
-                            trial.trial_id,
-                            result=flat_result,
-                            early_terminated=True)
+                            trial.trial_id, result=flat_result)
 
             if not is_duplicate:
                 trial.update_last_result(
@@ -499,8 +510,7 @@ class TrialRunner:
             # the scheduler decision is STOP or PAUSE. Note that
             # PAUSE only checkpoints to memory and does not update
             # the global checkpoint state.
-            self._checkpoint_trial_if_needed(
-                trial, force=result.get(SHOULD_CHECKPOINT, False))
+            self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
 
             if trial.is_saving:
                 # Cache decision to execute on after the save is processed.
@@ -570,6 +580,7 @@ class TrialRunner:
             trial (Trial): Failed trial.
             error_msg (str): Error message prior to invoking this method.
         """
+        self._has_errored = True
         if trial.status == Trial.RUNNING:
             if trial.should_recover():
                 self._try_recover(trial, error_msg)
@@ -689,7 +700,10 @@ class TrialRunner:
     def request_stop_trial(self, trial):
         self._stop_queue.append(trial)
 
-    def _process_requests(self):
+    def request_stop_experiment(self):
+        self._should_stop_experiment = True
+
+    def _process_stop_requests(self):
         while self._stop_queue:
             t = self._stop_queue.pop()
             self.stop_trial(t)
@@ -699,7 +713,7 @@ class TrialRunner:
 
         Trials may be stopped at any time. If trial is in state PENDING
         or PAUSED, calls `on_trial_remove`  for scheduler and
-        `on_trial_complete(..., early_terminated=True) for search_alg.
+        `on_trial_complete() for search_alg.
         Otherwise waits for result for the trial and calls
         `on_trial_complete` for scheduler and search_alg if RUNNING.
         """
@@ -710,8 +724,7 @@ class TrialRunner:
             return
         elif trial.status in [Trial.PENDING, Trial.PAUSED]:
             self._scheduler_alg.on_trial_remove(self, trial)
-            self._search_alg.on_trial_complete(
-                trial.trial_id, early_terminated=True)
+            self._search_alg.on_trial_complete(trial.trial_id)
         elif trial.status is Trial.RUNNING:
             try:
                 result = self.trial_executor.fetch_result(trial)
@@ -727,6 +740,9 @@ class TrialRunner:
                 error = True
 
         self.trial_executor.stop_trial(trial, error=error, error_msg=error_msg)
+
+    def cleanup_trials(self):
+        self.trial_executor.cleanup()
 
     def __getstate__(self):
         """Gets state for trial.

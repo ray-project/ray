@@ -26,7 +26,7 @@ for i in range(num_nodes):
         resources={str(i): 2},
         object_store_memory=object_store_memory,
         redis_max_memory=redis_max_memory,
-        webui_host="0.0.0.0")
+        dashboard_host="0.0.0.0")
 ray.init(address=cluster.address)
 
 # Run the workload.
@@ -41,7 +41,7 @@ run_experiments({
             "num_envs_per_worker": 5,
             "remote_worker_envs": True,
             "remote_env_batch_wait_ms": 99999999,
-            "sample_batch_size": 50,
+            "rollout_fragment_length": 50,
             "train_batch_size": 100,
         },
     },

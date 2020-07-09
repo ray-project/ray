@@ -1,14 +1,29 @@
-#ifndef RAY_CORE_WORKER_CORE_WORKER_H
-#define RAY_CORE_WORKER_CORE_WORKER_H
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
 
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/actor_manager.h"
+#include "ray/core_worker/actor_reporter.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/future_resolver.h"
+#include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profiling.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -35,10 +50,9 @@
 
 namespace ray {
 
-/// The root class that contains all the core and language-independent functionalities
-/// of the worker. This class is supposed to be used to implement app-language (Java,
-/// Python, etc) workers.
-class CoreWorker : public rpc::CoreWorkerServiceHandler {
+class CoreWorker;
+
+struct CoreWorkerOptions {
   // Callback that must be implemented and provided by the language-specific worker
   // frontend to execute tasks and return their results.
   using TaskExecutionCallback = std::function<Status(
@@ -47,59 +61,256 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
       const std::vector<ObjectID> &return_ids,
-      std::vector<std::shared_ptr<RayObject>> *results, const ray::WorkerID &worker_id)>;
+      std::vector<std::shared_ptr<RayObject>> *results)>;
 
+  /// Type of this worker (i.e., DRIVER or WORKER).
+  WorkerType worker_type;
+  /// Application language of this worker (i.e., PYTHON or JAVA).
+  Language language;
+  /// Object store socket to connect to.
+  std::string store_socket;
+  /// Raylet socket to connect to.
+  std::string raylet_socket;
+  /// Job ID of this worker.
+  JobID job_id;
+  /// Options for the GCS client.
+  gcs::GcsClientOptions gcs_options;
+  /// Initialize logging if true. Otherwise, it must be initialized and cleaned up by the
+  /// caller.
+  bool enable_logging;
+  /// Directory to write logs to. If this is empty, logs won't be written to a file.
+  std::string log_dir;
+  /// If false, will not call `RayLog::InstallFailureSignalHandler()`.
+  bool install_failure_signal_handler;
+  /// IP address of the node.
+  std::string node_ip_address;
+  /// Port of the local raylet.
+  int node_manager_port;
+  /// IP address of the raylet.
+  std::string raylet_ip_address;
+  /// The name of the driver.
+  std::string driver_name;
+  /// The stdout file of this process.
+  std::string stdout_file;
+  /// The stderr file of this process.
+  std::string stderr_file;
+  /// Language worker callback to execute tasks.
+  TaskExecutionCallback task_execution_callback;
+  /// Application-language callback to check for signals that have been received
+  /// since calling into C++. This will be called periodically (at least every
+  /// 1s) during long-running operations. If the function returns anything but StatusOK,
+  /// any long-running operations in the core worker will short circuit and return that
+  /// status.
+  std::function<Status()> check_signals;
+  /// Application-language callback to trigger garbage collection in the language
+  /// runtime. This is required to free distributed references that may otherwise
+  /// be held up in garbage objects.
+  std::function<void()> gc_collect;
+  /// Language worker callback to get the current call stack.
+  std::function<void(std::string *)> get_lang_stack;
+  // Function that tries to interrupt the currently running Python thread.
+  std::function<bool()> kill_main;
+  /// Whether to enable object ref counting.
+  bool ref_counting_enabled;
+  /// Is local mode being used.
+  bool is_local_mode;
+  /// The number of workers to be started in the current process.
+  int num_workers;
+  /// The function to destroy asyncio event and loops.
+  std::function<void()> terminate_asyncio_thread;
+};
+
+/// Lifecycle management of one or more `CoreWorker` instances in a process.
+///
+/// To start a driver in the current process:
+///     CoreWorkerOptions options = {
+///         WorkerType::DRIVER,             // worker_type
+///         ...,                            // other arguments
+///         1,                              // num_workers
+///     };
+///     CoreWorkerProcess::Initialize(options);
+///
+/// To shutdown a driver in the current process:
+///     CoreWorkerProcess::Shutdown();
+///
+/// To start one or more workers in the current process:
+///     CoreWorkerOptions options = {
+///         WorkerType::WORKER,             // worker_type
+///         ...,                            // other arguments
+///         num_workers,                    // num_workers
+///     };
+///     CoreWorkerProcess::Initialize(options);
+///     ...                                 // Do other stuff
+///     CoreWorkerProcess::RunTaskExecutionLoop();
+///
+/// To shutdown a worker in the current process, return a system exit status (with status
+/// code `IntentionalSystemExit` or `UnexpectedSystemExit`) in the task execution
+/// callback.
+///
+/// If more than 1 worker is started, only the threads which invoke the
+/// `task_execution_callback` will be automatically associated with the corresponding
+/// worker. If you started your own threads and you want to use core worker APIs in these
+/// threads, remember to call `CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id)`
+/// once in the new thread before calling core worker APIs, to associate the current
+/// thread with a worker. You can obtain the worker ID via
+/// `CoreWorkerProcess::GetCoreWorker()->GetWorkerID()`. Currently a Java worker process
+/// starts multiple workers by default, but can be configured to start only 1 worker by
+/// overwriting the internal config `num_workers_per_process_java`.
+///
+/// If only 1 worker is started (either because the worker type is driver, or the
+/// `num_workers` in `CoreWorkerOptions` is set to 1), all threads will be automatically
+/// associated to the only worker. Then no need to call `SetCurrentThreadWorkerId` in
+/// your own threads. Currently a Python worker process starts only 1 worker.
+class CoreWorkerProcess {
+ public:
+  ///
+  /// Public methods used in both DRIVER and WORKER mode.
+  ///
+
+  /// Initialize core workers at the process level.
+  ///
+  /// \param[in] options The various initialization options.
+  static void Initialize(const CoreWorkerOptions &options);
+
+  /// Get the core worker associated with the current thread.
+  /// NOTE (kfstorm): Here we return a reference instead of a `shared_ptr` to make sure
+  /// `CoreWorkerProcess` has full control of the destruction timing of `CoreWorker`.
+  static CoreWorker &GetCoreWorker();
+
+  /// Set the core worker associated with the current thread by worker ID.
+  /// Currently used by Java worker only.
+  ///
+  /// \param worker_id The worker ID of the core worker instance.
+  static void SetCurrentThreadWorkerId(const WorkerID &worker_id);
+
+  /// Whether the current process has been initialized for core worker.
+  static bool IsInitialized();
+
+  ///
+  /// Public methods used in DRIVER mode only.
+  ///
+
+  /// Shutdown the driver completely at the process level.
+  static void Shutdown();
+
+  ///
+  /// Public methods used in WORKER mode only.
+  ///
+
+  /// Start receiving and executing tasks.
+  static void RunTaskExecutionLoop();
+
+  // The destructor is not to be used as a public API, but it's required by smart
+  // pointers.
+  ~CoreWorkerProcess();
+
+ private:
+  /// Create an `CoreWorkerProcess` with proper options.
+  ///
+  /// \param[in] options The various initialization options.
+  CoreWorkerProcess(const CoreWorkerOptions &options);
+
+  /// Check that the core worker environment is initialized for this process.
+  ///
+  /// \return Void.
+  static void EnsureInitialized();
+
+  /// Get the `CoreWorker` instance by worker ID.
+  ///
+  /// \param[in] workerId The worker ID.
+  /// \return The `CoreWorker` instance.
+  std::shared_ptr<CoreWorker> GetWorker(const WorkerID &worker_id) const
+      LOCKS_EXCLUDED(worker_map_mutex_);
+
+  /// Create a new `CoreWorker` instance.
+  ///
+  /// \return The newly created `CoreWorker` instance.
+  std::shared_ptr<CoreWorker> CreateWorker() LOCKS_EXCLUDED(worker_map_mutex_);
+
+  /// Remove an existing `CoreWorker` instance.
+  ///
+  /// \param[in] The existing `CoreWorker` instance.
+  /// \return Void.
+  void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(worker_map_mutex_);
+
+  /// The global instance of `CoreWorkerProcess`.
+  static std::unique_ptr<CoreWorkerProcess> instance_;
+
+  /// The various options.
+  const CoreWorkerOptions options_;
+
+  /// The core worker instance associated with the current thread.
+  /// Use weak_ptr here to avoid memory leak due to multi-threading.
+  static thread_local std::weak_ptr<CoreWorker> current_core_worker_;
+
+  /// The only core worker instance, if the number of workers is 1.
+  std::shared_ptr<CoreWorker> global_worker_;
+
+  /// The worker ID of the global worker, if the number of workers is 1.
+  const WorkerID global_worker_id_;
+
+  /// Map from worker ID to worker.
+  std::unordered_map<WorkerID, std::shared_ptr<CoreWorker>> workers_
+      GUARDED_BY(worker_map_mutex_);
+
+  /// To protect accessing the `workers_` map.
+  mutable absl::Mutex worker_map_mutex_;
+};
+
+/// The root class that contains all the core and language-independent functionalities
+/// of the worker. This class is supposed to be used to implement app-language (Java,
+/// Python, etc) workers.
+class CoreWorker : public rpc::CoreWorkerServiceHandler {
  public:
   /// Construct a CoreWorker instance.
   ///
-  /// \param[in] worker_type Type of this worker.
-  /// \param[in] language Language of this worker.
-  /// \param[in] store_socket Object store socket to connect to.
-  /// \param[in] raylet_socket Raylet socket to connect to.
-  /// \param[in] job_id Job ID of this worker.
-  /// \param[in] gcs_options Options for the GCS client.
-  /// \param[in] log_dir Directory to write logs to. If this is empty, logs
-  ///            won't be written to a file.
-  /// \param[in] node_ip_address IP address of the node.
-  /// \param[in] node_manager_port Port of the local raylet.
-  /// \param[in] task_execution_callback Language worker callback to execute tasks.
-  /// \param[in] check_signals Language worker function to check for signals and handle
-  ///            them. If the function returns anything but StatusOK, any long-running
-  ///            operations in the core worker will short circuit and return that status.
-  /// \param[in] ref_counting_enabled Whether to enable object ref counting.
+  /// \param[in] options The various initialization options.
+  /// \param[in] worker_id ID of this worker.
+  CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id);
+
+  CoreWorker(CoreWorker const &) = delete;
+  void operator=(CoreWorker const &other) = delete;
+
   ///
-  /// NOTE(zhijunfu): the constructor would throw if a failure happens.
-  CoreWorker(const WorkerType worker_type, const Language language,
-             const std::string &store_socket, const std::string &raylet_socket,
-             const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
-             const std::string &log_dir, const std::string &node_ip_address,
-             int node_manager_port, const TaskExecutionCallback &task_execution_callback,
-             std::function<Status()> check_signals = nullptr,
-             bool ref_counting_enabled = false);
+  /// Public methods used by `CoreWorkerProcess` and `CoreWorker` itself.
+  ///
 
-  virtual ~CoreWorker();
-
+  /// Gracefully disconnect the worker from other components of ray. e.g. Raylet.
+  /// If this function is called during shutdown, Raylet will treat it as an intentional
+  /// disconnect.
+  ///
+  /// \return Void.
   void Disconnect();
 
-  WorkerType GetWorkerType() const { return worker_type_; }
+  /// Shut down the worker completely.
+  ///
+  /// \return void.
+  void Shutdown();
 
-  Language GetLanguage() const { return language_; }
+  /// Block the current thread until the worker is shut down.
+  void WaitForShutdown();
+
+  /// Start receiving and executing tasks.
+  /// \return void.
+  void RunTaskExecutionLoop();
+
+  const WorkerID &GetWorkerID() const;
+
+  WorkerType GetWorkerType() const { return options_.worker_type; }
+
+  Language GetLanguage() const { return options_.language; }
 
   WorkerContext &GetWorkerContext() { return worker_context_; }
 
-  raylet::RayletClient &GetRayletClient() { return *local_raylet_client_; }
-
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
-  void SetCurrentTaskId(const TaskID &task_id);
-
   const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
-
-  void SetActorId(const ActorID &actor_id);
 
   void SetWebuiDisplay(const std::string &key, const std::string &message);
 
   void SetActorTitle(const std::string &title);
+
+  void SetCallerCreationTimestamp();
 
   /// Increase the reference count for this object ID.
   /// Increase the local reference count for this object ID. Should be called
@@ -107,7 +318,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
   void AddLocalReference(const ObjectID &object_id) {
-    reference_counter_->AddLocalReference(object_id);
+    AddLocalReference(object_id, CurrentCallSite());
   }
 
   /// Decrease the reference count for this object ID. Should be called
@@ -117,16 +328,28 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void RemoveLocalReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
-    if (ref_counting_enabled_) {
+    // TOOD(ilr): better way of keeping an object from being deleted
+    if (options_.ref_counting_enabled && !options_.is_local_mode) {
       memory_store_->Delete(deleted);
     }
   }
 
   /// Returns a map of all ObjectIDs currently in scope with a pair of their
   /// (local, submitted_task) reference counts. For debugging purposes.
-  std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const {
-    return reference_counter_->GetAllReferenceCounts();
-  }
+  std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
+
+  /// Get the RPC address of this worker.
+  ///
+  /// \param[out] The RPC address of this worker.
+  const rpc::Address &GetRpcAddress() const;
+
+  /// Get the RPC address of the worker that owns the given object.
+  ///
+  /// \param[in] object_id The object ID. The object must either be owned by
+  /// us, or the caller previously added the ownership information (via
+  /// RegisterOwnershipInfoAndResolveFuture).
+  /// \param[out] The RPC address of the worker that owns this object.
+  rpc::Address GetOwnerAddress(const ObjectID &object_id) const;
 
   /// Promote an object to plasma and get its owner information. This should be
   /// called when serializing an object ID, and the returned information should
@@ -142,11 +365,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Postcondition: Get(object_id) is valid.
   ///
   /// \param[in] object_id The object ID to serialize.
-  /// \param[out] owner_id The ID of the object's owner. This should be
   /// appended to the serialized object ID.
   /// \param[out] owner_address The address of the object's owner. This should
   /// be appended to the serialized object ID.
-  void PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id, TaskID *owner_id,
+  void PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
                                           rpc::Address *owner_address);
 
   /// Add a reference to an ObjectID that was deserialized by the language
@@ -161,20 +383,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// any. This may be nil if the object ID was inlined directly in a task spec
   /// or if it was passed out-of-band by the application (deserialized from a
   /// byte string).
-  /// \param[out] owner_id The ID of the object's owner.
   /// \param[out] owner_address The address of the object's owner.
   void RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id,
                                              const ObjectID &outer_object_id,
-                                             const TaskID &owner_id,
                                              const rpc::Address &owner_address);
-
-  /// Add metadata about the object IDs contained within another object ID.
-  /// This should be called during deserialization of the outer object ID.
-  ///
-  /// \param[in] object_id The object containing IDs.
-  /// \param[in] contained_object_ids The IDs contained in the object.
-  void AddContainedObjectIDs(const ObjectID &object_id,
-                             const std::vector<ObjectID> &contained_object_ids);
 
   ///
   /// Public methods related to storing and retrieving objects.
@@ -201,9 +413,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object The ray object.
   /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[in] object_id Object ID specified by the user.
+  /// \param[in] pin_object Whether or not to tell the raylet to pin this object.
   /// \return Status.
   Status Put(const RayObject &object, const std::vector<ObjectID> &contained_object_ids,
-             const ObjectID &object_id);
+             const ObjectID &object_id, bool pin_object = false);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into. After writing to the buffer, the caller must call `Seal()` to finalize
@@ -238,8 +451,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id Object ID corresponding to the object.
   /// \param[in] pin_object Whether or not to pin the object at the local raylet.
+  /// \param[in] owner_address Address of the owner of the object who will be contacted by
+  /// the raylet if the object is pinned. If not provided, defaults to this worker.
   /// \return Status.
-  Status Seal(const ObjectID &object_id, bool pin_object);
+  Status Seal(const ObjectID &object_id, bool pin_object,
+              const absl::optional<rpc::Address> &owner_address = absl::nullopt);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -283,6 +499,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only,
                 bool delete_creating_tasks);
 
+  /// Trigger garbage collection on each worker in the cluster.
+  void TriggerGlobalGC();
+
   /// Get a string describing object store memory usage for debugging purposes.
   ///
   /// \return std::string The string describing memory usage.
@@ -298,7 +517,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// For actors, this is the current actor ID. To make sure that all caller
   /// IDs have the same type, we embed the actor ID in a TaskID with the rest
   /// of the bytes zeroed out.
-  TaskID GetCallerId() const;
+  TaskID GetCallerId() const LOCKS_EXCLUDED(mutex_);
 
   /// Push an error to the relevant driver.
   ///
@@ -340,10 +559,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
-  /// \return Status error if task submission fails, likely due to raylet failure.
-  Status SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
-                    const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
-                    int max_retries);
+  void SubmitTask(const RayFunction &function,
+                  const std::vector<std::unique_ptr<TaskArg>> &args,
+                  const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
+                  int max_retries);
 
   /// Create an actor.
   ///
@@ -356,7 +575,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] actor_id ID of the created actor. This can be used to submit
   /// tasks on the actor.
   /// \return Status error if actor creation fails, likely due to raylet failure.
-  Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
+  Status CreateActor(const RayFunction &function,
+                     const std::vector<std::unique_ptr<TaskArg>> &args,
                      const ActorCreationOptions &actor_creation_options,
                      const std::string &extension_data, ActorID *actor_id);
 
@@ -371,16 +591,30 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status error if the task is invalid or if the task submission
   /// failed. Tasks can be invalid for direct actor calls because not all tasks
   /// are currently supported.
-  Status SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
-                         const std::vector<TaskArg> &args,
-                         const TaskOptions &task_options,
-                         std::vector<ObjectID> *return_ids);
+  void SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
+                       const std::vector<std::unique_ptr<TaskArg>> &args,
+                       const TaskOptions &task_options,
+                       std::vector<ObjectID> *return_ids);
 
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
   /// \param[in] actor_id ID of the actor to kill.
+  /// \param[in] no_restart If set to true, the killed actor will not be
+  /// restarted anymore.
   /// \param[out] Status
-  Status KillActor(const ActorID &actor_id);
+  Status KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
+
+  /// Stops the task associated with the given Object ID.
+  ///
+  /// \param[in] object_id of the task to kill (must be a Non-Actor task)
+  /// \param[in] force_kill Whether to force kill a task by killing the worker.
+  /// \param[out] Status
+  Status CancelTask(const ObjectID &object_id, bool force_kill);
+  /// Decrease the reference count for this actor. Should be called by the
+  /// language frontend when a reference to the ActorHandle destroyed.
+  ///
+  /// \param[in] actor_id The actor ID to decrease the reference count for.
+  void RemoveActorHandleReference(const ActorID &actor_id);
 
   /// Add an actor handle from a serialized string.
   ///
@@ -389,8 +623,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// actor.
   ///
   /// \param[in] serialized The serialized actor handle.
+  /// \param[in] outer_object_id The object ID that contained the serialized
+  /// actor handle, if any.
   /// \return The ActorID of the deserialized handle.
-  ActorID DeserializeAndRegisterActorHandle(const std::string &serialized);
+  ActorID DeserializeAndRegisterActorHandle(const std::string &serialized,
+                                            const ObjectID &outer_object_id);
 
   /// Serialize an actor handle.
   ///
@@ -399,8 +636,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] actor_id The ID of the actor handle to serialize.
   /// \param[out] The serialized handle.
+  /// \param[out] The ID used to track references to the actor handle. If the
+  /// serialized actor handle in the language frontend is stored inside an
+  /// object, then this must be recorded in the worker's ReferenceCounter.
   /// \return Status::Invalid if we don't have the specified handle.
-  Status SerializeActorHandle(const ActorID &actor_id, std::string *output) const;
+  Status SerializeActorHandle(const ActorID &actor_id, std::string *output,
+                              ObjectID *actor_handle_id) const;
 
   ///
   /// Public methods related to task execution. Should not be used by driver processes.
@@ -409,15 +650,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   const ActorID &GetActorId() const { return actor_id_; }
 
   // Get the resource IDs available to this worker (as assigned by the raylet).
-  const ResourceMappingType GetResourceIDs() const { return *resource_ids_; }
+  const ResourceMappingType GetResourceIDs() const;
 
   /// Create a profile event with a reference to the core worker's profiler.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
 
-  /// Start receiving and executing tasks.
-  /// \return void.
-  void StartExecutingTasks();
-
+ public:
   /// Allocate the return objects for an executing task. The caller should write into the
   /// data buffers of the allocated buffers.
   ///
@@ -435,10 +673,22 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Get a handle to an actor.
   ///
+  /// NOTE: This function should be called ONLY WHEN we know actor handle exists.
+  /// NOTE: The actor_handle obtained by this function should not be stored anywhere
+  /// because this method returns the raw pointer to what a unique pointer points to.
+  ///
   /// \param[in] actor_id The actor handle to get.
-  /// \param[out] actor_handle A handle to the requested actor.
   /// \return Status::Invalid if we don't have this actor handle.
-  Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
+  const ActorHandle *GetActorHandle(const ActorID &actor_id) const;
+
+  /// Get a handle to a named actor.
+  ///
+  /// NOTE: The actor_handle obtained by this function should not be stored anywhere.
+  ///
+  /// \param[in] name The name of the actor whose handle to get.
+  /// \param[out] actor_handle A handle to the requested actor.
+  /// \return The raw pointer to the actor handle if found, nullptr otherwise.
+  const ActorHandle *GetNamedActorHandle(const std::string &name);
 
   ///
   /// The following methods are handlers for the core worker's gRPC server, which follow
@@ -467,6 +717,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                              rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
+  void HandleWaitForActorOutOfScope(const rpc::WaitForActorOutOfScopeRequest &request,
+                                    rpc::WaitForActorOutOfScopeReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
   void HandleWaitForObjectEviction(const rpc::WaitForObjectEvictionRequest &request,
                                    rpc::WaitForObjectEvictionReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
@@ -480,10 +735,29 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleKillActor(const rpc::KillActorRequest &request, rpc::KillActorReply *reply,
                        rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Implements gRPC server handler.
+  void HandleCancelTask(const rpc::CancelTaskRequest &request,
+                        rpc::CancelTaskReply *reply,
+                        rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
+  void HandleRemoteCancelTask(const rpc::RemoteCancelTaskRequest &request,
+                              rpc::RemoteCancelTaskReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
+  void HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
+                               rpc::PlasmaObjectReadyReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
   /// Get statistics from core worker.
   void HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
                                 rpc::GetCoreWorkerStatsReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Trigger local GC on this worker.
+  void HandleLocalGC(const rpc::LocalGCRequest &request, rpc::LocalGCReply *reply,
+                     rpc::SendReplyCallback send_reply_callback) override;
 
   ///
   /// Public methods related to async actor call. This should only be used when
@@ -499,43 +773,52 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Perform async get from in-memory store.
   ///
-  /// \param[in] object_id The id to call get on. Assumes object_id.IsDirectCallType().
+  /// \param[in] object_id The id to call get on.
   /// \param[in] success_callback The callback to use the result object.
-  /// \param[in] fallback_callback The callback to use when failed to get result.
   /// \param[in] python_future the void* object to be passed to SetResultCallback
   /// \return void
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
-                SetResultCallback fallback_callback, void *python_future);
+                void *python_future);
+
+  /// Subscribe to receive notification of an object entering the plasma store.
+  ///
+  /// \param[in] object_id The object to wait for.
+  /// \return void
+  void SubscribeToPlasmaAdd(const ObjectID &object_id);
 
  private:
+  void SetCurrentTaskId(const TaskID &task_id);
+
+  void SetActorId(const ActorID &actor_id);
+
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
 
-  /// Shut down the worker completely.
-  /// \return void.
-  void Shutdown();
+  /// (WORKER mode only) Exit the worker. This is the entrypoint used to shutdown a
+  /// worker.
+  void Exit(bool intentional);
+
+  /// Register this worker or driver to GCS.
+  void RegisterToGcs();
 
   /// Check if the raylet has failed. If so, shutdown.
-  void CheckForRayletFailure();
+  void CheckForRayletFailure(const boost::system::error_code &error);
 
   /// Heartbeat for internal bookkeeping.
-  void InternalHeartbeat();
+  void InternalHeartbeat(const boost::system::error_code &error);
 
   ///
   /// Private methods related to task submission.
   ///
 
-  /// Give this worker a handle to an actor.
+  /// Increase the local reference count for this object ID. Should be called
+  /// by the language frontend when a new reference is created.
   ///
-  /// This handle will remain as long as the current actor or task is
-  /// executing, even if the Python handle goes out of scope. Tasks submitted
-  /// through this handle are guaranteed to execute in the same order in which
-  /// they are submitted.
-  ///
-  /// \param actor_handle The handle to the actor.
-  /// \return True if the handle was added and False if we already had a handle
-  /// to the same actor.
-  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle);
+  /// \param[in] object_id The object ID to increase the reference count for.
+  /// \param[in] call_site The call site from the language frontend.
+  void AddLocalReference(const ObjectID &object_id, std::string call_site) {
+    reference_counter_->AddLocalReference(object_id, call_site);
+  }
 
   ///
   /// Private methods related to task execution. Should not be used by driver processes.
@@ -559,6 +842,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      const std::shared_ptr<ResourceMappingType> &resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *return_objects,
                      ReferenceCounter::ReferenceTableProto *borrowed_refs);
+
+  /// Execute a local mode task (runs normal ExecuteTask)
+  ///
+  /// \param spec[in] task_spec Task specification.
+  void ExecuteTaskLocalMode(const TaskSpecification &task_spec,
+                            const ActorID &actor_id = ActorID::Nil());
 
   /// Build arguments for task executor. This would loop through all the arguments
   /// in task spec, and for each of them that's passed by reference (ObjectID),
@@ -605,22 +894,22 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   }
 
-  /// Type of this worker (i.e., DRIVER or WORKER).
-  const WorkerType worker_type_;
+  /// Handler if a raylet node is removed from the cluster.
+  void OnNodeRemoved(const rpc::GcsNodeInfo &node_info);
 
-  /// Application language of this worker (i.e., PYTHON or JAVA).
-  const Language language_;
+  const CoreWorkerOptions options_;
 
-  /// Directory where log files are written.
-  const std::string log_dir_;
+  /// Callback to get the current language (e.g., Python) call site.
+  std::function<void(std::string *)> get_call_site_;
 
-  /// Whether local reference counting is enabled.
-  const bool ref_counting_enabled_;
-
-  /// Application-language callback to check for signals that have been received
-  /// since calling into C++. This will be called periodically (at least every
-  /// 1s) during long-running operations.
-  std::function<Status()> check_signals_;
+  // Convenience method to get the current language call site.
+  std::string CurrentCallSite() {
+    std::string call_site;
+    if (get_call_site_ != nullptr) {
+      get_call_site_(&call_site);
+    }
+    return call_site;
+  }
 
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
@@ -630,7 +919,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// The ID of the current task being executed by the main thread. If there
   /// are multiple threads, they will have a thread-local task ID stored in the
   /// worker context.
-  TaskID main_thread_task_id_;
+  TaskID main_thread_task_id_ GUARDED_BY(mutex_);
 
   // Flag indicating whether this worker has been shut down.
   bool shutdown_ = false;
@@ -651,7 +940,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   boost::asio::steady_timer internal_timer_;
 
   /// RPC server used to receive tasks to execute.
-  rpc::GrpcServer core_worker_server_;
+  std::unique_ptr<rpc::GrpcServer> core_worker_server_;
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;
@@ -694,21 +983,23 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<TaskManager> task_manager_;
 
   // Interface for publishing actor death event for actor creation failure.
-  std::shared_ptr<ActorManager> actor_manager_;
+  std::shared_ptr<ActorReporter> actor_reporter_;
 
   // Interface to submit tasks directly to other actors.
-  std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
+  std::shared_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
 
-  /// The `actor_handles_` field could be mutated concurrently due to multi-threading, we
-  /// need a mutex to protect it.
-  mutable absl::Mutex actor_handles_mutex_;
+  /// Manages recovery of objects stored in remote plasma nodes.
+  std::unique_ptr<ObjectRecoveryManager> object_recovery_manager_;
 
-  /// Map from actor ID to a handle to that actor.
-  absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
-      GUARDED_BY(actor_handles_mutex_);
+  ///
+  /// Fields related to actor handles.
+  ///
+
+  /// Interface to manage actor handles.
+  std::unique_ptr<ActorManager> actor_manager_;
 
   ///
   /// Fields related to task execution.
@@ -746,13 +1037,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Profiler including a background thread that pushes profiling events to the GCS.
   std::shared_ptr<worker::Profiler> profiler_;
 
-  /// Task execution callback.
-  TaskExecutionCallback task_execution_callback_;
-
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker. This is set on task assignment.
-  std::shared_ptr<ResourceMappingType> resource_ids_;
+  std::shared_ptr<ResourceMappingType> resource_ids_ GUARDED_BY(mutex_);
 
   // Interface that receives tasks from the raylet.
   std::unique_ptr<CoreWorkerRayletTaskReceiver> raylet_task_receiver_;
@@ -766,9 +1054,21 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Queue of tasks to resubmit when the specified time passes.
   std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
 
+  // Guard for `async_plasma_callbacks_` map.
+  mutable absl::Mutex plasma_mutex_;
+
+  // Callbacks for when when a plasma object becomes ready.
+  absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
+      async_plasma_callbacks_ GUARDED_BY(plasma_mutex_);
+
+  // Fallback for when GetAsync cannot directly get the requested object.
+  void PlasmaCallback(SetResultCallback success, std::shared_ptr<RayObject> ray_object,
+                      ObjectID object_id, void *py_future);
+
+  /// Whether we are shutting down and not running further tasks.
+  bool exiting_ = false;
+
   friend class CoreWorkerTest;
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_CORE_WORKER_H

@@ -6,7 +6,9 @@ import time
 import pytest
 
 import ray
-from ray.test_utils import run_string_as_driver_nonblocking
+from ray.test_utils import run_string_as_driver_nonblocking, SignalActor
+
+SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 
 # This test checks that when a worker dies in the middle of a get, the plasma
@@ -16,16 +18,18 @@ from ray.test_utils import run_string_as_driver_nonblocking
     reason="Not working with new GCS API.")
 def test_dying_worker_get(ray_start_2_cpus):
     @ray.remote
-    def sleep_forever():
-        ray.experimental.signal.send("ready")
+    def sleep_forever(signal):
+        ray.get(signal.send.remote())
         time.sleep(10**6)
 
     @ray.remote
     def get_worker_pid():
         return os.getpid()
 
-    x_id = sleep_forever.remote()
-    ray.experimental.signal.receive([x_id])  # Block until it is scheduled.
+    signal = SignalActor.remote()
+
+    x_id = sleep_forever.remote(signal)
+    ray.get(signal.wait.remote())
     # Get the PID of the other worker.
     worker_pid = ray.get(get_worker_pid.remote())
 
@@ -42,7 +46,7 @@ def test_dying_worker_get(ray_start_2_cpus):
     assert len(ready_ids) == 0
 
     # Kill the worker.
-    os.kill(worker_pid, signal.SIGKILL)
+    os.kill(worker_pid, SIGKILL)
     time.sleep(0.1)
 
     # Make sure the sleep task hasn't finished.
@@ -129,7 +133,7 @@ def test_dying_worker_wait(ray_start_2_cpus):
     time.sleep(0.1)
 
     # Kill the worker.
-    os.kill(worker_pid, signal.SIGKILL)
+    os.kill(worker_pid, SIGKILL)
     time.sleep(0.1)
 
     # Create the object.

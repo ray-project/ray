@@ -1,24 +1,27 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import {
+  MemoryTableResponse,
   NodeInfoResponse,
   RayConfigResponse,
   RayletInfoResponse,
+  TuneAvailabilityResponse,
   TuneJobResponse,
-  TuneAvailabilityResponse
 } from "../../api";
 
 const name = "dashboard";
 
-interface State {
+type State = {
   tab: number;
   rayConfig: RayConfigResponse | null;
   nodeInfo: NodeInfoResponse | null;
   rayletInfo: RayletInfoResponse | null;
   tuneInfo: TuneJobResponse | null;
-  tuneAvailability: boolean;
+  tuneAvailability: TuneAvailabilityResponse | null;
   lastUpdatedAt: number | null;
   error: string | null;
-}
+  memoryTable: MemoryTableResponse | null;
+  shouldObtainMemoryTable: boolean;
+};
 
 const initialState: State = {
   tab: 0,
@@ -26,9 +29,11 @@ const initialState: State = {
   nodeInfo: null,
   rayletInfo: null,
   tuneInfo: null,
-  tuneAvailability: false,
+  tuneAvailability: null,
   lastUpdatedAt: null,
-  error: null
+  error: null,
+  memoryTable: null,
+  shouldObtainMemoryTable: false,
 };
 
 const slice = createSlice({
@@ -46,34 +51,36 @@ const slice = createSlice({
       action: PayloadAction<{
         nodeInfo: NodeInfoResponse;
         rayletInfo: RayletInfoResponse;
-      }>
+      }>,
     ) => {
       state.nodeInfo = action.payload.nodeInfo;
       state.rayletInfo = action.payload.rayletInfo;
       state.lastUpdatedAt = Date.now();
     },
-    setTuneInfo: (
-      state,
-      action: PayloadAction<{
-        tuneInfo: TuneJobResponse;
-      }>
-    ) => {
-      state.tuneInfo = action.payload.tuneInfo;
+    setTuneInfo: (state, action: PayloadAction<TuneJobResponse>) => {
+      state.tuneInfo = action.payload;
       state.lastUpdatedAt = Date.now();
     },
     setTuneAvailability: (
       state,
-      action: PayloadAction<{
-        tuneAvailability: TuneAvailabilityResponse;
-      }>
+      action: PayloadAction<TuneAvailabilityResponse>,
     ) => {
-      state.tuneAvailability = action.payload.tuneAvailability["available"];
+      state.tuneAvailability = action.payload;
       state.lastUpdatedAt = Date.now();
     },
     setError: (state, action: PayloadAction<string | null>) => {
       state.error = action.payload;
-    }
-  }
+    },
+    setMemoryTable: (
+      state,
+      action: PayloadAction<MemoryTableResponse | null>,
+    ) => {
+      state.memoryTable = action.payload;
+    },
+    setShouldObtainMemoryTable: (state, action: PayloadAction<boolean>) => {
+      state.shouldObtainMemoryTable = action.payload;
+    },
+  },
 });
 
 export const dashboardActions = slice.actions;

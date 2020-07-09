@@ -8,9 +8,6 @@ class ImportanceSamplingEstimator(OffPolicyEstimator):
 
     Step-wise IS estimator described in https://arxiv.org/pdf/1511.03722.pdf"""
 
-    def __init__(self, policy, gamma):
-        OffPolicyEstimator.__init__(self, policy, gamma)
-
     @override(OffPolicyEstimator)
     def estimate(self, batch):
         self.check_can_estimate_for(batch)

@@ -1,20 +1,27 @@
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
-import Typography from "@material-ui/core/Typography";
+import {
+  Collapse,
+  createStyles,
+  Theme,
+  Typography,
+  withStyles,
+  WithStyles,
+} from "@material-ui/core";
 import React from "react";
 import {
+  ActorState,
   checkProfilingStatus,
   CheckProfilingStatusResponse,
   getProfilingResultURL,
+  launchKillActor,
   launchProfiling,
-  RayletInfoResponse,
-  launchKillActor
+  RayletActorInfo,
 } from "../../../api";
+import { sum } from "../../../common/util";
+import ActorDetailsPane from "./ActorDetailsPane";
 import Actors from "./Actors";
-import Collapse from "@material-ui/core/Collapse";
-import orange from '@material-ui/core/colors/orange';
 
+const memoryDebuggingDocLink =
+  "https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory";
 const styles = (theme: Theme) =>
   createStyles({
     root: {
@@ -22,47 +29,40 @@ const styles = (theme: Theme) =>
       borderStyle: "solid",
       borderWidth: 1,
       marginTop: theme.spacing(2),
-      padding: theme.spacing(2)
+      padding: theme.spacing(2),
     },
     title: {
       color: theme.palette.text.secondary,
-      fontSize: "0.75rem"
+      fontSize: "0.75rem",
     },
     action: {
       color: theme.palette.primary.main,
       textDecoration: "none",
       "&:hover": {
-        cursor: "pointer"
-      }
+        cursor: "pointer",
+      },
     },
     invalidStateTypeInfeasible: {
-      color: theme.palette.error.main
+      color: theme.palette.error.main,
     },
     invalidStateTypePendingActor: {
-      color: orange[500]
+      color: theme.palette.secondary.main,
     },
-    information: {
-      fontSize: "0.875rem"
-    },
-    datum: {
-      "&:not(:first-child)": {
-        marginLeft: theme.spacing(2)
-      }
-    },
+
     webuiDisplay: {
-      fontSize: "0.875rem"
+      fontSize: "0.875rem",
     },
     inlineHTML: {
       fontSize: "0.875rem",
-      display: "inline"
-    }
+      display: "inline",
+    },
   });
 
-interface Props {
-  actor: RayletInfoResponse["actors"][keyof RayletInfoResponse["actors"]];
-}
+type Props = {
+  actor: RayletActorInfo;
+};
 
-interface State {
+type State = {
   expanded: boolean;
   profiling: {
     [profilingId: string]: {
@@ -70,12 +70,12 @@ interface State {
       latestResponse: CheckProfilingStatusResponse | null;
     };
   };
-}
+};
 
 class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
   state: State = {
     expanded: true,
-    profiling: {}
+    profiling: {},
   };
 
   setExpanded = (expanded: boolean) => () => {
@@ -84,28 +84,28 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
 
   handleProfilingClick = (duration: number) => async () => {
     const actor = this.props.actor;
-    if (actor.state !== -1) {
+    if (actor.state !== ActorState.Invalid) {
       const profilingId = await launchProfiling(
         actor.nodeId,
         actor.pid,
-        duration
+        duration,
       );
-      this.setState(state => ({
+      this.setState((state) => ({
         profiling: {
           ...state.profiling,
-          [profilingId]: { startTime: Date.now(), latestResponse: null }
-        }
+          [profilingId]: { startTime: Date.now(), latestResponse: null },
+        },
       }));
       const checkProfilingStatusLoop = async () => {
         const response = await checkProfilingStatus(profilingId);
-        this.setState(state => ({
+        this.setState((state) => ({
           profiling: {
             ...state.profiling,
             [profilingId]: {
               ...state.profiling[profilingId],
-              latestResponse: response
-            }
-          }
+              latestResponse: response,
+            },
+          },
         }));
         if (response.status === "pending") {
           setTimeout(checkProfilingStatusLoop, 1000);
@@ -117,7 +117,10 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
 
   killActor = () => {
     const actor = this.props.actor;
-    if (actor.state === 0) {
+    if (
+      actor.state === ActorState.Creating ||
+      actor.state === ActorState.Alive
+    ) {
       launchKillActor(actor.actorId, actor.ipAddress, actor.port);
     }
   };
@@ -127,54 +130,65 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
     const { expanded, profiling } = this.state;
 
     const information =
-      actor.state !== -1
+      actor.state !== ActorState.Invalid
         ? [
-            {
-              label: "ActorTitle",
-              value: actor.actorTitle
-            },
-            {
-              label: "State",
-              value: actor.state.toLocaleString()
-            },
             {
               label: "Resources",
               value:
                 Object.entries(actor.usedResources).length > 0 &&
                 Object.entries(actor.usedResources)
                   .sort((a, b) => a[0].localeCompare(b[0]))
-                  .map(([key, value]) => `${value.toLocaleString()} ${key}`)
-                  .join(", ")
+                  .map(
+                    ([key, value]) =>
+                      `${sum(
+                        value.resourceSlots.map((slot) => slot.allocation),
+                      )} ${key}`,
+                  )
+                  .join(", "),
             },
             {
-              label: "Pending",
-              value: actor.taskQueueLength.toLocaleString()
+              label: "Number of pending tasks",
+              value: actor.taskQueueLength.toLocaleString(),
+              tooltip:
+                "The number of tasks that are currently pending to execute on this actor. If this number " +
+                "remains consistently high, it may indicate that this actor is a bottleneck in your application.",
             },
             {
-              label: "Executed",
-              value: actor.numExecutedTasks.toLocaleString()
+              label: "Number of executed tasks",
+              value: actor.numExecutedTasks.toLocaleString(),
+              tooltip:
+                "The number of tasks this actor has executed throughout its lifetimes.",
             },
             {
-              label: "NumObjectIdsInScope",
-              value: actor.numObjectIdsInScope.toLocaleString()
+              label: "Number of ObjectIDs in scope",
+              value: actor.numObjectIdsInScope.toLocaleString(),
+              tooltip:
+                "The number of ObjectIDs that this actor is keeping in scope via its internal state. " +
+                "This does not imply that the objects are in active use or colocated on the node with the actor " +
+                `currently. This can be useful for debugging memory leaks. See the docs at ${memoryDebuggingDocLink} ` +
+                "for more information.",
             },
             {
-              label: "NumLocalObjects",
-              value: actor.numLocalObjects.toLocaleString()
+              label: "Number of local objects",
+              value: actor.numLocalObjects.toLocaleString(),
+              tooltip:
+                "The number of small objects that this actor has stored in its local in-process memory store. This can be useful for " +
+                `debugging memory leaks. See the docs at ${memoryDebuggingDocLink} for more information`,
             },
             {
-              label: "UsedLocalObjectMemory",
-              value: actor.usedObjectStoreMemory.toLocaleString()
-            }
-            // {
-            //   label: "Task",
-            //   value: actor.currentTaskFuncDesc.join(".")
-            // }
+              label: "Object store memory used (MiB)",
+              value: actor.usedObjectStoreMemory.toLocaleString(),
+              tooltip:
+                "The total amount of memory that this actor is occupying in the Ray object store. " +
+                "If this number is increasing without bounds, you might have a memory leak. See " +
+                `the docs at: ${memoryDebuggingDocLink} for more information.`,
+            },
           ]
         : [
             {
-              label: "ID",
-              value: actor.actorId
+              label: "Actor ID",
+              value: actor.actorId,
+              tooltip: "",
             },
             {
               label: "Required resources",
@@ -183,13 +197,14 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 Object.entries(actor.requiredResources)
                   .sort((a, b) => a[0].localeCompare(b[0]))
                   .map(([key, value]) => `${value.toLocaleString()} ${key}`)
-                  .join(", ")
-            }
+                  .join(", "),
+              tooltip: "",
+            },
           ];
 
     // Construct the custom message from the actor.
     let actorCustomDisplay: JSX.Element[] = [];
-    if (actor.state !== -1 && actor.webuiDisplay) {
+    if (actor.state !== ActorState.Invalid && actor.webuiDisplay) {
       actorCustomDisplay = Object.keys(actor.webuiDisplay)
         .sort()
         .map((key, _, __) => {
@@ -226,7 +241,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
     return (
       <div className={classes.root}>
         <Typography className={classes.title}>
-          {actor.state !== -1 ? (
+          {actor.state !== ActorState.Invalid ? (
             <React.Fragment>
               Actor {actor.actorId}{" "}
               {Object.entries(actor.children).length > 0 && (
@@ -242,7 +257,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 </React.Fragment>
               )}{" "}
               (Profile for
-              {[10, 30, 60].map(duration => (
+              {[10, 30, 60].map((duration) => (
                 <React.Fragment>
                   {" "}
                   <span
@@ -254,12 +269,10 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 </React.Fragment>
               ))}
               ){" "}
-              {actor.state === 0 ? (
+              {actor.state === 0 && (
                 <span className={classes.action} onClick={this.killActor}>
                   Kill Actor
                 </span>
-              ) : (
-                ""
               )}
               {Object.entries(profiling).map(
                 ([profilingId, { startTime, latestResponse }]) =>
@@ -268,7 +281,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                       (
                       {latestResponse.status === "pending" ? (
                         `Profiling for ${Math.round(
-                          (Date.now() - startTime) / 1000
+                          (Date.now() - startTime) / 1000,
                         )}s...`
                       ) : latestResponse.status === "finished" ? (
                         <a
@@ -281,19 +294,16 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                         </a>
                       ) : latestResponse.status === "error" ? (
                         `Profiling error: ${latestResponse.error.trim()}`
-                      ) : (
-                        undefined
-                      )}
+                      ) : undefined}
                       ){" "}
                     </React.Fragment>
-                  )
+                  ),
               )}
             </React.Fragment>
-          ) : actor.invalidStateType === 'infeasibleActor' ? (
+          ) : actor.invalidStateType === "infeasibleActor" ? (
             <span className={classes.invalidStateTypeInfeasible}>
-              {actor.actorTitle} is infeasible.  
-              (Infeasible actor means an actor cannot be created because 
-              Ray cluster cannot satisfy resources requirement).
+              {actor.actorTitle} cannot be created because the Ray cluster
+              cannot satisfy its resource requirements.)
             </span>
           ) : (
             <span className={classes.invalidStateTypePendingActor}>
@@ -301,20 +311,12 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             </span>
           )}
         </Typography>
-        <Typography className={classes.information}>
-          {information.map(
-            ({ label, value }) =>
-              value &&
-              value.length > 0 && (
-                <React.Fragment key={label}>
-                  <span className={classes.datum}>
-                    {label}: {value}
-                  </span>{" "}
-                </React.Fragment>
-              )
-          )}
-        </Typography>
-        {actor.state !== -1 && (
+        <ActorDetailsPane
+          actorDetails={information}
+          actorTitle={actor.actorTitle}
+          actorState={actor.state}
+        />
+        {actor.state !== ActorState.Invalid && (
           <React.Fragment>
             {actorCustomDisplay.length > 0 && (
               <React.Fragment>{actorCustomDisplay}</React.Fragment>

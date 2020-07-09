@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include <unistd.h>
 
 #include <chrono>
@@ -6,16 +20,14 @@
 #include <thread>
 
 #include "gtest/gtest.h"
-
 #include "ray/common/status.h"
-
+#include "ray/common/test_util.h"
 #include "ray/object_manager/object_manager.h"
+#include "ray/util/filesystem.h"
 
 namespace ray {
 
 using rpc::GcsNodeInfo;
-
-std::string store_executable;
 
 static inline void flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
@@ -68,40 +80,12 @@ class MockServer {
 
 class TestObjectManagerBase : public ::testing::Test {
  public:
-  TestObjectManagerBase() {
-#ifdef _WIN32
-    RAY_CHECK(false) << "port system() calls to Windows before running this test";
-#endif
-  }
-
-  std::string StartStore(const std::string &id) {
-    std::string store_id = "/tmp/store";
-    store_id = store_id + id;
-    std::string store_pid = store_id + ".pid";
-    std::string plasma_command = store_executable + " -m 1000000000 -s " + store_id +
-                                 " 1> /dev/null 2> /dev/null &" + " echo $! > " +
-                                 store_pid;
-
-    RAY_LOG(DEBUG) << plasma_command;
-    int ec = system(plasma_command.c_str());
-    RAY_CHECK(ec == 0);
-    sleep(1);
-    return store_id;
-  }
-
-  void StopStore(const std::string &store_id) {
-    std::string store_pid = store_id + ".pid";
-    std::string kill_1 = "kill -9 `cat " + store_pid + "`";
-    int s = system(kill_1.c_str());
-    ASSERT_TRUE(!s);
-  }
-
   void SetUp() {
     flushall_redis();
 
     // start store
-    store_id_1 = StartStore(UniqueID::FromRandom().Hex());
-    store_id_2 = StartStore(UniqueID::FromRandom().Hex());
+    socket_name_1 = TestSetupUtil::StartObjectStore();
+    socket_name_2 = TestSetupUtil::StartObjectStore();
 
     unsigned int pull_timeout_ms = 1000;
     uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
@@ -113,7 +97,7 @@ class TestObjectManagerBase : public ::testing::Test {
     gcs_client_1 = std::make_shared<gcs::RedisGcsClient>(client_options);
     RAY_CHECK_OK(gcs_client_1->Connect(main_service));
     ObjectManagerConfig om_config_1;
-    om_config_1.store_socket_name = store_id_1;
+    om_config_1.store_socket_name = socket_name_1;
     om_config_1.pull_timeout_ms = pull_timeout_ms;
     om_config_1.object_chunk_size = object_chunk_size;
     om_config_1.push_timeout_ms = push_timeout_ms;
@@ -125,7 +109,7 @@ class TestObjectManagerBase : public ::testing::Test {
     gcs_client_2 = std::make_shared<gcs::RedisGcsClient>(client_options);
     RAY_CHECK_OK(gcs_client_2->Connect(main_service));
     ObjectManagerConfig om_config_2;
-    om_config_2.store_socket_name = store_id_2;
+    om_config_2.store_socket_name = socket_name_2;
     om_config_2.pull_timeout_ms = pull_timeout_ms;
     om_config_2.object_chunk_size = object_chunk_size;
     om_config_2.push_timeout_ms = push_timeout_ms;
@@ -134,13 +118,13 @@ class TestObjectManagerBase : public ::testing::Test {
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
-    RAY_ARROW_CHECK_OK(client1.Connect(store_id_1));
-    RAY_ARROW_CHECK_OK(client2.Connect(store_id_2));
+    RAY_CHECK_OK(client1.Connect(socket_name_1));
+    RAY_CHECK_OK(client2.Connect(socket_name_2));
   }
 
   void TearDown() {
-    arrow::Status client1_status = client1.Disconnect();
-    arrow::Status client2_status = client2.Disconnect();
+    Status client1_status = client1.Disconnect();
+    Status client2_status = client2.Disconnect();
     ASSERT_TRUE(client1_status.ok() && client2_status.ok());
 
     gcs_client_1->Disconnect();
@@ -149,8 +133,8 @@ class TestObjectManagerBase : public ::testing::Test {
     this->server1.reset();
     this->server2.reset();
 
-    StopStore(store_id_1);
-    StopStore(store_id_2);
+    TestSetupUtil::StopObjectStore(socket_name_1);
+    TestSetupUtil::StopObjectStore(socket_name_2);
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
@@ -158,10 +142,9 @@ class TestObjectManagerBase : public ::testing::Test {
     RAY_LOG(DEBUG) << "ObjectID Created: " << object_id;
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
-    std::shared_ptr<Buffer> data;
-    RAY_ARROW_CHECK_OK(
-        client.Create(object_id.ToPlasmaId(), data_size, metadata, metadata_size, &data));
-    RAY_ARROW_CHECK_OK(client.Seal(object_id.ToPlasmaId()));
+    std::shared_ptr<arrow::Buffer> data;
+    RAY_CHECK_OK(client.Create(object_id, data_size, metadata, metadata_size, &data));
+    RAY_CHECK_OK(client.Seal(object_id));
     return object_id;
   }
 
@@ -182,8 +165,8 @@ class TestObjectManagerBase : public ::testing::Test {
   std::vector<ObjectID> v1;
   std::vector<ObjectID> v2;
 
-  std::string store_id_1;
-  std::string store_id_2;
+  std::string socket_name_1;
+  std::string socket_name_2;
 };
 
 class StressTestObjectManager : public TestObjectManagerBase {
@@ -280,15 +263,14 @@ class StressTestObjectManager : public TestObjectManagerBase {
 
   plasma::ObjectBuffer GetObject(plasma::PlasmaClient &client, ObjectID &object_id) {
     plasma::ObjectBuffer object_buffer;
-    plasma::ObjectID plasma_id = object_id.ToPlasmaId();
-    RAY_ARROW_CHECK_OK(client.Get(&plasma_id, 1, 0, &object_buffer));
+    RAY_CHECK_OK(client.Get(&object_id, 1, 0, &object_buffer));
     return object_buffer;
   }
 
   static unsigned char *GetDigest(plasma::PlasmaClient &client, ObjectID &object_id) {
     const int64_t size = sizeof(uint64_t);
     static unsigned char digest_1[size];
-    RAY_ARROW_CHECK_OK(client.Hash(object_id.ToPlasmaId(), &digest_1[0]));
+    RAY_CHECK_OK(client.Hash(object_id, &digest_1[0]));
     return digest_1;
   }
 
@@ -448,6 +430,6 @@ TEST_F(StressTestObjectManager, StartStressTestObjectManager) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  ray::store_executable = std::string(argv[1]);
+  ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);
   return RUN_ALL_TESTS();
 }

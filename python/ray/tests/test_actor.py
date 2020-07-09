@@ -106,6 +106,7 @@ def test_actor_method_metadata_cache(ray_start_regular):
 
     # The cache of ActorClassMethodMetadata.
     cache = ray.actor.ActorClassMethodMetadata._cache
+    cache.clear()
 
     # Check cache hit during ActorHandle deserialization.
     A1 = ray.remote(Actor)
@@ -116,12 +117,6 @@ def test_actor_method_metadata_cache(ray_start_regular):
         a = pickle.loads(pickle.dumps(a))
     assert len(ray.actor.ActorClassMethodMetadata._cache) == 1
     assert [id(x) for x in list(cache.items())[0]] == cached_data_id
-
-    # Check cache hit when @ray.remote
-    A2 = ray.remote(Actor)
-    assert id(A1.__ray_metadata__) != id(A2.__ray_metadata__)
-    assert id(A1.__ray_metadata__.method_meta) == id(
-        A2.__ray_metadata__.method_meta)
 
 
 def test_actor_name_conflict(ray_start_regular):
@@ -357,7 +352,7 @@ def test_decorator_args(ray_start_regular):
     with pytest.raises(Exception):
 
         @ray.remote(invalid_kwarg=0)  # noqa: F811
-        class Actor:
+        class Actor:  # noqa: F811
             def __init__(self):
                 pass
 
@@ -365,25 +360,25 @@ def test_decorator_args(ray_start_regular):
     with pytest.raises(Exception):
 
         @ray.remote(num_cpus=0, invalid_kwarg=0)  # noqa: F811
-        class Actor:
+        class Actor:  # noqa: F811
             def __init__(self):
                 pass
 
     # This is a valid way of using the decorator.
     @ray.remote(num_cpus=1)  # noqa: F811
-    class Actor:
+    class Actor:  # noqa: F811
         def __init__(self):
             pass
 
     # This is a valid way of using the decorator.
     @ray.remote(num_gpus=1)  # noqa: F811
-    class Actor:
+    class Actor:  # noqa: F811
         def __init__(self):
             pass
 
     # This is a valid way of using the decorator.
     @ray.remote(num_cpus=1, num_gpus=1)  # noqa: F811
-    class Actor:
+    class Actor:  # noqa: F811
         def __init__(self):
             pass
 
@@ -532,6 +527,34 @@ def test_actor_method_deletion(ray_start_regular):
     assert ray.get(Actor.remote().method.remote()) == 1
 
 
+def test_distributed_actor_handle_deletion(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def method(self):
+            return 1
+
+        def getpid(self):
+            return os.getpid()
+
+    @ray.remote
+    def f(actor, signal):
+        ray.get(signal.wait.remote())
+        return ray.get(actor.method.remote())
+
+    signal = ray.test_utils.SignalActor.remote()
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    # Pass the handle to another task that cannot run yet.
+    x_id = f.remote(a, signal)
+    # Delete the original handle. The actor should not get killed yet.
+    del a
+
+    # Once the task finishes, the actor process should get killed.
+    ray.get(signal.send.remote())
+    assert ray.get(x_id) == 1
+    ray.test_utils.wait_for_pid_to_exit(pid)
+
+
 def test_multiple_actors(ray_start_regular):
     @ray.remote
     class Counter:
@@ -668,6 +691,32 @@ def test_use_actor_within_actor(ray_start_10_cpus):
 
     actor2 = Actor2.remote(3, 4)
     assert ray.get(actor2.get_values.remote(5)) == (3, 4)
+
+
+def test_use_actor_twice(ray_start_10_cpus):
+    # Make sure we can call the same actor using different refs.
+
+    @ray.remote
+    class Actor1:
+        def __init__(self):
+            self.count = 0
+
+        def inc(self):
+            self.count += 1
+            return self.count
+
+    @ray.remote
+    class Actor2:
+        def __init__(self):
+            pass
+
+        def inc(self, handle):
+            return ray.get(handle.inc.remote())
+
+    a = Actor1.remote()
+    a2 = Actor2.remote()
+    assert ray.get(a2.inc.remote(a)) == 1
+    assert ray.get(a2.inc.remote(a)) == 2
 
 
 def test_define_actor_within_remote_function(ray_start_10_cpus):

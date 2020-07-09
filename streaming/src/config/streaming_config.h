@@ -1,5 +1,4 @@
-#ifndef RAY_STREAMING_CONFIG_H
-#define RAY_STREAMING_CONFIG_H
+#pragma once
 
 #include <cstdint>
 #include <string>
@@ -22,8 +21,7 @@ class StreamingConfig {
 
   uint32_t empty_message_time_interval_ = DEFAULT_EMPTY_MESSAGE_TIME_INTERVAL;
 
-  streaming::proto::OperatorType operator_type_ =
-      streaming::proto::OperatorType::TRANSFORM;
+  streaming::proto::NodeType node_type_ = streaming::proto::NodeType::TRANSFORM;
 
   std::string job_name_ = "DEFAULT_JOB_NAME";
 
@@ -31,7 +29,16 @@ class StreamingConfig {
 
   std::string worker_name_ = "DEFAULT_WORKER_NAME";
 
-  std::string task_job_id_ = JobID::Nil().Hex();
+  // Default flow control type is unconsumed sequence flow control. More detail
+  // introducation and implemention in ray/streaming/src/flow_control.h.
+  streaming::proto::FlowControlType flow_control_type_ =
+      streaming::proto::FlowControlType::UnconsumedSeqFlowControl;
+
+  // Default writer and reader consumed step.
+  uint32_t writer_consumed_step_ = 1000;
+  uint32_t reader_consumed_step_ = 100;
+
+  uint32_t event_driven_flow_control_interval_ = 1;
 
  public:
   void FromProto(const uint8_t *, uint32_t size);
@@ -40,12 +47,17 @@ class StreamingConfig {
   TYPE Get##NAME() const { return VALUE; }       \
   void Set##NAME(TYPE value) { VALUE = value; }
 
-  DECL_GET_SET_PROPERTY(const std::string &, TaskJobId, task_job_id_)
   DECL_GET_SET_PROPERTY(const std::string &, WorkerName, worker_name_)
   DECL_GET_SET_PROPERTY(const std::string &, OpName, op_name_)
   DECL_GET_SET_PROPERTY(uint32_t, EmptyMessageTimeInterval, empty_message_time_interval_)
-  DECL_GET_SET_PROPERTY(streaming::proto::OperatorType, OperatorType, operator_type_)
+  DECL_GET_SET_PROPERTY(streaming::proto::NodeType, NodeType, node_type_)
   DECL_GET_SET_PROPERTY(const std::string &, JobName, job_name_)
+  DECL_GET_SET_PROPERTY(uint32_t, WriterConsumedStep, writer_consumed_step_)
+  DECL_GET_SET_PROPERTY(uint32_t, ReaderConsumedStep, reader_consumed_step_)
+  DECL_GET_SET_PROPERTY(streaming::proto::FlowControlType, FlowControlType,
+                        flow_control_type_)
+  DECL_GET_SET_PROPERTY(uint32_t, EventDrivenFlowControlInterval,
+                        event_driven_flow_control_interval_)
 
   uint32_t GetRingBufferCapacity() const;
   /// Note(lingxuan.zlx), RingBufferCapacity's valid range is from 1 to
@@ -54,4 +66,3 @@ class StreamingConfig {
 };
 }  // namespace streaming
 }  // namespace ray
-#endif  // RAY_STREAMING_CONFIG_H

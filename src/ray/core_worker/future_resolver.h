@@ -1,5 +1,18 @@
-#ifndef RAY_CORE_WORKER_FUTURE_RESOLVER_H
-#define RAY_CORE_WORKER_FUTURE_RESOLVER_H
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
 
 #include <memory>
 
@@ -15,8 +28,10 @@ namespace ray {
 class FutureResolver {
  public:
   FutureResolver(std::shared_ptr<CoreWorkerMemoryStore> store,
-                 rpc::ClientFactoryFn client_factory)
-      : in_memory_store_(store), client_factory_(client_factory) {}
+                 rpc::ClientFactoryFn client_factory, const rpc::Address &rpc_address)
+      : in_memory_store_(store),
+        client_factory_(client_factory),
+        rpc_address_(rpc_address) {}
 
   /// Resolve the value for a future. This will periodically contact the given
   /// owner until the owner dies or the owner has finished creating the object.
@@ -24,11 +39,9 @@ class FutureResolver {
   /// value.
   ///
   /// \param[in] object_id The ID of the future to resolve.
-  /// \param[in] owner_id The ID of the task or actor that owns the future.
   /// \param[in] owner_address The address of the task or actor that owns the
   /// future.
-  void ResolveFutureAsync(const ObjectID &object_id, const TaskID &owner_id,
-                          const rpc::Address &owner_address);
+  void ResolveFutureAsync(const ObjectID &object_id, const rpc::Address &owner_address);
 
  private:
   /// Used to store values of resolved futures.
@@ -37,14 +50,17 @@ class FutureResolver {
   /// Factory for producing new core worker clients.
   const rpc::ClientFactoryFn client_factory_;
 
+  /// Address of our RPC server. Used to notify borrowed objects' owners of our
+  /// address, so the owner can contact us to ask when our reference to the
+  /// object has gone out of scope.
+  const rpc::Address rpc_address_;
+
   /// Protects against concurrent access to internal state.
   absl::Mutex mu_;
 
   /// Cache of gRPC clients to the objects' owners.
-  absl::flat_hash_map<TaskID, std::shared_ptr<rpc::CoreWorkerClientInterface>>
+  absl::flat_hash_map<WorkerID, std::shared_ptr<rpc::CoreWorkerClientInterface>>
       owner_clients_ GUARDED_BY(mu_);
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_FUTURE_RESOLVER_H

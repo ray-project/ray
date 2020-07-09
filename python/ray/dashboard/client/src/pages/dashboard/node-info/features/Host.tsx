@@ -2,7 +2,7 @@ import React from "react";
 import {
   ClusterFeatureComponent,
   NodeFeatureComponent,
-  WorkerFeatureComponent
+  WorkerFeatureComponent,
 } from "./types";
 
 export const ClusterHost: ClusterFeatureComponent = ({ nodes }) => (
