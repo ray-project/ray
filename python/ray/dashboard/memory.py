@@ -66,7 +66,7 @@ class MemoryTableEntry:
         self.object_size = int(object_ref.get("objectSize", -1))
         self.call_site = object_ref.get("callSite", "<Unknown>")
         self.object_ref = ray.ObjectRef(
-            decode_object_ref_if_needed(object_ref["objectRef"]))
+            decode_object_ref_if_needed(object_ref["objectId"]))
 
         # reference info
         self.local_ref_count = int(object_ref.get("localRefCount", 0))

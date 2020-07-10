@@ -270,8 +270,8 @@ message ViewData {
 
 // Debug info for a referenced object.
 message ObjectRefInfo {
-  // ID of the object reference.
-  bytes object_ref = 1;
+  // Object id that is referenced.
+  bytes object_id = 1;
   // Language call site of the object reference (i.e., file and line number).
   string call_site = 2;
   // Size of the object if this core worker is the owner, otherwise -1.

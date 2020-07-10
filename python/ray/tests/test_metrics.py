@@ -594,10 +594,10 @@ def build_memory_entry(*,
                        contained_in_owned,
                        object_size,
                        pid,
-                       object_ref=OBJECT_ID,
+                       object_id=OBJECT_ID,
                        node_address=NODE_ADDRESS):
     object_ref = {
-        "objectRef": object_ref,
+        "objectId": object_id,
         "callSite": "(task call) /Users:458",
         "objectSize": object_size,
         "localRefCount": local_ref_count,
@@ -662,7 +662,7 @@ def build_actor_handle_entry(object_size=OBJECT_SIZE,
         object_size=object_size,
         pid=pid,
         node_address=node_address,
-        object_ref=ACTOR_ID)
+        object_id=ACTOR_ID)
 
 
 def build_pinned_in_memory_entry(object_size=OBJECT_SIZE,
