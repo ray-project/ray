@@ -225,10 +225,12 @@ install_go() {
 }
 
 bazel_ensure_buildable() {
-  # This performs as full of a build as possible, to ensure the repository always remains buildable.
-  # (Pip install will not perform a full build.)
-  # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
-  bazel build -k "//:*"
+  if [ "${OSTYPE}" = msys ]; then
+    # This performs as full of a build as possible, to ensure the repository always remains buildable on Windows.
+    # (Pip install will not perform a full build.)
+    # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
+    bazel build -k "//:*"
+  fi
 }
 
 install_ray() {
