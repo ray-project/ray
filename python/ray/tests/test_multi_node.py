@@ -174,8 +174,10 @@ def test_cleanup_on_driver_exit(call_ray_start):
     driver_script = """
 import time
 import ray
+import numpy as np
 ray.init(address="{}")
-object_ids = [ray.put(i) for i in range(1000)]
+object_ids = [ray.put(np.zeros(200 * 1024, dtype=np.uint8))
+              for i in range(1000)]
 start_time = time.time()
 while time.time() - start_time < 30:
     if len(ray.objects()) == 1000:

@@ -241,7 +241,7 @@ class InboundRequest {
 class DependencyWaiter {
  public:
   /// Calls `callback` once the specified objects become available.
-  virtual void Wait(const std::vector<ObjectID> &dependencies,
+  virtual void Wait(const std::vector<rpc::ObjectReference> &dependencies,
                     std::function<void()> on_dependencies_available) = 0;
 };
 
@@ -250,7 +250,7 @@ class DependencyWaiterImpl : public DependencyWaiter {
   DependencyWaiterImpl(DependencyWaiterInterface &dependency_client)
       : dependency_client_(dependency_client) {}
 
-  void Wait(const std::vector<ObjectID> &dependencies,
+  void Wait(const std::vector<rpc::ObjectReference> &dependencies,
             std::function<void()> on_dependencies_available) override {
     auto tag = next_request_id_++;
     requests_[tag] = on_dependencies_available;
@@ -320,7 +320,7 @@ class SchedulingQueue {
 
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
-           const std::vector<ObjectID> &dependencies = {}) {
+           const std::vector<rpc::ObjectReference> &dependencies = {}) {
     if (seq_no == -1) {
       accept_request();  // A seq_no of -1 means no ordering constraint.
       return;
@@ -474,7 +474,7 @@ class CoreWorkerDirectTaskReceiver {
 
   /// Initialize this receiver. This must be called prior to use.
   void Init(rpc::ClientFactoryFn client_factory, rpc::Address rpc_address,
-            std::shared_ptr<DependencyWaiterInterface> dependency_client);
+            std::shared_ptr<DependencyWaiter> dependency_waiter);
 
   /// Handle a `PushTask` request.
   ///
@@ -483,16 +483,6 @@ class CoreWorkerDirectTaskReceiver {
   /// \param[in] send_reply_callback The callback to be called when the request is done.
   void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
                       rpc::SendReplyCallback send_reply_callback);
-
-  /// Handle a `DirectActorCallArgWaitComplete` request.
-  ///
-  /// \param[in] request The request message.
-  /// \param[out] reply The reply message.
-  /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandleDirectActorCallArgWaitComplete(
-      const rpc::DirectActorCallArgWaitCompleteRequest &request,
-      rpc::DirectActorCallArgWaitCompleteReply *reply,
-      rpc::SendReplyCallback send_reply_callback);
 
  private:
   // Worker context.
@@ -508,7 +498,7 @@ class CoreWorkerDirectTaskReceiver {
   /// Address of our RPC server.
   rpc::Address rpc_address_;
   /// Shared waiter for dependencies required by incoming tasks.
-  std::unique_ptr<DependencyWaiterImpl> waiter_;
+  std::shared_ptr<DependencyWaiter> waiter_;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
   std::unordered_map<WorkerID, SchedulingQueue> scheduling_queue_;

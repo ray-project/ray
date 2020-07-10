@@ -190,12 +190,23 @@ class ReferenceCounter : public ReferenceCounterInterface {
   bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
                          const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
 
-  /// Get the owner ID and address of the given object.
+  /// Get the owner address of the given object.
   ///
   /// \param[in] object_id The ID of the object to look up.
   /// \param[out] owner_address The address of the object owner.
+  /// \return false if the object is out of scope or we do not yet have
+  /// ownership information. The latter can happen when object IDs are pasesd
+  /// out of band.
   bool GetOwner(const ObjectID &object_id, rpc::Address *owner_address = nullptr) const
       LOCKS_EXCLUDED(mutex_);
+
+  /// Get the owner addresses of the given objects. The owner address
+  /// must be registered for these objects.
+  ///
+  /// \param[in] object_ids The IDs of the object to look up.
+  /// \return The addresses of the objects' owners.
+  std::vector<rpc::Address> GetOwnerAddresses(
+      const std::vector<ObjectID> object_ids) const;
 
   /// Release the underlying value from plasma (if any) for these objects.
   ///
@@ -497,6 +508,10 @@ class ReferenceCounter : public ReferenceCounterInterface {
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
+
+  bool GetOwnerInternal(const ObjectID &object_id,
+                        rpc::Address *owner_address = nullptr) const
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Release the pinned plasma object, if any. Also unsets the raylet address
   /// that the object was pinned at, if the address was set.
