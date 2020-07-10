@@ -159,7 +159,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                        c_vector[shared_ptr[CRayObject]] *results)
         CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
         CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
-                        int64_t timeout_ms, c_vector[c_bool] *results,)
+                        int64_t timeout_ms, c_vector[c_bool] *results)
         CRayStatus Delete(const c_vector[CObjectID] &object_ids,
                           c_bool local_only, c_bool delete_creating_tasks)
         CRayStatus TriggerGlobalGC()
