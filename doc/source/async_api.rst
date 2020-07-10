@@ -34,7 +34,7 @@ that supports top level ``await``:
 
 
 ObjectRefs as asyncio.Futures
-----------------------------
+-----------------------------
 ObjectRefs can be translated to asyncio.Future. This feature
 make it possible to ``await`` on ray futures in existing concurrent
 applications.
