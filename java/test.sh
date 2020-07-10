@@ -44,10 +44,9 @@ run_testng java -Dray.run-mode="SINGLE_PROCESS" -cp $ROOT_DIR/../bazel-bin/java/
 
 popd
 
-# Ensure mvn test works
-mvn test -pl test -Dtest="io.ray.test.HelloWorldTest"
-
 pushd $ROOT_DIR
 echo "Testing maven install."
 mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests
+# Ensure mvn test works
+mvn test -pl test -Dtest="io.ray.test.HelloWorldTest"
 popd
