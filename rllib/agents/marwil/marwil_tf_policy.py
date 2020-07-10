@@ -49,7 +49,7 @@ class ReweightedImitationLoss:
         else:
             update_adv_norm = tf1.assign_add(
                 ref=policy._ma_adv_norm,
-                value=1e-6 *(
+                value=1e-6 * (
                     tf.reduce_mean(tf.math.square(adv)) - policy._ma_adv_norm))
 
             # exponentially weighted advantages
