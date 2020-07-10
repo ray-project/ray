@@ -4,6 +4,7 @@ import grpc
 import pytest
 import requests
 import time
+import numpy as np
 
 import ray
 from ray.core.generated import node_manager_pb2
@@ -180,7 +181,7 @@ def test_raylet_info_endpoint(shutdown_only):
             self.local_storage = [f.remote() for _ in range(10)]
 
         def remote_store(self):
-            self.remote_storage = ray.put("test")
+            self.remote_storage = ray.put(np.zeros(200 * 1024, dtype=np.uint8))
 
         def getpid(self):
             return os.getpid()
@@ -443,9 +444,8 @@ def test_memory_dashboard(shutdown_only):
         return True
 
     def test_object_pineed_in_memory():
-        import numpy as np
 
-        a = ray.put(np.zeros(1))
+        a = ray.put(np.zeros(200 * 1024, dtype=np.uint8))
         b = ray.get(a)  # Noqa F841
         del a
 
@@ -469,7 +469,7 @@ def test_memory_dashboard(shutdown_only):
         def f(arg):
             time.sleep(1)
 
-        a = ray.put(None)  # Noqa F841
+        a = ray.put(np.zeros(200 * 1024, dtype=np.uint8))  # Noqa F841
         b = f.remote(a)  # Noqa F841
 
         wait_for_condition(memory_table_ready)

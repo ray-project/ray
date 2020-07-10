@@ -819,7 +819,7 @@ def test_raylet_crash_when_get(ray_start_regular):
         time.sleep(2)
         ray.worker._global_node.kill_raylet()
 
-    object_ref = ray.put(None)
+    object_ref = ray.put(np.zeros(200 * 1024, dtype=np.uint8))
     ray.internal.free(object_ref)
     while ray.worker.global_worker.core_worker.object_exists(object_ref):
         time.sleep(1)
@@ -842,15 +842,15 @@ def test_connect_with_disconnected_node(shutdown_only):
     info = relevant_errors(ray_constants.REMOVED_NODE_ERROR)
     assert len(info) == 0
     # This node is killed by SIGKILL, ray_monitor will mark it to dead.
-    dead_node = cluster.add_node(num_cpus=0, _internal_config=config)
+    dead_node = cluster.add_node(num_cpus=0)
     cluster.remove_node(dead_node, allow_graceful=False)
     wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 1)
     # This node is killed by SIGKILL, ray_monitor will mark it to dead.
-    dead_node = cluster.add_node(num_cpus=0, _internal_config=config)
+    dead_node = cluster.add_node(num_cpus=0)
     cluster.remove_node(dead_node, allow_graceful=False)
     wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 2)
     # This node is killed by SIGTERM, ray_monitor will not mark it again.
-    removing_node = cluster.add_node(num_cpus=0, _internal_config=config)
+    removing_node = cluster.add_node(num_cpus=0)
     cluster.remove_node(removing_node, allow_graceful=True)
     with pytest.raises(RayTestTimeoutException):
         wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 3, timeout=2)

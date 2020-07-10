@@ -29,11 +29,7 @@ def ray_start_reconstruction(request):
         })
     for i in range(num_nodes - 1):
         cluster.add_node(
-            num_cpus=1,
-            object_store_memory=plasma_store_memory // num_nodes,
-            _internal_config=json.dumps({
-                "initial_reconstruction_timeout_milliseconds": 200
-            }))
+            num_cpus=1, object_store_memory=plasma_store_memory // num_nodes)
     ray.init(address=cluster.address)
 
     yield plasma_store_memory, num_nodes, cluster

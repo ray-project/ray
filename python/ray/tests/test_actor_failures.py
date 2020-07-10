@@ -291,7 +291,7 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
     ray.init(address=cluster.address)
 
     # Node to place the actor.
-    actor_node = cluster.add_node(num_cpus=1, _internal_config=config)
+    actor_node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
 
     @ray.remote(num_cpus=1, max_restarts=1, max_task_retries=-1)
@@ -313,7 +313,7 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
     results = [actor.increase.remote() for _ in range(100)]
     # Kill actor node, while the above task is still being executed.
     cluster.remove_node(actor_node)
-    cluster.add_node(num_cpus=1, _internal_config=config)
+    cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
     # Check that none of the tasks failed and the actor is restarted.
     seq = list(range(1, 101))
@@ -442,7 +442,8 @@ def test_caller_task_reconstruction(ray_start_regular):
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_internal_config_map(
-            initial_reconstruction_timeout_milliseconds=1000)
+            initial_reconstruction_timeout_milliseconds=1000,
+            num_heartbeats_timeout=10)
     ],
     indirect=True)
 def test_multiple_actor_restart(ray_start_cluster_head):
@@ -454,14 +455,7 @@ def test_multiple_actor_restart(ray_start_cluster_head):
     num_actors_at_a_time = 3
     num_function_calls_at_a_time = 10
 
-    worker_nodes = [
-        cluster.add_node(
-            num_cpus=3,
-            _internal_config=json.dumps({
-                "initial_reconstruction_timeout_milliseconds": 200,
-                "num_heartbeats_timeout": 10,
-            })) for _ in range(num_nodes)
-    ]
+    worker_nodes = [cluster.add_node(num_cpus=3) for _ in range(num_nodes)]
 
     @ray.remote(max_restarts=-1, max_task_retries=-1)
     class SlowCounter:

@@ -242,7 +242,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
             num_gpus=num_gpus_per_raylet,
             _internal_config=json.dumps({
                 "num_heartbeats_timeout": 1000
-            }))
+            } if i == 0 else {}))
     ray.init(address=cluster.address)
 
     @ray.remote

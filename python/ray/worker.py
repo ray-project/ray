@@ -771,6 +771,9 @@ def init(address=None,
         if _internal_config is not None and len(_internal_config) != 0:
             raise ValueError("When connecting to an existing cluster, "
                              "_internal_config must not be provided.")
+        if lru_evict:
+            raise ValueError("When connecting to an existing cluster, "
+                             "lru_evict must not be provided.")
 
         # In this case, we only need to connect the node.
         ray_params = ray.parameter.RayParams(
@@ -1283,14 +1286,6 @@ def connect(node,
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
             "ray_driver_{}".format(os.getpid()), driver_object_store_memory)
-
-    # Put something in the plasma store so that subsequent plasma store
-    # accesses will be faster. Currently the first access is always slow, and
-    # we don't want the user to experience this.
-    if mode != LOCAL_MODE:
-        temporary_object_ref = ray.ObjectRef.from_random()
-        worker.put_object(1, object_ref=temporary_object_ref)
-        ray.internal.free([temporary_object_ref])
 
     # Start the import thread
     worker.import_thread = import_thread.ImportThread(worker, mode,
