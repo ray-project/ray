@@ -220,8 +220,9 @@ class SSHOptions:
         self.arg_dict["ConnectTimeout"] = "{}s".format(timeout)
         return ["-i", self.ssh_key] + [
             x for y in (["-o", "{}={}".format(k, v)]
-                        for k, v in self.arg_dict.items() if v is not None)
-            for x in y]
+                        for k, v in self.arg_dict.items()
+                        if v is not None) for x in y
+        ]
 
 
 class SSHCommandRunner(CommandRunnerInterface):
@@ -244,9 +245,10 @@ class SSHCommandRunner(CommandRunnerInterface):
         self.ssh_control_path = ssh_control_path
         self.ssh_ip = None
         self.ssh_proxy_command = auth_config.get("ssh_proxy_command", None)
-        self.ssh_options = SSHOptions(self.ssh_private_key,
-                                      self.ssh_control_path,
-                                      ProxyCommand=self.ssh_proxy_command)
+        self.ssh_options = SSHOptions(
+            self.ssh_private_key,
+            self.ssh_control_path,
+            ProxyCommand=self.ssh_proxy_command)
 
     def _get_node_ip(self):
         if self.use_internal_ip:
