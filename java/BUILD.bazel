@@ -162,7 +162,6 @@ genrule(
     srcs = ["//:redis-server"],
     outs = ["redis-server"],
     cmd = "cp $< $@",
-    output_to_bindir = 1,
 )
 
 filegroup(
