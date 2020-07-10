@@ -39,28 +39,25 @@ class TestModules(unittest.TestCase):
         """
 
         criterion = torch.nn.MSELoss(reduction="sum")
-        optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
+        optimizer = torch.optim.Adam(model.parameters(), lr=5e-3)
 
         # Check that the layer trains correctly
         for t in range(num_epochs):
             y_pred = model(inputs, state, seq_lens)
-            loss = criterion(y_pred[0], torch.squeeze(outputs[0]))
+            loss = criterion(y_pred[0], outputs[0])
 
-            if t % 10 == 1:
-                print(t, loss.item())
-
-            # if t == 0:
-            #     init_loss = loss.item()
+            if t == 0:
+                init_loss = loss.item()
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-        # final_loss = loss.item()
+        final_loss = loss.item()
 
         # The final loss has decreased, which tests
         # that the model is learning from the training data.
-        # self.assertLess(final_loss / init_loss, 0.99)
+        self.assertLess(final_loss / init_loss, 0.75)
 
     def train_torch_layer(self, model, inputs, outputs, num_epochs=250):
         """Convenience method that trains a Torch model for num_epochs epochs
@@ -91,7 +88,7 @@ class TestModules(unittest.TestCase):
 
         # The final loss has decreased by a factor of 2, which tests
         # that the model is learning from the training data.
-        self.assertLess(final_loss / init_loss, 0.5)
+        self.assertLess(final_loss / init_loss, 0.75)
 
     def train_tf_model(self,
                        model,
@@ -182,7 +179,8 @@ class TestModules(unittest.TestCase):
             if fw == "torch":
                 # Create random Tensors to hold inputs and outputs
                 x = torch.randn(B, L, D_in)
-                y = torch.randn(B, L, D_out)
+                # Torch automatically folds in the time dimension.
+                y = torch.randn(B * L, D_out)
 
                 value_labels = torch.randn(B, L, 1)
                 memory_labels = torch.randn(B, L, D_in)
@@ -206,7 +204,6 @@ class TestModules(unittest.TestCase):
 
                 # Get initial state and add a batch dimension.
                 init_state = [np.tile(s, (B, 1, 1)) for s in init_state]
-                    #[np.expand_dims(s, 0) for s in init_state]
                 seq_lens_init = torch.full(size=(B, ), fill_value=L)
 
                 # Torch implementation expects a formatted input_dict instead
@@ -215,7 +212,7 @@ class TestModules(unittest.TestCase):
                 self.train_torch_full_model(
                     attention_net,
                     input_dict, [y, value_labels, memory_labels],
-                    num_epochs=250,
+                    num_epochs=1000,
                     state=init_state,
                     seq_lens=seq_lens_init)
             # Framework is tensorflow or tensorflow-eager.
