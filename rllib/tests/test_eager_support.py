@@ -121,6 +121,7 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
 if __name__ == "__main__":
     import sys
     # Don't test anything for version 2.x (all tests are eager anyways).
+    # TODO: (sven) remove entire file in the future.
     if tfv == 2:
         print("\tskip due to tf==2.x")
         sys.exit(0)
@@ -128,6 +129,6 @@ if __name__ == "__main__":
     # One can specify the specific TestCase class to run.
     # None for all unittest.TestCase classes in this file.
     import pytest
-    class_ = sys.argv[1] if len(sys.argv) > 0 else None
+    class_ = sys.argv[1] if len(sys.argv) > 1 else None
     sys.exit(pytest.main(
         ["-v", __file__ + ("" if class_ is None else "::" + class_)]))
