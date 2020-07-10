@@ -425,7 +425,7 @@ py_test(
 py_test(
     name = "test_dqn",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/dqn/tests/test_dqn.py"]
 )
 py_test(

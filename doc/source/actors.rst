@@ -47,7 +47,7 @@ When the above actor is instantiated, the following events happen.
 Actor Methods
 -------------
 
-Any method of the actor can return multiple object IDs with the ``ray.method`` decorator:
+Any method of the actor can return multiple object refs with the ``ray.method`` decorator:
 
 .. code-block:: python
 
@@ -60,9 +60,9 @@ Any method of the actor can return multiple object IDs with the ``ray.method`` d
 
     f = Foo.remote()
 
-    obj_id1, obj_id2 = f.bar.remote()
-    assert ray.get(obj_id1) == 1
-    assert ray.get(obj_id2) == 2
+    obj_ref1, obj_ref2 = f.bar.remote()
+    assert ray.get(obj_ref1) == 1
+    assert ray.get(obj_ref2) == 2
 
 .. _actor-resource-guide:
 
@@ -146,7 +146,7 @@ If necessary, you can manually terminate an actor by calling
 ``ray.actor.exit_actor()`` from within one of the actor methods. This will kill
 the actor process and release resources associated/assigned to the actor. This
 approach should generally not be necessary as actors are automatically garbage
-collected. The ``ObjectID`` resulting from the task can be waited on to wait
+collected. The ``ObjectRef`` resulting from the task can be waited on to wait
 for the actor to exit (calling ``ray.get()`` on it will raise a ``RayActorError``).
 Note that this method of termination will wait until any previously submitted
 tasks finish executing. If you want to terminate an actor immediately, you can

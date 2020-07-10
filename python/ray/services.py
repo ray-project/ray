@@ -1468,7 +1468,7 @@ def build_java_worker_command(
         pairs.append(("ray.redis.password", redis_password))
 
     pairs.append(("ray.home", RAY_HOME))
-    pairs.append(("ray.log-dir", os.path.join(session_dir, "logs")))
+    pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
 
     command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
