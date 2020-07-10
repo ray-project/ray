@@ -25,6 +25,10 @@
 #include "ray/object_manager/object_manager.h"
 #include "ray/util/filesystem.h"
 
+extern "C" {
+#include "hiredis/hiredis.h"
+}
+
 namespace ray {
 
 using rpc::GcsNodeInfo;

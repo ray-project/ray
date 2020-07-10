@@ -19,8 +19,9 @@
 #include "ray/common/status.h"
 
 extern "C" {
-#include "hiredis/async.h"
-#include "hiredis/hiredis.h"
+struct redisAsyncContext;
+struct redisReply;
+typedef void redisCallbackFn(struct redisAsyncContext *, void *, void *);
 }
 
 namespace ray {
