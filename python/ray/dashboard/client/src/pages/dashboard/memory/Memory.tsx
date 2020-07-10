@@ -75,7 +75,7 @@ const memoryHeaderInfo: HeaderInfo<MemoryTableEntry>[] = [
   { id: "node_ip_address", label: "IP Address", numeric: true },
   { id: "pid", label: "pid", numeric: true },
   { id: "type", label: "Type", numeric: false },
-  { id: "object_id", label: "Object ID", numeric: false },
+  { id: "object_ref", label: "Object Ref", numeric: false },
   { id: "object_size", label: "Object Size (B)", numeric: true },
   { id: "reference_type", label: "Reference Type", numeric: false },
   { id: "call_site", label: "Call Site", numeric: false },

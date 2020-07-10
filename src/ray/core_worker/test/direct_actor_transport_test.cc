@@ -336,6 +336,8 @@ class MockDependencyWaiter : public DependencyWaiter {
  public:
   MOCK_METHOD2(Wait, void(const std::vector<rpc::ObjectReference> &dependencies,
                           std::function<void()> on_dependencies_available));
+
+  virtual ~MockDependencyWaiter() {}
 };
 
 class MockWorkerContext : public WorkerContext {

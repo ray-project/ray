@@ -1892,7 +1892,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_num_pending_tasks(task_manager_->NumSubmissibleTasks());
   stats->set_task_queue_length(task_queue_length_);
   stats->set_num_executed_tasks(num_executed_tasks_);
-  stats->set_num_object_ids_in_scope(reference_counter_->NumObjectIDsInScope());
+  stats->set_num_object_refs_in_scope(reference_counter_->NumObjectIDsInScope());
   stats->set_current_task_func_desc(current_task_.FunctionDescriptor()->ToString());
   stats->set_ip_address(rpc_address_.ip_address());
   stats->set_port(rpc_address_.port());
