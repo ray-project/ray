@@ -194,7 +194,6 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   ray::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
       actor_id, ray_function, task_args, task_options, &return_ids);
 
-
   // This is to avoid creating an empty java list and boost performance.
   if (return_ids.empty()) {
     return nullptr;

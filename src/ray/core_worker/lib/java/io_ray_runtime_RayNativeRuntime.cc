@@ -133,7 +133,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
             if (result != nullptr) {
               if (result->HasData()) {
                 memcpy(result->GetData()->Data(), return_objects[i]->GetData()->Data(),
-                         data_sizes[i]);
+                       data_sizes[i]);
               }
             }
           }
