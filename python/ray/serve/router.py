@@ -198,7 +198,7 @@ class Router:
             self.endpoint_queues[endpoint].appendleft(query)
             self.flush_endpoint_queue(endpoint)
 
-        # Note: a future change can be to directly return the ObjectID from
+        # Note: a future change can be to directly return the ObjectRef from
         # replica task submission
         try:
             result = await query.async_future

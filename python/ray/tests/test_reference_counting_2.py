@@ -32,24 +32,24 @@ def one_worker_100MiB(request):
     ray.shutdown()
 
 
-def _fill_object_store_and_get(oid, succeed=True, object_MiB=40,
+def _fill_object_store_and_get(obj, succeed=True, object_MiB=40,
                                num_objects=5):
     for _ in range(num_objects):
         ray.put(np.zeros(object_MiB * 1024 * 1024, dtype=np.uint8))
 
-    if type(oid) is bytes:
-        oid = ray.ObjectID(oid)
+    if type(obj) is bytes:
+        obj = ray.ObjectRef(obj)
 
     if succeed:
         wait_for_condition(
-            lambda: ray.worker.global_worker.core_worker.object_exists(oid))
+            lambda: ray.worker.global_worker.core_worker.object_exists(obj))
     else:
         wait_for_condition(
-            lambda: not ray.worker.global_worker.core_worker.object_exists(oid)
+            lambda: not ray.worker.global_worker.core_worker.object_exists(obj)
         )
 
 
-# Test that an object containing object IDs within it pins the inner IDs
+# Test that an object containing object refs within it pins the inner IDs
 # recursively and for submitted tasks.
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
@@ -99,11 +99,11 @@ def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
 
 
-# Test that serialized objectIDs returned from remote tasks are pinned until
+# Test that serialized ObjectRefs returned from remote tasks are pinned until
 # they go out of scope on the caller side.
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
-def test_return_object_id(one_worker_100MiB, use_ray_put, failure):
+def test_return_object_ref(one_worker_100MiB, use_ray_put, failure):
     @ray.remote
     def return_an_id():
         return [
@@ -139,11 +139,11 @@ def test_return_object_id(one_worker_100MiB, use_ray_put, failure):
     _fill_object_store_and_get(inner_oid_binary, succeed=False)
 
 
-# Test that serialized objectIDs returned from remote tasks are pinned if
+# Test that serialized ObjectRefs returned from remote tasks are pinned if
 # passed into another remote task by the caller.
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
-def test_pass_returned_object_id(one_worker_100MiB, use_ray_put, failure):
+def test_pass_returned_object_ref(one_worker_100MiB, use_ray_put, failure):
     @ray.remote
     def return_an_id():
         return [
@@ -179,7 +179,7 @@ def test_pass_returned_object_id(one_worker_100MiB, use_ray_put, failure):
 
     def ref_not_exists():
         worker = ray.worker.global_worker
-        inner_oid = ray.ObjectID(inner_oid_binary)
+        inner_oid = ray.ObjectRef(inner_oid_binary)
         return not worker.core_worker.object_exists(inner_oid)
 
     assert wait_for_condition(ref_not_exists)
@@ -191,8 +191,8 @@ def test_pass_returned_object_id(one_worker_100MiB, use_ray_put, failure):
 # it finishes.
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
-def test_recursively_pass_returned_object_id(one_worker_100MiB, use_ray_put,
-                                             failure):
+def test_recursively_pass_returned_object_ref(one_worker_100MiB, use_ray_put,
+                                              failure):
     @ray.remote
     def return_an_id():
         return put_object(
@@ -246,14 +246,14 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB, use_ray_put,
 
 
 # Call a recursive chain of tasks. The final task in the chain returns an
-# ObjectID returned by a task that it submitted. Every other task in the chain
-# returns the same ObjectID by calling ray.get() on its submitted task and
+# ObjectRef returned by a task that it submitted. Every other task in the chain
+# returns the same ObjectRef by calling ray.get() on its submitted task and
 # returning the result. The reference should still exist while the driver has a
-# reference to the final task's ObjectID.
+# reference to the final task's ObjectRef.
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
-def test_recursively_return_borrowed_object_id(one_worker_100MiB, use_ray_put,
-                                               failure):
+def test_recursively_return_borrowed_object_ref(one_worker_100MiB, use_ray_put,
+                                                failure):
     @ray.remote
     def recursive(num_tasks_left):
         if num_tasks_left == 0:
