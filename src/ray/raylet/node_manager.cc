@@ -2985,6 +2985,10 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
             MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
                                 JobID::Nil());
           }
+          // Do nothing if the owner replied that the object is available. The
+          // object manager will continue trying to fetch the object, and this
+          // handler will get triggered again if the object is still
+          // unavailable after another timeout.
         }));
   } else {
     // We do not have the owner's address. This is either an actor creation
