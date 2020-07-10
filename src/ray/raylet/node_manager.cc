@@ -2963,6 +2963,26 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
   if (!owner_addr.worker_id().empty()) {
     // The owner's address exists. Poll the owner to check if the object is
     // still in scope. If not, mark the object as failed.
+    auto client = std::unique_ptr<rpc::CoreWorkerClient>(
+        new rpc::CoreWorkerClient(owner_addr, client_call_manager_));
+
+    rpc::GetObjectStatusRequest request;
+    request.set_object_id(required_object_id.Binary());
+    request.set_owner_worker_id(owner_addr.worker_id());
+    RAY_CHECK_OK(client->GetObjectStatus(
+        request, [this, required_object_id](Status status,
+                                            const rpc::GetObjectStatusReply &reply) {
+          if (!status.ok() || reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE) {
+            // The owner is gone or the owner replied that the object has gone
+            // out of scope (this is an edge case in the distributed ref counting
+            // protocol where a borrower dies before it can notify the owner of
+            // another borrower). Store an error in the local plasma store so
+            // that an exception will be thrown when the worker tries to get the
+            // value.
+            MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
+                                JobID::Nil());
+          }
+        }));
   } else {
     // We do not have the owner's address. This is either an actor creation
     // task or a randomly generated ObjectID. Try to look up the spec for the
