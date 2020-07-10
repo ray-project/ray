@@ -19,6 +19,43 @@
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/lib/java/jni_utils.h"
 
+ray::Status PutSerializedObject(JNIEnv *env, jobject obj, ray::ObjectID object_id,
+                                ray::ObjectID *out_object_id, bool pin_object = true) {
+  auto native_ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);
+  RAY_CHECK(native_ray_object != nullptr);
+
+  size_t data_size = 0;
+  if (native_ray_object->HasData()) {
+    data_size = native_ray_object->GetData()->Size();
+  }
+  std::shared_ptr<ray::Buffer> data;
+  ray::Status status;
+  if (object_id.IsNil()) {
+    status = ray::CoreWorkerProcess::GetCoreWorker().Create(
+        native_ray_object->GetMetadata(), data_size, native_ray_object->GetNestedIds(),
+        out_object_id, &data);
+  } else {
+    status = ray::CoreWorkerProcess::GetCoreWorker().Create(
+        native_ray_object->GetMetadata(), data_size, object_id, &data);
+    *out_object_id = object_id;
+  }
+  if (!status.ok()) {
+    return status;
+  }
+
+  // If data is nullptr, that means the ObjectID already existed, which we ignore.
+  // TODO(edoakes): this is hacky, we should return the error instead and deal with it
+  // here.
+  if (data != nullptr) {
+    if (data->Size() > 0) {
+      memcpy(data->Data(), native_ray_object->GetData()->Data(), data->Size());
+    }
+    ray::CoreWorkerProcess::GetCoreWorker().Seal(*out_object_id,
+                                                 pin_object && object_id.IsNil());
+  }
+  return ray::Status::OK();
+}
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -26,10 +63,9 @@ extern "C" {
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_NativeRayObject_2(
     JNIEnv *env, jclass, jobject obj) {
-  auto ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);
-  RAY_CHECK(ray_object != nullptr);
   ray::ObjectID object_id;
-  auto status = ray::CoreWorkerProcess::GetCoreWorker().Put(*ray_object, {}, &object_id);
+  auto status = PutSerializedObject(env, obj, /*object_id=*/ray::ObjectID::Nil(),
+                                    /*out_object_id=*/&object_id, /*pin_object=*/true);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return IdToJavaByteArray<ray::ObjectID>(env, object_id);
 }
@@ -38,9 +74,10 @@ JNIEXPORT void JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativePut___3BLio_ray_runtime_object_NativeRayObject_2(
     JNIEnv *env, jclass, jbyteArray objectId, jobject obj) {
   auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
-  auto ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);
-  RAY_CHECK(ray_object != nullptr);
-  auto status = ray::CoreWorkerProcess::GetCoreWorker().Put(*ray_object, {}, object_id);
+  ray::ObjectID dummy_object_id;
+  auto status =
+      PutSerializedObject(env, obj, object_id,
+                          /*out_object_id=*/&dummy_object_id, /*pin_object=*/true);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 

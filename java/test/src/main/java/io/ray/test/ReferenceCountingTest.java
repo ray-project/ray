@@ -256,8 +256,6 @@ public class ReferenceCountingTest extends BaseTest {
    * Test that an object containing object IDs within it pins the inner IDs. Based on Python test
    * case `test_basic_nested_ids`.
    */
-  // TODO(kfstorm): Port https://github.com/ray-project/ray/pull/6052 to Java.
-  @Test(enabled = false)
   public void testBasicNestedIds() {
     ObjectRef<byte[]> inner = Ray.put(new byte[40 * 1024 * 1024]);
     ObjectRef<List<ObjectRef<byte[]>>> outer = Ray.put(Collections.singletonList(inner));

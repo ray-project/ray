@@ -122,8 +122,6 @@ public class ActorTest extends BaseTest {
   }
 
   // This test case follows `test_internal_free` in `python/ray/tests/test_advanced.py`.
-  // TODO(kfstorm): Port https://github.com/ray-project/ray/pull/6052 to Java.
-  @Test(enabled = false)
   public void testUnreconstructableActorObject() throws InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
 

@@ -86,8 +86,8 @@ public class ObjectSerializer {
       return new NativeRayObject(serializedBytes, TASK_EXECUTION_EXCEPTION_META);
     } else {
       Pair<byte[], Boolean> serialized = Serializer.encode(object);
-      NativeRayObject nativeRayObject = new NativeRayObject(serialized.getLeft(), serialized.getRight() ?
-          OBJECT_METADATA_TYPE_CROSS_LANGUAGE : OBJECT_METADATA_TYPE_JAVA);
+      NativeRayObject nativeRayObject = new NativeRayObject(serialized.getLeft(),
+          serialized.getRight() ? OBJECT_METADATA_TYPE_CROSS_LANGUAGE : OBJECT_METADATA_TYPE_JAVA);
       nativeRayObject.setContainedObjectIds(ObjectRefImpl.getAndClearContainedObjectIds());
       return nativeRayObject;
     }
