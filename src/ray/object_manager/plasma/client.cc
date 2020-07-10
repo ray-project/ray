@@ -907,8 +907,7 @@ Status PlasmaClient::Impl::Abort(const ObjectID& object_id) {
 
   std::vector<uint8_t> buffer;
   ObjectID id;
-  MessageType type;
-  RAY_RETURN_NOT_OK(ReadMessage(store_conn_->fd, &type, &buffer));
+  RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaAbortReply, &buffer));
   return ReadAbortReply(buffer.data(), buffer.size(), &id);
 }
 
@@ -944,8 +943,7 @@ Status PlasmaClient::Impl::Evict(int64_t num_bytes, int64_t& num_bytes_evicted) 
   RAY_RETURN_NOT_OK(SendEvictRequest(store_conn_, num_bytes));
   // Wait for a response with the number of bytes actually evicted.
   std::vector<uint8_t> buffer;
-  MessageType type;
-  RAY_RETURN_NOT_OK(ReadMessage(store_conn_->fd, &type, &buffer));
+  RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaEvictReply, &buffer));
   return ReadEvictReply(buffer.data(), buffer.size(), num_bytes_evicted);
 }
 
@@ -954,8 +952,7 @@ Status PlasmaClient::Impl::Refresh(const std::vector<ObjectID>& object_ids) {
 
   RAY_RETURN_NOT_OK(SendRefreshLRURequest(store_conn_, object_ids));
   std::vector<uint8_t> buffer;
-  MessageType type;
-  RAY_RETURN_NOT_OK(ReadMessage(store_conn_->fd, &type, &buffer));
+  RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaRefreshLRUReply, &buffer));
   return ReadRefreshLRUReply(buffer.data(), buffer.size());
 }
 
