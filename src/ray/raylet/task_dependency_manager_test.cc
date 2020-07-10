@@ -151,7 +151,8 @@ TEST_F(TaskDependencyManagerTest, TestSimpleTask) {
     EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(argument_id));
   }
   // Subscribe to the task's dependencies.
-  bool ready = task_dependency_manager_.SubscribeGetDependencies(task_id, arguments);
+  bool ready = task_dependency_manager_.SubscribeGetDependencies(
+      task_id, ObjectIdsToRefs(arguments));
   ASSERT_FALSE(ready);
 
   // All arguments should be canceled as they become available locally.
@@ -187,7 +188,8 @@ TEST_F(TaskDependencyManagerTest, TestDuplicateSubscribeGetDependencies) {
     // requested from the node manager once.
     EXPECT_CALL(object_manager_mock_, Pull(argument_id));
     EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(argument_id));
-    bool ready = task_dependency_manager_.SubscribeGetDependencies(task_id, arguments);
+    bool ready = task_dependency_manager_.SubscribeGetDependencies(
+        task_id, ObjectIdsToRefs(arguments));
     ASSERT_FALSE(ready);
   }
 
@@ -223,8 +225,8 @@ TEST_F(TaskDependencyManagerTest, TestMultipleTasks) {
     TaskID task_id = RandomTaskId();
     dependent_tasks.push_back(task_id);
     // Subscribe to each of the task's dependencies.
-    bool ready =
-        task_dependency_manager_.SubscribeGetDependencies(task_id, {argument_id});
+    bool ready = task_dependency_manager_.SubscribeGetDependencies(
+        task_id, ObjectIdsToRefs({argument_id}));
     ASSERT_FALSE(ready);
   }
 
@@ -312,7 +314,7 @@ TEST_F(TaskDependencyManagerTest, TestDependentPut) {
   EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(put_id));
   // Subscribe to the task's dependencies.
   bool ready = task_dependency_manager_.SubscribeGetDependencies(
-      task2.GetTaskSpecification().TaskId(), {put_id});
+      task2.GetTaskSpecification().TaskId(), ObjectIdsToRefs({put_id}));
   ASSERT_FALSE(ready);
 
   // The put object should be considered local as soon as the task that creates
@@ -373,7 +375,8 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
     EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(argument_id));
   }
   // Subscribe to the task's dependencies.
-  bool ready = task_dependency_manager_.SubscribeGetDependencies(task_id, arguments);
+  bool ready = task_dependency_manager_.SubscribeGetDependencies(
+      task_id, ObjectIdsToRefs(arguments));
   ASSERT_FALSE(ready);
 
   // Tell the task dependency manager that each of the arguments is now
@@ -528,10 +531,12 @@ TEST_F(TaskDependencyManagerTest, TestWaitDependencies) {
   EXPECT_CALL(object_manager_mock_, Pull(_)).Times(num_objects);
   EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(_))
       .Times(num_objects);
-  task_dependency_manager_.SubscribeWaitDependencies(worker_id, wait_object_ids);
+  task_dependency_manager_.SubscribeWaitDependencies(worker_id,
+                                                     ObjectIdsToRefs(wait_object_ids));
   // Check that it's okay to call `ray.wait` on the same objects again. No new
   // calls should be made to try and make the objects local.
-  task_dependency_manager_.SubscribeWaitDependencies(worker_id, wait_object_ids);
+  task_dependency_manager_.SubscribeWaitDependencies(worker_id,
+                                                     ObjectIdsToRefs(wait_object_ids));
   // Cancel the worker's `ray.wait`. calls.
   EXPECT_CALL(object_manager_mock_, CancelPull(_)).Times(num_objects);
   EXPECT_CALL(reconstruction_policy_mock_, Cancel(_)).Times(num_objects);
@@ -563,7 +568,8 @@ TEST_F(TaskDependencyManagerTest, TestWaitDependenciesObjectLocal) {
       EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(object_id));
     }
   }
-  task_dependency_manager_.SubscribeWaitDependencies(worker_id, wait_object_ids);
+  task_dependency_manager_.SubscribeWaitDependencies(worker_id,
+                                                     ObjectIdsToRefs(wait_object_ids));
   // Simulate the local object getting evicted. The `ray.wait` call should not
   // be reactivated.
   auto waiting_task_ids = task_dependency_manager_.HandleObjectMissing(local_object_id);
@@ -593,7 +599,8 @@ TEST_F(TaskDependencyManagerTest, TestWaitDependenciesHandleObjectLocal) {
   EXPECT_CALL(object_manager_mock_, Pull(_)).Times(num_objects);
   EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(_))
       .Times(num_objects);
-  task_dependency_manager_.SubscribeWaitDependencies(worker_id, wait_object_ids);
+  task_dependency_manager_.SubscribeWaitDependencies(worker_id,
+                                                     ObjectIdsToRefs(wait_object_ids));
   // Simulate one of the objects becoming local while the `ray.wait` calls is
   // active. The `ray.wait` call should be canceled.
   const ObjectID local_object_id = std::move(wait_object_ids.back());

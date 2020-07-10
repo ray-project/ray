@@ -70,8 +70,8 @@ class Network(object):
 # yapf: disable
 # __actor_start__
 NetworkActor = Network.remote()
-result_object_id = NetworkActor.train.remote()
-ray.get(result_object_id)
+result_object_ref = NetworkActor.train.remote()
+ray.get(result_object_ref)
 # __actor_end__
 # yapf: enable
 
