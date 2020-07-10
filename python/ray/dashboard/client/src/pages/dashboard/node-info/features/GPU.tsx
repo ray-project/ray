@@ -1,6 +1,6 @@
 import { Box, Tooltip, Typography } from "@material-ui/core";
 import React from "react";
-import { GPUStats , RayletWorkerStats, ResourceSlot } from "../../../../api";
+import { GPUStats, RayletWorkerStats, ResourceSlot } from "../../../../api";
 import { RightPaddedTypography } from "../../../../common/CustomTypography";
 import { Accessor } from "../../../../common/tableUtils";
 
@@ -62,6 +62,7 @@ const ClusterGPU: ClusterFeatureRenderFn = ({ nodes }) => {
 };
 
 const NodeGPU: NodeFeatureRenderFn = ({ node }) => {
+  const hasGPU = node.gpus !== undefined && node.gpus.length !== 0;
   return (
     <div style={{ minWidth: GPU_COL_WIDTH }}>
       {hasGPU ? (

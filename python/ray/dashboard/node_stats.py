@@ -62,13 +62,11 @@ class NodeStats(threading.Thread):
             logs_by_pid = {pid: len(logs) for pid, logs in logs_by_pid.items()}
             self._node_stats[hostname]["log_count"] = logs_by_pid
 
-
     def _insert_error_counts(self):
         for ip, errs_by_pid in self._errors.items():
             hostname = self._ip_to_hostname[ip]
             errs_by_pid = {pid: len(errs) for pid, errs in errs_by_pid.items()}
             self._node_stats[hostname]["error_count"] = errs_by_pid
-            logger.info("Nodestats1: {}".format(self._node_stats[hostname]["error_count"]))
 
     def _purge_outdated_stats(self):
         def current(then, now):
@@ -91,10 +89,7 @@ class NodeStats(threading.Thread):
             node_stats = sorted(
                 (v for v in self._node_stats.values()),
                 key=itemgetter("boot_time"))
-            logger.info("Nodestats2: {}".format(node_stats))
-            return {
-                "clients": node_stats
-            }
+            return {"clients": node_stats}
 
     def get_actor_tree(self, workers_info_by_node, infeasible_tasks,
                        ready_tasks):
@@ -250,7 +245,7 @@ class NodeStats(threading.Thread):
                         }
                     elif channel == ray.gcs_utils.RAY_REPORTER_PUBSUB_PATTERN:
                         data = json.loads(ray.utils.decode(data))
-                        self._ip_to_hostname[data["ip"]] = data["hostname"] 
+                        self._ip_to_hostname[data["ip"]] = data["hostname"]
                         self._node_stats[data["hostname"]] = data
                     else:
                         logger.warning("Unexpected channel data received, "

@@ -44,6 +44,7 @@ export const WorkerDisk: WorkerFeatureRenderFn = () => (
 
 const diskFeature: NodeInfoFeature = {
   id: "disk",
+  ClusterFeatureRenderFn: ClusterDisk,
   NodeFeatureRenderFn: NodeDisk,
   WorkerFeatureRenderFn: WorkerDisk,
   nodeAccessor: nodeDiskAccessor,
