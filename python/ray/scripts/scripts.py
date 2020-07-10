@@ -339,14 +339,18 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
 def start(node_ip_address, redis_address, address, redis_port, port,
           num_redis_shards, redis_max_clients, redis_password,
           redis_shard_ports, object_manager_port, node_manager_port,
-          gcs_server_port, min_worker_port, max_worker_port, memory, object_store_memory,
-          redis_max_memory, num_cpus, num_gpus, resources, head, include_webui,
-          webui_host, include_dashboard, dashboard_host, dashboard_port, block,
-          plasma_directory, huge_pages, autoscaling_config,
-          no_redirect_worker_output, no_redirect_output,
+          gcs_server_port, min_worker_port, max_worker_port, memory,
+          object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
+          head, include_webui, webui_host, include_dashboard, dashboard_host,
+          dashboard_port, block, plasma_directory, huge_pages,
+          autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, load_code_from_local, internal_config):
     """Start Ray processes manually on the local machine."""
+    if gcs_server_port and not head:
+        raise ValueError(
+            "gcs_server_port can be only assigned when you specify --head.")
+
     if redis_address is not None:
         raise DeprecationWarning("The --redis-address argument is "
                                  "deprecated. Please use --address instead.")
