@@ -15,6 +15,7 @@
 #pragma once
 
 #include <ray/common/task/task_spec.h>
+
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/callback.h"
@@ -373,6 +374,17 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
       const StatusCallback &done) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
+
+  Status AsyncSetInternalConfig(
+      std::unordered_map<std::string, std::string> &config) override {
+    return Status::NotImplemented("SetInternaConfig not implemented.");
+  }
+
+  Status AsyncGetInternalConfig(
+      const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback)
+      override {
+    return Status::NotImplemented("GetInternalConfig not implemented.");
+  }
 
  private:
   RedisGcsClient *client_impl_{nullptr};

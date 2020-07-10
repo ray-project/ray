@@ -15,6 +15,7 @@
 #include <thread>
 #include "gtest/gtest.h"
 
+#include "ray/common/test_util.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 
 namespace ray {
@@ -23,7 +24,7 @@ class MockWaiter : public DependencyWaiter {
  public:
   MockWaiter() {}
 
-  void Wait(const std::vector<ObjectID> &dependencies,
+  void Wait(const std::vector<rpc::ObjectReference> &dependencies,
             std::function<void()> on_dependencies_available) override {
     callbacks_.push_back([on_dependencies_available]() { on_dependencies_available(); });
   }
@@ -65,9 +66,9 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
   auto fn_ok = [&n_ok]() { n_ok++; };
   auto fn_rej = [&n_rej]() { n_rej++; };
   queue.Add(0, -1, fn_ok, fn_rej);
-  queue.Add(1, -1, fn_ok, fn_rej, {obj1});
-  queue.Add(2, -1, fn_ok, fn_rej, {obj2});
-  queue.Add(3, -1, fn_ok, fn_rej, {obj3});
+  queue.Add(1, -1, fn_ok, fn_rej, ObjectIdsToRefs({obj1}));
+  queue.Add(2, -1, fn_ok, fn_rej, ObjectIdsToRefs({obj2}));
+  queue.Add(3, -1, fn_ok, fn_rej, ObjectIdsToRefs({obj3}));
   ASSERT_EQ(n_ok, 1);
 
   waiter.Complete(0);
@@ -91,7 +92,7 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   auto fn_ok = [&n_ok]() { n_ok++; };
   auto fn_rej = [&n_rej]() { n_rej++; };
   queue.Add(0, -1, fn_ok, fn_rej);
-  queue.Add(1, -1, fn_ok, fn_rej, {obj1});
+  queue.Add(1, -1, fn_ok, fn_rej, ObjectIdsToRefs({obj1}));
   ASSERT_EQ(n_ok, 1);
   io_service.run();
   ASSERT_EQ(n_rej, 0);

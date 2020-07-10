@@ -1,5 +1,5 @@
 # This workload stresses distributed reference counting by passing and
-# returning serialized ObjectIDs.
+# returning serialized ObjectRefs.
 
 import time
 import json
@@ -36,7 +36,7 @@ for i in range(num_nodes):
         object_store_memory=object_store_memory,
         redis_max_memory=redis_max_memory,
         dashboard_host="0.0.0.0",
-        _internal_config=config,
+        _internal_config=config if i == 0 else None,
     )
 ray.init(address=cluster.address)
 
@@ -50,8 +50,8 @@ def churn():
 
 @ray.remote(max_retries=0)
 def child(*xs):
-    oid = ray.put(np.zeros(1024 * 1024, dtype=np.uint8))
-    return oid
+    obj_ref = ray.put(np.zeros(1024 * 1024, dtype=np.uint8))
+    return obj_ref
 
 
 @ray.remote(max_retries=0)

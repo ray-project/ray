@@ -14,15 +14,16 @@
 
 #include <ray/gcs/gcs_server/test/gcs_server_test_util.h>
 #include <ray/gcs/test/gcs_test_util.h>
-#include "ray/common/test_util.h"
 
 #include <memory>
 
 #include "gtest/gtest.h"
+#include "ray/common/test_util.h"
 
 namespace ray {
 
 using ::testing::_;
+using ::testing::Return;
 
 class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
  public:
@@ -34,6 +35,7 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
   MOCK_METHOD1(CancelOnNode, std::vector<ActorID>(const ClientID &node_id));
   MOCK_METHOD2(CancelOnWorker,
                ActorID(const ClientID &node_id, const WorkerID &worker_id));
+  MOCK_METHOD2(CancelOnLeasing, void(const ClientID &node_id, const ActorID &actor_id));
 
   std::vector<std::shared_ptr<gcs::GcsActor>> actors;
 };
@@ -98,15 +100,23 @@ class GcsActorManagerTest : public ::testing::Test {
 
   void WaitActorCreated(const ActorID &actor_id) {
     auto condition = [this, actor_id]() {
-      auto created_actors = gcs_actor_manager_->GetCreatedActors();
-      for (auto &node_iter : created_actors) {
-        for (auto &actor_iter : node_iter.second) {
-          if (actor_iter.second == actor_id) {
-            return true;
+      // The created_actors_ of gcs actor manager will be modified in io_service thread.
+      // In order to avoid multithreading reading and writing created_actors_, we also
+      // send the read operation to io_service thread.
+      std::promise<bool> promise;
+      io_service_.post([this, actor_id, &promise]() {
+        const auto &created_actors = gcs_actor_manager_->GetCreatedActors();
+        for (auto &node_iter : created_actors) {
+          for (auto &actor_iter : node_iter.second) {
+            if (actor_iter.second == actor_id) {
+              promise.set_value(true);
+              return;
+            }
           }
         }
-      }
-      return false;
+        promise.set_value(false);
+      });
+      return promise.get_future().get();
     };
     EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
   }
@@ -597,6 +607,36 @@ TEST_F(GcsActorManagerTest, TestDestroyActorBeforeActorCreationCompletes) {
   actor->UpdateAddress(RandomAddress());
   gcs_actor_manager_->OnActorCreationSuccess(actor);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
+}
+
+TEST_F(GcsActorManagerTest, TestRaceConditionCancelLease) {
+  // Covers a scenario 1 in this PR https://github.com/ray-project/ray/pull/9215.
+  auto job_id = JobID::FromInt(1);
+  auto create_actor_request =
+      Mocker::GenCreateActorRequest(job_id, /*max_restarts=*/1, /*detached=*/false);
+  std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
+  RAY_CHECK_OK(gcs_actor_manager_->RegisterActor(
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+        finished_actors.emplace_back(actor);
+      }));
+
+  ASSERT_EQ(finished_actors.size(), 0);
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.pop_back();
+  const auto owner_node_id = actor->GetOwnerNodeID();
+  const auto owner_worker_id = actor->GetOwnerID();
+
+  // Check that the actor is in state `ALIVE`.
+  rpc::Address address;
+  auto node_id = ClientID::FromRandom();
+  auto worker_id = WorkerID::FromRandom();
+  address.set_raylet_id(node_id.Binary());
+  address.set_worker_id(worker_id.Binary());
+  actor->UpdateAddress(address);
+  const auto actor_id = actor->GetActorID();
+  EXPECT_CALL(*mock_actor_scheduler_, CancelOnLeasing(node_id, actor_id));
+  gcs_actor_manager_->OnWorkerDead(owner_node_id, owner_worker_id, false);
 }
 
 }  // namespace ray

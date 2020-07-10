@@ -1088,14 +1088,14 @@ class Trainer(Trainable):
         logger.info("Health checking all workers...")
         checks = []
         for ev in workers.remote_workers():
-            _, obj_id = ev.sample_with_count.remote()
-            checks.append(obj_id)
+            _, obj_ref = ev.sample_with_count.remote()
+            checks.append(obj_ref)
 
         healthy_workers = []
-        for i, obj_id in enumerate(checks):
+        for i, obj_ref in enumerate(checks):
             w = workers.remote_workers()[i]
             try:
-                ray.get(obj_id)
+                ray.get(obj_ref)
                 healthy_workers.append(w)
                 logger.info("Worker {} looks healthy".format(i + 1))
             except RayError:

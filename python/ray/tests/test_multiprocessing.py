@@ -232,7 +232,7 @@ def test_apply_async(pool):
     with pytest.raises(Exception):
         pool.apply_async(f, (1, 2), {"kwarg1": 3}).get()
 
-    # Won't return until the input ObjectID is fulfilled.
+    # Won't return until the input ObjectRef is fulfilled.
     def ten_over(args):
         signal, val = args
         ray.get(signal.wait.remote())
@@ -245,7 +245,7 @@ def test_apply_async(pool):
     with pytest.raises(TimeoutError):
         result.get(timeout=0.01)
 
-    # Fulfill the ObjectID.
+    # Fulfill the ObjectRef.
     ray.get(signal.send.remote())
     result.wait(timeout=10)
     assert result.ready()
@@ -257,7 +257,7 @@ def test_apply_async(pool):
     with pytest.raises(ValueError, match="not ready"):
         result.successful()
 
-    # Fulfill the ObjectID with 0, causing the task to fail (divide by zero).
+    # Fulfill the ObjectRef with 0, causing the task to fail (divide by zero).
     ray.get(signal.send.remote())
     result.wait(timeout=10)
     assert result.ready()

@@ -110,7 +110,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
             self.random_exploration.get_tf_exploration_action_op(
                 action_dist, explore)
         exploration_actions = tf.cond(
-            pred=ts <= self.random_timesteps,
+            pred=tf.convert_to_tensor(ts <= self.random_timesteps),
             true_fn=lambda: random_actions,
             false_fn=lambda: stochastic_actions)
 
