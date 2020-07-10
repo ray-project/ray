@@ -872,6 +872,16 @@ cc_test(
 )
 
 cc_test(
+    name = "scheduling_resources_test",
+    srcs = ["src/ray/common/task/scheduling_resources_test.cc"],
+    copts = COPTS,
+    deps = [
+        "ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "id_test",
     srcs = ["src/ray/common/id_test.cc"],
     copts = COPTS,
@@ -1024,6 +1034,20 @@ cc_test(
     name = "gcs_node_manager_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_node_manager_test.cc",
+        "src/ray/gcs/gcs_server/test/gcs_server_test_util.h",
+    ],
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_placement_group_scheduler_test",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_placement_group_scheduler_test.cc",
         "src/ray/gcs/gcs_server/test/gcs_server_test_util.h",
     ],
     copts = COPTS,

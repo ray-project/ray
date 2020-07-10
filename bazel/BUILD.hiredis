@@ -25,6 +25,7 @@ cc_library(
         ],
         exclude =
         [
+            "ssl.c",
             "test.c",
         ],
     ),
@@ -32,14 +33,7 @@ cc_library(
         "*.h",
         "adapters/*.h",
     ]),
-    copts = COPTS + select({
-        "@bazel_tools//src/conditions:windows": [
-            "-D" + "WIN32_REPLACE_FD_APIS",
-            "/FI" + "win32fd.h",
-        ],
-        "//conditions:default": [
-        ],
-    }),
+    copts = COPTS,
     include_prefix = "hiredis",
     deps = [
         ":_hiredis",

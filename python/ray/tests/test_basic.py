@@ -127,7 +127,7 @@ def test_many_fractional_resources(shutdown_only):
         }
         if block:
             ray.get(g.remote())
-        return true_resources == accepted_resources
+        return ray.test_utils.dicts_equal(true_resources, accepted_resources)
 
     # Check that the resource are assigned correctly.
     result_ids = []

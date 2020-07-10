@@ -332,12 +332,10 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartRetry) {
   ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 2, 0, 1));
 }
 
-class MockDependencyWaiterInterface : public DependencyWaiterInterface {
+class MockDependencyWaiter : public DependencyWaiter {
  public:
-  virtual Status WaitForDirectActorCallArgs(const std::vector<ObjectID> &object_ids,
-                                            int64_t tag) override {
-    return Status::OK();
-  }
+  MOCK_METHOD2(Wait, void(const std::vector<rpc::ObjectReference> &dependencies,
+                          std::function<void()> on_dependencies_available));
 };
 
 class MockWorkerContext : public WorkerContext {
@@ -353,7 +351,7 @@ class DirectActorReceiverTest : public ::testing::Test {
   DirectActorReceiverTest()
       : worker_context_(WorkerType::WORKER, JobID::FromInt(0)),
         worker_client_(std::shared_ptr<MockWorkerClient>(new MockWorkerClient())),
-        dependency_client_(std::make_shared<MockDependencyWaiterInterface>()) {
+        dependency_waiter_(std::make_shared<MockDependencyWaiter>()) {
     auto execute_task =
         std::bind(&DirectActorReceiverTest::MockExecuteTask, this, std::placeholders::_1,
                   std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
@@ -361,7 +359,7 @@ class DirectActorReceiverTest : public ::testing::Test {
         new CoreWorkerDirectTaskReceiver(worker_context_, main_io_service_, execute_task,
                                          [] { return Status::OK(); }));
     receiver_->Init([&](const rpc::Address &addr) { return worker_client_; },
-                    rpc_address_, dependency_client_);
+                    rpc_address_, dependency_waiter_);
   }
 
   Status MockExecuteTask(const TaskSpecification &task_spec,
@@ -387,7 +385,7 @@ class DirectActorReceiverTest : public ::testing::Test {
   MockWorkerContext worker_context_;
   boost::asio::io_service main_io_service_;
   std::shared_ptr<MockWorkerClient> worker_client_;
-  std::shared_ptr<DependencyWaiterInterface> dependency_client_;
+  std::shared_ptr<DependencyWaiter> dependency_waiter_;
 };
 
 TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {

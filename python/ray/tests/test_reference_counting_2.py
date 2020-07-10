@@ -41,10 +41,12 @@ def _fill_object_store_and_get(oid, succeed=True, object_MiB=40,
         oid = ray.ObjectID(oid)
 
     if succeed:
-        ray.get(oid)
+        wait_for_condition(
+            lambda: ray.worker.global_worker.core_worker.object_exists(oid))
     else:
-        with pytest.raises(ray.exceptions.RayTimeoutError):
-            ray.get(oid, timeout=0.1)
+        wait_for_condition(
+            lambda: not ray.worker.global_worker.core_worker.object_exists(oid)
+        )
 
 
 # Test that an object containing object IDs within it pins the inner IDs
