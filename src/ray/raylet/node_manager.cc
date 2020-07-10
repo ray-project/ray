@@ -2963,6 +2963,9 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
   if (!owner_addr.worker_id().empty()) {
     // The owner's address exists. Poll the owner to check if the object is
     // still in scope. If not, mark the object as failed.
+    // TODO(swang): If the owner has died, we could also mark the object as
+    // failed as soon as we hear about the owner's failure from the GCS,
+    // avoiding the raylet's reconstruction timeout.
     auto client = std::unique_ptr<rpc::CoreWorkerClient>(
         new rpc::CoreWorkerClient(owner_addr, client_call_manager_));
 
