@@ -597,7 +597,7 @@ def build_memory_entry(*,
                        object_ref=OBJECT_ID,
                        node_address=NODE_ADDRESS):
     object_ref = {
-        "objectId": object_ref,
+        "objectRef": object_ref,
         "callSite": "(task call) /Users:458",
         "objectSize": object_size,
         "localRefCount": local_ref_count,

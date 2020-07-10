@@ -27,7 +27,7 @@ def decode_object_ref_if_needed(object_ref: str) -> bytes:
     """
     if object_ref.endswith("="):
         # If the object ref ends with =, that means it is base64 encoded.
-        # Object ids will always have = as a padding
+        # Object refs will always have = as a padding
         # when it is base64 encoded because objectRef is always 20B.
         return base64.standard_b64decode(object_ref)
     else:
