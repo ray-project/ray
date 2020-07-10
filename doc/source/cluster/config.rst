@@ -63,14 +63,24 @@ The ``example-full.yaml`` configuration is enough to get started with Ray, but f
         InstanceType: p2.8xlarge
 
 **Docker**: Specify docker image. This executes all commands on all nodes in the docker container,
-and opens all the necessary ports to support the Ray cluster. It will also automatically install
-Docker if Docker is not installed. This currently does not have GPU support.
+and opens all the necessary ports to support the Ray cluster.
 
 .. code-block:: yaml
 
     docker:
         image: tensorflow/tensorflow:1.5.0-py3
         container_name: ray_docker
+
+If Docker is not installed, add the following commands to ``initialization_commands`` to install it.
+
+.. code-block:: yaml
+
+    initialization_commands:
+    - curl -fsSL https://get.docker.com -o get-docker.sh
+    - sudo sh get-docker.sh
+    - sudo usermod -aG docker $USER
+    - sudo systemctl restart docker -f
+
 
 **Mixed GPU and CPU nodes**: for RL applications that require proportionally more
 CPU than GPU resources, you can use additional CPU workers with a GPU head node.

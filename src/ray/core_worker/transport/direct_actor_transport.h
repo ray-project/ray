@@ -46,8 +46,20 @@ const int kMaxReorderWaitSeconds = 30;
 /// In direct actor call task submitter and receiver, a task is directly submitted
 /// to the actor that will execute it.
 
+// Interface for testing.
+class CoreWorkerDirectActorTaskSubmitterInterface {
+ public:
+  virtual void AddActorQueueIfNotExists(const ActorID &actor_id) = 0;
+  virtual void ConnectActor(const ActorID &actor_id, const rpc::Address &address) = 0;
+  virtual void DisconnectActor(const ActorID &actor_id, bool dead = false) = 0;
+  virtual void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) = 0;
+
+  virtual ~CoreWorkerDirectActorTaskSubmitterInterface() {}
+};
+
 // This class is thread-safe.
-class CoreWorkerDirectActorTaskSubmitter {
+class CoreWorkerDirectActorTaskSubmitter
+    : public CoreWorkerDirectActorTaskSubmitterInterface {
  public:
   CoreWorkerDirectActorTaskSubmitter(rpc::ClientFactoryFn client_factory,
                                      std::shared_ptr<CoreWorkerMemoryStore> store,
