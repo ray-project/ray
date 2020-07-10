@@ -1,5 +1,4 @@
-#ifndef _QUEUE_SERVICE_H_
-#define _QUEUE_SERVICE_H_
+#pragma once
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
@@ -214,4 +213,3 @@ class DownstreamQueueMessageHandler : public QueueMessageHandler {
 
 }  // namespace streaming
 }  // namespace ray
-#endif

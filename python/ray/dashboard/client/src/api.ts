@@ -22,6 +22,27 @@ const get = async <T>(path: string, params: { [key: string]: any }) => {
   return result as T;
 };
 
+const post = async <T>(path: string, params: { [key: string]: any }) => {
+  const requestOptions = {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  };
+
+  const url = new URL(path, base);
+
+  const response = await fetch(url.toString(), requestOptions);
+  const json = await response.json();
+
+  const { result, error } = json;
+
+  if (error !== null) {
+    throw Error(error);
+  }
+
+  return result as T;
+};
+
 export type RayConfigResponse = {
   min_workers: number;
   max_workers: number;
@@ -34,6 +55,48 @@ export type RayConfigResponse = {
 
 export const getRayConfig = () => get<RayConfigResponse>("/api/ray_config", {});
 
+export type NodeInfoResponseWorker = {
+  pid: number;
+  create_time: number;
+  cmdline: string[];
+  cpu_percent: number;
+  cpu_times: {
+    system: number;
+    children_system: number;
+    user: number;
+    children_user: number;
+  };
+  memory_info: {
+    pageins: number;
+    pfaults: number;
+    vms: number;
+    rss: number;
+  };
+};
+
+export type GPUProcessStats = {
+  // Sub stat of GPU stats, this type represents the GPU
+  // utilization of a single process of a single GPU.
+  username: string;
+  command: string;
+  gpu_memory_usage: number;
+  pid: number;
+};
+
+export type GPUStats = {
+  // This represents stats fetched from a node about a single GPU
+  uuid: string;
+  name: string;
+  temperature_gpu: number;
+  fan_speed: number;
+  utilization_gpu: number;
+  power_draw: number;
+  enforced_power_limit: number;
+  memory_used: number;
+  memory_total: number;
+  processes: Array<GPUProcessStats>;
+};
+
 export type NodeInfoResponse = {
   clients: Array<{
     now: number;
@@ -42,6 +105,7 @@ export type NodeInfoResponse = {
     boot_time: number; // System boot time expressed in seconds since epoch
     cpu: number; // System-wide CPU utilization expressed as a percentage
     cpus: [number, number]; // Number of logical CPUs and physical CPUs
+    gpus: Array<GPUStats>; // GPU stats fetched from node, 1 entry per GPU
     mem: [number, number, number]; // Total, available, and used percentage of memory
     disk: {
       [path: string]: {
@@ -53,24 +117,7 @@ export type NodeInfoResponse = {
     };
     load_avg: [[number, number, number], [number, number, number]];
     net: [number, number]; // Sent and received network traffic in bytes / second
-    workers: Array<{
-      pid: number;
-      create_time: number;
-      cmdline: string[];
-      cpu_percent: number;
-      cpu_times: {
-        system: number;
-        children_system: number;
-        user: number;
-        children_user: number;
-      };
-      memory_info: {
-        pageins: number;
-        pfaults: number;
-        vms: number;
-        rss: number;
-      };
-    }>;
+    workers: Array<NodeInfoResponseWorker>;
   }>;
   log_counts: {
     [ip: string]: {
@@ -86,49 +133,82 @@ export type NodeInfoResponse = {
 
 export const getNodeInfo = () => get<NodeInfoResponse>("/api/node_info", {});
 
+export type ResourceSlot = {
+  slot: number;
+  allocation: number;
+};
+
+export type ResourceAllocations = {
+  resourceSlots: ResourceSlot[];
+};
+
+export type RayletCoreWorkerStats = {
+  usedResources: {
+    [key: string]: ResourceAllocations;
+  };
+};
+
+export type RayletWorkerStats = {
+  pid: number;
+  isDriver?: boolean;
+  coreWorkerStats: RayletCoreWorkerStats;
+};
+
+export type RayletActorInfo =
+  | {
+      actorId: string;
+      actorTitle: string;
+      averageTaskExecutionSpeed: number;
+      children: RayletInfoResponse["actors"];
+      // currentTaskFuncDesc: string[];
+      ipAddress: string;
+      jobId: string;
+      nodeId: string;
+      numExecutedTasks: number;
+      numLocalObjects: number;
+      numObjectIdsInScope: number;
+      pid: number;
+      port: number;
+      state:
+        | ActorState.Creating
+        | ActorState.Alive
+        | ActorState.Restarting
+        | ActorState.Dead;
+      taskQueueLength: number;
+      timestamp: number;
+      usedObjectStoreMemory: number;
+      usedResources: { [key: string]: ResourceAllocations };
+      currentTaskDesc?: string;
+      numPendingTasks?: number;
+      webuiDisplay?: Record<string, string>;
+    }
+  | {
+      actorId: string;
+      actorTitle: string;
+      requiredResources: { [key: string]: number };
+      state: ActorState.Invalid;
+      invalidStateType?: InvalidStateType;
+    };
+
+export type InvalidStateType = "infeasibleActor" | "pendingActor";
+
+export enum ActorState {
+  Invalid = -1,
+  Creating = 0,
+  Alive = 1,
+  Restarting = 2,
+  Dead = 3,
+}
+
 export type RayletInfoResponse = {
   nodes: {
     [ip: string]: {
       extraInfo?: string;
-      workersStats: {
-        pid: number;
-        isDriver?: boolean;
-      }[];
+      workersStats: Array<RayletWorkerStats>;
     };
   };
   actors: {
-    [actorId: string]:
-      | {
-          actorId: string;
-          actorTitle: string;
-          averageTaskExecutionSpeed: number;
-          children: RayletInfoResponse["actors"];
-          // currentTaskFuncDesc: string[];
-          ipAddress: string;
-          isDirectCall: boolean;
-          jobId: string;
-          nodeId: string;
-          numExecutedTasks: number;
-          numLocalObjects: number;
-          numObjectIdsInScope: number;
-          pid: number;
-          port: number;
-          state: 0 | 1 | 2;
-          taskQueueLength: number;
-          timestamp: number;
-          usedObjectStoreMemory: number;
-          usedResources: { [key: string]: number };
-          currentTaskDesc?: string;
-          numPendingTasks?: number;
-          webuiDisplay?: Record<string, string>;
-        }
-      | {
-          actorId: string;
-          actorTitle: string;
-          requiredResources: { [key: string]: number };
-          state: -1;
-          invalidStateType?: "infeasibleActor" | "pendingActor";
-        };
+    [actorId: string]: RayletActorInfo;
   };
 };
 
@@ -234,13 +314,78 @@ export type TuneError = {
 export type TuneJobResponse = {
   trial_records: { [key: string]: TuneTrial };
   errors: { [key: string]: TuneError };
+  tensorboard: {
+    tensorboard_current: boolean;
+    tensorboard_enabled: boolean;
+  };
 };
 
 export const getTuneInfo = () => get<TuneJobResponse>("/api/tune_info", {});
 
 export type TuneAvailabilityResponse = {
   available: boolean;
+  trials_available: boolean;
 };
 
 export const getTuneAvailability = () =>
   get<TuneAvailabilityResponse>("/api/tune_availability", {});
+
+export type TuneSetExperimentReponse = {
+  experiment: string;
+};
+
+export const setTuneExperiment = (experiment: string) =>
+  post<TuneSetExperimentReponse>("/api/set_tune_experiment", {
+    experiment: experiment,
+  });
+
+export const enableTuneTensorBoard = () =>
+  post<{}>("/api/enable_tune_tensorboard", {});
+
+export type MemoryTableSummary = {
+  total_actor_handles: number;
+  total_captured_in_objects: number;
+  total_local_ref_count: number;
+  // The measurement is B.
+  total_object_size: number;
+  total_pinned_in_memory: number;
+  total_used_by_pending_task: number;
+} | null;
+
+export type MemoryTableEntry = {
+  node_ip_address: string;
+  pid: number;
+  type: string;
+  object_id: string;
+  object_size: number;
+  reference_type: string;
+  call_site: string;
+};
+
+export type MemoryTableGroups = {
+  [groupKey: string]: MemoryTableGroup;
+};
+
+export type MemoryTableGroup = {
+  entries: MemoryTableEntry[];
+  summary: MemoryTableSummary;
+};
+
+export type MemoryTableResponse = {
+  group: MemoryTableGroups;
+  summary: MemoryTableSummary;
+};
+
+// This doesn't return anything.
+export type StopMemoryTableResponse = {};
+
+export const getMemoryTable = (shouldObtainMemoryTable: boolean) => {
+  if (shouldObtainMemoryTable) {
+    return get<MemoryTableResponse>("/api/memory_table", {});
+  } else {
+    return null;
+  }
+};
+
+export const stopMemoryTableCollection = () =>
+  get<StopMemoryTableResponse>("/api/stop_memory_table", {});

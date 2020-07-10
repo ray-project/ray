@@ -72,9 +72,10 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_tasks_complete++;
   }
 
-  void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+  bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
                          Status *status) override {
     num_tasks_failed++;
+    return true;
   }
 
   void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
@@ -168,11 +169,11 @@ class MockRayletClient : public WorkerLeaseInterface {
 };
 
 TEST(TestMemoryStore, TestPromoteToPlasma) {
-  bool num_plasma_puts = 0;
+  size_t num_plasma_puts = 0;
   auto mem = std::make_shared<CoreWorkerMemoryStore>(
       [&](const RayObject &obj, const ObjectID &obj_id) { num_plasma_puts += 1; });
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj1 = ObjectID::FromRandom();
+  ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
   ASSERT_TRUE(mem->Put(*data, obj1));
 
@@ -202,40 +203,23 @@ TEST(LocalDependencyResolverTest, TestNoDependencies) {
   ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
 }
 
-TEST(LocalDependencyResolverTest, TestIgnorePlasmaDependencies) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
-  LocalDependencyResolver resolver(store, task_finisher);
-  ObjectID obj1 = ObjectID::FromRandom();
-  TaskSpecification task;
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
-  bool ok = false;
-  resolver.ResolveDependencies(task, [&ok]() { ok = true; });
-  // We ignore and don't block on plasma dependencies.
-  ASSERT_TRUE(ok);
-  ASSERT_EQ(resolver.NumPendingTasks(), 0);
-  ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
-}
-
 TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   LocalDependencyResolver resolver(store, task_finisher);
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj1 = ObjectID::FromRandom();
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
   ASSERT_TRUE(store->Put(data, obj1));
   TaskSpecification task;
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
-  ASSERT_TRUE(task.ArgId(0, 0).IsDirectCallType());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_TRUE(ok);
   ASSERT_TRUE(task.ArgByRef(0));
   // Checks that the object id is still a direct call id.
-  ASSERT_TRUE(task.ArgId(0, 0).IsDirectCallType());
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
   ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
 }
@@ -244,15 +228,15 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   LocalDependencyResolver resolver(store, task_finisher);
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj1 = ObjectID::FromRandom();
+  ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
   // Ensure the data is already present in the local store.
   ASSERT_TRUE(store->Put(*data, obj1));
   ASSERT_TRUE(store->Put(*data, obj2));
   TaskSpecification task;
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
-  task.GetMutableMessage().add_args()->add_object_ids(obj2.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   // Tests that the task proto was rewritten to have inline argument values.
@@ -269,12 +253,12 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   LocalDependencyResolver resolver(store, task_finisher);
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj1 = ObjectID::FromRandom();
+  ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
   TaskSpecification task;
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
-  task.GetMutableMessage().add_args()->add_object_ids(obj2.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
@@ -297,13 +281,13 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   LocalDependencyResolver resolver(store, task_finisher);
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID obj3 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj1 = ObjectID::FromRandom();
+  ObjectID obj2 = ObjectID::FromRandom();
+  ObjectID obj3 = ObjectID::FromRandom();
   auto data = GenerateRandomObject({obj3});
   TaskSpecification task;
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
-  task.GetMutableMessage().add_args()->add_object_ids(obj2.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
@@ -852,16 +836,16 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
                     BuildTaskSpec(resources1, descriptor1),
                     BuildTaskSpec(resources2, descriptor1));
 
-  // Tasks with different function descriptors should request different worker leases.
+  // Tasks with different function descriptors do not request different worker leases.
   RAY_LOG(INFO) << "Test different descriptors";
   TestSchedulingKey(store, BuildTaskSpec(resources1, descriptor1),
-                    BuildTaskSpec(resources1, descriptor1),
-                    BuildTaskSpec(resources1, descriptor2));
+                    BuildTaskSpec(resources1, descriptor2),
+                    BuildTaskSpec(resources2, descriptor1));
 
-  ObjectID direct1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID direct2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID plasma1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID plasma2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID direct1 = ObjectID::FromRandom();
+  ObjectID direct2 = ObjectID::FromRandom();
+  ObjectID plasma1 = ObjectID::FromRandom();
+  ObjectID plasma2 = ObjectID::FromRandom();
   // Ensure the data is already present in the local store for direct call objects.
   auto data = GenerateRandomObject();
   ASSERT_TRUE(store->Put(*data, direct1));
@@ -876,17 +860,25 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
   ASSERT_TRUE(store->Put(plasma_data, plasma2));
 
   TaskSpecification same_deps_1 = BuildTaskSpec(resources1, descriptor1);
-  same_deps_1.GetMutableMessage().add_args()->add_object_ids(direct1.Binary());
-  same_deps_1.GetMutableMessage().add_args()->add_object_ids(plasma1.Binary());
+  same_deps_1.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      direct1.Binary());
+  same_deps_1.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      plasma1.Binary());
   TaskSpecification same_deps_2 = BuildTaskSpec(resources1, descriptor1);
-  same_deps_2.GetMutableMessage().add_args()->add_object_ids(direct1.Binary());
-  same_deps_2.GetMutableMessage().add_args()->add_object_ids(direct2.Binary());
-  same_deps_2.GetMutableMessage().add_args()->add_object_ids(plasma1.Binary());
+  same_deps_2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      direct1.Binary());
+  same_deps_2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      direct2.Binary());
+  same_deps_2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      plasma1.Binary());
 
   TaskSpecification different_deps = BuildTaskSpec(resources1, descriptor1);
-  different_deps.GetMutableMessage().add_args()->add_object_ids(direct1.Binary());
-  different_deps.GetMutableMessage().add_args()->add_object_ids(direct2.Binary());
-  different_deps.GetMutableMessage().add_args()->add_object_ids(plasma2.Binary());
+  different_deps.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      direct1.Binary());
+  different_deps.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      direct2.Binary());
+  different_deps.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      plasma2.Binary());
 
   // Tasks with different plasma dependencies should request different worker leases,
   // but direct call dependencies shouldn't be considered.
@@ -1029,8 +1021,8 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
   ray::FunctionDescriptor empty_descriptor =
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
   TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
+  ObjectID obj1 = ObjectID::FromRandom();
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
   ASSERT_TRUE(submitter.CancelTask(task, true).ok());

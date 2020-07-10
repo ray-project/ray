@@ -1,4 +1,4 @@
-import pytest
+import numpy as np
 import time
 import gym
 import queue
@@ -11,10 +11,10 @@ from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, AsyncGradients, \
-    ConcatBatches
+    ConcatBatches, StandardizeFields
 from ray.rllib.execution.train_ops import TrainOneStep, ComputeGradients, \
     AverageGradients
-from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer, \
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer, \
     ReplayActor
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.util.iter import LocalIterator, from_range
@@ -49,7 +49,23 @@ def test_concurrently(ray_start_regular_shared):
     a = iter_list([1, 2, 3])
     b = iter_list([4, 5, 6])
     c = Concurrently([a, b], mode="async")
-    assert c.take(6) == [1, 2, 3, 4, 5, 6]
+    assert c.take(6) == [1, 4, 2, 5, 3, 6]
+
+
+def test_concurrently_weighted(ray_start_regular_shared):
+    a = iter_list([1, 1, 1])
+    b = iter_list([2, 2, 2])
+    c = iter_list([3, 3, 3])
+    c = Concurrently(
+        [a, b, c], mode="round_robin", round_robin_weights=[3, 1, 2])
+    assert c.take(9) == [1, 1, 1, 2, 3, 3, 2, 3, 2]
+
+    a = iter_list([1, 1, 1])
+    b = iter_list([2, 2, 2])
+    c = iter_list([3, 3, 3])
+    c = Concurrently(
+        [a, b, c], mode="round_robin", round_robin_weights=[1, 1, "*"])
+    assert c.take(9) == [1, 2, 3, 3, 3, 1, 2, 1, 2]
 
 
 def test_concurrently_output(ray_start_regular_shared):
@@ -132,6 +148,15 @@ def test_concat_batches(ray_start_regular_shared):
     assert "sample" in timers
 
 
+def test_standardize(ray_start_regular_shared):
+    workers = make_workers(0)
+    a = ParallelRollouts(workers, mode="async")
+    b = a.for_each(StandardizeFields(["t"]))
+    batch = next(b)
+    assert abs(np.mean(batch["t"])) < 0.001, batch
+    assert abs(np.std(batch["t"]) - 1.0) < 0.001, batch
+
+
 def test_async_grads(ray_start_regular_shared):
     workers = make_workers(2)
     a = AsyncGradients(workers)
@@ -148,7 +173,8 @@ def test_train_one_step(ray_start_regular_shared):
     b = a.for_each(TrainOneStep(workers))
     batch, stats = next(b)
     assert isinstance(batch, SampleBatch)
-    assert "learner_stats" in stats
+    assert "default_policy" in stats
+    assert "learner_stats" in stats["default_policy"]
     counters = a.shared_metrics.get().counters
     assert counters["num_steps_sampled"] == 100, counters
     assert counters["num_steps_trained"] == 100, counters
@@ -225,5 +251,6 @@ def test_store_to_replay_actor(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
+    import pytest
     import sys
     sys.exit(pytest.main(["-v", __file__]))

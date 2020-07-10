@@ -1,13 +1,19 @@
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
+
+
+def explained_variance(y, pred):
+    _, y_var = tf.nn.moments(y, axes=[0])
+    _, diff_var = tf.nn.moments(y - pred, axes=[0])
+    return tf.maximum(-1.0, 1 - (diff_var / y_var))
 
 
 def huber_loss(x, delta=1.0):
     """Reference: https://en.wikipedia.org/wiki/Huber_loss"""
     return tf.where(
         tf.abs(x) < delta,
-        tf.square(x) * 0.5, delta * (tf.abs(x) - 0.5 * delta))
+        tf.math.square(x) * 0.5, delta * (tf.abs(x) - 0.5 * delta))
 
 
 def reduce_mean_ignore_inf(x, axis):
@@ -80,13 +86,14 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
                             else:
                                 shape = v.shape
                             placeholders.append(
-                                tf.placeholder(
+                                tf1.placeholder(
                                     dtype=v.dtype,
                                     shape=shape,
                                     name="arg_{}".format(i)))
                         symbolic_out[0] = fn(*placeholders)
                 feed_dict = dict(zip(placeholders, args))
-                return session_or_none.run(symbolic_out[0], feed_dict)
+                ret = session_or_none.run(symbolic_out[0], feed_dict)
+                return ret
 
             return call
         else:
@@ -113,7 +120,7 @@ def scope_vars(scope, trainable_only=False):
     vars: [tf.Variable]
       list of variables in `scope`.
     """
-    return tf.get_collection(
-        tf.GraphKeys.TRAINABLE_VARIABLES
-        if trainable_only else tf.GraphKeys.VARIABLES,
+    return tf1.get_collection(
+        tf1.GraphKeys.TRAINABLE_VARIABLES
+        if trainable_only else tf1.GraphKeys.VARIABLES,
         scope=scope if isinstance(scope, str) else scope.name)

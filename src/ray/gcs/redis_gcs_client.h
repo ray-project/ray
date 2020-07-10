@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_REDIS_GCS_CLIENT_H
-#define RAY_GCS_REDIS_GCS_CLIENT_H
+#pragma once
 
 #include <map>
 #include <string>
@@ -99,7 +98,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   HeartbeatBatchTable &heartbeat_batch_table();
   DynamicResourceTable &resource_table();
   /// Implements the Tasks() interface.
-  raylet::TaskTable &raylet_task_table();
+  virtual raylet::TaskTable &raylet_task_table();
   TaskLeaseTable &task_lease_table();
   TaskReconstructionLog &task_reconstruction_log();
   /// Implements the Errors() interface.
@@ -108,7 +107,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   /// Implements the Stats() interface.
   ProfileTable &profile_table();
   /// Implements the Workers() interface.
-  WorkerFailureTable &worker_failure_table();
+  WorkerTable &worker_table();
 
  private:
   // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
@@ -131,12 +130,10 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   std::unique_ptr<ActorCheckpointTable> actor_checkpoint_table_;
   std::unique_ptr<ActorCheckpointIdTable> actor_checkpoint_id_table_;
   std::unique_ptr<DynamicResourceTable> resource_table_;
-  std::unique_ptr<WorkerFailureTable> worker_failure_table_;
+  std::unique_ptr<WorkerTable> worker_table_;
   std::unique_ptr<JobTable> job_table_;
 };
 
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_REDIS_GCS_CLIENT_H

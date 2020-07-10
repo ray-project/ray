@@ -7,32 +7,20 @@ try:
 except ImportError:
     zoopt = None
 
-from ray.tune.suggest.suggestion import SuggestionAlgorithm
+from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 
 
-class ZOOptSearch(SuggestionAlgorithm):
+class ZOOptSearch(Searcher):
     """A wrapper around ZOOpt to provide trial suggestions.
 
-    Requires zoopt package (>=0.4.0) to be installed. You can install it
-    with the command: ``pip install -U zoopt``.
+    ZOOptSearch is a library for derivative-free optimization. It is backed by
+    the `ZOOpt <https://github.com/polixir/ZOOpt>`__ package. Currently,
+    Asynchronous Sequential RAndomized COordinate Shrinking (ASRacos)
+    is implemented in Tune.
 
-    Parameters:
-        algo (str): To specify an algorithm in zoopt you want to use.
-            Only support ASRacos currently.
-        budget (int): Number of samples.
-        dim_dict (dict): Dimension dictionary.
-            For continuous dimensions: (continuous, search_range, precision);
-            For discrete dimensions: (discrete, search_range, has_order).
-            More details can be found in zoopt package.
-        max_concurrent (int): Number of maximum concurrent trials.
-            Defaults to 10.
-        metric (str): The training result objective value attribute.
-            Defaults to "episode_reward_mean".
-        mode (str): One of {min, max}. Determines whether objective is
-            minimizing or maximizing the metric attribute.
-            Defaults to "min".
+    To use ZOOptSearch, install zoopt (>=0.4.0): ``pip install -U zoopt``.
 
     .. code-block:: python
 
@@ -59,7 +47,6 @@ class ZOOptSearch(SuggestionAlgorithm):
             algo="Asracos",  # only support Asracos currently
             budget=config["num_samples"],
             dim_dict=dim_dict,
-            max_concurrent=4,
             metric="mean_loss",
             mode="min")
 
@@ -67,6 +54,20 @@ class ZOOptSearch(SuggestionAlgorithm):
             search_alg=zoopt_search,
             name="zoopt_search",
             **config)
+
+    Parameters:
+        algo (str): To specify an algorithm in zoopt you want to use.
+            Only support ASRacos currently.
+        budget (int): Number of samples.
+        dim_dict (dict): Dimension dictionary.
+            For continuous dimensions: (continuous, search_range, precision);
+            For discrete dimensions: (discrete, search_range, has_order).
+            More details can be found in zoopt package.
+        metric (str): The training result objective value attribute.
+            Defaults to "episode_reward_mean".
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute.
+            Defaults to "min".
 
     """
 
@@ -76,20 +77,17 @@ class ZOOptSearch(SuggestionAlgorithm):
                  algo="asracos",
                  budget=None,
                  dim_dict=None,
-                 max_concurrent=10,
                  metric="episode_reward_mean",
                  mode="min",
                  **kwargs):
         assert zoopt is not None, "Zoopt not found - please install zoopt."
         assert budget is not None, "`budget` should not be None!"
         assert dim_dict is not None, "`dim_list` should not be None!"
-        assert type(max_concurrent) is int and max_concurrent > 0
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
         _algo = algo.lower()
         assert _algo in ["asracos", "sracos"
                          ], "`algo` must be in ['asracos', 'sracos'] currently"
 
-        self._max_concurrent = max_concurrent
         self._metric = metric
         if mode == "max":
             self._metric_op = -1.
@@ -116,9 +114,6 @@ class ZOOptSearch(SuggestionAlgorithm):
             metric=self._metric, mode=mode, **kwargs)
 
     def suggest(self, trial_id):
-        if self._num_live_trials() >= self._max_concurrent:
-            return None
-
         _solution = self.optimizer.suggest()
         if _solution:
             self.solution_dict[str(trial_id)] = _solution
@@ -127,14 +122,7 @@ class ZOOptSearch(SuggestionAlgorithm):
             self._live_trial_mapping[trial_id] = new_trial
             return copy.deepcopy(new_trial)
 
-    def on_trial_result(self, trial_id, result):
-        pass
-
-    def on_trial_complete(self,
-                          trial_id,
-                          result=None,
-                          error=False,
-                          early_terminated=False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial."""
         if result:
             _solution = self.solution_dict[str(trial_id)]
@@ -142,16 +130,8 @@ class ZOOptSearch(SuggestionAlgorithm):
                 _solution, self._metric_op * result[self._metric])
             if _best_solution_so_far:
                 self.best_solution_list.append(_best_solution_so_far)
-            self._process_result(trial_id, result, early_terminated)
 
         del self._live_trial_mapping[trial_id]
-
-    def _process_result(self, trial_id, result, early_terminated=False):
-        if early_terminated and self._use_early_stopped is False:
-            return
-
-    def _num_live_trials(self):
-        return len(self._live_trial_mapping)
 
     def save(self, checkpoint_dir):
         trials_object = self.optimizer

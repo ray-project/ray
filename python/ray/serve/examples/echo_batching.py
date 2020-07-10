@@ -4,7 +4,6 @@ This example has backend which has batching functionality enabled.
 
 import ray
 from ray import serve
-from ray.serve import BackendConfig
 
 
 class MagicCounter:
@@ -27,15 +26,14 @@ class MagicCounter:
         return ""
 
 
-serve.init(blocking=True)
-serve.create_endpoint("magic_counter", "/counter")
+serve.init()
 # specify max_batch_size in BackendConfig
-b_config = BackendConfig(max_batch_size=5)
+backend_config = {"max_batch_size": 5}
 serve.create_backend(
-    MagicCounter, "counter:v1", 42, backend_config=b_config)  # increment=42
+    "counter:v1", MagicCounter, 42, config=backend_config)  # increment=42
 print("Backend Config for backend: 'counter:v1'")
-print(b_config)
-serve.set_traffic("magic_counter", {"counter:v1": 1.0})
+print(backend_config)
+serve.create_endpoint("magic_counter", backend="counter:v1", route="/counter")
 
 handle = serve.get_handle("magic_counter")
 future_list = []

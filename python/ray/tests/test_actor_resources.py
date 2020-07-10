@@ -566,8 +566,10 @@ def test_lifetime_and_transient_resources(ray_start_regular):
 
 def test_custom_label_placement(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=2, resources={"CustomResource1": 2})
-    cluster.add_node(num_cpus=2, resources={"CustomResource2": 2})
+    custom_resource1_node = cluster.add_node(
+        num_cpus=2, resources={"CustomResource1": 2})
+    custom_resource2_node = cluster.add_node(
+        num_cpus=2, resources={"CustomResource2": 2})
     ray.init(address=cluster.address)
 
     @ray.remote(resources={"CustomResource1": 1})
@@ -580,17 +582,15 @@ def test_custom_label_placement(ray_start_cluster):
         def get_location(self):
             return ray.worker.global_worker.node.unique_id
 
-    node_id = ray.worker.global_worker.node.unique_id
-
     # Create some actors.
     actors1 = [ResourceActor1.remote() for _ in range(2)]
     actors2 = [ResourceActor2.remote() for _ in range(2)]
     locations1 = ray.get([a.get_location.remote() for a in actors1])
     locations2 = ray.get([a.get_location.remote() for a in actors2])
     for location in locations1:
-        assert location == node_id
+        assert location == custom_resource1_node.unique_id
     for location in locations2:
-        assert location != node_id
+        assert location == custom_resource2_node.unique_id
 
 
 def test_creating_more_actors_than_resources(shutdown_only):

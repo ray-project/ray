@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_STATS_METRIC_H
-#define RAY_STATS_METRIC_H
+#pragma once
 
 #include <memory>
 #include <unordered_map>
@@ -142,8 +141,13 @@ class Sum : public Metric {
 
 };  // class Sum
 
+/// Raw metric view point for exporter.
+struct MetricPoint {
+  std::string metric_name;
+  int64_t timestamp;
+  double value;
+  std::unordered_map<std::string, std::string> tags;
+};
 }  // namespace stats
 
 }  // namespace ray
-
-#endif  // RAY_STATS_METRIC_H

@@ -1,8 +1,7 @@
 from gym.spaces import Space
 from typing import Union
 
-from ray.rllib.utils.framework import check_framework, try_import_torch, \
-    TensorType
+from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -36,11 +35,14 @@ class Exploration:
         self.model = model
         self.num_workers = num_workers
         self.worker_index = worker_index
-        self.framework = check_framework(framework)
+        self.framework = framework
         # The device on which the Model has been placed.
         # This Exploration will be on the same device.
-        self.device = None if not isinstance(self.model, nn.Module) else \
-            next(self.model.parameters()).device
+        self.device = None
+        if isinstance(self.model, nn.Module):
+            params = list(self.model.parameters())
+            if params:
+                self.device = params[0].device
 
     @DeveloperAPI
     def before_compute_actions(self,
@@ -137,11 +139,14 @@ class Exploration:
         return sample_batch
 
     @DeveloperAPI
-    def get_info(self):
+    def get_info(self, sess=None):
         """Returns a description of the current exploration state.
 
         This is not necessarily the state itself (and cannot be used in
         set_state!), but rather useful (e.g. debugging) information.
+
+        Args:
+            sess (Optional[tf.Session]): An optional tf Session object to use.
 
         Returns:
             dict: A description of the Exploration (not necessarily its state).

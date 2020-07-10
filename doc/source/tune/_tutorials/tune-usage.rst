@@ -9,6 +9,8 @@ This document provides an overview of the core concepts as well as some of the c
 
 .. contents:: :local:
 
+.. _tune-parallelism:
+
 Parallelism / GPUs
 ------------------
 
@@ -59,6 +61,8 @@ To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``:
     # Connect to an existing distributed Ray cluster
     ray.init(address=<ray_address>)
     tune.run(trainable, num_samples=100, resources_per_trial={"cpu": 2, "gpu": 1})
+
+.. _tune-default-search-space:
 
 Search Space (Grid/Random)
 --------------------------
@@ -113,16 +117,16 @@ You can log arbitrary values and metrics in both training APIs:
             accuracy = model.train()
             metric_1 = f(model)
             metric_2 = model.get_loss()
-            tune.track.log(acc=accuracy, metric_foo=random_metric_1, bar=metric_2)
+            tune.report(acc=accuracy, metric_foo=random_metric_1, bar=metric_2)
 
     class Trainable(tune.Trainable):
         ...
 
-        def _train(self):  # this is called iteratively
+        def step(self):  # this is called iteratively
             accuracy = self.model.train()
             metric_1 = f(self.model)
             metric_2 = self.model.get_loss()
-            # don't call track.log here!
+            # don't call report here!
             return dict(acc=accuracy, metric_foo=random_metric_1, bar=metric_2)
 
 During training, Tune will automatically log the below metrics in addition to the user-provided values. All of these can be used as stopping conditions or passed as a parameter to Trial Schedulers/Search Algorithms.
@@ -143,46 +147,39 @@ When running a hyperparameter search, Tune can automatically and periodically sa
  * fault-tolerance when using pre-emptible machines.
  * Pausing trials when using Trial Schedulers such as HyperBand and PBT.
 
-To enable checkpointing, you must implement a :ref:`Trainable class <trainable-docs>` (the function-based API are not checkpointable, since they never return control back to their caller).
+Checkpointing assumes that the model state will be saved to disk on whichever node the Trainable is running on.
 
-Checkpointing assumes that the model state will be saved to disk on whichever node the Trainable is running on. You can checkpoint with three different mechanisms: manually, periodically, and at termination.
-
-**Manual Checkpointing**: A custom Trainable can manually trigger checkpointing by returning ``should_checkpoint: True`` (or ``tune.result.SHOULD_CHECKPOINT: True``) in the result dictionary of `_train`. This can be especially helpful in spot instances:
+To use Tune's checkpointing features, you must expose a ``checkpoint`` argument in the function signature, and call ``tune.make_checkpoint_dir`` and ``tune.save_checkpoint``:
 
 .. code-block:: python
 
-    def _train(self):
-        # training code
-        result = {"mean_accuracy": accuracy}
-        if detect_instance_preemption():
-            result.update(should_checkpoint=True)
-        return result
+        import time
+        from ray import tune
 
+        def train_func(config, checkpoint=None):
+            start = 0
+            if checkpoint:
+                with open(checkpoint) as f:
+                    state = json.loads(f.read())
+                    start = state["step"] + 1
 
-**Periodic Checkpointing**: periodic checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq=<int>`` and ``max_failures=<int>`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
+            for iter in range(start, 100):
+                time.sleep(1)
 
-.. code-block:: python
+                # Obtain a checkpoint directory
+                checkpoint_dir = tune.make_checkpoint_dir(step=step)
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(json.dumps({"step": start}))
+                tune.save_checkpoint(path)
 
-    tune.run(
-        my_trainable,
-        checkpoint_freq=10,
-        max_failures=5,
-    )
+                tune.report(hello="world", ray="tune")
 
-**Checkpointing at Termination**: The checkpoint_freq may not coincide with the exact end of an experiment. If you want a checkpoint to be created at the end
-of a trial, you can additionally set the ``checkpoint_at_end=True``:
+        tune.run(train_func)
 
-.. code-block:: python
-   :emphasize-lines: 5
+In this example, checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<step>``.
 
-    tune.run(
-        my_trainable,
-        checkpoint_freq=10,
-        checkpoint_at_end=True,
-        max_failures=5,
-    )
-
-The checkpoint will be saved at a path that looks like ``local_dir/exp_name/trial_name/checkpoint_x/``, where the x is the number of iterations so far when the checkpoint is saved. To restore the checkpoint, you can use the ``restore`` argument and specify a checkpoint file. By doing this, you can change whatever experiments' configuration such as the experiment's name, the training iteration or so:
+You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)`` By doing this, you can change whatever experiments' configuration such as the experiment's name:
 
 .. code-block:: python
 
@@ -219,12 +216,14 @@ You often will want to compute a large object (e.g., training data, model weight
 
     tune.run(f)
 
+.. _tune-stopping:
+
 Stopping Trials
 ---------------
 
 You can control when trials are stopped early by passing the ``stop`` argument to ``tune.run``. This argument takes either a dictionary or a function.
 
-If a dictionary is passed in, the keys may be any field in the return result of ``tune.track.log`` in the Function API or ``_train()`` (including the results from ``_train`` and auto-filled metrics).
+If a dictionary is passed in, the keys may be any field in the return result of ``tune.report`` in the Function API or ``step()`` (including the results from ``step`` and auto-filled metrics).
 
 In the example below, each trial will be stopped either when it completes 10 iterations OR when it reaches a mean accuracy of 0.98. These metrics are assumed to be **increasing**.
 
@@ -271,11 +270,16 @@ Finally, you can implement the ``Stopper`` abstract class for stopping entire ex
 
 Note that in the above example the currently running trials will not stop immediately but will do so once their current iterations are complete. See the :ref:`tune-stop-ref` documentation.
 
-Logging/Tensorboard
--------------------
+.. _tune-logging:
+
+Logging
+-------
+
+Tune by default will log results for Tensorboard, CSV, and JSON formats. If you need to log something lower level like model weights or gradients, see :ref:`Trainable Logging <trainable-logging>`.
+
+**Learn more about logging and customizations here**: :ref:`loggers-docstring`.
 
 Tune will log the results of each trial to a subfolder under a specified local dir, which defaults to ``~/ray_results``.
-Tune by default will log results for Tensorboard, CSV, and JSON formats.
 
 .. code-block:: bash
 
@@ -284,7 +288,43 @@ Tune by default will log results for Tensorboard, CSV, and JSON formats.
     # trainable_name and trial_name are autogenerated.
     tune.run(trainable, num_samples=2)
 
-Learn about how to customize logging paths and outputs: :ref:`loggers-docstring`.
+You can specify the ``local_dir`` and ``trainable_name``:
+
+.. code-block:: python
+
+    # This logs to 2 different trial folders:
+    # ./results/test_experiment/trial_name_1 and ./results/test_experiment/trial_name_2
+    # Only trial_name is autogenerated.
+    tune.run(trainable, num_samples=2, local_dir="./results", name="test_experiment")
+
+To specify custom trial folder names, you can pass use the ``trial_name_creator`` argument
+to `tune.run`.  This takes a function with the following signature:
+
+.. code-block:: python
+
+    def trial_name_string(trial):
+        """
+        Args:
+            trial (Trial): A generated trial object.
+
+        Returns:
+            trial_name (str): String representation of Trial.
+        """
+        return str(trial)
+
+    tune.run(
+        MyTrainableClass,
+        name="example-experiment",
+        num_samples=1,
+        trial_name_creator=trial_name_string
+    )
+
+See the documentation on Trials: :ref:`trial-docstring`.
+
+.. _tensorboard:
+
+Tensorboard (Logging)
+---------------------
 
 Tune automatically outputs Tensorboard files during ``tune.run``. To visualize learning in tensorboard, install tensorboardX:
 
@@ -386,6 +426,8 @@ If a string is provided, then it must include replacement fields ``{source}`` an
             target=target)
         sync_process = subprocess.Popen(sync_cmd, shell=True)
         sync_process.wait()
+
+By default, syncing occurs every 300 seconds. To change the frequency of syncing, set the ``TUNE_CLOUD_SYNC_S`` environment variable in the driver to the desired syncing period. Note that uploading only happens when global experiment state is collected, and the frequency of this is determined by the ``global_checkpoint_period`` argument. So the true upload period is given by ``max(TUNE_CLOUD_SYNC_S, global_checkpoint_period)``.
 
 .. _tune-debugging:
 

@@ -1,11 +1,11 @@
 import asyncio
-import socket
 
 import uvicorn
 
 import ray
-from ray.serve.constants import SERVE_MASTER_NAME
+from ray import serve
 from ray.serve.context import TaskContext
+from ray.serve.metric import MetricClient
 from ray.serve.request_params import RequestMetadata
 from ray.serve.http_util import Response
 from ray.serve.utils import logger
@@ -28,21 +28,22 @@ class HTTPProxy:
 
     async def fetch_config_from_master(self):
         assert ray.is_initialized()
-        master = ray.util.get_actor(SERVE_MASTER_NAME)
+        master = serve.api._get_master_actor()
+
         self.route_table, [self.router_handle
                            ] = await master.get_http_proxy_config.remote()
 
+        # The exporter is required to return results for /-/metrics endpoint.
+        [self.metric_exporter] = await master.get_metric_exporter.remote()
+
+        self.metric_client = MetricClient(self.metric_exporter)
+        self.request_counter = self.metric_client.new_counter(
+            "num_http_requests",
+            description="The number of requests processed",
+            label_names=("route", ))
+
     def set_route_table(self, route_table):
         self.route_table = route_table
-
-    async def handle_lifespan_message(self, scope, receive, send):
-        assert scope["type"] == "lifespan"
-
-        message = await receive()
-        if message["type"] == "lifespan.startup":
-            await send({"type": "lifespan.startup.complete"})
-        elif message["type"] == "lifespan.shutdown":
-            await send({"type": "lifespan.shutdown.complete"})
 
     async def receive_http_body(self, scope, receive, send):
         body_buffer = []
@@ -89,13 +90,21 @@ class HTTPProxy:
 
         return sender
 
+    async def _handle_system_request(self, scope, receive, send):
+        current_path = scope["path"]
+        if current_path == "/-/routes":
+            await Response(self.route_table).send(scope, receive, send)
+        elif current_path == "/-/metrics":
+            metric_info = await self.metric_exporter.inspect_metrics.remote()
+            await Response(metric_info).send(scope, receive, send)
+        else:
+            await Response(
+                "System path {} not found".format(current_path),
+                status_code=404).send(scope, receive, send)
+
     async def __call__(self, scope, receive, send):
         # NOTE: This implements ASGI protocol specified in
         #       https://asgi.readthedocs.io/en/latest/specs/index.html
-
-        if scope["type"] == "lifespan":
-            await self.handle_lifespan_message(scope, receive, send)
-            return
 
         error_sender = self._make_error_sender(scope, receive, send)
 
@@ -103,8 +112,11 @@ class HTTPProxy:
             "Route table must be set via set_route_table.")
         assert scope["type"] == "http"
         current_path = scope["path"]
-        if current_path == "/-/routes":
-            await Response(self.route_table).send(scope, receive, send)
+
+        self.request_counter.labels(route=current_path).add()
+
+        if current_path.startswith("/-/"):
+            await self._handle_system_request(scope, receive, send)
             return
 
         try:
@@ -119,7 +131,7 @@ class HTTPProxy:
 
         if scope["method"] not in methods_allowed:
             error_message = ("Methods {} not allowed. "
-                             "Avaiable HTTP methods are {}.").format(
+                             "Available HTTP methods are {}.").format(
                                  scope["method"], methods_allowed)
             await error_sender(error_message, 405)
             return
@@ -139,7 +151,9 @@ class HTTPProxy:
             TaskContext.Web,
             relative_slo_ms=relative_slo_ms,
             absolute_slo_ms=absolute_slo_ms,
-            call_method=headers.get("X-SERVE-CALL-METHOD".lower(), "__call__"))
+            call_method=headers.get("X-SERVE-CALL-METHOD".lower(), "__call__"),
+            shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
+        )
 
         retries = 0
         while retries <= MAX_ACTOR_DEAD_RETRIES:
@@ -163,7 +177,8 @@ class HTTPProxy:
 
 @ray.remote
 class HTTPProxyActor:
-    async def __init__(self, host, port):
+    async def __init__(self, host, port, instance_name=None):
+        serve.init(name=instance_name)
         self.app = HTTPProxy()
         await self.app.fetch_config_from_master()
         self.host = host
@@ -173,18 +188,21 @@ class HTTPProxyActor:
         asyncio.get_event_loop().create_task(self.run())
 
     async def run(self):
-        sock = socket.socket()
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind((self.host, self.port))
-        sock.set_inheritable(True)
-
-        config = uvicorn.Config(self.app, lifespan="on", access_log=False)
+        # Note(simon): we have to use lower level uvicorn Config and Server
+        # class because we want to run the server as a coroutine. The only
+        # alternative is to call uvicorn.run which is blocking.
+        config = uvicorn.Config(
+            self.app,
+            host=self.host,
+            port=self.port,
+            lifespan="off",
+            access_log=False)
         server = uvicorn.Server(config=config)
         # TODO(edoakes): we need to override install_signal_handlers here
         # because the existing implementation fails if it isn't running in
         # the main thread and uvicorn doesn't expose a way to configure it.
         server.install_signal_handlers = lambda: None
-        await server.serve(sockets=[sock])
+        await server.serve()
 
     async def set_route_table(self, route_table):
         self.app.set_route_table(route_table)

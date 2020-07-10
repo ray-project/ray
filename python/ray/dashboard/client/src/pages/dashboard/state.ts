@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import {
+  MemoryTableResponse,
   NodeInfoResponse,
   RayConfigResponse,
   RayletInfoResponse,
@@ -15,9 +16,11 @@ type State = {
   nodeInfo: NodeInfoResponse | null;
   rayletInfo: RayletInfoResponse | null;
   tuneInfo: TuneJobResponse | null;
-  tuneAvailability: boolean;
+  tuneAvailability: TuneAvailabilityResponse | null;
   lastUpdatedAt: number | null;
   error: string | null;
+  memoryTable: MemoryTableResponse | null;
+  shouldObtainMemoryTable: boolean;
 };
 
 const initialState: State = {
@@ -26,9 +29,11 @@ const initialState: State = {
   nodeInfo: null,
   rayletInfo: null,
   tuneInfo: null,
-  tuneAvailability: false,
+  tuneAvailability: null,
   lastUpdatedAt: null,
   error: null,
+  memoryTable: null,
+  shouldObtainMemoryTable: false,
 };
 
 const slice = createSlice({
@@ -58,19 +63,22 @@ const slice = createSlice({
     },
     setTuneAvailability: (
       state,
-      action: PayloadAction<{
-        tuneAvailability: TuneAvailabilityResponse;
-      }>,
+      action: PayloadAction<TuneAvailabilityResponse>,
     ) => {
-      const tuneAvailability =
-        action.payload.tuneAvailability === null
-          ? false
-          : action.payload.tuneAvailability["available"];
-      state.tuneAvailability = tuneAvailability;
+      state.tuneAvailability = action.payload;
       state.lastUpdatedAt = Date.now();
     },
     setError: (state, action: PayloadAction<string | null>) => {
       state.error = action.payload;
+    },
+    setMemoryTable: (
+      state,
+      action: PayloadAction<MemoryTableResponse | null>,
+    ) => {
+      state.memoryTable = action.payload;
+    },
+    setShouldObtainMemoryTable: (state, action: PayloadAction<boolean>) => {
+      state.shouldObtainMemoryTable = action.payload;
     },
   },
 });

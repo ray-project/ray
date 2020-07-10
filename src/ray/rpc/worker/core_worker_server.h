@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RPC_CORE_WORKER_SERVER_H
-#define RAY_RPC_CORE_WORKER_SERVER_H
+#pragma once
 
+#include "ray/protobuf/core_worker.grpc.pb.h"
+#include "ray/protobuf/core_worker.pb.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
-#include "src/ray/protobuf/core_worker.grpc.pb.h"
-#include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 
@@ -32,10 +31,12 @@ namespace rpc {
   RPC_SERVICE_HANDLER(CoreWorkerService, PushTask)                       \
   RPC_SERVICE_HANDLER(CoreWorkerService, DirectActorCallArgWaitComplete) \
   RPC_SERVICE_HANDLER(CoreWorkerService, GetObjectStatus)                \
+  RPC_SERVICE_HANDLER(CoreWorkerService, WaitForActorOutOfScope)         \
   RPC_SERVICE_HANDLER(CoreWorkerService, WaitForObjectEviction)          \
   RPC_SERVICE_HANDLER(CoreWorkerService, WaitForRefRemoved)              \
   RPC_SERVICE_HANDLER(CoreWorkerService, KillActor)                      \
   RPC_SERVICE_HANDLER(CoreWorkerService, CancelTask)                     \
+  RPC_SERVICE_HANDLER(CoreWorkerService, RemoteCancelTask)               \
   RPC_SERVICE_HANDLER(CoreWorkerService, GetCoreWorkerStats)             \
   RPC_SERVICE_HANDLER(CoreWorkerService, LocalGC)                        \
   RPC_SERVICE_HANDLER(CoreWorkerService, PlasmaObjectReady)
@@ -45,10 +46,12 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PushTask)                       \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DirectActorCallArgWaitComplete) \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectStatus)                \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForActorOutOfScope)         \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForObjectEviction)          \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForRefRemoved)              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(KillActor)                      \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(CancelTask)                     \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RemoteCancelTask)               \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetCoreWorkerStats)             \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(LocalGC)                        \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PlasmaObjectReady)
@@ -99,5 +102,3 @@ class CoreWorkerGrpcService : public GrpcService {
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif  // RAY_RPC_CORE_WORKER_SERVER_H

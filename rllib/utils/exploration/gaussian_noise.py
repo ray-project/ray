@@ -9,7 +9,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable, TensorType
 from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
@@ -71,6 +71,10 @@ class GaussianNoise(Exploration):
         self.last_timestep = get_variable(
             0, framework=self.framework, tf_name="timestep")
 
+        # Build the tf-info-op.
+        if self.framework == "tf":
+            self._tf_info_op = self.get_info()
+
     @override(Exploration)
     def get_exploration_action(self,
                                *,
@@ -92,7 +96,7 @@ class GaussianNoise(Exploration):
         deterministic_actions = action_dist.deterministic_sample()
 
         # Take a Gaussian sample with our stddev (mean=0.0) and scale it.
-        gaussian_sample = self.scale_schedule(ts) * tf.random_normal(
+        gaussian_sample = self.scale_schedule(ts) * tf.random.normal(
             tf.shape(deterministic_actions), stddev=self.stddev)
 
         # Stochastic actions could either be: random OR action + noise.
@@ -116,13 +120,13 @@ class GaussianNoise(Exploration):
             true_fn=lambda: stochastic_actions,
             false_fn=lambda: deterministic_actions)
         # Logp=always zero.
-        logp = tf.zeros(shape=(batch_size, ), dtype=tf.float32)
+        logp = tf.zeros(shape=(batch_size,), dtype=tf.float32)
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
-        assign_op = \
-            tf.assign_add(self.last_timestep, 1) if timestep is None else \
-            tf.assign(self.last_timestep, timestep)
-        with tf.control_dependencies([assign_op]):
+        assign_op = (
+            tf1.assign_add(self.last_timestep, 1) if timestep is None else
+            tf1.assign(self.last_timestep, timestep))
+        with tf1.control_dependencies([assign_op]):
             return action, logp
 
     def _get_torch_exploration_action(self, action_dist, explore, timestep):
@@ -143,10 +147,9 @@ class GaussianNoise(Exploration):
                 scale = self.scale_schedule(self.last_timestep)
                 gaussian_sample = scale * torch.normal(
                     mean=torch.zeros(det_actions.size()), std=self.stddev)
-                action = torch.clamp(
-                    det_actions + gaussian_sample,
-                    self.action_space.low * torch.ones_like(det_actions),
-                    self.action_space.high * torch.ones_like(det_actions))
+                action = torch.clamp(det_actions + gaussian_sample,
+                                     self.action_space.low.item(0),
+                                     self.action_space.high.item(0))
         # No exploration -> Return deterministic actions.
         else:
             action = action_dist.deterministic_sample()
@@ -158,11 +161,13 @@ class GaussianNoise(Exploration):
         return action, logp
 
     @override(Exploration)
-    def get_info(self):
+    def get_info(self, sess=None):
         """Returns the current scale value.
 
         Returns:
             Union[float,tf.Tensor[float]]: The current scale value.
         """
+        if sess:
+            return sess.run(self._tf_info_op)
         scale = self.scale_schedule(self.last_timestep)
         return {"cur_scale": scale}

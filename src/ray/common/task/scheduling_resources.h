@@ -1,5 +1,4 @@
-#ifndef RAY_COMMON_TASK_SCHEDULING_RESOURCES_H
-#define RAY_COMMON_TASK_SCHEDULING_RESOURCES_H
+#pragma once
 
 #include <string>
 #include <unordered_map>
@@ -478,18 +477,27 @@ class SchedulingResources {
   /// \return Void.
   void SetAvailableResources(ResourceSet &&newset);
 
+  /// \brief Request the total resources capacity.
+  ///
+  /// \return Immutable set of resources with currently total capacity.
   const ResourceSet &GetTotalResources() const;
+
+  /// \brief Overwrite total resource capacity with the specified resource set.
+  ///
+  /// \param newset: The set of resources that replaces total resource capacity.
+  /// \return Void.
+  void SetTotalResources(ResourceSet &&newset);
+
+  /// \brief Request the resource load information.
+  ///
+  /// \return Immutable set of resources describing the load information.
+  const ResourceSet &GetLoadResources() const;
 
   /// \brief Overwrite information about resource load with new resource load set.
   ///
   /// \param newset: The set of resources that replaces resource load information.
   /// \return Void.
   void SetLoadResources(ResourceSet &&newset);
-
-  /// \brief Request the resource load information.
-  ///
-  /// \return Immutable set of resources describing the load information.
-  const ResourceSet &GetLoadResources() const;
 
   /// \brief Release the amount of resources specified.
   ///
@@ -546,5 +554,3 @@ struct hash<ray::ResourceSet> {
   }
 };
 }  // namespace std
-
-#endif  // RAY_COMMON_TASK_SCHEDULING_RESOURCES_H

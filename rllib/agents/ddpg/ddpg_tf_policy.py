@@ -15,14 +15,14 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import Deterministic
 from ray.rllib.models.torch.torch_action_dist import TorchDeterministic
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip, \
     make_tf_callable
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -36,28 +36,13 @@ TWIN_Q_TARGET_SCOPE = "twin_target_critic"
 
 
 def build_ddpg_models(policy, observation_space, action_space, config):
-    if config["model"]["custom_model"]:
-        logger.warning(
-            "Setting use_state_preprocessor=True since a custom model "
-            "was specified.")
-        config["use_state_preprocessor"] = True
-
-    if not isinstance(action_space, Box):
-        raise UnsupportedSpaceException(
-            "Action space {} is not supported for DDPG.".format(action_space))
-    elif len(action_space.shape) > 1:
-        raise UnsupportedSpaceException(
-            "Action space has multiple dimensions "
-            "{}. ".format(action_space.shape) +
-            "Consider reshaping this into a single dimension, "
-            "using a Tuple action space, or the multi-agent API.")
-
     if policy.config["use_state_preprocessor"]:
         default_model = None  # catalog decides
         num_outputs = 256  # arbitrary
         config["model"]["no_final_linear"] = True
     else:
-        default_model = TorchNoopModel if config["use_pytorch"] else NoopModel
+        default_model = TorchNoopModel if config["framework"] == "torch" \
+            else NoopModel
         num_outputs = int(np.product(observation_space.shape))
 
     policy.model = ModelCatalog.get_model_v2(
@@ -65,9 +50,9 @@ def build_ddpg_models(policy, observation_space, action_space, config):
         action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
-        framework="torch" if config["use_pytorch"] else "tf",
-        model_interface=DDPGTorchModel
-        if config["use_pytorch"] else DDPGTFModel,
+        framework=config["framework"],
+        model_interface=(DDPGTorchModel
+                         if config["framework"] == "torch" else DDPGTFModel),
         default_model=default_model,
         name="ddpg_model",
         actor_hidden_activation=config["actor_hidden_activation"],
@@ -84,9 +69,9 @@ def build_ddpg_models(policy, observation_space, action_space, config):
         action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
-        framework="torch" if config["use_pytorch"] else "tf",
-        model_interface=DDPGTorchModel
-        if config["use_pytorch"] else DDPGTFModel,
+        framework=config["framework"],
+        model_interface=(DDPGTorchModel
+                         if config["framework"] == "torch" else DDPGTFModel),
         default_model=default_model,
         name="target_ddpg_model",
         actor_hidden_activation=config["actor_hidden_activation"],
@@ -114,9 +99,9 @@ def get_distribution_inputs_and_class(policy,
     }, [], None)
     dist_inputs = model.get_policy_output(model_out)
 
-    return dist_inputs,\
-        TorchDeterministic if policy.config["use_pytorch"] else Deterministic,\
-        []  # []=state out
+    return dist_inputs, (TorchDeterministic
+                         if policy.config["framework"] == "torch" else
+                         Deterministic), []  # []=state out
 
 
 def ddpg_actor_critic_loss(policy, model, _, train_batch):
@@ -141,22 +126,22 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     target_model_out_tp1, _ = policy.target_model(input_dict_next, [], None)
 
     # Policy network evaluation.
-    with tf.variable_scope(POLICY_SCOPE, reuse=True):
-        # prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+    with tf1.variable_scope(POLICY_SCOPE, reuse=True):
+        # prev_update_ops = set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS))
         policy_t = model.get_policy_output(model_out_t)
         # policy_batchnorm_update_ops = list(
-        #    set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
+        #   set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
-    with tf.variable_scope(POLICY_TARGET_SCOPE):
+    with tf1.variable_scope(POLICY_TARGET_SCOPE):
         policy_tp1 = \
             policy.target_model.get_policy_output(target_model_out_tp1)
 
     # Action outputs.
-    with tf.variable_scope(ACTION_SCOPE, reuse=True):
+    with tf1.variable_scope(ACTION_SCOPE, reuse=True):
         if policy.config["smooth_target_policy"]:
             target_noise_clip = policy.config["target_noise_clip"]
             clipped_normal_sample = tf.clip_by_value(
-                tf.random_normal(
+                tf.random.normal(
                     tf.shape(policy_tp1),
                     stddev=policy.config["target_noise"]), -target_noise_clip,
                 target_noise_clip)
@@ -169,29 +154,29 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
             policy_tp1_smoothed = policy_tp1
 
     # Q-net(s) evaluation.
-    # prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
-    with tf.variable_scope(Q_SCOPE):
+    # prev_update_ops = set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS))
+    with tf1.variable_scope(Q_SCOPE):
         # Q-values for given actions & observations in given current
         q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
 
-    with tf.variable_scope(Q_SCOPE, reuse=True):
+    with tf1.variable_scope(Q_SCOPE, reuse=True):
         # Q-values for current policy (no noise) in given current state
         q_t_det_policy = model.get_q_values(model_out_t, policy_t)
 
     if twin_q:
-        with tf.variable_scope(TWIN_Q_SCOPE):
+        with tf1.variable_scope(TWIN_Q_SCOPE):
             twin_q_t = model.get_twin_q_values(
                 model_out_t, train_batch[SampleBatch.ACTIONS])
     # q_batchnorm_update_ops = list(
-    #     set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
+    #     set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
     # Target q-net(s) evaluation.
-    with tf.variable_scope(Q_TARGET_SCOPE):
+    with tf1.variable_scope(Q_TARGET_SCOPE):
         q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
                                                  policy_tp1_smoothed)
 
     if twin_q:
-        with tf.variable_scope(TWIN_Q_TARGET_SCOPE):
+        with tf1.variable_scope(TWIN_Q_TARGET_SCOPE):
             twin_q_tp1 = policy.target_model.get_twin_q_values(
                 target_model_out_tp1, policy_tp1_smoothed)
 
@@ -218,25 +203,27 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
             errors = huber_loss(td_error, huber_threshold) + \
                 huber_loss(twin_td_error, huber_threshold)
         else:
-            errors = 0.5 * tf.square(td_error) + 0.5 * tf.square(twin_td_error)
+            errors = 0.5 * tf.math.square(td_error) + \
+                     0.5 * tf.math.square(twin_td_error)
     else:
         td_error = q_t_selected - q_t_selected_target
         if use_huber:
             errors = huber_loss(td_error, huber_threshold)
         else:
-            errors = 0.5 * tf.square(td_error)
+            errors = 0.5 * tf.math.square(td_error)
 
-    critic_loss = tf.reduce_mean(train_batch[PRIO_WEIGHTS] * errors)
+    critic_loss = tf.reduce_mean(
+        tf.cast(train_batch[PRIO_WEIGHTS], tf.float32) * errors)
     actor_loss = -tf.reduce_mean(q_t_det_policy)
 
     # Add l2-regularization if required.
     if l2_reg is not None:
         for var in policy.model.policy_variables():
             if "bias" not in var.name:
-                actor_loss += (l2_reg * tf.nn.l2_loss(var))
+                actor_loss += (l2_reg * tf1.nn.l2_loss(var))
         for var in policy.model.q_variables():
             if "bias" not in var.name:
-                critic_loss += (l2_reg * tf.nn.l2_loss(var))
+                critic_loss += (l2_reg * tf1.nn.l2_loss(var))
 
     # Model self-supervised losses.
     if policy.config["use_state_preprocessor"]:
@@ -272,9 +259,9 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
 
 def make_ddpg_optimizers(policy, config):
     # Create separate optimizers for actor & critic losses.
-    policy._actor_optimizer = tf.train.AdamOptimizer(
+    policy._actor_optimizer = tf1.train.AdamOptimizer(
         learning_rate=config["actor_lr"])
-    policy._critic_optimizer = tf.train.AdamOptimizer(
+    policy._critic_optimizer = tf1.train.AdamOptimizer(
         learning_rate=config["critic_lr"])
     return None
 
@@ -299,7 +286,7 @@ def build_apply_op(policy, optimizer, grads_and_vars):
     # For policy gradient, update policy net one time v.s.
     # update critic net `policy_delay` time(s).
     should_apply_actor_opt = tf.equal(
-        tf.mod(policy.global_step, policy.config["policy_delay"]), 0)
+        tf.math.floormod(policy.global_step, policy.config["policy_delay"]), 0)
 
     def make_apply_op():
         return policy._actor_optimizer.apply_gradients(
@@ -312,7 +299,7 @@ def build_apply_op(policy, optimizer, grads_and_vars):
     critic_op = policy._critic_optimizer.apply_gradients(
         policy._critic_grads_and_vars)
     # Increment global step & apply ops.
-    with tf.control_dependencies([tf.assign_add(policy.global_step, 1)]):
+    with tf1.control_dependencies([tf1.assign_add(policy.global_step, 1)]):
         return tf.group(actor_op, critic_op)
 
 
@@ -354,7 +341,7 @@ def build_ddpg_stats(policy, batch):
 
 def before_init_fn(policy, obs_space, action_space, config):
     # Create global step for counting the number of update operations.
-    policy.global_step = tf.train.get_or_create_global_step()
+    policy.global_step = tf1.train.get_or_create_global_step()
 
 
 class ComputeTDErrorMixin:
@@ -416,8 +403,21 @@ def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy, config)
 
 
+def validate_spaces(pid, observation_space, action_space, config):
+    if not isinstance(action_space, Box):
+        raise UnsupportedSpaceException(
+            "Action space ({}) of {} is not supported for "
+            "DDPG.".format(action_space, pid))
+    elif len(action_space.shape) > 1:
+        raise UnsupportedSpaceException(
+            "Action space ({}) of {} has multiple dimensions "
+            "{}. ".format(action_space, pid, action_space.shape) +
+            "Consider reshaping this into a single dimension, "
+            "using a Tuple action space, or the multi-agent API.")
+
+
 DDPGTFPolicy = build_tf_policy(
-    name="DQNTFPolicy",
+    name="DDPGTFPolicy",
     get_default_config=lambda: ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG,
     make_model=build_ddpg_models,
     action_distribution_fn=get_distribution_inputs_and_class,
@@ -428,6 +428,7 @@ DDPGTFPolicy = build_tf_policy(
     gradients_fn=gradients_fn,
     apply_gradients_fn=build_apply_op,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
+    validate_spaces=validate_spaces,
     before_init=before_init_fn,
     before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,

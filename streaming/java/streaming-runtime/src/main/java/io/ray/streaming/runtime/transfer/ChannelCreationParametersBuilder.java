@@ -1,26 +1,24 @@
 package io.ray.streaming.runtime.transfer;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.BaseActor;
+import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
-import io.ray.runtime.actor.LocalModeRayActor;
-import io.ray.runtime.actor.NativeRayJavaActor;
-import io.ray.runtime.actor.NativeRayPyActor;
+import io.ray.runtime.actor.LocalModeActorHandle;
+import io.ray.runtime.actor.NativeJavaActorHandle;
+import io.ray.runtime.actor.NativePyActorHandle;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.runtime.functionmanager.PyFunctionDescriptor;
 import io.ray.streaming.runtime.worker.JobWorker;
-
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Save channel initial parameters needed by DataWriter/DataReader.
  */
 public class ChannelCreationParametersBuilder {
 
-  public class Parameter {
+  public static class Parameter {
 
     private ActorId actorId;
     private FunctionDescriptor asyncFunctionDescriptor;
@@ -107,38 +105,41 @@ public class ChannelCreationParametersBuilder {
     javaWriterSyncFuncDesc = syncFunc;
   }
 
-  public ChannelCreationParametersBuilder buildInputQueueParameters(List<String> queues,
-                                                                    Map<String, BaseActor> actors) {
+  public ChannelCreationParametersBuilder buildInputQueueParameters(
+      List<String> queues,
+      List<BaseActorHandle> actors) {
     return buildParameters(queues, actors, javaWriterAsyncFuncDesc, javaWriterSyncFuncDesc,
       pyWriterAsyncFunctionDesc, pyWriterSyncFunctionDesc);
   }
 
   public ChannelCreationParametersBuilder buildOutputQueueParameters(List<String> queues,
-      Map<String, BaseActor> actors) {
+                                                                     List<BaseActorHandle> actors) {
     return buildParameters(queues, actors, javaReaderAsyncFuncDesc, javaReaderSyncFuncDesc,
       pyReaderAsyncFunctionDesc, pyReaderSyncFunctionDesc);
   }
 
   private ChannelCreationParametersBuilder buildParameters(List<String> queues,
-      Map<String, BaseActor> actors,
+      List<BaseActorHandle> actors,
       JavaFunctionDescriptor javaAsyncFunctionDesc, JavaFunctionDescriptor javaSyncFunctionDesc,
       PyFunctionDescriptor pyAsyncFunctionDesc, PyFunctionDescriptor pySyncFunctionDesc
   ) {
     parameters = new ArrayList<>(queues.size());
-    for (String queue : queues) {
+
+    for (int i = 0; i < queues.size(); ++i) {
+      String queue = queues.get(i);
+      BaseActorHandle actor = actors.get(i);
       Parameter parameter = new Parameter();
-      BaseActor actor = actors.get(queue);
       Preconditions.checkArgument(actor != null);
       parameter.setActorId(actor.getId());
       /// LocalModeRayActor used in single-process mode.
-      if (actor instanceof NativeRayJavaActor || actor instanceof LocalModeRayActor) {
+      if (actor instanceof NativeJavaActorHandle || actor instanceof LocalModeActorHandle) {
         parameter.setAsyncFunctionDescriptor(javaAsyncFunctionDesc);
         parameter.setSyncFunctionDescriptor(javaSyncFunctionDesc);
-      } else if (actor instanceof NativeRayPyActor) {
+      } else if (actor instanceof NativePyActorHandle) {
         parameter.setAsyncFunctionDescriptor(pyAsyncFunctionDesc);
         parameter.setSyncFunctionDescriptor(pySyncFunctionDesc);
       } else {
-        Preconditions.checkArgument(false, "Invalid actor type");
+        throw new IllegalArgumentException("Invalid actor type");
       }
       parameters.add(parameter);
     }
@@ -152,10 +153,10 @@ public class ChannelCreationParametersBuilder {
   }
 
   public String toString() {
-    String str = "";
+    StringBuilder str = new StringBuilder();
     for (Parameter param : parameters) {
-      str += param.toString();
+      str.append(param.toString());
     }
-    return str;
+    return str.toString();
   }
 }

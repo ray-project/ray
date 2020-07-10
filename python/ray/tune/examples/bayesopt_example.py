@@ -2,20 +2,28 @@
 
 It also checks that it is usable with a separate scheduler.
 """
+import time
+
 import ray
-from ray.tune import run
+from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.bayesopt import BayesOptSearch
 
 
-def easy_objective(config, reporter):
-    import time
-    time.sleep(0.2)
-    for i in range(config["iterations"]):
-        reporter(
-            timesteps_total=i,
-            mean_loss=(config["height"] - 14)**2 - abs(config["width"] - 3))
-        time.sleep(0.02)
+def evaluation_fn(step, width, height):
+    return (0.1 + width * step / 100)**(-1) + height * 0.1
+
+
+def easy_objective(config):
+    # Hyperparameters
+    width, height = config["width"], config["height"]
+
+    for step in range(config["steps"]):
+        # Iterative training function - can be any arbitrary training procedure
+        intermediate_score = evaluation_fn(step, width, height)
+        # Feed the score back back to Tune.
+        tune.report(iterations=step, mean_loss=intermediate_score)
+        time.sleep(0.1)
 
 
 if __name__ == "__main__":
@@ -32,15 +40,11 @@ if __name__ == "__main__":
     config = {
         "num_samples": 10 if args.smoke_test else 1000,
         "config": {
-            "iterations": 100,
-        },
-        "stop": {
-            "timesteps_total": 100
+            "steps": 100,
         }
     }
     algo = BayesOptSearch(
         space,
-        max_concurrent=4,
         metric="mean_loss",
         mode="min",
         utility_kwargs={
@@ -49,7 +53,8 @@ if __name__ == "__main__":
             "xi": 0.0
         })
     scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
-    run(easy_objective,
+    tune.run(
+        easy_objective,
         name="my_exp",
         search_alg=algo,
         scheduler=scheduler,

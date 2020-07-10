@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_OBJECT_MANAGER_OBJECT_MANAGER_H
-#define RAY_OBJECT_MANAGER_OBJECT_MANAGER_H
+#pragma once
 
 #include <algorithm>
 #include <cstdint>
@@ -29,16 +28,14 @@
 #include <boost/bind.hpp>
 
 #include "absl/time/clock.h"
-#include "plasma/client.h"
-
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
-
 #include "ray/object_manager/format/object_manager_generated.h"
+#include "ray/object_manager/notification/object_store_notification_manager_ipc.h"
 #include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"
-#include "ray/object_manager/object_store_notification_manager.h"
+#include "ray/object_manager/plasma/store_runner.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
 
@@ -64,6 +61,12 @@ struct ObjectManagerConfig {
   /// Number of threads of rpc service
   /// Send and receive request in these threads
   int rpc_service_threads_number;
+  /// Initial memory allocation for store.
+  int64_t object_store_memory = -1;
+  /// The directory for shared memory files.
+  std::string plasma_directory;
+  /// Enable huge pages.
+  bool huge_pages;
 };
 
 struct LocalObjectInfo {
@@ -72,6 +75,15 @@ struct LocalObjectInfo {
   /// A map from the ID of a remote object manager to the timestamp of when
   /// the object was last pushed to that object manager (if a push took place).
   std::unordered_map<ClientID, int64_t> recent_pushes;
+};
+
+class ObjectStoreRunner {
+ public:
+  ObjectStoreRunner(const ObjectManagerConfig &config);
+  ~ObjectStoreRunner();
+
+ private:
+  std::thread store_thread_;
 };
 
 class ObjectManagerInterface {
@@ -170,6 +182,10 @@ class ObjectManager : public ObjectManagerInterface,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory);
 
   ~ObjectManager();
+
+  /// Stop the Plasma Store eventloop. Currently it is only used to handle
+  /// signals from Raylet.
+  void Stop();
 
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that
@@ -372,7 +388,11 @@ class ObjectManager : public ObjectManagerInterface,
   ClientID self_node_id_;
   const ObjectManagerConfig config_;
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
-  ObjectStoreNotificationManager store_notification_;
+  // Object store runner.
+  ObjectStoreRunner object_store_internal_;
+  // Process notifications from Plasma. We make it a shared pointer because
+  // we will decide its type at runtime, and we would pass it to Plasma Store.
+  std::shared_ptr<ObjectStoreNotificationManager> store_notification_;
   ObjectBufferPool buffer_pool_;
 
   /// Weak reference to main service. We ensure this object is destroyed before
@@ -438,5 +458,3 @@ class ObjectManager : public ObjectManagerInterface,
 };
 
 }  // namespace ray
-
-#endif  // RAY_OBJECT_MANAGER_OBJECT_MANAGER_H

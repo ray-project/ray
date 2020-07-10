@@ -1,8 +1,15 @@
-from abc import ABC, abstractmethod
 import enum
+import importlib
+import logging
+from abc import ABC, abstractmethod
+
 from ray import streaming
 from ray.streaming import function
 from ray.streaming import message
+from ray.streaming.collector import Collector
+from ray.streaming.runtime import gateway_client
+
+logger = logging.getLogger(__name__)
 
 
 class OperatorType(enum.Enum):
@@ -71,12 +78,13 @@ class StreamOperator(Operator, ABC):
     def open(self, collectors, runtime_context):
         self.collectors = collectors
         self.runtime_context = runtime_context
+        self.func.open(runtime_context)
 
     def finish(self):
         pass
 
     def close(self):
-        pass
+        self.func.close()
 
     def collect(self, record):
         for collector in self.collectors:
@@ -213,6 +221,134 @@ class SinkOperator(StreamOperator, OneInputOperator):
         self.func.sink(record.value)
 
 
+class UnionOperator(StreamOperator, OneInputOperator):
+    """Operator for union operation"""
+
+    def __init__(self):
+        super().__init__(function.EmptyFunction())
+
+    def process_element(self, record):
+        self.collect(record)
+
+
+class ChainedOperator(StreamOperator, ABC):
+    class ForwardCollector(Collector):
+        def __init__(self, succeeding_operator):
+            self.succeeding_operator = succeeding_operator
+
+        def collect(self, record):
+            self.succeeding_operator.process_element(record)
+
+    def __init__(self, operators, configs):
+        super().__init__(operators[0].func)
+        self.operators = operators
+        self.configs = configs
+
+    def open(self, collectors, runtime_context):
+        # Dont' call super.open() as we `open` every operator separately.
+        num_operators = len(self.operators)
+        succeeding_collectors = [
+            ChainedOperator.ForwardCollector(operator)
+            for operator in self.operators[1:]
+        ]
+        for i in range(0, num_operators - 1):
+            forward_collectors = [succeeding_collectors[i]]
+            self.operators[i].open(
+                forward_collectors,
+                self.__create_runtime_context(runtime_context, i))
+        self.operators[-1].open(
+            collectors,
+            self.__create_runtime_context(runtime_context, num_operators - 1))
+
+    def operator_type(self) -> OperatorType:
+        return self.operators[0].operator_type()
+
+    def __create_runtime_context(self, runtime_context, index):
+        def get_config():
+            return self.configs[index]
+
+        runtime_context.get_config = get_config
+        return runtime_context
+
+    @staticmethod
+    def new_chained_operator(operators, configs):
+        operator_type = operators[0].operator_type()
+        logger.info(
+            "Building ChainedOperator from operators {} and configs {}."
+            .format(operators, configs))
+        if operator_type == OperatorType.SOURCE:
+            return ChainedSourceOperator(operators, configs)
+        elif operator_type == OperatorType.ONE_INPUT:
+            return ChainedOneInputOperator(operators, configs)
+        elif operator_type == OperatorType.TWO_INPUT:
+            return ChainedTwoInputOperator(operators, configs)
+        else:
+            raise Exception("Current operator type is not supported")
+
+
+class ChainedSourceOperator(ChainedOperator):
+    def __init__(self, operators, configs):
+        super().__init__(operators, configs)
+
+    def run(self):
+        self.operators[0].run()
+
+
+class ChainedOneInputOperator(ChainedOperator):
+    def __init__(self, operators, configs):
+        super().__init__(operators, configs)
+
+    def process_element(self, record):
+        self.operators[0].process_element(record)
+
+
+class ChainedTwoInputOperator(ChainedOperator):
+    def __init__(self, operators, configs):
+        super().__init__(operators, configs)
+
+    def process_element(self, record1, record2):
+        self.operators[0].process_element(record1, record2)
+
+
+def load_chained_operator(chained_operator_bytes: bytes):
+    """Load chained operator from serialized operators and configs"""
+    serialized_operators, configs = gateway_client.deserialize(
+        chained_operator_bytes)
+    operators = [
+        load_operator(desc_bytes) for desc_bytes in serialized_operators
+    ]
+    return ChainedOperator.new_chained_operator(operators, configs)
+
+
+def load_operator(descriptor_operator_bytes: bytes):
+    """
+    Deserialize `descriptor_operator_bytes` to get operator info, then
+    create streaming operator.
+    Note that this function must be kept in sync with
+     `io.ray.streaming.runtime.python.GraphPbBuilder.serializeOperator`
+
+    Args:
+        descriptor_operator_bytes: serialized operator info
+
+    Returns:
+        a streaming operator
+    """
+    assert len(descriptor_operator_bytes) > 0
+    function_desc_bytes, module_name, class_name \
+        = gateway_client.deserialize(descriptor_operator_bytes)
+    if function_desc_bytes:
+        return create_operator_with_func(
+            function.load_function(function_desc_bytes))
+    else:
+        assert module_name
+        assert class_name
+        mod = importlib.import_module(module_name)
+        cls = getattr(mod, class_name)
+        assert issubclass(cls, Operator)
+        print("cls", cls)
+        return cls()
+
+
 _function_to_operator = {
     function.SourceFunction: SourceOperator,
     function.MapFunction: MapOperator,
@@ -224,7 +360,7 @@ _function_to_operator = {
 }
 
 
-def create_operator(func: function.Function):
+def create_operator_with_func(func: function.Function):
     """Create an operator according to a :class:`function.Function`
 
     Args:

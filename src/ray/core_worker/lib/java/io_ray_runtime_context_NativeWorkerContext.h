@@ -28,7 +28,7 @@ extern "C" {
  */
 JNIEXPORT jint JNICALL
 Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentTaskType(JNIEnv *,
-                                                                          jclass);
+                                                                         jclass);
 
 /*
  * Class:     io_ray_runtime_context_NativeWorkerContext
@@ -53,7 +53,7 @@ Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentJobId(JNIEnv *, 
  */
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentWorkerId(JNIEnv *,
-                                                                          jclass);
+                                                                         jclass);
 
 /*
  * Class:     io_ray_runtime_context_NativeWorkerContext
@@ -61,8 +61,7 @@ Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentWorkerId(JNIEnv 
  * Signature: ()Ljava/nio/ByteBuffer;
  */
 JNIEXPORT jobject JNICALL
-Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentActorId(JNIEnv *,
-                                                                         jclass);
+Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentActorId(JNIEnv *, jclass);
 
 #ifdef __cplusplus
 }

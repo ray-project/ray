@@ -18,6 +18,8 @@ opencv-python-headless
 pandas
 pytest-remotedata>=0.3.1
 pytest-timeout
+pytorch-lightning
+scikit-learn==0.22.2
 scikit-optimize
 sigopt
 smart_open
@@ -28,3 +30,6 @@ torch
 torchvision
 xgboost
 zoopt>=0.4.0
+timm
+dataclasses
+git+https://github.com/ray-project/tune-sklearn.git#egg=tune-sklearn

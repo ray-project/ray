@@ -3,20 +3,22 @@ import logging
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.execution.replay_ops import SimpleReplayBuffer, Replay, \
+    StoreToReplayBuffer, WaitUntilTimestepsElapsed
+from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.execution.concurrency_ops import Concurrently
+from ray.rllib.execution.train_ops import TrainOneStep
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.model import restore_original_dimensions
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-from ray.rllib.optimizers import SyncSamplesOptimizer
-from ray.rllib.utils import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 from ray.rllib.contrib.alpha_zero.core.alpha_zero_policy import AlphaZeroPolicy
 from ray.rllib.contrib.alpha_zero.core.mcts import MCTS
 from ray.rllib.contrib.alpha_zero.core.ranked_rewards import get_r2_env_wrapper
-from ray.rllib.contrib.alpha_zero.optimizer.sync_batches_replay_optimizer \
-    import SyncBatchesReplayOptimizer
 
-tf = try_import_tf()
 torch, nn = try_import_torch()
 
 logger = logging.getLogger(__name__)
@@ -103,27 +105,12 @@ DEFAULT_CONFIG = with_common_config({
     # === Callbacks ===
     "callbacks": AlphaZeroDefaultCallbacks,
 
-    "use_pytorch": True,
+    "framework": "torch",  # Only PyTorch supported so far.
 })
 
 
 # __sphinx_doc_end__
 # yapf: enable
-
-
-def choose_policy_optimizer(workers, config):
-    if config["simple_optimizer"]:
-        return SyncSamplesOptimizer(
-            workers,
-            num_sgd_iter=config["num_sgd_iter"],
-            train_batch_size=config["train_batch_size"])
-    else:
-        return SyncBatchesReplayOptimizer(
-            workers,
-            num_gradient_descents=config["num_sgd_iter"],
-            learning_starts=config["learning_starts"],
-            train_batch_size=config["train_batch_size"],
-            buffer_size=config["buffer_size"])
 
 
 def alpha_zero_loss(policy, model, dist_class, train_batch):
@@ -172,8 +159,36 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
                          _env_creator)
 
 
+def execution_plan(workers, config):
+    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+
+    if config["simple_optimizer"]:
+        train_op = rollouts \
+            .combine(ConcatBatches(
+                min_batch_size=config["train_batch_size"])) \
+            .for_each(TrainOneStep(
+                workers, num_sgd_iter=config["num_sgd_iter"]))
+    else:
+        replay_buffer = SimpleReplayBuffer(config["buffer_size"])
+
+        store_op = rollouts \
+            .for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
+
+        replay_op = Replay(local_buffer=replay_buffer) \
+            .filter(WaitUntilTimestepsElapsed(config["learning_starts"])) \
+            .combine(
+                ConcatBatches(min_batch_size=config["train_batch_size"])) \
+            .for_each(TrainOneStep(
+                workers, num_sgd_iter=config["num_sgd_iter"]))
+
+        train_op = Concurrently(
+            [store_op, replay_op], mode="round_robin", output_indexes=[1])
+
+    return StandardMetricsReporting(train_op, workers, config)
+
+
 AlphaZeroTrainer = build_trainer(
     name="AlphaZero",
     default_config=DEFAULT_CONFIG,
     default_policy=AlphaZeroPolicyWrapperClass,
-    make_policy_optimizer=choose_policy_optimizer)
+    execution_plan=execution_plan)

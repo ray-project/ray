@@ -23,7 +23,7 @@ Feature development, discussion, and upcoming priorities are tracked on the `Git
 Benchmarks
 ----------
 
-A number of training run results are available in the `rl-experiments repo <https://github.com/ray-project/rl-experiments>`__, and there is also a list of working hyperparameter configurations in `tuned_examples <https://github.com/ray-project/ray/tree/master/rllib/tuned_examples>`__. Benchmark results are extremely valuable to the community, so if you happen to have results that may be of interest, consider making a pull request to either repo.
+A number of training run results are available in the `rl-experiments repo <https://github.com/ray-project/rl-experiments>`__, and there is also a list of working hyperparameter configurations in `tuned_examples <https://github.com/ray-project/ray/tree/master/rllib/tuned_examples>`__, sorted by algorithm. Benchmark results are extremely valuable to the community, so if you happen to have results that may be of interest, consider making a pull request to either repo.
 
 Contributing Algorithms
 -----------------------
@@ -31,7 +31,7 @@ Contributing Algorithms
 These are the guidelines for merging new algorithms into RLlib:
 
 * Contributed algorithms (`rllib/contrib <https://github.com/ray-project/ray/tree/master/rllib/contrib>`__):
-    - must subclass Trainer and implement the ``_train()`` method
+    - must subclass Trainer and implement the ``step()`` method
     - must include a lightweight test (`example <https://github.com/ray-project/ray/blob/6bb110393008c9800177490688c6ed38b2da52a9/test/jenkins_tests/run_multi_node_tests.sh#L45>`__) to ensure the algorithm runs
     - should include tuned hyperparameter examples and documentation
     - should offer functionality not present in existing algorithms
@@ -46,7 +46,7 @@ Both integrated and contributed algorithms ship with the ``ray`` PyPI package, a
 
 How to add an algorithm to ``contrib``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-It takes just two changes to add an algorithm to `contrib <https://github.com/ray-project/ray/tree/master/rllib/contrib>`__. A minimal example can be found `here <https://github.com/ray-project/ray/tree/master/rllib/contrib/random_agent/random_agent.py>`__. First, subclass `Trainer <https://github.com/ray-project/ray/tree/master/rllib/agents/agent.py>`__ and implement the ``_init`` and ``_train`` methods:
+It takes just two changes to add an algorithm to `contrib <https://github.com/ray-project/ray/tree/master/rllib/contrib>`__. A minimal example can be found `here <https://github.com/ray-project/ray/tree/master/rllib/contrib/random_agent/random_agent.py>`__. First, subclass `Trainer <https://github.com/ray-project/ray/tree/master/rllib/agents/agent.py>`__ and implement the ``_init`` and ``step`` methods:
 
 .. literalinclude:: ../../rllib/contrib/random_agent/random_agent.py
    :language: python

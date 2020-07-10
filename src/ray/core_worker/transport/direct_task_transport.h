@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_DIRECT_TASK_H
-#define RAY_CORE_WORKER_DIRECT_TASK_H
+#pragma once
 
 #include <google/protobuf/repeated_field.h>
 
@@ -79,6 +78,9 @@ class CoreWorkerDirectTaskSubmitter {
   /// \param[in] task_spec The task to kill.
   /// \param[in] force_kill Whether to kill the worker executing the task.
   Status CancelTask(TaskSpecification task_spec, bool force_kill);
+
+  Status CancelRemoteTask(const ObjectID &object_id, const rpc::Address &worker_addr,
+                          bool force_kill);
 
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
@@ -200,5 +202,3 @@ class CoreWorkerDirectTaskSubmitter {
 };
 
 };  // namespace ray
-
-#endif  // RAY_CORE_WORKER_DIRECT_TASK_H

@@ -98,7 +98,7 @@ class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
     return ray::Status::OK();
   }
 
-  Status AsyncUnsubscribe(const TaskID &task_id, const gcs::StatusCallback &done) {
+  Status AsyncUnsubscribe(const TaskID &task_id) {
     subscribed_tasks_.erase(task_id);
     return ray::Status::OK();
   }
@@ -157,7 +157,7 @@ class MockGcsClient : public gcs::RedisGcsClient {
     node_accessor_.reset(new MockNodeInfoAccessor(this, node_id));
   }
 
-  gcs::raylet::TaskTable &raylet_task_table() { return *task_table_fake_; }
+  gcs::raylet::TaskTable &raylet_task_table() override { return *task_table_fake_; }
 
   MockTaskInfoAccessor &MockTasks() {
     return *dynamic_cast<MockTaskInfoAccessor *>(task_accessor_.get());
@@ -199,7 +199,7 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
                             JobID::Nil(), RandomTaskId(), 0, RandomTaskId(), address,
                             num_returns, {}, {});
   for (const auto &arg : arguments) {
-    builder.AddByRefArg(arg);
+    builder.AddArg(TaskArgByReference(arg, rpc::Address()));
   }
   rpc::TaskExecutionSpec execution_spec_message;
   execution_spec_message.set_num_forwards(1);
@@ -225,7 +225,7 @@ std::vector<ObjectID> InsertTaskChain(LineageCache &lineage_cache,
     inserted_tasks.push_back(task);
     arguments.clear();
     for (size_t j = 0; j < task.GetTaskSpecification().NumReturns(); j++) {
-      arguments.push_back(task.GetTaskSpecification().ReturnIdForPlasma(j));
+      arguments.push_back(task.GetTaskSpecification().ReturnId(j));
     }
   }
   return arguments;
@@ -379,7 +379,7 @@ TEST_F(LineageCacheTest, TestEvictChain) {
   for (int i = 0; i < 3; i++) {
     auto task = ExampleTask(arguments, 1);
     tasks.push_back(task);
-    arguments = {task.GetTaskSpecification().ReturnIdForPlasma(0)};
+    arguments = {task.GetTaskSpecification().ReturnId(0)};
   }
 
   Lineage uncommitted_lineage;
@@ -435,7 +435,7 @@ TEST_F(LineageCacheTest, TestEvictManyParents) {
   for (int i = 0; i < 10; i++) {
     auto task = ExampleTask({}, 1);
     parent_tasks.push_back(task);
-    arguments.push_back(task.GetTaskSpecification().ReturnIdForPlasma(0));
+    arguments.push_back(task.GetTaskSpecification().ReturnId(0));
     auto lineage = CreateSingletonLineage(task);
     lineage_cache_->AddUncommittedLineage(task.GetTaskSpecification().TaskId(), lineage);
   }
@@ -595,7 +595,7 @@ TEST_F(LineageCacheTest, TestEvictionUncommittedChildren) {
   // Add more tasks to the lineage cache that will remain local. Each of these
   // tasks is dependent one of the tasks that was forwarded above.
   for (const auto &task : tasks) {
-    auto return_id = task.GetTaskSpecification().ReturnIdForPlasma(0);
+    auto return_id = task.GetTaskSpecification().ReturnId(0);
     auto dependent_task = ExampleTask({return_id}, 1);
     auto lineage = CreateSingletonLineage(dependent_task);
     lineage_cache_->AddUncommittedLineage(dependent_task.GetTaskSpecification().TaskId(),

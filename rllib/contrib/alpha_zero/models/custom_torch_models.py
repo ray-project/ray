@@ -4,7 +4,7 @@ import numpy as np
 from ray.rllib.models.model import restore_original_dimensions
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils import try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
 
@@ -73,8 +73,8 @@ class ConvNetModel(ActorCriticModel):
         ActorCriticModel.__init__(self, obs_space, action_space, num_outputs,
                                   model_config, name)
 
-        in_channels = model_config["custom_options"]["in_channels"]
-        feature_dim = model_config["custom_options"]["feature_dim"]
+        in_channels = model_config["custom_model_config"]["in_channels"]
+        feature_dim = model_config["custom_model_config"]["feature_dim"]
 
         self.shared_layers = nn.Sequential(
             nn.Conv2d(in_channels, 32, kernel_size=4, stride=2),

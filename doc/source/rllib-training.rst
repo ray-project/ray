@@ -83,6 +83,14 @@ Specifying Resources
 
 You can control the degree of parallelism used by setting the ``num_workers`` hyperparameter for most algorithms. The number of GPUs the driver should use can be set via the ``num_gpus`` option. Similarly, the resource allocation to workers can be controlled via ``num_cpus_per_worker``, ``num_gpus_per_worker``, and ``custom_resources_per_worker``. The number of GPUs can be a fractional quantity to allocate only a fraction of a GPU. For example, with DQN you can pack five trainers onto one GPU by setting ``num_gpus: 0.2``.
 
+For synchronous algorithms like PPO and A2C, the driver and workers can make use of the same GPU. To do this for an amount of ``n`` GPUS:
+
+.. code-block:: python
+
+    gpu_count = n
+    num_gpus = 0.0001 # Driver GPU
+    num_gpus_per_worker = (gpu_count - num_gpus) / num_workers
+
 .. Original image: https://docs.google.com/drawings/d/14QINFvx3grVyJyjAnjggOCEVN-Iq6pYVJ3jA2S6j8z0/edit?usp=sharing
 .. image:: rllib-config.svg
 
@@ -91,10 +99,10 @@ Scaling Guide
 
 Here are some rules of thumb for scaling training with RLlib.
 
-1. If the environment is slow and cannot be replicated (e.g., since it requires interaction with physical systems), then you should use a sample-efficient off-policy algorithm such as :ref:`DQN <dqn>` or :ref:`SAC <sac>`. These algorithms default to ``num_workers: 0`` for single-process operation. Consider also batch RL training with the `offline data <rllib-offline.html>`__ API.
+1. If the environment is slow and cannot be replicated (e.g., since it requires interaction with physical systems), then you should use a sample-efficient off-policy algorithm such as :ref:`DQN <dqn>` or :ref:`SAC <sac>`. These algorithms default to ``num_workers: 0`` for single-process operation. Make sure to set ``num_gpus: 1`` if you want to use a GPU. Consider also batch RL training with the `offline data <rllib-offline.html>`__ API.
 
 
-2. If the environment is fast and the model is small (most models for RL are), use time-efficient algorithms such as :ref:`PPO <ppo>`, :ref:`IMPALA <impala>`, or :ref:`APEX <apex>`. These can be scaled by increasing ``num_workers`` to add rollout workers. It may also make sense to enable `vectorization <rllib-env.html#vectorized>`__ for inference. If the learner becomes a bottleneck, multiple GPUs can be used for learning by setting ``num_gpus > 1``.
+2. If the environment is fast and the model is small (most models for RL are), use time-efficient algorithms such as :ref:`PPO <ppo>`, :ref:`IMPALA <impala>`, or :ref:`APEX <apex>`. These can be scaled by increasing ``num_workers`` to add rollout workers. It may also make sense to enable `vectorization <rllib-env.html#vectorized>`__ for inference. Make sure to set ``num_gpus: 1`` if you want to use a GPU. If the learner becomes a bottleneck, multiple GPUs can be used for learning by setting ``num_gpus > 1``.
 
 
 3. If the model is compute intensive (e.g., a large deep residual network) and inference is the bottleneck, consider allocating GPUs to workers by setting ``num_gpus_per_worker: 1``. If you only have a single GPU, consider ``num_workers: 0`` to use the learner GPU for inference. For efficient use of GPU time, use a small number of GPU workers and a large number of `envs per worker <rllib-env.html#vectorized>`__.
@@ -467,11 +475,9 @@ For even finer-grained control over training, you can use RLlib's lower-level `b
 
 Global Coordination
 ~~~~~~~~~~~~~~~~~~~
-Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *named actors* (learn more about Ray actors `here <actors.html>`__). As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
+Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *detached actors* (learn more about Ray actors `here <actors.html>`__). These actors are assigned a global name and handles to them can be retrieved using these names. As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
 
 .. code-block:: python
-
-    from ray.util import named_actors
 
     @ray.remote
     class Counter:
@@ -483,12 +489,11 @@ Sometimes, it is necessary to coordinate between pieces of code that live in dif
           return self.count
 
     # on the driver
-    counter = Counter.remote()
-    named_actors.register_actor("global_counter", counter)
+    counter = Counter.options(name="global_counter").remote()
     print(ray.get(counter.get.remote()))  # get the latest count
 
     # in your envs
-    counter = named_actors.get_actor("global_counter")
+    counter = ray.get_actor("global_counter")
     counter.inc.remote(1)  # async call to increment the global count
 
 Ray actors provide high levels of performance, so in more complex cases they can be used implement communication patterns such as parameter servers and allreduce.

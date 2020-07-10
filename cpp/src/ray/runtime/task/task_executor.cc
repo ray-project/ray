@@ -8,9 +8,13 @@
 namespace ray {
 namespace api {
 
+TaskExecutor::TaskExecutor(AbstractRayRuntime &abstract_ray_tuntime_)
+    : abstract_ray_tuntime_(abstract_ray_tuntime_) {}
+
 // TODO(Guyang Song): Make a common task execution function used for both local mode and
 // cluster mode.
 std::unique_ptr<ObjectID> TaskExecutor::Execute(const InvocationSpec &invocation) {
+  abstract_ray_tuntime_.GetWorkerContext();
   return std::unique_ptr<ObjectID>(new ObjectID());
 };
 
@@ -40,7 +44,7 @@ void TaskExecutor::Invoke(const TaskSpecification &task_spec,
     data = (*exec_function)(dynamic_library_base_addr,
                             std::stoul(typed_descriptor->FunctionOffset()), args);
   }
-  runtime->Put(std::move(data), task_spec.ReturnId(0, ray::TaskTransportType::RAYLET));
+  runtime->Put(std::move(data), task_spec.ReturnId(0));
 }
 }  // namespace api
 }  // namespace ray

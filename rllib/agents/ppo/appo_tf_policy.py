@@ -8,21 +8,20 @@ import gym
 
 from ray.rllib.agents.impala import vtrace_tf as vtrace
 from ray.rllib.agents.impala.vtrace_tf_policy import _make_time_major, \
-    clip_gradients, validate_config, choose_optimizer
+    clip_gradients, choose_optimizer
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.postprocessing import compute_advantages
-from ray.rllib.utils import try_import_tf
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule, TFPolicy
 from ray.rllib.agents.ppo.ppo_tf_policy import KLCoeffMixin, ValueNetworkMixin
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.explained_variance import explained_variance
-from ray.rllib.utils.tf_ops import make_tf_callable
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 POLICY_SCOPE = "func"
 TARGET_POLICY_SCOPE = "target_func"
@@ -66,7 +65,7 @@ class PPOSurrogateLoss:
         def reduce_mean_valid(t):
             return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
 
-        logp_ratio = tf.exp(actions_logp - prev_actions_logp)
+        logp_ratio = tf.math.exp(actions_logp - prev_actions_logp)
 
         surrogate_loss = tf.minimum(
             advantages * logp_ratio,
@@ -79,7 +78,7 @@ class PPOSurrogateLoss:
         # The baseline loss
         delta = values - value_targets
         self.value_targets = value_targets
-        self.vf_loss = 0.5 * reduce_mean_valid(tf.square(delta))
+        self.vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
 
         # The entropy loss
         self.entropy = reduce_mean_valid(actions_entropy)
@@ -160,7 +159,7 @@ class VTraceSurrogateLoss:
                 behaviour_policy_logits=behaviour_logits,
                 target_policy_logits=old_policy_behaviour_logits,
                 actions=tf.unstack(actions, axis=2),
-                discounts=tf.to_float(~dones) * discount,
+                discounts=tf.cast(~dones, tf.float32) * discount,
                 rewards=rewards,
                 values=values,
                 bootstrap_value=bootstrap_value,
@@ -171,7 +170,7 @@ class VTraceSurrogateLoss:
                                               tf.float32))
 
         self.is_ratio = tf.clip_by_value(
-            tf.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0)
+            tf.math.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0)
         logp_ratio = self.is_ratio * tf.exp(actions_logp - prev_actions_logp)
 
         advantages = self.vtrace_returns.pg_advantages
@@ -186,7 +185,7 @@ class VTraceSurrogateLoss:
         # The baseline loss
         delta = values - self.vtrace_returns.vs
         self.value_targets = self.vtrace_returns.vs
-        self.vf_loss = 0.5 * reduce_mean_valid(tf.square(delta))
+        self.vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
 
         # The entropy loss
         self.entropy = reduce_mean_valid(actions_entropy)
@@ -209,7 +208,7 @@ def build_appo_model(policy, obs_space, action_space, config):
         logit_dim,
         config["model"],
         name=POLICY_SCOPE,
-        framework="torch" if config["use_pytorch"] else "tf")
+        framework="torch" if config["framework"] == "torch" else "tf")
     policy.model_variables = policy.model.variables()
 
     policy.target_model = ModelCatalog.get_model_v2(
@@ -218,7 +217,7 @@ def build_appo_model(policy, obs_space, action_space, config):
         logit_dim,
         config["model"],
         name=TARGET_POLICY_SCOPE,
-        framework="torch" if config["use_pytorch"] else "tf")
+        framework="torch" if config["framework"] == "torch" else "tf")
     policy.target_model_variables = policy.target_model.variables()
 
     return policy.model
@@ -351,7 +350,7 @@ def stats(policy, train_batch):
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
         "policy_loss": policy.loss.pi_loss,
         "entropy": policy.loss.entropy,
-        "var_gnorm": tf.global_norm(policy.model.trainable_variables()),
+        "var_gnorm": tf.linalg.global_norm(policy.model.trainable_variables()),
         "vf_loss": policy.loss.vf_loss,
         "vf_explained_var": explained_variance(
             tf.reshape(policy.loss.value_targets, [-1]),
@@ -449,7 +448,6 @@ AsyncPPOTFPolicy = build_tf_policy(
     optimizer_fn=choose_optimizer,
     gradients_fn=clip_gradients,
     extra_action_fetches_fn=add_values,
-    before_init=validate_config,
     before_loss_init=setup_mixins,
     after_init=setup_late_mixins,
     mixins=[

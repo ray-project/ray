@@ -18,12 +18,24 @@ def test_handle_in_endpoint(serve_instance):
         def __call__(self):
             return ray.get(self.handle.remote())
 
-    serve.create_endpoint("endpoint1", "/endpoint1", methods=["GET", "POST"])
-    serve.create_backend(Endpoint1, "endpoint1:v0")
-    serve.set_traffic("endpoint1", {"endpoint1:v0": 1.0})
+    serve.create_backend("endpoint1:v0", Endpoint1)
+    serve.create_endpoint(
+        "endpoint1",
+        backend="endpoint1:v0",
+        route="/endpoint1",
+        methods=["GET", "POST"])
 
-    serve.create_endpoint("endpoint2", "/endpoint2", methods=["GET", "POST"])
-    serve.create_backend(Endpoint2, "endpoint2:v0")
-    serve.set_traffic("endpoint2", {"endpoint2:v0": 1.0})
+    serve.create_backend("endpoint2:v0", Endpoint2)
+    serve.create_endpoint(
+        "endpoint2",
+        backend="endpoint2:v0",
+        route="/endpoint2",
+        methods=["GET", "POST"])
 
     assert requests.get("http://127.0.0.1:8000/endpoint2").text == "hello"
+
+
+if __name__ == "__main__":
+    import sys
+    import pytest
+    sys.exit(pytest.main(["-v", "-s", __file__]))

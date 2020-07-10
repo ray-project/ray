@@ -118,12 +118,6 @@ def test_actor_method_metadata_cache(ray_start_regular):
     assert len(ray.actor.ActorClassMethodMetadata._cache) == 1
     assert [id(x) for x in list(cache.items())[0]] == cached_data_id
 
-    # Check cache hit when @ray.remote
-    A2 = ray.remote(Actor)
-    assert id(A1.__ray_metadata__) != id(A2.__ray_metadata__)
-    assert id(A1.__ray_metadata__.method_meta) == id(
-        A2.__ray_metadata__.method_meta)
-
 
 def test_actor_name_conflict(ray_start_regular):
     @ray.remote
@@ -358,7 +352,7 @@ def test_decorator_args(ray_start_regular):
     with pytest.raises(Exception):
 
         @ray.remote(invalid_kwarg=0)  # noqa: F811
-        class Actor:
+        class Actor:  # noqa: F811
             def __init__(self):
                 pass
 
@@ -366,25 +360,25 @@ def test_decorator_args(ray_start_regular):
     with pytest.raises(Exception):
 
         @ray.remote(num_cpus=0, invalid_kwarg=0)  # noqa: F811
-        class Actor:
+        class Actor:  # noqa: F811
             def __init__(self):
                 pass
 
     # This is a valid way of using the decorator.
     @ray.remote(num_cpus=1)  # noqa: F811
-    class Actor:
+    class Actor:  # noqa: F811
         def __init__(self):
             pass
 
     # This is a valid way of using the decorator.
     @ray.remote(num_gpus=1)  # noqa: F811
-    class Actor:
+    class Actor:  # noqa: F811
         def __init__(self):
             pass
 
     # This is a valid way of using the decorator.
     @ray.remote(num_cpus=1, num_gpus=1)  # noqa: F811
-    class Actor:
+    class Actor:  # noqa: F811
         def __init__(self):
             pass
 
@@ -697,6 +691,32 @@ def test_use_actor_within_actor(ray_start_10_cpus):
 
     actor2 = Actor2.remote(3, 4)
     assert ray.get(actor2.get_values.remote(5)) == (3, 4)
+
+
+def test_use_actor_twice(ray_start_10_cpus):
+    # Make sure we can call the same actor using different refs.
+
+    @ray.remote
+    class Actor1:
+        def __init__(self):
+            self.count = 0
+
+        def inc(self):
+            self.count += 1
+            return self.count
+
+    @ray.remote
+    class Actor2:
+        def __init__(self):
+            pass
+
+        def inc(self, handle):
+            return ray.get(handle.inc.remote())
+
+    a = Actor1.remote()
+    a2 = Actor2.remote()
+    assert ray.get(a2.inc.remote(a)) == 1
+    assert ray.get(a2.inc.remote(a)) == 2
 
 
 def test_define_actor_within_remote_function(ray_start_10_cpus):

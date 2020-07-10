@@ -17,6 +17,7 @@ from ray.util.sgd.torch.distributed_torch_runner import (
 from ray.util.sgd.utils import check_for_failure, NUM_SAMPLES, BATCH_SIZE
 from ray.util.sgd.torch.torch_runner import TorchRunner
 from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP
+from ray.util.sgd.data import Dataset
 
 logger = logging.getLogger(__name__)
 RESIZE_COOLDOWN_S = 10
@@ -123,6 +124,7 @@ class TorchTrainer:
         num_workers (int): the number of workers used in distributed
             training. If 1, the worker will not be wrapped with
             DistributedDataParallel.
+        num_cpus_per_worker (int): Sets the cpu requirement for each worker.
         use_gpu (bool): Sets resource allocation for workers to 1 GPU
             if true, and automatically moves both the model and optimizer
             to the available CUDA device.
@@ -174,6 +176,7 @@ class TorchTrainer:
             initialization_hook=None,
             config=None,
             num_workers=1,
+            num_cpus_per_worker=1,
             use_gpu="auto",
             backend="auto",
             wrap_ddp=True,
@@ -194,11 +197,9 @@ class TorchTrainer:
                  "For more information, see "
                  "https://github.com/pytorch/examples/issues/467."))
 
-        if not (callable(model_creator) and callable(optimizer_creator)
-                and callable(data_creator)):
+        if not (callable(model_creator) and callable(optimizer_creator)):
             raise ValueError(
-                "Must provide a callable model_creator, optimizer_creator, "
-                "and data_creator.")
+                "Must provide a callable model_creator and optimizer_creator.")
 
         if num_replicas is not None:
             raise DeprecationWarning(
@@ -241,6 +242,7 @@ class TorchTrainer:
 
         logger.debug("Using {} as backend.".format(backend))
         self.backend = backend
+        self.num_cpus_per_worker = num_cpus_per_worker
         self.use_gpu = use_gpu
         self.max_replicas = num_workers
 
@@ -329,11 +331,14 @@ class TorchTrainer:
 
             # Start local worker
             self.local_worker = LocalDistributedRunner(
-                num_cpus=1, num_gpus=int(self.use_gpu), **params)
+                num_cpus=self.num_cpus_per_worker,
+                num_gpus=int(self.use_gpu),
+                **params)
 
             # Generate actor class
             RemoteRunner = ray.remote(
-                num_cpus=1, num_gpus=int(self.use_gpu))(DistributedTorchRunner)
+                num_cpus=self.num_cpus_per_worker,
+                num_gpus=int(self.use_gpu))(DistributedTorchRunner)
             # Start workers
             self.remote_workers = [
                 RemoteRunner.remote(**params) for i in range(num_workers - 1)
@@ -379,7 +384,8 @@ class TorchTrainer:
               profile=False,
               reduce_results=True,
               max_retries=3,
-              info=None):
+              info=None,
+              dataset=None):
         """Runs a training epoch.
 
         Calls `operator.train_epoch()` on N parallel workers simultaneously
@@ -405,6 +411,8 @@ class TorchTrainer:
                 in case of shared cluster usage. Defaults to 3.
             info (dict): Optional dictionary passed to the training
                 operator for ``train_epoch`` and ``train_batch``.
+            dataset (Dataset): Optional dataset to train with. If specified,
+                the dataloader passed in via data_creator will be ignored.
 
         Returns:
             (dict | list) A dictionary of metrics for training.
@@ -414,11 +422,14 @@ class TorchTrainer:
                 length will be equal to ``num_workers``.
         """
         assert max_retries >= 0, "`max_retries` must be non-negative."
+        assert isinstance(dataset, Dataset) is not None \
+            or self.data_creator, \
+            "Must specify either a data creator or a dataset"
         if self._should_resize():
             logger.info("Resize opportunity detected. Attempting to scale up.")
             self._resize_workers()
         success, worker_stats = self._train_epoch(
-            num_steps=num_steps, profile=profile, info=info)
+            num_steps=num_steps, profile=profile, info=info, dataset=dataset)
         # Fault handling
         for i in range(max_retries):
             if success:
@@ -429,7 +440,10 @@ class TorchTrainer:
             logger.info("Retrying training step with %d workers." %
                         (len(self.remote_workers) + 1))
             success, worker_stats = self._train_epoch(
-                num_steps=num_steps, profile=profile, info=info)
+                num_steps=num_steps,
+                profile=profile,
+                info=info,
+                dataset=dataset)
         if not success:
             raise RuntimeError("Training run failed.")
 
@@ -452,14 +466,26 @@ class TorchTrainer:
                 stats[stat_key] = worker_stats[0][stat_key]
         return stats
 
-    def _train_epoch(self, num_steps=None, profile=False, info=None):
+    def _train_epoch(self,
+                     num_steps=None,
+                     profile=False,
+                     info=None,
+                     dataset=None):
         params = dict(num_steps=num_steps, profile=profile, info=info)
-
-        remote_worker_stats = [
-            w.train_epoch.remote(**params) for w in self.remote_workers
-        ]
+        remote_worker_stats = []
+        if dataset:
+            dataset.set_num_shards(self.max_replicas)
+        for i, w in enumerate(self.remote_workers):
+            params = dict(num_steps=num_steps, profile=profile, info=info)
+            if dataset:
+                params["iterator"] = dataset.get_shard(i)
+            stats = w.train_epoch.remote(**params)
+            remote_worker_stats.append(stats)
 
         try:
+            if dataset:
+                params["iterator"] = dataset.get_shard(
+                    len(self.remote_workers))
             local_worker_stats = self.local_worker.train_epoch(**params)
         except RuntimeError as err:
             if "gloo" in err.args[0] and "Timed out" in err.args[0]:
@@ -716,12 +742,14 @@ class TorchTrainer:
             def default_resource_request(cls, config):
                 num_workers = config.get("num_workers",
                                          kwargs.get("num_workers", 1))
+                num_cpus = config.get("num_cpus_per_worker",
+                                      kwargs.get("num_cpus_per_worker", 1))
                 use_gpu = config.get("use_gpu", kwargs.get("use_gpu"))
 
                 remote_worker_count = num_workers - 1
 
                 return Resources(
-                    cpu=1,
+                    cpu=num_cpus,
                     gpu=int(use_gpu),
                     extra_cpu=int(remote_worker_count),
                     extra_gpu=int(int(use_gpu) * remote_worker_count))
@@ -757,7 +785,7 @@ class BaseTorchTrainable(Trainable):
         # TorchTrainable is subclass of BaseTorchTrainable.
 
         class CustomTrainable(TorchTrainable):
-            def _train(self):
+            def step(self):
                 for i in range(5):
                     train_stats = self.trainer.train()
                 validation_stats = self.trainer.validate()
@@ -771,11 +799,11 @@ class BaseTorchTrainable(Trainable):
 
     """
 
-    def _setup(self, config):
+    def setup(self, config):
         """Constructs a TorchTrainer object as `self.trainer`."""
         self._trainer = self._create_trainer(config)
 
-    def _train(self):
+    def step(self):
         """Calls `self.trainer.train()` and `self.trainer.validate()` once.
 
         You may want to override this if using a custom LR scheduler.
@@ -785,20 +813,20 @@ class BaseTorchTrainable(Trainable):
         stats = merge_dicts(train_stats, validation_stats)
         return stats
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         """Returns a path containing the trainer state."""
         checkpoint_path = os.path.join(checkpoint_dir, "trainer.checkpoint")
         self.trainer.save(checkpoint_path)
         return checkpoint_path
 
-    def _restore(self, checkpoint_path):
+    def load_checkpoint(self, checkpoint_path):
         """Restores the trainer state.
 
         Override this if you have state external to the Trainer object.
         """
         return self.trainer.load(checkpoint_path)
 
-    def _stop(self):
+    def cleanup(self):
         """Shuts down the trainer."""
         self.trainer.shutdown()
 

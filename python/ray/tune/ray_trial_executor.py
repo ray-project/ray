@@ -256,9 +256,6 @@ class RayTrialExecutor(TrialExecutor):
             error_msg (str): Optional error message.
             stop_logger (bool): Whether to shut down the trial logger.
         """
-        if stop_logger:
-            trial.close_logger()
-
         self.set_status(trial, Trial.ERROR if error else Trial.TERMINATED)
         trial.set_location(Location())
 
@@ -278,6 +275,8 @@ class RayTrialExecutor(TrialExecutor):
             self.set_status(trial, Trial.ERROR)
         finally:
             trial.set_runner(None)
+            if stop_logger:
+                trial.close_logger()
 
     def start_trial(self, trial, checkpoint=None, train=True):
         """Starts the trial.
@@ -670,8 +669,7 @@ class RayTrialExecutor(TrialExecutor):
             elif trial.sync_on_checkpoint:
                 # This provides FT backwards compatibility in the
                 # case where a DurableTrainable is not provided.
-                logger.warning("Trial %s: Reading checkpoint into memory.",
-                               trial)
+                logger.debug("Trial %s: Reading checkpoint into memory", trial)
                 data_dict = TrainableUtil.pickle_checkpoint(value)
                 with self._change_working_directory(trial):
                     remote = trial.runner.restore_from_object.remote(data_dict)

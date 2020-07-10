@@ -1,21 +1,16 @@
-import inspect
 from functools import wraps
-from tempfile import mkstemp
-
-from multiprocessing import cpu_count
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 SERVE_MASTER_NAME)
+                                 SERVE_MASTER_NAME, HTTP_PROXY_TIMEOUT)
 from ray.serve.master import ServeMaster
 from ray.serve.handle import RayServeHandle
-from ray.serve.kv_store_service import SQLiteKVStore
-from ray.serve.utils import block_until_http_ready
-from ray.serve.exceptions import RayServeException, batch_annotation_not_found
-from ray.serve.backend_config import BackendConfig
-from ray.serve.policy import RoutePolicy
+from ray.serve.utils import (block_until_http_ready, format_actor_name)
+from ray.serve.exceptions import RayServeException
+from ray.serve.config import BackendConfig, ReplicaConfig
 from ray.serve.router import Query
 from ray.serve.request_params import RequestMetadata
+from ray.serve.metric import InMemoryExporter
 
 master_actor = None
 
@@ -24,15 +19,17 @@ def _get_master_actor():
     """Used for internal purpose because using just import serve.global_state
     will always reference the original None object.
     """
+    global master_actor
+    if master_actor is None:
+        raise RayServeException("Please run serve.init to initialize or "
+                                "connect to existing ray serve cluster.")
     return master_actor
 
 
 def _ensure_connected(f):
     @wraps(f)
     def check(*args, **kwargs):
-        if _get_master_actor() is None:
-            raise RayServeException("Please run serve.init to initialize or "
-                                    "connect to existing ray serve cluster.")
+        _get_master_actor()
         return f(*args, **kwargs)
 
     return check
@@ -56,68 +53,45 @@ def accept_batch(f):
             def __call__(self, *, python_arg=None):
                 assert isinstance(python_arg, list)
     """
-    f.serve_accept_batch = True
+    f._serve_accept_batch = True
     return f
 
 
-def init(
-        kv_store_connector=None,
-        kv_store_path=None,
-        blocking=False,
-        start_server=True,
-        http_host=DEFAULT_HTTP_HOST,
-        http_port=DEFAULT_HTTP_PORT,
-        ray_init_kwargs={
-            "object_store_memory": int(1e8),
-            "num_cpus": max(cpu_count(), 8)
-        },
-        gc_window_seconds=3600,
-        queueing_policy=RoutePolicy.Random,
-        policy_kwargs={},
-):
-    """Initialize a serve cluster.
+def init(name=None,
+         http_host=DEFAULT_HTTP_HOST,
+         http_port=DEFAULT_HTTP_PORT,
+         metric_exporter=InMemoryExporter):
+    """Initialize or connect to a serve cluster.
 
-    If serve cluster has already initialized, this function will just return.
+    If serve cluster is already initialized, this function will just return.
 
-    Calling `ray.init` before `serve.init` is optional. When there is not a ray
-    cluster initialized, serve will call `ray.init` with `object_store_memory`
-    requirement.
+    If `ray.init` has not been called in this process, it will be called with
+    no arguments. To specify kwargs to `ray.init`, it should be called
+    separately before calling `serve.init`.
 
     Args:
-        kv_store_connector (callable): Function of (namespace) => TableObject.
-            We will use a SQLite connector that stores to /tmp by default.
-        kv_store_path (str, path): Path to the SQLite table.
-        blocking (bool): If true, the function will wait for the HTTP server to
-            be healthy, and other components to be ready before returns.
-        start_server (bool): If true, `serve.init` starts http server.
-            (Default: True)
+        name (str): A unique name for this serve instance. This allows
+            multiple serve instances to run on the same ray cluster. Must be
+            specified in all subsequent serve.init() calls.
         http_host (str): Host for HTTP server. Default to "0.0.0.0".
         http_port (int): Port for HTTP server. Default to 8000.
-        ray_init_kwargs (dict): Argument passed to ray.init, if there is no ray
-            connection. Default to {"object_store_memory": int(1e8)} for
-            performance stability reason
-        gc_window_seconds(int): How long will we keep the metric data in
-            memory. Data older than the gc_window will be deleted. The default
-            is 3600 seconds, which is 1 hour.
-        queueing_policy(RoutePolicy): Define the queueing policy for selecting
-            the backend for a service. (Default: RoutePolicy.Random)
-        policy_kwargs: Arguments required to instantiate a queueing policy
+        metric_exporter(ExporterInterface): The class aggregates metrics from
+            all RayServe actors and optionally export them to external
+            services. RayServe has two options built in: InMemoryExporter and
+            PrometheusExporter
     """
-    global master_actor
-    if master_actor is not None:
-        return
+    if name is not None and not isinstance(name, str):
+        raise TypeError("name must be a string.")
 
     # Initialize ray if needed.
     if not ray.is_initialized():
-        ray.init(**ray_init_kwargs)
-
-    # Register serialization context once
-    ray.register_custom_serializer(Query, Query.ray_serialize,
-                                   Query.ray_deserialize)
+        ray.init()
 
     # Try to get serve master actor if it exists
+    global master_actor
+    master_actor_name = format_actor_name(SERVE_MASTER_NAME, name)
     try:
-        master_actor = ray.util.get_actor(SERVE_MASTER_NAME)
+        master_actor = ray.get_actor(master_actor_name)
         return
     except ValueError:
         pass
@@ -129,57 +103,123 @@ def init(
                                    RequestMetadata.ray_serialize,
                                    RequestMetadata.ray_deserialize)
 
-    if kv_store_path is None:
-        _, kv_store_path = mkstemp()
-
-    # Serve has not been initialized, perform init sequence
-    # TODO move the db to session_dir.
-    #    ray.worker._global_node.address_info["session_dir"]
-    def kv_store_connector(namespace):
-        return SQLiteKVStore(namespace, db_path=kv_store_path)
-
+    # TODO(edoakes): for now, always start the HTTP proxy on the node that
+    # serve.init() was run on. We should consider making this configurable
+    # in the future.
+    http_node_id = ray.state.current_node_id()
     master_actor = ServeMaster.options(
-        detached=True, name=SERVE_MASTER_NAME).remote(kv_store_connector)
+        name=master_actor_name,
+        max_restarts=-1,
+        max_task_retries=-1,
+    ).remote(name, http_node_id, http_host, http_port, metric_exporter)
 
-    ray.get(
-        master_actor.start_router.remote(queueing_policy.value, policy_kwargs))
-
-    ray.get(master_actor.start_metric_monitor.remote(gc_window_seconds))
-    if start_server:
-        ray.get(master_actor.start_http_proxy.remote(http_host, http_port))
-
-    if start_server and blocking:
-        block_until_http_ready("http://{}:{}/-/routes".format(
-            http_host, http_port))
+    block_until_http_ready(
+        "http://{}:{}/-/routes".format(http_host, http_port),
+        timeout=HTTP_PROXY_TIMEOUT)
 
 
 @_ensure_connected
-def create_endpoint(endpoint_name, route=None, methods=["GET"]):
+def shutdown():
+    """Completely shut down the connected Serve instance.
+
+    Shuts down all processes and deletes all state associated with the Serve
+    instance that's currently connected to (via serve.init).
+    """
+    global master_actor
+    ray.get(master_actor.shutdown.remote())
+    ray.kill(master_actor, no_restart=True)
+    master_actor = None
+
+
+def create_endpoint(endpoint_name,
+                    *,
+                    backend=None,
+                    route=None,
+                    methods=["GET"]):
     """Create a service endpoint given route_expression.
 
     Args:
-        endpoint_name (str): A name to associate to the endpoint. It will be
-            used as key to set traffic policy.
-        route (str): A string begin with "/". HTTP server will use
+        endpoint_name (str): A name to associate to with the endpoint.
+        backend (str, required): The backend that will serve requests to
+            this endpoint. To change this or split traffic among backends, use
+            `serve.set_traffic`.
+        route (str, optional): A string begin with "/". HTTP server will use
             the string to match the path.
-        blocking (bool): If true, the function will wait for service to be
-            registered before returning
+        methods(List[str], optional): The HTTP methods that are valid for this
+            endpoint.
     """
+    if backend is None:
+        raise TypeError("backend must be specified when creating "
+                        "an endpoint.")
+    elif not isinstance(backend, str):
+        raise TypeError("backend must be a string, got {}.".format(
+            type(backend)))
+
+    if route is not None:
+        if not isinstance(route, str) or not route.startswith("/"):
+            raise TypeError("route must be a string starting with '/'.")
+
+    if not isinstance(methods, list):
+        raise TypeError(
+            "methods must be a list of strings, but got type {}".format(
+                type(methods)))
+
+    upper_methods = []
+    for method in methods:
+        if not isinstance(method, str):
+            raise TypeError("methods must be a list of strings, but contained "
+                            "an element of type {}".format(type(method)))
+        upper_methods.append(method.upper())
+
     ray.get(
-        master_actor.create_endpoint.remote(route, endpoint_name,
-                                            [m.upper() for m in methods]))
+        master_actor.create_endpoint.remote(endpoint_name, {backend: 1.0},
+                                            route, upper_methods))
 
 
 @_ensure_connected
-def set_backend_config(backend_tag, backend_config):
-    """Set a backend configuration for a backend tag
+def delete_endpoint(endpoint):
+    """Delete the given endpoint.
+
+    Does not delete any associated backends.
+    """
+    ray.get(master_actor.delete_endpoint.remote(endpoint))
+
+
+@_ensure_connected
+def list_endpoints():
+    """Returns a dictionary of all registered endpoints.
+
+    The dictionary keys are endpoint names and values are dictionaries
+    of the form: {"methods": List[str], "traffic": Dict[str, float]}.
+    """
+    return ray.get(master_actor.get_all_endpoints.remote())
+
+
+@_ensure_connected
+def update_backend_config(backend_tag, config_options):
+    """Update a backend configuration for a backend tag.
+
+    Keys not specified in the passed will be left unchanged.
 
     Args:
         backend_tag(str): A registered backend.
-        backend_config(BackendConfig) : Desired backend configuration.
+        config_options(dict): Backend config options to update.
+            Supported options:
+                - "num_replicas": number of worker processes to start up that \
+                        will handle requests to this backend.
+                - "max_batch_size": the maximum number of requests that will \
+                        be processed in one batch by this backend.
+                - "batch_wait_timeout": time in seconds that backend replicas \
+                        will wait for a full batch of requests before \
+                        processing a partial batch.
+                - "max_concurrent_queries": the maximum number of queries \
+                        that will be sent to a replica of this backend \
+                        without receiving a response.
     """
+    if not isinstance(config_options, dict):
+        raise ValueError("config_options must be a dictionary.")
     ray.get(
-        master_actor.set_backend_config.remote(backend_tag, backend_config))
+        master_actor.update_backend_config.remote(backend_tag, config_options))
 
 
 @_ensure_connected
@@ -192,57 +232,68 @@ def get_backend_config(backend_tag):
     return ray.get(master_actor.get_backend_config.remote(backend_tag))
 
 
-def _backend_accept_batch(func_or_class):
-    if inspect.isfunction(func_or_class):
-        return hasattr(func_or_class, "serve_accept_batch")
-    elif inspect.isclass(func_or_class):
-        return hasattr(func_or_class.__call__, "serve_accept_batch")
-
-
 @_ensure_connected
-def create_backend(func_or_class,
-                   backend_tag,
+def create_backend(backend_tag,
+                   func_or_class,
                    *actor_init_args,
-                   backend_config=None):
-    """Create a backend using func_or_class and assign backend_tag.
+                   ray_actor_options=None,
+                   config=None):
+    """Create a backend with the provided tag.
+
+    The backend will serve requests with func_or_class.
 
     Args:
+        backend_tag (str): a unique tag assign to identify this backend.
         func_or_class (callable, class): a function or a class implementing
             __call__.
-        backend_tag (str): a unique tag assign to this backend. It will be used
-            to associate services in traffic policy.
-        backend_config (BackendConfig): An object defining backend properties
-        for starting a backend.
-        *actor_init_args (optional): the argument to pass to the class
+        actor_init_args (optional): the arguments to pass to the class.
             initialization method.
+        ray_actor_options (optional): options to be passed into the
+            @ray.remote decorator for the backend actor.
+        config (optional): configuration options for this backend.
+            Supported options:
+                - "num_replicas": number of worker processes to start up that \
+                        will handle requests to this backend.
+                - "max_batch_size": the maximum number of requests that will \
+                        be processed in one batch by this backend.
+                - "batch_wait_timeout": time in seconds that backend replicas \
+                        will wait for a full batch of requests before \
+                        processing a partial batch.
+                - "max_concurrent_queries": the maximum number of queries \
+                        that will be sent to a replica of this backend \
+                        without receiving a response.
     """
-    # Configure backend_config
-    if backend_config is None:
-        backend_config = BackendConfig()
-    assert isinstance(backend_config,
-                      BackendConfig), ("backend_config must be"
-                                       " of instance BackendConfig")
+    if config is None:
+        config = {}
+    if not isinstance(config, dict):
+        raise TypeError("config must be a dictionary.")
 
-    # Validate that func_or_class is a function or class.
-    if inspect.isfunction(func_or_class):
-        if len(actor_init_args) != 0:
-            raise ValueError(
-                "actor_init_args not supported for function backend.")
-    elif not inspect.isclass(func_or_class):
-        raise ValueError(
-            "Backend must be a function or class, it is {}.".format(
-                type(func_or_class)))
-
-    # Make sure the batch size is correct.
-    should_accept_batch = backend_config.max_batch_size is not None
-    if should_accept_batch and not _backend_accept_batch(func_or_class):
-        raise batch_annotation_not_found
-    if _backend_accept_batch(func_or_class):
-        backend_config.has_accept_batch_annotation = True
+    replica_config = ReplicaConfig(
+        func_or_class, *actor_init_args, ray_actor_options=ray_actor_options)
+    backend_config = BackendConfig(config, replica_config.accepts_batches,
+                                   replica_config.is_blocking)
 
     ray.get(
         master_actor.create_backend.remote(backend_tag, backend_config,
-                                           func_or_class, actor_init_args))
+                                           replica_config))
+
+
+@_ensure_connected
+def list_backends():
+    """Returns a dictionary of all registered backends.
+
+    Dictionary maps backend tags to backend configs.
+    """
+    return ray.get(master_actor.get_all_backends.remote())
+
+
+@_ensure_connected
+def delete_backend(backend_tag):
+    """Delete the given backend.
+
+    The backend must not currently be used by any endpoints.
+    """
+    ray.get(master_actor.delete_backend.remote(backend_tag))
 
 
 @_ensure_connected
@@ -264,6 +315,31 @@ def set_traffic(endpoint_name, traffic_policy_dictionary):
     ray.get(
         master_actor.set_traffic.remote(endpoint_name,
                                         traffic_policy_dictionary))
+
+
+@_ensure_connected
+def shadow_traffic(endpoint_name, backend_tag, proportion):
+    """Shadow traffic from an endpoint to a backend.
+
+    The specified proportion of requests will be duplicated and sent to the
+    backend. Responses of the duplicated traffic will be ignored.
+    The backend must not already be in use.
+
+    To stop shadowing traffic to a backend, call `shadow_traffic` with
+    proportion equal to 0.
+
+    Args:
+        endpoint_name (str): A registered service endpoint.
+        backend_tag (str): A registered backend.
+        proportion (float): The proportion of traffic from 0 to 1.
+    """
+
+    if not isinstance(proportion, (float, int)) or not 0 <= proportion <= 1:
+        raise TypeError("proportion must be a float from 0 to 1.")
+
+    ray.get(
+        master_actor.shadow_traffic.remote(endpoint_name, backend_tag,
+                                           proportion))
 
 
 @_ensure_connected
@@ -298,16 +374,27 @@ def get_handle(endpoint_name,
 
 
 @_ensure_connected
-def stat(percentiles=[50, 90, 95],
-         agg_windows_seconds=[10, 60, 300, 600, 3600]):
+def stat():
     """Retrieve metric statistics about ray serve system.
 
-    Args:
-        percentiles(List[int]): The percentiles for aggregation operations.
-            Default is 50th, 90th, 95th percentile.
-        agg_windows_seconds(List[int]): The aggregation windows in seconds.
-            The longest aggregation window must be shorter or equal to the
-            gc_window_seconds.
+    Returns:
+        metric_stats(Any): Metric information returned by the metric exporter.
+            This can vary by exporter. For the default InMemoryExporter, it
+            returns a list of the following format:
+
+            .. code-block::python
+              [
+                  {"info": {
+                      "name": ...,
+                      "type": COUNTER|MEASURE,
+                      "label_key": label_value,
+                      "label_key": label_value,
+                      ...
+                  }, "value": float}
+              ]
+
+            For PrometheusExporter, it returns the metrics in prometheus format
+            in plain text.
     """
-    [monitor] = ray.get(master_actor.get_metric_monitor.remote())
-    return ray.get(monitor.collect.remote(percentiles, agg_windows_seconds))
+    [metric_exporter] = ray.get(master_actor.get_metric_exporter.remote())
+    return ray.get(metric_exporter.inspect_metrics.remote())

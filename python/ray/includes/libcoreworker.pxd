@@ -75,7 +75,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CJobID CreationJobID() const
         CLanguage ActorLanguage() const
         CFunctionDescriptor ActorCreationTaskFunctionDescriptor() const
-        c_bool IsDirectCallActor() const
         c_string ExtensionData() const
 
     cdef cppclass CCoreWorker "ray::CoreWorker":
@@ -83,20 +82,23 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CLanguage &GetLanguage()
 
         void SubmitTask(
-            const CRayFunction &function, const c_vector[CTaskArg] &args,
+            const CRayFunction &function,
+            const c_vector[unique_ptr[CTaskArg]] &args,
             const CTaskOptions &options, c_vector[CObjectID] *return_ids,
             int max_retries)
         CRayStatus CreateActor(
-            const CRayFunction &function, const c_vector[CTaskArg] &args,
+            const CRayFunction &function,
+            const c_vector[unique_ptr[CTaskArg]] &args,
             const CActorCreationOptions &options,
             const c_string &extension_data, CActorID *actor_id)
-        CRayStatus SubmitActorTask(
+        void SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
-            const c_vector[CTaskArg] &args, const CTaskOptions &options,
+            const c_vector[unique_ptr[CTaskArg]] &args,
+            const CTaskOptions &options,
             c_vector[CObjectID] *return_ids)
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
-            c_bool no_reconstruction)
+            c_bool no_restart)
         CRayStatus CancelTask(const CObjectID &object_id, c_bool force_kill)
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
@@ -121,18 +123,18 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
                                         *bytes,
                                         CObjectID *c_actor_handle_id)
-        CRayStatus GetActorHandle(const CActorID &actor_id,
-                                  CActorHandle **actor_handle) const
+        const CActorHandle* GetActorHandle(const CActorID &actor_id) const
+        const CActorHandle* GetNamedActorHandle(const c_string &name)
         void AddLocalReference(const CObjectID &object_id)
         void RemoveLocalReference(const CObjectID &object_id)
+        const CAddress &GetRpcAddress() const
+        CAddress GetOwnerAddress(const CObjectID &object_id) const
         void PromoteObjectToPlasma(const CObjectID &object_id)
         void PromoteToPlasmaAndGetOwnershipInfo(const CObjectID &object_id,
-                                                CTaskID *owner_id,
                                                 CAddress *owner_address)
         void RegisterOwnershipInfoAndResolveFuture(
                 const CObjectID &object_id,
                 const CObjectID &outer_object_id,
-                const CTaskID &owner_id,
                 const CAddress &owner_address)
 
         CRayStatus SetClientOptions(c_string client_name, int64_t limit)
@@ -168,7 +170,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         void GetAsync(const CObjectID &object_id,
                       ray_callback_function success_callback,
-                      ray_callback_function fallback_callback,
                       void* python_future)
 
         CRayStatus PushError(const CJobID &job_id, const c_string &type,
@@ -181,10 +182,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                const double capacity,
                                const CClientID &client_Id)
 
-        void SetPlasmaAddedCallback(plasma_callback_function callback)
-
-        void SubscribeToPlasmaAdd(const CObjectID &object_id)
-
     cdef cppclass CCoreWorkerOptions "ray::CoreWorkerOptions":
         CWorkerType worker_type
         CLanguage language
@@ -192,6 +189,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string raylet_socket
         CJobID job_id
         CGcsClientOptions gcs_options
+        c_bool enable_logging
         c_string log_dir
         c_bool install_failure_signal_handler
         c_string node_ip_address
@@ -217,6 +215,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int num_workers
         (c_bool() nogil) kill_main
         CCoreWorkerOptions()
+        (void() nogil) terminate_asyncio_thread
 
     cdef cppclass CCoreWorkerProcess "ray::CoreWorkerProcess":
         @staticmethod

@@ -1,3 +1,4 @@
+import tree
 from typing import Union
 
 from ray.rllib.models.action_dist import ActionDistribution
@@ -6,9 +7,8 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
-from ray.rllib.utils.tuple_actions import TupleActions
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
@@ -55,11 +55,7 @@ class StochasticSampling(Exploration):
             false_fn=lambda: deterministic_sample)
 
         def logp_false_fn():
-            # TODO(sven): Move into (deterministic_)sample(logp=True|False)
-            if isinstance(sample, TupleActions):
-                batch_size = tf.shape(action[0])[0]
-            else:
-                batch_size = tf.shape(action)[0]
+            batch_size = tf.shape(tree.flatten(action)[0])[0]
             return tf.zeros(shape=(batch_size, ), dtype=tf.float32)
 
         logp = tf.cond(
@@ -67,8 +63,7 @@ class StochasticSampling(Exploration):
             true_fn=lambda: action_dist.sampled_action_logp(),
             false_fn=logp_false_fn)
 
-        return TupleActions(action) if isinstance(sample, TupleActions) \
-            else action, logp
+        return action, logp
 
     @staticmethod
     def _get_torch_exploration_action(action_dist, explore):

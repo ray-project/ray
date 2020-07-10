@@ -37,19 +37,16 @@ void InlineDependencies(
   auto &msg = task.GetMutableMessage();
   size_t found = 0;
   for (size_t i = 0; i < task.NumArgs(); i++) {
-    auto count = task.ArgIdCount(i);
-    if (count > 0) {
-      const auto &id = task.ArgId(i, 0);
+    if (task.ArgByRef(i)) {
+      const auto &id = task.ArgId(i);
       const auto &it = dependencies.find(id);
       if (it != dependencies.end()) {
         RAY_CHECK(it->second);
         auto *mutable_arg = msg.mutable_args(i);
-        mutable_arg->clear_object_ids();
-        if (it->second->IsInPlasmaError()) {
-          // Promote the object id to plasma.
-          mutable_arg->add_object_ids(it->first.Binary());
-        } else {
-          // Inline the object value.
+        if (!it->second->IsInPlasmaError()) {
+          // The object has not been promoted to plasma. Inline the object by
+          // clearing the reference and replacing it with the raw value.
+          mutable_arg->mutable_object_ref()->Clear();
           if (it->second->HasData()) {
             const auto &data = it->second->GetData();
             mutable_arg->set_data(data->Data(), data->Size());
@@ -65,8 +62,6 @@ void InlineDependencies(
           inlined_dependency_ids->push_back(id);
         }
         found++;
-      } else {
-        RAY_CHECK(!id.IsDirectCallType());
       }
     }
   }
@@ -78,13 +73,8 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
                                                   std::function<void()> on_complete) {
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> local_dependencies;
   for (size_t i = 0; i < task.NumArgs(); i++) {
-    auto count = task.ArgIdCount(i);
-    if (count > 0) {
-      RAY_CHECK(count <= 1) << "multi args not implemented";
-      const auto &id = task.ArgId(i, 0);
-      if (id.IsDirectCallType()) {
-        local_dependencies.emplace(id, nullptr);
-      }
+    if (task.ArgByRef(i)) {
+      local_dependencies.emplace(task.ArgId(i), nullptr);
     }
   }
   if (local_dependencies.empty()) {

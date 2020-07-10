@@ -1,11 +1,18 @@
 from collections import defaultdict
-import random
-
 import numpy as np
+import random
+from typing import List, Dict, Callable, Any, TYPE_CHECKING
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
+from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.space_utils import flatten_to_single_ndarray
+from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
+from ray.rllib.utils.types import SampleBatchType, AgentID, PolicyID, \
+    EnvObsType, EnvInfoDict, EnvActionType
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation.sample_batch_builder import \
+        MultiAgentSampleBatchBuilder
 
 
 @DeveloperAPI
@@ -37,34 +44,42 @@ class MultiAgentEpisode:
         >>> episode.extra_batches.add(batch.build_and_reset())
     """
 
-    def __init__(self, policies, policy_mapping_fn, batch_builder_factory,
-                 extra_batch_callback):
-        self.new_batch_builder = batch_builder_factory
-        self.add_extra_batch = extra_batch_callback
-        self.batch_builder = batch_builder_factory()
-        self.total_reward = 0.0
-        self.length = 0
-        self.episode_id = random.randrange(2e9)
-        self.agent_rewards = defaultdict(float)
-        self.custom_metrics = {}
-        self.user_data = {}
-        self.hist_data = {}
-        self._policies = policies
-        self._policy_mapping_fn = policy_mapping_fn
-        self._next_agent_index = 0
-        self._agent_to_index = {}
-        self._agent_to_policy = {}
-        self._agent_to_rnn_state = {}
-        self._agent_to_last_obs = {}
-        self._agent_to_last_raw_obs = {}
-        self._agent_to_last_info = {}
-        self._agent_to_last_action = {}
-        self._agent_to_last_pi_info = {}
-        self._agent_to_prev_action = {}
-        self._agent_reward_history = defaultdict(list)
+    def __init__(self, policies: Dict[PolicyID, Policy],
+                 policy_mapping_fn: Callable[[AgentID], PolicyID],
+                 batch_builder_factory: Callable[
+                     [], "MultiAgentSampleBatchBuilder"],
+                 extra_batch_callback: Callable[[SampleBatchType], None]):
+        self.new_batch_builder: Callable[
+            [], "MultiAgentSampleBatchBuilder"] = batch_builder_factory
+        self.add_extra_batch: Callable[[SampleBatchType],
+                                       None] = extra_batch_callback
+        self.batch_builder: "MultiAgentSampleBatchBuilder" = \
+            batch_builder_factory()
+        self.total_reward: float = 0.0
+        self.length: int = 0
+        self.episode_id: int = random.randrange(2e9)
+        self.agent_rewards: Dict[AgentID, float] = defaultdict(float)
+        self.custom_metrics: Dict[str, float] = {}
+        self.user_data: Dict[str, Any] = {}
+        self.hist_data: Dict[str, List[float]] = {}
+        self._policies: Dict[PolicyID, Policy] = policies
+        self._policy_mapping_fn: Callable[[AgentID], PolicyID] = \
+            policy_mapping_fn
+        self._next_agent_index: int = 0
+        self._agent_to_index: Dict[AgentID, int] = {}
+        self._agent_to_policy: Dict[AgentID, PolicyID] = {}
+        self._agent_to_rnn_state: Dict[AgentID, List[Any]] = {}
+        self._agent_to_last_obs: Dict[AgentID, EnvObsType] = {}
+        self._agent_to_last_raw_obs: Dict[AgentID, EnvObsType] = {}
+        self._agent_to_last_info: Dict[AgentID, EnvInfoDict] = {}
+        self._agent_to_last_action: Dict[AgentID, EnvActionType] = {}
+        self._agent_to_last_pi_info: Dict[AgentID, dict] = {}
+        self._agent_to_prev_action: Dict[AgentID, EnvActionType] = {}
+        self._agent_reward_history: Dict[AgentID, List[int]] = defaultdict(
+            list)
 
     @DeveloperAPI
-    def soft_reset(self):
+    def soft_reset(self) -> None:
         """Clears rewards and metrics, but retains RNN and other state.
 
         This is used to carry state across multiple logical episodes in the
@@ -77,7 +92,7 @@ class MultiAgentEpisode:
         self._agent_reward_history = defaultdict(list)
 
     @DeveloperAPI
-    def policy_for(self, agent_id=_DUMMY_AGENT_ID):
+    def policy_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> Policy:
         """Returns the policy for the specified agent.
 
         If the agent is new, the policy mapping fn will be called to bind the
@@ -89,25 +104,29 @@ class MultiAgentEpisode:
         return self._agent_to_policy[agent_id]
 
     @DeveloperAPI
-    def last_observation_for(self, agent_id=_DUMMY_AGENT_ID):
+    def last_observation_for(
+            self, agent_id: AgentID = _DUMMY_AGENT_ID) -> EnvObsType:
         """Returns the last observation for the specified agent."""
 
         return self._agent_to_last_obs.get(agent_id)
 
     @DeveloperAPI
-    def last_raw_obs_for(self, agent_id=_DUMMY_AGENT_ID):
+    def last_raw_obs_for(self,
+                         agent_id: AgentID = _DUMMY_AGENT_ID) -> EnvObsType:
         """Returns the last un-preprocessed obs for the specified agent."""
 
         return self._agent_to_last_raw_obs.get(agent_id)
 
     @DeveloperAPI
-    def last_info_for(self, agent_id=_DUMMY_AGENT_ID):
+    def last_info_for(self,
+                      agent_id: AgentID = _DUMMY_AGENT_ID) -> EnvInfoDict:
         """Returns the last info for the specified agent."""
 
         return self._agent_to_last_info.get(agent_id)
 
     @DeveloperAPI
-    def last_action_for(self, agent_id=_DUMMY_AGENT_ID):
+    def last_action_for(self,
+                        agent_id: AgentID = _DUMMY_AGENT_ID) -> EnvActionType:
         """Returns the last action for the specified agent, or zeros."""
 
         if agent_id in self._agent_to_last_action:
@@ -116,10 +135,13 @@ class MultiAgentEpisode:
         else:
             policy = self._policies[self.policy_for(agent_id)]
             flat = flatten_to_single_ndarray(policy.action_space.sample())
+            if hasattr(policy.action_space, "dtype"):
+                return np.zeros_like(flat, dtype=policy.action_space.dtype)
             return np.zeros_like(flat)
 
     @DeveloperAPI
-    def prev_action_for(self, agent_id=_DUMMY_AGENT_ID):
+    def prev_action_for(self,
+                        agent_id: AgentID = _DUMMY_AGENT_ID) -> EnvActionType:
         """Returns the previous action for the specified agent."""
 
         if agent_id in self._agent_to_prev_action:
@@ -130,7 +152,7 @@ class MultiAgentEpisode:
             return np.zeros_like(self.last_action_for(agent_id))
 
     @DeveloperAPI
-    def prev_reward_for(self, agent_id=_DUMMY_AGENT_ID):
+    def prev_reward_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> float:
         """Returns the previous reward for the specified agent."""
 
         history = self._agent_reward_history[agent_id]
@@ -141,7 +163,7 @@ class MultiAgentEpisode:
             return 0.0
 
     @DeveloperAPI
-    def rnn_state_for(self, agent_id=_DUMMY_AGENT_ID):
+    def rnn_state_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> List[Any]:
         """Returns the last RNN state for the specified agent."""
 
         if agent_id not in self._agent_to_rnn_state:
@@ -150,12 +172,12 @@ class MultiAgentEpisode:
         return self._agent_to_rnn_state[agent_id]
 
     @DeveloperAPI
-    def last_pi_info_for(self, agent_id=_DUMMY_AGENT_ID):
+    def last_pi_info_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> dict:
         """Returns the last info object for the specified agent."""
 
         return self._agent_to_last_pi_info[agent_id]
 
-    def _add_agent_rewards(self, reward_dict):
+    def _add_agent_rewards(self, reward_dict: Dict[AgentID, float]) -> None:
         for agent_id, reward in reward_dict.items():
             if reward is not None:
                 self.agent_rewards[agent_id,

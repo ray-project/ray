@@ -6,10 +6,10 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.misc import linear, normc_initializer
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import scope_vars
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ def make_v1_wrapper(legacy_model_cls):
             # Tracks update ops
             self._update_ops = None
 
-            with tf.variable_scope(self.name) as scope:
+            with tf1.variable_scope(self.name) as scope:
                 self.variable_scope = scope
 
         @override(ModelV2)
@@ -58,20 +58,20 @@ def make_v1_wrapper(legacy_model_cls):
         def __call__(self, input_dict, state, seq_lens):
             if self.cur_instance:
                 # create a weight-sharing model copy
-                with tf.variable_scope(self.cur_instance.scope, reuse=True):
+                with tf1.variable_scope(self.cur_instance.scope, reuse=True):
                     new_instance = self.legacy_model_cls(
                         input_dict, self.obs_space, self.action_space,
                         self.num_outputs, self.model_config, state, seq_lens)
             else:
                 # create a new model instance
-                with tf.variable_scope(self.name):
+                with tf1.variable_scope(self.name):
                     prev_update_ops = set(
-                        tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+                        tf1.get_collection(tf1.GraphKeys.UPDATE_OPS))
                     new_instance = self.legacy_model_cls(
                         input_dict, self.obs_space, self.action_space,
                         self.num_outputs, self.model_config, state, seq_lens)
                     self._update_ops = list(
-                        set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
+                        set(tf1.get_collection(tf1.GraphKeys.UPDATE_OPS)) -
                         prev_update_ops)
             if len(new_instance.state_init) != len(self.get_initial_state()):
                 raise ValueError(
@@ -110,10 +110,11 @@ def make_v1_wrapper(legacy_model_cls):
 
         @override(ModelV2)
         def value_function(self):
-            assert self.cur_instance, "must call forward first"
+            assert self.cur_instance is not None, "must call forward first"
 
-            with tf.variable_scope(self.variable_scope):
-                with tf.variable_scope("value_function", reuse=tf.AUTO_REUSE):
+            with tf1.variable_scope(self.variable_scope):
+                with tf1.variable_scope(
+                        "value_function", reuse=tf1.AUTO_REUSE):
                     # Simple case: sharing the feature layer
                     if self.model_config["vf_share_layers"]:
                         return tf.reshape(

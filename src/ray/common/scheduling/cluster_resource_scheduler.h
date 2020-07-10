@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_SCHEDULING_SCHEDULING_H
-#define RAY_COMMON_SCHEDULING_SCHEDULING_H
+#pragma once
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -30,23 +29,97 @@ enum PredefinedResources { CPU, MEM, GPU, TPU, PredefinedResources_MAX };
 // Specify resources that consists of unit-size instances.
 static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
 
-// Helper function to compare two vectors with double values.
-bool EqualVectors(const std::vector<double> &v1, const std::vector<double> &v2);
+/// Fixed point data type.
+class FixedPoint {
+#define RESOURCE_UNIT_SCALING 1000
+ private:
+  int64_t i_;
+
+ public:
+  FixedPoint(double d = 0) { i_ = (int64_t)(d * RESOURCE_UNIT_SCALING); }
+
+  FixedPoint operator+(FixedPoint const &ru) {
+    FixedPoint res;
+    res.i_ = i_ + ru.i_;
+    return res;
+  }
+
+  FixedPoint operator+=(FixedPoint const &ru) {
+    i_ += ru.i_;
+    return *this;
+  }
+
+  FixedPoint operator-(FixedPoint const &ru) {
+    FixedPoint res;
+    res.i_ = i_ - ru.i_;
+    return res;
+  }
+
+  FixedPoint operator-=(FixedPoint const &ru) {
+    i_ -= ru.i_;
+    return *this;
+  }
+
+  FixedPoint operator-() const {
+    FixedPoint res;
+    res.i_ = -i_;
+    return res;
+  }
+
+  FixedPoint operator+(double const d) {
+    FixedPoint res;
+    res.i_ = i_ + (int64_t)(d * RESOURCE_UNIT_SCALING);
+    return res;
+  }
+
+  FixedPoint operator-(double const d) {
+    FixedPoint res;
+    res.i_ = i_ - (int64_t)(d * RESOURCE_UNIT_SCALING);
+    return res;
+  }
+
+  FixedPoint operator=(double const d) {
+    i_ = (int64_t)(d * RESOURCE_UNIT_SCALING);
+    ;
+    return *this;
+  }
+
+  friend bool operator<(FixedPoint const &ru1, FixedPoint const &ru2);
+  friend bool operator>(FixedPoint const &ru1, FixedPoint const &ru2);
+  friend bool operator<=(FixedPoint const &ru1, FixedPoint const &ru2);
+  friend bool operator>=(FixedPoint const &ru1, FixedPoint const &ru2);
+  friend bool operator==(FixedPoint const &ru1, FixedPoint const &ru2);
+  friend bool operator!=(FixedPoint const &ru1, FixedPoint const &ru2);
+
+  double Double() { return (double)i_ / RESOURCE_UNIT_SCALING; };
+
+  friend std::ostream &operator<<(std::ostream &out, const FixedPoint &ru);
+};
+
+/// Helper function to compare two vectors with FixedPoint values.
+bool EqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2);
+
+/// Convert a vector of doubles to a vector of resource units.
+std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(const std::vector<double> &vector);
+
+/// Convert a vector of resource units to a vector of doubles.
+std::vector<double> VectorFixedPointToVectorDouble(
+    const std::vector<FixedPoint> &vector_fp);
 
 struct ResourceCapacity {
-  double total;
-  double available;
+  FixedPoint total;
+  FixedPoint available;
 };
 
 /// Capacities of each instance of a resource.
 struct ResourceInstanceCapacities {
-  std::vector<double> total;
-  std::vector<double> available;
+  std::vector<FixedPoint> total;
+  std::vector<FixedPoint> available;
 };
 
 struct ResourceRequest {
   /// Amount of resource being requested.
-  double demand;
+  FixedPoint demand;
   /// Specify whether the request is soft or hard.
   /// If hard, the entire request is denied if the demand exceeds the resource
   /// availability. Otherwise, the request can be still be granted.
@@ -65,7 +138,7 @@ class TaskRequest {
  public:
   /// List of predefined resources required by the task.
   std::vector<ResourceRequest> predefined_resources;
-  /// List of custom resources required by the tasl.
+  /// List of custom resources required by the task.
   std::vector<ResourceRequestWithId> custom_resources;
   /// List of placement hints. A placement hint is a node on which
   /// we desire to run this task. This is a soft constraint in that
@@ -81,16 +154,23 @@ class TaskRequest {
 class TaskResourceInstances {
  public:
   /// The list of instances of each predifined resource allocated to a task.
-  std::vector<std::vector<double>> predefined_resources;
+  std::vector<std::vector<FixedPoint>> predefined_resources;
   /// The list of instances of each custom resource allocated to a task.
-  absl::flat_hash_map<int64_t, std::vector<double>> custom_resources;
+  absl::flat_hash_map<int64_t, std::vector<FixedPoint>> custom_resources;
   bool operator==(const TaskResourceInstances &other);
   /// For each resource of this request aggregate its instances.
   TaskRequest ToTaskRequest() const;
   /// Get CPU instances only.
-  std::vector<double> GetCPUInstances() const {
+  std::vector<FixedPoint> GetCPUInstances() const {
     if (!this->predefined_resources.empty()) {
       return this->predefined_resources[CPU];
+    } else {
+      return {};
+    }
+  };
+  std::vector<double> GetCPUInstancesDouble() const {
+    if (!this->predefined_resources.empty()) {
+      return VectorFixedPointToVectorDouble(this->predefined_resources[CPU]);
     } else {
       return {};
     }
@@ -298,7 +378,7 @@ class ClusterResourceScheduler {
   /// \param resource_name: Resource which we want to update.
   /// \param resource_total: New capacity of the resource.
   void UpdateResourceCapacity(const std::string &node_name,
-                              const std::string &resource_name, int64_t resource_total);
+                              const std::string &resource_name, double resource_total);
 
   /// Delete a given resource from a given node.
   ///
@@ -324,7 +404,7 @@ class ClusterResourceScheduler {
   /// \param unit_instances: If true, we split the resource in unit-size instances.
   /// If false, we create a single instance of capacity "total".
   /// \param instance_list: The list of capacities this resource instances.
-  void InitResourceInstances(double total, bool unit_instances,
+  void InitResourceInstances(FixedPoint total, bool unit_instances,
                              ResourceInstanceCapacities *instance_list);
 
   /// Allocate enough capacity across the instances of a resource to satisfy "demand".
@@ -358,8 +438,9 @@ class ClusterResourceScheduler {
   ///
   /// \return true, if allocation successful. In this case, the sum of the elements in
   /// "allocation" is equal to "demand".
-  bool AllocateResourceInstances(double demand, bool soft, std::vector<double> &available,
-                                 std::vector<double> *allocation);
+  bool AllocateResourceInstances(FixedPoint demand, bool soft,
+                                 std::vector<FixedPoint> &available,
+                                 std::vector<FixedPoint> *allocation);
 
   /// Allocate local resources to satisfy a given request (task_req).
   ///
@@ -386,8 +467,8 @@ class ClusterResourceScheduler {
   /// \return Overflow capacities of "resource_instances" after adding instance
   /// capacities in "available", i.e.,
   /// min(available + resource_instances.available, resource_instances.total)
-  std::vector<double> AddAvailableResourceInstances(
-      std::vector<double> available, ResourceInstanceCapacities *resource_instances);
+  std::vector<FixedPoint> AddAvailableResourceInstances(
+      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances);
 
   /// Decrease the available capacities of the instances of a given resource.
   ///
@@ -396,8 +477,8 @@ class ClusterResourceScheduler {
   /// \return Underflow of "resource_instances" after subtracting instance
   /// capacities in "available", i.e.,.
   /// max(available - reasource_instances.available, 0)
-  std::vector<double> SubtractAvailableResourceInstances(
-      std::vector<double> available, ResourceInstanceCapacities *resource_instances);
+  std::vector<FixedPoint> SubtractAvailableResourceInstances(
+      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances);
 
   /// Increase the available CPU instances of this node.
   ///
@@ -454,5 +535,3 @@ class ClusterResourceScheduler {
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
 };
-
-#endif  // RAY_COMMON_SCHEDULING_SCHEDULING_H

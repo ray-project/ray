@@ -1,5 +1,5 @@
-#ifndef _STREAMING_QUEUE_H_
-#define _STREAMING_QUEUE_H_
+#pragma once
+
 #include <iterator>
 #include <list>
 #include <vector>
@@ -261,4 +261,3 @@ class ReaderQueue : public Queue {
 
 }  // namespace streaming
 }  // namespace ray
-#endif

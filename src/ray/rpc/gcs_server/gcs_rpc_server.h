@@ -12,13 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RPC_GCS_RPC_SERVER_H
-#define RAY_RPC_GCS_RPC_SERVER_H
+#pragma once
 
-#include "src/ray/rpc/grpc_server.h"
-#include "src/ray/rpc/server_call.h"
-
-#include "src/ray/protobuf/gcs_service.grpc.pb.h"
+#include "ray/protobuf/gcs_service.grpc.pb.h"
+#include "ray/rpc/grpc_server.h"
+#include "ray/rpc/server_call.h"
 
 namespace ray {
 namespace rpc {
@@ -61,6 +59,13 @@ class JobInfoGcsServiceHandler {
   virtual void HandleMarkJobFinished(const MarkJobFinishedRequest &request,
                                      MarkJobFinishedReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllJobInfo(const GetAllJobInfoRequest &request,
+                                   GetAllJobInfoReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void AddJobFinishedListener(
+      std::function<void(std::shared_ptr<JobID>)> listener) = 0;
 };
 
 /// The `GrpcService` for `JobInfoGcsService`.
@@ -81,6 +86,7 @@ class JobInfoGrpcService : public GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     JOB_INFO_SERVICE_RPC_HANDLER(AddJob);
     JOB_INFO_SERVICE_RPC_HANDLER(MarkJobFinished);
+    JOB_INFO_SERVICE_RPC_HANDLER(GetAllJobInfo);
   }
 
  private:
@@ -101,6 +107,14 @@ class ActorInfoGcsServiceHandler {
   virtual void HandleGetActorInfo(const GetActorInfoRequest &request,
                                   GetActorInfoReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetNamedActorInfo(const GetNamedActorInfoRequest &request,
+                                       GetNamedActorInfoReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllActorInfo(const GetAllActorInfoRequest &request,
+                                     GetAllActorInfoReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleRegisterActorInfo(const RegisterActorInfoRequest &request,
                                        RegisterActorInfoReply *reply,
@@ -141,6 +155,8 @@ class ActorInfoGrpcService : public GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     ACTOR_INFO_SERVICE_RPC_HANDLER(CreateActor);
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorInfo);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(GetNamedActorInfo);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(GetAllActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(UpdateActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(AddActorCheckpoint);
@@ -228,6 +244,10 @@ class ObjectInfoGcsServiceHandler {
                                         GetObjectLocationsReply *reply,
                                         SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleGetAllObjectLocations(const GetAllObjectLocationsRequest &request,
+                                           GetAllObjectLocationsReply *reply,
+                                           SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleAddObjectLocation(const AddObjectLocationRequest &request,
                                        AddObjectLocationReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
@@ -254,6 +274,7 @@ class ObjectInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     OBJECT_INFO_SERVICE_RPC_HANDLER(GetObjectLocations);
+    OBJECT_INFO_SERVICE_RPC_HANDLER(GetAllObjectLocations);
     OBJECT_INFO_SERVICE_RPC_HANDLER(AddObjectLocation);
     OBJECT_INFO_SERVICE_RPC_HANDLER(RemoveObjectLocation);
   }
@@ -283,6 +304,10 @@ class TaskInfoGcsServiceHandler {
                                   AddTaskLeaseReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleGetTaskLease(const GetTaskLeaseRequest &request,
+                                  GetTaskLeaseReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleAttemptTaskReconstruction(
       const AttemptTaskReconstructionRequest &request,
       AttemptTaskReconstructionReply *reply, SendReplyCallback send_reply_callback) = 0;
@@ -308,6 +333,7 @@ class TaskInfoGrpcService : public GrpcService {
     TASK_INFO_SERVICE_RPC_HANDLER(GetTask);
     TASK_INFO_SERVICE_RPC_HANDLER(DeleteTasks);
     TASK_INFO_SERVICE_RPC_HANDLER(AddTaskLease);
+    TASK_INFO_SERVICE_RPC_HANDLER(GetTaskLease);
     TASK_INFO_SERVICE_RPC_HANDLER(AttemptTaskReconstruction);
   }
 
@@ -325,6 +351,10 @@ class StatsGcsServiceHandler {
   virtual void HandleAddProfileData(const AddProfileDataRequest &request,
                                     AddProfileDataReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllProfileInfo(const GetAllProfileInfoRequest &request,
+                                       GetAllProfileInfoReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `StatsGcsService`.
@@ -344,6 +374,7 @@ class StatsGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     STATS_SERVICE_RPC_HANDLER(AddProfileData);
+    STATS_SERVICE_RPC_HANDLER(GetAllProfileInfo);
   }
 
  private:
@@ -396,9 +427,17 @@ class WorkerInfoGcsServiceHandler {
                                          ReportWorkerFailureReply *reply,
                                          SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleRegisterWorker(const RegisterWorkerRequest &request,
-                                    RegisterWorkerReply *reply,
-                                    SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleGetWorkerInfo(const GetWorkerInfoRequest &request,
+                                   GetWorkerInfoReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllWorkerInfo(const GetAllWorkerInfoRequest &request,
+                                      GetAllWorkerInfoReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleAddWorkerInfo(const AddWorkerInfoRequest &request,
+                                   AddWorkerInfoReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `WorkerInfoGcsService`.
@@ -418,7 +457,9 @@ class WorkerInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     WORKER_INFO_SERVICE_RPC_HANDLER(ReportWorkerFailure);
-    WORKER_INFO_SERVICE_RPC_HANDLER(RegisterWorker);
+    WORKER_INFO_SERVICE_RPC_HANDLER(GetWorkerInfo);
+    WORKER_INFO_SERVICE_RPC_HANDLER(GetAllWorkerInfo);
+    WORKER_INFO_SERVICE_RPC_HANDLER(AddWorkerInfo);
   }
 
  private:
@@ -439,5 +480,3 @@ using WorkerInfoHandler = WorkerInfoGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif  // RAY_RPC_GCS_RPC_SERVER_H

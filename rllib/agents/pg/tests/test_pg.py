@@ -7,7 +7,8 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import check, fc, framework_iterator
+from ray.rllib.utils import check, check_compute_single_action, fc, \
+    framework_iterator
 
 
 class TestPG(unittest.TestCase):
@@ -16,15 +17,6 @@ class TestPG(unittest.TestCase):
 
     def tearDown(self):
         ray.shutdown()
-
-    def test_pg_exec_impl(ray_start_regular):
-        trainer = pg.PGTrainer(
-            env="CartPole-v0",
-            config={
-                "min_iter_time_s": 0,
-                "use_exec_api": True
-            })
-        assert isinstance(trainer.train(), dict)
 
     def test_pg_compilation(self):
         """Test whether a PGTrainer can be built with both frameworks."""
@@ -36,6 +28,8 @@ class TestPG(unittest.TestCase):
             trainer = pg.PGTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 trainer.train()
+            check_compute_single_action(
+                trainer, include_prev_action_reward=True)
 
     def test_pg_loss_functions(self):
         """Tests the PG loss function math."""
@@ -83,12 +77,11 @@ class TestPG(unittest.TestCase):
                     feed_dict=policy._get_loss_inputs_dict(
                         train_batch, shuffle=False))
             else:
-                results = (pg.pg_tf_loss
-                           if fw == "eager" else pg.pg_torch_loss)(
-                               policy,
-                               policy.model,
-                               dist_class=dist_cls,
-                               train_batch=train_batch)
+                results = (pg.pg_tf_loss if fw == "tfe" else pg.pg_torch_loss)(
+                    policy,
+                    policy.model,
+                    dist_class=dist_cls,
+                    train_batch=train_batch)
 
             # Calculate expected results.
             if fw != "torch":

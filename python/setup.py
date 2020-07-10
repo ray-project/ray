@@ -22,11 +22,10 @@ pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
-    "ray/core/src/ray/thirdparty/redis/src/redis-server",
+    "ray/core/src/ray/thirdparty/redis/src/redis-server" + exe_suffix,
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
     "ray/core/src/plasma/plasma_store_server" + exe_suffix,
     "ray/_raylet" + pyd_suffix,
-    "ray/core/src/ray/raylet/raylet_monitor" + exe_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
     "ray/streaming/_streaming.so",
@@ -77,13 +76,13 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
     ray_files += [
         "ray/core/src/credis/build/src/libmember.so",
         "ray/core/src/credis/build/src/libmaster.so",
-        "ray/core/src/credis/redis/src/redis-server"
+        "ray/core/src/credis/redis/src/redis-server" + exe_suffix,
     ]
 
 extras = {
     "debug": [],
-    "dashboard": ["requests"],
-    "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
+    "dashboard": ["requests", "gpustat"],
+    "serve": ["uvicorn", "flask", "blist", "requests"],
     "tune": ["tabulate", "tensorboardX", "pandas"]
 }
 
@@ -159,12 +158,15 @@ class build_ext(_build_ext.build_ext):
         source = filename
         destination = os.path.join(self.build_lib, filename)
         # Create the target directory if it doesn't already exist.
-        parent_directory = os.path.dirname(destination)
-        if not os.path.exists(parent_directory):
-            os.makedirs(parent_directory)
+        os.makedirs(os.path.dirname(destination), exist_ok=True)
         if not os.path.exists(destination):
             print("Copying {} to {}.".format(source, destination))
-            shutil.copy(source, destination, follow_symlinks=True)
+            if sys.platform == "win32":
+                # Does not preserve file mode (needed to avoid read-only bit)
+                shutil.copyfile(source, destination, follow_symlinks=True)
+            else:
+                # Preserves file mode (needed to copy executable bit)
+                shutil.copy(source, destination, follow_symlinks=True)
 
 
 class BinaryDistribution(Distribution):
@@ -185,18 +187,18 @@ def find_version(*filepath):
 
 requires = [
     "aiohttp",
-    "click",
+    "click >= 7.0",
     "colorama",
     "filelock",
     "google",
     "grpcio",
     "jsonschema",
-    "msgpack >= 0.6.0, < 1.0.0",
+    "msgpack >= 0.6.0, < 2.0.0",
     "numpy >= 1.16",
     "protobuf >= 3.8.0",
     "py-spy >= 0.2.0",
     "pyyaml",
-    "redis >= 3.3.2",
+    "redis >= 3.3.2, < 3.5.0",
 ]
 
 setup(

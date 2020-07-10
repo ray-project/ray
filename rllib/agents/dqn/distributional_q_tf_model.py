@@ -1,9 +1,9 @@
 import numpy as np
 
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 class DistributionalQTFModel(TFModelV2):
@@ -155,7 +155,7 @@ class DistributionalQTFModel(TFModelV2):
                     units=num_atoms, activation=None)(state_out)
             return state_score
 
-        if tf.executing_eagerly():
+        if tf1.executing_eagerly():
             from tensorflow.python.ops import variable_scope
             # Have to use a variable store to reuse variables in eager mode
             store = variable_scope.EagerVariableStore()
@@ -163,30 +163,32 @@ class DistributionalQTFModel(TFModelV2):
             # Save the scope objects, since in eager we will execute this
             # path repeatedly and there is no guarantee it will always be run
             # in the same original scope.
-            with tf.variable_scope(name + "/action_value") as action_scope:
+            with tf1.variable_scope(name + "/action_value") as action_scope:
                 pass
-            with tf.variable_scope(name + "/state_value") as state_scope:
+            with tf1.variable_scope(name + "/state_value") as state_scope:
                 pass
 
             def build_action_value_in_scope(model_out):
                 with store.as_default():
-                    with tf.variable_scope(action_scope, reuse=tf.AUTO_REUSE):
+                    with tf1.variable_scope(
+                            action_scope, reuse=tf1.AUTO_REUSE):
                         return build_action_value(model_out)
 
             def build_state_score_in_scope(model_out):
                 with store.as_default():
-                    with tf.variable_scope(state_scope, reuse=tf.AUTO_REUSE):
+                    with tf1.variable_scope(
+                            state_scope, reuse=tf1.AUTO_REUSE):
                         return build_state_score(model_out)
         else:
 
             def build_action_value_in_scope(model_out):
-                with tf.variable_scope(
-                        name + "/action_value", reuse=tf.AUTO_REUSE):
+                with tf1.variable_scope(
+                        name + "/action_value", reuse=tf1.AUTO_REUSE):
                     return build_action_value(model_out)
 
             def build_state_score_in_scope(model_out):
-                with tf.variable_scope(
-                        name + "/state_value", reuse=tf.AUTO_REUSE):
+                with tf1.variable_scope(
+                        name + "/state_value", reuse=tf1.AUTO_REUSE):
                     return build_state_score(model_out)
 
         q_out = build_action_value_in_scope(self.model_out)
@@ -234,40 +236,40 @@ class DistributionalQTFModel(TFModelV2):
         """
         in_size = int(action_in.shape[1])
 
-        epsilon_in = tf.random_normal(shape=[in_size])
-        epsilon_out = tf.random_normal(shape=[out_size])
+        epsilon_in = tf.random.normal(shape=[in_size])
+        epsilon_out = tf.random.normal(shape=[out_size])
         epsilon_in = self._f_epsilon(epsilon_in)
         epsilon_out = self._f_epsilon(epsilon_out)
         epsilon_w = tf.matmul(
             a=tf.expand_dims(epsilon_in, -1), b=tf.expand_dims(epsilon_out, 0))
         epsilon_b = epsilon_out
-        sigma_w = tf.get_variable(
+        sigma_w = tf1.get_variable(
             name=prefix + "_sigma_w",
             shape=[in_size, out_size],
             dtype=tf.float32,
-            initializer=tf.random_uniform_initializer(
+            initializer=tf1.random_uniform_initializer(
                 minval=-1.0 / np.sqrt(float(in_size)),
                 maxval=1.0 / np.sqrt(float(in_size))))
         # TF noise generation can be unreliable on GPU
         # If generating the noise on the CPU,
         # lowering sigma0 to 0.1 may be helpful
-        sigma_b = tf.get_variable(
+        sigma_b = tf1.get_variable(
             name=prefix + "_sigma_b",
             shape=[out_size],
             dtype=tf.float32,  # 0.5~GPU, 0.1~CPU
-            initializer=tf.constant_initializer(
+            initializer=tf1.constant_initializer(
                 sigma0 / np.sqrt(float(in_size))))
 
-        w = tf.get_variable(
+        w = tf1.get_variable(
             name=prefix + "_fc_w",
             shape=[in_size, out_size],
             dtype=tf.float32,
-            initializer=tf.initializers.glorot_uniform())
-        b = tf.get_variable(
+            initializer=tf.initializers.GlorotUniform())
+        b = tf1.get_variable(
             name=prefix + "_fc_b",
             shape=[out_size],
             dtype=tf.float32,
-            initializer=tf.zeros_initializer())
+            initializer=tf.initializers.Zeros())
 
         action_activation = \
             tf.keras.layers.Lambda(lambda x: tf.matmul(
@@ -279,4 +281,4 @@ class DistributionalQTFModel(TFModelV2):
         return tf.nn.relu(action_activation)
 
     def _f_epsilon(self, x):
-        return tf.sign(x) * tf.sqrt(tf.abs(x))
+        return tf.math.sign(x) * tf.math.sqrt(tf.math.abs(x))

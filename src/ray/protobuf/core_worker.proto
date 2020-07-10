@@ -50,6 +50,9 @@ message ActorHandle {
 
   // An extension field that is used for storing app-language-specific data.
   bytes extension_data = 8;
+
+  // How many times tasks may be retried on this actor if the actor fails.
+  int64 max_task_retries = 9;
 }
 
 message AssignTaskRequest {
@@ -89,31 +92,21 @@ message ReturnObject {
 message PushTaskRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;
-  // Address of the caller.
-  Address caller_address = 2;
   // The task to be pushed.
-  TaskSpec task_spec = 3;
+  TaskSpec task_spec = 2;
   // The sequence number of the task for this client. This must increase
   // sequentially starting from zero for each actor handle. The server
   // will guarantee tasks execute in this sequence, waiting for any
   // out-of-order request messages to arrive as necessary.
   // If set to -1, ordering is disabled and the task executes immediately.
-  int64 sequence_number = 4;
+  int64 sequence_number = 3;
   // The max sequence number the client has processed responses for. This
   // is a performance optimization that allows the client to tell the server
   // to cancel any PushTaskRequests with seqno <= this value, rather than
   // waiting for the server to time out waiting for missing messages.
-  int64 client_processed_up_to = 5;
+  int64 client_processed_up_to = 4;
   // Resource mapping ids assigned to the worker executing the task.
-  repeated ResourceMapEntry resource_mapping = 6;
-  // The version of the caller. This is used to distinguish on-the-fly
-  // requests from a caller before it die, and requests from the reconstructed
-  // caller, which might happen theoretically when network has issues.
-  // - For an actor, this is set to the timestamp when the actor is created,
-  //   so it can be used to differentiate which is the new reconstructed actor.
-  // - For a non-actor task, it's set to the timestamp the task starts
-  // execution.
-  int64 caller_version = 7;
+  repeated ResourceMapEntry resource_mapping = 5;
 }
 
 message PushTaskReply {
@@ -150,17 +143,29 @@ message DirectActorCallArgWaitCompleteReply {
 }
 
 message GetObjectStatusRequest {
-  // The owner of the object. Note that we do not need to include
-  // intended_worker_id since the new worker can service this request too by
-  // inspecting the owner_id field.
-  bytes owner_id = 1;
+  // The ID of the worker that owns this object. This is also
+  // the ID of the worker that this message is intended for.
+  bytes owner_worker_id = 1;
   // Wait for this object's status.
   bytes object_id = 2;
 }
 
 message GetObjectStatusReply {
-  enum ObjectStatus { CREATED = 0; }
+  enum ObjectStatus {
+    CREATED = 0;
+    OUT_OF_SCOPE = 1;
+  }
   ObjectStatus status = 1;
+}
+
+message WaitForActorOutOfScopeRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // ActorID of the actor in scope.
+  bytes actor_id = 2;
+}
+
+message WaitForActorOutOfScopeReply {
 }
 
 message WaitForObjectEvictionRequest {
@@ -178,8 +183,8 @@ message KillActorRequest {
   bytes intended_actor_id = 1;
   // Whether to force kill the actor.
   bool force_kill = 2;
-  // If set to true, the killed actor will not be reconstructed anymore.
-  bool no_reconstruction = 3;
+  // If set to true, the killed actor will not be restarted anymore.
+  bool no_restart = 3;
 }
 
 message KillActorReply {
@@ -197,6 +202,16 @@ message CancelTaskReply {
   bool attempt_succeeded = 1;
 }
 
+message RemoteCancelTaskRequest {
+  // Object ID of the remote task that should be killed.
+  bytes remote_object_id = 1;
+  // Whether to kill the worker.
+  bool force_kill = 2;
+}
+
+message RemoteCancelTaskReply {
+}
+
 message GetCoreWorkerStatsRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;
@@ -208,15 +223,6 @@ message GetCoreWorkerStatsRequest {
 message GetCoreWorkerStatsReply {
   // Debug information returned from the core worker.
   CoreWorkerStats core_worker_stats = 1;
-}
-
-message ObjectReference {
-  // ObjectID that the worker has a reference to.
-  bytes object_id = 1;
-  // The task or actor ID of the object's owner.
-  bytes owner_id = 2;
-  // The address of the object's owner.
-  Address owner_address = 3;
 }
 
 message WaitForRefRemovedRequest {
@@ -288,6 +294,11 @@ service CoreWorkerService {
       returns (DirectActorCallArgWaitCompleteReply);
   // Ask the object's owner about the object's current status.
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
+  // Wait for the actor's owner to decide that the actor has gone out of scope.
+  // Replying to this message indicates that the client should force-kill the
+  // actor process, if still alive.
+  rpc WaitForActorOutOfScope(WaitForActorOutOfScopeRequest)
+      returns (WaitForActorOutOfScopeReply);
   // Notify the object's owner that it has been pinned by a raylet. Replying
   // to this message indicates that the raylet should unpin the object.
   rpc WaitForObjectEviction(WaitForObjectEvictionRequest)
@@ -296,6 +307,8 @@ service CoreWorkerService {
   rpc KillActor(KillActorRequest) returns (KillActorReply);
   // Request that a worker cancels a task.
   rpc CancelTask(CancelTaskRequest) returns (CancelTaskReply);
+  // Request for a worker to issue a cancelation.
+  rpc RemoteCancelTask(RemoteCancelTaskRequest) returns (RemoteCancelTaskReply);
   // Get metrics from core workers.
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
   // Wait for a borrower to finish using an object. Sent by the object's owner.

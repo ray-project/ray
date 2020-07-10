@@ -11,8 +11,7 @@ class DurableTrainable(Trainable):
     """Abstract class for a remote-storage backed fault-tolerant Trainable.
 
     Supports checkpointing to and restoring from remote storage. To use this
-    class, implement the same private methods as ray.tune.Trainable (`_save`,
-    `_train`, `_restore`, `reset_config`, `_setup`, `_stop`).
+    class, implement the same private methods as ray.tune.Trainable.
 
     .. warning:: This class is currently **experimental** and may
         be subject to change.
@@ -57,7 +56,7 @@ class DurableTrainable(Trainable):
             Checkpoint path or prefix that may be passed to restore().
         """
         if checkpoint_dir:
-            if checkpoint_dir.starts_with(os.path.abspath(self.logdir)):
+            if checkpoint_dir.startswith(os.path.abspath(self.logdir)):
                 raise ValueError("`checkpoint_dir` must be `self.logdir`, or "
                                  "a sub-directory.")
         checkpoint_path = super(DurableTrainable, self).save(checkpoint_dir)

@@ -643,6 +643,7 @@ class BOHBSuite(unittest.TestCase):
         sched = HyperBandForBOHB(max_t=3, reduction_factor=3)
         runner = _MockTrialRunner(sched)
         runner._search_alg = MagicMock()
+        runner._search_alg.searcher = MagicMock()
         trials = [Trial("__fake") for i in range(3)]
         for t in trials:
             runner.add_trial(t)
@@ -656,8 +657,8 @@ class BOHBSuite(unittest.TestCase):
         decision = sched.on_trial_result(runner, trials[-1], spy_result)
         self.assertEqual(decision, TrialScheduler.STOP)
         sched.choose_trial_to_run(runner)
-        self.assertEqual(runner._search_alg.on_pause.call_count, 2)
-        self.assertEqual(runner._search_alg.on_unpause.call_count, 1)
+        self.assertEqual(runner._search_alg.searcher.on_pause.call_count, 2)
+        self.assertEqual(runner._search_alg.searcher.on_unpause.call_count, 1)
         self.assertTrue("hyperband_info" in spy_result)
         self.assertEquals(spy_result["hyperband_info"]["budget"], 1)
 
@@ -668,6 +669,7 @@ class BOHBSuite(unittest.TestCase):
         sched = HyperBandForBOHB(max_t=3, reduction_factor=3, mode="min")
         runner = _MockTrialRunner(sched)
         runner._search_alg = MagicMock()
+        runner._search_alg.searcher = MagicMock()
         trials = [Trial("__fake") for i in range(3)]
         for t in trials:
             runner.add_trial(t)
@@ -681,7 +683,7 @@ class BOHBSuite(unittest.TestCase):
         decision = sched.on_trial_result(runner, trials[-1], spy_result)
         self.assertEqual(decision, TrialScheduler.CONTINUE)
         sched.choose_trial_to_run(runner)
-        self.assertEqual(runner._search_alg.on_pause.call_count, 2)
+        self.assertEqual(runner._search_alg.searcher.on_pause.call_count, 2)
         self.assertTrue("hyperband_info" in spy_result)
         self.assertEquals(spy_result["hyperband_info"]["budget"], 1)
 
@@ -1139,11 +1141,11 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
         pbt = self.basicSetup(perturbation_interval=2)
 
         class train(tune.Trainable):
-            def _train(self):
+            def step(self):
                 return {"mean_accuracy": self.training_iteration}
 
-            def _save(self, path):
-                checkpoint = path + "/checkpoint"
+            def save_checkpoint(self, path):
+                checkpoint = os.path.join(path, "checkpoint")
                 with open(checkpoint, "w") as f:
                     f.write("OK")
                 return checkpoint
@@ -1171,16 +1173,16 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
         pbt = self.basicSetup(perturbation_interval=2)
 
         class train_dict(tune.Trainable):
-            def _setup(self, config):
+            def setup(self, config):
                 self.state = {"hi": 1}
 
-            def _train(self):
+            def step(self):
                 return {"mean_accuracy": self.training_iteration}
 
-            def _save(self, path):
+            def save_checkpoint(self, path):
                 return self.state
 
-            def _restore(self, state):
+            def load_checkpoint(self, state):
                 self.state = state
 
         trial_hyperparams = {

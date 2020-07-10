@@ -13,7 +13,9 @@
 // limitations under the License.
 
 #include "ray/core_worker/lib/java/io_ray_runtime_task_NativeTaskSubmitter.h"
+
 #include <jni.h>
+
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
@@ -37,23 +39,24 @@ inline ray::RayFunction ToRayFunction(JNIEnv *env, jobject functionDescriptor) {
   return ray_function;
 }
 
-inline std::vector<ray::TaskArg> ToTaskArgs(JNIEnv *env, jobject args) {
-  std::vector<ray::TaskArg> task_args;
-  JavaListToNativeVector<ray::TaskArg>(
+inline std::vector<std::unique_ptr<ray::TaskArg>> ToTaskArgs(JNIEnv *env, jobject args) {
+  std::vector<std::unique_ptr<ray::TaskArg>> task_args;
+  JavaListToNativeVector<std::unique_ptr<ray::TaskArg>>(
       env, args, &task_args, [](JNIEnv *env, jobject arg) {
         auto java_id = env->GetObjectField(arg, java_function_arg_id);
         if (java_id) {
           auto java_id_bytes = static_cast<jbyteArray>(
               env->CallObjectMethod(java_id, java_base_id_get_bytes));
           RAY_CHECK_JAVA_EXCEPTION(env);
-          return ray::TaskArg::PassByReference(
-              JavaByteArrayToId<ray::ObjectID>(env, java_id_bytes));
+          auto id = JavaByteArrayToId<ray::ObjectID>(env, java_id_bytes);
+          return std::unique_ptr<ray::TaskArg>(new ray::TaskArgByReference(
+              id, ray::CoreWorkerProcess::GetCoreWorker().GetOwnerAddress(id)));
         }
         auto java_value =
             static_cast<jbyteArray>(env->GetObjectField(arg, java_function_arg_value));
         RAY_CHECK(java_value) << "Both id and value of FunctionArg are null.";
         auto value = JavaNativeRayObjectToNativeRayObject(env, java_value);
-        return ray::TaskArg::PassByValue(value);
+        return std::unique_ptr<ray::TaskArg>(new ray::TaskArgByValue(value));
       });
   return task_args;
 }
@@ -87,13 +90,13 @@ inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject call
 
 inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                                         jobject actorCreationOptions) {
-  uint64_t max_reconstructions = 0;
+  int64_t max_restarts = 0;
   std::unordered_map<std::string, double> resources;
   std::vector<std::string> dynamic_worker_options;
   uint64_t max_concurrency = 1;
   if (actorCreationOptions) {
-    max_reconstructions = static_cast<uint64_t>(env->GetIntField(
-        actorCreationOptions, java_actor_creation_options_max_reconstructions));
+    max_restarts =
+        env->GetIntField(actorCreationOptions, java_actor_creation_options_max_restarts);
     jobject java_resources =
         env->GetObjectField(actorCreationOptions, java_base_task_options_resources);
     resources = ToResources(env, java_resources);
@@ -107,13 +110,16 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
         actorCreationOptions, java_actor_creation_options_max_concurrency));
   }
 
+  std::string name = "";
   ray::ActorCreationOptions actor_creation_options{
-      static_cast<uint64_t>(max_reconstructions),
+      max_restarts,
+      0,  // TODO: Allow setting max_task_retries from Java.
       static_cast<int>(max_concurrency),
       resources,
       resources,
       dynamic_worker_options,
       /*is_detached=*/false,
+      name,
       /*is_asyncio=*/false};
   return actor_creation_options;
 }
@@ -165,10 +171,9 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
 
   std::vector<ObjectID> return_ids;
-  auto status = ray::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
+  ray::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
       actor_id, ray_function, task_args, task_options, &return_ids);
 
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return NativeIdVectorToJavaByteArrayList(env, return_ids);
 }
 

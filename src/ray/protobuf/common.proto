@@ -128,13 +128,17 @@ message TaskSpec {
   int32 max_retries = 16;
 }
 
+message ObjectReference {
+  // ObjectID that the worker has a reference to.
+  bytes object_id = 1;
+  // The address of the object's owner.
+  Address owner_address = 2;
+}
+
 // Argument in the task.
 message TaskArg {
-  // Object IDs for pass-by-reference arguments. Normally there is only one
-  // object ID in this list which represents the object that is being passed.
-  // However to support reducers in a MapReduce workload, we also support
-  // passing multiple object IDs for each argument.
-  repeated bytes object_ids = 1;
+  // A pass-by-ref argument.
+  ObjectReference object_ref = 1;
   // Data for pass-by-value arguments.
   bytes data = 2;
   // Metadata for pass-by-value arguments.
@@ -148,8 +152,9 @@ message ActorCreationTaskSpec {
   // ID of the actor that will be created by this task.
   bytes actor_id = 2;
   // The max number of times this actor should be recontructed.
-  // If this number of 0 or negative, the actor won't be reconstructed on failure.
-  uint64 max_actor_reconstructions = 3;
+  // If this number is 0 the actor won't be restarted.
+  // If this number is -1 the actor will be restarted indefinitely.
+  int64 max_actor_restarts = 3;
   // The dynamic options used in the worker command when starting a worker process for
   // an actor creation task. If the list isn't empty, the options will be used to replace
   // the placeholder strings (`RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0`,
@@ -159,8 +164,12 @@ message ActorCreationTaskSpec {
   int32 max_concurrency = 5;
   // Whether the actor is persistent
   bool is_detached = 6;
+  // Globally-unique name of the actor. Should only be populated when is_detached is true.
+  string name = 7;
   // Whether the actor use async actor calls
-  bool is_asyncio = 7;
+  bool is_asyncio = 8;
+  // Field used for storing application-level extensions to the actor definition.
+  string extension_data = 9;
 }
 
 // Task spec of an actor task.
@@ -249,6 +258,17 @@ message ObjectRefInfo {
   bool pinned_in_memory = 7;
 }
 
+// Details about the allocation of a given resource. Some resources
+// (e.g., GPUs) have individually allocatable units that are represented
+// as "slots" here.
+message ResourceAllocations {
+  message ResourceSlot {
+    int64 slot = 1;
+    double allocation = 2;
+  }
+  repeated ResourceSlot resource_slots = 1;
+}
+
 // Debug info returned from the core worker.
 message CoreWorkerStats {
   // Debug string of the currently executing task.
@@ -265,8 +285,8 @@ message CoreWorkerStats {
   int64 port = 7;
   // Actor ID.
   bytes actor_id = 8;
-  // A map from the resource name (e.g. "CPU") to the amount of resource used.
-  map<string, double> used_resources = 9;
+  // A map from the resource name (e.g. "CPU") to its allocation.
+  map<string, ResourceAllocations> used_resources = 9;
   // A string displayed on Dashboard.
   map<string, string> webui_display = 10;
   // Number of objects that are IN_PLASMA_ERROR in the local memory store.

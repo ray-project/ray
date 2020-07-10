@@ -1,4 +1,5 @@
 import importlib
+import inspect
 from abc import ABC, abstractmethod
 
 from ray import cloudpickle
@@ -59,6 +60,17 @@ class RoundRobinPartition(Partition):
         return self.__partitions
 
 
+class ForwardPartition(Partition):
+    """Default partition for operator if the operator can be chained with
+     succeeding operators."""
+
+    def __init__(self):
+        self.__partitions = [0]
+
+    def partition(self, key_record, num_partition: int):
+        return self.__partitions
+
+
 class SimplePartition(Partition):
     """Wrap a python function as subclass of :class:`Partition`"""
 
@@ -96,22 +108,22 @@ def load_partition(descriptor_partition_bytes: bytes):
     Returns:
         partition function
     """
-    partition_bytes, module_name, class_name, function_name =\
+    assert len(descriptor_partition_bytes) > 0
+    partition_bytes, module_name, function_name =\
         gateway_client.deserialize(descriptor_partition_bytes)
     if partition_bytes:
         return deserialize(partition_bytes)
     else:
         assert module_name
         mod = importlib.import_module(module_name)
-        # If class_name is not None, user partition is a sub class
-        # of Partition.
-        # If function_name is not None, user partition is a simple python
+        assert function_name
+        func = getattr(mod, function_name)
+        # If func is a python function, user partition is a simple python
         # function, which will be wrapped as a SimplePartition.
-        if class_name:
-            assert function_name is None
-            cls = getattr(mod, class_name)
-            return cls()
-        else:
-            assert function_name
-            func = getattr(mod, function_name)
+        # If func is a python class, user partition is a sub class
+        # of Partition.
+        if inspect.isfunction(func):
             return SimplePartition(func)
+        else:
+            assert issubclass(func, Partition)
+            return func()

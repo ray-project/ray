@@ -23,8 +23,11 @@ bazel test //streaming/java:all --test_tag_filters="checkstyle" --build_tests_on
 
 echo "Running streaming tests."
 java -cp "$ROOT_DIR"/../../bazel-bin/streaming/java/all_streaming_tests_deploy.jar\
- org.testng.TestNG -d /tmp/ray_streaming_java_test_output "$ROOT_DIR"/testng.xml
+ org.testng.TestNG -d /tmp/ray_streaming_java_test_output "$ROOT_DIR"/testng.xml ||
 exit_code=$?
+if [ -z ${exit_code+x} ]; then
+  exit_code=0
+fi
 echo "Streaming TestNG results"
 if [ -f "/tmp/ray_streaming_java_test_output/testng-results.xml" ] ; then
   cat /tmp/ray_streaming_java_test_output/testng-results.xml
@@ -34,6 +37,23 @@ fi
 
 # exit_code == 2 means there are skipped tests.
 if [ $exit_code -ne 2 ] && [ $exit_code -ne 0 ] ; then
+    if [ -d "/tmp/ray_streaming_java_test_output/" ] ; then
+      echo "all test output"
+      for f in /tmp/ray_streaming_java_test_output/*.{log,xml}; do
+        if [ -f "$f" ]; then
+          echo "Cat file $f"
+          cat "$f"
+        elif [[ -d $f ]]; then
+          echo "$f is a directory"
+        fi
+      done
+    fi
+    for f in /home/travis/build/ray-project/ray/hs_err*log; do
+      if [ -f "$f" ]; then
+        echo "Cat file $f"
+        cat "$f"
+      fi
+    done
     exit $exit_code
 fi
 

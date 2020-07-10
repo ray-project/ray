@@ -1,13 +1,13 @@
 package io.ray.streaming.runtime.transfer;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.BaseActor;
+import io.ray.api.BaseActorHandle;
+import io.ray.streaming.runtime.config.StreamingWorkerConfig;
+import io.ray.streaming.runtime.config.types.TransferChannelType;
 import io.ray.streaming.runtime.util.Platform;
-import io.ray.streaming.util.Config;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +17,7 @@ import org.slf4j.LoggerFactory;
  * to downstream workers
  */
 public class DataWriter {
-  private static final Logger LOGGER = LoggerFactory.getLogger(DataWriter.class);
+  private static final Logger LOG = LoggerFactory.getLogger(DataWriter.class);
 
   private long nativeWriterPtr;
   private ByteBuffer buffer = ByteBuffer.allocateDirect(0);
@@ -30,26 +30,25 @@ public class DataWriter {
   /**
    * @param outputChannels output channels ids
    * @param toActors       downstream output actors
-   * @param conf           configuration
+   * @param workerConfig   configuration
    */
   public DataWriter(List<String> outputChannels,
-                    Map<String, BaseActor> toActors,
-                    Map<String, String> conf) {
+                    List<BaseActorHandle> toActors,
+                    StreamingWorkerConfig workerConfig) {
     Preconditions.checkArgument(!outputChannels.isEmpty());
     Preconditions.checkArgument(outputChannels.size() == toActors.size());
     ChannelCreationParametersBuilder initialParameters =
         new ChannelCreationParametersBuilder().buildOutputQueueParameters(outputChannels, toActors);
     byte[][] outputChannelsBytes = outputChannels.stream()
-        .map(ChannelID::idStrToBytes).toArray(byte[][]::new);
-    long channelSize = Long.parseLong(
-        conf.getOrDefault(Config.CHANNEL_SIZE, Config.CHANNEL_SIZE_DEFAULT));
+        .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
+    long channelSize = workerConfig.transferConfig.channelSize();
     long[] msgIds = new long[outputChannels.size()];
     for (int i = 0; i < outputChannels.size(); i++) {
       msgIds[i] = 0;
     }
-    String channelType = conf.getOrDefault(Config.CHANNEL_TYPE, Config.DEFAULT_CHANNEL_TYPE);
+    TransferChannelType channelType = workerConfig.transferConfig.channelType();
     boolean isMock = false;
-    if (Config.MEMORY_CHANNEL.equals(channelType)) {
+    if (TransferChannelType.MEMORY_CHANNEL == channelType) {
       isMock = true;
     }
     this.nativeWriterPtr = createWriterNative(
@@ -57,10 +56,11 @@ public class DataWriter {
         outputChannelsBytes,
         msgIds,
         channelSize,
-        ChannelUtils.toNativeConf(conf),
+        ChannelUtils.toNativeConf(workerConfig),
         isMock
     );
-    LOGGER.info("create DataWriter succeed");
+    LOG.info("Create DataWriter succeed for worker: {}.",
+        workerConfig.workerInternalConfig.workerName());
   }
 
   /**
@@ -69,7 +69,7 @@ public class DataWriter {
    * @param id   channel id
    * @param item message item data section is specified by [position, limit).
    */
-  public void write(ChannelID id, ByteBuffer item) {
+  public void write(ChannelId id, ByteBuffer item) {
     int size = item.remaining();
     ensureBuffer(size);
     buffer.clear();
@@ -84,10 +84,10 @@ public class DataWriter {
    * @param item message item data section is specified by [position, limit).
    *             item doesn't have to be a direct buffer.
    */
-  public void write(Set<ChannelID> ids, ByteBuffer item) {
+  public void write(Set<ChannelId> ids, ByteBuffer item) {
     int size = item.remaining();
     ensureBuffer(size);
-    for (ChannelID id : ids) {
+    for (ChannelId id : ids) {
       buffer.clear();
       buffer.put(item.duplicate());
       writeMessageNative(nativeWriterPtr, id.getNativeIdPtr(), bufferAddress, size);
@@ -116,10 +116,10 @@ public class DataWriter {
     if (nativeWriterPtr == 0) {
       return;
     }
-    LOGGER.info("closing data writer.");
+    LOG.info("Closing data writer.");
     closeWriterNative(nativeWriterPtr);
     nativeWriterPtr = 0;
-    LOGGER.info("closing data writer done.");
+    LOG.info("Finish closing data writer.");
   }
 
   private static native long createWriterNative(

@@ -4,20 +4,20 @@ import argparse
 
 import ray
 from ray import tune
+from ray.rllib.agents.dqn.distributional_q_tf_model import \
+    DistributionalQTFModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.agents.dqn.distributional_q_tf_model import \
-    DistributionalQTFModel
-from ray.rllib.utils import try_import_tf
-from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as MyVisionNetwork
+from ray.rllib.models.tf.visionnet import VisionNetwork as MyVisionNetwork
+from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="DQN")  # Try PG, PPO, DQN
 parser.add_argument("--stop", type=int, default=200)
-parser.add_argument("--use_vision_network", action="store_true")
+parser.add_argument("--use-vision-network", action="store_true")
 parser.add_argument("--num-cpus", type=int, default=0)
 
 
@@ -131,4 +131,5 @@ if __name__ == "__main__":
                     "custom_model": "keras_q_model"
                     if args.run == "DQN" else "keras_model"
                 },
+                "framework": "tf",
             }))

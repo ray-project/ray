@@ -79,6 +79,7 @@ Models, Preprocessors, and Action Distributions
 *  `Custom Action Distributions <rllib-models.html#custom-action-distributions>`__
 *  `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
 *  `Self-Supervised Model Losses <rllib-models.html#self-supervised-model-losses>`__
+*  `Variable-length / Complex Observation Spaces <rllib-models.html#variable-length-complex-observation-spaces>`__
 *  `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
 *  `Autoregressive Action Distributions <rllib-models.html#autoregressive-action-distributions>`__
 
@@ -89,7 +90,7 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Distributed Prioritized Experience Replay (Ape-X) <apex>`
 
-   -  |tensorflow| :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <impala>`
+   -  |pytorch| |tensorflow| :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <impala>`
 
    -  |pytorch| |tensorflow| :ref:`Asynchronous Proximal Policy Optimization (APPO) <appo>`
 
@@ -104,6 +105,8 @@ Algorithms
    -  |pytorch| |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
 
    -  |pytorch| |tensorflow| :ref:`Deep Q Networks (DQN, Rainbow, Parametric DQN) <dqn>`
+
+   -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
 
    -  |pytorch| |tensorflow| :ref:`Policy Gradients <pg>`
 
@@ -180,8 +183,8 @@ Package Reference
 *  `ray.rllib.agents <rllib-package-ref.html#module-ray.rllib.agents>`__
 *  `ray.rllib.env <rllib-package-ref.html#module-ray.rllib.env>`__
 *  `ray.rllib.evaluation <rllib-package-ref.html#module-ray.rllib.evaluation>`__
+*  `ray.rllib.execution <rllib-package-ref.html#module-ray.rllib.execution>`__
 *  `ray.rllib.models <rllib-package-ref.html#module-ray.rllib.models>`__
-*  `ray.rllib.optimizers <rllib-package-ref.html#module-ray.rllib.optimizers>`__
 *  `ray.rllib.utils <rllib-package-ref.html#module-ray.rllib.utils>`__
 
 Troubleshooting

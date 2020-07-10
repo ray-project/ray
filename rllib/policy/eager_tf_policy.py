@@ -5,6 +5,7 @@ It supports both traced and non-traced eager execution modes."""
 import functools
 import logging
 import numpy as np
+from gym.spaces import Tuple, Dict
 
 from ray.util.debug import log_once
 from ray.rllib.models.catalog import ModelCatalog
@@ -13,9 +14,9 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.space_utils import flatten_to_single_ndarray
+from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
@@ -173,6 +174,7 @@ def build_eager_tf_policy(name,
                           grad_stats_fn=None,
                           extra_learn_fetches_fn=None,
                           extra_action_fetches_fn=None,
+                          validate_spaces=None,
                           before_init=None,
                           before_loss_init=None,
                           after_init=None,
@@ -188,7 +190,7 @@ def build_eager_tf_policy(name,
     much simpler, but has lower performance.
 
     You shouldn't need to call this directly. Rather, prefer to build a TF
-    graph policy and use set {"eager": true} in the trainer config to have
+    graph policy and use set {"framework": "tfe"} in the trainer config to have
     it automatically be converted to an eager policy.
 
     This has the same signature as build_tf_policy()."""
@@ -206,6 +208,9 @@ def build_eager_tf_policy(name,
 
             if get_default_config:
                 config = dict(get_default_config(), **config)
+
+            if validate_spaces:
+                validate_spaces(self, observation_space, action_space, config)
 
             if before_init:
                 before_init(self, observation_space, action_space, config)
@@ -234,7 +239,7 @@ def build_eager_tf_policy(name,
                 )
             self.exploration = self._create_exploration()
             self._state_in = [
-                tf.convert_to_tensor(np.array([s]))
+                tf.convert_to_tensor([s])
                 for s in self.model.get_initial_state()
             ]
             input_dict = {
@@ -261,7 +266,7 @@ def build_eager_tf_policy(name,
             if optimizer_fn:
                 self._optimizer = optimizer_fn(self, config)
             else:
-                self._optimizer = tf.train.AdamOptimizer(config["lr"])
+                self._optimizer = tf1.train.AdamOptimizer(config["lr"])
 
             if after_init:
                 after_init(self, observation_space, action_space, config)
@@ -331,10 +336,12 @@ def build_eager_tf_policy(name,
                 "is_training": tf.constant(False),
             }
             if obs_include_prev_action_reward:
-                input_dict[SampleBatch.PREV_ACTIONS] = \
-                    tf.convert_to_tensor(prev_action_batch)
-                input_dict[SampleBatch.PREV_REWARDS] = \
-                    tf.convert_to_tensor(prev_reward_batch)
+                if prev_action_batch is not None:
+                    input_dict[SampleBatch.PREV_ACTIONS] = \
+                        tf.convert_to_tensor(prev_action_batch)
+                if prev_reward_batch is not None:
+                    input_dict[SampleBatch.PREV_REWARDS] = \
+                        tf.convert_to_tensor(prev_reward_batch)
 
             # Use Exploration object.
             with tf.variable_creator_scope(_disallow_var_creation):
@@ -463,6 +470,29 @@ def build_eager_tf_policy(name,
             for v, w in zip(variables, weights):
                 v.assign(w)
 
+        @override(Policy)
+        def get_state(self):
+            state = {"_state": super().get_state()}
+            state["_optimizer_variables"] = self._optimizer.variables()
+            return state
+
+        @override(Policy)
+        def set_state(self, state):
+            state = state.copy()  # shallow copy
+            # Set optimizer vars first.
+            optimizer_vars = state.pop("_optimizer_variables", None)
+            if optimizer_vars and self._optimizer.variables():
+                logger.warning(
+                    "Cannot restore an optimizer's state for tf eager! Keras "
+                    "is not able to save the v1.x optimizers (from "
+                    "tf.compat.v1.train) since they aren't compatible with "
+                    "checkpoints.")
+                for opt_var, value in zip(self._optimizer.variables(),
+                                          optimizer_vars):
+                    opt_var.assign(value)
+            # Then the Policy's (NN) weights.
+            super().set_state(state["_state"])
+
         def variables(self):
             """Return the list of all savable variables for this policy."""
             return self.model.variables()
@@ -580,18 +610,22 @@ def build_eager_tf_policy(name,
 
         def _initialize_loss_with_dummy_batch(self):
             # Dummy forward pass to initialize any policy attributes, etc.
-            action_dtype, action_shape = ModelCatalog.get_action_shape(
-                self.action_space)
             dummy_batch = {
                 SampleBatch.CUR_OBS: np.array(
                     [self.observation_space.sample()]),
                 SampleBatch.NEXT_OBS: np.array(
                     [self.observation_space.sample()]),
                 SampleBatch.DONES: np.array([False], dtype=np.bool),
-                SampleBatch.ACTIONS: tf.nest.map_structure(
-                    lambda c: np.array([c]), self.action_space.sample()),
                 SampleBatch.REWARDS: np.array([0], dtype=np.float32),
             }
+            if isinstance(self.action_space, (Dict, Tuple)):
+                dummy_batch[SampleBatch.ACTIONS] = [
+                    flatten_to_single_ndarray(self.action_space.sample())
+                ]
+            else:
+                dummy_batch[SampleBatch.ACTIONS] = tf.nest.map_structure(
+                    lambda c: np.array([c]), self.action_space.sample())
+
             if obs_include_prev_action_reward:
                 dummy_batch.update({
                     SampleBatch.PREV_ACTIONS: dummy_batch[SampleBatch.ACTIONS],
@@ -605,7 +639,7 @@ def build_eager_tf_policy(name,
                 dummy_batch["seq_lens"] = np.array([1], dtype=np.int32)
 
             # Convert everything to tensors.
-            dummy_batch = tf.nest.map_structure(tf.convert_to_tensor,
+            dummy_batch = tf.nest.map_structure(tf1.convert_to_tensor,
                                                 dummy_batch)
 
             # for IMPALA which expects a certain sample batch size.

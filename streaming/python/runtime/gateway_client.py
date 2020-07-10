@@ -30,7 +30,7 @@ class GatewayClient:
 
     def create_py_stream_source(self, serialized_func):
         assert isinstance(serialized_func, bytes)
-        call = self._python_gateway_actor.createPythonStreamSource\
+        call = self._python_gateway_actor.createPythonStreamSource \
             .remote(serialized_func)
         return deserialize(ray.get(call))
 
@@ -41,8 +41,14 @@ class GatewayClient:
 
     def create_py_partition(self, serialized_partition):
         assert isinstance(serialized_partition, bytes)
-        call = self._python_gateway_actor.createPyPartition\
+        call = self._python_gateway_actor.createPyPartition \
             .remote(serialized_partition)
+        return deserialize(ray.get(call))
+
+    def union(self, *streams):
+        serialized_streams = serialize(streams)
+        call = self._python_gateway_actor.union \
+            .remote(serialized_streams)
         return deserialize(ray.get(call))
 
     def call_function(self, java_class, java_function, *args):
@@ -55,6 +61,11 @@ class GatewayClient:
         call = self._python_gateway_actor.callMethod.remote(java_params)
         return deserialize(ray.get(call))
 
+    def new_instance(self, java_class_name):
+        call = self._python_gateway_actor.newInstance.remote(
+            serialize(java_class_name))
+        return deserialize(ray.get(call))
+
 
 def serialize(obj) -> bytes:
     """Serialize a python object which can be deserialized by `PythonGateway`
@@ -64,4 +75,4 @@ def serialize(obj) -> bytes:
 
 def deserialize(data: bytes):
     """Deserialize the binary data serialized by `PythonGateway`"""
-    return msgpack.unpackb(data, raw=False)
+    return msgpack.unpackb(data, raw=False, strict_map_key=False)

@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RAYLET_NODE_MANAGER_H
-#define RAY_RAYLET_NODE_MANAGER_H
+#pragma once
 
 #include <boost/asio/steady_timer.hpp>
 
@@ -58,6 +57,12 @@ struct NodeManagerConfig {
   /// The port to use for listening to incoming connections. If this is 0 then
   /// the node manager will choose its own port.
   int node_manager_port;
+  /// The lowest port number that workers started will bind on.
+  /// If this is set to 0, workers will bind on random ports.
+  int min_worker_port;
+  /// The highest port number that workers started will bind on.
+  /// If this is not set to 0, min_worker_port must also not be set to 0.
+  int max_worker_port;
   /// The initial number of workers to create.
   int num_initial_workers;
   /// The maximum number of workers that can be started concurrently by a
@@ -225,8 +230,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param object_ids The object ids to store error messages into.
   /// \param job_id The optional job to push errors to if the writes fail.
   void MarkObjectsAsFailed(const ErrorType &error_type,
-                           const std::vector<plasma::ObjectID> object_ids,
-                           const JobID &job_id);
+                           const std::vector<ObjectID> object_ids, const JobID &job_id);
   /// This is similar to TreatTaskAsFailed, but it will only mark the task as
   /// failed if at least one of the task's return values is lost. A return
   /// value is lost if it has been created before, but no longer exists on any
@@ -453,6 +457,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void ProcessRegisterClientRequestMessage(
       const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
 
+  /// Process client message of AnnounceWorkerPort
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessAnnounceWorkerPortMessage(const std::shared_ptr<ClientConnection> &client,
+                                        const uint8_t *message_data);
+
   /// Handle the case that a worker is available.
   ///
   /// \param client The connection for the worker.
@@ -533,7 +545,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                  const uint8_t *message_data);
 
   /// Handle the case where an actor is disconnected, determine whether this
-  /// actor needs to be reconstructed and then update actor table.
+  /// actor needs to be restarted and then update actor table.
   /// This function needs to be called either when actor process dies or when
   /// a node dies.
   ///
@@ -605,6 +617,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                     rpc::FormatGlobalMemoryInfoReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Trigger global GC across the cluster to free up references to actors or
+  /// object ids.
+  void TriggerGlobalGC();
+
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC();
 
@@ -660,6 +676,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The time that the last heartbeat was sent at. Used to make sure we are
   /// keeping up with heartbeats.
   uint64_t last_heartbeat_at_ms_;
+  /// Only the changed part will be included in heartbeat if this is true.
+  const bool light_heartbeat_enabled_;
+  /// Cache which stores resources in last heartbeat used to check if they are changed.
+  /// Used by light heartbeat.
+  SchedulingResources last_heartbeat_resources_;
   /// The time that the last debug string was logged to the console.
   uint64_t last_debug_dump_at_ms_;
   /// The time that we last sent a FreeObjects request to other nodes for
@@ -750,7 +771,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work);
 
   // TODO(swang): Evict entries from these caches.
-  /// Cache for the WorkerFailureTable in the GCS.
+  /// Cache for the WorkerTable in the GCS.
   absl::flat_hash_set<WorkerID> failed_workers_cache_;
   /// Cache for the ClientTable in the GCS.
   absl::flat_hash_set<ClientID> failed_nodes_cache_;
@@ -772,5 +793,3 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 }  // namespace raylet
 
 }  // end namespace ray
-
-#endif  // RAY_RAYLET_NODE_MANAGER_H

@@ -3,8 +3,10 @@ import random
 
 from ray.util.iter import from_actors, LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import SharedMetrics
-from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer
-from ray.rllib.execution.common import SampleBatchType
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer
+from ray.rllib.execution.common import \
+    STEPS_SAMPLED_COUNTER, _get_shared_metrics
+from ray.rllib.utils.types import SampleBatchType
 
 
 class StoreToReplayBuffer:
@@ -52,7 +54,7 @@ class StoreToReplayBuffer:
 def Replay(*,
            local_buffer: LocalReplayBuffer = None,
            actors: List["ActorHandle"] = None,
-           async_queue_depth=4):
+           num_async=4):
     """Replay experiences from the given buffer or actors.
 
     This should be combined with the StoreToReplayActors operation using the
@@ -63,7 +65,7 @@ def Replay(*,
             and replay_actors can be specified.
         actors (list): List of replay actors. Only one of this and
             local_buffer can be specified.
-        async_queue_depth (int): In async mode, the max number of async
+        num_async (int): In async mode, the max number of async
             requests in flight per actor.
 
     Examples:
@@ -79,8 +81,8 @@ def Replay(*,
 
     if actors:
         replay = from_actors(actors)
-        return replay.gather_async(async_queue_depth=async_queue_depth).filter(
-            lambda x: x is not None)
+        return replay.gather_async(
+            num_async=num_async).filter(lambda x: x is not None)
 
     def gen_replay(_):
         while True:
@@ -91,3 +93,90 @@ def Replay(*,
                 yield item
 
     return LocalIterator(gen_replay, SharedMetrics())
+
+
+class WaitUntilTimestepsElapsed:
+    """Callable that returns True once a given number of timesteps are hit."""
+
+    def __init__(self, target_num_timesteps):
+        self.target_num_timesteps = target_num_timesteps
+
+    def __call__(self, item):
+        metrics = _get_shared_metrics()
+        ts = metrics.counters[STEPS_SAMPLED_COUNTER]
+        return ts > self.target_num_timesteps
+
+
+# TODO(ekl) deprecate this in favor of the replay_sequence_length option.
+class SimpleReplayBuffer:
+    """Simple replay buffer that operates over batches."""
+
+    def __init__(self, num_slots, replay_proportion: float = None):
+        """Initialize SimpleReplayBuffer.
+
+        Args:
+            num_slots (int): Number of batches to store in total.
+        """
+        self.num_slots = num_slots
+        self.replay_batches = []
+        self.replay_index = 0
+
+    def add_batch(self, sample_batch):
+        if self.num_slots > 0:
+            if len(self.replay_batches) < self.num_slots:
+                self.replay_batches.append(sample_batch)
+            else:
+                self.replay_batches[self.replay_index] = sample_batch
+                self.replay_index += 1
+                self.replay_index %= self.num_slots
+
+    def replay(self):
+        return random.choice(self.replay_batches)
+
+
+class MixInReplay:
+    """This operator adds replay to a stream of experiences.
+
+    It takes input batches, and returns a list of batches that include replayed
+    data as well. The number of replayed batches is determined by the
+    configured replay proportion. The max age of a batch is determined by the
+    number of replay slots.
+    """
+
+    def __init__(self, num_slots, replay_proportion: float):
+        """Initialize MixInReplay.
+
+        Args:
+            num_slots (int): Number of batches to store in total.
+            replay_proportion (float): The input batch will be returned
+                and an additional number of batches proportional to this value
+                will be added as well.
+
+        Examples:
+            # replay proportion 2:1
+            >>> replay_op = MixInReplay(rollouts, 100, replay_proportion=2)
+            >>> print(next(replay_op))
+            [SampleBatch(<input>), SampleBatch(<replay>), SampleBatch(<rep.>)]
+
+            # replay proportion 0:1, replay disabled
+            >>> replay_op = MixInReplay(rollouts, 100, replay_proportion=0)
+            >>> print(next(replay_op))
+            [SampleBatch(<input>)]
+        """
+        if replay_proportion > 0 and num_slots == 0:
+            raise ValueError(
+                "You must set num_slots > 0 if replay_proportion > 0.")
+        self.replay_buffer = SimpleReplayBuffer(num_slots)
+        self.replay_proportion = replay_proportion
+
+    def __call__(self, sample_batch):
+        # Put in replay buffer if enabled.
+        self.replay_buffer.add_batch(sample_batch)
+
+        # Proportional replay.
+        output_batches = [sample_batch]
+        f = self.replay_proportion
+        while random.random() < f:
+            f -= 1
+            output_batches.append(self.replay_buffer.replay())
+        return output_batches

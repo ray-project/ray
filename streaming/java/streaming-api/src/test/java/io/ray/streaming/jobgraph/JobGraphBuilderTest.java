@@ -2,8 +2,8 @@ package io.ray.streaming.jobgraph;
 
 import com.google.common.collect.Lists;
 import io.ray.streaming.api.context.StreamingContext;
+import io.ray.streaming.api.partition.impl.ForwardPartition;
 import io.ray.streaming.api.partition.impl.KeyPartition;
-import io.ray.streaming.api.partition.impl.RoundRobinPartition;
 import io.ray.streaming.api.stream.DataStream;
 import io.ray.streaming.api.stream.DataStreamSource;
 import io.ray.streaming.api.stream.StreamSink;
@@ -20,14 +20,14 @@ public class JobGraphBuilderTest {
   @Test
   public void testDataSync() {
     JobGraph jobGraph = buildDataSyncJobGraph();
-    List<JobVertex> jobVertexList = jobGraph.getJobVertexList();
-    List<JobEdge> jobEdgeList = jobGraph.getJobEdgeList();
+    List<JobVertex> jobVertexList = jobGraph.getJobVertices();
+    List<JobEdge> jobEdgeList = jobGraph.getJobEdges();
 
     Assert.assertEquals(jobVertexList.size(), 2);
     Assert.assertEquals(jobEdgeList.size(), 1);
 
     JobEdge jobEdge = jobEdgeList.get(0);
-    Assert.assertEquals(jobEdge.getPartition().getClass(), RoundRobinPartition.class);
+    Assert.assertEquals(jobEdge.getPartition().getClass(), ForwardPartition.class);
 
     JobVertex sinkVertex = jobVertexList.get(1);
     JobVertex sourceVertex = jobVertexList.get(0);
@@ -38,7 +38,7 @@ public class JobGraphBuilderTest {
 
   public JobGraph buildDataSyncJobGraph() {
     StreamingContext streamingContext = StreamingContext.buildContext();
-    DataStream<String> dataStream = DataStreamSource.buildSource(streamingContext,
+    DataStream<String> dataStream = DataStreamSource.fromCollection(streamingContext,
         Lists.newArrayList("a", "b", "c"));
     StreamSink streamSink = dataStream.sink(x -> LOG.info(x));
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(Lists.newArrayList(streamSink));
@@ -50,8 +50,8 @@ public class JobGraphBuilderTest {
   @Test
   public void testKeyByJobGraph() {
     JobGraph jobGraph = buildKeyByJobGraph();
-    List<JobVertex> jobVertexList = jobGraph.getJobVertexList();
-    List<JobEdge> jobEdgeList = jobGraph.getJobEdgeList();
+    List<JobVertex> jobVertexList = jobGraph.getJobVertices();
+    List<JobEdge> jobEdgeList = jobGraph.getJobEdges();
 
     Assert.assertEquals(jobVertexList.size(), 3);
     Assert.assertEquals(jobEdgeList.size(), 2);
@@ -68,12 +68,12 @@ public class JobGraphBuilderTest {
     JobEdge source2KeyBy = jobEdgeList.get(1);
 
     Assert.assertEquals(keyBy2Sink.getPartition().getClass(), KeyPartition.class);
-    Assert.assertEquals(source2KeyBy.getPartition().getClass(), RoundRobinPartition.class);
+    Assert.assertEquals(source2KeyBy.getPartition().getClass(), ForwardPartition.class);
   }
 
   public JobGraph buildKeyByJobGraph() {
     StreamingContext streamingContext = StreamingContext.buildContext();
-    DataStream<String> dataStream = DataStreamSource.buildSource(streamingContext,
+    DataStream<String> dataStream = DataStreamSource.fromCollection(streamingContext,
         Lists.newArrayList("1", "2", "3", "4"));
     StreamSink streamSink = dataStream.keyBy(x -> x)
         .sink(x -> LOG.info(x));
@@ -88,8 +88,8 @@ public class JobGraphBuilderTest {
     JobGraph jobGraph = buildKeyByJobGraph();
     jobGraph.generateDigraph();
     String diGraph = jobGraph.getDigraph();
-    System.out.println(diGraph);
-    Assert.assertTrue(diGraph.contains("1-SourceOperator -> 2-KeyByOperator"));
-    Assert.assertTrue(diGraph.contains("2-KeyByOperator -> 3-SinkOperator"));
+    LOG.info(diGraph);
+    Assert.assertTrue(diGraph.contains("\"1-SourceOperatorImpl\" -> \"2-KeyByOperator\""));
+    Assert.assertTrue(diGraph.contains("\"2-KeyByOperator\" -> \"3-SinkOperator\""));
   }
 }

@@ -4,12 +4,13 @@ from ray.rllib.models.model import Model
 from ray.rllib.models.tf.misc import linear, normc_initializer
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
-# Deprecated: see as an alternative models/tf/recurrent_tf_modelv2.py
+# Deprecated: see as an alternative models/tf/recurrent_net.py
 class LSTM(Model):
     """Adds a LSTM cell on top of some other model output.
 
@@ -21,6 +22,10 @@ class LSTM(Model):
 
     @override(Model)
     def _build_layers_v2(self, input_dict, num_outputs, options):
+        # Hard deprecate this class. All Models should use the ModelV2
+        # API from here on.
+        deprecation_warning("Model->LSTM", "RecurrentNetwork", error=False)
+
         cell_size = options.get("lstm_cell_size")
         if options.get("lstm_use_prev_action_reward"):
             action_dim = int(
@@ -40,7 +45,7 @@ class LSTM(Model):
         last_layer = add_time_dimension(features, self.seq_lens)
 
         # Setup the LSTM cell
-        lstm = tf.nn.rnn_cell.LSTMCell(cell_size, state_is_tuple=True)
+        lstm = tf1.nn.rnn_cell.LSTMCell(cell_size, state_is_tuple=True)
         self.state_init = [
             np.zeros(lstm.state_size.c, np.float32),
             np.zeros(lstm.state_size.h, np.float32)
@@ -50,15 +55,15 @@ class LSTM(Model):
         if self.state_in:
             c_in, h_in = self.state_in
         else:
-            c_in = tf.placeholder(
+            c_in = tf1.placeholder(
                 tf.float32, [None, lstm.state_size.c], name="c")
-            h_in = tf.placeholder(
+            h_in = tf1.placeholder(
                 tf.float32, [None, lstm.state_size.h], name="h")
             self.state_in = [c_in, h_in]
 
         # Setup LSTM outputs
-        state_in = tf.nn.rnn_cell.LSTMStateTuple(c_in, h_in)
-        lstm_out, lstm_state = tf.nn.dynamic_rnn(
+        state_in = tf1.nn.rnn_cell.LSTMStateTuple(c_in, h_in)
+        lstm_out, lstm_state = tf1.nn.dynamic_rnn(
             lstm,
             last_layer,
             initial_state=state_in,

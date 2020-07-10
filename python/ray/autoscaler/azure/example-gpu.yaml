@@ -73,7 +73,7 @@ head_node:
         # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
         imagePublisher: microsoft-dsvm
         imageOffer: ubuntu-1804
-        imageSku: 1804
+        imageSku: "1804"
         imageVersion: 20.02.01
 
 # Provider-specific config for worker nodes, e.g. instance type. By default
@@ -84,7 +84,7 @@ worker_nodes:
         # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
         imagePublisher: microsoft-dsvm
         imageOffer: ubuntu-1804
-        imageSku: 1804
+        imageSku: "1804"
         imageVersion: 20.02.01
 
 # Files or directories to copy to the head and worker nodes. The format is a
@@ -124,7 +124,7 @@ worker_setup_commands: []
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:

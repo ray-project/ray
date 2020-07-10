@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_JAVA_JNI_UTILS_H
-#define RAY_COMMON_JAVA_JNI_UTILS_H
+#pragma once
 
 #include <jni.h>
+
 #include "ray/common/buffer.h"
 #include "ray/common/function_descriptor.h"
 #include "ray/common/id.h"
@@ -111,8 +111,8 @@ extern jfieldID java_base_task_options_resources;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
-/// maxReconstructions field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_max_reconstructions;
+/// maxRestarts field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_max_restarts;
 /// jvmOptions field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_jvm_options;
 /// maxConcurrency field of ActorCreationOptions class
@@ -229,6 +229,14 @@ template <typename ID>
 inline jobject IdToJavaByteBuffer(JNIEnv *env, const ID &id) {
   return env->NewDirectByteBuffer(
       reinterpret_cast<void *>(const_cast<uint8_t *>(id.Data())), id.Size());
+}
+
+/// Convert C++ String to a Java ByteArray.
+inline jbyteArray NativeStringToJavaByteArray(JNIEnv *env, const std::string &str) {
+  jbyteArray array = env->NewByteArray(str.size());
+  env->SetByteArrayRegion(array, 0, str.size(),
+                          reinterpret_cast<const jbyte *>(str.c_str()));
+  return array;
 }
 
 /// Convert a Java String to C++ std::string.
@@ -413,5 +421,3 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
   RAY_LOG(FATAL) << "Unknown function descriptor type: " << function_descriptor->Type();
   return NativeStringVectorToJavaStringList(env, std::vector<std::string>());
 }
-
-#endif  // RAY_COMMON_JAVA_JNI_UTILS_H

@@ -3,10 +3,7 @@ import unittest
 
 import ray.rllib.agents.ddpg as ddpg
 import ray.rllib.agents.dqn as dqn
-from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check, framework_iterator
-
-tf = try_import_tf()
 
 
 class TestParameterNoise(unittest.TestCase):
@@ -27,7 +24,7 @@ class TestParameterNoise(unittest.TestCase):
                 "map_name": "4x4"
             },
             np.array(0),
-            fws=("tf", "eager"))
+            fws=("tf", "tfe"))
 
     def do_test_parameter_noise_exploration(self, trainer_cls, config, env,
                                             env_config, obs, fws):
@@ -193,7 +190,7 @@ class TestParameterNoise(unittest.TestCase):
 
     def _get_current_weight(self, policy, fw):
         weights = policy.get_weights()
-        key = 0 if fw == "eager" else list(weights.keys())[0]
+        key = 0 if fw == "tfe" else list(weights.keys())[0]
         return weights[key][0][0]
 
 

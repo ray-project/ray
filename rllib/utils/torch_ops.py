@@ -1,17 +1,20 @@
 import numpy as np
-import logging
+import tree
 
+from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()
 
-logger = logging.getLogger(__name__)
 
-try:
-    import tree
-except (ImportError, ModuleNotFoundError) as e:
-    logger.warning("`dm-tree` is not installed! Run `pip install dm-tree`.")
-    raise e
+def explained_variance(y, pred):
+    y_var = torch.var(y, dim=[0])
+    diff_var = torch.var(y - pred, dim=[0])
+    min_ = torch.Tensor([-1.0])
+    return torch.max(
+        min_.to(device=torch.device("cuda"))
+        if torch.cuda.is_available() else min_,
+        1 - (diff_var / y_var))
 
 
 def global_norm(tensors):
@@ -66,15 +69,15 @@ def minimize_and_clip(optimizer, clip_val=10):
                 torch.nn.utils.clip_grad_norm_(p.grad, clip_val)
 
 
-def sequence_mask(lengths, maxlen, dtype=None):
-    """
-    Exact same behavior as tf.sequence_mask.
+def sequence_mask(lengths, maxlen=None, dtype=None):
+    """Offers same behavior as tf.sequence_mask for torch.
+
     Thanks to Dimitris Papatheodorou
     (https://discuss.pytorch.org/t/pytorch-equivalent-for-tf-sequence-mask/
     39036).
     """
     if maxlen is None:
-        maxlen = lengths.max()
+        maxlen = int(lengths.max())
 
     mask = ~(torch.ones((len(lengths), maxlen)).to(
         lengths.device).cumsum(dim=1).t() > lengths).t()
@@ -120,8 +123,14 @@ def convert_to_torch_tensor(stats, device=None):
     """
 
     def mapping(item):
+        # Already torch tensor -> make sure it's on right device.
         if torch.is_tensor(item):
             return item if device is None else item.to(device)
+        # Special handling of "Repeated" values.
+        elif isinstance(item, RepeatedValues):
+            return RepeatedValues(
+                tree.map_structure(mapping, item.values),
+                item.lengths, item.max_len)
         tensor = torch.from_numpy(np.asarray(item))
         # Floatify all float64 tensors.
         if tensor.dtype == torch.double:

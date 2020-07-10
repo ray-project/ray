@@ -2,8 +2,6 @@ import json
 import logging
 import time
 
-import redis
-
 import ray
 from ray import ray_constants
 
@@ -33,6 +31,8 @@ class Cluster:
         self.worker_nodes = set()
         self.redis_address = None
         self.connected = False
+        # Create a new global state accessor for fetching GCS table.
+        self.global_state = ray.state.GlobalState()
         self._shutdown_at_exit = shutdown_at_exit
         if not initialize_head and connect:
             raise RuntimeError("Cannot connect to uninitialized cluster.")
@@ -77,6 +77,8 @@ class Cluster:
             "num_cpus": 1,
             "num_gpus": 0,
             "object_store_memory": 150 * 1024 * 1024,  # 150 MiB
+            "min_worker_port": 0,
+            "max_worker_port": 0,
         }
         if "_internal_config" in node_args:
             node_args["_internal_config"] = json.loads(
@@ -94,6 +96,9 @@ class Cluster:
             self.redis_password = node_args.get(
                 "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD)
             self.webui_url = self.head_node.webui_url
+            # Init global state accessor when creating head node.
+            self.global_state._initialize_global_state(self.redis_address,
+                                                       self.redis_password)
         else:
             ray_params.update_if_absent(redis_address=self.redis_address)
             # We only need one log monitor per physical node.
@@ -123,6 +128,16 @@ class Cluster:
             node (Node): Worker node of which all associated processes
                 will be removed.
         """
+        global_node = ray.worker._global_node
+        if global_node is not None:
+            if node._raylet_socket_name == global_node._raylet_socket_name:
+                ray.shutdown()
+                raise ValueError(
+                    "Removing a node that is connected to this Ray client "
+                    "is not allowed because it will break the driver."
+                    "You can use the get_other_node utility to avoid removing"
+                    "a node that the Ray client is connected.")
+
         if self.head_node == node:
             self.head_node.kill_all_processes(
                 check_alive=False, allow_graceful=allow_graceful)
@@ -148,13 +163,9 @@ class Cluster:
             TimeoutError: An exception is raised if the timeout expires before
                 the node appears in the client table.
         """
-        ip_address, port = self.redis_address.split(":")
-        redis_client = redis.StrictRedis(
-            host=ip_address, port=int(port), password=self.redis_password)
-
         start_time = time.time()
         while time.time() - start_time < timeout:
-            clients = ray.state._parse_client_table(redis_client)
+            clients = self.global_state.node_table()
             object_store_socket_names = [
                 client["ObjectStoreSocketName"] for client in clients
             ]
@@ -181,13 +192,9 @@ class Cluster:
             TimeoutError: An exception is raised if we time out while waiting
                 for nodes to join.
         """
-        ip_address, port = self.address.split(":")
-        redis_client = redis.StrictRedis(
-            host=ip_address, port=int(port), password=self.redis_password)
-
         start_time = time.time()
         while time.time() - start_time < timeout:
-            clients = ray.state._parse_client_table(redis_client)
+            clients = self.global_state.node_table()
             live_clients = [client for client in clients if client["Alive"]]
 
             expected = len(self.list_all_nodes())

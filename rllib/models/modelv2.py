@@ -1,11 +1,25 @@
+from collections import OrderedDict
+import gym
+from typing import Dict
+
+from ray.rllib.models.preprocessors import get_preprocessor, \
+    RepeatedValuesPreprocessor
+from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models.model import restore_original_dimensions, flatten
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.policy.trajectory_view import ViewRequirement
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
+    TensorType
+from ray.rllib.utils.spaces.repeated import Repeated
+from ray.rllib.utils.types import ModelConfigDict
+
+tf1, tf, tfv = try_import_tf()
+torch, _ = try_import_torch()
 
 
 @PublicAPI
 class ModelV2:
-    """Defines a Keras-style abstract network model for use with RLlib.
+    """Defines an abstract neural network model for use with RLlib.
 
     Custom models should extend either TFModelV2 or TorchModelV2 instead of
     this class directly.
@@ -13,33 +27,41 @@ class ModelV2:
     Data flow:
         obs -> forward() -> model_out
                value_function() -> V(s)
-
-    Attributes:
-        obs_space (Space): observation space of the target gym env. This
-            may have an `original_space` attribute that specifies how to
-            unflatten the tensor into a ragged tensor.
-        action_space (Space): action space of the target gym env
-        num_outputs (int): number of output units of the model
-        model_config (dict): config for the model, documented in ModelCatalog
-        name (str): name (scope) for the model
-        framework (str): either "tf" or "torch"
     """
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name, framework):
-        """Initialize the model.
+    def __init__(self,
+                 obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space,
+                 num_outputs: int,
+                 model_config: ModelConfigDict,
+                 name: str,
+                 framework: str):
+        """Initializes a ModelV2 object.
 
         This method should create any variables used by the model.
+
+        Args:
+            obs_space (gym.spaces.Space): Observation space of the target gym
+                env. This may have an `original_space` attribute that
+                specifies how to unflatten the tensor into a ragged tensor.
+            action_space (gym.spaces.Space): Action space of the target gym
+                env.
+            num_outputs (int): Number of output units of the model.
+            model_config (ModelConfigDict): Config for the model, documented
+                in ModelCatalog.
+            name (str): Name (scope) for the model.
+            framework (str): Either "tf" or "torch".
         """
 
-        self.obs_space = obs_space
-        self.action_space = action_space
-        self.num_outputs = num_outputs
-        self.model_config = model_config
-        self.name = name or "default_model"
-        self.framework = framework
+        self.obs_space: gym.spaces.Space = obs_space
+        self.action_space: gym.spaces.Space = action_space
+        self.num_outputs: int = num_outputs
+        self.model_config: ModelConfigDict = model_config
+        self.name: str = name or "default_model"
+        self.framework: str = framework
         self._last_output = None
 
+    @PublicAPI
     def get_initial_state(self):
         """Get the initial recurrent state values for the model.
 
@@ -56,6 +78,7 @@ class ModelV2:
         """
         return []
 
+    @PublicAPI
     def forward(self, input_dict, state, seq_lens):
         """Call the model with the given input tensors and state.
 
@@ -70,9 +93,10 @@ class ModelV2:
 
         Custom models should override this instead of __call__.
 
-        Arguments:
+        Args:
             input_dict (dict): dictionary of input tensors, including "obs",
-                "obs_flat", "prev_action", "prev_reward", "is_training"
+                "obs_flat", "prev_action", "prev_reward", "is_training",
+                "eps_id", "agent_id", "infos", and "t".
             state (list): list of state tensors with sizes matching those
                 returned by get_initial_state + the batch dimension
             seq_lens (Tensor): 1d tensor holding input sequence lengths
@@ -80,9 +104,16 @@ class ModelV2:
         Returns:
             (outputs, state): The model output tensor of size
                 [BATCH, num_outputs]
+
+        Examples:
+            >>> def forward(self, input_dict, state, seq_lens):
+            >>>     model_out, self._value_out = self.base_model(
+            ...         input_dict["obs"])
+            >>>     return model_out, state
         """
         raise NotImplementedError
 
+    @PublicAPI
     def value_function(self):
         """Returns the value function output for the most recent forward pass.
 
@@ -95,6 +126,7 @@ class ModelV2:
         """
         raise NotImplementedError
 
+    @PublicAPI
     def custom_loss(self, policy_loss, loss_inputs):
         """Override to customize the loss function used to optimize this model.
 
@@ -116,6 +148,7 @@ class ModelV2:
         """
         return policy_loss
 
+    @PublicAPI
     def metrics(self):
         """Override to return custom metrics from your model.
 
@@ -174,7 +207,7 @@ class ModelV2:
         except AttributeError:
             raise ValueError("Output is not a tensor: {}".format(outputs))
         else:
-            if len(shape) != 2 or shape[1] != self.num_outputs:
+            if len(shape) != 2 or int(shape[1]) != self.num_outputs:
                 raise ValueError(
                     "Expected output shape of [None, {}], got {}".format(
                         self.num_outputs, shape))
@@ -184,6 +217,7 @@ class ModelV2:
         self._last_output = outputs
         return outputs, state
 
+    @PublicAPI
     def from_batch(self, train_batch, is_training=True):
         """Convenience function that calls this model with a tensor batch.
 
@@ -206,6 +240,34 @@ class ModelV2:
             i += 1
         return self.__call__(input_dict, states, train_batch.get("seq_lens"))
 
+    def get_view_requirements(
+            self,
+            is_training: bool = False) -> Dict[str, ViewRequirement]:
+        """Returns a list of ViewRequirements for this Model (or None).
+
+        Note: This is an experimental API method.
+
+        A ViewRequirement object tells the caller of this Model, which
+        data at which timesteps are needed by this Model. This could be a
+        sequence of past observations, internal-states, previous rewards, or
+        other episode data/previous model outputs.
+
+        Args:
+            is_training (bool): Whether the returned requirements are for
+                training or inference (default).
+
+        Returns:
+            Dict[str, ViewRequirement]: The view requirements as a dict mapping
+                column names e.g. "obs" to config dicts containing supported
+                fields.
+                TODO: (sven) Currently only `timesteps==0` can be setup.
+        """
+        # Default implementation for simple RL model:
+        # Single requirement: Pass current obs as input.
+        return {
+            SampleBatch.CUR_OBS: ViewRequirement(timesteps=0),
+        }
+
     def import_from_h5(self, h5_file):
         """Imports weights from an h5 file.
 
@@ -220,14 +282,17 @@ class ModelV2:
         """
         raise NotImplementedError
 
+    @PublicAPI
     def last_output(self):
         """Returns the last output returned from calling the model."""
         return self._last_output
 
+    @PublicAPI
     def context(self):
         """Returns a contextmanager for the current forward pass."""
         return NullContextManager()
 
+    @PublicAPI
     def variables(self, as_dict=False):
         """Returns the list (or a dict) of variables for this model.
 
@@ -241,6 +306,7 @@ class ModelV2:
         """
         raise NotImplementedError
 
+    @PublicAPI
     def trainable_variables(self, as_dict=False):
         """Returns the list of trainable variables for this model.
 
@@ -267,3 +333,128 @@ class NullContextManager:
 
     def __exit__(self, *args):
         pass
+
+
+@DeveloperAPI
+def flatten(obs, framework):
+    """Flatten the given tensor."""
+    if framework == "tf":
+        return tf1.layers.flatten(obs)
+    elif framework == "torch":
+        assert torch is not None
+        return torch.flatten(obs, start_dim=1)
+    else:
+        raise NotImplementedError("flatten", framework)
+
+
+@DeveloperAPI
+def restore_original_dimensions(obs: TensorType,
+                                obs_space: gym.spaces.Space,
+                                tensorlib=tf):
+    """Unpacks Dict and Tuple space observations into their original form.
+
+    This is needed since we flatten Dict and Tuple observations in transit
+    within a SampleBatch. Before sending them to the model though, we should
+    unflatten them into Dicts or Tuples of tensors.
+
+    Args:
+        obs (TensorType): The flattened observation tensor.
+        obs_space (gym.spaces.Space): The flattened obs space. If this has the
+            `original_space` attribute, we will unflatten the tensor to that
+            shape.
+        tensorlib: The library used to unflatten (reshape) the array/tensor.
+
+    Returns:
+        single tensor or dict / tuple of tensors matching the original
+        observation space.
+    """
+
+    if hasattr(obs_space, "original_space"):
+        if tensorlib == "tf":
+            tensorlib = tf
+        elif tensorlib == "torch":
+            assert torch is not None
+            tensorlib = torch
+        return _unpack_obs(obs, obs_space.original_space, tensorlib=tensorlib)
+    else:
+        return obs
+
+
+# Cache of preprocessors, for if the user is calling unpack obs often.
+_cache = {}
+
+
+def _unpack_obs(obs, space, tensorlib=tf):
+    """Unpack a flattened Dict or Tuple observation array/tensor.
+
+    Args:
+        obs: The flattened observation tensor, with last dimension equal to
+            the flat size and any number of batch dimensions. For example, for
+            Box(4,), the obs may have shape [B, 4], or [B, N, M, 4] in case
+            the Box was nested under two Repeated spaces.
+        space: The original space prior to flattening
+        tensorlib: The library used to unflatten (reshape) the array/tensor
+    """
+
+    if (isinstance(space, gym.spaces.Dict)
+            or isinstance(space, gym.spaces.Tuple)
+            or isinstance(space, Repeated)):
+        if id(space) in _cache:
+            prep = _cache[id(space)]
+        else:
+            prep = get_preprocessor(space)(space)
+            # Make an attempt to cache the result, if enough space left.
+            if len(_cache) < 999:
+                _cache[id(space)] = prep
+        if len(obs.shape) < 2 or obs.shape[-1] != prep.shape[0]:
+            raise ValueError(
+                "Expected flattened obs shape of [..., {}], got {}".format(
+                    prep.shape[0], obs.shape))
+        offset = 0
+        if tensorlib == tf:
+            batch_dims = [v.value for v in obs.shape[:-1]]
+            batch_dims = [-1 if v is None else v for v in batch_dims]
+        else:
+            batch_dims = list(obs.shape[:-1])
+        if isinstance(space, gym.spaces.Tuple):
+            assert len(prep.preprocessors) == len(space.spaces), \
+                (len(prep.preprocessors) == len(space.spaces))
+            u = []
+            for p, v in zip(prep.preprocessors, space.spaces):
+                obs_slice = obs[..., offset:offset + p.size]
+                offset += p.size
+                u.append(
+                    _unpack_obs(
+                        tensorlib.reshape(obs_slice,
+                                          batch_dims + list(p.shape)),
+                        v,
+                        tensorlib=tensorlib))
+        elif isinstance(space, gym.spaces.Dict):
+            assert len(prep.preprocessors) == len(space.spaces), \
+                (len(prep.preprocessors) == len(space.spaces))
+            u = OrderedDict()
+            for p, (k, v) in zip(prep.preprocessors, space.spaces.items()):
+                obs_slice = obs[..., offset:offset + p.size]
+                offset += p.size
+                u[k] = _unpack_obs(
+                    tensorlib.reshape(obs_slice, batch_dims + list(p.shape)),
+                    v,
+                    tensorlib=tensorlib)
+        elif isinstance(space, Repeated):
+            assert isinstance(prep, RepeatedValuesPreprocessor), prep
+            child_size = prep.child_preprocessor.size
+            # The list lengths are stored in the first slot of the flat obs.
+            lengths = obs[..., 0]
+            # [B, ..., 1 + max_len * child_sz] -> [B, ..., max_len, child_sz]
+            with_repeat_dim = tensorlib.reshape(
+                obs[..., 1:], batch_dims + [space.max_len, child_size])
+            # Retry the unpack, dropping the List container space.
+            u = _unpack_obs(
+                with_repeat_dim, space.child_space, tensorlib=tensorlib)
+            return RepeatedValues(
+                u, lengths=lengths, max_len=prep._obs_space.max_len)
+        else:
+            assert False, space
+        return u
+    else:
+        return obs
