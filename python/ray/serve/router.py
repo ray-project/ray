@@ -198,16 +198,12 @@ class Router:
             self.endpoint_queues[endpoint].appendleft(query)
             self.flush_endpoint_queue(endpoint)
 
-        # Note: a future change can be to directly return the ObjectID from
-        # replica task submission
-        return query.async_future
-
-        # try:
-        #     result = await query.async_future
-        # except RayTaskError as e:
-        #     self.num_error_endpoint_request.labels(endpoint=endpoint).add()
-        #     result = e
-        # return result
+        try:
+            result = await query.async_future
+        except RayTaskError as e:
+            self.num_error_endpoint_request.labels(endpoint=endpoint).add()
+            result = e
+        return result
 
     async def add_new_worker(self, backend_tag, replica_tag, worker_handle):
         backend_replica_tag = backend_tag + ":" + replica_tag

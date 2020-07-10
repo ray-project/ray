@@ -4,6 +4,7 @@ from urllib.parse import parse_qs
 import uvicorn
 
 import ray
+from ray.exceptions import RayTaskError
 from ray import serve
 from ray.serve.context import TaskContext
 from ray.serve.metric import MetricClient
@@ -26,7 +27,7 @@ class HTTPProxy:
     # blocks forever
     """
 
-    async def fetch_config_from_master(self):
+    async def fetch_config_from_master(self, instance_name=None):
         assert ray.is_initialized()
         master = serve.api._get_master_actor()
 
@@ -42,7 +43,7 @@ class HTTPProxy:
             label_names=("route", ))
 
         self.router = Router()
-        await self.router.setup()
+        await self.router.setup(instance_name)
 
     def set_route_table(self, route_table):
         self.route_table = route_table
@@ -157,60 +158,22 @@ class HTTPProxy:
             shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
         )
 
-        future = await self.router.enqueue_request(request_metadata, scope,
+        result = await self.router.enqueue_request(request_metadata, scope,
                                                    http_body_bytes)
-        await Response(await future).send(scope, receive, send)
 
-
-def _autoproxy(*, methods, through):
-    """Decorator for a class. Automatically proxy methods
-
-    This decorator installs method with the same name in ``methods`` and proxy
-    them with the self.``through`` method.
-
-    Example:
-        >>> class A:
-                def call_one(self): pass
-                def call_two(self): pass
-        >>> @_autoproxy(methods=[A.call_one, A.call_two], through="_proxy")
-            class B:
-                a = A()
-                def _proxy(self, method_name, *args):
-                    return getattr(self.a, method_name)(*args)
-        >>> B.call_one()
-        >>> B.call_two()
-    """
-
-    def proxy_with_methods(cls):
-        for method in methods:
-            method_name = str(method.__name__)
-
-            async def wrapped_method(self, *args, name=method_name, **kwargs):
-                proxy_call = getattr(self, through)
-                return await proxy_call(name, *args, **kwargs)
-
-            setattr(cls, method_name, wrapped_method)
-        return cls
-
-    return proxy_with_methods
+        if isinstance(result, RayTaskError):
+            error_message = "Task Error. Traceback: {}.".format(result)
+            await error_sender(error_message, 500)
+        else:
+            await Response(result).send(scope, receive, send)
 
 
 @ray.remote
-@_autoproxy(
-    methods=[
-        Router.add_new_worker,
-        Router.set_traffic,
-        Router.set_backend_config,
-        Router.remove_backend,
-        Router.remove_endpoint,
-        Router.remove_worker,
-    ],
-    through="_proxy_router_call")
 class HTTPProxyActor:
     async def __init__(self, host, port, instance_name=None):
         serve.init(name=instance_name)
         self.app = HTTPProxy()
-        await self.app.fetch_config_from_master()
+        await self.app.fetch_config_from_master(instance_name)
         self.host = host
         self.port = port
 
@@ -237,12 +200,27 @@ class HTTPProxyActor:
     async def set_route_table(self, route_table):
         self.app.set_route_table(route_table)
 
-    async def _proxy_router_call(self, method_name, *args, **kwargs):
-        method = getattr(self.app.router, method_name)
-        return await method(*args, **kwargs)
+    # ------ Proxy router logic ------ #
+    async def add_new_worker(self, backend_tag, replica_tag, worker_handle):
+        return await self.app.router.add_new_worker(backend_tag, replica_tag,
+                                                    worker_handle)
 
-    async def enqueue_request(self, *args, **kwargs):
-        # Resolve the future for RayServeHandle
-        future = await self.app.router.enqueue_request(*args, **kwargs)
-        result = await future
-        return result
+    async def set_traffic(self, endpoint, traffic_policy):
+        return await self.app.router.set_traffic(endpoint, traffic_policy)
+
+    async def set_backend_config(self, backend, config):
+        return await self.app.router.set_backend_config(backend, config)
+
+    async def remove_backend(self, backend):
+        return await self.app.router.remove_backend(backend)
+
+    async def remove_endpoint(self, endpoint):
+        return await self.app.router.remove_endpoint(endpoint)
+
+    async def remove_worker(self, backend_tag, replica_tag):
+        return await self.app.router.remove_worker(backend_tag, replica_tag)
+
+    async def enqueue_request(self, request_meta, *request_args,
+                              **request_kwargs):
+        return await self.app.router.enqueue_request(
+            request_meta, *request_args, **request_kwargs)
