@@ -1260,7 +1260,8 @@ def start_raylet(redis_address,
                  plasma_directory=None,
                  huge_pages=False,
                  fate_share=None,
-                 socket_to_use=None):
+                 socket_to_use=None,
+                 head_node=False):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1402,6 +1403,8 @@ def start_raylet(redis_address,
             command.append("--huge_pages")
     if socket_to_use:
         socket_to_use.close()
+    if head_node:
+        command.append("--head_node")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET,
@@ -1465,7 +1468,7 @@ def build_java_worker_command(
         pairs.append(("ray.redis.password", redis_password))
 
     pairs.append(("ray.home", RAY_HOME))
-    pairs.append(("ray.log-dir", os.path.join(session_dir, "logs")))
+    pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
 
     command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]

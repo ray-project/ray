@@ -25,6 +25,12 @@
 thread_local JNIEnv *local_env = nullptr;
 jobject java_task_executor = nullptr;
 
+/// Store Java instances of function descriptor in the cache to avoid unnessesary JNI
+/// operations.
+thread_local std::unordered_map<size_t,
+                                std::vector<std::pair<ray::FunctionDescriptor, jobject>>>
+    executor_function_descriptor_cache;
+
 inline ray::gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env,
                                                      jobject gcs_client_options) {
   std::string ip = JavaStringToNativeString(
@@ -73,9 +79,24 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
 
         RAY_CHECK(env);
         RAY_CHECK(java_task_executor);
+
         // convert RayFunction
-        jobject ray_function_array_list = NativeRayFunctionDescriptorToJavaStringList(
-            env, ray_function.GetFunctionDescriptor());
+        auto function_descriptor = ray_function.GetFunctionDescriptor();
+        size_t fd_hash = function_descriptor->Hash();
+        auto &fd_vector = executor_function_descriptor_cache[fd_hash];
+        jobject ray_function_array_list = nullptr;
+        for (auto &pair : fd_vector) {
+          if (pair.first == function_descriptor) {
+            ray_function_array_list = pair.second;
+            break;
+          }
+        }
+        if (!ray_function_array_list) {
+          ray_function_array_list =
+              NativeRayFunctionDescriptorToJavaStringList(env, function_descriptor);
+          fd_vector.emplace_back(function_descriptor, ray_function_array_list);
+        }
+
         // convert args
         // TODO (kfstorm): Avoid copying binary data from Java to C++
         jobject args_array_list = NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(
@@ -88,37 +109,38 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
         RAY_CHECK_JAVA_EXCEPTION(env);
 
         // Process return objects.
-        std::vector<std::shared_ptr<ray::RayObject>> return_objects;
-        JavaListToNativeVector<std::shared_ptr<ray::RayObject>>(
-            env, java_return_objects, &return_objects,
-            [](JNIEnv *env, jobject java_native_ray_object) {
-              return JavaNativeRayObjectToNativeRayObject(env, java_native_ray_object);
-            });
-        std::vector<size_t> data_sizes;
-        std::vector<std::shared_ptr<ray::Buffer>> metadatas;
-        std::vector<std::vector<ray::ObjectID>> contained_object_ids;
-        for (size_t i = 0; i < return_objects.size(); i++) {
-          data_sizes.push_back(
-              return_objects[i]->HasData() ? return_objects[i]->GetData()->Size() : 0);
-          metadatas.push_back(return_objects[i]->GetMetadata());
-          contained_object_ids.push_back(return_objects[i]->GetNestedIds());
-        }
-        ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObjects(
-            return_ids, data_sizes, metadatas, contained_object_ids, results);
-        for (size_t i = 0; i < data_sizes.size(); i++) {
-          auto result = (*results)[i];
-          // A nullptr is returned if the object already exists.
-          if (result != nullptr) {
-            if (result->HasData()) {
-              memcpy(result->GetData()->Data(), return_objects[i]->GetData()->Data(),
-                     data_sizes[i]);
+        if (!return_ids.empty()) {
+          std::vector<std::shared_ptr<ray::RayObject>> return_objects;
+          JavaListToNativeVector<std::shared_ptr<ray::RayObject>>(
+              env, java_return_objects, &return_objects,
+              [](JNIEnv *env, jobject java_native_ray_object) {
+                return JavaNativeRayObjectToNativeRayObject(env, java_native_ray_object);
+              });
+          std::vector<size_t> data_sizes;
+          std::vector<std::shared_ptr<ray::Buffer>> metadatas;
+          std::vector<std::vector<ray::ObjectID>> contained_object_ids;
+          for (size_t i = 0; i < return_objects.size(); i++) {
+            data_sizes.push_back(
+                return_objects[i]->HasData() ? return_objects[i]->GetData()->Size() : 0);
+            metadatas.push_back(return_objects[i]->GetMetadata());
+            contained_object_ids.push_back(return_objects[i]->GetNestedIds());
+          }
+          ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObjects(
+              return_ids, data_sizes, metadatas, contained_object_ids, results);
+          for (size_t i = 0; i < data_sizes.size(); i++) {
+            auto result = (*results)[i];
+            // A nullptr is returned if the object already exists.
+            if (result != nullptr) {
+              if (result->HasData()) {
+                memcpy(result->GetData()->Data(), return_objects[i]->GetData()->Data(),
+                         data_sizes[i]);
+              }
             }
           }
         }
 
         env->DeleteLocalRef(java_return_objects);
         env->DeleteLocalRef(args_array_list);
-        env->DeleteLocalRef(ray_function_array_list);
         return ray::Status::OK();
       };
 

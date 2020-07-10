@@ -48,7 +48,7 @@ if __name__ == "__main__":
             # TODO(ekl) we need to set these to prevent the masked values
             # from being further processed in DistributionalQModel, which
             # would mess up the masking. It is possible to support these if we
-            # defined a a custom DistributionalQModel that is aware of masking.
+            # defined a custom DistributionalQModel that is aware of masking.
             "hiddens": [],
             "dueling": False,
         }

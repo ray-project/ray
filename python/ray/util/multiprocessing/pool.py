@@ -27,45 +27,45 @@ class PoolTaskError(Exception):
 
 class ResultThread(threading.Thread):
     def __init__(self,
-                 object_ids,
+                 object_refs,
                  callback=None,
                  error_callback=None,
-                 total_object_ids=None):
+                 total_object_refs=None):
         threading.Thread.__init__(self, daemon=True)
         self._got_error = False
-        self._object_ids = []
+        self._object_refs = []
         self._num_ready = 0
         self._results = []
         self._ready_index_queue = queue.Queue()
         self._callback = callback
         self._error_callback = error_callback
-        self._total_object_ids = total_object_ids or len(object_ids)
+        self._total_object_refs = total_object_refs or len(object_refs)
         self._indices = {}
-        # Thread-safe queue used to add ObjectIDs to fetch after creating
+        # Thread-safe queue used to add ObjectRefs to fetch after creating
         # this thread (used to lazily submit for imap and imap_unordered).
-        self._new_object_ids = queue.Queue()
-        for object_id in object_ids:
-            self._add_object_id(object_id)
+        self._new_object_refs = queue.Queue()
+        for object_ref in object_refs:
+            self._add_object_ref(object_ref)
 
-    def _add_object_id(self, object_id):
-        self._indices[object_id] = len(self._object_ids)
-        self._object_ids.append(object_id)
+    def _add_object_ref(self, object_ref):
+        self._indices[object_ref] = len(self._object_refs)
+        self._object_refs.append(object_ref)
         self._results.append(None)
 
-    def add_object_id(self, object_id):
-        self._new_object_ids.put(object_id)
+    def add_object_ref(self, object_ref):
+        self._new_object_refs.put(object_ref)
 
     def run(self):
-        unready = copy.copy(self._object_ids)
-        while self._num_ready < self._total_object_ids:
+        unready = copy.copy(self._object_refs)
+        while self._num_ready < self._total_object_refs:
             # Get as many new IDs from the queue as possible without blocking,
             # unless we have no IDs to wait on, in which case we block.
             while True:
                 try:
                     block = len(unready) == 0
-                    new_object_id = self._new_object_ids.get(block=block)
-                    self._add_object_id(new_object_id)
-                    unready.append(new_object_id)
+                    new_object_ref = self._new_object_refs.get(block=block)
+                    self._add_object_ref(new_object_ref)
+                    unready.append(new_object_ref)
                 except queue.Empty:
                     # queue.Empty means no result was retrieved if block=False.
                     break
@@ -114,12 +114,12 @@ class AsyncResult:
     """
 
     def __init__(self,
-                 chunk_object_ids,
+                 chunk_object_refs,
                  callback=None,
                  error_callback=None,
                  single_result=False):
         self._single_result = single_result
-        self._result_thread = ResultThread(chunk_object_ids, callback,
+        self._result_thread = ResultThread(chunk_object_refs, callback,
                                            error_callback)
         self._result_thread.start()
 
@@ -189,7 +189,7 @@ class IMapIterator:
         self._chunksize = chunksize or pool._calculate_chunksize(iterable)
         self._total_chunks = div_round_up(len(iterable), chunksize)
         self._result_thread = ResultThread(
-            [], total_object_ids=self._total_chunks)
+            [], total_object_refs=self._total_chunks)
         self._result_thread.start()
 
         for _ in range(len(self._pool._actor_pool)):
@@ -204,7 +204,7 @@ class IMapIterator:
         new_chunk_id = self._pool._submit_chunk(self._func, self._iterator,
                                                 self._chunksize, actor_index)
         self._submitted_chunks.append(False)
-        self._result_thread.add_object_id(new_chunk_id)
+        self._result_thread.add_object_ref(new_chunk_id)
 
     def __iter__(self):
         return self
@@ -411,14 +411,14 @@ class Pool:
     # Batch should be a list of tuples: (args, kwargs).
     def _run_batch(self, actor_index, func, batch):
         actor, count = self._actor_pool[actor_index]
-        object_id = actor.run_batch.remote(func, batch)
+        object_ref = actor.run_batch.remote(func, batch)
         count += 1
         assert self._maxtasksperchild == -1 or count <= self._maxtasksperchild
         if count == self._maxtasksperchild:
             self._stop_actor(actor)
             actor, count = self._new_actor_entry()
         self._actor_pool[actor_index] = (actor, count)
-        return object_id
+        return object_ref
 
     def apply(self, func, args=None, kwargs=None):
         """Run the given function on a random actor process and return the
@@ -459,10 +459,10 @@ class Pool:
         """
 
         self._check_running()
-        object_id = self._run_batch(self._random_actor_index(), func,
-                                    [(args, kwargs)])
+        object_ref = self._run_batch(self._random_actor_index(), func,
+                                     [(args, kwargs)])
         return AsyncResult(
-            [object_id], callback, error_callback, single_result=True)
+            [object_ref], callback, error_callback, single_result=True)
 
     def _calculate_chunksize(self, iterable):
         chunksize, extra = divmod(len(iterable), len(self._actor_pool) * 4)
@@ -500,10 +500,10 @@ class Pool:
             chunksize = self._calculate_chunksize(iterable)
 
         iterator = iter(iterable)
-        chunk_object_ids = []
-        while len(chunk_object_ids) * chunksize < len(iterable):
-            actor_index = len(chunk_object_ids) % len(self._actor_pool)
-            chunk_object_ids.append(
+        chunk_object_refs = []
+        while len(chunk_object_refs) * chunksize < len(iterable):
+            actor_index = len(chunk_object_refs) % len(self._actor_pool)
+            chunk_object_refs.append(
                 self._submit_chunk(
                     func,
                     iterator,
@@ -511,7 +511,7 @@ class Pool:
                     actor_index,
                     unpack_args=unpack_args))
 
-        return chunk_object_ids
+        return chunk_object_refs
 
     def _map_async(self,
                    func,
@@ -521,9 +521,9 @@ class Pool:
                    callback=None,
                    error_callback=None):
         self._check_running()
-        object_ids = self._chunk_and_run(
+        object_refs = self._chunk_and_run(
             func, iterable, chunksize=chunksize, unpack_args=unpack_args)
-        return AsyncResult(object_ids, callback, error_callback)
+        return AsyncResult(object_refs, callback, error_callback)
 
     def map(self, func, iterable, chunksize=None):
         """Run the given function on each element in the iterable round-robin
