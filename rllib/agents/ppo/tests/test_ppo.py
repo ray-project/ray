@@ -180,7 +180,7 @@ class TestPPO(unittest.TestCase):
             init_std = get_value()
             assert init_std == 0.0, init_std
 
-            if fw in ["tf", "tfe"]:
+            if fw in ["tf2", "tf", "tfe"]:
                 batch = postprocess_ppo_gae_tf(policy, FAKE_BATCH)
             else:
                 batch = postprocess_ppo_gae_torch(policy, FAKE_BATCH)
@@ -222,7 +222,7 @@ class TestPPO(unittest.TestCase):
             # to train_batch dict.
             # A = [0.99^2 * 0.5 + 0.99 * -1.0 + 1.0, 0.99 * 0.5 - 1.0, 0.5] =
             # [0.50005, -0.505, 0.5]
-            if fw == "tf" or fw == "tfe":
+            if fw in ["tf2", "tf", "tfe"]:
                 train_batch = postprocess_ppo_gae_tf(policy, FAKE_BATCH)
             else:
                 train_batch = postprocess_ppo_gae_torch(policy, FAKE_BATCH)
@@ -233,7 +233,7 @@ class TestPPO(unittest.TestCase):
                   [0.50005, -0.505, 0.5])
 
             # Calculate actual PPO loss.
-            if fw == "tfe":
+            if fw in ["tf2", "tfe"]:
                 ppo_surrogate_loss_tf(policy, policy.model, Categorical,
                                       train_batch)
             elif fw == "torch":

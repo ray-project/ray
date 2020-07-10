@@ -278,7 +278,7 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
 
 def gradients_fn(policy, optimizer, loss):
     # Eager: Use GradientTape.
-    if policy.config["framework"] == "tfe":
+    if policy.config["framework"] in ["tf2", "tfe"]:
         tape = optimizer.tape
         pol_weights = policy.model.policy_variables()
         actor_grads_and_vars = list(zip(tape.gradient(

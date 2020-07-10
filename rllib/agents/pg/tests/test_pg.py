@@ -78,7 +78,7 @@ class TestPG(unittest.TestCase):
                         train_batch, shuffle=False))
             else:
                 results = (
-                    pg.pg_tf_loss if fw in ["tf", "tfe"] else pg.pg_torch_loss
+                    pg.pg_tf_loss if fw in ["tf2", "tfe"] else pg.pg_torch_loss
                 )(
                     policy,
                     policy.model,
