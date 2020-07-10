@@ -60,8 +60,8 @@ matrix:
     - os: osx
       osx_image: xcode7
       env:
-        - PYTHON=3.6
-        - RAY_GCS_ACTOR_SERVICE_ENABLED=true
+        - PYTHON=3.6 RAY_GCS_ACTOR_SERVICE_ENABLED=true
+        - export RAY_GCS_ACTOR_SERVICE_ENABLED=true
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
