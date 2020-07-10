@@ -52,6 +52,10 @@ public class ExecutionEdge implements Serializable {
     return targetExecutionVertex;
   }
 
+  public String getTargetExecutionJobVertexName() {
+    return getTargetExecutionVertex().getExecutionJobVertexName();
+  }
+
   public int getSourceVertexId() {
     return sourceExecutionVertex.getExecutionVertexId();
   }

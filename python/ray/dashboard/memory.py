@@ -8,7 +8,7 @@ import ray
 
 from ray._raylet import (TaskID, ActorID, JobID)
 
-# These values are used to calculate if objectIDs are actor handles.
+# These values are used to calculate if objectRefs are actor handles.
 TASKID_BYTES_SIZE = TaskID.size()
 ACTORID_BYTES_SIZE = ActorID.size()
 JOBID_BYTES_SIZE = JobID.size()
@@ -17,21 +17,21 @@ TASKID_RANDOM_BITS_SIZE = (TASKID_BYTES_SIZE - ACTORID_BYTES_SIZE) * 2
 ACTORID_RANDOM_BITS_SIZE = (ACTORID_BYTES_SIZE - JOBID_BYTES_SIZE) * 2
 
 
-def decode_object_id_if_needed(object_id: str) -> bytes:
-    """Decode objectID bytes string.
+def decode_object_ref_if_needed(object_ref: str) -> bytes:
+    """Decode objectRef bytes string.
 
-    gRPC reply contains an objectID that is encodded by Base64.
-    This function is used to decode the objectID.
-    Note that there are times that objectID is already decoded as
+    gRPC reply contains an objectRef that is encodded by Base64.
+    This function is used to decode the objectRef.
+    Note that there are times that objectRef is already decoded as
     a hex string. In this case, just convert it to a binary number.
     """
-    if object_id.endswith("="):
-        # If the object id ends with =, that means it is base64 encoded.
-        # Object ids will always have = as a padding
-        # when it is base64 encoded because objectID is always 20B.
-        return base64.standard_b64decode(object_id)
+    if object_ref.endswith("="):
+        # If the object ref ends with =, that means it is base64 encoded.
+        # Object refs will always have = as a padding
+        # when it is base64 encoded because objectRef is always 20B.
+        return base64.standard_b64decode(object_ref)
     else:
-        return ray.utils.hex_to_binary(object_id)
+        return ray.utils.hex_to_binary(object_ref)
 
 
 class SortingType(Enum):
@@ -65,8 +65,8 @@ class MemoryTableEntry:
         # object info
         self.object_size = int(object_ref.get("objectSize", -1))
         self.call_site = object_ref.get("callSite", "<Unknown>")
-        self.object_id = ray.ObjectID(
-            decode_object_id_if_needed(object_ref["objectId"]))
+        self.object_ref = ray.ObjectRef(
+            decode_object_ref_if_needed(object_ref["objectId"]))
 
         # reference info
         self.local_ref_count = int(object_ref.get("localRefCount", 0))
@@ -74,19 +74,19 @@ class MemoryTableEntry:
         self.submitted_task_ref_count = int(
             object_ref.get("submittedTaskRefCount", 0))
         self.contained_in_owned = [
-            ray.ObjectID(decode_object_id_if_needed(object_id))
-            for object_id in object_ref.get("containedInOwned", [])
+            ray.ObjectRef(decode_object_ref_if_needed(object_ref))
+            for object_ref in object_ref.get("containedInOwned", [])
         ]
         self.reference_type = self._get_reference_type()
 
     def is_valid(self) -> bool:
         # If the entry doesn't have a reference type or some invalid state,
-        # (e.g., no object ID presented), it is considered invalid.
+        # (e.g., no object ref presented), it is considered invalid.
         if (not self.pinned_in_memory and self.local_ref_count == 0
                 and self.submitted_task_ref_count == 0
                 and len(self.contained_in_owned) == 0):
             return False
-        elif self.object_id.is_nil():
+        elif self.object_ref.is_nil():
             return False
         else:
             return True
@@ -99,7 +99,7 @@ class MemoryTableEntry:
                 "group by type {} is invalid.".format(group_by_type))
 
     def _get_reference_type(self) -> str:
-        if self._is_object_id_actor_handle():
+        if self._is_object_ref_actor_handle():
             return ReferenceType.ACTOR_HANDLE
         if self.pinned_in_memory:
             return ReferenceType.PINNED_IN_MEMORY
@@ -112,18 +112,18 @@ class MemoryTableEntry:
         else:
             return ReferenceType.UNKNOWN_STATUS
 
-    def _is_object_id_actor_handle(self) -> bool:
-        object_id_hex = self.object_id.hex()
+    def _is_object_ref_actor_handle(self) -> bool:
+        object_ref_hex = self.object_ref.hex()
 
         # random (8B) | ActorID(6B) | flag (2B) | index (6B)
         # ActorID(6B) == ActorRandomByte(4B) + JobID(2B)
         # If random bytes are all 'f', but ActorRandomBytes
         # are not all 'f', that means it is an actor creation
         # task, which is an actor handle.
-        random_bits = object_id_hex[:TASKID_RANDOM_BITS_SIZE]
-        actor_random_bits = object_id_hex[TASKID_RANDOM_BITS_SIZE:
-                                          TASKID_RANDOM_BITS_SIZE +
-                                          ACTORID_RANDOM_BITS_SIZE]
+        random_bits = object_ref_hex[:TASKID_RANDOM_BITS_SIZE]
+        actor_random_bits = object_ref_hex[TASKID_RANDOM_BITS_SIZE:
+                                           TASKID_RANDOM_BITS_SIZE +
+                                           ACTORID_RANDOM_BITS_SIZE]
         if (random_bits == "f" * 16 and not actor_random_bits == "f" * 8):
             return True
         else:
@@ -131,7 +131,7 @@ class MemoryTableEntry:
 
     def __dict__(self):
         return {
-            "object_id": self.object_id.hex(),
+            "object_ref": self.object_ref.hex(),
             "pid": self.pid,
             "node_ip_address": self.node_address,
             "object_size": self.object_size,
@@ -141,7 +141,7 @@ class MemoryTableEntry:
             "pinned_in_memory": self.pinned_in_memory,
             "submitted_task_ref_count": self.submitted_task_ref_count,
             "contained_in_owned": [
-                object_id.hex() for object_id in self.contained_in_owned
+                object_ref.hex() for object_ref in self.contained_in_owned
             ],
             "type": "Driver" if self.is_driver else "Worker"
         }

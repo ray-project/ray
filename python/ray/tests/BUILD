@@ -332,6 +332,14 @@ py_test(
 )
 
 py_test(
+    name = "test_job",
+    size = "small",
+    srcs = SRCS + ["test_job.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_joblib",
     size = "medium",
     srcs = SRCS + ["test_joblib.py"],
@@ -462,5 +470,21 @@ py_test(
     srcs = SRCS + ["test_gcs_fault_tolerance.py"],
     # TODO(swang): Enable again once pubsub client supports GCS server restart.
     tags = ["exclusive", "manual"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_output",
+    size = "medium",
+    srcs = SRCS + ["test_output.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_async",
+    size = "medium",
+    srcs = SRCS + ["test_async.py"],
+    tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )

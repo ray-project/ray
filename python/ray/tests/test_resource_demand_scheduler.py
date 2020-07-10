@@ -181,7 +181,7 @@ class AutoscalingTest(unittest.TestCase):
 
     def testScaleUpMinSanity(self):
         config_path = self.write_config(MULTI_WORKER_CLUSTER)
-        self.provider = MockProvider()
+        self.provider = MockProvider(default_instance_type="m4.large")
         runner = MockProcessRunner()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -200,7 +200,7 @@ class AutoscalingTest(unittest.TestCase):
         config["min_workers"] = 0
         config["max_workers"] = 50
         config_path = self.write_config(config)
-        self.provider = MockProvider()
+        self.provider = MockProvider(default_instance_type="m4.large")
         runner = MockProcessRunner()
         autoscaler = StandardAutoscaler(
             config_path,

@@ -20,9 +20,11 @@ jobs:
           - name: ubuntu
             os: ubuntu-16.04
             python-version: 3.6
-          - name: windows
+          - name: windows-msvc
             os: windows-2019
             python-version: 3.8
+            # Can be 'msvc' or 'clang-cl'
+            config: msvc
           - name: macos
             os: macos-10.15
             python-version: 3.6
@@ -36,6 +38,7 @@ jobs:
             os: ubuntu-latest
             jenkins-test: RUN_SGD_TESTS
     env:
+      BAZEL_CONFIG: ${{ matrix.config }}
       PYTHON: ${{ matrix.python-version }}
       TRAVIS_COMMIT: ${{ github.sha }}
       #TRAVIS_PULL_REQUEST is defined in the scripts to account for "false"
@@ -45,8 +48,6 @@ jobs:
       shell: bash -e -o pipefail -l {0}
       run: |
         # Note: only configure settings here that are required _before_ the repository is cloned (such as Git settings).
-        # Put a path with spaces (and use common words like 'src') to verify correct builds
-        export GITHUB_WORKSPACE="${GITHUB_WORKSPACE%/*} src/${GITHUB_WORKSPACE##*/}"
         if [ ! -f ~/.profile ] && [ ! -f ~/.bash_profile ]; then  # missing on some machines, but needed for ~/.bashrc
           echo 'if [ -n "${BASH_VERSION}" ] && [ -f ~/.bashrc ]; then . ~/.bashrc; fi' >> ~/.profile
         fi

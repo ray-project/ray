@@ -269,8 +269,8 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
 
 void CoreWorkerDirectTaskReceiver::Init(
     rpc::ClientFactoryFn client_factory, rpc::Address rpc_address,
-    std::shared_ptr<DependencyWaiterInterface> dependency_client) {
-  waiter_.reset(new DependencyWaiterImpl(*dependency_client));
+    std::shared_ptr<DependencyWaiter> dependency_waiter) {
+  waiter_ = std::move(dependency_waiter);
   rpc_address_ = rpc_address;
   client_factory_ = client_factory;
 }
@@ -280,12 +280,17 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
-  std::vector<ObjectID> dependencies;
-  for (size_t i = 0; i < task_spec.NumArgs(); ++i) {
-    int count = task_spec.ArgIdCount(i);
-    for (int j = 0; j < count; j++) {
-      dependencies.push_back(task_spec.ArgId(i, j));
-    }
+
+  // If GCS server is restarted after sending an actor creation task to this core worker,
+  // the restarted GCS server will send the same actor creation task to the core worker
+  // again. We just need to ignore it and reply ok.
+  if (task_spec.IsActorCreationTask() &&
+      worker_context_.GetCurrentActorID() == task_spec.ActorCreationId()) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    RAY_LOG(INFO) << "Ignoring duplicate actor creation task for actor "
+                  << task_spec.ActorCreationId()
+                  << ". This is likely due to a GCS server restart.";
+    return;
   }
 
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
@@ -382,17 +387,14 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         SchedulingQueue(task_main_io_service_, *waiter_, worker_context_));
     it = result.first;
   }
+  auto dependencies = task_spec.GetDependencies();
+  // Pop the dummy actor dependency.
+  if (task_spec.IsActorTask()) {
+    // TODO(swang): Remove this with legacy raylet code.
+    dependencies.pop_back();
+  }
   it->second.Add(request.sequence_number(), request.client_processed_up_to(),
                  accept_callback, reject_callback, dependencies);
-}
-
-void CoreWorkerDirectTaskReceiver::HandleDirectActorCallArgWaitComplete(
-    const rpc::DirectActorCallArgWaitCompleteRequest &request,
-    rpc::DirectActorCallArgWaitCompleteReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
-  waiter_->OnWaitComplete(request.tag());
-  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 }  // namespace ray

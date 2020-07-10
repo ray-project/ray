@@ -570,7 +570,6 @@ def stop(force, verbose):
         # Keyword to filter, filter by command (True)/filter by args (False)
         ["raylet", True],
         ["plasma_store", True],
-        ["raylet_monitor", True],
         ["gcs_server", True],
         ["monitor.py", False],
         ["redis-server", False],
@@ -636,6 +635,11 @@ def stop(force, verbose):
     help=("Whether to skip running setup commands and only restart Ray. "
           "This cannot be used with 'no-restart'."))
 @click.option(
+    "--no-config-cache",
+    is_flag=True,
+    default=False,
+    help="Disable the local cluster config cache.")
+@click.option(
     "--min-workers",
     required=False,
     type=int,
@@ -658,7 +662,7 @@ def stop(force, verbose):
     default=False,
     help="Don't ask for confirmation.")
 def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
-       yes, cluster_name):
+       yes, cluster_name, no_config_cache):
     """Create or update a Ray cluster."""
     if restart_only or no_restart:
         assert restart_only != no_restart, "Cannot set both 'restart_only' " \
@@ -674,7 +678,8 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
         except urllib.error.HTTPError as e:
             logger.info("Error downloading file: ", e)
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
-                             no_restart, restart_only, yes, cluster_name)
+                             no_restart, restart_only, yes, cluster_name,
+                             no_config_cache)
 
 
 @cli.command()
@@ -890,7 +895,7 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
 
     if start:
         create_or_update_cluster(cluster_config_file, None, None, False, False,
-                                 True, cluster_name)
+                                 True, cluster_name, False)
     target = os.path.basename(script)
     target = os.path.join("~", target)
     rsync(cluster_config_file, script, target, cluster_name, down=False)
@@ -905,11 +910,11 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     cmd = " ".join(command_parts)
     exec_cluster(
         cluster_config_file,
-        cmd,
-        "docker",
-        screen,
-        tmux,
-        stop,
+        cmd=cmd,
+        run_env="docker",
+        screen=screen,
+        tmux=tmux,
+        stop=stop,
         start=False,
         override_cluster_name=cluster_name,
         port_forward=port_forward)
@@ -959,8 +964,17 @@ def exec(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
          cluster_name, port_forward):
     """Execute a command via SSH on a Ray cluster."""
     port_forward = [(port, port) for port in list(port_forward)]
-    exec_cluster(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
-                 cluster_name, port_forward)
+
+    exec_cluster(
+        cluster_config_file,
+        cmd=cmd,
+        run_env=run_env,
+        screen=screen,
+        tmux=tmux,
+        stop=stop,
+        start=start,
+        override_cluster_name=cluster_name,
+        port_forward=port_forward)
 
 
 @cli.command()
