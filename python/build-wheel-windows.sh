@@ -26,9 +26,21 @@ is_python_version() {
   return "${result}"
 }
 
+install_ray() {
+  # TODO(mehrdadn): This function should be unified with the one in ci/travis/ci.sh.
+  (
+    cd "${WORKSPACE_DIR}"/python
+    pip install -v -e .
+  )
+}
+
+uninstall_ray() {
+  pip uninstall -y ray
+}
+
 build_wheel_windows() {
   local ray_uninstall_status=0
-  pip uninstall -y ray || ray_uninstall_status=1
+  uninstall_ray || ray_uninstall_status=1
 
   local pyversion pyversions=()
   for pyversion in "${PY_VERSIONS[@]}"; do
@@ -62,7 +74,7 @@ build_wheel_windows() {
       install_ray
       cd "${WORKSPACE_DIR}"/python
       python setup.py --quiet bdist_wheel
-      pip uninstall -y ray
+      uninstall_ray
     )
   done
 

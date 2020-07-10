@@ -224,11 +224,16 @@ install_go() {
   fi
 }
 
-install_ray() {
-  (
-    # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
-    bazel build -k "//:*"  # Full build first, since pip install will build only a subset of targets
+bazel_ensure_buildable() {
+  # This performs as full of a build as possible, to ensure the repository always remains buildable.
+  # (Pip install will not perform a full build.)
+  # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
+  bazel build -k "//:*"
+}
 
+install_ray() {
+  # TODO(mehrdadn): This function should be unified with the one in python/build-wheel-windows.sh.
+  (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
     pip install -v -e .
@@ -416,6 +421,7 @@ init() {
 
 build() {
   if ! need_wheels; then
+    bazel_ensure_buildable
     install_ray
     if [ "${LINT-}" = 1 ]; then
       # Try generating Sphinx documentation. To do this, we need to install Ray first.
@@ -432,6 +438,7 @@ build() {
   fi
 
   if need_wheels; then
+    bazel_ensure_buildable
     build_wheels
   fi
 }
