@@ -716,7 +716,7 @@ Status PlasmaClient::Impl::Release(const ObjectID& object_id) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   // If the client is already disconnected, ignore release requests.
-  if (store_conn_ < 0) {
+  if (!store_conn_) {
     return Status::OK();
   }
   auto object_entry = objects_in_use_.find(object_id);

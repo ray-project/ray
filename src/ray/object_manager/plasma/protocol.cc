@@ -70,6 +70,9 @@ flatbuffers::Offset<flatbuffers::Vector<int64_t>> ToFlatbuffer(
 }
 
 Status PlasmaReceive(const std::shared_ptr<StoreConn> &store_conn, MessageType message_type, std::vector<uint8_t>* buffer) {
+  if (!store_conn) {
+    return Status::IOError("Connection is closed.");
+  }
   MessageType type;
   RAY_RETURN_NOT_OK(ReadMessage(store_conn->fd, &type, buffer));
   RAY_CHECK(type == message_type)
@@ -103,6 +106,9 @@ void ConvertToVector(const FlatbufferVectorPointer fbvector, std::vector<T>* out
 template <typename Message>
 Status PlasmaSend(const std::shared_ptr<StoreConn> &store_conn, MessageType message_type, flatbuffers::FlatBufferBuilder* fbb,
                   const Message& message) {
+  if (!store_conn) {
+    return Status::IOError("Connection is closed.");
+  }
   fbb->Finish(message);
   return WriteMessage(store_conn->fd, message_type, fbb->GetSize(), fbb->GetBufferPointer());
 }
@@ -110,6 +116,9 @@ Status PlasmaSend(const std::shared_ptr<StoreConn> &store_conn, MessageType mess
 template <typename Message>
 Status PlasmaSend(const std::shared_ptr<Client> &client, MessageType message_type, flatbuffers::FlatBufferBuilder* fbb,
                   const Message& message) {
+  if (!client) {
+    return Status::IOError("Connection is closed.");
+  }
   fbb->Finish(message);
   return WriteMessage(client->fd, message_type, fbb->GetSize(), fbb->GetBufferPointer());
 }
