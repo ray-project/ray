@@ -26,7 +26,7 @@ namespace rpc {
 #define RAY_NODE_MANAGER_RPC_HANDLERS                             \
   RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease)     \
   RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker)           \
-  RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedWorkers) \
+  RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedWorkers)   \
   RPC_SERVICE_HANDLER(NodeManagerService, CancelWorkerLease)      \
   RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask)            \
   RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs)           \
