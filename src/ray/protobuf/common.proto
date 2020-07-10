@@ -43,6 +43,14 @@ enum TaskType {
   DRIVER_TASK = 3;
 }
 
+// Type of placement group strategy.
+enum PlacementStrategy {
+  // Packs Bundles close together inside processes or nodes as tight as possible
+  PACK = 0;
+  // Places Bundles across distinct nodes or processes as even as possible.
+  SPREAD = 1;
+}
+
 // Address of a worker or node manager.
 message Address {
   bytes raylet_id = 1;
@@ -126,6 +134,26 @@ message TaskSpec {
   ActorTaskSpec actor_task_spec = 15;
   // Number of times this task may be retried on worker failure.
   int32 max_retries = 16;
+}
+
+message Bundle {
+  message BundleIdentifier {
+    bytes placement_group_id = 1;
+    int32 bundle_index = 2;
+  }
+  BundleIdentifier bundle_id = 1;
+  map<string, double> unit_resources = 2;
+}
+
+message PlacementGroupSpec {
+  // ID of the PlacementGroup.
+  bytes placement_group_id = 1;
+  // The name of the placement group.
+  string name = 2;
+  // The array of the bundle in Placement Group.
+  repeated Bundle bundles = 3;
+  // The schedule strategy of this Placement Group.
+  PlacementStrategy strategy = 4;
 }
 
 message ObjectReference {

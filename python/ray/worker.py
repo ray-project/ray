@@ -1286,14 +1286,6 @@ def connect(node,
         worker.core_worker.set_object_store_client_options(
             "ray_driver_{}".format(os.getpid()), driver_object_store_memory)
 
-    # Put something in the plasma store so that subsequent plasma store
-    # accesses will be faster. Currently the first access is always slow, and
-    # we don't want the user to experience this.
-    if mode != LOCAL_MODE:
-        temporary_object_id = ray.ObjectID.from_random()
-        worker.put_object(1, object_id=temporary_object_id)
-        ray.internal.free([temporary_object_id])
-
     # Start the import thread
     worker.import_thread = import_thread.ImportThread(worker, mode,
                                                       worker.threads_stopped)

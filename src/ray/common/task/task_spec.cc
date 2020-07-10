@@ -272,8 +272,19 @@ bool TaskSpecification::IsDetachedActor() const {
 std::string TaskSpecification::DebugString() const {
   std::ostringstream stream;
   stream << "Type=" << TaskType_Name(message_->type())
-         << ", Language=" << Language_Name(message_->language())
-         << ", function_descriptor=";
+         << ", Language=" << Language_Name(message_->language());
+
+  if (required_resources_ != nullptr) {
+    stream << ", Resources: {";
+
+    // Print resource description.
+    for (auto entry : GetRequiredResources().GetResourceMap()) {
+      stream << entry.first << ": " << entry.second << ", ";
+    }
+    stream << "}";
+  }
+
+  stream << ", function_descriptor=";
 
   // Print function descriptor.
   stream << FunctionDescriptor()->ToString();

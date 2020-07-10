@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ray/common/bundle_spec.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
@@ -83,6 +84,24 @@ class WorkerLeaseInterface {
   virtual ~WorkerLeaseInterface(){};
 };
 
+/// Interface for leasing resource.
+class ResourceReserveInterface {
+ public:
+  /// Requests a resource from the raylet. The callback will be sent via gRPC.
+  /// \param resource_spec Resources that should be allocated for the worker.
+  /// \return ray::Status
+  virtual ray::Status RequestResourceReserve(
+      const BundleSpecification &bundle_spec,
+      const ray::rpc::ClientCallback<ray::rpc::RequestResourceReserveReply>
+          &callback) = 0;
+
+  virtual ray::Status CancelResourceReserve(
+      BundleSpecification &bundle_spec,
+      const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
+
+  virtual ~ResourceReserveInterface(){};
+};
+
 /// Interface for waiting dependencies. Abstract for testing.
 class DependencyWaiterInterface {
  public:
@@ -141,7 +160,8 @@ class RayletConnection {
 
 class RayletClient : public PinObjectsInterface,
                      public WorkerLeaseInterface,
-                     public DependencyWaiterInterface {
+                     public DependencyWaiterInterface,
+                     public ResourceReserveInterface {
  public:
   /// Connect to the raylet.
   ///
@@ -311,6 +331,18 @@ class RayletClient : public PinObjectsInterface,
   ray::Status CancelWorkerLease(
       const TaskID &task_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override;
+
+  /// Implements ResourceReserveInterface.
+  ray::Status RequestResourceReserve(
+      const BundleSpecification &bundle_spec,
+      const ray::rpc::ClientCallback<ray::rpc::RequestResourceReserveReply> &callback)
+      override;
+
+  /// Implements ResourceReserveInterface.
+  ray::Status CancelResourceReserve(
+      BundleSpecification &bundle_spec,
+      const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
+      override;
 
   ray::Status PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,

@@ -36,6 +36,7 @@
 #include "ray/raylet/task_dependency_manager.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/util/ordered_set.h"
+#include "ray/common/bundle_spec.h"
 // clang-format on
 
 namespace ray {
@@ -298,6 +299,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// resource_map argument.
   /// \return Void.
   void ScheduleTasks(std::unordered_map<ClientID, SchedulingResources> &resource_map);
+
+  /// Make a placement decision for the resource_map.
+  ///
+  /// \param resource_map A mapping from node manager ID to an estimate of the
+  /// resources available to that node manager. Scheduling decisions will only
+  /// consider the local node manager and the node managers in the keys of the
+  /// resource_map argument.
+  /// \return ResourceIdSet.
+  ResourceIdSet ScheduleBundle(
+      std::unordered_map<ClientID, SchedulingResources> &resource_map,
+      const BundleSpecification &bundle_spec);
   /// Handle a task whose return value(s) must be reconstructed.
   ///
   /// \param task_id The relevant task ID.
@@ -577,6 +589,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \return Status indicating whether setup was successful.
   ray::Status SetupPlasmaSubscription();
+
+  /// Handle a `ResourcesLease` request.
+  void HandleRequestResourceReserve(const rpc::RequestResourceReserveRequest &request,
+                                    rpc::RequestResourceReserveReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `ResourcesReturn` request.
+  void HandleCancelResourceReserve(const rpc::CancelResourceReserveRequest &request,
+                                   rpc::CancelResourceReserveReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `WorkerLease` request.
   void HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
