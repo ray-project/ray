@@ -15,7 +15,8 @@ def check_support_multiagent(alg, config):
                  lambda _: MultiAgentCartPole({"num_agents": 2}))
     config["log_level"] = "ERROR"
     for fw in framework_iterator(config):
-        if fw == "tfe" and alg in ["A3C", "APEX", "APEX_DDPG", "IMPALA"]:
+        if fw in ["tf2", "tfe"] and \
+                alg in ["A3C", "APEX", "APEX_DDPG", "IMPALA"]:
             continue
         if alg in ["DDPG", "APEX_DDPG", "SAC"]:
             a = get_agent_class(alg)(
