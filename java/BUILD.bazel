@@ -155,10 +155,12 @@ genrule(
     """,
 )
 
+# `//:redis-server`'s full path is `external/com_github_antirez_redis/redis-server`,
+# This rule removes the prefix, and only keeps `redis-server`.
 genrule(
-    name = "redis-server",
+    name = "redis-server-without-prefix",
     srcs = ["//:redis-server"],
-    outs = ["src/main/resources/redis-server"],
+    outs = ["redis-server"],
     cmd = "cp $< $@",
     output_to_bindir = 1,
 )
@@ -171,7 +173,7 @@ filegroup(
         "//:gcs_server",
         "//:libray_redis_module.so",
         "//:raylet",
-        ":redis-server",
+        ":redis-server-without-prefix",
     ],
 )
 
