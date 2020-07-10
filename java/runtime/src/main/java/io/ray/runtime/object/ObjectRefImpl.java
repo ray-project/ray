@@ -71,12 +71,14 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   @Override
   public void writeExternal(ObjectOutput out) throws IOException {
     out.writeObject(this.getId());
+    out.writeObject(this.getType());
     containedObjectIds.get().add(this.getId());
   }
 
   @Override
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
     this.id = (ObjectId) in.readObject();
+    this.type = (Class<T>) in.readObject();
     addLocalReference();
   }
 

@@ -1,5 +1,6 @@
 package io.ray.test;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.gson.Gson;
 import io.ray.api.ActorHandle;
@@ -35,6 +36,14 @@ public class ReferenceCountingTest extends BaseTest {
   @BeforeMethod
   public void setUpCase() {
     TestUtils.skipTestUnderSingleProcess();
+  }
+
+  /**
+   * Because we can't explicitly GC an Java object. We use this helper method to manually remove
+   * an local reference.
+   */
+  private void del(ObjectRef<?> obj) {
+    ((ObjectRefImpl<?>) obj).removeLocalReference();
   }
 
   private void checkRefCounts(Map<ObjectId, long[]> expected, Duration timeout) {
@@ -86,31 +95,40 @@ public class ReferenceCountingTest extends BaseTest {
     return null;
   }
 
-  public void testDirectCallRefCount() {
-    // Multiple gets should not hang with ref counting enabled.
-    ObjectRef<Integer> x = Ray.task(ReferenceCountingTest::foo, 2).remote();
-    x.get();
-    x.get();
-
-    // Temporary objects should be retained for chained callers.
-    ObjectRef<Integer> y = Ray.task(ReferenceCountingTest::foo,
-                                  Ray.task(ReferenceCountingTest::sleep).remote())
-                               .remote();
-    Assert.assertEquals(y.get(), Integer.valueOf(2));
+  private static void fillObjectStoreAndGet(ObjectId objectId, boolean succeed) {
+    fillObjectStoreAndGet(objectId, succeed, 40 * 1024 * 1024, 5);
   }
 
+  private static void fillObjectStoreAndGet(ObjectId objectId, boolean succeed, int objectSize, int numObjects) {
+    for (int i = 0; i < numObjects; i++) {
+      Ray.put(new TestUtils.LargeObject(objectSize));
+    }
+    if (succeed) {
+      TestUtils.getRuntime().getObjectStore().getRaw(ImmutableList.of(objectId), Long.MAX_VALUE);
+    } else {
+      List<Boolean> result = TestUtils.getRuntime().getObjectStore().wait(ImmutableList.of(objectId), 1, 100);
+      Assert.assertFalse(result.get(0));
+    }
+  }
+
+  /**
+   * Based on Python test case `test_local_refcounts`.
+   */
   public void testLocalRefCounts() {
     ObjectRef<Object> obj1 = Ray.put(null);
     checkRefCounts(ImmutableMap.of(obj1.getId(), new long[] {1, 0}));
     ObjectRef<Object> obj1Copy = new ObjectRefImpl<>(obj1.getId(), obj1.getType());
     checkRefCounts(ImmutableMap.of(obj1.getId(), new long[] {2, 0}));
 
-    ((ObjectRefImpl<?>) obj1).removeLocalReference();
+    del(obj1);
     checkRefCounts(ImmutableMap.of(obj1.getId(), new long[] {1, 0}));
-    ((ObjectRefImpl<?>) obj1Copy).removeLocalReference();
+    del(obj1Copy);
     checkRefCounts(ImmutableMap.of());
   }
 
+  /**
+   * Based on Python test case `test_dependency_refcounts`.
+   */
   public void testDependencyRefCounts() {
     // Test that regular plasma dependency refcounts are decremented once the
     // task finishes.
@@ -127,8 +145,8 @@ public class ReferenceCountingTest extends BaseTest {
     // Reference count should be removed once the task finishes.
     checkRefCounts(ImmutableMap.of(
         largeDepencency.getId(), new long[] {1, 0}, result.getId(), new long[] {1, 0}));
-    ((ObjectRefImpl<?>) largeDepencency).removeLocalReference();
-    ((ObjectRefImpl<?>) result).removeLocalReference();
+    del(largeDepencency);
+    del(result);
     checkRefCounts(ImmutableMap.of());
 
     // Test that inlined dependency refcounts are decremented once they are
@@ -147,8 +165,8 @@ public class ReferenceCountingTest extends BaseTest {
     checkRefCounts(ImmutableMap.of(dependency.getId(), new long[] {1, 0}, result.getId(),
                        new long[] {1, 0}),
         Duration.ofSeconds(1));
-    ((ObjectRefImpl<?>) dependency).removeLocalReference();
-    ((ObjectRefImpl<?>) result).removeLocalReference();
+    del(dependency);
+    del(result);
     checkRefCounts(ImmutableMap.of());
 
     // TODO(kfstorm): Add remaining code of this test case based on Python test case
@@ -174,6 +192,9 @@ public class ReferenceCountingTest extends BaseTest {
     }
   }
 
+  /**
+   * Based on Python test case `test_basic_pinning`.
+   */
   public void testBasicPinning() {
     // TODO(kfstorm): Set plasma store size to 100MB.
 
@@ -203,6 +224,9 @@ public class ReferenceCountingTest extends BaseTest {
     return 0;
   }
 
+  /**
+   * Based on Python test case `test_pending_task_dependency_pinning`.
+   */
   public void testPendingTaskDependencyPinning() {
     // TODO(kfstorm): Set plasma store size to 100MB.
 
@@ -224,21 +248,23 @@ public class ReferenceCountingTest extends BaseTest {
     result.get();
   }
 
+  /**
+   * Test that an object containing object IDs within it pins the inner IDs.
+   * Based on Python test case `test_basic_nested_ids`.
+   */
   public void testBasicNestedIds() {
     ObjectRef<byte[]> inner = Ray.put(new byte[40 * 1024 * 1024]);
-    ObjectId innerId = inner.getId();
-    checkRefCounts(ImmutableMap.of(innerId, new long[] {1, 0}));
-
     ObjectRef<List<ObjectRef<byte[]>>> outer = Ray.put(Collections.singletonList(inner));
-    checkRefCounts(ImmutableMap.of(innerId, new long[] {2, 0},
-            outer.getId(), new long[] {1, 0}));
 
-    ((ObjectRefImpl<?>) inner).removeLocalReference();
-    checkRefCounts(ImmutableMap.of(innerId, new long[] {1, 0},
-            outer.getId(), new long[] {1, 0}));
+    // Remove the local reference to the inner object.
+    del(inner);
 
-    inner = new ObjectRefImpl<>(innerId, inner.getType());
-    Assert.assertNotNull(inner.get());
+    // Check that the outer reference pins the inner object.
+    fillObjectStoreAndGet(inner.getId(), true);
+
+    // Remove the outer reference and check that the inner object gets evicted.
+    del(outer);
+    fillObjectStoreAndGet(inner.getId(), false);
   }
 
   // TODO(kfstorm): Add more test cases
