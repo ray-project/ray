@@ -484,15 +484,16 @@ def test_shutdown_disconnect_global_state():
 @pytest.mark.parametrize(
     "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
 def test_put_pins_object(ray_start_object_store_memory):
-    x_id = ray.put("HI")
+    obj = np.ones(200 * 1024, dtype=np.uint8)
+    x_id = ray.put(obj)
     x_binary = x_id.binary()
-    assert ray.get(ray.ObjectID(x_binary)) == "HI"
+    assert (ray.get(ray.ObjectID(x_binary)) == obj).all()
 
     # x cannot be evicted since x_id pins it
     for _ in range(10):
         ray.put(np.zeros(10 * 1024 * 1024))
-    assert ray.get(x_id) == "HI"
-    assert ray.get(ray.ObjectID(x_binary)) == "HI"
+    assert (ray.get(x_id) == obj).all()
+    assert (ray.get(ray.ObjectID(x_binary)) == obj).all()
 
     # now it can be evicted since x_id pins it but x_binary does not
     del x_id
@@ -502,7 +503,7 @@ def test_put_pins_object(ray_start_object_store_memory):
         ray.ObjectID(x_binary))
 
     # weakref put
-    y_id = ray.put("HI", weakref=True)
+    y_id = ray.put(obj, weakref=True)
     for _ in range(10):
         ray.put(np.zeros(10 * 1024 * 1024))
     with pytest.raises(ray.exceptions.UnreconstructableError):
