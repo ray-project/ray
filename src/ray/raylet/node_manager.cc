@@ -2000,16 +2000,16 @@ void NodeManager::HandleReleaseUnusedWorkers(
     rpc::ReleaseUnusedWorkersReply *reply, rpc::SendReplyCallback send_reply_callback) {
   // TODO(ffbin): At present, we have not cleaned up the lease worker requests that are
   // still waiting to be scheduled, which will be implemented in the next pr.
-  std::unordered_set<WorkerID> used_worker_ids;
+  std::unordered_set<WorkerID> in_use_worker_ids;
   for (int index = 0; index < request.worker_id_list_size(); ++index) {
     auto worker_id = WorkerID::FromBinary(request.worker_id_list(index));
-    used_worker_ids.emplace(worker_id);
+    in_use_worker_ids.emplace(worker_id);
   }
 
   std::vector<WorkerID> unused_worker_ids;
   for (auto &iter : leased_workers_) {
     // We need to exclude workers used by common tasks.
-    if (!iter.second->GetActorId().IsNil() && !used_worker_ids.count(iter.first)) {
+    if (!iter.second->GetActorId().IsNil() && !in_use_worker_ids.count(iter.first)) {
       unused_worker_ids.emplace_back(iter.first);
     }
   }

@@ -161,8 +161,6 @@ void GcsActorScheduler::ReleaseUnusedWorkers(
   // If the node is dead, there is no need to send the request of release unused
   // workers.
   const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
-  // We need to send a request to each node, because it may be successful in the lease
-  // worker, but GCS server has not processed it before GCS server is restarted.
   for (const auto &alive_node : alive_nodes) {
     rpc::Address address;
     address.set_raylet_id(alive_node.second->node_id());
@@ -178,6 +176,8 @@ void GcsActorScheduler::ReleaseUnusedWorkers(
       RAY_CHECK_OK(lease_client->ReleaseUnusedWorkers(iter->second,
                                                       release_unused_workers_callback));
     } else {
+      // We need to send a request to each node, because it may be successful in the lease
+      // worker, but GCS server has not processed it before GCS server is restarted.
       RAY_CHECK_OK(
           lease_client->ReleaseUnusedWorkers({}, release_unused_workers_callback));
     }
