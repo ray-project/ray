@@ -18,6 +18,7 @@ from ray.rllib.agents.mbmpo.model_ensemble import DynamicsEnsembleCustomModel
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID 
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
+from ray.rllib.evaluation.metrics import collect_episodes
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ DEFAULT_CONFIG = with_common_config({
     # Coefficient of the entropy regularizer
     "entropy_coeff": 0.0,
     # PPO clip parameter
-    "clip_param": 0.3,
+    "clip_param": 0.5,
     # Clip param for the value function. Note that this is sensitive to the
     # scale of the rewards. If your expected V is large, increase this.
     "vf_clip_param": 10.0,
@@ -57,7 +58,7 @@ DEFAULT_CONFIG = with_common_config({
     # Number of Inner adaptation steps for the MAML algorithm
     "inner_adaptation_steps": 1,
     # Number of MAML steps per meta-update iteration (PPO steps)
-    "maml_optimizer_steps": 5,
+    "maml_optimizer_steps": 8,
     # Inner Adaptation Step size
     "inner_lr": 1e-3,
     # Horizon of Environment (200 in MB-MPO paper)
@@ -74,7 +75,7 @@ DEFAULT_CONFIG = with_common_config({
         # Model Learning Rate
         "model_lr": 1e-3,
         # Max number of training epochs per MBMPO iter
-        "model_train_epochs": 1,
+        "model_train_epochs": 1000,
         # Model Batch Size
         "model_batch_size": 500,
         # Training/Validation Split
@@ -98,27 +99,19 @@ class InnerAdaptationSteps:
         self.split = []
         self.metrics = {}
         self.metric_gen = metric_gen
+        self.metrics_keys= ["episode_reward_mean", "episode_reward_min", "episode_reward_max"]
 
     def __call__(self, samples: List[SampleBatchType]):
+        print("Collecting Samples, Inner Adaptation {}".format(len(self.split)))
+        self.post_process_metrics(prefix="DynaTrajInner_" + str(len(self.split)))
         samples, split_lst = self.post_process_samples(samples)
         self.buffer.extend(samples)
         self.split.append(split_lst)
-        self.post_process_metrics()
         if len(self.split) > self.n:
             out = SampleBatch.concat_samples(self.buffer)
             out["split"] = np.array(self.split)
             self.buffer = []
             self.split = []
-
-            # Metrics Reporting
-            #metrics = _get_shared_metrics()
-            #metrics.counters[STEPS_SAMPLED_COUNTER] += out.count
-
-            # Reporting Adaptation Rew Diff
-            ep_rew_pre = self.metrics["episode_reward_mean"]
-            ep_rew_post = self.metrics["episode_reward_mean_adapt_" +
-                                       str(self.n)]
-            self.metrics["adaptation_delta"] = ep_rew_post - ep_rew_pre
             return [(out, self.metrics)]
         else:
             self.inner_adaptation_step(samples)
@@ -135,18 +128,11 @@ class InnerAdaptationSteps:
         for i, e in enumerate(self.workers.remote_workers()):
             e.learn_on_batch.remote(samples[i])
 
-    def post_process_metrics(self, prefix=None):
+    def post_process_metrics(self, prefix=""):
         # Obtain Current Dataset Metrics and filter out
-        name = "_adapt_" + str(len(self.split) - 1) if len(
-            self.split) > 1 else ""
         res = self.metric_gen.__call__(None)
-
-        self.metrics["episode_reward_max" +
-                     str(name)] = res["episode_reward_max"]
-        self.metrics["episode_reward_mean" +
-                     str(name)] = res["episode_reward_mean"]
-        self.metrics["episode_reward_min" +
-                     str(name)] = res["episode_reward_min"]
+        for key in self.metrics_keys:
+            self.metrics[prefix + "_" + key] = res[key]
 
 
 class MetaUpdate:
@@ -156,11 +142,14 @@ class MetaUpdate:
         self.step_counter = 0
         self.maml_optimizer_steps = maml_steps
         self.metric_gen = metric_gen
+        self.metrics={}
 
     def __call__(self, data_tuple):
         # Metaupdate Step
+        print("Meta-Update Step")
         samples = data_tuple[0]
         adapt_metrics_dict = data_tuple[1]
+        self.postprocess_metrics(adapt_metrics_dict, prefix="MAMLIter{}".format(self.step_counter))
         for i in range(self.maml_optimizer_steps):
             fetches = self.workers.local_worker().learn_on_batch(samples)
         fetches = get_learner_stats(fetches)
@@ -181,69 +170,76 @@ class MetaUpdate:
         metrics = _get_shared_metrics()
         metrics.info[LEARNER_INFO] = fetches
         metrics.counters[STEPS_TRAINED_COUNTER] += samples.count
-        print("MAML Step ", self.step_counter)
+
         if self.step_counter == self.num_steps:
-            self.workers.local_worker().policy_map[DEFAULT_POLICY_ID].dynamics_model.fit()
+            td_metric = self.workers.local_worker().foreach_policy(fit_dynamics)[0]
 
             # Sync workers with meta policy
             self.workers.sync_weights()
 
             # Sync TD Models with workers
             sync_ensemble(self.workers)
+            sync_stats(self.workers)
 
-            # Send normalization statistics to workers
-            normalization_dict = ray.put(self.workers.local_worker().policy_map[DEFAULT_POLICY_ID].dynamics_model.normalizations)
-            for e in self.workers.remote_workers():
-                e.set_dict.remote(normalization_dict)
-
+            metrics.counters[STEPS_SAMPLED_COUNTER] = td_metric[STEPS_SAMPLED_COUNTER]
+            import pdb; pdb.set_trace()
             res = self.metric_gen.__call__(None)
-            res.update(adapt_metrics_dict)
+            res.update(self.metrics)
             self.step_counter = 0
-            print(res)
+            print("MB-MPO Iteration Completed")
             return [res]
         else:
+            print("MAML Iteration {} Completed".format(self.step_counter))
             self.step_counter += 1
+
+            # Sync workers with meta policy
+            self.workers.sync_weights()
             return []
+
+    def postprocess_metrics(self, metrics, prefix=""):
+        for key in metrics.keys():
+            self.metrics[prefix + "_" + key] = metrics[key]
 
 
 def sync_ensemble(workers, model_attr="dynamics_model"):
     if workers.remote_workers():
-        weights = ray.put(workers.local_worker().get_ensemble_weights(model_attr))
+        weights = ray.put(get_ensemble_weights(workers.local_worker()))
         set_func = ray.put(set_ensemble_weights)
         for e in workers.remote_workers():
             e.foreach_policy.remote(set_func, weights=weights)
 
 def sync_stats(workers):
-    normalization_dict = ray.put(workers.local_worker().policy_map[DEFAULT_POLICY_ID].dynamics_model.normalizations)
-    set_func = ray.put(set_normalizations)
-    for e in workers.remote_workers():
-        e.foreach_policy.remote(set_func, normalizations=normalization_dict)
+    if workers.remote_workers():
+        normalization_dict = ray.put(workers.local_worker().policy_map[DEFAULT_POLICY_ID].dynamics_model.normalizations)
+        set_func = ray.put(set_normalizations)
+        for e in workers.remote_workers():
+            e.foreach_policy.remote(set_func, normalizations=normalization_dict)
 
 def fit_dynamics(policy, pid):
-    policy.dynamics_model.fit()
+    return policy.dynamics_model.fit()
 
 def get_ensemble_weights(worker):
-    policy_map = self.policy_map
-
+    policy_map = worker.policy_map
+    policies = policy_map.keys()
     def policy_ensemble_weights(policy):
-        model = getattr(policy, model_attr)
+        model = policy.dynamics_model
         return {
             k: v.cpu().detach().numpy()
             for k, v in model.state_dict().items()
         }
-
     return {
             pid: policy_ensemble_weights(policy)
-            for pid, policy in self.policy_map.items() if pid in policies
+            for pid, policy in policy_map.items() if pid in policies
     }
 
-def set_policy_weights(policy, pid, weights):
+def set_ensemble_weights(policy, pid, weights):
+    weights = weights[pid]
     weights = convert_to_torch_tensor(weights, device=policy.device)
     model = policy.dynamics_model
     model.load_state_dict(weights)
 
 def set_normalizations(policy, pid, normalizations):
-    policy.dynamics_model.set_dict(normalizations)
+    policy.dynamics_model.set_norms(normalizations)
 
 def execution_plan(workers, config):
     # Train TD Models
@@ -255,14 +251,18 @@ def execution_plan(workers, config):
     # Sync TD Models and other important data (normalization stats) with workers
     sync_ensemble(workers)
     sync_stats(workers)
-    
-    for e in workers.remote_workers():
-        e.set_dict.remote(normalization_dict)
 
-    # Metric Collector
+    # Dropping metrics from the first iteration 
+    episodes, to_be_collected = collect_episodes(
+            workers.local_worker(),
+            workers.remote_workers(),
+            [],
+            timeout_seconds=9999)
+
+    # Metrics Collector
     metric_collect = CollectMetrics(
         workers,
-        min_history=config["metrics_smoothing_episodes"],
+        min_history=0,
         timeout_seconds=config["collect_metrics_timeout"])
 
     # Iterator for Inner Adaptation Data gathering (from pre->post adaptation)
@@ -272,7 +272,7 @@ def execution_plan(workers, config):
         InnerAdaptationSteps(workers, config["inner_adaptation_steps"],
                              metric_collect))
 
-    # Metaupdate Step
+    # Metaupdate Step with outer combine loop for multiple MAML iterations
     train_op = rollouts.combine(
         MetaUpdate(workers, config["num_maml_steps"], config["maml_optimizer_steps"], metric_collect))
     return train_op

@@ -66,7 +66,7 @@ class TDDataset(torch.utils.data.Dataset):
         actions = dataset[SampleBatch.ACTIONS]
         delta = dataset[SampleBatch.NEXT_OBS] - obs
 
-        if norms is not None:
+        if norms:
             obs = normalize(obs, norms[SampleBatch.CUR_OBS])
             actions = normalize(actions, norms[SampleBatch.ACTIONS])
             delta = normalize(delta, norms["delta"])
@@ -156,16 +156,17 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
     def forward(self, x):
         """Outputs the delta between next and current observation.
         """
-        return self.dynamics_ensemble[self.sample_index](x)
+        hi = self.dynamics_ensemble[self.sample_index](x)
+        return hi
 
 
     # Loss functions for each TD model in Ensemble (Standard L2 Loss)
     def loss(self, x,y):
         xs = torch.chunk(x, self.num_models)
         ys = torch.chunk(y, self.num_models)
-        return [torch.mean(torch.pow(
+        return [torch.mean(
         torch.sum(
-            torch.pow(self.dynamics_ensemble[i](xs[i]) - ys[i], 2.0), dim=-1), 0.5)) for i in range(self.num_models)]
+            torch.pow(self.dynamics_ensemble[i](xs[i]) - ys[i], 2.0), dim=-1)) for i in range(self.num_models)]
 
     # Fitting Dynamics Ensembles per MBMPO Iter
     def fit(self):
@@ -192,7 +193,7 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         _train = SampleBatch.slice(self.replay_buffer, 0, int((1.0-self.valid_split)*dataset_size))
         _val =SampleBatch.slice(self.replay_buffer, int((1.0-self.valid_split)*dataset_size), dataset_size)
         train_loader = torch.utils.data.DataLoader(TDDataset(_train, self.normalizations), batch_size=self.batch_size, shuffle=True)
-        val_loader = torch.utils.data.DataLoader(TDDataset(_val, self.normalizations), batch_size=self.batch_size, shuffle=True)
+        val_loader = torch.utils.data.DataLoader(TDDataset(_val, self.normalizations), batch_size=self.batch_size, shuffle=False)
 
         # List of which models in ensemble to train
         indexes = [i for i in range(self.num_models)]
@@ -257,6 +258,6 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
             delta = denormalize(delta, self.normalizations["delta"])
         return pre_obs + delta
 
-    def set_dict(self, normalization_dict):
+    def set_norms(self, normalization_dict):
         self.normalizations = normalization_dict
 

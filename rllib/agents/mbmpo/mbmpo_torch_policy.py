@@ -453,7 +453,7 @@ def setup_mixins(policy, obs_space, action_space, config):
 
 MBMPOTorchPolicy = build_torch_policy(
     name="MBMPOTorchPolicy",
-    get_default_config=lambda: ray.rllib.agents.maml.maml.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.mbmpo.mbmpo.DEFAULT_CONFIG,
     make_model_and_action_dist=make_model_and_action_dist,
     loss_fn=maml_loss,
     stats_fn=maml_stats,

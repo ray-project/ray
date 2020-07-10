@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class _VectorizedModelGymEnv(VectorEnv):
-    """Internal wrapper to translate any gym envs into a VectorEnv object.
+    """Internal wrapper to translate model-based gym envs into a VectorEnv object.
     """
 
     def __init__(self,
@@ -25,22 +25,6 @@ class _VectorizedModelGymEnv(VectorEnv):
                  observation_space=None,
                  action_space=None,
                  env_config=None):
-        """Initializes a _VectorizedGymEnv object.
-
-        Args:
-            make_env (Optional[callable]): Factory that produces a new gym env
-                taking a single `config` dict arg. Must be defined if the
-                number of `existing_envs` is less than `num_envs`.
-            existing_envs (Optional[List[Env]]): Optional list of already
-                instantiated sub environments.
-            num_envs (int): Total number of sub environments in this VectorEnv.
-            action_space (Optional[Space]): The action space. If None, use
-                existing_envs[0]'s action space.
-            observation_space (Optional[Space]): The observation space.
-                If None, use existing_envs[0]'s action space.
-            env_config (Optional[dict]): Additional sub env config to pass to
-                make_env as first arg.
-        """
         self.make_env = make_env
         self.envs = existing_envs
         self.num_envs = num_envs
@@ -53,7 +37,8 @@ class _VectorizedModelGymEnv(VectorEnv):
             action_space=action_space or self.envs[0].action_space,
             num_envs=num_envs)
         worker = get_global_worker()
-        self.model, self.device = worker.foreach_policy(lambda x,y: (x.dynamics_model, x.device))[0]
+        self.model, self.device = worker.foreach_policy(
+            lambda x,y: (x.dynamics_model, x.device))[0]
 
     @override(VectorEnv)
     def vector_reset(self):
@@ -67,7 +52,7 @@ class _VectorizedModelGymEnv(VectorEnv):
     @override(VectorEnv)
     def vector_step(self, actions):
         if self.cur_obs is None:
-            raise ValueError("Ruh roh, you need to reset env first")
+            raise ValueError("Need to reset env first")
         
         obs_batch = np.stack(self.cur_obs, axis=0)
         action_batch = np.stack(actions, axis=0)
