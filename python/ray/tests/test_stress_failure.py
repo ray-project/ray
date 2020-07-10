@@ -355,8 +355,8 @@ def test_driver_put_errors(ray_start_object_store_memory):
 #     def g(i):
 #       # Each instance of g submits and blocks on the result of another remote
 #       # task.
-#       object_ids = [f.remote(i, j) for j in range(10)]
-#       return ray.get(object_ids)
+#       object_refs = [f.remote(i, j) for j in range(10)]
+#       return ray.get(object_refs)
 #
 #     ray.init(num_workers=1)
 #     ray.get([g.remote(i) for i in range(1000)])
