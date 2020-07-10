@@ -42,7 +42,7 @@ public class ReferenceCountingTest extends BaseTest {
           ((NativeObjectStore) TestUtils.getRuntime().getObjectStore())
               .getAllReferenceCounts();
       try {
-        Assert.assertEquals(actual, expected);
+        Assert.assertEqualsDeep(actual, expected);
         return;
       } catch (AssertionError e) {
         if (Duration.between(start, Instant.now()).compareTo(timeout) >= 0) {
