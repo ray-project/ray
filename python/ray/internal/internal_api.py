@@ -29,7 +29,7 @@ def memory_summary():
     return reply.memory_summary
 
 
-def free(object_ids, local_only=False, delete_creating_tasks=False):
+def free(object_refs, local_only=False, delete_creating_tasks=False):
     """Free a list of IDs from object stores.
 
     This function is a low-level API which should be used in restricted
@@ -48,7 +48,7 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
         >>> free([x_id])  # unpin & delete x globally
 
     Args:
-        object_ids (List[ObjectID]): List of object IDs to delete.
+        object_refs (List[ObjectRef]): List of object refs to delete.
         local_only (bool): Whether only deleting the list of objects in local
             object store or all object stores.
         delete_creating_tasks (bool): Whether also delete the object creating
@@ -56,23 +56,24 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
     """
     worker = ray.worker.global_worker
 
-    if isinstance(object_ids, ray.ObjectID):
-        object_ids = [object_ids]
+    if isinstance(object_refs, ray.ObjectRef):
+        object_refs = [object_refs]
 
-    if not isinstance(object_ids, list):
-        raise TypeError("free() expects a list of ObjectID, got {}".format(
-            type(object_ids)))
+    if not isinstance(object_refs, list):
+        raise TypeError("free() expects a list of ObjectRef, got {}".format(
+            type(object_refs)))
 
-    # Make sure that the values are object IDs.
-    for object_id in object_ids:
-        if not isinstance(object_id, ray.ObjectID):
-            raise TypeError("Attempting to call `free` on the value {}, "
-                            "which is not an ray.ObjectID.".format(object_id))
+    # Make sure that the values are object refs.
+    for object_ref in object_refs:
+        if not isinstance(object_ref, ray.ObjectRef):
+            raise TypeError(
+                "Attempting to call `free` on the value {}, "
+                "which is not an ray.ObjectRef.".format(object_ref))
 
     worker.check_connected()
     with profiling.profile("ray.free"):
-        if len(object_ids) == 0:
+        if len(object_refs) == 0:
             return
 
-        worker.core_worker.free_objects(object_ids, local_only,
+        worker.core_worker.free_objects(object_refs, local_only,
                                         delete_creating_tasks)

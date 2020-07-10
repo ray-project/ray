@@ -1699,6 +1699,7 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
       // Try next task in the dispatch queue.
       continue;
     }
+
     worker->SetOwnerAddress(spec.CallerAddress());
     if (spec.IsActorCreationTask()) {
       // The actor belongs to this worker now.
@@ -1723,13 +1724,9 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
   // blocking where a task which cannot be scheduled because
   // there are not enough available resources blocks other
   // tasks from being scheduled.
-  while (queue_size > 0) {
-    if (queue_size == 0) {
-      return;
-    } else {
-      queue_size--;
-    }
+  while (queue_size-- > 0) {
     auto work = tasks_to_schedule_.front();
+    tasks_to_schedule_.pop_front();
     auto task = work.second;
     auto request_resources =
         task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
@@ -1738,13 +1735,13 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
         new_resource_scheduler_->GetBestSchedulableNode(request_resources, &violations);
     if (node_id_string.empty()) {
       /// There is no node that has available resources to run the request.
-      tasks_to_schedule_.pop_front();
       tasks_to_schedule_.push_back(work);
       continue;
     } else {
       if (node_id_string == self_node_id_.Binary()) {
         WaitForTaskArgsRequests(work);
       } else {
+        // Should spill over to a different node.
         new_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
                                                              request_resources);
 
@@ -1756,7 +1753,6 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
         work.first(nullptr, node_id, node_info_opt->node_manager_address(),
                    node_info_opt->node_manager_port());
       }
-      tasks_to_schedule_.pop_front();
     }
   }
   DispatchScheduledTasksToWorkers();
@@ -1875,7 +1871,6 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 
   // Override the task dispatch to call back to the client instead of executing the
   // task directly on the worker.
-  RAY_LOG(DEBUG) << "Worker lease request " << task.GetTaskSpecification().TaskId();
   TaskID task_id = task.GetTaskSpecification().TaskId();
   rpc::Address owner_address = task.GetTaskSpecification().CallerAddress();
   task.OnDispatchInstead(
@@ -1922,6 +1917,38 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     send_reply_callback(Status::OK(), nullptr, nullptr);
   });
   SubmitTask(task, Lineage());
+}
+
+void NodeManager::HandleRequestResourceReserve(
+    const rpc::RequestResourceReserveRequest &request,
+    rpc::RequestResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  auto bundle_spec = BundleSpecification(request.bundle_spec());
+  RAY_LOG(DEBUG) << "bundle lease request " << bundle_spec.BundleId().first
+                 << bundle_spec.BundleId().second;
+  auto resource_ids = ScheduleBundle(cluster_resource_map_, bundle_spec);
+  if (resource_ids.AvailableResources().size() == 0) {
+    reply->set_success(false);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  } else {
+    reply->set_success(true);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+}
+
+void NodeManager::HandleCancelResourceReserve(
+    const rpc::CancelResourceReserveRequest &request,
+    rpc::CancelResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  auto bundle_spec = BundleSpecification(request.bundle_spec());
+  RAY_LOG(DEBUG) << "bundle return resource request " << bundle_spec.BundleId().first
+                 << bundle_spec.BundleId().second;
+  auto bundle_id_str = bundle_spec.BundleIdAsString();
+  auto resource_set = bundle_spec.GetRequiredResources();
+  for (auto resource : resource_set.GetResourceMap()) {
+    std::string resource_name = bundle_id_str + "_" + resource.first;
+    local_available_resources_.CancelResourceReserve(resource_name);
+  }
+  cluster_resource_map_[self_node_id_].ReturnBundleResource(bundle_id_str);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
@@ -2045,6 +2072,31 @@ void NodeManager::ProcessSetResourceRequest(
     data_map.emplace(resource_name, resource_table_data);
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncUpdateResources(node_id, data_map, nullptr));
   }
+}
+
+ResourceIdSet NodeManager::ScheduleBundle(
+    std::unordered_map<ClientID, SchedulingResources> &resource_map,
+    const BundleSpecification &bundle_spec) {
+  // If the resource map contains the local raylet, update load before calling policy.
+  if (resource_map.count(self_node_id_) > 0) {
+    resource_map[self_node_id_].SetLoadResources(local_queues_.GetResourceLoad());
+  }
+  // Invoke the scheduling policy.
+  auto reserve_resource_success =
+      scheduling_policy_.ScheduleBundle(resource_map, self_node_id_, bundle_spec);
+  auto bundle_id_str = bundle_spec.BundleIdAsString();
+  ResourceIdSet acquired_resources;
+  if (reserve_resource_success) {
+    acquired_resources =
+        local_available_resources_.Acquire(bundle_spec.GetRequiredResources());
+    for (auto resource : acquired_resources.AvailableResources()) {
+      std::string resource_name = bundle_id_str + "_" + resource.first;
+      local_available_resources_.AddBundleResource(resource_name, resource.second);
+    }
+    cluster_resource_map_[self_node_id_].UpdateBundleResource(
+        bundle_id_str, bundle_spec.GetRequiredResources());
+  }
+  return acquired_resources;
 }
 
 void NodeManager::ScheduleTasks(
@@ -2588,7 +2640,6 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
                              std::vector<std::function<void()>> *post_assign_callbacks) {
   const TaskSpecification &spec = task.GetTaskSpecification();
   RAY_CHECK(post_assign_callbacks);
-
   // If this is an actor task, check that the new task has the correct counter.
   if (spec.IsActorTask()) {
     // An actor task should only be ready to be assigned if it matches the

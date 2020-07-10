@@ -20,6 +20,9 @@ jmethodID java_boolean_init;
 jclass java_double_class;
 jmethodID java_double_double_value;
 
+jclass java_object_class;
+jmethodID java_object_equals;
+
 jclass java_list_class;
 jmethodID java_list_size;
 jmethodID java_list_get;
@@ -107,6 +110,10 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_double_class = LoadClass(env, "java/lang/Double");
   java_double_double_value = env->GetMethodID(java_double_class, "doubleValue", "()D");
+
+  java_object_class = LoadClass(env, "java/lang/Object");
+  java_object_equals =
+      env->GetMethodID(java_object_class, "equals", "(Ljava/lang/Object;)Z");
 
   java_list_class = LoadClass(env, "java/util/List");
   java_list_size = env->GetMethodID(java_list_class, "size", "()I");
@@ -205,6 +212,7 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
 
   env->DeleteGlobalRef(java_boolean_class);
   env->DeleteGlobalRef(java_double_class);
+  env->DeleteGlobalRef(java_object_class);
   env->DeleteGlobalRef(java_list_class);
   env->DeleteGlobalRef(java_array_list_class);
   env->DeleteGlobalRef(java_map_class);
