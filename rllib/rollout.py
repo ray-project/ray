@@ -306,6 +306,7 @@ def run(args, parser):
             save_info=args.save_info) as saver:
         rollout(agent, args.env, num_steps, num_episodes, saver,
                 args.no_render, video_dir)
+    agent.stop()
 
 
 class DefaultMapping(collections.defaultdict):

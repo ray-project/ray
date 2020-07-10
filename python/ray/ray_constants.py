@@ -36,6 +36,7 @@ REDIS_MINIMUM_MEMORY_BYTES = 10**7
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379
 
+DEFAULT_DASHBOARD_PORT = 8265
 # Default resource requirements for actors when no resource requirements are
 # specified.
 DEFAULT_ACTOR_METHOD_CPU_SIMPLE = 1
@@ -165,7 +166,6 @@ LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"
-PROCESS_TYPE_RAYLET_MONITOR = "raylet_monitor"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
 PROCESS_TYPE_REPORTER = "reporter"
 PROCESS_TYPE_DASHBOARD = "dashboard"
@@ -196,11 +196,6 @@ NODE_DEFAULT_IP = "127.0.0.1"
 
 # The Mach kernel page size in bytes.
 MACH_PAGE_SIZE_BYTES = 4096
-
-# RAY_GCS_SERVICE_ENABLED only set in ci job.
-# TODO(ffbin): Once we entirely migrate to service-based GCS, we should
-# remove it.
-GCS_SERVICE_ENABLED = env_bool("RAY_GCS_SERVICE_ENABLED", True)
 
 # Max 64 bit integer value, which is needed to ensure against overflow
 # in C++ when passing integer values cross-language.

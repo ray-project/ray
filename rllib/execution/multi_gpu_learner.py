@@ -10,10 +10,10 @@ from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
 from ray.rllib.execution.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.utils import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -84,14 +84,15 @@ class TFMultiGPULearner(LearnerThread):
         self.par_opt = []
         with self.local_worker.tf_sess.graph.as_default():
             with self.local_worker.tf_sess.as_default():
-                with tf.variable_scope(DEFAULT_POLICY_ID, reuse=tf.AUTO_REUSE):
+                with tf1.variable_scope(
+                        DEFAULT_POLICY_ID, reuse=tf1.AUTO_REUSE):
                     if self.policy._state_inputs:
                         rnn_inputs = self.policy._state_inputs + [
                             self.policy._seq_lens
                         ]
                     else:
                         rnn_inputs = []
-                    adam = tf.train.AdamOptimizer(self.lr)
+                    adam = tf1.train.AdamOptimizer(self.lr)
                     for _ in range(num_data_loader_buffers):
                         self.par_opt.append(
                             LocalSyncParallelOptimizer(
@@ -103,7 +104,7 @@ class TFMultiGPULearner(LearnerThread):
                                 self.policy.copy))
 
                 self.sess = self.local_worker.tf_sess
-                self.sess.run(tf.global_variables_initializer())
+                self.sess.run(tf1.global_variables_initializer())
 
         self.idle_optimizers = queue.Queue()
         self.ready_optimizers = queue.Queue()

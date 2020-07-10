@@ -94,6 +94,15 @@ install_miniconda() {
         conda="${miniconda_dir}/bin/conda"
         ;;
     esac
+  else
+    case "${OSTYPE}" in
+      darwin*)
+        # When 'conda' is preinstalled on Mac (as on GitHub Actions), it uses this directory
+        local miniconda_dir="/usr/local/miniconda"
+        sudo mkdir -p -- "${miniconda_dir}"
+        sudo chown -R "${USER}" "${miniconda_dir}"
+        ;;
+    esac
   fi
 
   if [ ! -x "${CONDA_PYTHON_EXE-}" ]; then  # If conda isn't activated, activate it
@@ -162,7 +171,7 @@ install_pip() {
     "${python}" -m pip install --upgrade --quiet pip
 
     # If we're in a CI environment, do some configuration
-    if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
+    if [ "${CI-}" = true ]; then
       "${python}" -W ignore -m pip config -q --user set global.disable-pip-version-check True
       "${python}" -W ignore -m pip config -q --user set global.no-color True
       "${python}" -W ignore -m pip config -q --user set global.progress_bar off
@@ -220,10 +229,10 @@ install_dependencies() {
       *) tf_version="${TF_VERSION:-2.1.0}";;
     esac
     pip_packages+=(scipy tensorflow=="${tf_version}" cython==0.29.0 gym \
-      opencv-python-headless pyyaml pandas==0.24.2 requests feather-format lxml openpyxl xlrd \
+      opencv-python-headless pyyaml pandas==1.0.5 requests feather-format lxml openpyxl xlrd \
       py-spy pytest pytest-timeout networkx tabulate aiohttp uvicorn dataclasses pygments werkzeug \
       kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio scikit-learn==0.22.2 numba \
-      Pillow prometheus_client boto3)
+      Pillow prometheus_client boto3 pettingzoo)
     if [ "${OSTYPE}" != msys ]; then
       # These packages aren't Windows-compatible
       pip_packages+=(blist)  # https://github.com/DanielStutzbach/blist/issues/81#issue-391460716

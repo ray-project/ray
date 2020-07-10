@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_GCS_SERVER_H
-#define RAY_GCS_GCS_SERVER_H
+#pragma once
 
 #include <ray/gcs/pubsub/gcs_pub_sub.h>
 #include <ray/gcs/redis_gcs_client.h>
@@ -39,6 +38,8 @@ struct GcsServerConfig {
 
 class GcsNodeManager;
 class GcsActorManager;
+class GcsJobManager;
+class GcsWorkerManager;
 
 /// The GcsServer will take over all requests from ServiceBasedGcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.
@@ -81,8 +82,8 @@ class GcsServer {
   /// Initialize the gcs actor manager.
   virtual void InitGcsActorManager();
 
-  /// The job info handler
-  virtual std::unique_ptr<rpc::JobInfoHandler> InitJobInfoHandler();
+  /// Initialize the gcs job manager.
+  virtual void InitGcsJobManager();
 
   /// The object manager
   virtual std::unique_ptr<GcsObjectManager> InitObjectManager();
@@ -96,8 +97,8 @@ class GcsServer {
   /// The error info handler
   virtual std::unique_ptr<rpc::ErrorInfoHandler> InitErrorInfoHandler();
 
-  /// The worker info handler
-  virtual std::unique_ptr<rpc::WorkerInfoHandler> InitWorkerInfoHandler();
+  /// The worker manager
+  virtual std::unique_ptr<GcsWorkerManager> InitGcsWorkerManager();
 
  private:
   /// Store the address of GCS server in Redis.
@@ -122,7 +123,7 @@ class GcsServer {
   /// The gcs actor manager
   std::shared_ptr<GcsActorManager> gcs_actor_manager_;
   /// Job info handler and service
-  std::unique_ptr<rpc::JobInfoHandler> job_info_handler_;
+  std::unique_ptr<GcsJobManager> gcs_job_manager_;
   std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;
   /// Actor info service
   std::unique_ptr<rpc::ActorInfoGrpcService> actor_info_service_;
@@ -140,8 +141,9 @@ class GcsServer {
   /// Error info handler and service
   std::unique_ptr<rpc::ErrorInfoHandler> error_info_handler_;
   std::unique_ptr<rpc::ErrorInfoGrpcService> error_info_service_;
-  /// Worker info handler and service
-  std::unique_ptr<rpc::WorkerInfoHandler> worker_info_handler_;
+  /// The gcs worker manager
+  std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
+  /// Worker info service
   std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
   /// Backend client
   std::shared_ptr<RedisGcsClient> redis_gcs_client_;
@@ -156,5 +158,3 @@ class GcsServer {
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif

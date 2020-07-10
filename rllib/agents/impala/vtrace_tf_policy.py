@@ -13,10 +13,10 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
-from ray.rllib.utils.explained_variance import explained_variance
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_ops import explained_variance
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ class VTraceLoss:
                 behaviour_policy_logits=behaviour_logits,
                 target_policy_logits=target_logits,
                 actions=tf.unstack(actions, axis=2),
-                discounts=tf.to_float(~dones) * discount,
+                discounts=tf.cast(~dones, tf.float32) * discount,
                 rewards=rewards,
                 values=values,
                 bootstrap_value=bootstrap_value,
@@ -98,7 +98,7 @@ class VTraceLoss:
 
         # The baseline loss.
         delta = tf.boolean_mask(values - self.vtrace_returns.vs, valid_mask)
-        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
+        self.vf_loss = 0.5 * tf.reduce_sum(tf.math.square(delta))
 
         # The entropy loss.
         self.entropy = tf.reduce_sum(
@@ -228,7 +228,7 @@ def stats(policy, train_batch):
         "policy_loss": policy.loss.pi_loss,
         "entropy": policy.loss.entropy,
         "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
-        "var_gnorm": tf.global_norm(policy.model.trainable_variables()),
+        "var_gnorm": tf.linalg.global_norm(policy.model.trainable_variables()),
         "vf_loss": policy.loss.vf_loss,
         "vf_explained_var": explained_variance(
             tf.reshape(policy.loss.value_targets, [-1]),
@@ -238,7 +238,7 @@ def stats(policy, train_batch):
 
 def grad_stats(policy, train_batch, grads):
     return {
-        "grad_gnorm": tf.global_norm(grads),
+        "grad_gnorm": tf.linalg.global_norm(grads),
     }
 
 
@@ -253,10 +253,11 @@ def postprocess_trajectory(policy,
 
 def choose_optimizer(policy, config):
     if policy.config["opt_type"] == "adam":
-        return tf.train.AdamOptimizer(policy.cur_lr)
+        return tf1.train.AdamOptimizer(policy.cur_lr)
     else:
-        return tf.train.RMSPropOptimizer(policy.cur_lr, config["decay"],
-                                         config["momentum"], config["epsilon"])
+        return tf1.train.RMSPropOptimizer(
+            policy.cur_lr,
+            config["decay"], config["momentum"], config["epsilon"])
 
 
 def clip_gradients(policy, optimizer, loss):

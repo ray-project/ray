@@ -13,6 +13,8 @@ Ray uses Tasks (functions) and Actors (Classes) to allow you to parallelize your
 
 .. code-block:: python
 
+    # First, run `pip install ray`.
+
     import ray
     ray.init()
 
@@ -39,24 +41,22 @@ Ray uses Tasks (functions) and Actors (Classes) to allow you to parallelize your
     futures = [c.read.remote() for c in counters]
     print(ray.get(futures)) # [1, 1, 1, 1]
 
-The Ray Community
------------------
-
-Ray is more than a framework for distributed applications but also an active community of developers,
-researchers, and folks that love machine learning.
-
-You can join (and Star!) us on `on GitHub`_.
-You can also join `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray! The community is extremely active in helping people succeed in building their ray applications.
 
 You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
 
-.. _`on GitHub`: https://github.com/ray-project/ray
+
+Getting Involved
+================
+
+.. include:: ray-overview/involvement.rst
+
+If you're interested in contributing to Ray, visit our page on :ref:`Getting Involved <getting-involved>` to read about the contribution process and see what you can work on!
 
 
 More Information
 ================
 
-Here are some talks, papers, and press coverage involving Ray and its libraries. Please raise an issue if any of the below links are broken!
+Here are some talks, papers, and press coverage involving Ray and its libraries. Please raise an issue if any of the below links are broken, or if you'd like to add your own talk!
 
 Blog and Press
 --------------
@@ -112,25 +112,11 @@ Academic Papers
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381
 .. _`Tune paper`: https://arxiv.org/abs/1807.05118
 
-Getting Involved
-================
-
-- `ray-dev@googlegroups.com`_: For discussions about development or any general
-  questions.
-- `StackOverflow`_: For questions about how to use Ray.
-- `GitHub Issues`_: For reporting bugs and feature requests.
-- `Pull Requests`_: For submitting code contributions.
-
-.. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
-.. _`GitHub Issues`: https://github.com/ray-project/ray/issues
-.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
-.. _`Pull Requests`: https://github.com/ray-project/ray/pulls
-
-
 
 
 
 .. toctree::
+   :hidden:
    :maxdepth: -1
    :caption: Overview of Ray
 
@@ -138,6 +124,7 @@ Getting Involved
    installation.rst
 
 .. toctree::
+   :hidden:
    :maxdepth: -1
    :caption: Ray Core
 
@@ -145,13 +132,33 @@ Getting Involved
    using-ray.rst
    configure.rst
    ray-dashboard.rst
-   cluster-index.rst
    Tutorial and Examples <auto_examples/overview.rst>
    package-ref.rst
 
 .. toctree::
+   :hidden:
    :maxdepth: -1
-   :caption: Tune
+   :caption: Ray Cluster
+
+   cluster/index.rst
+   cluster/launcher.rst
+   cluster/deploy.rst
+
+.. toctree::
+   :maxdepth: -1
+   :caption: Ray Serve
+
+   serve/index.rst
+   serve/key-concepts.rst
+   serve/tutorials/index.rst
+   serve/deployment.rst
+   serve/advanced.rst
+   serve/package-ref.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
+   :caption: Ray Tune
 
    tune.rst
    Tutorials, Guides, Examples <tune/tutorials/overview.rst>
@@ -159,6 +166,7 @@ Getting Involved
    tune-contrib.rst
 
 .. toctree::
+   :hidden:
    :maxdepth: -1
    :caption: RLlib
 
@@ -175,6 +183,7 @@ Getting Involved
    rllib-dev.rst
 
 .. toctree::
+   :hidden:
    :maxdepth: -1
    :caption: Ray SGD
 
@@ -185,16 +194,7 @@ Getting Involved
    raysgd/raysgd_ref.rst
 
 .. toctree::
-   :maxdepth: -1
-   :caption: Ray Serve
-
-   serve/index.rst
-   serve/key-concepts.rst
-   serve/tutorials/index.rst
-   serve/deployment.rst
-   serve/advanced.rst
-
-.. toctree::
+   :hidden:
    :maxdepth: -1
    :caption: Other Libraries
 
@@ -202,12 +202,21 @@ Getting Involved
    joblib.rst
    iter.rst
    pandas_on_ray.rst
+   projects.rst
 
 .. toctree::
+   :hidden:
    :maxdepth: -1
-   :caption: Development and Internals
+   :caption: Contributing
+
+   getting-involved.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
+   :caption: Development and Ray Internals
 
    development.rst
+   debugging.rst
    profiling.rst
    fault-tolerance.rst
-   getting-involved.rst

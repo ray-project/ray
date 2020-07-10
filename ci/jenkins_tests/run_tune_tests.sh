@@ -94,6 +94,9 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
     python /ray/python/ray/tune/examples/hyperopt_example.py \
     --smoke-test
 
+$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
+    python /ray/doc/source/tune/_tutorials/tune-sklearn.py
+
 # if [[ ! -z "$SIGOPT_KEY" ]]; then
 #     $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 -e SIGOPT_KEY $DOCKER_SHA \
 #         python /ray/python/ray/tune/examples/sigopt_example.py \
@@ -111,6 +114,10 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     python /ray/python/ray/tune/examples/mnist_pytorch.py --smoke-test
+
+$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
+    python /ray/python/ray/tune/examples/mnist_pytorch_lightning.py \
+    --smoke-test
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     python /ray/python/ray/tune/examples/mnist_pytorch_trainable.py \
@@ -151,6 +158,10 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     python /ray/python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist.py \
+    --smoke-test
+
+$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
+    python /ray/ci/long_running_distributed_tests/workloads/pytorch_pbt_failure.py \
     --smoke-test
 
 # uncomment once statsmodels is updated.

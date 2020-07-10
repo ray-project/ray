@@ -102,8 +102,8 @@ Splitting Traffic Between Backends
 ==================================
 
 At times it may be useful to expose a single endpoint that is served by multiple backends.
-You can do this by splitting the traffic for an endpoint between backends using ``set_traffic``.
-When calling ``set_traffic``, you provide a dictionary of backend name to a float value that will be used to randomly route that portion of traffic (out of a total of 1.0) to the given backend.
+You can do this by splitting the traffic for an endpoint between backends using :mod:`set_traffic <ray.serve.set_traffic>`.
+When calling :mod:`set_traffic <ray.serve.set_traffic>`, you provide a dictionary of backend name to a float value that will be used to randomly route that portion of traffic (out of a total of 1.0) to the given backend.
 For example, here we split traffic 50/50 between two backends:
 
 .. code-block:: python
@@ -120,7 +120,7 @@ Please see :ref:`session-affinity` for details on how to ensure that clients or 
 A/B Testing
 -----------
 
-``set_traffic`` can be used to implement A/B testing by having one backend serve the majority of traffic while a fraction is routed to a second model:
+:mod:`set_traffic <ray.serve.set_traffic>` can be used to implement A/B testing by having one backend serve the majority of traffic while a fraction is routed to a second model:
 
 .. code-block:: python
 
@@ -143,7 +143,7 @@ A/B Testing
 Incremental Rollout
 -------------------
 
-``set_traffic`` can also be used to implement incremental rollout.
+:mod:`set_traffic <ray.serve.set_traffic>` can also be used to implement incremental rollout.
 Here, we want to replace an existing backend with a new implementation by gradually increasing the proportion of traffic that it serves.
 In the example below, we do this repeatedly in one script, but in practice this would likely happen over time across multiple scripts.
 
@@ -185,6 +185,38 @@ The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or `
   handle = serve.get_handle("api_endpoint")
   handler.options(shard_key=session_id).remote(args)
 
+Shadow Testing
+--------------
+
+Sometimes when deploying a new backend, you may want to test it out without affecting the results seen by users.
+You can do this with :mod:`shadow_traffic <ray.serve.shadow_traffic>`, which allows you to duplicate requests to multiple backends for testing while still having them served by the set of backends specified via :mod:`set_traffic <ray.serve.set_traffic>`.
+Metrics about these requests are recorded as usual so you can use them to validate model performance.
+This is demonstrated in the example below, where we create an endpoint serviced by a single backend but shadow traffic to two other backends for testing.
+
+.. code-block:: python
+
+  serve.create_backend("existing_backend", MyClass)
+  
+  # All traffic is served by the existing backend.
+  serve.create_endpoint("shadowed_endpoint", backend="existing_backend", route="/shadow")
+
+  # Create two new backends that we want to test.
+  serve.create_backend("new_backend_1", MyNewClass)
+  serve.create_backend("new_backend_2", MyNewClass)
+
+  # Shadow traffic to the two new backends. This does not influence the result
+  # of requests to the endpoint, but a proportion of requests are
+  # *additionally* sent to these backends.
+
+  # Send 50% of all queries to the endpoint new_backend_1.
+  serve.shadow_traffic("shadowed_endpoint", "new_backend_1", 0.5)
+  # Send 10% of all queries to the endpoint new_backend_2.
+  serve.shadow_traffic("shadowed_endpoint", "new_backend_2", 0.1)
+
+  # Stop shadowing traffic to the backends.
+  serve.shadow_traffic("shadowed_endpoint", "new_backend_1", 0)
+  serve.shadow_traffic("shadowed_endpoint", "new_backend_2", 0)
+
 Composing Multiple Models
 =========================
 Ray Serve supports composing individually scalable models into a single model 
@@ -221,7 +253,7 @@ See :doc:`deployment` for information about how to deploy serve.
 How do I delete backends and endpoints?
 ---------------------------------------
 
-To delete a backend, you can use `serve.delete_backend`.
+To delete a backend, you can use :mod:`serve.delete_backend <ray.serve.delete_backend>`.
 Note that the backend must not be use by any endpoints in order to be delete.
 Once a backend is deleted, its tag can be reused.
 
@@ -230,7 +262,7 @@ Once a backend is deleted, its tag can be reused.
   serve.delete_backend("simple_backend")
 
 
-To delete a endpoint, you can use `serve.delete_endpoint`.
+To delete a endpoint, you can use :mod:`serve.delete_endpoint <ray.serve.delete_endpoint>`.
 Note that the endpoint will no longer work and return a 404 when queried.
 Once a endpoint is deleted, its tag can be reused.
 

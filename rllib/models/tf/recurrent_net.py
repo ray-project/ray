@@ -3,10 +3,11 @@ import numpy as np
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 @DeveloperAPI
@@ -109,6 +110,12 @@ class LSTMWrapper(RecurrentNetwork):
                                           model_config, name)
 
         self.cell_size = model_config["lstm_cell_size"]
+        self.use_prev_action_reward = model_config[
+            "lstm_use_prev_action_reward"]
+        self.action_dim = int(np.product(action_space.shape))
+        # Add prev-action/reward nodes to input to LSTM.
+        if self.use_prev_action_reward:
+            self.num_outputs += 1 + self.action_dim
 
         # Define input layers.
         input_layer = tf.keras.layers.Input(
@@ -150,6 +157,20 @@ class LSTMWrapper(RecurrentNetwork):
         assert seq_lens is not None
         # Push obs through "unwrapped" net's `forward()` first.
         wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
+
+        # Concat. prev-action/reward if required.
+        if self.model_config["lstm_use_prev_action_reward"]:
+            wrapped_out = tf.concat(
+                [
+                    wrapped_out,
+                    tf.reshape(
+                        tf.cast(input_dict[SampleBatch.PREV_ACTIONS],
+                                tf.float32), [-1, self.action_dim]),
+                    tf.reshape(
+                        tf.cast(input_dict[SampleBatch.PREV_REWARDS],
+                                tf.float32), [-1, 1]),
+                ],
+                axis=1)
 
         # Then through our LSTM.
         input_dict["obs_flat"] = wrapped_out

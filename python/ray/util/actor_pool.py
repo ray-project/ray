@@ -42,8 +42,8 @@ class ActorPool:
 
         Arguments:
             fn (func): Function that takes (actor, value) as argument and
-                returns an ObjectID computing the result over the value. The
-                actor will be considered busy until the ObjectID completes.
+                returns an ObjectRef computing the result over the value. The
+                actor will be considered busy until the ObjectRef completes.
             values (list): List of values that fn(actor, value) should be
                 applied to.
 
@@ -69,8 +69,8 @@ class ActorPool:
 
         Arguments:
             fn (func): Function that takes (actor, value) as argument and
-                returns an ObjectID computing the result over the value. The
-                actor will be considered busy until the ObjectID completes.
+                returns an ObjectRef computing the result over the value. The
+                actor will be considered busy until the ObjectRef completes.
             values (list): List of values that fn(actor, value) should be
                 applied to.
 
@@ -96,8 +96,8 @@ class ActorPool:
 
         Arguments:
             fn (func): Function that takes (actor, value) as argument and
-                returns an ObjectID computing the result over the value. The
-                actor will be considered busy until the ObjectID completes.
+                returns an ObjectRef computing the result over the value. The
+                actor will be considered busy until the ObjectRef completes.
             value (object): Value to compute a result for.
 
         Examples:

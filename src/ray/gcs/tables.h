@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_TABLES_H
-#define RAY_GCS_TABLES_H
+#pragma once
 
 #include <map>
 #include <string>
@@ -53,7 +52,7 @@ using rpc::TablePubsub;
 using rpc::TaskLeaseData;
 using rpc::TaskReconstructionData;
 using rpc::TaskTableData;
-using rpc::WorkerFailureData;
+using rpc::WorkerTableData;
 
 class RedisContext;
 
@@ -755,15 +754,15 @@ class ActorTable : public Table<ActorID, ActorTableData> {
   Status Get(const ActorID &actor_id, ActorTableData *actor_table_data);
 };
 
-class WorkerFailureTable : public Table<WorkerID, WorkerFailureData> {
+class WorkerTable : public Table<WorkerID, WorkerTableData> {
  public:
-  WorkerFailureTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-                     RedisGcsClient *client)
+  WorkerTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+              RedisGcsClient *client)
       : Table(contexts, client) {
     pubsub_channel_ = TablePubsub::WORKER_FAILURE_PUBSUB;
-    prefix_ = TablePrefix::WORKER_FAILURE;
+    prefix_ = TablePrefix::WORKERS;
   }
-  virtual ~WorkerFailureTable() {}
+  virtual ~WorkerTable() {}
 };
 
 class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
@@ -1024,5 +1023,3 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_TABLES_H

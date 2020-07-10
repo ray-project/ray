@@ -7,9 +7,6 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches, \
     StandardizeFields, SelectExperiences
 from ray.rllib.execution.train_ops import TrainOneStep, TrainTFMultiGPU
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.utils import try_import_tf
-
-tf = try_import_tf()
 
 logger = logging.getLogger(__name__)
 

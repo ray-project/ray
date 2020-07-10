@@ -40,9 +40,9 @@ class RayParams:
             on. If not set or set to 0, random ports will be chosen.
         max_worker_port (int): The highest port number that workers will bind
             on. If set, min_worker_port must also be set.
-        object_id_seed (int): Used to seed the deterministic generation of
-            object IDs. The same value can be used across multiple runs of the
-            same job in order to generate the object IDs in a consistent
+        object_ref_seed (int): Used to seed the deterministic generation of
+            object refs. The same value can be used across multiple runs of the
+            same job in order to generate the object refs in a consistent
             manner. However, the same ID should not be used for different jobs.
         redirect_worker_output: True if the stdout and stderr of worker
             processes should be redirected to files.
@@ -60,14 +60,16 @@ class RayParams:
             worker.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
-        include_webui: Boolean flag indicating whether to start the web
+        include_dashboard: Boolean flag indicating whether to start the web
             UI, which displays the status of the Ray cluster. If this value is
             None, then the UI will be started if the relevant dependencies are
             present.
-        webui_host: The host to bind the web UI server to. Can either be
+        dashboard_host: The host to bind the web UI server to. Can either be
             localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
             By default, this is set to localhost to prevent access from
             external machines.
+        dashboard_port: The port to bind the dashboard server to.
+            Defaults to 8265.
         logging_level: Logging level, default will be logging.INFO.
         logging_format: Logging format, default contains a timestamp,
             filename, line number, and message. See ray_constants.py.
@@ -106,7 +108,7 @@ class RayParams:
                  raylet_ip_address=None,
                  min_worker_port=None,
                  max_worker_port=None,
-                 object_id_seed=None,
+                 object_ref_seed=None,
                  driver_mode=None,
                  redirect_worker_output=None,
                  redirect_output=None,
@@ -116,8 +118,9 @@ class RayParams:
                  plasma_directory=None,
                  worker_path=None,
                  huge_pages=False,
-                 include_webui=None,
-                 webui_host="localhost",
+                 include_dashboard=None,
+                 dashboard_host="localhost",
+                 dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
                  logging_level=logging.INFO,
                  logging_format=ray_constants.LOGGER_FORMAT,
                  plasma_store_socket_name=None,
@@ -130,7 +133,7 @@ class RayParams:
                  load_code_from_local=False,
                  _internal_config=None,
                  lru_evict=False):
-        self.object_id_seed = object_id_seed
+        self.object_ref_seed = object_ref_seed
         self.redis_address = redis_address
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
@@ -155,8 +158,9 @@ class RayParams:
         self.plasma_directory = plasma_directory
         self.worker_path = worker_path
         self.huge_pages = huge_pages
-        self.include_webui = include_webui
-        self.webui_host = webui_host
+        self.include_dashboard = include_dashboard
+        self.dashboard_host = dashboard_host
+        self.dashboard_port = dashboard_port
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir

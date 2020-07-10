@@ -15,8 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef PLASMA_IO_H
-#define PLASMA_IO_H
+#pragma once
 
 #include <inttypes.h>
 #include <sys/socket.h>
@@ -27,11 +26,13 @@
 #include <string>
 #include <vector>
 
-#include "arrow/status.h"
+#include "ray/common/status.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/compat.h"
 
 namespace plasma {
+
+using ray::Status;
 
 namespace flatbuf {
 
@@ -44,8 +45,6 @@ enum class MessageType : int64_t;
 // message length, plasma protocol version) with one that is serialized
 // using flatbuffers.
 constexpr int64_t kPlasmaProtocolVersion = 0x0000000000000000;
-
-using arrow::Status;
 
 Status WriteBytes(int fd, uint8_t* cursor, size_t length);
 
@@ -65,5 +64,3 @@ int AcceptClient(int socket_fd);
 std::unique_ptr<uint8_t[]> ReadMessageAsync(int sock);
 
 }  // namespace plasma
-
-#endif  // PLASMA_IO_H

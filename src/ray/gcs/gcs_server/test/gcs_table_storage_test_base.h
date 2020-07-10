@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
+
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "ray/common/test_util.h"
@@ -77,7 +79,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
 
   template <typename TABLE, typename KEY, typename VALUE>
   void Put(TABLE &table, const KEY &key, const VALUE &value) {
-    auto on_done = [this](Status status) { --pending_count_; };
+    auto on_done = [this](const Status &status) { --pending_count_; };
     ++pending_count_;
     RAY_CHECK_OK(table.Put(key, value, on_done));
     WaitPendingDone();
@@ -85,13 +87,17 @@ class GcsTableStorageTestBase : public ::testing::Test {
 
   template <typename TABLE, typename KEY, typename VALUE>
   int Get(TABLE &table, const KEY &key, std::vector<VALUE> &values) {
-    auto on_done = [this, &values](Status status, const boost::optional<VALUE> &result) {
+    auto on_done = [this, &values](const Status &status,
+                                   const boost::optional<VALUE> &result) {
       RAY_CHECK_OK(status);
-      --pending_count_;
       values.clear();
       if (result) {
         values.push_back(*result);
       }
+      // NOTE: The callback is executed in an asynchronous thread, so the modification of
+      // pending_count_ must be put last, otherwise the unmodified pending_count_ will be
+      // read outside.
+      --pending_count_;
     };
     ++pending_count_;
     RAY_CHECK_OK(table.Get(key, on_done));
@@ -103,13 +109,16 @@ class GcsTableStorageTestBase : public ::testing::Test {
   int GetByJobId(TABLE &table, const JobID &job_id, const KEY &key,
                  std::vector<VALUE> &values) {
     auto on_done = [this, &values](const std::unordered_map<KEY, VALUE> &result) {
-      --pending_count_;
       values.clear();
       if (!result.empty()) {
         for (auto &item : result) {
           values.push_back(item.second);
         }
       }
+      // NOTE: The callback is executed in an asynchronous thread, so the modification of
+      // pending_count_ must be put last, otherwise the unmodified pending_count_ will be
+      // read outside.
+      --pending_count_;
     };
     ++pending_count_;
     RAY_CHECK_OK(table.GetByJobId(job_id, on_done));
@@ -119,7 +128,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
 
   template <typename TABLE, typename KEY>
   void Delete(TABLE &table, const KEY &key) {
-    auto on_done = [this](Status status) {
+    auto on_done = [this](const Status &status) {
       RAY_CHECK_OK(status);
       --pending_count_;
     };

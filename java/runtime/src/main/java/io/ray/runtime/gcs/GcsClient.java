@@ -9,7 +9,6 @@ import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.runtimecontext.NodeInfo;
-import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.generated.Gcs;
 import io.ray.runtime.generated.Gcs.ActorCheckpointIdData;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
@@ -94,6 +93,17 @@ public class GcsClient {
     return new ArrayList<>(nodes.values());
   }
 
+  public Map<String, String> getInternalConfig() {
+    Gcs.StoredConfig storedConfig;
+    byte[] conf = globalStateAccessor.getInternalConfig();
+    try {
+      storedConfig = Gcs.StoredConfig.parseFrom(conf);
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException("Received invalid internal config protobuf from GCS.");
+    }
+    return storedConfig.getConfigMap();
+  }
+
   private Map<String, Double> getResourcesForClient(UniqueId clientId) {
     byte[] resourceMapBytes = globalStateAccessor.getNodeResourceInfo(clientId);
     Gcs.ResourceMap resourceMap;
@@ -119,9 +129,6 @@ public class GcsClient {
 
   public boolean wasCurrentActorRestarted(ActorId actorId) {
     byte[] key = ArrayUtils.addAll(TablePrefix.ACTOR.toString().getBytes(), actorId.getBytes());
-    if (!RayConfig.getInstance().gcsServiceEnabled) {
-      return primary.exists(key);
-    }
 
     // TODO(ZhuSenlin): Get the actor table data from CoreWorker later.
     byte[] value = globalStateAccessor.getActorInfo(actorId);

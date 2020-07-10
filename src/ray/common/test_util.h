@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_TEST_UTIL_H
-#define RAY_COMMON_TEST_UTIL_H
+#pragma once
 
 #include <unistd.h>
 
@@ -24,9 +23,21 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
+#include "ray/protobuf/common.pb.h"
 #include "ray/util/util.h"
 
 namespace ray {
+
+static inline std::vector<rpc::ObjectReference> ObjectIdsToRefs(
+    std::vector<ObjectID> object_ids) {
+  std::vector<rpc::ObjectReference> refs;
+  for (const auto &object_id : object_ids) {
+    rpc::ObjectReference ref;
+    ref.set_object_id(object_id.Binary());
+    refs.push_back(ref);
+  }
+  return refs;
+}
 
 class Buffer;
 class RayObject;
@@ -76,8 +87,6 @@ extern std::string TEST_GCS_SERVER_EXEC_PATH;
 extern std::string TEST_RAYLET_EXEC_PATH;
 /// Path to mock worker executable binary. Required by raylet.
 extern std::string TEST_MOCK_WORKER_EXEC_PATH;
-/// Path to raylet monitor executable binary.
-extern std::string TEST_RAYLET_MONITOR_EXEC_PATH;
 
 //--------------------------------------------------------------------------------
 // COMPONENT MANAGEMENT CLASSES FOR TEST CASES
@@ -107,9 +116,6 @@ class TestSetupUtil {
                                  const std::string &resource);
   static void StopRaylet(const std::string &raylet_socket_name);
 
-  static std::string StartRayletMonitor(const std::string &redis_address);
-  static void StopRayletMonitor(const std::string &raylet_monitor_socket_name);
-
  private:
   static int StartUpRedisServer(const int &port);
   static void ShutDownRedisServer(const int &port);
@@ -117,5 +123,3 @@ class TestSetupUtil {
 };
 
 }  // namespace ray
-
-#endif  // RAY_UTIL_TEST_UTIL_H

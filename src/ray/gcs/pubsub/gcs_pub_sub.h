@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_GCS_PUB_SUB_H_
-#define RAY_GCS_GCS_PUB_SUB_H_
+#pragma once
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
@@ -30,7 +29,7 @@ namespace gcs {
 #define NODE_CHANNEL "NODE"
 #define NODE_RESOURCE_CHANNEL "NODE_RESOURCE"
 #define ACTOR_CHANNEL "ACTOR"
-#define WORKER_FAILURE_CHANNEL "WORKER_FAILURE"
+#define WORKER_CHANNEL "WORKER"
 #define OBJECT_CHANNEL "OBJECT"
 #define TASK_CHANNEL "TASK"
 #define TASK_LEASE_CHANNEL "TASK_LEASE"
@@ -141,7 +140,7 @@ class GcsPubSub {
                                   GcsPubSub::Channel &channel)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  Status SubscribeInternal(const std::string &channel, const Callback &subscribe,
+  Status SubscribeInternal(const std::string &channel_name, const Callback &subscribe,
                            const StatusCallback &done,
                            const boost::optional<std::string> &id = boost::none);
 
@@ -158,5 +157,3 @@ class GcsPubSub {
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif  // RAY_GCS_GCS_PUB_SUB_H_

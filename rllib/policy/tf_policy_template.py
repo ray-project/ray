@@ -4,9 +4,6 @@ from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils import try_import_tf
-
-tf = try_import_tf()
 
 
 @DeveloperAPI
@@ -22,6 +19,7 @@ def build_tf_policy(name,
                     grad_stats_fn=None,
                     extra_action_fetches_fn=None,
                     extra_learn_fetches_fn=None,
+                    validate_spaces=None,
                     before_init=None,
                     before_loss_init=None,
                     after_init=None,
@@ -73,6 +71,9 @@ def build_tf_policy(name,
             a dict of TF fetches given the policy object
         extra_learn_fetches_fn (func): optional function that returns a dict of
             extra values to fetch and return when learning on a batch
+        validate_spaces (Optional[callable]): Optional callable that takes the
+            Policy, observation_space, action_space, and config to check for
+            correctness.
         before_init (func): optional function to run at the beginning of
             policy init that takes the same arguments as the policy constructor
         before_loss_init (func): optional function to run prior to loss
@@ -113,6 +114,9 @@ def build_tf_policy(name,
             if get_default_config:
                 config = dict(get_default_config(), **config)
 
+            if validate_spaces:
+                validate_spaces(self, obs_space, action_space, config)
+
             if before_init:
                 before_init(self, obs_space, action_space, config)
 
@@ -127,10 +131,10 @@ def build_tf_policy(name,
 
             DynamicTFPolicy.__init__(
                 self,
-                obs_space,
-                action_space,
-                config,
-                loss_fn,
+                obs_space=obs_space,
+                action_space=action_space,
+                config=config,
+                loss_fn=loss_fn,
                 stats_fn=stats_fn,
                 grad_stats_fn=grad_stats_fn,
                 before_loss_init=before_loss_init_wrapper,

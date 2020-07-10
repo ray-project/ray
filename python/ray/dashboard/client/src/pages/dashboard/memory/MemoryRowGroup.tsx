@@ -1,28 +1,17 @@
-import {
-  createStyles,
-  TableCell,
-  TableRow,
-  Theme,
-  withStyles,
-  WithStyles,
-} from "@material-ui/core";
+import { createStyles, makeStyles, TableRow, Theme } from "@material-ui/core";
 import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
-import classNames from "classnames";
-import React from "react";
+import React, { useState } from "react";
+import { MemoryTableEntry, MemoryTableSummary } from "../../../api";
 import {
-  MemoryTableEntry,
-  MemoryTableResponse,
-  MemoryTableSummary,
-} from "../../../api";
+  ExpandableStyledTableCell,
+  StyledTableCell,
+} from "../../../common/TableCell";
 import MemorySummary from "./MemorySummary";
+import { MemoryTableRow } from "./MemoryTableRow";
 
-const styles = (theme: Theme) =>
+const useMemoryRowGroupStyles = makeStyles((theme: Theme) =>
   createStyles({
-    cell: {
-      padding: theme.spacing(1),
-      textAlign: "center",
-    },
     expandCollapseCell: {
       cursor: "pointer",
     },
@@ -35,106 +24,68 @@ const styles = (theme: Theme) =>
       fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
       whiteSpace: "pre",
     },
-  });
+  }),
+);
 
-type Props = {
+type MemoryRowGroupProps = {
   groupKey: string;
-  memoryTableGroups: MemoryTableResponse["group"];
+  summary: MemoryTableSummary;
+  entries: MemoryTableEntry[];
   initialExpanded: boolean;
 };
 
-type State = {
-  expanded: boolean;
+const MemoryRowGroup: React.FC<MemoryRowGroupProps> = ({
+  groupKey,
+  entries,
+  summary,
+  initialExpanded,
+}) => {
+  const classes = useMemoryRowGroupStyles();
+  const [expanded, setExpanded] = useState(initialExpanded);
+  const toggleExpanded = () => setExpanded(!expanded);
+
+  const features = [
+    "node_ip_address",
+    "pid",
+    "type",
+    "object_ref",
+    "object_size",
+    "reference_type",
+    "call_site",
+  ];
+
+  return (
+    <React.Fragment>
+      <TableRow hover>
+        <ExpandableStyledTableCell onClick={toggleExpanded}>
+          {!expanded ? (
+            <AddIcon className={classes.expandCollapseIcon} />
+          ) : (
+            <RemoveIcon className={classes.expandCollapseIcon} />
+          )}
+        </ExpandableStyledTableCell>
+        {features.map((feature, index) => (
+          <StyledTableCell key={index}>
+            {// TODO(sang): For now, it is always grouped by node_ip_address.
+            feature === "node_ip_address" ? groupKey : ""}
+          </StyledTableCell>
+        ))}
+      </TableRow>
+      {expanded && (
+        <React.Fragment>
+          <MemorySummary initialExpanded={false} memoryTableSummary={summary} />
+          {entries.map((memoryTableEntry, index) => {
+            return (
+              <MemoryTableRow
+                memoryTableEntry={memoryTableEntry}
+                key={`${index}`}
+              />
+            );
+          })}
+        </React.Fragment>
+      )}
+    </React.Fragment>
+  );
 };
 
-class MemoryRowGroup extends React.Component<
-  Props & WithStyles<typeof styles>,
-  State
-> {
-  state: State = {
-    expanded: this.props.initialExpanded,
-  };
-
-  toggleExpand = () => {
-    this.setState((state) => ({
-      expanded: !state.expanded,
-    }));
-  };
-
-  render() {
-    const { classes, groupKey, memoryTableGroups } = this.props;
-    const { expanded } = this.state;
-
-    const features = [
-      "node_ip_address",
-      "pid",
-      "type",
-      "object_id",
-      "object_size",
-      "reference_type",
-      "call_site",
-    ];
-
-    const memoryTableGroup = memoryTableGroups[groupKey];
-    const entries: Array<MemoryTableEntry> = memoryTableGroup["entries"];
-    const summary: MemoryTableSummary = memoryTableGroup["summary"];
-
-    return (
-      <React.Fragment>
-        <TableRow hover>
-          <TableCell
-            className={classNames(classes.cell, classes.expandCollapseCell)}
-            onClick={this.toggleExpand}
-          >
-            {!expanded ? (
-              <AddIcon className={classes.expandCollapseIcon} />
-            ) : (
-              <RemoveIcon className={classes.expandCollapseIcon} />
-            )}
-          </TableCell>
-          {features.map((feature, index) => (
-            <TableCell className={classes.cell} key={index}>
-              {// TODO(sang): For now, it is always grouped by node_ip_address.
-              feature === "node_ip_address" ? groupKey : ""}
-            </TableCell>
-          ))}
-        </TableRow>
-        {expanded && (
-          <React.Fragment>
-            <MemorySummary
-              initialExpanded={false}
-              memoryTableSummary={summary}
-            />
-            {entries.map((memoryTableEntry, index) => {
-              const object_size =
-                memoryTableEntry.object_size === -1
-                  ? "?"
-                  : `${memoryTableEntry.object_size}  B`;
-              const memoryTableEntryValues = [
-                "", // Padding
-                memoryTableEntry.node_ip_address,
-                memoryTableEntry.pid,
-                memoryTableEntry.type,
-                memoryTableEntry.object_id,
-                object_size,
-                memoryTableEntry.reference_type,
-                memoryTableEntry.call_site,
-              ];
-              return (
-                <TableRow hover key={index}>
-                  {memoryTableEntryValues.map((value, index) => (
-                    <TableCell key={index} className={classes.cell}>
-                      {value}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              );
-            })}
-          </React.Fragment>
-        )}
-      </React.Fragment>
-    );
-  }
-}
-
-export default withStyles(styles)(MemoryRowGroup);
+export default MemoryRowGroup;

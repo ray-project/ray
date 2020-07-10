@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+import copy
 from hashlib import sha256
 
 import numpy as np
@@ -47,12 +48,29 @@ class RandomEndpointPolicy(EndpointPolicy):
     be made deterministically based on the hash of the shard key.
     """
 
-    def __init__(self, traffic_dict):
-        self.backend_names, self.backend_weights = zip(
-            *sorted(traffic_dict.items()))
+    def __init__(self, traffic_policy):
+        self.backends = sorted(traffic_policy.traffic_dict.items())
+        self.shadow_backends = list(traffic_policy.shadow_dict.items())
+
+    def _select_backends(self, val):
+        curr_sum = 0
+        for name, weight in self.backends:
+            curr_sum += weight
+            if curr_sum > val:
+                chosen_backend = name
+                break
+        else:
+            assert False, "This should never be reached."
+
+        shadow_backends = []
+        for backend, backend_weight in self.shadow_backends:
+            if val < backend_weight:
+                shadow_backends.append(backend)
+
+        return chosen_backend, shadow_backends
 
     def flush(self, endpoint_queue, backend_queues):
-        if len(self.backend_names) == 0:
+        if len(self.backends) == 0:
             logger.info("No backends to assign traffic to.")
             return set()
 
@@ -67,11 +85,17 @@ class RandomEndpointPolicy(EndpointPolicy):
                 # Note(simon): This constructor takes 100+us, maybe cache this?
                 rstate = np.random.RandomState(seed)
 
-            chosen_backend = rstate.choice(
-                self.backend_names, replace=False,
-                p=self.backend_weights).squeeze()
+            chosen_backend, shadow_backends = self._select_backends(
+                rstate.random())
 
             assigned_backends.add(chosen_backend)
             backend_queues[chosen_backend].add(query)
+            if len(shadow_backends) > 0:
+                shadow_query = copy.copy(query)
+                shadow_query.async_future = None
+                shadow_query.is_shadow_query = True
+                for shadow_backend in shadow_backends:
+                    assigned_backends.add(shadow_backend)
+                    backend_queues[shadow_backend].add(shadow_query)
 
         return assigned_backends

@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_ACTOR_MANAGER_H
-#define RAY_GCS_ACTOR_MANAGER_H
+#pragma once
 
 #include <ray/common/id.h>
 #include <ray/common/task/task_execution_spec.h>
@@ -223,6 +222,18 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param done Callback that will be called when load is complete.
   void LoadInitialData(const EmptyCallback &done);
 
+  /// Delete non-detached actor information from durable storage once the associated job
+  /// finishes.
+  ///
+  /// \param job_id The id of finished job.
+  void OnJobFinished(const JobID &job_id);
+
+  /// Get the created actors.
+  ///
+  /// \return The created actors.
+  const absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, ActorID>>
+      &GetCreatedActors() const;
+
  private:
   /// A data structure representing an actor's owner.
   struct Owner {
@@ -264,7 +275,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// All registered actors (pending actors are also included).
   /// TODO(swang): Use unique_ptr instead of shared_ptr.
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
-  /// Maps detached actor names to their actor ID for lookups by name.
+  /// Maps actor names to their actor ID for lookups by name.
   absl::flat_hash_map<std::string, ActorID> named_actors_;
   /// The pending actors which will not be scheduled until there's a resource change.
   std::vector<std::shared_ptr<GcsActor>> pending_actors_;
@@ -289,5 +300,3 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif  // RAY_GCS_ACTOR_MANAGER_H

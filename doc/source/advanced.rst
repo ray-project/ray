@@ -97,7 +97,7 @@ For example, consider the following.
 
     @ray.remote
     def g():
-        # Call f 4 times and return the resulting object IDs.
+        # Call f 4 times and return the resulting object refs.
         return [f.remote() for _ in range(4)]
 
     @ray.remote
@@ -111,10 +111,10 @@ Then calling ``g`` and ``h`` produces the following behavior.
 .. code:: python
 
     >>> ray.get(g.remote())
-    [ObjectID(b1457ba0911ae84989aae86f89409e953dd9a80e),
-     ObjectID(7c14a1d13a56d8dc01e800761a66f09201104275),
-     ObjectID(99763728ffc1a2c0766a2000ebabded52514e9a6),
-     ObjectID(9c2f372e1933b04b2936bb6f58161285829b9914)]
+    [ObjectRef(b1457ba0911ae84989aae86f89409e953dd9a80e),
+     ObjectRef(7c14a1d13a56d8dc01e800761a66f09201104275),
+     ObjectRef(99763728ffc1a2c0766a2000ebabded52514e9a6),
+     ObjectRef(9c2f372e1933b04b2936bb6f58161285829b9914)]
 
     >>> ray.get(h.remote())
     [1, 1, 1, 1]
@@ -243,9 +243,9 @@ Detached Actors
 When original actor handles goes out of scope or the driver that originally
 created the actor exits, ray will clean up the actor by default. If you want
 to make sure the actor is kept alive, you can use
-``_remote(name="some_name", detached=True)`` to keep the actor alive after
-the driver exits. The actor will have a globally unique name and can be 
-accessed across different drivers. 
+``_remote(name="some_name")`` to keep the actor alive after
+the driver exits. The actor will have a globally unique name and can be
+accessed across different drivers.
 
 For example, you can instantiate and register a persistent actor as follows:
 

@@ -102,7 +102,7 @@ class RayTrialExecutor(TrialExecutor):
         self._trial_queued = False
         self._running = {}
         # Since trial resume after paused should not run
-        # trial.train.remote(), thus no more new remote object id generated.
+        # trial.train.remote(), thus no more new remote object ref generated.
         # We use self._paused to store paused trials here.
         self._paused = {}
 

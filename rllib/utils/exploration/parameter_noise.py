@@ -13,7 +13,7 @@ from ray.rllib.utils.framework import get_variable
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.numpy import softmax, SMALL_NUMBER
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
@@ -91,9 +91,9 @@ class ParameterNoise(Exploration):
             self.tf_remove_noise_op = \
                 self._tf_remove_noise_op()
             # Create convenience sample+add op for tf.
-            with tf.control_dependencies([self.tf_sample_new_noise_op]):
+            with tf1.control_dependencies([self.tf_sample_new_noise_op]):
                 add_op = self._tf_add_stored_noise_op()
-            with tf.control_dependencies([add_op]):
+            with tf1.control_dependencies([add_op]):
                 self.tf_sample_new_noise_and_add_op = tf.no_op()
 
         # Whether the Model's weights currently have noise added or not.
@@ -290,10 +290,9 @@ class ParameterNoise(Exploration):
     def _sample_new_noise(self, *, tf_sess=None):
         """Samples new noise and stores it in `self.noise`."""
         if self.framework == "tf":
-            if tf.executing_eagerly():
-                self._tf_sample_new_noise_op()
-            else:
-                tf_sess.run(self.tf_sample_new_noise_op)
+            tf_sess.run(self.tf_sample_new_noise_op)
+        elif self.framework == "tfe":
+            self._tf_sample_new_noise_op()
         else:
             for i in range(len(self.noise)):
                 self.noise[i] = torch.normal(
@@ -303,16 +302,16 @@ class ParameterNoise(Exploration):
         added_noises = []
         for noise in self.noise:
             added_noises.append(
-                tf.assign(
+                tf1.assign(
                     noise,
-                    tf.random_normal(
+                    tf.random.normal(
                         shape=noise.shape,
                         stddev=self.stddev,
                         dtype=tf.float32)))
         return tf.group(*added_noises)
 
     def _sample_new_noise_and_add(self, *, tf_sess=None, override=False):
-        if self.framework == "tf" and not tf.executing_eagerly():
+        if self.framework == "tf":
             if override and self.weights_are_currently_noisy:
                 tf_sess.run(self.tf_remove_noise_op)
             tf_sess.run(self.tf_sample_new_noise_and_add_op)
@@ -338,12 +337,11 @@ class ParameterNoise(Exploration):
         # Make sure we only add noise to currently noise-free weights.
         assert self.weights_are_currently_noisy is False
 
-        if self.framework == "tf":
-            if tf.executing_eagerly():
-                self._tf_add_stored_noise_op()
-            else:
-                tf_sess.run(self.tf_add_stored_noise_op)
         # Add stored noise to the model's parameters.
+        if self.framework == "tf":
+            tf_sess.run(self.tf_add_stored_noise_op)
+        elif self.framework == "tfe":
+            self._tf_add_stored_noise_op()
         else:
             for i in range(len(self.noise)):
                 # Add noise to weights in-place.
@@ -361,9 +359,9 @@ class ParameterNoise(Exploration):
         """
         add_noise_ops = list()
         for var, noise in zip(self.model_variables, self.noise):
-            add_noise_ops.append(tf.assign_add(var, noise))
+            add_noise_ops.append(tf1.assign_add(var, noise))
         ret = tf.group(*tuple(add_noise_ops))
-        with tf.control_dependencies([ret]):
+        with tf1.control_dependencies([ret]):
             return tf.no_op()
 
     def _remove_noise(self, *, tf_sess=None):
@@ -377,13 +375,12 @@ class ParameterNoise(Exploration):
         # Make sure we only remove noise iff currently noisy.
         assert self.weights_are_currently_noisy is True
 
+        # Removes the stored noise from the model's parameters.
         if self.framework == "tf":
-            if tf.executing_eagerly():
-                self._tf_remove_noise_op()
-            else:
-                tf_sess.run(self.tf_remove_noise_op)
+            tf_sess.run(self.tf_remove_noise_op)
+        elif self.framework == "tfe":
+            self._tf_remove_noise_op()
         else:
-            # Removes the stored noise from the model's parameters.
             for var, noise in zip(self.model_variables, self.noise):
                 # Remove noise from weights in-place.
                 var.add_(-noise)
@@ -400,9 +397,9 @@ class ParameterNoise(Exploration):
         """
         remove_noise_ops = list()
         for var, noise in zip(self.model_variables, self.noise):
-            remove_noise_ops.append(tf.assign_add(var, -noise))
+            remove_noise_ops.append(tf1.assign_add(var, -noise))
         ret = tf.group(*tuple(remove_noise_ops))
-        with tf.control_dependencies([ret]):
+        with tf1.control_dependencies([ret]):
             return tf.no_op()
 
     @override(Exploration)

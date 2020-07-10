@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_ID_H_
-#define RAY_ID_H_
+#pragma once
 
 #include <inttypes.h>
 #include <limits.h>
@@ -54,7 +53,6 @@ enum class ObjectType : uint8_t {
 
 using ObjectIDFlagsType = uint16_t;
 using ObjectIDIndexType = uint32_t;
-
 // Declaration.
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
@@ -346,6 +344,24 @@ class ObjectID : public BaseID<ObjectID> {
   uint8_t id_[kLength];
 };
 
+class PlacementGroupID : public BaseID<PlacementGroupID> {
+ public:
+  static constexpr size_t kLength = 16;
+
+  /// Size of `PlacementGroupID` in bytes.
+  ///
+  /// \return Size of `PlacementGroupID` in bytes.
+  static size_t Size() { return kLength; }
+
+  /// Constructor of `PlacementGroupID`.
+  PlacementGroupID() : BaseID() {}
+
+  MSGPACK_DEFINE(id_);
+
+ private:
+  uint8_t id_[kLength];
+};
+
 static_assert(sizeof(JobID) == JobID::kLength + sizeof(size_t),
               "JobID size is not as expected");
 static_assert(sizeof(ActorID) == ActorID::kLength + sizeof(size_t),
@@ -354,12 +370,15 @@ static_assert(sizeof(TaskID) == TaskID::kLength + sizeof(size_t),
               "TaskID size is not as expected");
 static_assert(sizeof(ObjectID) == ObjectID::kLength + sizeof(size_t),
               "ObjectID size is not as expected");
+static_assert(sizeof(PlacementGroupID) == PlacementGroupID::kLength + sizeof(size_t),
+              "PlacementGroupID size is not as expected");
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
 std::ostream &operator<<(std::ostream &os, const JobID &id);
 std::ostream &operator<<(std::ostream &os, const ActorID &id);
 std::ostream &operator<<(std::ostream &os, const TaskID &id);
 std::ostream &operator<<(std::ostream &os, const ObjectID &id);
+std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
 
 #define DEFINE_UNIQUE_ID(type)                                                 \
   class RAY_EXPORT type : public UniqueID {                                    \
@@ -490,8 +509,8 @@ DEFINE_UNIQUE_ID(JobID);
 DEFINE_UNIQUE_ID(ActorID);
 DEFINE_UNIQUE_ID(TaskID);
 DEFINE_UNIQUE_ID(ObjectID);
+DEFINE_UNIQUE_ID(PlacementGroupID);
 #include "id_def.h"
 
 #undef DEFINE_UNIQUE_ID
 }  // namespace std
-#endif  // RAY_ID_H_

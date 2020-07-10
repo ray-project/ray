@@ -1,6 +1,7 @@
 from gym.spaces import Tuple, Discrete, Dict
 import logging
 import numpy as np
+import tree
 
 import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
@@ -13,13 +14,11 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import _unpack_obs
 from ray.rllib.env.constants import GROUP_REWARDS
-from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.annotations import override
 
 # Torch must be installed.
 torch, nn = try_import_torch(error=True)
-tree = try_import_tree()
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +193,7 @@ class QMixTorchPolicy(Policy):
             agent_obs_space = agent_obs_space.spaces["obs"]
         else:
             self.obs_size = _get_size(agent_obs_space)
+            self.env_global_state_shape = (self.obs_size, self.n_agents)
 
         self.model = ModelCatalog.get_model_v2(
             agent_obs_space,
@@ -319,11 +319,11 @@ class QMixTorchPolicy(Policy):
 
         output_list, _, seq_lens = \
             chop_into_sequences(
-                samples[SampleBatch.EPS_ID],
-                samples[SampleBatch.UNROLL_ID],
-                samples[SampleBatch.AGENT_INDEX],
-                input_list,
-                [],  # RNN states not used here
+                episode_ids=samples[SampleBatch.EPS_ID],
+                unroll_ids=samples[SampleBatch.UNROLL_ID],
+                agent_indices=samples[SampleBatch.AGENT_INDEX],
+                feature_columns=input_list,
+                state_columns=[],  # RNN states not used here
                 max_seq_len=self.config["model"]["max_seq_len"],
                 dynamic_max=True)
         # These will be padded to shape [B * T, ...]
@@ -472,6 +472,7 @@ class QMixTorchPolicy(Policy):
             tensorlib=np)
 
         if isinstance(unpacked[0], dict):
+            assert "obs" in unpacked[0]
             unpacked_obs = [
                 np.concatenate(tree.flatten(u["obs"]), 1) for u in unpacked
             ]
@@ -492,7 +493,7 @@ class QMixTorchPolicy(Policy):
                 dtype=np.float32)
 
         if self.has_env_global_state:
-            state = unpacked[0][ENV_STATE]
+            state = np.concatenate(tree.flatten(unpacked[0][ENV_STATE]), 1)
         else:
             state = None
         return obs, action_mask, state

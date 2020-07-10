@@ -455,7 +455,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   bool SubscribeToWorkerFailures(
-      const gcs::SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe) {
+      const gcs::SubscribeCallback<WorkerID, rpc::WorkerTableData> &subscribe) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
@@ -463,11 +463,18 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   bool ReportWorkerFailure(
-      const std::shared_ptr<rpc::WorkerFailureData> &worker_failure_data) {
+      const std::shared_ptr<rpc::WorkerTableData> &worker_failure_data) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Workers().AsyncReportWorkerFailure(
         worker_failure_data,
         [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool AddWorker(const std::shared_ptr<rpc::WorkerTableData> &worker_data) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(
+        worker_data, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -481,6 +488,11 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
       return current_count == expected_count;
     };
     EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+  }
+
+  void CheckActorData(const gcs::ActorTableData &actor,
+                      rpc::ActorTableData_ActorState expected_state) {
+    ASSERT_TRUE(actor.state() == expected_state);
   }
 
   // GCS server.
@@ -694,6 +706,8 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeHeartbeat) {
   ClientID node_id = ClientID::FromBinary(node_info->node_id());
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat->set_client_id(node_id.Binary());
+  // Set this flag because GCS won't publish unchanged heartbeat.
+  heartbeat->set_should_global_gc(true);
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
   WaitPendingDone(heartbeat_batch_count, 1);
 }
@@ -817,14 +831,22 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerInfo) {
   // Subscribe to all unexpected failure of workers from GCS.
   std::atomic<int> worker_failure_count(0);
   auto on_subscribe = [&worker_failure_count](const WorkerID &worker_id,
-                                              const rpc::WorkerFailureData &result) {
+                                              const rpc::WorkerTableData &result) {
     ++worker_failure_count;
   };
   ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
 
-  // Report a worker failure to GCS.
-  auto worker_failure_data = Mocker::GenWorkerFailureData();
-  ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
+  // Report a worker failure to GCS when this worker doesn't exist.
+  auto worker_data = Mocker::GenWorkerTableData();
+  worker_data->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
+  ASSERT_TRUE(ReportWorkerFailure(worker_data));
+  WaitPendingDone(worker_failure_count, 0);
+
+  // Add a worker to GCS.
+  ASSERT_TRUE(AddWorker(worker_data));
+
+  // Report a worker failure to GCS when this worker is actually exist.
+  ASSERT_TRUE(ReportWorkerFailure(worker_data));
   WaitPendingDone(worker_failure_count, 1);
 }
 
@@ -835,7 +857,7 @@ TEST_F(ServiceBasedGcsClientTest, TestErrorInfo) {
   ASSERT_TRUE(ReportJobError(error_table_data));
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestJobTableReSubscribe) {
+TEST_F(ServiceBasedGcsClientTest, TestJobTableResubscribe) {
   // Test that subscription of the job table can still work when GCS server restarts.
   JobID job_id = JobID::FromInt(1);
   auto job_table_data = Mocker::GenJobTableData(job_id);
@@ -854,53 +876,74 @@ TEST_F(ServiceBasedGcsClientTest, TestJobTableReSubscribe) {
   WaitPendingDone(job_update_count, 1);
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestActorTableReSubscribe) {
+TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // Test that subscription of the actor table can still work when GCS server restarts.
   JobID job_id = JobID::FromInt(1);
-  auto actor1_table_data = Mocker::GenActorTableData(job_id);
-  auto actor1_id = ActorID::FromBinary(actor1_table_data->actor_id());
-  auto actor2_table_data = Mocker::GenActorTableData(job_id);
-  auto actor2_id = ActorID::FromBinary(actor2_table_data->actor_id());
+  auto actor_table_data = Mocker::GenActorTableData(job_id);
+  auto actor_id = ActorID::FromBinary(actor_table_data->actor_id());
 
-  // Subscribe to any register or update operations of actors.
-  std::atomic<int> actors_update_count(0);
-  auto subscribe_all = [&actors_update_count](const ActorID &id,
-                                              const rpc::ActorTableData &result) {
-    ++actors_update_count;
+  // Number of notifications for the following `SubscribeAllActors` operation.
+  std::atomic<int> num_subscribe_all_notifications(0);
+  // All the notifications for the following `SubscribeAllActors` operation.
+  std::vector<gcs::ActorTableData> subscribe_all_notifications;
+  auto subscribe_all = [&num_subscribe_all_notifications, &subscribe_all_notifications](
+                           const ActorID &id, const rpc::ActorTableData &data) {
+    subscribe_all_notifications.emplace_back(data);
+    ++num_subscribe_all_notifications;
   };
+  // Subscribe to updates of all actors.
   ASSERT_TRUE(SubscribeAllActors(subscribe_all));
 
-  // Subscribe to any update operations of actor1.
-  std::atomic<int> actor1_update_count(0);
-  auto actor1_subscribe = [&actor1_update_count](const ActorID &actor_id,
-                                                 const gcs::ActorTableData &data) {
-    ++actor1_update_count;
+  // Number of notifications for the following `SubscribeActor` operation.
+  std::atomic<int> num_subscribe_one_notifications(0);
+  // All the notifications for the following `SubscribeActor` operation.
+  std::vector<gcs::ActorTableData> subscribe_one_notifications;
+  auto actor_subscribe = [&num_subscribe_one_notifications, &subscribe_one_notifications](
+                             const ActorID &actor_id, const gcs::ActorTableData &data) {
+    subscribe_one_notifications.emplace_back(data);
+    ++num_subscribe_one_notifications;
   };
-  ASSERT_TRUE(SubscribeActor(actor1_id, actor1_subscribe));
+  // Subscribe to updates for this actor.
+  ASSERT_TRUE(SubscribeActor(actor_id, actor_subscribe));
 
-  // Subscribe to any update operations of actor2.
-  std::atomic<int> actor2_update_count(0);
-  auto actor2_subscribe = [&actor2_update_count](const ActorID &actor_id,
-                                                 const gcs::ActorTableData &data) {
-    ++actor2_update_count;
-  };
-  ASSERT_TRUE(SubscribeActor(actor2_id, actor2_subscribe));
+  ASSERT_TRUE(RegisterActor(actor_table_data));
 
-  ASSERT_TRUE(RegisterActor(actor1_table_data));
-  ASSERT_TRUE(RegisterActor(actor2_table_data));
-  WaitPendingDone(actor2_update_count, 1);
-  UnsubscribeActor(actor2_id);
+  // We should receive a new ALIVE notification from the subscribe channel.
+  WaitPendingDone(num_subscribe_all_notifications, 1);
+  WaitPendingDone(num_subscribe_one_notifications, 1);
+  CheckActorData(subscribe_all_notifications[0],
+                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+  CheckActorData(subscribe_one_notifications[0],
+                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
 
+  // Restart GCS server.
   RestartGcsServer();
 
-  ASSERT_TRUE(UpdateActor(actor1_id, actor1_table_data));
-  ASSERT_TRUE(UpdateActor(actor2_id, actor2_table_data));
-  WaitPendingDone(actor1_update_count, 3);
-  WaitPendingDone(actor2_update_count, 1);
-  UnsubscribeActor(actor1_id);
+  // When GCS client detects that GCS server has restarted, but the pub-sub server
+  // didn't restart, it will fetch data again from the GCS server. So we'll receive
+  // another notification of ALIVE state.
+  WaitPendingDone(num_subscribe_all_notifications, 2);
+  WaitPendingDone(num_subscribe_one_notifications, 2);
+  CheckActorData(subscribe_all_notifications[1],
+                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+  CheckActorData(subscribe_one_notifications[1],
+                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+
+  // Update the actor state to DEAD.
+  actor_table_data->set_state(
+      rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
+  ASSERT_TRUE(UpdateActor(actor_id, actor_table_data));
+
+  // We should receive a new DEAD notification from the subscribe channel.
+  WaitPendingDone(num_subscribe_all_notifications, 3);
+  WaitPendingDone(num_subscribe_one_notifications, 3);
+  CheckActorData(subscribe_all_notifications[2],
+                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
+  CheckActorData(subscribe_one_notifications[2],
+                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestObjectTableReSubscribe) {
+TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
   ObjectID object1_id = ObjectID::FromRandom();
   ObjectID object2_id = ObjectID::FromRandom();
   ClientID node_id = ClientID::FromRandom();
@@ -942,7 +985,7 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectTableReSubscribe) {
   WaitPendingDone(object2_change_count, 2);
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestNodeTableReSubscribe) {
+TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
   // Test that subscription of the node table can still work when GCS server restarts.
   // Subscribe to node addition and removal events from GCS and cache those information.
   std::atomic<int> node_change_count(0);
@@ -968,8 +1011,6 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableReSubscribe) {
       };
   ASSERT_TRUE(SubscribeBatchHeartbeat(batch_heartbeat_subscribe));
 
-  RestartGcsServer();
-
   auto node_info = Mocker::GenNodeInfo(1);
   ASSERT_TRUE(RegisterNode(*node_info));
   ClientID node_id = ClientID::FromBinary(node_info->node_id());
@@ -977,14 +1018,26 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableReSubscribe) {
   ASSERT_TRUE(UpdateResources(node_id, key));
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat->set_client_id(node_info->node_id());
+  // Set this flag because GCS won't publish unchanged heartbeat.
+  heartbeat->set_should_global_gc(true);
+  ASSERT_TRUE(ReportHeartbeat(heartbeat));
+  WaitPendingDone(batch_heartbeat_count, 1);
+
+  RestartGcsServer();
+
+  node_info = Mocker::GenNodeInfo(1);
+  ASSERT_TRUE(RegisterNode(*node_info));
+  node_id = ClientID::FromBinary(node_info->node_id());
+  ASSERT_TRUE(UpdateResources(node_id, key));
+  heartbeat->set_client_id(node_info->node_id());
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
 
-  WaitPendingDone(node_change_count, 1);
-  WaitPendingDone(resource_change_count, 1);
-  WaitPendingDone(batch_heartbeat_count, 1);
+  WaitPendingDone(node_change_count, 2);
+  WaitPendingDone(resource_change_count, 2);
+  WaitPendingDone(batch_heartbeat_count, 2);
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestTaskTableReSubscribe) {
+TEST_F(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
   JobID job_id = JobID::FromInt(6);
   TaskID task_id = TaskID::ForDriverTask(job_id);
   auto task_table_data = Mocker::GenTaskTableData(job_id.Binary(), task_id.Binary());
@@ -1023,11 +1076,11 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskTableReSubscribe) {
   WaitPendingDone(task_count, 1);
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestWorkerTableReSubscribe) {
+TEST_F(ServiceBasedGcsClientTest, TestWorkerTableResubscribe) {
   // Subscribe to all unexpected failure of workers from GCS.
   std::atomic<int> worker_failure_count(0);
   auto on_subscribe = [&worker_failure_count](const WorkerID &worker_id,
-                                              const rpc::WorkerFailureData &result) {
+                                              const rpc::WorkerTableData &result) {
     ++worker_failure_count;
   };
   ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
@@ -1035,9 +1088,13 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerTableReSubscribe) {
   // Restart GCS
   RestartGcsServer();
 
+  // Add a worker before report worker failure to GCS.
+  auto worker_data = Mocker::GenWorkerTableData();
+  worker_data->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
+  ASSERT_TRUE(AddWorker(worker_data));
+
   // Report a worker failure to GCS and check if resubscribe works.
-  auto worker_failure_data = Mocker::GenWorkerFailureData();
-  ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
+  ASSERT_TRUE(ReportWorkerFailure(worker_data));
   WaitPendingDone(worker_failure_count, 1);
 }
 

@@ -14,6 +14,10 @@ REQUIRED, OPTIONAL = True, False
 RAY_SCHEMA_PATH = os.path.join(
     os.path.dirname(ray.autoscaler.__file__), "ray-schema.json")
 
+# Internal kv keys for storing debug status.
+DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
+DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
+
 
 class ConcurrentCounter:
     def __init__(self):
@@ -54,11 +58,16 @@ def validate_config(config):
         raise jsonschema.ValidationError(message=e.message) from None
 
 
+def prepare_config(config):
+    with_defaults = fillout_defaults(config)
+    merge_setup_commands(with_defaults)
+    dockerize_if_needed(with_defaults)
+    return with_defaults
+
+
 def fillout_defaults(config):
     defaults = get_default_config(config["provider"])
     defaults.update(config)
-    merge_setup_commands(defaults)
-    dockerize_if_needed(defaults)
     defaults["auth"] = defaults.get("auth", {})
     return defaults
 

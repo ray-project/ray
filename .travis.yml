@@ -33,7 +33,7 @@ matrix:
 
     - os: linux
       env:
-        - PYTHON=3.6 ENABLE_ASAN="--config=asan -j 2"
+        - PYTHON=3.6 BAZEL_CONFIG="asan"
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
       install:
@@ -42,12 +42,25 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         # Run all C++ unit tests with ASAN enabled. ASAN adds too much overhead to run Python tests.
-        - bazel test $ENABLE_ASAN --config=ci --build_tests_only -- //:all
+        - bazel test --config=ci --build_tests_only -- //:all
 
     - os: osx
       osx_image: xcode7
       env:
         - PYTHON=3.6
+        - PYTHONWARNINGS=ignore
+        - RAY_DEFAULT_BUILD=1
+        - RAY_CYTHON_EXAMPLES=1
+        - RAY_USE_RANDOM_PORTS=1
+      install:
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+      before_script:
+        - . ./ci/travis/ci.sh build
+
+    - os: osx
+      osx_image: xcode7
+      env:
+        - PYTHON=3.6 RAY_GCS_ACTOR_SERVICE_ENABLED=true
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
@@ -87,38 +100,6 @@ matrix:
         - if [ $RAY_CI_STREAMING_CPP_AFFECTED == "1" ]; then bazel test --config=ci --test_output=all //streaming:all && bash streaming/src/test/run_streaming_queue_test.sh; fi
         - if [ $RAY_CI_STREAMING_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 streaming/python/tests/; fi
         - if [ $RAY_CI_STREAMING_JAVA_AFFECTED == "1" ]; then ./streaming/java/test.sh; fi
-
-    - os: linux
-      env:
-        - TESTSUITE=gcs_service_disabled
-        - JDK='Oracle JDK 8'
-        - PYTHON=3.6 PYTHONWARNINGS=ignore
-        - RAY_INSTALL_JAVA=1
-        - RAY_GCS_SERVICE_ENABLED=false
-        - RAY_CYTHON_EXAMPLES=1
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_ONLY_RLLIB_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        - ./ci/suppress_output bash streaming/src/test/run_streaming_queue_test.sh
-        - ./java/test.sh
-
-    - os: linux
-      env:
-        - TESTSUITE=gcs_service_disabled_python_testcase
-        - JDK='Oracle JDK 8'
-        - PYTHON=3.6 PYTHONWARNINGS=ignore
-        - RAY_INSTALL_JAVA=1
-        - RAY_GCS_SERVICE_ENABLED=false
-        - RAY_CYTHON_EXAMPLES=1
-        - RAY_USE_RANDOM_PORTS=1
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_ONLY_RLLIB_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        - ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/tests/...
 
     - os: linux
       env:
@@ -176,7 +157,7 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
-        - ./ci/keep_alive bazel test --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
 
     # RLlib: Learning tests with tf=1.x (from rllib/tuned_examples/*.yaml).
     # Requested by Edi (MS): Test all learning capabilities with tf1.x
@@ -193,7 +174,7 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
-        - ./ci/keep_alive bazel test --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
 
     # RLlib: Learning tests with torch (from rllib/tuned_examples/*.yaml).
     - os: linux
@@ -209,7 +190,7 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
-        - ./ci/keep_alive bazel test --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_torch rllib/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=learning_tests_torch rllib/...
 
     # RLlib: Quick Agent train.py runs (compilation & running, no(!) learning).
     # Agent single tests (compilation, loss-funcs, etc..).
@@ -309,9 +290,6 @@ script:
 
   # ray operator tests
   - (cd deploy/ray-operator && export CC=gcc && suppress_output go build && suppress_output go test ./...)
-
-  # random python tests TODO(ekl): these should be moved to bazel
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
 
   # bazel python tests. This should be run last to keep its logs at the end of travis logs.
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/tests/...; fi
