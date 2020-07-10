@@ -6,15 +6,21 @@ import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.RayRuntimeInternal;
+import java.io.Externalizable;
 import java.io.IOException;
-import java.io.Serializable;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Implementation of {@link ObjectRef}.
  */
-public final class ObjectRefImpl<T> implements ObjectRef<T>, Serializable {
+public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
 
-  private final ObjectId id;
+  private ObjectId id;
 
   // In GC thread, we don't know which worker this object binds to, so we need to
   // store the worker ID for later uses.
@@ -27,6 +33,8 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Serializable {
     this.type = type;
     addLocalReference();
   }
+
+  public ObjectRefImpl() {}
 
   @Override
   public synchronized T get() {
@@ -52,8 +60,23 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Serializable {
     }
   }
 
-  private void readObject(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
-    in.defaultReadObject();
+  static ThreadLocal<Set<ObjectId>> containedObjectIds = ThreadLocal.withInitial(HashSet::new);
+
+  public static List<ObjectId> getAndClearContainedObjectIds() {
+    List<ObjectId> ids = new ArrayList<>(containedObjectIds.get());
+    containedObjectIds.get().clear();
+    return ids;
+  }
+
+  @Override
+  public void writeExternal(ObjectOutput out) throws IOException {
+    out.writeObject(this.getId());
+    containedObjectIds.get().add(this.getId());
+  }
+
+  @Override
+  public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+    this.id = (ObjectId) in.readObject();
     addLocalReference();
   }
 

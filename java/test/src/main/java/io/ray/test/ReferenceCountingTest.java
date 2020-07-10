@@ -11,6 +11,8 @@ import io.ray.runtime.object.ObjectRefImpl;
 import io.ray.test.TestUtils.TestLock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -220,6 +222,23 @@ public class ReferenceCountingTest extends BaseTest {
       }
     }
     result.get();
+  }
+
+  public void testBasicNestedIds() {
+    ObjectRef<byte[]> inner = Ray.put(new byte[40 * 1024 * 1024]);
+    ObjectId innerId = inner.getId();
+    checkRefCounts(ImmutableMap.of(innerId, new long[] {1, 0}));
+
+    ObjectRef<List<ObjectRef<byte[]>>> outer = Ray.put(Collections.singletonList(inner));
+    checkRefCounts(ImmutableMap.of(innerId, new long[] {2, 0},
+            outer.getId(), new long[] {1, 0}));
+
+    ((ObjectRefImpl<?>) inner).removeLocalReference();
+    checkRefCounts(ImmutableMap.of(innerId, new long[] {1, 0},
+            outer.getId(), new long[] {1, 0}));
+
+    inner = new ObjectRefImpl<>(innerId, inner.getType());
+    Assert.assertNotNull(inner.get());
   }
 
   // TODO(kfstorm): Add more test cases
