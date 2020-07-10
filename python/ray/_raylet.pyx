@@ -1084,7 +1084,9 @@ cdef class CoreWorker:
                 CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(name))
 
         if c_actor_handle == NULL:
+            print("failed!!")
             raise ValueError("Named Actor Handle Not Found")
+        print("succeed!")
         return self.make_actor_handle(c_actor_handle)
 
     def serialize_actor_handle(self, ActorID actor_id):

@@ -674,29 +674,29 @@ def test_detached_actor(ray_start_regular):
     with pytest.raises(ValueError, match="Please use a different name"):
         DetachedActor._remote(name="d_actor")
 
-    redis_address = ray_start_regular["redis_address"]
+#     redis_address = ray_start_regular["redis_address"]
 
-    get_actor_name = "d_actor"
-    create_actor_name = "DetachedActor"
-    driver_script = """
-import ray
-ray.init(address="{}")
+#     get_actor_name = "d_actor"
+#     create_actor_name = "DetachedActor"
+#     driver_script = """
+# import ray
+# ray.init(address="{}")
 
-existing_actor = ray.get_actor("{}")
-assert ray.get(existing_actor.ping.remote()) == "pong"
+# existing_actor = ray.get_actor("{}")
+# assert ray.get(existing_actor.ping.remote()) == "pong"
 
-@ray.remote
-class DetachedActor:
-    def ping(self):
-        return "pong"
+# @ray.remote
+# class DetachedActor:
+#     def ping(self):
+#         return "pong"
 
-actor = DetachedActor._remote(name="{}")
-ray.get(actor.ping.remote())
-""".format(redis_address, get_actor_name, create_actor_name)
+# actor = DetachedActor._remote(name="{}")
+# ray.get(actor.ping.remote())
+# """.format(redis_address, get_actor_name, create_actor_name)
 
-    run_string_as_driver(driver_script)
-    detached_actor = ray.get_actor(create_actor_name)
-    assert ray.get(detached_actor.ping.remote()) == "pong"
+#     run_string_as_driver(driver_script)
+#     detached_actor = ray.get_actor(create_actor_name)
+#     assert ray.get(detached_actor.ping.remote()) == "pong"
 
 
 def test_detached_actor_cleanup(ray_start_regular):
