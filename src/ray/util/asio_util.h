@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_ASIO_UTIL_H
-#define RAY_ASIO_UTIL_H
+#pragma once
 
 #include <boost/asio.hpp>
 
@@ -27,5 +26,3 @@ inline void execute_after(boost::asio::io_context &io_context,
     }
   });
 }
-
-#endif  // RAY_ASIO_UTIL_H

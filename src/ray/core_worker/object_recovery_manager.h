@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_OBJECT_RECOVERY_MANAGER_H
-#define RAY_CORE_WORKER_OBJECT_RECOVERY_MANAGER_H
+#pragma once
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
@@ -147,5 +146,3 @@ class ObjectRecoveryManager {
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_OBJECT_RECOVERY_MANAGER_H

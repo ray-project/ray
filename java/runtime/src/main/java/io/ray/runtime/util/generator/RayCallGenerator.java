@@ -29,7 +29,7 @@ public class RayCallGenerator extends BaseGenerator {
     newLine("import io.ray.api.call.TaskCaller;");
     newLine("import io.ray.api.call.VoidTaskCaller;");
     newLine("import io.ray.api.function.PyActorClass;");
-    newLine("import io.ray.api.function.PyRemoteFunction;");
+    newLine("import io.ray.api.function.PyFunction;");
     for (int i = 0; i <= MAX_PARAMETERS; i++) {
       newLine("import io.ray.api.function.RayFunc" + i + ";");
     }
@@ -273,8 +273,8 @@ public class RayCallGenerator extends BaseGenerator {
       paramPrefix += "PyActorMethod<R> pyActorMethod";
       funcArgs += "pyActorMethod";
     } else {
-      paramPrefix += "PyRemoteFunction<R> pyRemoteFunction";
-      funcArgs += "pyRemoteFunction";
+      paramPrefix += "PyFunction<R> pyFunction";
+      funcArgs += "pyFunction";
     }
     if (numParameters > 0) {
       paramPrefix += ", ";

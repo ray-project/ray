@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_JAVA_JNI_UTILS_H
-#define RAY_COMMON_JAVA_JNI_UTILS_H
+#pragma once
 
 #include <jni.h>
 
@@ -32,6 +31,11 @@ extern jmethodID java_boolean_init;
 extern jclass java_double_class;
 /// doubleValue method of Double class
 extern jmethodID java_double_double_value;
+
+/// Object class
+extern jclass java_object_class;
+/// equals method of Object class
+extern jmethodID java_object_equals;
 
 /// List class
 extern jclass java_list_class;
@@ -422,5 +426,3 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
   RAY_LOG(FATAL) << "Unknown function descriptor type: " << function_descriptor->Type();
   return NativeStringVectorToJavaStringList(env, std::vector<std::string>());
 }
-
-#endif  // RAY_COMMON_JAVA_JNI_UTILS_H

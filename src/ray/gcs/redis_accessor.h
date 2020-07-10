@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_REDIS_ACCESSOR_H
-#define RAY_GCS_REDIS_ACCESSOR_H
+#pragma once
 
 #include <ray/common/task/task_spec.h>
+
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/callback.h"
@@ -83,7 +83,7 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
       const ActorID &actor_id,
       const OptionalItemCallback<ActorCheckpointIdData> &callback) override;
 
-  Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
  protected:
   virtual std::vector<ActorID> GetAllActorID() const;
@@ -183,9 +183,7 @@ class RedisJobInfoAccessor : public JobInfoAccessor {
     return Status::NotImplemented("AsyncGetAll not implemented");
   }
 
-  Status AsyncReSubscribe() override {
-    return Status::NotImplemented("AsyncReSubscribe not implemented");
-  }
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
  private:
   /// Append job information to GCS asynchronously.
@@ -243,9 +241,7 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
       const std::shared_ptr<TaskReconstructionData> &data_ptr,
       const StatusCallback &callback) override;
 
-  Status AsyncReSubscribe() override {
-    return Status::NotImplemented("AsyncReSubscribe not implemented");
-  }
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
  private:
   RedisGcsClient *client_impl_{nullptr};
@@ -296,7 +292,7 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
 
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
 
-  Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
  private:
   RedisGcsClient *client_impl_{nullptr};
@@ -377,8 +373,17 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
       const ItemCallback<HeartbeatBatchTableData> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncReSubscribe() override {
-    return Status::NotImplemented("AsyncReSubscribe not implemented");
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
+
+  Status AsyncSetInternalConfig(
+      std::unordered_map<std::string, std::string> &config) override {
+    return Status::NotImplemented("SetInternaConfig not implemented.");
+  }
+
+  Status AsyncGetInternalConfig(
+      const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback)
+      override {
+    return Status::NotImplemented("GetInternalConfig not implemented.");
   }
 
  private:
@@ -443,23 +448,26 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
   virtual ~RedisWorkerInfoAccessor() = default;
 
   Status AsyncSubscribeToWorkerFailures(
-      const SubscribeCallback<WorkerID, WorkerFailureData> &subscribe,
+      const SubscribeCallback<WorkerID, WorkerTableData> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncReportWorkerFailure(const std::shared_ptr<WorkerFailureData> &data_ptr,
+  Status AsyncReportWorkerFailure(const std::shared_ptr<WorkerTableData> &data_ptr,
                                   const StatusCallback &callback) override;
 
-  Status AsyncRegisterWorker(
-      rpc::WorkerType worker_type, const WorkerID &worker_id,
-      const std::unordered_map<std::string, std::string> &worker_info,
-      const StatusCallback &callback) override;
+  Status AsyncGet(const WorkerID &worker_id,
+                  const OptionalItemCallback<rpc::WorkerTableData> &callback) override;
 
-  Status AsyncReSubscribe() override { return Status::NotImplemented(""); }
+  Status AsyncGetAll(const MultiItemCallback<rpc::WorkerTableData> &callback) override;
+
+  Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
+                  const StatusCallback &callback) override;
+
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
  private:
   RedisGcsClient *client_impl_{nullptr};
 
-  typedef SubscriptionExecutor<WorkerID, WorkerFailureData, WorkerFailureTable>
+  typedef SubscriptionExecutor<WorkerID, WorkerTableData, WorkerTable>
       WorkerFailureSubscriptionExecutor;
   WorkerFailureSubscriptionExecutor worker_failure_sub_executor_;
 };
@@ -467,5 +475,3 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_REDIS_ACCESSOR_H

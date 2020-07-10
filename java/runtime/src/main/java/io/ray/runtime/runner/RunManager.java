@@ -194,7 +194,7 @@ public class RunManager {
         startGcs();
       }
       startObjectStore();
-      startRaylet();
+      startRaylet(isHead);
       LOGGER.info("All processes started @ {}.", rayConfig.nodeIp);
     } catch (Exception e) {
       // Clean up started processes.
@@ -229,33 +229,31 @@ public class RunManager {
     }
 
     // start gcs server
-    if (rayConfig.gcsServiceEnabled) {
-      String redisPasswordOption = "";
-      if (!Strings.isNullOrEmpty(rayConfig.headRedisPassword)) {
-        redisPasswordOption = rayConfig.headRedisPassword;
-      }
-
-      // See `src/ray/gcs/gcs_server/gcs_server_main.cc` for the meaning of each parameter.
-      final File gcsServerFile = BinaryFileUtil.getFile(
-          rayConfig.sessionDir, BinaryFileUtil.GCS_SERVER_BINARY_NAME);
-      Preconditions.checkState(gcsServerFile.setExecutable(true));
-      List<String> command = ImmutableList.of(
-          gcsServerFile.getAbsolutePath(),
-          String.format("--redis_address=%s", rayConfig.getRedisIp()),
-          String.format("--redis_port=%d", rayConfig.getRedisPort()),
-          String.format("--config_list=%s",
-              rayConfig.rayletConfigParameters.entrySet().stream()
-                  .map(entry -> entry.getKey() + "," + entry.getValue()).collect(Collectors
-                  .joining(","))),
-          String.format("--redis_password=%s", redisPasswordOption)
-      );
-      startProcess(command, null, "gcs_server");
+    String redisPasswordOption = "";
+    if (!Strings.isNullOrEmpty(rayConfig.headRedisPassword)) {
+      redisPasswordOption = rayConfig.headRedisPassword;
     }
+
+    // See `src/ray/gcs/gcs_server/gcs_server_main.cc` for the meaning of each parameter.
+    final File gcsServerFile = BinaryFileUtil.getFile(
+        rayConfig.sessionDir, BinaryFileUtil.GCS_SERVER_BINARY_NAME);
+    Preconditions.checkState(gcsServerFile.setExecutable(true));
+    List<String> command = ImmutableList.of(
+        gcsServerFile.getAbsolutePath(),
+        String.format("--redis_address=%s", rayConfig.getRedisIp()),
+        String.format("--redis_port=%d", rayConfig.getRedisPort()),
+        String.format("--config_list=%s",
+            rayConfig.rayletConfigParameters.entrySet().stream()
+                .map(entry -> entry.getKey() + "," + entry.getValue()).collect(Collectors
+                .joining(","))),
+        String.format("--redis_password=%s", redisPasswordOption)
+    );
+    startProcess(command, null, "gcs_server");
   }
 
   private String startRedisInstance(String ip, int port, String password, Integer shard) {
     final File redisServerFile = BinaryFileUtil.getFile(
-        rayConfig.sessionDir, BinaryFileUtil.REDIS_SERVER_BINARY_NAME);
+        rayConfig.sessionDir, BinaryFileUtil.REDIS_SERVER_BINARY_PATH);
     Preconditions.checkState(redisServerFile.setExecutable(true));
     List<String> command = Lists.newArrayList(
         // The redis-server executable file.
@@ -294,7 +292,7 @@ public class RunManager {
     return ip + ":" + port;
   }
 
-  private void startRaylet() throws IOException {
+  private void startRaylet(boolean isHead) throws IOException {
     int hardwareConcurrency = Runtime.getRuntime().availableProcessors();
     int maximumStartupConcurrency = Math.max(1,
         Math.min(rayConfig.resources.getOrDefault("CPU", 0.0).intValue(), hardwareConcurrency));
@@ -327,7 +325,8 @@ public class RunManager {
             .collect(Collectors.joining(","))),
         String.format("--python_worker_command=%s", buildPythonWorkerCommand()),
         String.format("--java_worker_command=%s", buildWorkerCommand()),
-        String.format("--redis_password=%s", redisPasswordOption)
+        String.format("--redis_password=%s", redisPasswordOption),
+        isHead ? "--head_node" : ""
     );
 
     startProcess(command, null, "raylet");

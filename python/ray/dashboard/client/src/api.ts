@@ -133,9 +133,18 @@ export type NodeInfoResponse = {
 
 export const getNodeInfo = () => get<NodeInfoResponse>("/api/node_info", {});
 
+export type ResourceSlot = {
+  slot: number;
+  allocation: number;
+};
+
+export type ResourceAllocations = {
+  resourceSlots: ResourceSlot[];
+};
+
 export type RayletCoreWorkerStats = {
   usedResources: {
-    [key: string]: number;
+    [key: string]: ResourceAllocations;
   };
 };
 
@@ -157,7 +166,7 @@ export type RayletActorInfo =
       nodeId: string;
       numExecutedTasks: number;
       numLocalObjects: number;
-      numObjectIdsInScope: number;
+      numObjectRefsInScope: number;
       pid: number;
       port: number;
       state:
@@ -168,7 +177,7 @@ export type RayletActorInfo =
       taskQueueLength: number;
       timestamp: number;
       usedObjectStoreMemory: number;
-      usedResources: { [key: string]: number };
+      usedResources: { [key: string]: ResourceAllocations };
       currentTaskDesc?: string;
       numPendingTasks?: number;
       webuiDisplay?: Record<string, string>;
@@ -347,19 +356,23 @@ export type MemoryTableEntry = {
   node_ip_address: string;
   pid: number;
   type: string;
-  object_id: string;
+  object_ref: string;
   object_size: number;
   reference_type: string;
   call_site: string;
 };
 
+export type MemoryTableGroups = {
+  [groupKey: string]: MemoryTableGroup;
+};
+
+export type MemoryTableGroup = {
+  entries: MemoryTableEntry[];
+  summary: MemoryTableSummary;
+};
+
 export type MemoryTableResponse = {
-  group: {
-    [groupKey: string]: {
-      entries: MemoryTableEntry[];
-      summary: MemoryTableSummary;
-    };
-  };
+  group: MemoryTableGroups;
   summary: MemoryTableSummary;
 };
 

@@ -104,6 +104,13 @@ upload_wheels() {
       fi
     done
   fi
+  (
+    cd "${WORKSPACE_DIR}"/python
+    if ! python -s -c "import ray, sys; sys.exit(0 if ray._raylet.OPTIMIZED else 1)"; then
+      echo "ERROR: Uploading non-optimized wheels! Performance will suffer for users!"
+      false
+    fi
+  )
 }
 
 test_core() {
@@ -118,31 +125,25 @@ test_python() {
       -python/ray/tests:test_actor_failures
       -python/ray/tests:test_advanced_2
       -python/ray/tests:test_advanced_3
-      -python/ray/tests:test_array
-      -python/ray/tests:test_asyncio
+      -python/ray/tests:test_array  # timeout
       -python/ray/tests:test_autoscaler_aws
       -python/ray/tests:test_autoscaler_yaml
-      -python/ray/tests:test_cancel
       -python/ray/tests:test_component_failures
       -python/ray/tests:test_cython
-      -python/ray/tests:test_dynres
       -python/ray/tests:test_failure
       -python/ray/tests:test_global_gc
-      -python/ray/tests:test_global_state
-      -python/ray/tests:test_iter
-      -python/ray/tests:test_memory_scheduling
+      -python/ray/tests:test_job
       -python/ray/tests:test_memstat
       -python/ray/tests:test_metrics
       -python/ray/tests:test_multi_node
       -python/ray/tests:test_multi_node_2
-      -python/ray/tests:test_multinode_failures_2
-      -python/ray/tests:test_multiprocessing
+      -python/ray/tests:test_multiprocessing  # flaky
       -python/ray/tests:test_node_manager
       -python/ray/tests:test_object_manager
       -python/ray/tests:test_projects
-      -python/ray/tests:test_queue
-      -python/ray/tests:test_ray_init
-      -python/ray/tests:test_reconstruction
+      -python/ray/tests:test_queue  # timeout
+      -python/ray/tests:test_ray_init  # flaky
+      -python/ray/tests:test_reconstruction  # UnreconstructableError
       -python/ray/tests:test_stress
       -python/ray/tests:test_stress_sharded
       -python/ray/tests:test_webui
@@ -200,7 +201,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      sphinx-build -q -E -T -b html source _build/html
+      sphinx-build -q -E -W -T -b html source _build/html
     fi
   )
 }
@@ -225,6 +226,9 @@ install_go() {
 
 install_ray() {
   (
+    # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
+    bazel build -k "//:*"  # Full build first, since pip install will build only a subset of targets
+
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
     pip install -v -e .
@@ -448,8 +452,6 @@ init() {
 
 build() {
   if ! need_wheels; then
-    # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
-    bazel build -k "//:*"  # Full build first, since pip install will build only a subset of targets
     install_ray
     if [ "${LINT-}" = 1 ]; then
       # Try generating Sphinx documentation. To do this, we need to install Ray first.

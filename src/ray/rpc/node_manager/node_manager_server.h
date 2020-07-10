@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RPC_NODE_MANAGER_SERVER_H
-#define RAY_RPC_NODE_MANAGER_SERVER_H
+#pragma once
 
 #include "ray/protobuf/node_manager.grpc.pb.h"
 #include "ray/protobuf/node_manager.pb.h"
@@ -24,15 +23,17 @@ namespace ray {
 namespace rpc {
 
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
-#define RAY_NODE_MANAGER_RPC_HANDLERS                         \
-  RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease) \
-  RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker)       \
-  RPC_SERVICE_HANDLER(NodeManagerService, CancelWorkerLease)  \
-  RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask)        \
-  RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs)       \
-  RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats)       \
-  RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)           \
-  RPC_SERVICE_HANDLER(NodeManagerService, FormatGlobalMemoryInfo)
+#define RAY_NODE_MANAGER_RPC_HANDLERS                             \
+  RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease)     \
+  RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker)           \
+  RPC_SERVICE_HANDLER(NodeManagerService, CancelWorkerLease)      \
+  RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask)            \
+  RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs)           \
+  RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats)           \
+  RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)               \
+  RPC_SERVICE_HANDLER(NodeManagerService, FormatGlobalMemoryInfo) \
+  RPC_SERVICE_HANDLER(NodeManagerService, RequestResourceReserve) \
+  RPC_SERVICE_HANDLER(NodeManagerService, CancelResourceReserve)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -59,6 +60,16 @@ class NodeManagerServiceHandler {
   virtual void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
                                        rpc::CancelWorkerLeaseReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRequestResourceReserve(
+      const rpc::RequestResourceReserveRequest &request,
+      rpc::RequestResourceReserveReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleCancelResourceReserve(
+      const rpc::CancelResourceReserveRequest &request,
+      rpc::CancelResourceReserveReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleForwardTask(const ForwardTaskRequest &request,
                                  ForwardTaskReply *reply,
@@ -110,5 +121,3 @@ class NodeManagerGrpcService : public GrpcService {
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif

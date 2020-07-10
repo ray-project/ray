@@ -15,8 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef PLASMA_CLIENT_H
-#define PLASMA_CLIENT_H
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -24,15 +23,16 @@
 #include <vector>
 
 #include "arrow/buffer.h"
-#include "arrow/status.h"
-#include "arrow/util/macros.h"
-#include "arrow/util/visibility.h"
+
+#include "ray/common/status.h"
 #include "ray/object_manager/plasma/common.h"
+#include "ray/util/visibility.h"
 
 using arrow::Buffer;
-using arrow::Status;
 
 namespace plasma {
+
+using ray::Status;
 
 /// Object buffer data structure.
 struct ObjectBuffer {
@@ -44,7 +44,8 @@ struct ObjectBuffer {
   int device_num;
 };
 
-class ARROW_EXPORT PlasmaClient {
+// TODO(suquark): Maybe we should not export plasma later?
+class RAY_EXPORT PlasmaClient {
  public:
   PlasmaClient();
   ~PlasmaClient();
@@ -179,21 +180,6 @@ class ARROW_EXPORT PlasmaClient {
   /// \return The return status.
   Status Contains(const ObjectID& object_id, bool* has_object);
 
-  /// List all the objects in the object store.
-  ///
-  /// This API is experimental and might change in the future.
-  ///
-  /// \param[out] objects ObjectTable of objects in the store. For each entry
-  ///             in the map, the following fields are available:
-  ///             - metadata_size: Size of the object metadata in bytes
-  ///             - data_size: Size of the object data in bytes
-  ///             - ref_count: Number of clients referencing the object buffer
-  ///             - create_time: Unix timestamp of the object creation
-  ///             - construct_duration: Object creation time in seconds
-  ///             - state: Is the object still being created or already sealed?
-  /// \return The return status.
-  Status List(ObjectTable* objects);
-
   /// Abort an unsealed object in the object store. If the abort succeeds, then
   /// it will be as if the object was never created at all. The unsealed object
   /// must have only a single reference (the one that would have been removed by
@@ -303,10 +289,8 @@ class ARROW_EXPORT PlasmaClient {
 
   bool IsInUse(const ObjectID& object_id);
 
-  class ARROW_NO_EXPORT Impl;
+  class RAY_NO_EXPORT Impl;
   std::shared_ptr<Impl> impl_;
 };
 
 }  // namespace plasma
-
-#endif  // PLASMA_CLIENT_H

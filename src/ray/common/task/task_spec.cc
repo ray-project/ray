@@ -47,7 +47,7 @@ void TaskSpecification::ComputeResources() {
     // the actor tasks need not be scheduled.
 
     // Map the scheduling class descriptor to an integer for performance.
-    auto sched_cls = std::make_pair(GetRequiredResources(), FunctionDescriptor());
+    auto sched_cls = GetRequiredResources();
     absl::MutexLock lock(&mutex_);
     auto it = sched_cls_to_id_.find(sched_cls);
     if (it == sched_cls_to_id_.end()) {
@@ -110,15 +110,16 @@ ObjectID TaskSpecification::ReturnId(size_t return_index) const {
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
-  return (ArgIdCount(arg_index) != 0);
+  return message_->args(arg_index).object_ref().object_id() != "";
 }
 
-size_t TaskSpecification::ArgIdCount(size_t arg_index) const {
-  return message_->args(arg_index).object_ids_size();
+ObjectID TaskSpecification::ArgId(size_t arg_index) const {
+  return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
 }
 
-ObjectID TaskSpecification::ArgId(size_t arg_index, size_t id_index) const {
-  return ObjectID::FromBinary(message_->args(arg_index).object_ids(id_index));
+rpc::ObjectReference TaskSpecification::ArgRef(size_t arg_index) const {
+  RAY_CHECK(ArgByRef(arg_index));
+  return message_->args(arg_index).object_ref();
 }
 
 const uint8_t *TaskSpecification::ArgData(size_t arg_index) const {
@@ -145,16 +146,30 @@ const ResourceSet &TaskSpecification::GetRequiredResources() const {
   return *required_resources_;
 }
 
-std::vector<ObjectID> TaskSpecification::GetDependencies() const {
+std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {
   std::vector<ObjectID> dependencies;
   for (size_t i = 0; i < NumArgs(); ++i) {
-    int count = ArgIdCount(i);
-    for (int j = 0; j < count; j++) {
-      dependencies.push_back(ArgId(i, j));
+    if (ArgByRef(i)) {
+      dependencies.push_back(ArgId(i));
     }
   }
   if (IsActorTask()) {
     dependencies.push_back(PreviousActorTaskDummyObjectId());
+  }
+  return dependencies;
+}
+
+std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies() const {
+  std::vector<rpc::ObjectReference> dependencies;
+  for (size_t i = 0; i < NumArgs(); ++i) {
+    if (ArgByRef(i)) {
+      dependencies.push_back(message_->args(i).object_ref());
+    }
+  }
+  if (IsActorTask()) {
+    const auto &dummy_ref =
+        GetReferenceForActorDummyObject(PreviousActorTaskDummyObjectId());
+    dependencies.push_back(dummy_ref);
   }
   return dependencies;
 }
@@ -257,8 +272,19 @@ bool TaskSpecification::IsDetachedActor() const {
 std::string TaskSpecification::DebugString() const {
   std::ostringstream stream;
   stream << "Type=" << TaskType_Name(message_->type())
-         << ", Language=" << Language_Name(message_->language())
-         << ", function_descriptor=";
+         << ", Language=" << Language_Name(message_->language());
+
+  if (required_resources_ != nullptr) {
+    stream << ", Resources: {";
+
+    // Print resource description.
+    for (auto entry : GetRequiredResources().GetResourceMap()) {
+      stream << entry.first << ": " << entry.second << ", ";
+    }
+    stream << "}";
+  }
+
+  stream << ", function_descriptor=";
 
   // Print function descriptor.
   stream << FunctionDescriptor()->ToString();

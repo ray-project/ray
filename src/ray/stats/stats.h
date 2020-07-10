@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_STATS_STATS_H
-#define RAY_STATS_STATS_H
+#pragma once
 
 #include <exception>
 #include <string>
@@ -21,6 +20,7 @@
 
 #include "opencensus/exporters/stats/prometheus/prometheus_exporter.h"
 #include "opencensus/exporters/stats/stdout/stdout_exporter.h"
+#include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
 #include "prometheus/exposer.h"
@@ -65,12 +65,13 @@ static void Init(const std::string &address, const TagsType &global_tags,
                      << "affect anything except stats. Caused by: " << e.what();
     return;
   }
-
+  opencensus::stats::StatsExporter::SetInterval(
+      StatsConfig::instance().GetReportInterval());
+  opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
+      StatsConfig::instance().GetHarvestInterval());
   StatsConfig::instance().SetGlobalTags(global_tags);
 }
 
 }  // namespace stats
 
 }  // namespace ray
-
-#endif  // RAY_STATS_STATS_H

@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RPC_NODE_MANAGER_CLIENT_H
-#define RAY_RPC_NODE_MANAGER_CLIENT_H
+#pragma once
 
 #include <grpcpp/grpcpp.h>
 
@@ -90,6 +89,12 @@ class NodeManagerWorkerClient
   /// Cancel a pending worker lease request.
   RPC_CLIENT_METHOD(NodeManagerService, CancelWorkerLease, grpc_client_, )
 
+  /// Request resource lease.
+  RPC_CLIENT_METHOD(NodeManagerService, RequestResourceReserve, grpc_client_, )
+
+  /// Return resource lease.
+  RPC_CLIENT_METHOD(NodeManagerService, CancelResourceReserve, grpc_client_, )
+
   /// Notify the raylet to pin the provided object IDs.
   RPC_CLIENT_METHOD(NodeManagerService, PinObjectIDs, grpc_client_, )
 
@@ -118,5 +123,3 @@ class NodeManagerWorkerClient
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif  // RAY_RPC_NODE_MANAGER_CLIENT_H

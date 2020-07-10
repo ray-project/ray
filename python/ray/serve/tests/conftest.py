@@ -20,6 +20,8 @@ def _shared_serve_instance():
 def serve_instance(_shared_serve_instance):
     serve.init()
     yield
+    # Re-init if necessary.
+    serve.init()
     master = serve.api._get_master_actor()
     # Clear all state between tests to avoid naming collisions.
     for endpoint in ray.get(master.get_all_endpoints.remote()):

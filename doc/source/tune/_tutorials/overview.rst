@@ -46,9 +46,9 @@ These pages will demonstrate the various features and configurations of Tune.
     <div class="sphx-glr-bigcontainer">
 
 .. customgalleryitem::
-   :tooltip: A guide to Tune features.
+   :tooltip: Tune User Guide
    :figure: /images/tune.png
-   :description: :doc:`A guide to Tune features <tune-usage>`
+   :description: :doc:`Tune User Guide <tune-usage>`
 
 .. customgalleryitem::
    :tooltip: A simple guide to Population-based Training
@@ -60,6 +60,22 @@ These pages will demonstrate the various features and configurations of Tune.
    :figure: /images/tune.png
    :description: :doc:`A guide to distributed hyperparameter tuning <tune-distributed>`
 
+.. customgalleryitem::
+   :tooltip: Tune's Scikit-Learn Adapters
+   :figure: /images/tune-sklearn.png
+   :description: :doc:`Tune's Scikit-Learn Adapters <tune-sklearn>`
+
+.. customgalleryitem::
+   :tooltip: Tuning PyTorch Lightning modules
+   :figure: /images/pytorch_lightning_small.png
+   :description: :doc:`Tuning PyTorch Lightning modules <tune-pytorch-lightning>`
+
+.. customgalleryitem::
+   :tooltip: Tuning XGBoost parameters.
+   :figure: /images/xgboost_logo.png
+   :description: :doc:`A guide to tuning XGBoost parameters with Tune <tune-xgboost>`
+
+
 .. raw:: html
 
     </div>
@@ -70,6 +86,9 @@ These pages will demonstrate the various features and configurations of Tune.
    tune-usage.rst
    tune-advanced-tutorial.rst
    tune-distributed.rst
+   tune-sklearn.rst
+   tune-pytorch-lightning.rst
+   tune-xgboost.rst
 
 Colab Exercises
 ---------------
@@ -132,6 +151,7 @@ General Examples
 - `async_hyperband_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`__: Example of using a Trainable class with AsyncHyperBandScheduler.
 - `hyperband_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__: Example of using a Trainable class with HyperBandScheduler. Also uses the Experiment class API for specifying the experiment configuration. Also uses the AsyncHyperBandScheduler.
 - `pbt_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_example.py>`__: Example of using a Trainable class with PopulationBasedTraining scheduler.
+- `PBT with Function API <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_function.py>`__: Example of using the function API with a PopulationBasedTraining scheduler.
 - `pbt_ppo_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_ppo_example.py>`__: Example of optimizing a distributed RLlib algorithm (PPO) with the PopulationBasedTraining scheduler.
 - `logging_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__: Example of custom loggers and custom trial directory naming.
 
@@ -161,6 +181,7 @@ PyTorch Examples
 XGBoost Example
 ~~~~~~~~~~~~~~~
 
+- :ref:`XGBoost tutorial <tune-xgboost>`: A guide to tuning XGBoost parameters with Tune.
 - `xgboost_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/xgboost_example.py>`__: Trains a basic XGBoost model with Tune with the function-based API and an XGBoost callback.
 
 

@@ -143,16 +143,18 @@ message DirectActorCallArgWaitCompleteReply {
 }
 
 message GetObjectStatusRequest {
-  // The owner of the object. Note that we do not need to include
-  // intended_worker_id since the new worker can service this request too by
-  // inspecting the owner_id field.
-  bytes owner_id = 1;
+  // The ID of the worker that owns this object. This is also
+  // the ID of the worker that this message is intended for.
+  bytes owner_worker_id = 1;
   // Wait for this object's status.
   bytes object_id = 2;
 }
 
 message GetObjectStatusReply {
-  enum ObjectStatus { CREATED = 0; }
+  enum ObjectStatus {
+    CREATED = 0;
+    OUT_OF_SCOPE = 1;
+  }
   ObjectStatus status = 1;
 }
 
@@ -221,15 +223,6 @@ message GetCoreWorkerStatsRequest {
 message GetCoreWorkerStatsReply {
   // Debug information returned from the core worker.
   CoreWorkerStats core_worker_stats = 1;
-}
-
-message ObjectReference {
-  // ObjectID that the worker has a reference to.
-  bytes object_id = 1;
-  // The task or actor ID of the object's owner.
-  bytes owner_id = 2;
-  // The address of the object's owner.
-  Address owner_address = 3;
 }
 
 message WaitForRefRemovedRequest {

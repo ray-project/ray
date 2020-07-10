@@ -168,7 +168,7 @@ class SessionRunner:
             raise click.ClickException(
                 "Docker support in session is currently not implemented.")
 
-    def create_cluster(self):
+    def create_cluster(self, no_config_cache):
         """Create a cluster that will run the session."""
         create_or_update_cluster(
             config_file=self.project_definition.cluster_yaml(),
@@ -178,6 +178,7 @@ class SessionRunner:
             restart_only=False,
             yes=True,
             override_cluster_name=self.session_name,
+            no_config_cache=no_config_cache,
         )
 
     def sync_files(self):
@@ -229,7 +230,7 @@ class SessionRunner:
         exec_cluster(
             config_file=self.project_definition.cluster_yaml(),
             cmd=cmd,
-            docker=False,
+            run_env=config.get("run_env", "auto"),
             screen=False,
             tmux=config.get("tmux", False),
             stop=False,
@@ -351,7 +352,12 @@ def stop(name):
         "the command in the project config"),
     is_flag=True)
 @click.option("--name", help="A name to tag the session with.", default=None)
-def session_start(command, args, shell, name):
+@click.option(
+    "--no-config-cache",
+    is_flag=True,
+    default=False,
+    help="Disable the local cluster config cache.")
+def session_start(command, args, shell, name, no_config_cache):
     project_definition = load_project_or_throw()
 
     if not name:
@@ -375,7 +381,7 @@ def session_start(command, args, shell, name):
     for run in session_runs:
         runner = SessionRunner(session_name=run["name"])
         logger.info("[1/{}] Creating cluster".format(run["num_steps"]))
-        runner.create_cluster()
+        runner.create_cluster(no_config_cache)
         logger.info("[2/{}] Syncing the project".format(run["num_steps"]))
         runner.sync_files()
         logger.info("[3/{}] Setting up environment".format(run["num_steps"]))
