@@ -9,7 +9,6 @@ import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.object.NativeObjectStore;
 import io.ray.runtime.object.ObjectRefImpl;
-import io.ray.test.TestUtils.TestLock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
@@ -39,10 +38,10 @@ public class ReferenceCountingTest extends BaseTest {
   }
 
   /**
-   * Because we can't explicitly GC an Java object. We use this helper method to manually remove
-   * an local reference.
+   * Because we can't explicitly GC an Java object. We use this helper method to manually remove an
+   * local reference.
    */
-  private void del(ObjectRef<?> obj) {
+  private static void del(ObjectRef<?> obj) {
     ((ObjectRefImpl<?>) obj).removeLocalReference();
   }
 
@@ -50,8 +49,7 @@ public class ReferenceCountingTest extends BaseTest {
     Instant start = Instant.now();
     while (true) {
       Map<ObjectId, long[]> actual =
-          ((NativeObjectStore) TestUtils.getRuntime().getObjectStore())
-              .getAllReferenceCounts();
+          ((NativeObjectStore) TestUtils.getRuntime().getObjectStore()).getAllReferenceCounts();
       try {
         Assert.assertEqualsDeep(actual, expected);
         return;
@@ -75,38 +73,30 @@ public class ReferenceCountingTest extends BaseTest {
     checkRefCounts(expected, Duration.ofSeconds(10));
   }
 
-  private static int foo(int x) {
-    return x + 1;
+  private void checkRefCounts(ObjectId objectId, long localRefCount, long submittedTaskRefCount) {
+    checkRefCounts(ImmutableMap.of(objectId, new long[] {localRefCount, submittedTaskRefCount}));
   }
 
-  private static int sleep() {
-    try {
-      Thread.sleep(100);
-    } catch (InterruptedException e) {
-      throw new RuntimeException(e);
-    }
-    return 1;
-  }
-
-  private static Object oneDepencency(ObjectRef<?> obj, TestLock testLock) {
-    if (testLock != null) {
-      testLock.waitLock();
-    }
-    return null;
+  private void checkRefCounts(ObjectId objectId1, long localRefCount1, long submittedTaskRefCount1,
+      ObjectId objectId2, long localRefCount2, long submittedTaskRefCount2) {
+    checkRefCounts(ImmutableMap.of(objectId1, new long[] {localRefCount1, submittedTaskRefCount1},
+        objectId2, new long[] {localRefCount2, submittedTaskRefCount2}));
   }
 
   private static void fillObjectStoreAndGet(ObjectId objectId, boolean succeed) {
     fillObjectStoreAndGet(objectId, succeed, 40 * 1024 * 1024, 5);
   }
 
-  private static void fillObjectStoreAndGet(ObjectId objectId, boolean succeed, int objectSize, int numObjects) {
+  private static void fillObjectStoreAndGet(ObjectId objectId, boolean succeed, int objectSize,
+      int numObjects) {
     for (int i = 0; i < numObjects; i++) {
       Ray.put(new TestUtils.LargeObject(objectSize));
     }
     if (succeed) {
       TestUtils.getRuntime().getObjectStore().getRaw(ImmutableList.of(objectId), Long.MAX_VALUE);
     } else {
-      List<Boolean> result = TestUtils.getRuntime().getObjectStore().wait(ImmutableList.of(objectId), 1, 100);
+      List<Boolean> result =
+          TestUtils.getRuntime().getObjectStore().wait(ImmutableList.of(objectId), 1, 100);
       Assert.assertFalse(result.get(0));
     }
   }
@@ -116,56 +106,80 @@ public class ReferenceCountingTest extends BaseTest {
    */
   public void testLocalRefCounts() {
     ObjectRef<Object> obj1 = Ray.put(null);
-    checkRefCounts(ImmutableMap.of(obj1.getId(), new long[] {1, 0}));
+    checkRefCounts(obj1.getId(), 1, 0);
     ObjectRef<Object> obj1Copy = new ObjectRefImpl<>(obj1.getId(), obj1.getType());
-    checkRefCounts(ImmutableMap.of(obj1.getId(), new long[] {2, 0}));
+    checkRefCounts(obj1.getId(), 2, 0);
 
     del(obj1);
-    checkRefCounts(ImmutableMap.of(obj1.getId(), new long[] {1, 0}));
+    checkRefCounts(obj1.getId(), 1, 0);
     del(obj1Copy);
     checkRefCounts(ImmutableMap.of());
+  }
+
+  private static int oneDep(Object obj) {
+    return oneDep(obj, null);
+  }
+
+  private static int oneDep(Object obj, ActorHandle<SignalActor> singal) {
+    return oneDep(obj, singal, false);
+  }
+
+  private static int oneDep(Object obj, ActorHandle<SignalActor> singal, boolean fail) {
+    if (singal != null) {
+      singal.task(SignalActor::waitSignal).remote().get();
+    }
+    if (fail) {
+      throw new RuntimeException("failed on purpose");
+    }
+    return 0;
+  }
+
+  private static TestUtils.LargeObject oneDepLarge(Object obj, ActorHandle<SignalActor> singal) {
+    if (singal != null) {
+      singal.task(SignalActor::waitSignal).remote().get();
+    }
+    // This will be spilled to plasma.
+    return new TestUtils.LargeObject(10 * 1024 * 1024);
+  }
+
+  private static void sendSignal(ActorHandle<SignalActor> signal) {
+    ObjectRef<Integer> result = signal.task(SignalActor::sendSignal).remote();
+    result.get();
+    // Remove the reference immediately, otherwise it will affect subsequent tests.
+    del(result);
   }
 
   /**
    * Based on Python test case `test_dependency_refcounts`.
    */
   public void testDependencyRefCounts() {
-    // Test that regular plasma dependency refcounts are decremented once the
+    // Test that regular plasma dep refcounts are decremented once the
     // task finishes.
-    ObjectRef<TestUtils.LargeObject> largeDepencency;
-    ObjectRef<Object> result;
-    ObjectRef<Object> dependency;
-    try (TestLock testLock = TestUtils.newLock()) {
-      largeDepencency = Ray.put(new TestUtils.LargeObject());
-      result = Ray.task(ReferenceCountingTest::oneDepencency, largeDepencency, testLock)
-                   .remote();
-      checkRefCounts(ImmutableMap.of(
-          largeDepencency.getId(), new long[] {1, 1}, result.getId(), new long[] {1, 0}));
-    }
+    ActorHandle<SignalActor> signal = SignalActor.create();
+    ObjectRef<TestUtils.LargeObject> largeDep = Ray.put(new TestUtils.LargeObject());
+    ObjectRef<Object> result = Ray.<TestUtils.LargeObject, ActorHandle<SignalActor>, Object>task(
+        ReferenceCountingTest::oneDep, largeDep, signal).remote();
+    checkRefCounts(largeDep.getId(), 1, 1, result.getId(), 1, 0);
+    sendSignal(signal);
     // Reference count should be removed once the task finishes.
-    checkRefCounts(ImmutableMap.of(
-        largeDepencency.getId(), new long[] {1, 0}, result.getId(), new long[] {1, 0}));
-    del(largeDepencency);
+    checkRefCounts(largeDep.getId(), 1, 0, result.getId(), 1, 0);
+    del(largeDep);
     del(result);
     checkRefCounts(ImmutableMap.of());
 
-    // Test that inlined dependency refcounts are decremented once they are
+    // Test that inlined dep refcounts are decremented once they are
     // inlined.
-    try (TestLock testLock = TestUtils.newLock()) {
-      dependency = Ray.task(ReferenceCountingTest::oneDepencency,
-                          (ObjectRef<Object>) null, testLock)
-                       .remote();
-      checkRefCounts(ImmutableMap.of(dependency.getId(), new long[] {1, 0}));
-      result = Ray.task(ReferenceCountingTest::oneDepencency, dependency, (TestLock) null)
-                   .remote();
-      checkRefCounts(ImmutableMap.of(
-          dependency.getId(), new long[] {1, 1}, result.getId(), new long[] {1, 0}));
-    }
-    // Reference count should be removed as soon as the dependency is inlined.
-    checkRefCounts(ImmutableMap.of(dependency.getId(), new long[] {1, 0}, result.getId(),
-                       new long[] {1, 0}),
-        Duration.ofSeconds(1));
-    del(dependency);
+    signal = SignalActor.create();
+    ObjectRef<Integer> dep =
+        Ray.<Integer, ActorHandle<SignalActor>, Integer>task(ReferenceCountingTest::oneDep,
+            Integer.valueOf(1), signal).remote();
+    checkRefCounts(dep.getId(), 1, 0);
+    result = Ray.<Integer, Object>task(ReferenceCountingTest::oneDep, dep).remote();
+    checkRefCounts(dep.getId(), 1, 1, result.getId(), 1, 0);
+    sendSignal(signal);
+    // Reference count should be removed as soon as the dep is inlined.
+    checkRefCounts(dep.getId(), 1, 0, result.getId(), 1, 0);
+    del(dep);
     del(result);
     checkRefCounts(ImmutableMap.of());
 
@@ -196,18 +210,15 @@ public class ReferenceCountingTest extends BaseTest {
    * Based on Python test case `test_basic_pinning`.
    */
   public void testBasicPinning() {
-    // TODO(kfstorm): Set plasma store size to 100MB.
+    ActorHandle<ActorBasicPinning> actor = Ray.actor(ActorBasicPinning::new).remote();
 
-    ActorHandle<ReferenceCountingTest.ActorBasicPinning> actor =
-        Ray.actor(ReferenceCountingTest.ActorBasicPinning::new).remote();
     // Fill up the object store with short-lived objects. These should be
     // evicted before the long-lived object whose reference is held by
     // the actor.
     for (int i = 0; i < 10; i++) {
-      ObjectRef<Integer> intermediateResult =
-          Ray.task(ReferenceCountingTest::fooBasicPinning,
-                 new TestUtils.LargeObject(10 * 1024 * 1024))
-              .remote();
+      ObjectRef<Integer> intermediateResult = Ray
+          .task(ReferenceCountingTest::fooBasicPinning, new TestUtils.LargeObject(10 * 1024 * 1024))
+          .remote();
       intermediateResult.get();
     }
     // The ray.get below would fail with only LRU eviction, as the object
@@ -215,43 +226,38 @@ public class ReferenceCountingTest extends BaseTest {
     actor.task(ActorBasicPinning::getLargeObject).remote().get();
   }
 
-  private static Object pending(TestUtils.LargeObject input1, int input2) {
+  private static Object pending(TestUtils.LargeObject input1, Integer input2) {
     return null;
-  }
-
-  private static int signal(TestLock testLock) {
-    testLock.waitLock();
-    return 0;
   }
 
   /**
    * Based on Python test case `test_pending_task_dependency_pinning`.
    */
   public void testPendingTaskDependencyPinning() {
-    // TODO(kfstorm): Set plasma store size to 100MB.
-
     // The object that is ray.put here will go out of scope immediately, so if
     // pending task dependencies aren't considered, it will be evicted before
     // the ray.get below due to the subsequent ray.puts that fill up the object
     // store.
-    ObjectRef<Object> result;
-    try (TestLock testLock = TestUtils.newLock()) {
-      TestUtils.LargeObject input1 = new TestUtils.LargeObject(40 * 1024 * 1024);
-      ObjectRef<Integer> input2 =
-          Ray.task(ReferenceCountingTest::signal, testLock).remote();
-      result = Ray.task(ReferenceCountingTest::pending, input1, input2).remote();
+    TestUtils.LargeObject input1 = new TestUtils.LargeObject(40 * 1024 * 1024);
+    ActorHandle<SignalActor> signal = SignalActor.create();
+    ObjectRef<Object> result = Ray
+        .task(ReferenceCountingTest::pending, input1, signal.task(SignalActor::waitSignal).remote())
+        .remote();
 
-      for (int i = 0; i < 2; i++) {
-        Ray.put(new TestUtils.LargeObject(40 * 1024 * 1024));
-      }
+    for (int i = 0; i < 2; i++) {
+      Ray.put(new TestUtils.LargeObject(40 * 1024 * 1024));
     }
+
+    sendSignal(signal);
     result.get();
   }
 
   /**
-   * Test that an object containing object IDs within it pins the inner IDs.
-   * Based on Python test case `test_basic_nested_ids`.
+   * Test that an object containing object IDs within it pins the inner IDs. Based on Python test
+   * case `test_basic_nested_ids`.
    */
+  // TODO(kfstorm): Port https://github.com/ray-project/ray/pull/6052 to Java.
+  @Test(enabled = false)
   public void testBasicNestedIds() {
     ObjectRef<byte[]> inner = Ray.put(new byte[40 * 1024 * 1024]);
     ObjectRef<List<ObjectRef<byte[]>>> outer = Ray.put(Collections.singletonList(inner));

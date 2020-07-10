@@ -7,11 +7,7 @@ import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.RayRuntimeProxy;
 import io.ray.runtime.config.RunMode;
 import io.ray.runtime.task.ArgumentsBuilder;
-import java.io.File;
-import java.io.IOException;
 import java.io.Serializable;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.function.Supplier;
 import org.testng.Assert;
 import org.testng.SkipException;
@@ -103,50 +99,5 @@ public class TestUtils {
     RayRuntimeProxy proxy = (RayRuntimeProxy) (java.lang.reflect.Proxy
         .getInvocationHandler(Ray.internal()));
     return proxy.getRuntimeObject();
-  }
-
-  public static TestLock newLock() {
-    return new TestLock();
-  }
-
-  public static class TestLock implements AutoCloseable, Serializable {
-    private final String filePath;
-
-    public TestLock() {
-      File file;
-      try {
-        file = File.createTempFile("ray-java-test", "lock");
-      } catch (IOException e) {
-        throw new RuntimeException(e);
-      }
-      file.deleteOnExit();
-      filePath = file.getAbsolutePath();
-    }
-
-    public boolean waitLock() {
-      return waitLock(Duration.ofSeconds(-1));
-    }
-
-    public boolean waitLock(Duration timeout) {
-      File file = new File(filePath);
-      Instant start = Instant.now();
-      while (timeout.isNegative()
-          || Duration.between(start, Instant.now()).compareTo(timeout) < 0) {
-        if (!file.exists()) {
-          return true;
-        }
-        try {
-          Thread.sleep(100);
-        } catch (InterruptedException e) {
-          throw new RuntimeException(e);
-        }
-      }
-      return false;
-    }
-
-    @Override
-    public void close() {
-      (new File(filePath)).delete();
-    }
   }
 }

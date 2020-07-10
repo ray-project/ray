@@ -90,13 +90,14 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   }
 
   // This method is public for test purposes only.
-  public void removeLocalReference() {
-    Preconditions.checkState(workerId != null);
-    RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
-    // It's possible that GC is executed after the runtime is shutdown.
-    if (runtime != null) {
-      runtime.getObjectStore().removeLocalReference(workerId, id);
+  public synchronized void removeLocalReference() {
+    if (workerId != null) {
+      RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
+      // It's possible that GC is executed after the runtime is shutdown.
+      if (runtime != null) {
+        runtime.getObjectStore().removeLocalReference(workerId, id);
+      }
+      workerId = null;
     }
-    runtime = null;
   }
 }
