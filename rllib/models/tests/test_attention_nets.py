@@ -217,7 +217,6 @@ class TestModules(unittest.TestCase):
                     seq_lens=seq_lens_init)
             # Framework is tensorflow or tensorflow-eager.
             else:
-                continue
                 x = np.random.random((B, L, D_in))
                 y = np.random.random((B, L, D_out))
 

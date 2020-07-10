@@ -178,8 +178,9 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         observations = state[0]
         memory = state[1:]
 
-        inputs = torch.reshape(inputs, (list(observations.shape)[0],
-                                        -1, list(observations.shape)[-1]))
+        inputs = torch.reshape(
+            inputs,
+            (list(observations.shape)[0], -1, list(observations.shape)[-1]))
         observations = torch.cat(
             (observations, inputs), axis=1)[:, -self.max_seq_len:]
 
