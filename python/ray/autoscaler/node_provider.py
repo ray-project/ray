@@ -3,7 +3,7 @@ import logging
 import os
 import yaml
 
-from ray.autoscaler.updater import SSHCommandRunner, DockerCommandRunner
+from ray.autoscaler.command_runner import SSHCommandRunner, DockerCommandRunner
 
 logger = logging.getLogger(__name__)
 
