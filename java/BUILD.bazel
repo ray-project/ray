@@ -155,6 +155,14 @@ genrule(
     """,
 )
 
+genrule(
+    name = "redis-server",
+    srcs = ["//:redis-server"],
+    outs = ["src/main/resources/redis-server"],
+    cmd = "cp $< $@",
+    output_to_bindir = 1,
+)
+
 filegroup(
     name = "java_native_deps",
     srcs = [
@@ -163,7 +171,7 @@ filegroup(
         "//:gcs_server",
         "//:libray_redis_module.so",
         "//:raylet",
-        "//:redis-server",
+        ":redis-server",
     ],
 )
 
