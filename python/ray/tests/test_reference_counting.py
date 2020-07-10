@@ -29,20 +29,20 @@ def one_worker_100MiB(request):
     ray.shutdown()
 
 
-def _fill_object_store_and_get(oid, succeed=True, object_MiB=40,
+def _fill_object_store_and_get(obj_ref, succeed=True, object_MiB=40,
                                num_objects=5):
     for _ in range(num_objects):
         ray.put(np.zeros(object_MiB * 1024 * 1024, dtype=np.uint8))
 
-    if type(oid) is bytes:
-        oid = ray.ObjectRef(oid)
+    if type(obj_ref) is bytes:
+        obj_ref = ray.ObjectRef(obj_ref)
 
     if succeed:
         wait_for_condition(
-            lambda: ray.worker.global_worker.core_worker.object_exists(oid))
+            lambda: ray.worker.global_worker.core_worker.object_exists(obj_ref))
     else:
         wait_for_condition(
-            lambda: not ray.worker.global_worker.core_worker.object_exists(oid)
+            lambda: not ray.worker.global_worker.core_worker.object_exists(obj_ref)
         )
 
 
@@ -70,13 +70,13 @@ def check_refcounts(expected, timeout=10):
 
 
 def test_local_refcounts(ray_start_regular):
-    oid1 = ray.put(None)
-    check_refcounts({oid1: (1, 0)})
-    oid1_copy = copy.copy(oid1)
-    check_refcounts({oid1: (2, 0)})
-    del oid1
-    check_refcounts({oid1_copy: (1, 0)})
-    del oid1_copy
+    obj_ref1 = ray.put(None)
+    check_refcounts({obj_ref1: (1, 0)})
+    obj_ref1_copy = copy.copy(obj_ref1)
+    check_refcounts({obj_ref1: (2, 0)})
+    del obj_ref1
+    check_refcounts({obj_ref1_copy: (1, 0)})
+    del obj_ref1_copy
     check_refcounts({})
 
 
@@ -233,13 +233,13 @@ def test_pending_task_dependency_pinning(one_worker_100MiB):
     # store.
     np_array = np.zeros(40 * 1024 * 1024, dtype=np.uint8)
     signal = SignalActor.remote()
-    oid = pending.remote(np_array, signal.wait.remote())
+    obj_ref = pending.remote(np_array, signal.wait.remote())
 
     for _ in range(2):
         ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
 
     ray.get(signal.send.remote())
-    ray.get(oid)
+    ray.get(obj_ref)
 
 
 def test_feature_flag(shutdown_only):
@@ -276,14 +276,14 @@ def test_feature_flag(shutdown_only):
 def test_out_of_band_serialized_object_ref(one_worker_100MiB):
     assert len(
         ray.worker.global_worker.core_worker.get_all_reference_counts()) == 0
-    oid = ray.put("hello")
-    _check_refcounts({oid: (1, 0)})
-    oid_str = ray.cloudpickle.dumps(oid)
-    _check_refcounts({oid: (2, 0)})
-    del oid
+    obj_ref = ray.put("hello")
+    _check_refcounts({obj_ref: (1, 0)})
+    obj_ref_str = ray.cloudpickle.dumps(obj_ref)
+    _check_refcounts({obj_ref: (2, 0)})
+    del obj_ref
     assert len(
         ray.worker.global_worker.core_worker.get_all_reference_counts()) == 1
-    assert ray.get(ray.cloudpickle.loads(oid_str)) == "hello"
+    assert ray.get(ray.cloudpickle.loads(obj_ref_str)) == "hello"
 
 
 def test_captured_object_ref(one_worker_100MiB):
@@ -295,7 +295,7 @@ def test_captured_object_ref(one_worker_100MiB):
         ray.get(captured_id)  # noqa: F821
 
     signal = SignalActor.remote()
-    oid = f.remote(signal)
+    obj_ref = f.remote(signal)
 
     # Delete local references.
     del f
@@ -304,7 +304,7 @@ def test_captured_object_ref(one_worker_100MiB):
     # Test that the captured object ref is pinned despite having no local
     # references.
     ray.get(signal.send.remote())
-    _fill_object_store_and_get(oid)
+    _fill_object_store_and_get(obj_ref)
 
     captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
 
@@ -316,7 +316,7 @@ def test_captured_object_ref(one_worker_100MiB):
 
     signal = SignalActor.remote()
     actor = Actor.remote()
-    oid = actor.get.remote(signal)
+    obj_ref = actor.get.remote(signal)
 
     # Delete local references.
     del Actor
@@ -325,7 +325,7 @@ def test_captured_object_ref(one_worker_100MiB):
     # Test that the captured object ref is pinned despite having no local
     # references.
     ray.get(signal.send.remote())
-    _fill_object_store_and_get(oid)
+    _fill_object_store_and_get(obj_ref)
 
 
 # Remote function takes serialized reference and doesn't hold onto it after
@@ -343,7 +343,7 @@ def test_basic_serialized_reference(one_worker_100MiB, use_ray_put, failure):
     array_oid = put_object(
         np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
     signal = SignalActor.remote()
-    oid = pending.remote([array_oid], signal.wait.remote())
+    obj_ref = pending.remote([array_oid], signal.wait.remote())
 
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
@@ -355,7 +355,7 @@ def test_basic_serialized_reference(one_worker_100MiB, use_ray_put, failure):
     # Fulfill the dependency, causing the task to finish.
     ray.get(signal.send.remote())
     try:
-        ray.get(oid)
+        ray.get(obj_ref)
         assert not failure
     except ray.exceptions.RayWorkerError:
         assert failure

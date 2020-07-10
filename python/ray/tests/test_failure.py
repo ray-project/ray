@@ -938,11 +938,11 @@ def test_fill_object_store_lru_fallback(shutdown_only):
     end = time.time()
     assert end - start < 3
 
-    oids = []
+    obj_refs = []
     for _ in range(3):
-        oid = expensive_task.remote()
-        ray.get(oid)
-        oids.append(oid)
+        obj_ref = expensive_task.remote()
+        ray.get(obj_ref)
+        obj_refs.append(obj_ref)
 
     @ray.remote
     class LargeMemoryActor:
@@ -954,16 +954,16 @@ def test_fill_object_store_lru_fallback(shutdown_only):
 
     actor = LargeMemoryActor.remote()
     for _ in range(3):
-        oid = actor.some_expensive_task.remote()
-        ray.get(oid)
-        oids.append(oid)
+        obj_ref = actor.some_expensive_task.remote()
+        ray.get(obj_ref)
+        obj_refs.append(obj_ref)
     # Make sure actor does not die
     ray.get(actor.test.remote())
 
     for _ in range(3):
-        oid = ray.put(np.zeros(10**8 // 2, dtype=np.uint8))
-        ray.get(oid)
-        oids.append(oid)
+        obj_ref = ray.put(np.zeros(10**8 // 2, dtype=np.uint8))
+        ray.get(obj_ref)
+        obj_refs.append(obj_ref)
 
 
 @pytest.mark.parametrize(

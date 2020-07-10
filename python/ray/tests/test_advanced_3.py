@@ -657,10 +657,10 @@ def test_lease_request_leak(shutdown_only):
     # from the raylet.
     tasks = []
     for _ in range(10):
-        oid = ray.put(1)
+        obj_ref = ray.put(1)
         for _ in range(2):
-            tasks.append(f.remote(oid))
-        del oid
+            tasks.append(f.remote(obj_ref))
+        del obj_ref
     ray.get(tasks)
 
     time.sleep(

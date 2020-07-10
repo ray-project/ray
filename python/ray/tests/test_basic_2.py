@@ -606,8 +606,8 @@ def test_wait(ray_start_regular):
     assert remaining_ids == []
 
     # Test semantics of num_returns with no timeout.
-    oids = [ray.put(i) for i in range(10)]
-    (found, rest) = ray.wait(oids, num_returns=2)
+    obj_refs = [ray.put(i) for i in range(10)]
+    (found, rest) = ray.wait(obj_refs, num_returns=2)
     assert len(found) == 2
     assert len(rest) == 8
 
@@ -666,14 +666,14 @@ def test_internal_config_when_connecting(ray_start_cluster):
 
     # Check that the config was picked up (object pinning is disabled).
     ray.init(address=cluster.address)
-    oid = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
+    obj_ref = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
 
     for _ in range(5):
         ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
 
     # This would not raise an exception if object pinning was enabled.
     with pytest.raises(ray.exceptions.UnreconstructableError):
-        ray.get(oid)
+        ray.get(obj_ref)
 
 
 def test_get_correct_node_ip():
