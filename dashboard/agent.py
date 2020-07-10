@@ -86,7 +86,7 @@ class DashboardAgent(object):
             while True:
                 parent = curr_proc.parent()
                 if parent is None or parent.pid == 1:
-                    logger.error("raylet is dead, suicide.")
+                    logger.error("raylet is dead, agent will die because it fate-shares with raylet.")
                     sys.exit(0)
                 await asyncio.sleep(
                     dashboard_consts.
