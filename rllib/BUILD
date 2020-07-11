@@ -401,7 +401,7 @@ py_test(
 py_test(
     name = "test_apex_ddpg",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/ddpg/tests/test_apex_ddpg.py"]
 )
 
@@ -455,7 +455,7 @@ py_test(
 py_test(
     name = "test_impala",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/impala/tests/test_impala.py"]
 )
 py_test(
