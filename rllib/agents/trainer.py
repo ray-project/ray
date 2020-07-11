@@ -1067,7 +1067,8 @@ class Trainer(Trainable):
         if config.get("_use_trajectory_view_api") and \
                 config.get("framework") != "torch":
             raise ValueError(
-                "`_fast_sampling` only supported for PyTorch so far!")
+                "`_use_trajectory_view_api` only supported for PyTorch so "
+                "far!")
         if "policy_graphs" in config["multiagent"]:
             deprecation_warning("policy_graphs", "policies")
             # Backwards compatibility.

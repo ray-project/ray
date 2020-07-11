@@ -227,8 +227,8 @@ class Policy(metaclass=ABCMeta):
 
         Note: This is an experimental API method.
 
-        Only used so far by the Sampler iff `_fast_sampling=True` (also only
-        supported for torch).
+        Only used so far by the Sampler iff `_use_trajectory_view_api=True`
+        (also only supported for torch).
 
         Args:
             trajectories (List[Trajectory]): A List of Trajectory data used

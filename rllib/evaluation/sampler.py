@@ -858,7 +858,8 @@ def _do_policy_eval(
         tf_sess (Optional[tf.Session]): Optional tensorflow session to use for
             batching TF policy evaluations.
         _use_trajectory_view_api (bool): Whether to use the (experimental)
-            `_fast_sampling` procedure to collect samples. Default: False.
+            `_use_trajectory_view_api` procedure to collect samples.
+            Default: False.
 
     Returns:
         eval_results: dict of policy to compute_action() outputs.
