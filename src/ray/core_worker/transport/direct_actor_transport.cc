@@ -112,17 +112,29 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   return Status::OK();
 }
 
+void CoreWorkerDirectActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue) {
+  queue.rpc_client = nullptr;
+  queue.worker_id.clear();
+  queue.pending_force_kill.reset();
+}
+
 void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
-                                                      const rpc::Address &address) {
+                                                      const rpc::Address &address,
+                                                      int64_t num_restarts) {
+  RAY_LOG(DEBUG) << "Connecting to actor " << actor_id << " at worker "
+                 << WorkerID::FromBinary(address.worker_id());
   absl::MutexLock lock(&mu_);
 
   auto queue = client_queues_.find(actor_id);
   RAY_CHECK(queue != client_queues_.end());
-  if (queue->second.rpc_client) {
-    // Skip reconnection if we already have a client to this actor.
-    // NOTE(swang): This seems to only trigger in multithreaded Java tests.
-    RAY_CHECK(queue->second.worker_id == address.worker_id());
+  if (num_restarts <= queue->second.num_restarts) {
+    // This message is about an old version of the actor. Skip the connection.
     return;
+  }
+
+  if (queue->second.rpc_client) {
+    // Clear the client to the old version of the actor.
+    DisconnectRpcClient(queue->second);
   }
 
   queue->second.state = rpc::ActorTableData::ALIVE;
@@ -143,6 +155,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
 
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
                                                          bool dead) {
+  RAY_LOG(DEBUG) << "Disconnecting from actor " << actor_id;
   absl::MutexLock lock(&mu_);
   auto queue = client_queues_.find(actor_id);
   RAY_CHECK(queue != client_queues_.end());
@@ -156,9 +169,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
   // The actor failed, so erase the client for now. Either the actor is
   // permanently dead or the new client will be inserted once the actor is
   // restarted.
-  queue->second.rpc_client = nullptr;
-  queue->second.worker_id.clear();
-  queue->second.pending_force_kill.reset();
+  DisconnectRpcClient(queue->second);
 
   // If there are pending requests, treat the pending tasks as failed.
   if (dead) {
